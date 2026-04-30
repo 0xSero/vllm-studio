@@ -5,12 +5,15 @@ import { Virtuoso } from "react-virtuoso";
 import {
   ChevronLeft,
   ChevronRight,
+  Code,
   File,
   Folder,
+  Monitor,
   MessageSquare,
   PanelLeftOpen,
   Trash2,
 } from "lucide-react";
+import { AssistantMarkdown } from "./assistant-markdown";
 
 type FsEntry = {
   name: string;
@@ -34,6 +37,38 @@ type Props = {
 
 const LAST_FILE_KEY_PREFIX = "vllm-studio.agent.lastOpenFile.";
 
+function previewKindForPath(path: string): "html" | "jsx" | "md" | null {
+  if (/\.(html?|svg)$/i.test(path)) return "html";
+  if (/\.(jsx|tsx)$/i.test(path)) return "jsx";
+  if (/\.(md|mdx|markdown)$/i.test(path)) return "md";
+  return null;
+}
+
+function extractJsxPreviewSource(source: string): string {
+  const withoutImports = source
+    .replace(/^\s*import\s.+?;?\s*$/gm, "")
+    .replace(/^\s*export\s+default\s+/gm, "")
+    .replace(/^\s*export\s+/gm, "");
+  const returnMatch = withoutImports.match(/return\s*\(([\s\S]*?)\)\s*;?\s*}/);
+  const arrowMatch = withoutImports.match(/=>\s*\(([\s\S]*?)\)\s*;?\s*$/m);
+  const body = (returnMatch?.[1] || arrowMatch?.[1] || withoutImports).trim();
+  return body
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+    .replace(/\sclassName=/g, " class=")
+    .replace(/\shtmlFor=/g, " for=")
+    .replace(/\{`([^`]+)`\}/g, "$1")
+    .replace(/\{"([^"]*)"\}/g, "$1")
+    .replace(/\{'([^']*)'\}/g, "$1")
+    .replace(/\{[^{}]*\}/g, "")
+    .replace(/<([A-Z][\w.]*)/g, '<div data-component="$1"')
+    .replace(/<\/[A-Z][\w.]*>/g, "</div>");
+}
+
+function previewDocument(content: string, kind: "html" | "jsx"): string {
+  const body = kind === "jsx" ? extractJsxPreviewSource(content) : content;
+  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:16px;font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff}*{box-sizing:border-box}img,video,iframe{max-width:100%}pre,code{white-space:pre-wrap}</style></head><body>${body}</body></html>`;
+}
+
 export function FilesystemPanel({ cwd }: Props) {
   const [relPath, setRelPath] = useState("");
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -44,6 +79,7 @@ export function FilesystemPanel({ cwd }: Props) {
   const [loadingFile, setLoadingFile] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [fileListOpen, setFileListOpen] = useState(true);
+  const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
 
   // Load directory whenever the cwd or relPath changes.
   useEffect(() => {
@@ -145,6 +181,7 @@ export function FilesystemPanel({ cwd }: Props) {
   }, [relPath]);
 
   const lines = useMemo(() => fileContent.split("\n"), [fileContent]);
+  const previewKind = useMemo(() => (openFile ? previewKindForPath(openFile) : null), [openFile]);
   const commentsByLine = useMemo(() => {
     const map = new Map<number, Comment[]>();
     for (const c of comments) {
@@ -262,13 +299,52 @@ export function FilesystemPanel({ cwd }: Props) {
             Loading…
           </div>
         ) : (
-          <FileViewer
-            key={openFile}
-            lines={lines}
-            commentsByLine={commentsByLine}
-            onAddComment={addComment}
-            onRemoveComment={removeComment}
-          />
+          <>
+            {previewKind ? (
+              <div className="flex h-8 shrink-0 items-center justify-between border-b border-(--border) px-2">
+                <div className="min-w-0 truncate font-mono text-[10px] text-(--dim)">
+                  {openFile}
+                </div>
+                <div className="flex items-center gap-1 rounded border border-(--border) bg-(--surface) p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("preview")}
+                    className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] ${
+                      viewMode === "preview"
+                        ? "bg-(--bg) text-(--fg)"
+                        : "text-(--dim) hover:text-(--fg)"
+                    }`}
+                  >
+                    <Monitor className="h-3 w-3" />
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("code")}
+                    className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] ${
+                      viewMode === "code"
+                        ? "bg-(--bg) text-(--fg)"
+                        : "text-(--dim) hover:text-(--fg)"
+                    }`}
+                  >
+                    <Code className="h-3 w-3" />
+                    Code
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {previewKind && viewMode === "preview" ? (
+              <RenderedPreview content={fileContent} kind={previewKind} />
+            ) : (
+              <FileViewer
+                key={openFile}
+                lines={lines}
+                commentsByLine={commentsByLine}
+                onAddComment={addComment}
+                onRemoveComment={removeComment}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -310,6 +386,25 @@ function Breadcrumb({
         </>
       ) : null}
     </div>
+  );
+}
+
+function RenderedPreview({ content, kind }: { content: string; kind: "html" | "jsx" | "md" }) {
+  if (kind === "md") {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 text-black">
+        <AssistantMarkdown text={content} />
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      title="Rendered file preview"
+      sandbox="allow-same-origin allow-popups allow-forms"
+      srcDoc={previewDocument(content, kind)}
+      className="min-h-0 flex-1 bg-white"
+    />
   );
 }
 
