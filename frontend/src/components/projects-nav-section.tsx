@@ -37,6 +37,7 @@ type SessionSummary = {
 
 const DIRECTORY_PICKER_PROPS = { webkitdirectory: "" } as Record<string, string>;
 const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";
+export const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
 export const PROJECTS_CHANGED_EVENT = "vllm-studio.agent.projectsChanged";
 
 export function triggerAddProjectFlow() {
@@ -389,6 +390,8 @@ function ProjectSessions({ project }: { project: ProjectEntry }) {
 
   useEffect(() => {
     void reload();
+    window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
   }, [reload]);
 
   return (

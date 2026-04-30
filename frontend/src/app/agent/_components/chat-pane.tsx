@@ -914,7 +914,7 @@ export function ChatPane({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={readingAttachments || running}
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--bg) hover:text-(--fg) disabled:opacity-30"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--dim) hover:bg-(--bg) hover:text-(--fg) disabled:opacity-30"
               aria-label="Attach files"
               title="Attach files"
             >
@@ -933,7 +933,7 @@ export function ChatPane({
                 browserToolEnabled
                   ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
                   : "border-transparent text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
-              }`}
+              } shrink-0`}
             >
               <Globe className="h-3.5 w-3.5" />
             </button>

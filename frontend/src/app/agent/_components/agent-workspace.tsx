@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   loadAgentProjects,
   PROJECTS_CHANGED_EVENT,
+  SESSIONS_CHANGED_EVENT,
   triggerAddProjectFlow,
 } from "@/components/projects-nav-section";
 import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
@@ -439,6 +440,12 @@ export function AgentWorkspace() {
     });
   }, []);
 
+  const notifySessionsChanged = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
+    window.setTimeout(() => window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)), 1_500);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const refreshProjects = async () => {
@@ -591,23 +598,6 @@ export function AgentWorkspace() {
     }
   }
 
-  // Open a fresh tab in the focused pane (same project, new pi session).
-  const newThreadInFocusedPane = useCallback(() => {
-    setPanesById((current) => {
-      const pane = current.get(focusedPaneId);
-      if (!pane) return current;
-      const tab = makeFreshTab();
-      const next = new Map(current);
-      next.set(focusedPaneId, {
-        ...pane,
-        tabs: [...pane.tabs, tab],
-        activeTabId: tab.id,
-      });
-      return next;
-    });
-    setError("");
-  }, [focusedPaneId]);
-
   const activeProject = useMemo(
     () => projects.find((entry) => entry.id === selectedProjectId) || null,
     [projects, selectedProjectId],
@@ -687,15 +677,6 @@ export function AgentWorkspace() {
 
         <button
           type="button"
-          onClick={newThreadInFocusedPane}
-          className="inline-flex h-7 items-center gap-1.5 rounded border border-(--border) bg-(--surface) px-2 text-xs text-(--fg) hover:bg-(--bg)"
-          title="Start a fresh thread in the focused pane"
-        >
-          <Plus className="h-3.5 w-3.5" /> New thread
-        </button>
-
-        <button
-          type="button"
           onClick={() => setRightPanelOpen((value) => !value)}
           aria-pressed={rightPanelOpen}
           className={`hidden h-7 items-center gap-1.5 rounded border px-2 text-xs xl:inline-flex ${
@@ -756,6 +737,7 @@ export function AgentWorkspace() {
                       projectName={activeProject?.name ?? null}
                       browserToolEnabled={browserToolEnabled}
                       onToggleBrowserTool={toggleBrowserTool}
+                      onPiSessionIdChange={notifySessionsChanged}
                       isFocused={focusedPaneId === paneId}
                       onFocus={() => setFocusedPaneId(paneId)}
                       tabs={pane.tabs}
