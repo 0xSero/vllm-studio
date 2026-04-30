@@ -9,6 +9,15 @@ export type ToolBlock = {
   id: string;
   name: string;
   status: "running" | "done" | "error";
+  // Streaming raw text of the tool-call arguments (assembled from toolcall_delta
+  // events, then replaced by the canonical JSON at toolcall_end). For file-write
+  // tools, this lets us live-render the file content as the model generates it.
+  argsText?: string;
+  // Parsed arguments JSON, set at toolcall_end if `argsText` is valid JSON.
+  args?: Record<string, unknown>;
+  // Tool execution output (separate from args so we can render both).
+  resultText?: string;
+  // Back-compat single-text field used by legacy renderers / replays.
   text: string;
 };
 export type TextBlock = { kind: "text"; id: string; text: string };
@@ -247,12 +256,19 @@ function blocksFromMessageContent(content: string | Array<Record<string, unknown
     } else if (part?.type === "thinking" && typeof part.thinking === "string") {
       blocks.push({ kind: "thinking", id: newId("thinking"), text: part.thinking });
     } else if (part?.type === "toolCall") {
+      const argsText = JSON.stringify(part.arguments ?? {}, null, 2);
+      const args =
+        part.arguments && typeof part.arguments === "object"
+          ? (part.arguments as Record<string, unknown>)
+          : undefined;
       blocks.push({
         kind: "tool",
         id: typeof part.id === "string" ? part.id : newId("tool"),
         name: typeof part.name === "string" ? part.name : "tool",
         status: "running",
-        text: JSON.stringify(part.arguments ?? {}, null, 2),
+        argsText,
+        args,
+        text: argsText,
       });
     }
   }
@@ -386,14 +402,31 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
         if (toolCall) {
           const id = toolCall.id || newId("tool");
           const name = toolCall.name || "tool";
-          const text = JSON.stringify(toolCall.arguments ?? {}, null, 2);
+          const argsText = JSON.stringify(toolCall.arguments ?? {}, null, 2);
+          const argsObj =
+            toolCall.arguments && typeof toolCall.arguments === "object"
+              ? (toolCall.arguments as Record<string, unknown>)
+              : undefined;
           localPatch(assistantId, (msg) => ({
             ...msg,
             blocks: upsertTool(
               msg.blocks ?? [],
               id,
-              (existing) => ({ ...existing, text: existing.text || text }),
-              () => ({ kind: "tool", id, name, status: "running", text }),
+              (existing) => ({
+                ...existing,
+                argsText,
+                args: argsObj ?? existing.args,
+                text: existing.text || argsText,
+              }),
+              () => ({
+                kind: "tool",
+                id,
+                name,
+                status: "running",
+                argsText,
+                args: argsObj,
+                text: argsText,
+              }),
             ),
           }));
         }
@@ -425,7 +458,8 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
                 eventType === "tool_execution_end"
                   ? ((event.isError ? "error" : "done") as ToolBlock["status"])
                   : existing.status,
-              text: resultText || existing.text,
+              resultText: resultText || existing.resultText,
+              text: existing.argsText || existing.text || resultText,
             }),
             () => ({
               kind: "tool",
@@ -435,6 +469,7 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
                 eventType === "tool_execution_end"
                   ? ((event.isError ? "error" : "done") as ToolBlock["status"])
                   : "running",
+              resultText,
               text: resultText,
             }),
           ),
@@ -572,6 +607,44 @@ export function ChatPane({
           }));
           return;
         }
+        if (updateType === "toolcall_start") {
+          const toolCall = ame?.toolCall as { id?: string; name?: string } | undefined;
+          if (!toolCall?.id) return;
+          const id = toolCall.id;
+          const name = toolCall.name || "tool";
+          patchAssistant(tabId, assistantId, (msg) => ({
+            ...msg,
+            blocks: upsertTool(
+              msg.blocks ?? [],
+              id,
+              (existing) => ({ ...existing, name }),
+              () => ({ kind: "tool", id, name, status: "running", text: "", argsText: "" }),
+            ),
+          }));
+          return;
+        }
+        if (updateType === "toolcall_delta") {
+          const id = String(ame?.toolCallId || "");
+          const delta = typeof ame?.argumentsDelta === "string" ? ame.argumentsDelta : "";
+          if (!id || !delta) return;
+          patchAssistant(tabId, assistantId, (msg) => ({
+            ...msg,
+            blocks: upsertTool(
+              msg.blocks ?? [],
+              id,
+              (existing) => ({ ...existing, argsText: (existing.argsText ?? "") + delta }),
+              () => ({
+                kind: "tool",
+                id,
+                name: "tool",
+                status: "running",
+                text: "",
+                argsText: delta,
+              }),
+            ),
+          }));
+          return;
+        }
         if (updateType === "toolcall_end") {
           const toolCall = ame?.toolCall as
             | { id?: string; name?: string; arguments?: unknown }
@@ -579,14 +652,32 @@ export function ChatPane({
           if (!toolCall) return;
           const id = toolCall.id || newId("tool");
           const name = toolCall.name || "tool";
-          const text = JSON.stringify(toolCall.arguments ?? {}, null, 2);
+          const argsText = JSON.stringify(toolCall.arguments ?? {}, null, 2);
+          const argsObj =
+            toolCall.arguments && typeof toolCall.arguments === "object"
+              ? (toolCall.arguments as Record<string, unknown>)
+              : undefined;
           patchAssistant(tabId, assistantId, (msg) => ({
             ...msg,
             blocks: upsertTool(
               msg.blocks ?? [],
               id,
-              (existing) => ({ ...existing, text: existing.text || text }),
-              () => ({ kind: "tool", id, name, status: "running", text }),
+              (existing) => ({
+                ...existing,
+                name,
+                argsText,
+                args: argsObj ?? existing.args,
+                text: existing.text || argsText,
+              }),
+              () => ({
+                kind: "tool",
+                id,
+                name,
+                status: "running",
+                argsText,
+                args: argsObj,
+                text: argsText,
+              }),
             ),
           }));
           return;
@@ -623,7 +714,10 @@ export function ChatPane({
                 eventType === "tool_execution_end"
                   ? ((event.isError ? "error" : "done") as ToolBlock["status"])
                   : existing.status,
-              text: resultText || existing.text,
+              resultText: resultText || existing.resultText,
+              // Keep `text` for legacy callers; prefer args text if present so
+              // we don't blow away the file content with the tool's stdout.
+              text: existing.argsText || existing.text || resultText,
             }),
             () => ({
               kind: "tool",
@@ -633,6 +727,7 @@ export function ChatPane({
                 eventType === "tool_execution_end"
                   ? ((event.isError ? "error" : "done") as ToolBlock["status"])
                   : "running",
+              resultText,
               text: resultText,
             }),
           ),
@@ -1218,26 +1313,191 @@ function TimelineMessage({ message }: { message: ChatMessage }) {
             if (block.kind === "text") {
               return <AssistantMarkdown key={block.id} text={block.text} />;
             }
-            return (
-              <details
-                key={block.id}
-                className="rounded border border-(--border)"
-                open={block.status === "running"}
-              >
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1 text-[11px] text-(--dim) hover:text-(--fg)">
-                  <span className="font-mono font-medium">{block.name}</span>
-                  <span className="opacity-70">· {block.status}</span>
-                </summary>
-                {block.text ? (
-                  <pre className="overflow-x-auto whitespace-pre-wrap border-t border-(--border) p-2 font-mono text-[11px] leading-5 text-(--fg)">
-                    {block.text}
-                  </pre>
-                ) : null}
-              </details>
-            );
+            return <ToolBlockView key={block.id} block={block} />;
           })}
         </div>
       )}
     </article>
+  );
+}
+
+// ----- Tool block rendering -----
+
+const FILE_WRITE_TOOL_NAMES = new Set([
+  "write_file",
+  "write",
+  "create_file",
+  "edit_file",
+  "edit",
+  "apply_patch",
+  "apply_edit",
+  "replace_file",
+  "str_replace_editor",
+]);
+
+const LANG_BY_EXT: Record<string, string> = {
+  ts: "ts",
+  tsx: "tsx",
+  js: "js",
+  jsx: "jsx",
+  json: "json",
+  md: "md",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  py: "py",
+  rs: "rs",
+  go: "go",
+  sh: "sh",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  sql: "sql",
+};
+
+function detectLang(filePath: string | null | undefined): string {
+  if (!filePath) return "";
+  const dot = filePath.lastIndexOf(".");
+  if (dot === -1) return "";
+  const ext = filePath.slice(dot + 1).toLowerCase();
+  return LANG_BY_EXT[ext] ?? "";
+}
+
+// Try to extract a streaming-friendly preview of "what file is being written"
+// from the partially-parsed tool args. We accept partial JSON: greedy extract
+// the value of the most likely "content" / "text" / "patch" key.
+function extractPartialField(argsText: string, keys: string[]): string | null {
+  if (!argsText) return null;
+  for (const key of keys) {
+    const needle = `"${key}"`;
+    const idx = argsText.indexOf(needle);
+    if (idx === -1) continue;
+    // Find the colon and the opening quote of the value.
+    const colon = argsText.indexOf(":", idx + needle.length);
+    if (colon === -1) continue;
+    let i = colon + 1;
+    while (i < argsText.length && /\s/.test(argsText[i])) i += 1;
+    if (argsText[i] !== '"') continue;
+    let j = i + 1;
+    let out = "";
+    while (j < argsText.length) {
+      const ch = argsText[j];
+      if (ch === "\\") {
+        const next = argsText[j + 1];
+        if (next === "n") out += "\n";
+        else if (next === "t") out += "\t";
+        else if (next === "r") out += "\r";
+        else if (next === '"') out += '"';
+        else if (next === "\\") out += "\\";
+        else if (next === undefined) break;
+        else out += next;
+        j += 2;
+        continue;
+      }
+      if (ch === '"') return out;
+      out += ch;
+      j += 1;
+    }
+    // Unterminated string — return what we have so far for live streaming.
+    return out;
+  }
+  return null;
+}
+
+function extractFromArgs(
+  args: Record<string, unknown> | undefined,
+  argsText: string | undefined,
+  keys: string[],
+): string | null {
+  if (args) {
+    for (const key of keys) {
+      const value = args[key];
+      if (typeof value === "string") return value;
+    }
+  }
+  if (argsText) return extractPartialField(argsText, keys);
+  return null;
+}
+
+function ToolBlockView({ block }: { block: ToolBlock }) {
+  const isFileWrite = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase());
+  const filePath = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["path", "file_path", "filePath", "file"])
+    : null;
+  const fileContent = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["content", "text", "newText", "new_content"])
+    : null;
+  const patchContent = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"])
+    : null;
+  const lang = detectLang(filePath);
+  const isHtml = lang === "html";
+  const [showPreview, setShowPreview] = useState(false);
+
+  if (isFileWrite && (fileContent !== null || patchContent !== null)) {
+    const body = fileContent ?? patchContent ?? "";
+    return (
+      <details className="rounded border border-(--border)" open>
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1 text-[11px] text-(--dim) hover:text-(--fg)">
+          <span className="font-mono font-medium text-(--fg)">{block.name}</span>
+          {filePath ? (
+            <span className="truncate font-mono text-[11px] text-(--accent)">{filePath}</span>
+          ) : null}
+          {lang ? (
+            <span className="rounded border border-(--border) px-1 py-0.5 text-[9px] uppercase text-(--dim)">
+              {lang}
+            </span>
+          ) : null}
+          <span className="ml-auto opacity-70">{block.status}</span>
+          {isHtml ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setShowPreview((value) => !value);
+              }}
+              className="rounded border border-(--border) px-1.5 py-0.5 text-[10px] text-(--fg) hover:bg-(--surface)"
+            >
+              {showPreview ? "Source" : "Preview"}
+            </button>
+          ) : null}
+        </summary>
+        {isHtml && showPreview ? (
+          <iframe
+            sandbox=""
+            srcDoc={body}
+            className="h-72 w-full border-t border-(--border) bg-white"
+            title={filePath ?? "preview"}
+          />
+        ) : (
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap border-t border-(--border) p-2 font-mono text-[11px] leading-5 text-(--fg)">
+            {body}
+          </pre>
+        )}
+        {block.resultText ? (
+          <div className="border-t border-(--border) bg-(--bg)/40 px-2 py-1 font-mono text-[10px] text-(--dim)">
+            {block.resultText}
+          </div>
+        ) : null}
+      </details>
+    );
+  }
+
+  // Generic fallback (shells, reads, searches, browser tools, etc.).
+  const display = block.resultText || block.argsText || block.text;
+  return (
+    <details className="rounded border border-(--border)" open={block.status === "running"}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1 text-[11px] text-(--dim) hover:text-(--fg)">
+        <span className="font-mono font-medium">{block.name}</span>
+        <span className="opacity-70">· {block.status}</span>
+      </summary>
+      {display ? (
+        <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap border-t border-(--border) p-2 font-mono text-[11px] leading-5 text-(--fg)">
+          {display}
+        </pre>
+      ) : null}
+    </details>
   );
 }
