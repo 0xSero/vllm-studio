@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   loadAgentProjects,
@@ -71,6 +72,10 @@ const BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY =
   "***************************************************";
 const COMPUTER_BROWSER_OPEN_KEY = "vllm-studio.agent.computer.browserOpen";
 const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
+const COMPUTER_WIDTH_KEY = "vllm-studio.agent.computer.width";
+const DEFAULT_COMPUTER_WIDTH = 440;
+const MIN_COMPUTER_WIDTH = 320;
+const MAX_COMPUTER_WIDTH = 960;
 
 function withBrowserTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -95,6 +100,36 @@ function detectBotProtection(text: string): string | null {
     return "Bot-protection page detected. Stop automated browser use for this page and ask the user to intervene or use a non-browser search source.";
   }
   return null;
+}
+
+function clampComputerWidth(width: number): number {
+  return Math.min(MAX_COMPUTER_WIDTH, Math.max(MIN_COMPUTER_WIDTH, Math.round(width)));
+}
+
+function encodeFilePath(pathValue: string): string {
+  const normalized = pathValue.replace(/\\/g, "/");
+  const withLeadingSlash = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return `file://${withLeadingSlash.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function resolveRelativeFilePath(cwd: string, value: string): string {
+  const segments = `${cwd.replace(/\/+$/, "")}/${value}`.split("/");
+  const resolved: string[] = [];
+  for (const segment of segments) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(segment);
+  }
+  return `/${resolved.join("/")}`;
+}
+
+function expandHomeFilePath(cwd: string, value: string): string | null {
+  const homeMatch = cwd.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(?:\/|$)/);
+  if (!homeMatch) return null;
+  return `${homeMatch[1]}${value.slice(1)}`;
 }
 const COMPUTER_FILES_OPEN_KEY = "vllm-studio.agent.computer.filesOpen";
 const COMPUTER_DEFAULT_CLOSED_MIGRATION_KEY = "vllm-studio.agent.computer.defaultClosedMigrated";
@@ -130,6 +165,7 @@ export function AgentWorkspace() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [browserToolEnabled, setBrowserToolEnabled] = useState(false);
   const [activeComputerTab, setActiveComputerTab] = useState<ComputerTab>("browser");
+  const [computerWidth, setComputerWidth] = useState(DEFAULT_COMPUTER_WIDTH);
 
   // Pane state: a tree-shaped Layout where each leaf is identified by a
   // PaneId and points into panesById, which holds tabs + the per-pane
@@ -384,6 +420,10 @@ export function AgentWorkspace() {
     }
     const filesOpenStored = window.localStorage.getItem(COMPUTER_FILES_OPEN_KEY);
     setActiveComputerTab(filesOpenStored === "1" ? "files" : "browser");
+    const storedComputerWidth = Number(window.localStorage.getItem(COMPUTER_WIDTH_KEY));
+    if (Number.isFinite(storedComputerWidth)) {
+      setComputerWidth(clampComputerWidth(storedComputerWidth));
+    }
     // Restore the pane layout shape only (split ratios + leaf placement). Each
     // referenced pane gets a fresh PaneState — we don't persist tab content
     // because pi sessions live in their own files and are picked from the
@@ -555,19 +595,61 @@ export function AgentWorkspace() {
   function normalizeBrowserInput(raw: string): string {
     const value = raw.trim();
     if (!value) return "https://www.google.com";
+    if (/^file:\/\//i.test(value)) {
+      try {
+        return new URL(value).toString();
+      } catch {
+        return value;
+      }
+    }
+    if (value.startsWith("~/") && agentCwd) {
+      const expanded = expandHomeFilePath(agentCwd, value);
+      if (expanded) return encodeFilePath(expanded);
+    }
+    if (value.startsWith("/")) return encodeFilePath(value);
+    if ((value.startsWith("./") || value.startsWith("../")) && agentCwd) {
+      return encodeFilePath(resolveRelativeFilePath(agentCwd, value));
+    }
     if (/^https?:\/\//i.test(value)) return value;
-    if (/^[\w-]+(\.[\w-]+)+([/:?#].*)?$/.test(value) || /^localhost(:\d+)?/i.test(value)) {
+    if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$/i.test(value)) {
+      return `http://${value}`;
+    }
+    if (/^[\w.-]+:\d+([/?#].*)?$/.test(value)) {
+      return `http://${value}`;
+    }
+    if (/^[\w-]+(\.[\w-]+)+([/:?#].*)?$/.test(value)) {
       return `https://${value}`;
+    }
+    if (value.includes("/") && agentCwd) {
+      return encodeFilePath(resolveRelativeFilePath(agentCwd, value));
     }
     return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
   }
 
   function submitBrowserUrl(event: FormEvent) {
     event.preventDefault();
-    const next = sanitizeEmbeddedBrowserUrl(normalizeBrowserInput(browserInput));
+    const next = normalizeBrowserInput(browserInput);
     if (!next) return;
     setBrowserInput(next);
     setBrowserUrl(next);
+  }
+
+  function startComputerResize(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = computerWidth;
+    const onMove = (moveEvent: MouseEvent) => {
+      setComputerWidth(clampComputerWidth(startWidth + startX - moveEvent.clientX));
+    };
+    const onUp = (upEvent: MouseEvent) => {
+      const next = clampComputerWidth(startWidth + startX - upEvent.clientX);
+      setComputerWidth(next);
+      window.localStorage.setItem(COMPUTER_WIDTH_KEY, String(next));
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   function browserBack() {
@@ -821,7 +903,17 @@ export function AgentWorkspace() {
         </section>
 
         {rightPanelOpen ? (
-          <aside className="hidden w-[440px] shrink-0 flex-col border-l border-(--border) bg-(--bg) xl:flex">
+          <aside
+            className="relative hidden shrink-0 flex-col border-l border-(--border) bg-(--bg) xl:flex"
+            style={{ width: computerWidth }}
+          >
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Resize browser"
+              onMouseDown={startComputerResize}
+              className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--accent)/20"
+            />
             <div className="flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-2 text-xs text-(--dim)">
               <button
                 type="button"
