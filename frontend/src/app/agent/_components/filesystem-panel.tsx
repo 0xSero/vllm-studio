@@ -392,7 +392,7 @@ function Breadcrumb({
 function RenderedPreview({ content, kind }: { content: string; kind: "html" | "jsx" | "md" }) {
   if (kind === "md") {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 text-black">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) p-4 text-(--fg)">
         <AssistantMarkdown text={content} />
       </div>
     );

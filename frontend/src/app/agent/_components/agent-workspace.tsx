@@ -5,21 +5,13 @@ import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   loadAgentProjects,
+  ACTIVE_AGENT_SESSIONS_EVENT,
   PROJECTS_CHANGED_EVENT,
   SESSIONS_CHANGED_EVENT,
   triggerAddProjectFlow,
 } from "@/components/projects-nav-section";
 import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ChevronDown,
-  Cpu,
-  GitBranch,
-  Plus,
-  RotateCcw,
-  X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, GitBranch, Plus, RotateCcw, X } from "lucide-react";
 import { ChatPane, makeFreshTab, SessionTabsBar, type SessionTab } from "./chat-pane";
 import { FilesystemPanel } from "./filesystem-panel";
 import { PaneGrid } from "./pane-grid";
@@ -53,6 +45,7 @@ type AgentModel = {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  active: boolean;
 };
 
 type ProjectEntry = {
@@ -223,7 +216,13 @@ export function AgentWorkspace() {
         if (cancelled) return;
         const nextModels = payload.models ?? [];
         setModels(nextModels);
-        setSelectedModel((current) => current || nextModels[0]?.id || "");
+        setSelectedModel(
+          (current) =>
+            (current && nextModels.some((model) => model.id === current) ? current : "") ||
+            nextModels.find((model) => model.active)?.id ||
+            nextModels[0]?.id ||
+            "",
+        );
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load models");
       } finally {
@@ -565,8 +564,9 @@ export function AgentWorkspace() {
     if (!searchParams) return;
     const projectParam = searchParams.get("project");
     const sessionParam = searchParams.get("session");
-    if (!projectParam && !sessionParam) return;
-    const key = `${projectParam ?? ""}|${sessionParam ?? ""}`;
+    const newParam = searchParams.get("new");
+    if (!projectParam && !sessionParam && !newParam) return;
+    const key = `${projectParam ?? ""}|${sessionParam ?? ""}|${newParam ?? ""}`;
     if (handledNavRef.current === key) return;
 
     if (projectParam) {
@@ -577,6 +577,18 @@ export function AgentWorkspace() {
       }
     }
     handledNavRef.current = key;
+
+    if (newParam === "1" && !sessionParam) {
+      const tab = makeFreshTab();
+      setPanesById((current) => {
+        const cur = current.get(focusedPaneId);
+        if (!cur) return current;
+        const next = new Map(current);
+        next.set(focusedPaneId, { ...cur, tabs: [tab], activeTabId: tab.id });
+        return next;
+      });
+      return;
+    }
 
     if (sessionParam) {
       const tryLoad = (attempt: number) => {
@@ -687,6 +699,23 @@ export function AgentWorkspace() {
   const focusedPane = panesById.get(focusedPaneId) ?? panesById.values().next().value ?? null;
   const shouldShowProjectEmptyState =
     projectsLoaded && !searchParams.get("project") && !selectedProjectId && projects.length === 0;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeProject) return;
+    const sessions = [...panesById.entries()].flatMap(([paneId, pane]) =>
+      pane.tabs.map((tab) => ({
+        projectId: activeProject.id,
+        cwd: activeProject.path,
+        paneId,
+        tabId: tab.id,
+        piSessionId: tab.piSessionId,
+        title: tab.title,
+        status: tab.status,
+        updatedAt: new Date().toISOString(),
+      })),
+    );
+    window.dispatchEvent(new CustomEvent(ACTIVE_AGENT_SESSIONS_EVENT, { detail: { sessions } }));
+  }, [activeProject, panesById]);
 
   return (
     <div className="flex h-[calc(100dvh-2.5rem)] min-h-0 w-full flex-col bg-(--bg) text-(--fg) md:h-[100dvh]">
@@ -815,6 +844,7 @@ export function AgentWorkspace() {
                       modelId={selectedModel}
                       modelName={activeModel?.name ?? null}
                       modelsLoading={loadingModels}
+                      contextWindow={activeModel?.contextWindow ?? 0}
                       cwd={agentCwd}
                       projectName={activeProject?.name ?? null}
                       browserToolEnabled={browserToolEnabled}
@@ -1072,7 +1102,6 @@ function ModelPicker({
         className="inline-flex h-7 items-center gap-1.5 rounded border border-(--border) bg-(--surface) px-2 text-xs text-(--fg) hover:bg-(--bg) disabled:opacity-60"
         title={active?.name || triggerLabel}
       >
-        <Cpu className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
         <span className="max-w-[160px] truncate">{triggerLabel}</span>
         <ChevronDown className="h-3 w-3 shrink-0 text-(--dim)" />
       </button>
@@ -1096,7 +1125,6 @@ function ModelPicker({
                     isActive ? "bg-(--bg)" : ""
                   }`}
                 >
-                  <Cpu className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
                   <span className="min-w-0 flex-1 truncate text-left text-(--fg)">
                     {model.name}
                   </span>

@@ -39,6 +39,18 @@ const DIRECTORY_PICKER_PROPS = { webkitdirectory: "" } as Record<string, string>
 const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";
 export const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
 export const PROJECTS_CHANGED_EVENT = "vllm-studio.agent.projectsChanged";
+export const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
+
+type ActiveAgentSession = {
+  projectId: string;
+  cwd: string;
+  paneId: string;
+  tabId: string;
+  piSessionId: string | null;
+  title: string;
+  status: string;
+  updatedAt: string;
+};
 
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
@@ -109,6 +121,7 @@ function formatRelative(isoString: string): string {
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [activeSessions, setActiveSessions] = useState<ActiveAgentSession[]>([]);
   const [addError, setAddError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -231,6 +244,21 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
   });
 
+  useEffect(() => {
+    const onActiveSessions = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
+      const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
+      setActiveSessions(sessions);
+      setOpenIds((current) => {
+        const next = new Set(current);
+        for (const session of sessions) next.add(session.projectId);
+        return next;
+      });
+    };
+    window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
+    return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
+  }, []);
+
   if (!expanded) {
     return (
       <input
@@ -277,6 +305,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             key={project.id}
             project={project}
             open={openIds.has(project.id)}
+            activeSessions={activeSessions.filter((session) => session.projectId === project.id)}
             onToggle={() => toggle(project.id)}
             onRemove={() => {
               setAddError("");
@@ -297,11 +326,13 @@ function ProjectRow({
   open,
   onToggle,
   onRemove,
+  activeSessions,
 }: {
   project: ProjectEntry;
   open: boolean;
   onToggle: () => void;
   onRemove: () => void;
+  activeSessions: ActiveAgentSession[];
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const Icon = open ? FolderOpen : Folder;
@@ -361,14 +392,25 @@ function ProjectRow({
           </button>
         </div>
       ) : null}
-      {open && project.exists ? <ProjectSessions project={project} /> : null}
+      {open && project.exists ? (
+        <ProjectSessions project={project} activeSessions={activeSessions} />
+      ) : null}
     </div>
   );
 }
 
-function ProjectSessions({ project }: { project: ProjectEntry }) {
+function ProjectSessions({
+  project,
+  activeSessions,
+}: {
+  project: ProjectEntry;
+  activeSessions: ActiveAgentSession[];
+}) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const activePiSessionIds = new Set(
+    activeSessions.map((session) => session.piSessionId).filter((id): id is string => Boolean(id)),
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -404,35 +446,70 @@ function ProjectSessions({ project }: { project: ProjectEntry }) {
         <Plus className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate text-xs">New session</span>
       </Link>
+      {activeSessions.map((session) => {
+        const label = session.title || "Current session";
+        const content = (
+          <>
+            <MessageSquare className="w-3.5 h-3.5 shrink-0 text-(--accent)" />
+            <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+            <span className="shrink-0 text-[10px] text-(--accent)">
+              {session.status === "idle" ? "current" : session.status}
+            </span>
+          </>
+        );
+        if (session.piSessionId) {
+          return (
+            <Link
+              key={`${session.paneId}:${session.tabId}`}
+              href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
+              title={label}
+              className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60 hover:bg-(--surface) transition-colors"
+            >
+              {content}
+            </Link>
+          );
+        }
+        return (
+          <div
+            key={`${session.paneId}:${session.tabId}`}
+            title={label}
+            className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60"
+          >
+            {content}
+          </div>
+        );
+      })}
       {loading && !sessions ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">Loading…</div>
-      ) : (sessions ?? []).length === 0 ? (
+      ) : (sessions ?? []).length === 0 && activeSessions.length === 0 ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">No recent sessions</div>
       ) : (
-        (sessions ?? []).map((session) => (
-          <Link
-            key={session.id}
-            href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
-            title={session.firstUserMessage || "Untitled session"}
-            draggable
-            onDragStart={(event) => {
-              event.dataTransfer.setData("application/x-vllm-session", session.id);
-              event.dataTransfer.effectAllowed = "copy";
-            }}
-            className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
-          >
-            <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-xs">
-              {session.firstUserMessage || "Untitled session"}
-            </span>
-            <span className="shrink-0 text-[10px] text-(--dim)">
-              {formatRelative(session.updatedAt)}
-            </span>
-            <span className="shrink-0 text-[10px] text-(--dim)">
-              {session.turnCount} {session.turnCount === 1 ? "turn" : "turns"}
-            </span>
-          </Link>
-        ))
+        (sessions ?? [])
+          .filter((session) => !activePiSessionIds.has(session.id))
+          .map((session) => (
+            <Link
+              key={session.id}
+              href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
+              title={session.firstUserMessage || "Untitled session"}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData("application/x-vllm-session", session.id);
+                event.dataTransfer.effectAllowed = "copy";
+              }}
+              className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+            >
+              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-xs">
+                {session.firstUserMessage || "Untitled session"}
+              </span>
+              <span className="shrink-0 text-[10px] text-(--dim)">
+                {formatRelative(session.updatedAt)}
+              </span>
+              <span className="shrink-0 text-[10px] text-(--dim)">
+                {session.turnCount} {session.turnCount === 1 ? "turn" : "turns"}
+              </span>
+            </Link>
+          ))
       )}
     </div>
   );

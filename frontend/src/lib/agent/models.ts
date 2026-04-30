@@ -10,6 +10,7 @@ export interface OpenAIModelListItem {
   max_tokens?: number;
   maxTokens?: number;
   metadata?: Record<string, unknown>;
+  active?: boolean;
   [key: string]: unknown;
 }
 
@@ -25,6 +26,7 @@ export interface AgentModel {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  active: boolean;
 }
 
 export function inferReasoningSupport(modelId: string): boolean {
@@ -71,6 +73,7 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
   const explicitReasoning = metadata.reasoning ?? model.reasoning;
   const reasoning =
     typeof explicitReasoning === "boolean" ? explicitReasoning : inferReasoningSupport(id);
+  const explicitActive = metadata.active ?? model.active;
 
   return {
     id,
@@ -79,6 +82,7 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
     contextWindow,
     maxTokens,
     reasoning,
+    active: explicitActive === true,
   };
 }
 

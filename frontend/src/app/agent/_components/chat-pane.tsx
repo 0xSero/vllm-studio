@@ -23,6 +23,12 @@ export type ChatMessage = {
   timestamp?: string;
 };
 
+export type TokenStats = {
+  read: number;
+  write: number;
+  current: number;
+};
+
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
@@ -39,6 +45,7 @@ export type SessionTab = {
   status: string;
   error: string;
   input: string;
+  tokenStats?: TokenStats;
 };
 
 type ChatAttachment = {
@@ -57,6 +64,7 @@ type Props = {
   modelId: string;
   modelName: string | null;
   modelsLoading: boolean;
+  contextWindow: number;
   cwd: string;
   projectName: string | null;
   browserToolEnabled: boolean;
@@ -170,6 +178,42 @@ function extractToolText(value: unknown): string {
     .map((item) => (item && item.type === "text" && typeof item.text === "string" ? item.text : ""))
     .filter(Boolean)
     .join("\n");
+}
+
+function numberFromRecord(record: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = record[key];
+    const parsed =
+      typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function usageFromEvent(event: Record<string, unknown>): TokenStats | null {
+  if (event.type !== "message" && event.type !== "message_end") return null;
+  const message =
+    event.message && typeof event.message === "object" && !Array.isArray(event.message)
+      ? (event.message as Record<string, unknown>)
+      : null;
+  if (!message || message.role !== "assistant") return null;
+  const usage =
+    message.usage && typeof message.usage === "object" && !Array.isArray(message.usage)
+      ? (message.usage as Record<string, unknown>)
+      : null;
+  if (!usage) return null;
+  const read = numberFromRecord(usage, ["input", "prompt_tokens", "input_tokens"]);
+  const write = numberFromRecord(usage, ["output", "completion_tokens", "output_tokens"]);
+  const total = numberFromRecord(usage, ["totalTokens", "total_tokens", "total"]);
+  const current = total || read + write;
+  if (read <= 0 && write <= 0 && current <= 0) return null;
+  return { read, write, current };
+}
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
+  return String(Math.max(0, Math.round(tokens)));
 }
 
 function messageText(
@@ -442,6 +486,7 @@ export function ChatPane({
   modelId,
   modelName,
   modelsLoading,
+  contextWindow,
   cwd,
   projectName,
   browserToolEnabled,
@@ -455,6 +500,7 @@ export function ChatPane({
   registerExternalLoader,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
@@ -477,7 +523,11 @@ export function ChatPane({
   );
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const element = scrollRef.current;
+    if (!element) return;
+    if (stickToBottomRef.current) {
+      requestAnimationFrame(() => element.scrollTo({ top: element.scrollHeight }));
+    }
   }, [activeTab?.messages, activeTab?.status]);
 
   const patchAssistant = useCallback(
@@ -493,6 +543,10 @@ export function ChatPane({
   const applyPiEvent = useCallback(
     (tabId: string, assistantId: string, event: Record<string, unknown>) => {
       const eventType = event.type;
+      const usage = usageFromEvent(event);
+      if (usage) {
+        updateTab(tabId, (tab) => ({ ...tab, tokenStats: usage }));
+      }
 
       if (eventType === "message_update") {
         const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
@@ -624,6 +678,7 @@ export function ChatPane({
           },
         ],
       }));
+      stickToBottomRef.current = true;
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
@@ -755,12 +810,17 @@ export function ChatPane({
         if (!response.ok) throw new Error(payload.error || "Failed to load session");
 
         const { messages, title } = replaySessionEvents(payload.events ?? []);
+        const tokenStats = [...(payload.events ?? [])]
+          .reverse()
+          .map(usageFromEvent)
+          .find((stats): stats is TokenStats => Boolean(stats));
 
         updateTab(tabId, (tab) => ({
           ...tab,
           messages,
           piSessionId,
           title: title ?? tab.title,
+          tokenStats: tokenStats ?? tab.tokenStats,
           status: "idle",
           error: "",
         }));
@@ -786,32 +846,22 @@ export function ChatPane({
       data-pane-id={paneId}
       className={`flex min-w-0 min-h-0 flex-1 flex-col bg-(--bg) ${isFocused ? "" : "opacity-95"}`}
     >
-      {running ? (
-        <div className="flex items-center gap-2 border-b border-(--border) bg-(--accent)/10 px-4 py-1.5 text-[11px] text-(--accent)">
-          <span className="relative inline-flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--accent) opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-(--accent)" />
-          </span>
-          <span className="font-medium uppercase tracking-[0.08em]">
-            Agent {activeTab?.status === "starting" ? "starting" : "working"}…
-          </span>
-          <span className="opacity-70">Stop the turn before sending a new message.</span>
-          <button
-            type="button"
-            onClick={() => void abortTurn()}
-            className="ml-auto inline-flex h-5 items-center gap-1 rounded border border-(--accent)/40 px-1.5 text-[10px] uppercase tracking-[0.08em] hover:bg-(--accent)/20"
-          >
-            <Square className="h-2.5 w-2.5" /> Stop
-          </button>
-        </div>
-      ) : null}
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {activeTab.error}
         </div>
       ) : null}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
+      <div
+        ref={scrollRef}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          const distanceFromBottom =
+            element.scrollHeight - element.scrollTop - element.clientHeight;
+          stickToBottomRef.current = distanceFromBottom <= 80;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto px-6 py-8"
+      >
         <div className="mx-auto w-full max-w-3xl">
           {activeTab && activeTab.messages.length === 0 && !running ? (
             <div className="flex min-h-[40vh] flex-col items-center justify-center text-center gap-2">
@@ -962,6 +1012,14 @@ export function ChatPane({
               </button>
             )}
           </div>
+        </div>
+        <div className="mx-auto mt-1 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
+          <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
+          <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
+          <span>
+            {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
+            {formatTokenCount(contextWindow)}
+          </span>
         </div>
       </form>
     </section>
