@@ -11,7 +11,9 @@ import {
   triggerAddProjectFlow,
 } from "@/components/projects-nav-section";
 import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
-import { ArrowLeft, ArrowRight, ChevronDown, GitBranch, Plus, RotateCcw, X } from "lucide-react";
+import { ChevronDown, GitBranch, Plus } from "lucide-react";
+import { CloseIcon } from "@/components/icons";
+import { AgentBrowser, type AgentBrowserHandle, type WebviewElement } from "./agent-browser";
 import { ChatPane, makeFreshTab, SessionTabsBar, type SessionTab } from "./chat-pane";
 import { FilesystemPanel } from "./filesystem-panel";
 import { PaneGrid } from "./pane-grid";
@@ -23,20 +25,6 @@ import {
   type Layout,
   type PaneId,
 } from "./pane-layout";
-
-type WebviewElement = HTMLElement & {
-  goBack: () => void;
-  goForward: () => void;
-  reload: () => void;
-  src: string;
-  loadURL: (url: string) => Promise<void>;
-  getURL: () => string;
-  getTitle: () => string;
-  executeJavaScript: (script: string, userGesture?: boolean) => Promise<unknown>;
-  capturePage: () => Promise<{ toDataURL: () => string }>;
-  addEventListener: HTMLElement["addEventListener"];
-  removeEventListener: HTMLElement["removeEventListener"];
-};
 
 type AgentModel = {
   id: string;
@@ -185,9 +173,10 @@ export function AgentWorkspace() {
   });
   const [focusedPaneId, setFocusedPaneId] = useState<PaneId>("p-init");
 
-  const webviewRef = useRef<WebviewElement | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const browserRef = useRef<AgentBrowserHandle | null>(null);
   const isElectron = typeof window !== "undefined" && /electron/i.test(navigator.userAgent);
+  const getWebview = (): WebviewElement | null => browserRef.current?.webview ?? null;
+  const getIframe = (): HTMLIFrameElement | null => browserRef.current?.iframe ?? null;
   const searchParams = useSearchParams();
   // Track which (project, session) URL params we've already consumed so
   // navigation back/forward doesn't re-trigger session replays.
@@ -249,7 +238,7 @@ export function AgentWorkspace() {
       verb: string,
       payload: Record<string, unknown>,
     ): Promise<{ ok: boolean; data?: unknown; error?: string }> => {
-      const webview = webviewRef.current;
+      const webview = getWebview();
       if (isElectron && webview && typeof webview.executeJavaScript === "function") {
         try {
           switch (verb) {
@@ -343,7 +332,7 @@ export function AgentWorkspace() {
 
       // Iframe fallback (dev or non-electron). Cross-origin restrictions make
       // most operations impossible — handle the few that are still useful.
-      const iframe = iframeRef.current;
+      const iframe = getIframe();
       if (!iframe) return { ok: false, error: "Browser panel not mounted" };
       switch (verb) {
         case "navigate": {
@@ -669,34 +658,6 @@ export function AgentWorkspace() {
     window.addEventListener("mouseup", onUp);
   }
 
-  function browserBack() {
-    if (isElectron && webviewRef.current) {
-      webviewRef.current.goBack();
-    }
-  }
-
-  function browserForward() {
-    if (isElectron && webviewRef.current) {
-      webviewRef.current.goForward();
-    }
-  }
-
-  function browserReload() {
-    if (isElectron && webviewRef.current) {
-      webviewRef.current.reload();
-      return;
-    }
-    if (iframeRef.current) {
-      try {
-        iframeRef.current.contentWindow?.location.reload();
-      } catch {
-        // Cross-origin reload via src reset
-        const current = iframeRef.current.src;
-        iframeRef.current.src = current;
-      }
-    }
-  }
-
   const activeProject = useMemo(
     () => projects.find((entry) => entry.id === selectedProjectId) || null,
     [projects, selectedProjectId],
@@ -966,76 +927,20 @@ export function AgentWorkspace() {
                 title="Close"
                 aria-label="Close computer"
               >
-                <X className="h-3.5 w-3.5" />
+                <CloseIcon className="h-3 w-3" />
               </button>
             </div>
 
             {activeComputerTab === "browser" ? (
-              <section className="flex min-h-0 flex-1 flex-col">
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <form
-                    onSubmit={submitBrowserUrl}
-                    className="flex shrink-0 items-center gap-1 border-b border-(--border) px-2 py-1.5"
-                  >
-                    <button
-                      type="button"
-                      onClick={browserBack}
-                      className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-                      title="Back"
-                      aria-label="Back"
-                    >
-                      <ArrowLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={browserForward}
-                      className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-                      title="Forward"
-                      aria-label="Forward"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={browserReload}
-                      className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-                      title="Reload"
-                      aria-label="Reload"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </button>
-                    <input
-                      value={browserInput}
-                      onChange={(event) => setBrowserInput(event.target.value)}
-                      spellCheck={false}
-                      placeholder="Search or enter URL"
-                      className="min-w-0 flex-1 rounded border border-(--border) bg-(--surface) px-2 py-1 font-mono text-[11px] text-(--fg) outline-none placeholder:text-(--dim)"
-                      aria-label="Browser address"
-                    />
-                  </form>
-                  <div className="min-h-0 flex-1 bg-white">
-                    {isElectron ? (
-                      <webview
-                        ref={(node) => {
-                          webviewRef.current = (node as unknown as WebviewElement) ?? null;
-                        }}
-                        src={browserUrl}
-                        allowpopups={true}
-                        className="size-full"
-                        style={{ width: "100%", height: "100%", display: "flex" }}
-                      />
-                    ) : (
-                      <iframe
-                        ref={iframeRef}
-                        src={browserUrl}
-                        className="size-full"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                        title="Agent browser"
-                      />
-                    )}
-                  </div>
-                </div>
-              </section>
+              <AgentBrowser
+                ref={browserRef}
+                url={browserUrl}
+                inputValue={browserInput}
+                onInputChange={setBrowserInput}
+                onSubmit={submitBrowserUrl}
+                onClose={() => setRightPanelOpen(false)}
+                isElectron={isElectron}
+              />
             ) : (
               <section className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1">
