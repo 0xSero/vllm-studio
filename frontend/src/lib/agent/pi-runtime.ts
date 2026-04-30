@@ -101,7 +101,15 @@ function resolveBrowserExtensionPath(): string | null {
       : null,
     path.resolve(process.cwd(), "frontend", "desktop", "resources", "pi-extensions", "browser.ts"),
     path.resolve(process.cwd(), "desktop", "resources", "pi-extensions", "browser.ts"),
-    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "pi-extensions", "browser.ts"),
+    path.resolve(
+      process.cwd(),
+      "..",
+      "frontend",
+      "desktop",
+      "resources",
+      "pi-extensions",
+      "browser.ts",
+    ),
   ].filter((value): value is string => Boolean(value));
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
@@ -274,8 +282,7 @@ class PiRpcSession extends EventEmitter {
         PI_SKIP_VERSION_CHECK: "1",
         // The browser extension uses this base URL to call back into the
         // frontend's /api/agent/browser/* endpoints.
-        VLLM_STUDIO_FRONTEND_BASE:
-          process.env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(),
+        VLLM_STUDIO_FRONTEND_BASE: process.env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -366,11 +373,24 @@ class PiRpcSession extends EventEmitter {
     });
   }
 
-  async prompt(message: string, onEvent: (event: PiEvent) => void): Promise<void> {
+  /**
+   * Send a prompt and wait for `agent_end`. When the agent is already
+   * streaming (e.g. another tab is talking to the same session), pass a
+   * `streamingBehavior` so pi knows to queue rather than reject.
+   */
+  async prompt(
+    message: string,
+    onEvent: (event: PiEvent) => void,
+    options: { streamingBehavior?: "steer" | "followUp" } = {},
+  ): Promise<void> {
     const listener = (event: PiEvent) => onEvent(event);
     this.on("event", listener);
     try {
-      await this.sendCommand({ type: "prompt", message });
+      const command: Record<string, unknown> = { type: "prompt", message };
+      if (options.streamingBehavior) {
+        command.streamingBehavior = options.streamingBehavior;
+      }
+      await this.sendCommand(command);
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error("Timed out waiting for pi agent completion")),
@@ -393,6 +413,20 @@ class PiRpcSession extends EventEmitter {
     } finally {
       this.off("event", listener);
     }
+  }
+
+  /**
+   * Steering and follow-up messages are fire-and-forget — they don't kick off
+   * a new agent run on their own. Pi will deliver them after the current
+   * turn (or when idle) and keep emitting events through the existing
+   * event subscription.
+   */
+  async steer(message: string): Promise<void> {
+    await this.sendCommand({ type: "steer", message });
+  }
+
+  async followUp(message: string): Promise<void> {
+    await this.sendCommand({ type: "follow_up", message });
   }
 
   async abort(): Promise<void> {

@@ -38,6 +38,14 @@ export type TokenStats = {
   current: number;
 };
 
+export type QueuedMessage = {
+  id: string;
+  // "steer" interrupts the current turn between tool runs and the next LLM
+  // call; "follow_up" waits until the agent completely finishes.
+  mode: "steer" | "follow_up";
+  text: string;
+};
+
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
@@ -55,6 +63,9 @@ export type SessionTab = {
   error: string;
   input: string;
   tokenStats?: TokenStats;
+  // Outgoing pending messages (steer + follow_up). Drawn as chips above the
+  // input. Steers fire immediately; follow-ups wait for `agent_end`.
+  queue?: QueuedMessage[];
 };
 
 type ChatAttachment = {
@@ -737,16 +748,53 @@ export function ChatPane({
     [patchAssistant],
   );
 
-  const sendMessage = useCallback(
-    async (event: FormEvent) => {
-      event.preventDefault();
+  // Send a control-mode message (steer / follow_up) without reading the SSE
+  // stream — pi delivers the queued message and continues emitting events on
+  // the original prompt's stream. Returns true on success.
+  const sendControlMessage = useCallback(
+    async (mode: "steer" | "follow_up", text: string, runtime: string): Promise<boolean> => {
+      if (!text.trim() || !modelId) return false;
+      try {
+        const response = await fetch("/api/agent/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: runtime,
+            modelId,
+            message: text,
+            cwd: cwd.trim() || undefined,
+            mode,
+            browserToolEnabled,
+          }),
+        });
+        if (!response.ok || !response.body) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || `Agent request failed: ${response.status}`);
+        }
+        // Drain the short SSE stream so the connection closes cleanly.
+        const reader = response.body.getReader();
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [modelId, cwd, browserToolEnabled],
+  );
+
+  const submitPrompt = useCallback(
+    async (rawText: string) => {
       if (!activeTab) return;
-      const text = activeTab.input.trim();
-      if ((!text && attachments.length === 0) || !modelId || running || readingAttachments) return;
+      const text = rawText.trim();
+      if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
 
       const tabId = activeTab.id;
       const userId = newId("user");
       const assistantId = newId("assistant");
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
       const attachedText = attachmentPrompt(attachments);
       const attachmentSummary =
         attachments.length > 0
@@ -784,12 +832,13 @@ export function ChatPane({
       if (textareaRef.current) textareaRef.current.style.height = "";
       if (fileInputRef.current) fileInputRef.current.value = "";
 
+      let agentEnded = false;
       try {
         const response = await fetch("/api/agent/turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sessionId: activeTab.runtimeSessionId || runtimeSessionId,
+            sessionId: runtime,
             modelId,
             message: promptText,
             cwd: cwd.trim() || undefined,
@@ -830,6 +879,7 @@ export function ChatPane({
                 updateTab(tabId, (tab) => ({ ...tab, piSessionId: eventId }));
                 onPiSessionIdChange?.(eventId);
               }
+              if (piEvent.type === "agent_end") agentEnded = true;
               applyPiEvent(tabId, assistantId, piEvent);
             }
           }
@@ -843,12 +893,26 @@ export function ChatPane({
       } finally {
         updateTab(tabId, (tab) => ({ ...tab, status: "idle" }));
       }
+
+      // Drain queued messages once the agent finished its run.
+      if (agentEnded) {
+        const queued = (activeTab.queue ?? []).slice();
+        if (queued.length > 0) {
+          // Pop the first queued message and replay it as a fresh prompt. Any
+          // remaining items stay in the queue and chain through subsequent
+          // submitPrompt calls.
+          const [next, ...rest] = queued;
+          updateTab(tabId, (tab) => ({ ...tab, queue: rest }));
+          // Schedule on the next tick so React commits the optimistic
+          // update before we kick off the next prompt.
+          setTimeout(() => void submitPromptRef.current?.(next.text), 0);
+        }
+      }
     },
     [
       activeTab,
       attachments,
       modelId,
-      running,
       readingAttachments,
       runtimeSessionId,
       cwd,
@@ -857,6 +921,82 @@ export function ChatPane({
       applyPiEvent,
       updateTab,
     ],
+  );
+
+  // Stable ref so the queue-drain inside submitPrompt can re-enter without
+  // forming a useCallback cycle.
+  const submitPromptRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
+  useEffect(() => {
+    submitPromptRef.current = submitPrompt;
+  }, [submitPrompt]);
+
+  const sendMessage = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (!activeTab) return;
+      const text = activeTab.input.trim();
+      if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
+
+      // While running, Enter sends a steering message instead of a fresh prompt.
+      if (running) {
+        if (!text) return;
+        const ok = await sendControlMessage(
+          "steer",
+          text,
+          activeTab.runtimeSessionId || runtimeSessionId,
+        );
+        if (ok) {
+          updateTab(activeTab.id, (tab) => ({ ...tab, input: "" }));
+        }
+        return;
+      }
+      await submitPrompt(text);
+    },
+    [
+      activeTab,
+      attachments.length,
+      modelId,
+      readingAttachments,
+      running,
+      runtimeSessionId,
+      sendControlMessage,
+      submitPrompt,
+      updateTab,
+    ],
+  );
+
+  // Tab-key behavior: queue the current input as a follow-up. If the agent is
+  // running, also fire a steer() so pi has the message in its own queue
+  // (one-at-a-time). Local queue state mirrors what's pending so we can show
+  // chips and drain on agent_end.
+  const queueMessage = useCallback(async () => {
+    if (!activeTab) return;
+    const text = activeTab.input.trim();
+    if (!text || !modelId) return;
+    const tabId = activeTab.id;
+    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+    const mode: "steer" | "follow_up" = running ? "follow_up" : "follow_up";
+    const queuedId = newId("queue");
+    updateTab(tabId, (tab) => ({
+      ...tab,
+      input: "",
+      queue: [...(tab.queue ?? []), { id: queuedId, mode, text }],
+    }));
+    if (running) {
+      // Hand it to pi as a follow_up so the agent sees it after it finishes.
+      void sendControlMessage(mode, text, runtime);
+    }
+  }, [activeTab, modelId, running, runtimeSessionId, sendControlMessage, updateTab]);
+
+  const removeQueued = useCallback(
+    (queueId: string) => {
+      if (!activeTab) return;
+      updateTab(activeTab.id, (tab) => ({
+        ...tab,
+        queue: (tab.queue ?? []).filter((entry) => entry.id !== queueId),
+      }));
+    },
+    [activeTab, updateTab],
   );
 
   const attachFiles = useCallback(
@@ -1001,6 +1141,31 @@ export function ChatPane({
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-3 pt-1.5">
         <div className="mx-auto max-w-3xl rounded-lg border border-(--border)/50 bg-(--surface)">
+          {(activeTab?.queue ?? []).length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
+              {(activeTab?.queue ?? []).map((item) => (
+                <span
+                  key={item.id}
+                  className="inline-flex max-w-[260px] items-center gap-1 rounded border border-(--accent)/60 bg-(--accent)/10 px-1.5 py-0.5 text-[11px] text-(--fg)"
+                  title={`Queued (${item.mode}): ${item.text}`}
+                >
+                  <span className="rounded border border-(--accent)/40 px-1 text-[9px] uppercase text-(--accent)">
+                    {item.mode === "steer" ? "steer" : "queue"}
+                  </span>
+                  <span className="truncate">{item.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeQueued(item.id)}
+                    className="rounded p-0.5 text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                    aria-label="Remove queued message"
+                    title="Remove queued message"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
           {attachments.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
               {attachments.map((file) => (
@@ -1045,17 +1210,39 @@ export function ChatPane({
               setIsMultiline(element.scrollHeight > 38);
             }}
             onKeyDown={(event) => {
+              // Enter (no shift) → send. While running, this becomes a steer.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
+                return;
+              }
+              // Tab → queue (follow-up). Captured even while running so the
+              // user can pile up tasks while the agent is working.
+              if (event.key === "Tab" && !event.shiftKey) {
+                if (!activeTab?.input.trim()) return;
+                event.preventDefault();
+                void queueMessage();
+                return;
+              }
+              // Esc → pause (abort). Cmd/Ctrl+. for parity.
+              if (
+                event.key === "Escape" ||
+                (event.key === "." && (event.metaKey || event.ctrlKey))
+              ) {
+                if (running) {
+                  event.preventDefault();
+                  void abortTurn();
+                }
               }
             }}
             placeholder={
-              modelName
-                ? `Ask ${modelName}…`
-                : modelsLoading
-                  ? "Loading models…"
-                  : "No models available — check /v1/models"
+              !modelName && modelsLoading
+                ? "Loading models…"
+                : !modelName
+                  ? "No models available — check /v1/models"
+                  : running
+                    ? `Steer ${modelName} (Enter) · queue with Tab · Esc to pause`
+                    : `Ask ${modelName} (Enter) · queue with Tab`
             }
             className="min-h-[34px] max-h-[160px] w-full resize-none overflow-y-auto bg-transparent px-2.5 py-1.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
@@ -1096,13 +1283,35 @@ export function ChatPane({
             </button>
             <div className="flex-1" />
             {running ? (
-              <button
-                type="button"
-                onClick={() => void abortTurn()}
-                className="inline-flex h-6 items-center gap-1.5 rounded border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
-              >
-                <Square className="h-3 w-3" /> Stop
-              </button>
+              <>
+                {activeTab?.input.trim() ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void queueMessage()}
+                      className="inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--bg) px-2 text-[11px] text-(--dim) hover:text-(--fg)"
+                      title="Queue (Tab)"
+                    >
+                      Queue
+                    </button>
+                    <button
+                      type="submit"
+                      className="inline-flex h-6 items-center gap-1 rounded border border-(--accent) bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
+                      title="Steer (Enter): interrupt current turn and send"
+                    >
+                      <Send className="h-3 w-3" /> Steer
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void abortTurn()}
+                  className="inline-flex h-6 items-center gap-1.5 rounded border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
+                  title="Pause (Esc)"
+                >
+                  <Square className="h-3 w-3" /> Pause
+                </button>
+              </>
             ) : (
               <button
                 type="submit"
@@ -1113,7 +1322,7 @@ export function ChatPane({
                 }
                 className="inline-flex h-6 w-6 items-center justify-center rounded text-(--fg) hover:bg-(--bg) disabled:opacity-30"
                 aria-label="Send"
-                title="Send"
+                title="Send (Enter) · Queue (Tab)"
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
