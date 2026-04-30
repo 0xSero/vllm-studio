@@ -4,14 +4,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
+  ChatIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  EyeOffIcon,
   Folder,
   FolderOpen,
-  MessageSquare,
-  Plus,
-  Trash2,
-} from "lucide-react";
+  MoreIcon,
+  PinIcon,
+  PinSlashIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@/components/icons";
 
 type ProjectEntry = {
   id: string;
@@ -51,6 +56,63 @@ type ActiveAgentSession = {
   status: string;
   updatedAt: string;
 };
+
+type SessionPref = {
+  title?: string;
+  pinned?: boolean;
+  hidden?: boolean;
+};
+
+const SESSION_PREFS_KEY = "vllm-studio.agent.sessionPrefs";
+const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
+const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
+
+function loadSessionPrefs(): Record<string, SessionPref> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SESSION_PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, SessionPref>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSessionPrefs(prefs: Record<string, SessionPref>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
+  window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
+}
+
+function patchSessionPref(piSessionId: string, patch: SessionPref) {
+  const all = loadSessionPrefs();
+  const current = all[piSessionId] ?? {};
+  const next: SessionPref = { ...current, ...patch };
+  // Normalize: drop the entry entirely if all flags are cleared so we don't
+  // grow localStorage forever.
+  if (!next.title && !next.pinned && !next.hidden) {
+    delete all[piSessionId];
+  } else {
+    all[piSessionId] = next;
+  }
+  saveSessionPrefs(all);
+}
+
+function useSessionPrefs() {
+  const [prefs, setPrefs] = useState<Record<string, SessionPref>>(() => loadSessionPrefs());
+  useEffect(() => {
+    const refresh = () => setPrefs(loadSessionPrefs());
+    refresh();
+    window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  return prefs;
+}
 
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
@@ -288,7 +350,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         onClick={handleAddProject}
         className="h-9 flex items-center gap-2 px-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
       >
-        <Plus className="w-4 h-4 shrink-0" />
+        <PlusIcon className="w-3 h-3 shrink-0" />
         <span className="truncate text-sm font-medium text-(--fg)">Add project</span>
       </button>
       {projects.length === 0 ? (
@@ -336,7 +398,7 @@ function ProjectRow({
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const Icon = open ? FolderOpen : Folder;
-  const Chevron = open ? ChevronDown : ChevronRight;
+  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
   const handleToggle = () => {
     if (!project.exists) {
       setMissingErrorVisible(true);
@@ -377,7 +439,7 @@ function ProjectRow({
           title="Remove from list"
           aria-label="Remove project"
         >
-          <Trash2 className="h-3 w-3" />
+          <TrashIcon className="h-3 w-3" />
         </button>
       </div>
       {missingErrorVisible && !project.exists ? (
@@ -436,6 +498,31 @@ function ProjectSessions({
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
   }, [reload]);
 
+  const prefs = useSessionPrefs();
+  const [showHidden, setShowHidden] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(SHOW_HIDDEN_KEY) === "1";
+  });
+  const toggleShowHidden = () =>
+    setShowHidden((value) => {
+      const next = !value;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(SHOW_HIDDEN_KEY, next ? "1" : "0");
+      }
+      return next;
+    });
+
+  const allRecent = (sessions ?? []).filter((session) => !activePiSessionIds.has(session.id));
+  const pinned: SessionSummary[] = [];
+  const recent: SessionSummary[] = [];
+  const hidden: SessionSummary[] = [];
+  for (const session of allRecent) {
+    const pref = prefs[session.id] ?? {};
+    if (pref.hidden) hidden.push(session);
+    else if (pref.pinned) pinned.push(session);
+    else recent.push(session);
+  }
+
   return (
     <div className="flex flex-col">
       <Link
@@ -443,14 +530,16 @@ function ProjectSessions({
         className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
         title="Start a new chat in this project"
       >
-        <Plus className="w-3.5 h-3.5 shrink-0" />
+        <PlusIcon className="w-3 h-3 shrink-0" />
         <span className="truncate text-xs">New session</span>
       </Link>
+
       {activeSessions.map((session) => {
-        const label = session.title || "Current session";
+        const pref = session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {};
+        const label = pref.title || session.title || "Current session";
         const content = (
           <>
-            <MessageSquare className="w-3.5 h-3.5 shrink-0 text-(--accent)" />
+            <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
             <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
             <span className="shrink-0 text-[10px] text-(--accent)">
               {session.status === "idle" ? "current" : session.status}
@@ -479,38 +568,236 @@ function ProjectSessions({
           </div>
         );
       })}
+
       {loading && !sessions ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">Loading…</div>
-      ) : (sessions ?? []).length === 0 && activeSessions.length === 0 ? (
+      ) : allRecent.length === 0 && activeSessions.length === 0 ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">No recent sessions</div>
       ) : (
-        (sessions ?? [])
-          .filter((session) => !activePiSessionIds.has(session.id))
-          .map((session) => (
-            <Link
+        <>
+          {pinned.length > 0 ? (
+            <div className="pl-9 pr-3 pt-1 text-[9px] font-medium uppercase tracking-wide text-(--dim)">
+              Pinned
+            </div>
+          ) : null}
+          {pinned.map((session) => (
+            <SessionRow
               key={session.id}
-              href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
-              title={session.firstUserMessage || "Untitled session"}
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.setData("application/x-vllm-session", session.id);
-                event.dataTransfer.effectAllowed = "copy";
-              }}
-              className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+              project={project}
+              session={session}
+              pref={prefs[session.id] ?? {}}
+            />
+          ))}
+          {recent.length > 0 && pinned.length > 0 ? (
+            <div className="pl-9 pr-3 pt-1 text-[9px] font-medium uppercase tracking-wide text-(--dim)">
+              Recent
+            </div>
+          ) : null}
+          {recent.map((session) => (
+            <SessionRow
+              key={session.id}
+              project={project}
+              session={session}
+              pref={prefs[session.id] ?? {}}
+            />
+          ))}
+          {hidden.length > 0 ? (
+            <button
+              type="button"
+              onClick={toggleShowHidden}
+              className="h-7 flex items-center gap-2 pl-9 pr-3 text-[10px] text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
+              title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
-              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate text-xs">
-                {session.firstUserMessage || "Untitled session"}
-              </span>
-              <span className="shrink-0 text-[10px] text-(--dim)">
-                {formatRelative(session.updatedAt)}
-              </span>
-              <span className="shrink-0 text-[10px] text-(--dim)">
-                {session.turnCount} {session.turnCount === 1 ? "turn" : "turns"}
-              </span>
-            </Link>
-          ))
+              <EyeOffIcon className="w-3 h-3 shrink-0" />
+              {showHidden ? `Hide ${hidden.length} hidden` : `Show ${hidden.length} hidden`}
+            </button>
+          ) : null}
+          {showHidden
+            ? hidden.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  project={project}
+                  session={session}
+                  pref={prefs[session.id] ?? {}}
+                />
+              ))
+            : null}
+        </>
       )}
     </div>
+  );
+}
+
+function SessionRow({
+  project,
+  session,
+  pref,
+}: {
+  project: ProjectEntry;
+  session: SessionSummary;
+  pref: SessionPref;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(pref.title ?? session.firstUserMessage ?? "");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
+
+  const label = pref.title || session.firstUserMessage || "Untitled session";
+
+  const finishRename = () => {
+    const trimmed = draft.trim();
+    patchSessionPref(session.id, { title: trimmed || undefined });
+    setRenaming(false);
+  };
+
+  if (renaming) {
+    return (
+      <div className="h-8 flex items-center gap-2 pl-9 pr-3 bg-(--surface)/60">
+        <ChatIcon className="w-3 h-3 shrink-0 text-(--dim)" />
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={finishRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") finishRename();
+            if (event.key === "Escape") {
+              setDraft(pref.title ?? session.firstUserMessage ?? "");
+              setRenaming(false);
+            }
+          }}
+          className="min-w-0 flex-1 bg-transparent text-xs text-(--fg) outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="group h-8 flex items-center gap-2 pl-9 pr-2 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenuOpen(true);
+      }}
+    >
+      <Link
+        href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
+        title={label}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData("application/x-vllm-session", session.id);
+          event.dataTransfer.effectAllowed = "copy";
+        }}
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
+        {pref.pinned ? (
+          <PinIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+        ) : (
+          <ChatIcon className="w-3 h-3 shrink-0" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+        <span className="shrink-0 text-[10px] text-(--dim)">
+          {formatRelative(session.updatedAt)}
+        </span>
+      </Link>
+      <div ref={menuRef} className="relative shrink-0">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMenuOpen((value) => !value);
+          }}
+          className="rounded p-0.5 text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          aria-label="Session options"
+          title="Session options"
+        >
+          <MoreIcon className="h-3 w-3" />
+        </button>
+        {menuOpen ? (
+          <div className="absolute right-0 top-5 z-50 min-w-[140px] rounded-md border border-(--border) bg-(--bg) p-1 text-xs shadow-lg">
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                setDraft(pref.title ?? session.firstUserMessage ?? "");
+                setRenaming(true);
+              }}
+            >
+              Rename
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                patchSessionPref(session.id, { pinned: !pref.pinned });
+              }}
+            >
+              {pref.pinned ? (
+                <span className="inline-flex items-center gap-2">
+                  <PinSlashIcon className="h-3 w-3" /> Unpin
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2">
+                  <PinIcon className="h-3 w-3" /> Pin
+                </span>
+              )}
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                patchSessionPref(session.id, { hidden: !pref.hidden });
+              }}
+            >
+              <span className="inline-flex items-center gap-2">
+                <EyeOffIcon className="h-3 w-3" /> {pref.hidden ? "Unhide" : "Hide"}
+              </span>
+            </SessionMenuItem>
+            {pref.title || pref.pinned || pref.hidden ? (
+              <SessionMenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  patchSessionPref(session.id, {
+                    title: undefined,
+                    pinned: undefined,
+                    hidden: undefined,
+                  });
+                }}
+              >
+                <span className="inline-flex items-center gap-2 text-(--err)">
+                  <CloseIcon className="h-3 w-3" /> Clear
+                </span>
+              </SessionMenuItem>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SessionMenuItem({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full rounded px-2 py-1 text-left text-xs text-(--fg) hover:bg-(--surface)"
+    >
+      {children}
+    </button>
   );
 }

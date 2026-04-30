@@ -1,7 +1,15 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Globe, Paperclip, Plus, Send, Square, X } from "lucide-react";
+import {
+  AttachIcon,
+  CloseIcon,
+  FileIcon,
+  GlobeIcon,
+  PlusIcon,
+  SendIcon,
+  StopIcon,
+} from "@/components/icons";
 import { AssistantMarkdown } from "./assistant-markdown";
 
 export type ToolBlock = {
@@ -1160,7 +1168,7 @@ export function ChatPane({
                     aria-label="Remove queued message"
                     title="Remove queued message"
                   >
-                    <X className="h-3 w-3" />
+                    <CloseIcon className="h-3 w-3" />
                   </button>
                 </span>
               ))}
@@ -1174,7 +1182,7 @@ export function ChatPane({
                   className="inline-flex max-w-[220px] items-center gap-1 rounded border border-(--border)/70 bg-(--bg) px-1.5 py-0.5 text-[11px] text-(--dim)"
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}`}
                 >
-                  <FileText className="h-3 w-3 shrink-0" />
+                  <FileIcon className="h-3 w-3 shrink-0" />
                   <span className="truncate">{file.name}</span>
                   <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>
                   <button
@@ -1186,7 +1194,7 @@ export function ChatPane({
                     aria-label={`Remove ${file.name}`}
                     title={`Remove ${file.name}`}
                   >
-                    <X className="h-3 w-3" />
+                    <CloseIcon className="h-3 w-3" />
                   </button>
                 </span>
               ))}
@@ -1262,7 +1270,7 @@ export function ChatPane({
               aria-label="Attach files"
               title="Attach files"
             >
-              <Paperclip className="h-3.5 w-3.5" />
+              <AttachIcon className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -1279,7 +1287,7 @@ export function ChatPane({
                   : "border-transparent text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
               } shrink-0`}
             >
-              <Globe className="h-3.5 w-3.5" />
+              <GlobeIcon className="h-3.5 w-3.5" />
             </button>
             <div className="flex-1" />
             {running ? (
@@ -1299,7 +1307,7 @@ export function ChatPane({
                       className="inline-flex h-6 items-center gap-1 rounded border border-(--accent) bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
                       title="Steer (Enter): interrupt current turn and send"
                     >
-                      <Send className="h-3 w-3" /> Steer
+                      <SendIcon className="h-3 w-3" /> Steer
                     </button>
                   </>
                 ) : null}
@@ -1309,7 +1317,7 @@ export function ChatPane({
                   className="inline-flex h-6 items-center gap-1.5 rounded border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
                   title="Pause (Esc)"
                 >
-                  <Square className="h-3 w-3" /> Pause
+                  <StopIcon className="h-3 w-3" /> Pause
                 </button>
               </>
             ) : (
@@ -1324,7 +1332,7 @@ export function ChatPane({
                 aria-label="Send"
                 title="Send (Enter) · Queue (Tab)"
               >
-                <Send className="h-3.5 w-3.5" />
+                <SendIcon className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -1395,7 +1403,7 @@ export function SessionTabsBar({
         title="New tab in this pane"
         aria-label="New tab in this pane"
       >
-        <Plus className="h-3.5 w-3.5" />
+        <PlusIcon className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -1478,7 +1486,7 @@ function TabPill({
         aria-label="Close tab"
         title="Close tab"
       >
-        <X className="h-3 w-3" />
+        <CloseIcon className="h-3 w-3" />
       </button>
     </div>
   );

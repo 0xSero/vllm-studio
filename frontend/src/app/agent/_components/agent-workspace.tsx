@@ -11,8 +11,7 @@ import {
   triggerAddProjectFlow,
 } from "@/components/projects-nav-section";
 import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
-import { ChevronDown, GitBranch, Plus } from "lucide-react";
-import { CloseIcon } from "@/components/icons";
+import { ChevronDownIcon, CloseIcon, GitBranchIcon, PlusIcon } from "@/components/icons";
 import { AgentBrowser, type AgentBrowserHandle, type WebviewElement } from "./agent-browser";
 import { ChatPane, makeFreshTab, SessionTabsBar, type SessionTab } from "./chat-pane";
 import { FilesystemPanel } from "./filesystem-panel";
@@ -694,7 +693,7 @@ export function AgentWorkspace() {
               <span className="truncate">{activeProject.name}</span>
               {activeProject.hasGit && activeProject.branch ? (
                 <span className="ml-1 inline-flex items-center gap-1 rounded border border-(--border) px-1 py-0.5 font-mono text-[10px]">
-                  <GitBranch className="h-3 w-3" />
+                  <GitBranchIcon className="h-3 w-3" />
                   {activeProject.branch}
                 </span>
               ) : null}
@@ -789,7 +788,7 @@ export function AgentWorkspace() {
                   onClick={triggerAddProjectFlow}
                   className="mt-4 inline-flex h-9 items-center gap-2 rounded border border-(--border) bg-(--surface) px-3 text-sm font-medium text-(--fg) hover:bg-(--bg)"
                 >
-                  <Plus className="h-4 w-4" />
+                  <PlusIcon className="h-4 w-4" />
                   Add a project
                 </button>
               </div>
@@ -1000,7 +999,7 @@ function ModelPicker({
         title={active?.name || triggerLabel}
       >
         <span className="max-w-[160px] truncate">{triggerLabel}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-(--dim)" />
+        <ChevronDownIcon className="h-3 w-3 shrink-0 text-(--dim)" />
       </button>
       {open ? (
         <div className="absolute right-0 top-9 z-50 w-72 rounded-md border border-(--border) bg-(--surface) shadow-lg">
