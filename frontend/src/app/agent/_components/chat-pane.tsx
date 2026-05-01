@@ -1138,13 +1138,11 @@ export function ChatPane({
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-(--border)/50">
+            <div className="flex flex-col gap-5">
               {(activeTab?.messages ?? [])
                 .filter((m) => m.role !== "system")
                 .map((message) => (
-                  <div key={message.id} className="py-4 first:pt-0 last:pb-0">
-                    <TimelineMessage message={message} />
-                  </div>
+                  <TimelineMessage key={message.id} message={message} />
                 ))}
               {running ? (
                 <div className="flex items-center gap-2 py-4 text-xs text-(--dim)">
@@ -1506,12 +1504,12 @@ function TimelineMessage({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   if (isUser) {
     return (
-      <article className="flex flex-col gap-1">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-(--dim)">
-          You
-        </div>
-        <div className="whitespace-pre-wrap break-words text-sm leading-6 text-(--fg)">
-          {message.text}
+      <article className="flex justify-end">
+        <div className="max-w-[78%] rounded-2xl bg-(--surface) px-3.5 py-2 text-sm leading-6 text-(--fg)">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--dim)">
+            You
+          </div>
+          <div className="whitespace-pre-wrap break-words">{message.text}</div>
         </div>
       </article>
     );
@@ -1531,7 +1529,7 @@ function TimelineMessage({ message }: { message: ChatMessage }) {
                   <summary className="cursor-pointer list-none text-[11px] italic text-(--dim) hover:text-(--fg)">
                     Thinking
                   </summary>
-                  <pre className="mt-2 whitespace-pre-wrap border-l-2 border-(--border) pl-3 font-mono text-[11px] leading-5 text-(--dim)">
+                  <pre className="mt-2 max-w-full whitespace-pre-wrap break-words border-l-2 border-(--border) pl-3 font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
                     {block.text}
                   </pre>
                 </details>

@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -162,4 +163,15 @@ export async function loadSession(cwd: string, sessionId: string): Promise<Sessi
     }
   }
   return events;
+}
+
+export async function deleteSession(cwd: string, sessionId: string): Promise<boolean> {
+  const dir = sessionsDirForCwd(cwd);
+  if (!existsSync(dir)) return false;
+  const match = readdirSync(dir).find(
+    (name) => name.includes(sessionId) && name.endsWith(".jsonl"),
+  );
+  if (!match) return false;
+  await unlink(path.join(dir, match));
+  return true;
 }

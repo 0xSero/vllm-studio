@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listSessions } from "@/lib/agent/sessions-store";
+import { deleteSession, listSessions } from "@/lib/agent/sessions-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,4 +33,19 @@ export async function GET(request: NextRequest) {
   }
   const sessions = await listSessions(cwdParam, since ? { since } : undefined);
   return Response.json({ sessions });
+}
+
+export async function DELETE(request: NextRequest) {
+  const cwdParam = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
+  const idParam = request.nextUrl.searchParams.get("id")?.trim() ?? "";
+  if (!cwdParam) return Response.json({ error: "cwd is required" }, { status: 400 });
+  if (!idParam) return Response.json({ error: "id is required" }, { status: 400 });
+  if (!path.isAbsolute(cwdParam)) {
+    return Response.json({ error: "cwd must be absolute" }, { status: 400 });
+  }
+  if (!existsSync(cwdParam) || !statSync(cwdParam).isDirectory()) {
+    return Response.json({ error: "cwd not found" }, { status: 404 });
+  }
+  const deleted = await deleteSession(cwdParam, idParam);
+  return Response.json({ ok: true, deleted });
 }

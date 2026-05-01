@@ -107,6 +107,12 @@ function saveSessionPrefs(prefs: Record<string, SessionPref>) {
   window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
 }
 
+function removeSessionPref(piSessionId: string) {
+  const all = loadSessionPrefs();
+  delete all[piSessionId];
+  saveSessionPrefs(all);
+}
+
 function patchSessionPref(piSessionId: string, patch: SessionPref) {
   const all = loadSessionPrefs();
   const current = all[piSessionId] ?? {};
@@ -495,8 +501,13 @@ function ProjectSessions({
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const projectActiveSessions = activeSessions.filter(
+    (session) => session.projectId === project.id,
+  );
   const activePiSessionIds = new Set(
-    activeSessions.map((session) => session.piSessionId).filter((id): id is string => Boolean(id)),
+    projectActiveSessions
+      .map((session) => session.piSessionId)
+      .filter((id): id is string => Boolean(id)),
   );
 
   const reload = useCallback(async () => {
@@ -517,6 +528,22 @@ function ProjectSessions({
     }
   }, [project.path]);
 
+  const deleteSessionById = useCallback(
+    async (sessionId: string) => {
+      const response = await fetch(
+        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&id=${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "Failed to delete session");
+      }
+      removeSessionPref(sessionId);
+      setSessions((current) => current?.filter((session) => session.id !== sessionId) ?? current);
+    },
+    [project.path],
+  );
+
   useEffect(() => {
     void reload();
     window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
@@ -536,6 +563,11 @@ function ProjectSessions({
       }
       return next;
     });
+
+  const visibleActiveSessions = projectActiveSessions.filter((session) => {
+    if (!session.piSessionId) return true;
+    return showHidden || !prefs[session.piSessionId]?.hidden;
+  });
 
   const allRecent = (sessions ?? []).filter((session) => !activePiSessionIds.has(session.id));
   const pinned: SessionSummary[] = [];
@@ -559,44 +591,19 @@ function ProjectSessions({
         <span className="truncate text-xs">New session</span>
       </Link>
 
-      {activeSessions.map((session) => {
-        const pref = session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {};
-        const label = pref.title || session.title || "Current session";
-        const content = (
-          <>
-            <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
-            <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
-            <span className="shrink-0 text-[10px] text-(--accent)">
-              {session.status === "idle" ? "current" : session.status}
-            </span>
-          </>
-        );
-        if (session.piSessionId) {
-          return (
-            <Link
-              key={`${session.paneId}:${session.tabId}`}
-              href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
-              title={label}
-              className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60 hover:bg-(--surface) transition-colors"
-            >
-              {content}
-            </Link>
-          );
-        }
-        return (
-          <div
-            key={`${session.paneId}:${session.tabId}`}
-            title={label}
-            className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60"
-          >
-            {content}
-          </div>
-        );
-      })}
+      {visibleActiveSessions.map((session) => (
+        <ActiveSessionRow
+          key={`${session.paneId}:${session.tabId}`}
+          project={project}
+          session={session}
+          pref={session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {}}
+          onDelete={deleteSessionById}
+        />
+      ))}
 
       {loading && !sessions ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">Loading…</div>
-      ) : allRecent.length === 0 && activeSessions.length === 0 ? (
+      ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
         <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">No recent sessions</div>
       ) : (
         <>
@@ -611,6 +618,7 @@ function ProjectSessions({
               project={project}
               session={session}
               pref={prefs[session.id] ?? {}}
+              onDelete={deleteSessionById}
             />
           ))}
           {recent.length > 0 && pinned.length > 0 ? (
@@ -624,6 +632,7 @@ function ProjectSessions({
               project={project}
               session={session}
               pref={prefs[session.id] ?? {}}
+              onDelete={deleteSessionById}
             />
           ))}
           {hidden.length > 0 ? (
@@ -644,6 +653,7 @@ function ProjectSessions({
                   project={project}
                   session={session}
                   pref={prefs[session.id] ?? {}}
+                  onDelete={deleteSessionById}
                 />
               ))
             : null}
@@ -653,14 +663,178 @@ function ProjectSessions({
   );
 }
 
+function ActiveSessionRow({
+  project,
+  session,
+  pref,
+  onDelete,
+}: {
+  project: ProjectEntry;
+  session: ActiveAgentSession;
+  pref: SessionPref;
+  onDelete: (sessionId: string) => Promise<void>;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(pref.title ?? session.title ?? "");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const label = pref.title || session.title || "Current session";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
+
+  const finishRename = () => {
+    const trimmed = draft.trim();
+    if (session.piSessionId) patchSessionPref(session.piSessionId, { title: trimmed || undefined });
+    setRenaming(false);
+  };
+
+  if (renaming && session.piSessionId) {
+    return (
+      <div className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60">
+        <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={finishRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") finishRename();
+            if (event.key === "Escape") {
+              setDraft(pref.title ?? session.title ?? "");
+              setRenaming(false);
+            }
+          }}
+          className="min-w-0 flex-1 bg-transparent text-xs text-(--fg) outline-none"
+        />
+      </div>
+    );
+  }
+
+  const content = (
+    <>
+      <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+      <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+      <span className="shrink-0 text-[10px] text-(--accent)">
+        {session.status === "idle" ? "current" : session.status}
+      </span>
+    </>
+  );
+
+  if (!session.piSessionId) {
+    return (
+      <div
+        title={label}
+        className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--fg) bg-(--surface)/60"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  const activeSessionId = session.piSessionId;
+
+  return (
+    <div className="group h-8 flex items-center gap-2 pl-9 pr-2 text-(--fg) bg-(--surface)/60 hover:bg-(--surface) transition-colors">
+      <Link
+        href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(activeSessionId)}`}
+        title={label}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData("application/x-vllm-session", activeSessionId ?? "");
+          event.dataTransfer.effectAllowed = "copy";
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          setDraft(pref.title ?? session.title ?? "");
+          setRenaming(true);
+        }}
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
+        {content}
+      </Link>
+      <Link
+        href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(activeSessionId)}&split=1`}
+        className="rounded px-1 text-[10px] text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+        title="Open beside focused session"
+      >
+        Split
+      </Link>
+      <div ref={menuRef} className="relative shrink-0">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMenuOpen((value) => !value);
+          }}
+          className="rounded p-0.5 text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          aria-label="Session options"
+          title="Session options"
+        >
+          <MoreIcon className="h-3 w-3" />
+        </button>
+        {menuOpen ? (
+          <div className="absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-(--bg) p-1 text-xs shadow-lg">
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                setDraft(pref.title ?? session.title ?? "");
+                setRenaming(true);
+              }}
+            >
+              Rename
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                patchSessionPref(activeSessionId, { pinned: !pref.pinned });
+              }}
+            >
+              {pref.pinned ? "Unpin" : "Pin"}
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                patchSessionPref(activeSessionId, { hidden: !pref.hidden });
+              }}
+            >
+              {pref.hidden ? "Unarchive" : "Archive"}
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                if (window.confirm("Delete this session from disk?")) {
+                  void onDelete(activeSessionId);
+                }
+              }}
+            >
+              <span className="text-(--err)">Delete</span>
+            </SessionMenuItem>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function SessionRow({
   project,
   session,
   pref,
+  onDelete,
 }: {
   project: ProjectEntry;
   session: SessionSummary;
   pref: SessionPref;
+  onDelete: (sessionId: string) => Promise<void>;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(pref.title ?? session.firstUserMessage ?? "");
@@ -736,6 +910,13 @@ function SessionRow({
         </span>
       </Link>
       <div ref={menuRef} className="relative shrink-0">
+        <Link
+          href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&split=1`}
+          className="rounded px-1 text-[10px] text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          title="Open beside focused session"
+        >
+          Split
+        </Link>
         <button
           type="button"
           onClick={(event) => {
@@ -783,7 +964,19 @@ function SessionRow({
               }}
             >
               <span className="inline-flex items-center gap-2">
-                <EyeOffIcon className="h-3 w-3" /> {pref.hidden ? "Unhide" : "Hide"}
+                <EyeOffIcon className="h-3 w-3" /> {pref.hidden ? "Unarchive" : "Archive"}
+              </span>
+            </SessionMenuItem>
+            <SessionMenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                if (window.confirm("Delete this session from disk?")) {
+                  void onDelete(session.id);
+                }
+              }}
+            >
+              <span className="inline-flex items-center gap-2 text-(--err)">
+                <TrashIcon className="h-3 w-3" /> Delete
               </span>
             </SessionMenuItem>
             {pref.title || pref.pinned || pref.hidden ? (

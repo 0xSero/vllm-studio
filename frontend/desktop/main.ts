@@ -46,8 +46,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle("desktop:open-directory", async () => {
     const owner = mainWindow ?? undefined;
     const result = owner
-      ? await dialog.showOpenDialog(owner, { properties: ["openDirectory"] })
-      : await dialog.showOpenDialog({ properties: ["openDirectory"] });
+      ? await dialog.showOpenDialog(owner, { properties: ["openDirectory", "createDirectory"] })
+      : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     if (result.canceled) return null;
     const selected = result.filePaths[0];
     if (!selected) return null;
