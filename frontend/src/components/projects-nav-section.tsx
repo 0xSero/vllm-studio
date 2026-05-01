@@ -66,6 +66,28 @@ type SessionPref = {
 const SESSION_PREFS_KEY = "vllm-studio.agent.sessionPrefs";
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
 const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
+const ACTIVE_AGENT_SESSIONS_KEY = "vllm-studio.agent.activeSessions.snapshot";
+
+function loadActiveAgentSessions(): ActiveAgentSession[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_AGENT_SESSIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as ActiveAgentSession[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveActiveAgentSessions(sessions: ActiveAgentSession[]) {
+  if (typeof window === "undefined") return;
+  if (sessions.length === 0) {
+    window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_KEY);
+    return;
+  }
+  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(sessions));
+}
 
 function loadSessionPrefs(): Record<string, SessionPref> {
   if (typeof window === "undefined") return {};
@@ -183,7 +205,9 @@ function formatRelative(isoString: string): string {
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [activeSessions, setActiveSessions] = useState<ActiveAgentSession[]>([]);
+  const [activeSessions, setActiveSessions] = useState<ActiveAgentSession[]>(() =>
+    loadActiveAgentSessions(),
+  );
   const [addError, setAddError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -311,6 +335,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
       const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
       setActiveSessions(sessions);
+      saveActiveAgentSessions(sessions);
       setOpenIds((current) => {
         const next = new Set(current);
         for (const session of sessions) next.add(session.projectId);

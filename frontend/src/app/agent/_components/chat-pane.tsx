@@ -222,6 +222,15 @@ function numberFromRecord(record: Record<string, unknown>, keys: string[]): numb
   return 0;
 }
 
+function piSessionIdFromEvent(event: Record<string, unknown>): string | null {
+  if (event.type !== "session") return null;
+  for (const key of ["id", "sessionId", "session_id"]) {
+    const value = event[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 function usageFromEvent(event: Record<string, unknown>): TokenStats | null {
   if (event.type !== "message" && event.type !== "message_end") return null;
   const message =
@@ -882,12 +891,15 @@ export function ChatPane({
               updateTab(tabId, (tab) => ({ ...tab, error: payload.error, status: "idle" }));
             } else if (payload.type === "pi") {
               const piEvent = payload.event;
-              const eventId = piEvent.id;
-              if (piEvent.type === "session" && typeof eventId === "string") {
+              const eventId = piSessionIdFromEvent(piEvent);
+              if (eventId) {
                 updateTab(tabId, (tab) => ({ ...tab, piSessionId: eventId }));
                 onPiSessionIdChange?.(eventId);
               }
-              if (piEvent.type === "agent_end") agentEnded = true;
+              if (piEvent.type === "agent_end") {
+                agentEnded = true;
+                onPiSessionIdChange?.(eventId ?? activeTab.piSessionId ?? "");
+              }
               applyPiEvent(tabId, assistantId, piEvent);
             }
           }
