@@ -4,6 +4,7 @@ import { getApiSettings } from "@/lib/api-settings";
 
 const OVERRIDE_ALLOWLIST_ENV_KEY = "VLLM_STUDIO_PROXY_OVERRIDE_ALLOWLIST";
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 5_000;
+const DOWNLOAD_UPSTREAM_TIMEOUT_MS = 120_000;
 const SYSTEM_UPSTREAM_TIMEOUT_MS = 20_000;
 const CHAT_COMPLETION_UPSTREAM_TIMEOUT_MS = 600_000;
 const PROXY_ACCESS_LOGS_ENABLED = process.env.VLLM_STUDIO_PROXY_ACCESS_LOGS === "true";
@@ -136,6 +137,9 @@ function buildTargetUrl(backendUrl: string, path: string[], searchParams: string
 
 function getUpstreamTimeoutMs(path: string[]): number {
   const route = path.join("/");
+  if (route === "studio/downloads" || route.startsWith("studio/downloads/")) {
+    return DOWNLOAD_UPSTREAM_TIMEOUT_MS;
+  }
   if (route === "v1/chat/completions" || route === "v1/responses") {
     return CHAT_COMPLETION_UPSTREAM_TIMEOUT_MS;
   }
