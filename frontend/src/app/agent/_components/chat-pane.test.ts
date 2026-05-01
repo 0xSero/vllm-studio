@@ -63,6 +63,8 @@ describe("replaySessionEvents", () => {
         id: "call-1",
         name: "read",
         status: "done",
+        args: { path: "package.json" },
+        argsText: '{\n  "path": "package.json"\n}',
         text: '{"scripts":{"dev":"next dev"}}',
       },
     ]);

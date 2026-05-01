@@ -173,6 +173,7 @@ export function AgentWorkspace() {
   const [focusedPaneId, setFocusedPaneId] = useState<PaneId>("p-init");
 
   const browserRef = useRef<AgentBrowserHandle | null>(null);
+  const computerAsideRef = useRef<HTMLElement | null>(null);
   const isElectron = typeof window !== "undefined" && /electron/i.test(navigator.userAgent);
   const getWebview = (): WebviewElement | null => browserRef.current?.webview ?? null;
   const getIframe = (): HTMLIFrameElement | null => browserRef.current?.iframe ?? null;
@@ -559,8 +560,9 @@ export function AgentWorkspace() {
     const projectParam = searchParams.get("project");
     const sessionParam = searchParams.get("session");
     const newParam = searchParams.get("new");
+    const splitParam = searchParams.get("split");
     if (!projectParam && !sessionParam && !newParam) return;
-    const key = `${projectParam ?? ""}|${sessionParam ?? ""}|${newParam ?? ""}`;
+    const key = `${projectParam ?? ""}|${sessionParam ?? ""}|${newParam ?? ""}|${splitParam ?? ""}`;
     if (handledNavRef.current === key) return;
 
     if (projectParam) {
@@ -584,6 +586,37 @@ export function AgentWorkspace() {
       return;
     }
 
+    if (sessionParam && splitParam === "1") {
+      const leaves = collectLeaves(layout);
+      if (leaves.length < 2) {
+        const id = newPaneId();
+        const baseTab = makeFreshTab();
+        setPanesById((current) => {
+          const next = new Map(current);
+          next.set(id, {
+            tabs: [baseTab],
+            activeTabId: baseTab.id,
+            runtimeSessionId: newRuntimeId(),
+            initialSessionId: sessionParam,
+          });
+          return next;
+        });
+        setLayout((prev) => splitLeaf(prev, focusedPaneId, id, "vertical", "b"));
+        setFocusedPaneId(id);
+      } else {
+        const targetPaneId = leaves.find((id) => id !== focusedPaneId) ?? focusedPaneId;
+        setFocusedPaneId(targetPaneId);
+        setPanesById((current) => {
+          const cur = current.get(targetPaneId);
+          if (!cur) return current;
+          const next = new Map(current);
+          next.set(targetPaneId, { ...cur, initialSessionId: sessionParam });
+          return next;
+        });
+      }
+      return;
+    }
+
     if (sessionParam) {
       // Stamp the session id onto the focused pane state. ChatPane will pick
       // it up on its next render and replay it without any timer-based race.
@@ -595,7 +628,7 @@ export function AgentWorkspace() {
         return next;
       });
     }
-  }, [searchParams, projects, selectedProjectId, selectProject, focusedPaneId]);
+  }, [searchParams, projects, selectedProjectId, selectProject, focusedPaneId, layout]);
 
   function normalizeBrowserInput(raw: string): string {
     const value = raw.trim();
@@ -643,11 +676,18 @@ export function AgentWorkspace() {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = computerWidth;
+    let frame = 0;
     const onMove = (moveEvent: MouseEvent) => {
-      setComputerWidth(clampComputerWidth(startWidth + startX - moveEvent.clientX));
+      const next = clampComputerWidth(startWidth + startX - moveEvent.clientX);
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (computerAsideRef.current) computerAsideRef.current.style.width = `${next}px`;
+      });
     };
     const onUp = (upEvent: MouseEvent) => {
+      if (frame) cancelAnimationFrame(frame);
       const next = clampComputerWidth(startWidth + startX - upEvent.clientX);
+      if (computerAsideRef.current) computerAsideRef.current.style.width = `${next}px`;
       setComputerWidth(next);
       window.localStorage.setItem(COMPUTER_WIDTH_KEY, String(next));
       window.removeEventListener("mousemove", onMove);
@@ -662,6 +702,7 @@ export function AgentWorkspace() {
     [projects, selectedProjectId],
   );
   const focusedPane = panesById.get(focusedPaneId) ?? panesById.values().next().value ?? null;
+  const focusedTab = focusedPane?.tabs.find((tab) => tab.id === focusedPane.activeTabId) ?? null;
   const shouldShowProjectEmptyState =
     projectsLoaded && !searchParams.get("project") && !selectedProjectId && projects.length === 0;
 
@@ -760,9 +801,13 @@ export function AgentWorkspace() {
               ? "border-(--border) bg-(--surface) text-(--fg)"
               : "border-transparent text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
           }`}
-          title="Toggle computer"
+          title={
+            rightPanelOpen
+              ? "Hide browser/files computer panel"
+              : "Show browser/files computer panel for the focused agent"
+          }
         >
-          Computer
+          {rightPanelOpen ? "Hide computer" : "Show computer"}
         </button>
       </header>
 
@@ -812,7 +857,7 @@ export function AgentWorkspace() {
                       contextWindow={activeModel?.contextWindow ?? 0}
                       cwd={agentCwd}
                       projectName={activeProject?.name ?? null}
-                      browserToolEnabled={browserToolEnabled}
+                      browserToolEnabled={focusedPaneId === paneId && browserToolEnabled}
                       onToggleBrowserTool={toggleBrowserTool}
                       onPiSessionIdChange={notifySessionsChanged}
                       isFocused={focusedPaneId === paneId}
@@ -861,6 +906,7 @@ export function AgentWorkspace() {
                   // initialSessionId so its ChatPane replays the session on
                   // first render — no loader-registration race.
                   const id = newPaneId();
+                  if (collectLeaves(layout).length >= 2) return;
                   const runtime = newRuntimeId();
                   const baseTab = makeFreshTab();
                   setPanesById((current) => {
@@ -887,20 +933,27 @@ export function AgentWorkspace() {
         {rightPanelOpen ? (
           <aside
             className="relative hidden shrink-0 flex-col border-l border-(--border) bg-(--bg) xl:flex"
+            ref={computerAsideRef}
             style={{ width: computerWidth }}
           >
             <div
               role="separator"
               aria-orientation="vertical"
-              title="Resize browser"
+              title="Resize computer"
               onMouseDown={startComputerResize}
               className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--accent)/20"
             />
             <div className="flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-2 text-xs text-(--dim)">
+              <span
+                className="min-w-0 flex-1 truncate px-1 text-[10px] uppercase tracking-wide"
+                title={`Computer follows focused session: ${focusedTab?.title ?? "New session"}`}
+              >
+                {focusedTab?.title ?? "Focused session"}
+              </span>
               <button
                 type="button"
                 onClick={() => selectComputerTab("browser")}
-                className={`h-6 flex-1 rounded px-2 font-medium uppercase tracking-wide ${
+                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
                   activeComputerTab === "browser"
                     ? "bg-(--surface) text-(--fg)"
                     : "hover:bg-(--surface) hover:text-(--fg)"
@@ -911,7 +964,7 @@ export function AgentWorkspace() {
               <button
                 type="button"
                 onClick={() => selectComputerTab("files")}
-                className={`h-6 flex-1 rounded px-2 font-medium uppercase tracking-wide ${
+                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
                   activeComputerTab === "files"
                     ? "bg-(--surface) text-(--fg)"
                     : "hover:bg-(--surface) hover:text-(--fg)"
