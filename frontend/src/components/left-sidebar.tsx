@@ -205,7 +205,7 @@ function NavItemDesktop({
         active
           ? "bg-(--surface) text-(--fg)"
           : "text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
-      }`}
+      } shrink-0`}
     >
       <Icon className="w-4 h-4 shrink-0" />
       <span

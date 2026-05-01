@@ -334,7 +334,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex shrink-0 flex-col">
       <div className="mt-2 flex h-7 items-center px-3 text-[10px] font-medium uppercase tracking-wide text-(--dim)">
         Projects
       </div>
