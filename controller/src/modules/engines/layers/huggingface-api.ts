@@ -13,7 +13,8 @@ export const fetchHuggingFaceModelInfo = async (
   revision?: string | null,
   hfToken?: string | null
 ): Promise<HuggingFaceModelInfo> => {
-  const url = new URL(`https://huggingface.co/api/models/${encodeURIComponent(modelId)}`);
+  const encodedModelId = modelId.split("/").map(encodeURIComponent).join("/");
+  const url = new URL(`https://huggingface.co/api/models/${encodedModelId}`);
   if (revision) {
     url.searchParams.set("revision", revision);
   }
@@ -29,7 +30,13 @@ export const fetchHuggingFaceModelInfo = async (
   return (await response.json()) as HuggingFaceModelInfo;
 };
 
-/** Builds a file download list from model metadata, filtering by allow/ignore glob patterns. */
+/**
+ * Builds a file download list from model metadata, filtering by allow/ignore glob patterns.
+ * @param modelInfo
+ * @param allowPatterns
+ * @param ignorePatterns
+ * @returns Downloadable file metadata after applying filters.
+ */
 export const buildHuggingFaceFileList = (
   modelInfo: HuggingFaceModelInfo,
   allowPatterns: string[],
