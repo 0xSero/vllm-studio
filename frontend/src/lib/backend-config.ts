@@ -12,23 +12,8 @@ const pickFirstNonEmpty = (...values: Array<string | undefined>): string | undef
 };
 
 /**
- * Backend URL from process env only (no localhost fallback).
- * Lets `BACKEND_URL` / `NEXT_PUBLIC_*` override a stale `api-settings.json` (common cause of “offline” in dev).
- */
-export function resolveExplicitEnvBackendUrl(): string | undefined {
-  const v = pickFirstNonEmpty(
-    process.env.BACKEND_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-    process.env.VLLM_STUDIO_BACKEND_URL,
-  );
-  const t = v?.trim();
-  return t && t.length > 0 ? t : undefined;
-}
-
-/**
  * Server-side API client base URL.
- * Mirrors historical precedence in `src/lib/api.ts`.
+ * Used as a first-run fallback when api-settings.json doesn't exist yet.
  */
 export const resolveApiServerBaseUrl = (): string =>
   pickFirstNonEmpty(
@@ -38,8 +23,7 @@ export const resolveApiServerBaseUrl = (): string =>
   ) ?? LOCAL_BACKEND_FALLBACK;
 
 /**
- * Default backend URL shown in settings/config UIs.
- * Mirrors historical precedence in `src/lib/api-settings.ts` and `use-configs.ts`.
+ * Default backend URL shown in settings/config UIs on first run.
  */
 export const resolveSettingsDefaultBackendUrl = (): string =>
   pickFirstNonEmpty(
@@ -50,7 +34,6 @@ export const resolveSettingsDefaultBackendUrl = (): string =>
 
 /**
  * Client-side controller event stream base URL.
- * Mirrors historical precedence in `use-controller-events.ts`.
  */
 export const resolveControllerEventsBaseUrl = (): string =>
   pickFirstNonEmpty(
@@ -58,4 +41,3 @@ export const resolveControllerEventsBaseUrl = (): string =>
     process.env.VLLM_STUDIO_BACKEND_URL,
     process.env.BACKEND_URL,
   ) ?? CLIENT_PROXY_FALLBACK;
-

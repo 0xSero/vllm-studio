@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, realpath, stat, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
+import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
 import { listProjectsFromStore } from "./projects-store";
 
@@ -29,22 +30,6 @@ type PendingCommand = {
 
 function normalizeBackendUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
-}
-
-function getWritableDataDir(): string {
-  const candidates = [
-    process.env.VLLM_STUDIO_DATA_DIR,
-    path.join(process.cwd(), "data"),
-    path.join(process.cwd(), "..", "data"),
-    path.join(process.cwd(), "frontend", "data"),
-    path.join(homedir(), ".vllm-studio"),
-    path.join(tmpdir(), "vllm-studio"),
-  ].filter((dir): dir is string => Boolean(dir));
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return candidates[0] ?? path.join(tmpdir(), "vllm-studio");
 }
 
 function resolveDefaultAgentCwd(): string {
@@ -151,7 +136,7 @@ async function fetchModelsFromBackend(settings: ApiSettings): Promise<AgentModel
 }
 
 async function writePiModelsConfig(settings: ApiSettings, models: AgentModel[]): Promise<string> {
-  const dataDir = getWritableDataDir();
+  const dataDir = resolveDataDir();
   const agentDir = path.join(dataDir, "pi-agent");
   await mkdir(agentDir, { recursive: true });
   await chmod(agentDir, 0o700).catch(() => undefined);
@@ -349,6 +334,16 @@ class PiRpcSession extends EventEmitter {
           pending?.resolve(response);
         }
         return;
+      }
+    }
+
+    if (parsed.type === "session") {
+      for (const key of ["id", "sessionId", "session_id"]) {
+        const value = parsed[key];
+        if (typeof value === "string" && value.trim()) {
+          this.currentPiSessionId = value.trim();
+          break;
+        }
       }
     }
 

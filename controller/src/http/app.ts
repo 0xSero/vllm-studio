@@ -11,7 +11,6 @@ import { registerModelsRoutes } from "../modules/models/routes";
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
 import { registerAudioRoutes } from "../modules/audio/routes";
-import { registerJobsRoutes } from "../modules/jobs/routes";
 import { createOpenApiSpec } from "./openapi-spec";
 import {
   createMutatingAuthMiddleware,
@@ -60,7 +59,6 @@ export const createApp = (context: AppContext): Hono => {
   registerModelsRoutes(app, context);
   registerStudioRoutes(app, context);
   registerAudioRoutes(app, context);
-  registerJobsRoutes(app, context, context.jobManager);
   registerAllProxyRoutes(app, context);
 
   // OpenAPI documentation endpoints

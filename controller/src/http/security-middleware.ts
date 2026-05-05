@@ -15,18 +15,34 @@ type MutatingRateLimitEntry = {
 
 const mutatingRateLimitStore = new Map<string, MutatingRateLimitEntry>();
 
+/**
+ *
+ */
 export function resetMutatingRateLimitStoreForTests(): void {
   mutatingRateLimitStore.clear();
 }
 
+/**
+ *
+ * @param method
+ */
 function isMutatingRequest(method: string): boolean {
   return MUTATING_METHODS.has(method.toUpperCase());
 }
 
+/**
+ *
+ * @param method
+ * @param path
+ */
 function isPublicRequest(method: string, path: string): boolean {
   return method.toUpperCase() === "OPTIONS" || PUBLIC_PATHS.has(path);
 }
 
+/**
+ *
+ * @param header
+ */
 function getClientIpFromRequestHeaders(header: (name: string) => string | undefined): string {
   const forwarded = header("x-forwarded-for")
     ?.split(",")
@@ -36,6 +52,10 @@ function getClientIpFromRequestHeaders(header: (name: string) => string | undefi
   return forwarded ?? direct ?? "unknown";
 }
 
+/**
+ *
+ * @param header
+ */
 function extractAuthToken(header: (name: string) => string | undefined): string | null {
   const bearer = header("authorization");
   if (bearer) {
@@ -53,6 +73,11 @@ function extractAuthToken(header: (name: string) => string | undefined): string 
   return null;
 }
 
+/**
+ *
+ * @param expected
+ * @param provided
+ */
 function safeTokenEquals(expected: string, provided: string): boolean {
   const expectedBuffer = Buffer.from(expected);
   const providedBuffer = Buffer.from(provided);
@@ -62,10 +87,20 @@ function safeTokenEquals(expected: string, provided: string): boolean {
   return timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
+/**
+ *
+ * @param path
+ * @param method
+ * @param clientIp
+ */
 function buildMutatingRateLimitKey(path: string, method: string, clientIp: string): string {
   return `${clientIp}:${method.toUpperCase()}:${path}`;
 }
 
+/**
+ *
+ * @param context
+ */
 export function createMutatingAuthMiddleware(context: AppContext): MiddlewareHandler {
   return async (ctx, next) => {
     if (isPublicRequest(ctx.req.method, ctx.req.path)) {
@@ -87,12 +122,19 @@ export function createMutatingAuthMiddleware(context: AppContext): MiddlewareHan
   };
 }
 
+/**
+ *
+ * @param _context
+ * @param options
+ * @param options.windowMs
+ * @param options.maxRequests
+ */
 export function createMutatingRateLimitMiddleware(
   _context: AppContext,
   options: {
     windowMs?: number;
     maxRequests?: number;
-  } = {},
+  } = {}
 ): MiddlewareHandler {
   const windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
   const maxRequests = options.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;

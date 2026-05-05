@@ -23,13 +23,13 @@ describe("controller event routing", () => {
 
   it("dispatches known events and returns true", () => {
     const dispatch = vi.fn();
-    const data = { id: "job-1" };
+    const data = { running: true };
 
-    const handled = dispatchControllerDomainEvent(CONTROLLER_EVENTS.JOB_UPDATED, data, dispatch);
+    const handled = dispatchControllerDomainEvent(CONTROLLER_EVENTS.STATUS, data, dispatch);
 
     expect(handled).toBe(true);
     expect(dispatch).toHaveBeenCalledWith(CONTROLLER_BROWSER_EVENT_CHANNEL.controller, {
-      type: CONTROLLER_EVENTS.JOB_UPDATED,
+      type: CONTROLLER_EVENTS.STATUS,
       data,
     });
   });

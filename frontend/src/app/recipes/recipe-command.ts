@@ -13,6 +13,8 @@ const appendExtraArgsToCommand = (args: string[], extraArgs: Record<string, unkn
     "description",
     "tags",
     "status",
+    "launch_command",
+    "custom_command",
   ]);
   const jsonStringKeys = new Set(["speculative_config", "default_chat_template_kwargs"]);
   const existingFlags = new Set(
@@ -118,6 +120,11 @@ const appendLlamacppArgsToCommand = (
 
 export const generateCommand = (recipe: RecipeEditor): string => {
   const payload = prepareRecipeForSave(recipe);
+  const commandOverride = payload.extra_args?.["launch_command"] ?? payload.extra_args?.["custom_command"];
+  if (typeof commandOverride === "string" && commandOverride.trim()) {
+    return commandOverride;
+  }
+
   const backend = payload.backend || "vllm";
   const args: string[] = [];
 
@@ -194,5 +201,5 @@ export const generateCommand = (recipe: RecipeEditor): string => {
     appendLlamacppArgsToCommand(args, payload.extra_args ?? {});
   }
 
-  return args.join(" \\\n+  ");
+  return args.join(" \\\n  ");
 };

@@ -1,7 +1,7 @@
 // CRITICAL
 import { afterEach, describe, expect, it } from "bun:test";
 import type { Recipe } from "../modules/models/types";
-import { buildEnvironment } from "../modules/engines/layers/process-utilities";
+import { buildEnvironment } from "../modules/engines/process/process-utilities";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -81,9 +81,7 @@ describe("buildEnvironment visible devices", () => {
 
   it("lets explicit hip_visible_devices override projected values", () => {
     process.env["VLLM_STUDIO_GPU_SMI_TOOL"] = "amd-smi";
-    const env = buildEnvironment(
-      makeRecipe({ visible_devices: "0", hip_visible_devices: "2" })
-    );
+    const env = buildEnvironment(makeRecipe({ visible_devices: "0", hip_visible_devices: "2" }));
     expect(env["HIP_VISIBLE_DEVICES"]).toBe("2");
     expect(env["ROCR_VISIBLE_DEVICES"]).toBe("0");
   });

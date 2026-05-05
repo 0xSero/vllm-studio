@@ -13,6 +13,7 @@ import {
   PanelLeftOpen,
   Trash2,
 } from "lucide-react";
+import hljs from "highlight.js";
 import { AssistantMarkdown } from "./assistant-markdown";
 
 type FsEntry = {
@@ -36,6 +37,31 @@ type Props = {
 };
 
 const LAST_FILE_KEY_PREFIX = "vllm-studio.agent.lastOpenFile.";
+
+const EXT_TO_LANG: Record<string, string> = {
+  js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript",
+  py: "python", rb: "ruby", rs: "rust", go: "go", java: "java",
+  c: "c", cpp: "cpp", h: "c", hpp: "cpp",
+  cs: "csharp", swift: "swift", kt: "kotlin", kts: "kotlin",
+  html: "html", htm: "html", svg: "xml", xml: "xml", xsl: "xml",
+  css: "css", scss: "scss", sass: "scss", less: "less",
+  json: "json", yaml: "yaml", yml: "yaml", toml: "ini",
+  sh: "bash", bash: "bash", zsh: "bash", fish: "shell",
+  sql: "sql", graphql: "graphql", gql: "graphql",
+  md: "markdown", mdx: "markdown",
+  dockerfile: "dockerfile", makefile: "makefile",
+  lua: "lua", r: "r", dart: "dart", zig: "zig",
+  vue: "html", svelte: "html",
+};
+
+function languageForPath(path: string): string | undefined {
+  const name = path.split("/").pop() ?? "";
+  const lower = name.toLowerCase();
+  if (lower === "dockerfile" || lower.startsWith("dockerfile.")) return "dockerfile";
+  if (lower === "makefile" || lower.startsWith("makefile.")) return "makefile";
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  return EXT_TO_LANG[ext];
+}
 
 function previewKindForPath(path: string): "html" | "jsx" | "md" | null {
   if (/\.(html?|svg)$/i.test(path)) return "html";
@@ -338,6 +364,7 @@ export function FilesystemPanel({ cwd }: Props) {
             ) : (
               <FileViewer
                 key={openFile}
+                filePath={openFile}
                 lines={lines}
                 commentsByLine={commentsByLine}
                 onAddComment={addComment}
@@ -409,11 +436,13 @@ function RenderedPreview({ content, kind }: { content: string; kind: "html" | "j
 }
 
 function FileViewer({
+  filePath,
   lines,
   commentsByLine,
   onAddComment,
   onRemoveComment,
 }: {
+  filePath: string;
   lines: string[];
   commentsByLine: Map<number, Comment[]>;
   onAddComment: (line: number, body: string) => Promise<void>;
@@ -421,6 +450,17 @@ function FileViewer({
 }) {
   const [composerLine, setComposerLine] = useState<number | null>(null);
   const [composerValue, setComposerValue] = useState("");
+
+  const highlightedLines = useMemo(() => {
+    const lang = languageForPath(filePath);
+    if (!lang) return null;
+    try {
+      const result = hljs.highlight(lines.join("\n"), { language: lang });
+      return result.value.split("\n");
+    } catch {
+      return null;
+    }
+  }, [filePath, lines]);
 
   const submit = useCallback(
     async (event: FormEvent) => {
@@ -441,6 +481,7 @@ function FileViewer({
       const text = lines[index] ?? "";
       const lineComments = commentsByLine.get(lineNumber) ?? [];
       const composerOpen = composerLine === lineNumber;
+      const html = highlightedLines?.[index];
       return (
         <div className="group flex flex-col">
           <div
@@ -453,8 +494,11 @@ function FileViewer({
             <span className="w-10 shrink-0 select-none text-right font-mono text-[10px] leading-5 text-(--dim)">
               {lineNumber}
             </span>
-            <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-[12px] leading-5 text-(--fg)">
-              {text || "\u00a0"}
+            <pre
+              className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-[12px] leading-5 text-(--fg)"
+              {...(html ? { dangerouslySetInnerHTML: { __html: html || "&nbsp;" } } : undefined)}
+            >
+              {!html ? (text || "\u00a0") : undefined}
             </pre>
             {lineComments.length > 0 ? (
               <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 rounded border border-(--border) px-1 font-mono text-[10px] text-(--dim)">
@@ -524,7 +568,7 @@ function FileViewer({
         </div>
       );
     },
-    [lines, commentsByLine, composerLine, composerValue, onRemoveComment, submit],
+    [lines, highlightedLines, commentsByLine, composerLine, composerValue, onRemoveComment, submit],
   );
 
   // Plain map for short files; virtualized for long ones.

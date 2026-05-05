@@ -154,7 +154,19 @@ export function FileIcon(props: IconProps) {
 export function GlobeIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zm0 1.6c-1 0-2.2 1.4-2.6 3.4h5.2c-.4-2-1.6-3.4-2.6-3.4zM3.7 6.5a8 8 0 0 0-.2 1.5c0 .5.1 1 .2 1.5h2.6a14 14 0 0 1 0-3H3.7zm4 0a13 13 0 0 0 0 3h2.6a13 13 0 0 0 0-3H7.7zm4 0a14 14 0 0 1 0 3h2.6c.1-.5.2-1 .2-1.5s-.1-1-.2-1.5h-2.6zM5.4 11c.4 2 1.6 3.4 2.6 3.4S10.2 13 10.6 11H5.4z" />
+      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <ellipse cx="8" cy="8" rx="3" ry="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M1.5 8h13" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.3 5h11.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M2.3 11h11.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </Svg>
+  );
+}
+
+export function ComputerIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2 2.5h12v8.5H9.5v1.5H12V14H4v-1.5h2.5V11H2V2.5zm1.5 1.5v5.5h9V4h-9z" />
     </Svg>
   );
 }

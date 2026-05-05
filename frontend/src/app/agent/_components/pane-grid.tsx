@@ -12,12 +12,36 @@ type Props = {
     paneId: PaneId,
     direction: "vertical" | "horizontal",
     side: "a" | "b",
-    payload: { piSessionId?: string },
+    payload: SessionDropPayload,
   ) => void;
+  onOpenTab: (paneId: PaneId, payload: SessionDropPayload) => void;
   onResize: (path: number[], ratio: number) => void;
 };
 
-export function PaneGrid({ layout, renderPane, onSplit, onResize }: Props) {
+export type SessionDropPayload = {
+  piSessionId?: string | null;
+  projectId?: string;
+  cwd?: string;
+  paneId?: string;
+  tabId?: string;
+  title?: string;
+};
+
+function readSessionDrop(event: React.DragEvent): SessionDropPayload | null {
+  const raw = event.dataTransfer.getData("application/x-vllm-agent-session");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as SessionDropPayload;
+      if (parsed.piSessionId || parsed.tabId) return parsed;
+    } catch {
+      // Fall through to the legacy persisted-session payload.
+    }
+  }
+  const piSessionId = event.dataTransfer.getData("application/x-vllm-session");
+  return piSessionId ? { piSessionId } : null;
+}
+
+export function PaneGrid({ layout, renderPane, onSplit, onOpenTab, onResize }: Props) {
   return (
     <div className="flex h-full min-h-0 w-full">
       <PaneNode
@@ -25,6 +49,7 @@ export function PaneGrid({ layout, renderPane, onSplit, onResize }: Props) {
         path={[]}
         renderPane={renderPane}
         onSplit={onSplit}
+        onOpenTab={onOpenTab}
         onResize={onResize}
       />
     </div>
@@ -36,17 +61,24 @@ function PaneNode({
   path,
   renderPane,
   onSplit,
+  onOpenTab,
   onResize,
 }: {
   layout: Layout;
   path: number[];
   renderPane: RenderPane;
   onSplit: Props["onSplit"];
+  onOpenTab: Props["onOpenTab"];
   onResize: Props["onResize"];
 }) {
   if (layout.kind === "leaf") {
     return (
-      <PaneLeaf paneId={layout.paneId} renderPane={renderPane} onSplit={onSplit} />
+      <PaneLeaf
+        paneId={layout.paneId}
+        renderPane={renderPane}
+        onSplit={onSplit}
+        onOpenTab={onOpenTab}
+      />
     );
   }
   return (
@@ -55,6 +87,7 @@ function PaneNode({
       path={path}
       renderPane={renderPane}
       onSplit={onSplit}
+      onOpenTab={onOpenTab}
       onResize={onResize}
     />
   );
@@ -65,12 +98,14 @@ function SplitNode({
   path,
   renderPane,
   onSplit,
+  onOpenTab,
   onResize,
 }: {
   layout: Extract<Layout, { kind: "split" }>;
   path: number[];
   renderPane: RenderPane;
   onSplit: Props["onSplit"];
+  onOpenTab: Props["onOpenTab"];
   onResize: Props["onResize"];
 }) {
   const isRow = layout.direction === "vertical"; // side-by-side = horizontal flex
@@ -104,6 +139,7 @@ function SplitNode({
           path={[...path, 0]}
           renderPane={renderPane}
           onSplit={onSplit}
+          onOpenTab={onOpenTab}
           onResize={onResize}
         />
       </div>
@@ -122,6 +158,7 @@ function SplitNode({
           path={[...path, 1]}
           renderPane={renderPane}
           onSplit={onSplit}
+          onOpenTab={onOpenTab}
           onResize={onResize}
         />
       </div>
@@ -135,35 +172,56 @@ function PaneLeaf({
   paneId,
   renderPane,
   onSplit,
+  onOpenTab,
 }: {
   paneId: PaneId;
   renderPane: RenderPane;
   onSplit: Props["onSplit"];
+  onOpenTab: Props["onOpenTab"];
 }) {
-  const [hoverEdge, setHoverEdge] = useState<null | "left" | "right" | "top" | "bottom">(null);
+  const [hoverEdge, setHoverEdge] = useState<null | "center" | "left" | "right" | "top" | "bottom">(
+    null,
+  );
 
-  const onDragOver = (edge: "left" | "right" | "top" | "bottom") =>
+  const onDragOver =
+    (edge: "center" | "left" | "right" | "top" | "bottom") =>
     (event: React.DragEvent<HTMLDivElement>) => {
-      const sessionId = event.dataTransfer.types.includes("application/x-vllm-session");
-      if (!sessionId) return;
+      const hasSession =
+        event.dataTransfer.types.includes("application/x-vllm-session") ||
+        event.dataTransfer.types.includes("application/x-vllm-agent-session");
+      if (!hasSession) return;
       event.preventDefault();
+      if (edge !== "center") event.stopPropagation();
       event.dataTransfer.dropEffect = "copy";
       setHoverEdge(edge);
     };
 
-  const onDrop = (
-    direction: "vertical" | "horizontal",
-    side: "a" | "b",
-  ) => (event: React.DragEvent<HTMLDivElement>) => {
-    const piSessionId = event.dataTransfer.getData("application/x-vllm-session");
-    if (!piSessionId) return;
+  const onDrop =
+    (direction: "vertical" | "horizontal", side: "a" | "b") =>
+    (event: React.DragEvent<HTMLDivElement>) => {
+      const payload = readSessionDrop(event);
+      if (!payload) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHoverEdge(null);
+      onSplit(paneId, direction, side, payload);
+    };
+
+  const onCenterDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const payload = readSessionDrop(event);
+    if (!payload) return;
     event.preventDefault();
     setHoverEdge(null);
-    onSplit(paneId, direction, side, { piSessionId });
+    onOpenTab(paneId, payload);
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1"
+      onDragOver={onDragOver("center")}
+      onDragLeave={() => setHoverEdge(null)}
+      onDrop={onCenterDrop}
+    >
       {renderPane(paneId)}
 
       {/* Edge drop targets: thin strips along each edge that catch a session
@@ -204,7 +262,9 @@ function PaneLeaf({
                 ? "inset-y-0 right-0 w-1/2"
                 : hoverEdge === "top"
                   ? "inset-x-0 top-0 h-1/2"
-                  : "inset-x-0 bottom-0 h-1/2"
+                  : hoverEdge === "bottom"
+                    ? "inset-x-0 bottom-0 h-1/2"
+                    : "inset-6 rounded"
           }`}
         />
       ) : null}

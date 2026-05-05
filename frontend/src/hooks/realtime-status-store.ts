@@ -12,14 +12,12 @@ import type {
 import api from "@/lib/api";
 import type { RealtimeStatusSnapshot } from "./realtime-status-store/types";
 import type {
-  JobEntry,
   LeaseInfo,
   RuntimeSummaryData,
   ServiceEntry,
 } from "./realtime-status-store/types";
 import {
   areGpusEqual,
-  areJobsEqual,
   areLaunchProgressEqual,
   areLeasesEqual,
   areMetricsEqual,
@@ -59,7 +57,6 @@ const initialSnapshot: RealtimeStatusSnapshot = {
   runtimeSummary: null,
   services: [],
   lease: null,
-  jobs: [],
   lastEventAt: 0,
 };
 
@@ -78,8 +75,7 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
     !arePlatformKindsEqual(snapshot.platformKind, next.platformKind) ||
     !areRuntimeSummariesEqual(snapshot.runtimeSummary, next.runtimeSummary) ||
     !areServicesEqual(snapshot.services, next.services) ||
-    !areLeasesEqual(snapshot.lease, next.lease) ||
-    !areJobsEqual(snapshot.jobs, next.jobs);
+    !areLeasesEqual(snapshot.lease, next.lease);
 
   snapshot = changed ? next : { ...snapshot, lastEventAt: next.lastEventAt };
   if (!changed) return;
@@ -149,7 +145,6 @@ async function fetchStatusNow() {
       runtimeSummary,
       services: snapshot.services,
       lease: snapshot.lease,
-      jobs: snapshot.jobs,
       lastEventAt: Date.now(),
     });
   }
@@ -251,18 +246,8 @@ function start() {
         runtimeSummary: nextSummary,
         services: nextServices,
         lease: nextLease,
-        jobs: snapshot.jobs,
         lastEventAt: now,
       });
-    }
-
-    if (type === "job_updated") {
-      const job = data as unknown as JobEntry;
-      if (job?.id) {
-        const nextJobs = snapshot.jobs.filter((j) => j.id !== job.id);
-        nextJobs.unshift(job);
-        emitIfChanged({ ...snapshot, jobs: nextJobs.slice(0, 50), lastEventAt: now });
-      }
     }
   };
 

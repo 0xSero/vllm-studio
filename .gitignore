@@ -6,6 +6,8 @@
 !.env.example
 
 .factory
+engines-wiki/
+droid-wiki/
 
 # Per-project agent comments (created when the user adds comments via the
 # vLLM Studio agent surface). Project-local, not shared.

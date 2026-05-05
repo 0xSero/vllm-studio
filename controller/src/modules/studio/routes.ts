@@ -24,7 +24,7 @@ import {
   savePersistedConfig,
   type ProviderConfig,
 } from "../../config/persisted-config";
-import { getVllmRuntimeInfo } from "../engines/layers/vllm-runtime";
+import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
 
 const getDiskInfo = (
   path: string
@@ -344,7 +344,13 @@ export const registerStudioRoutes = (app: Hono, context: AppContext): void => {
     const apiKey = typeof body.api_key === "string" ? body.api_key.trim() : current.api_key;
     const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
 
-    const updated: ProviderConfig = { id: providerId, name, base_url: baseUrl, api_key: apiKey, enabled };
+    const updated: ProviderConfig = {
+      id: providerId,
+      name,
+      base_url: baseUrl,
+      api_key: apiKey,
+      enabled,
+    };
     const providers = [...context.config.providers];
     providers[index] = updated;
     savePersistedConfig(context.config.data_dir, { providers });

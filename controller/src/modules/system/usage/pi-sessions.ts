@@ -19,6 +19,10 @@ type UsageAccumulator = {
   last24hRequests: number;
   prev24hRequests: number;
   last24hTokens: number;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheHitTokens: number;
+  cacheMissTokens: number;
 };
 
 type ModelUsage = {
@@ -98,7 +102,13 @@ const addAssistantUsage = (
   sessionId: string,
   model: string,
   timestamp: Date,
-  usage: { prompt: number; completion: number; total: number },
+  usage: {
+    prompt: number;
+    completion: number;
+    total: number;
+    cacheRead: number;
+    cacheWrite: number;
+  },
   now: Date
 ): void => {
   const date = timestamp.toISOString().slice(0, 10);
@@ -107,6 +117,14 @@ const addAssistantUsage = (
   accumulator.promptTokens += usage.prompt;
   accumulator.completionTokens += usage.completion;
   accumulator.totalTokens += usage.total;
+  if (usage.cacheRead > 0) {
+    accumulator.cacheHits += 1;
+    accumulator.cacheHitTokens += usage.cacheRead;
+  }
+  if (usage.cacheWrite > 0) {
+    accumulator.cacheMisses += 1;
+    accumulator.cacheMissTokens += usage.cacheWrite;
+  }
   accumulator.sessions.add(sessionId);
   upsertUsage(accumulator.byModel, model, model, usage);
   upsertUsage(accumulator.daily, date, "all", usage, date);
@@ -140,7 +158,15 @@ const parseTimestamp = (value: unknown, fallback: Date): Date => {
 const parseAssistantUsage = (
   event: Record<string, unknown>,
   fallbackModel: string | null
-): { model: string; prompt: number; completion: number; total: number; timestamp: Date } | null => {
+): {
+  model: string;
+  prompt: number;
+  completion: number;
+  total: number;
+  cacheRead: number;
+  cacheWrite: number;
+  timestamp: Date;
+} | null => {
   if (event["type"] !== "message") return null;
   const message = recordValue(event["message"]);
   if (message["role"] !== "assistant") return null;
@@ -149,6 +175,8 @@ const parseAssistantUsage = (
   const completion = numberValue(usage["output"] ?? usage["completion_tokens"]);
   const total = numberValue(usage["totalTokens"] ?? usage["total_tokens"]) || prompt + completion;
   if (total <= 0) return null;
+  const cacheRead = numberValue(usage["cacheRead"]);
+  const cacheWrite = numberValue(usage["cacheWrite"]);
   const model = textValue(message["model"]) ?? fallbackModel ?? "unknown";
   const eventTime = parseTimestamp(event["timestamp"], new Date());
   return {
@@ -156,13 +184,16 @@ const parseAssistantUsage = (
     prompt,
     completion,
     total,
+    cacheRead,
+    cacheWrite,
     timestamp: parseTimestamp(message["timestamp"], eventTime),
   };
 };
 
 export const getUsageFromPiSessions = (
   root = piSessionsRoot(),
-  now = new Date()
+  now = new Date(),
+  knownModels?: Set<string> // if provided, only these model names are included
 ): UsagePayload | null => {
   const accumulator: UsageAccumulator = {
     totalRequests: 0,
@@ -178,6 +209,10 @@ export const getUsageFromPiSessions = (
     last24hRequests: 0,
     prev24hRequests: 0,
     last24hTokens: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
   };
 
   for (const file of collectJsonlFiles(root)) {
@@ -197,7 +232,7 @@ export const getUsageFromPiSessions = (
         currentModel = textValue(event["modelId"]) ?? currentModel;
       }
       const usage = parseAssistantUsage(event, currentModel);
-      if (usage)
+      if (usage && (!knownModels || knownModels.has(usage.model)))
         addAssistantUsage(accumulator, sessionId, usage.model, usage.timestamp, usage, now);
     }
   }
@@ -248,7 +283,16 @@ export const getUsageFromPiSessions = (
       p50: 0,
       p95: 0,
     },
-    cache: { hits: 0, misses: 0, hit_tokens: 0, miss_tokens: 0, hit_rate: 0 },
+    cache: {
+      hits: accumulator.cacheHits,
+      misses: accumulator.cacheMisses,
+      hit_tokens: accumulator.cacheHitTokens,
+      miss_tokens: accumulator.cacheMissTokens,
+      hit_rate:
+        accumulator.cacheHits + accumulator.cacheMisses > 0
+          ? (accumulator.cacheHits / (accumulator.cacheHits + accumulator.cacheMisses)) * 100
+          : 0,
+    },
     week_over_week: {
       this_week: { requests: 0, tokens: 0, successful: 0 },
       last_week: { requests: 0, tokens: 0, successful: 0 },

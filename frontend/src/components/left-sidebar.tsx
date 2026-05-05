@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
+  Bot,
   Database,
   HardDrive,
   Server,
@@ -12,7 +14,9 @@ import {
   Moon,
   Square,
   PanelLeftClose,
+  Menu,
   PanelLeftOpen,
+  X,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
@@ -24,6 +28,7 @@ import { ModelStopConfirm } from "@/components/model-stop-confirm";
 const tabs = [
   { href: "/", label: "Status", icon: BarChart3 },
   { href: "/usage", label: "Usage", icon: Database },
+  { href: "/agent", label: "Agent", icon: Bot },
   { href: "/recipes", label: "Models", icon: HardDrive },
   { href: "/logs", label: "Server", icon: Server },
   { href: "/configs", label: "Settings", icon: Settings },
@@ -64,9 +69,9 @@ function isRouteActive(pathname: string, href: string): boolean {
 }
 
 /**
- * Left navigation rail. Collapsed to 56px by default, expands to 208px on
- * hover. Mobile (<768px) flips to a 56px bottom tab bar with a 40px top
- * strip for logo/theme/status.
+ * Left navigation rail. Desktop keeps a compact rail. Mobile/PWA uses a top
+ * app bar with a hamburger drawer instead of a bottom tab bar, keeping the
+ * viewport clear for dense telemetry and agent panes.
  */
 export function LeftSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -77,6 +82,16 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
     })),
   );
   const isExpanded = desktopSidebarPinnedOpen;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileMenuOpen]);
 
   if (pathname.startsWith("/setup")) {
     return <div className="h-full w-full">{children}</div>;
@@ -142,43 +157,120 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile: top strip */}
-      <div className="md:hidden absolute top-0 left-0 right-0 h-10 px-3 border-b border-(--border) bg-(--bg) z-40 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+      {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
+      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border) bg-(--bg) px-3">
+        <Link href="/" className="flex min-w-0 items-center gap-2">
           <LogoMark />
-          <span className="text-xs font-bold tracking-tight text-(--fg)">vLLM Studio</span>
+          <span className="truncate text-sm font-bold tracking-tight text-(--fg)">vLLM Studio</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <StopButtonMobile />
           <ThemeToggleMobile />
           <StatusRowMobile />
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex h-10 w-10 items-center justify-center rounded border border-(--border) bg-(--surface) text-(--fg)"
+            aria-label="Open navigation menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation-drawer"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
+      {mobileMenuOpen ? (
+        <MobileNavigationDrawer pathname={pathname} onClose={() => setMobileMenuOpen(false)} />
+      ) : null}
+
       {/* Main content */}
-      <main className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--bg) pt-10 pb-14 md:pt-0 md:pb-0">
+      <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--bg) md:pt-0">
         {children}
       </main>
+    </div>
+  );
+}
 
-      {/* Mobile: bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 border-t border-(--border) bg-(--bg) z-40 flex items-stretch">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const active = isRouteActive(pathname, tab.href);
-          return (
-            <Link
+function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+      <button
+        type="button"
+        className="absolute inset-0 h-full w-full bg-black/60"
+        aria-label="Close navigation menu"
+        onClick={onClose}
+      />
+      <aside
+        id="mobile-navigation-drawer"
+        className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col border-l border-(--border) bg-(--bg) shadow-2xl"
+      >
+        <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <LogoMark />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-(--fg)">vLLM Studio</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-(--dim)">PWA menu</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded border border-(--border) text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            aria-label="Close navigation menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+          <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-(--dim)">
+            Navigation
+          </div>
+          {tabs.map((tab) => (
+            <NavItemMobile
               key={tab.href}
               href={tab.href}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                active ? "text-(--fg) bg-(--surface)" : "text-(--dim)"
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{tab.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+              label={tab.label}
+              Icon={tab.icon}
+              active={isRouteActive(pathname, tab.href)}
+              onClick={onClose}
+            />
+          ))}
+          <div className="my-3 border-t border-(--border)" />
+          <ProjectsNavSection expanded />
+        </nav>
+      </aside>
     </div>
+  );
+}
+
+function NavItemMobile({
+  href,
+  label,
+  Icon,
+  active,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`mb-1 flex h-12 items-center gap-3 rounded px-3 text-sm font-medium transition-colors ${
+        active
+          ? "bg-(--surface) text-(--fg)"
+          : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+      }`}
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      <span>{label}</span>
+    </Link>
   );
 }
 
@@ -276,6 +368,28 @@ function StatusRowDesktop() {
 
 /* ---------- Mobile strip variants (always visible) ---------- */
 
+function StopButtonMobile() {
+  const status = useSidebarStatus();
+  const { stop } = useModelLifecycle();
+  if (!status.inferenceOnline) return null;
+  return (
+    <ModelStopConfirm
+      onStop={stop}
+      trigger={({ open, stopping }) => (
+        <button
+          onClick={open}
+          disabled={stopping}
+          className="flex h-10 w-10 items-center justify-center rounded text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
+          title="Stop model"
+          aria-label="Stop model"
+        >
+          <Square className="h-4 w-4" fill="currentColor" />
+        </button>
+      )}
+    />
+  );
+}
+
 function ThemeToggleMobile() {
   const { themeId, setThemeId } = useAppStore(
     useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
@@ -285,10 +399,10 @@ function ThemeToggleMobile() {
   return (
     <button
       onClick={() => setThemeId(isDark ? "omlx-light" : "omlx-dark")}
-      className="p-1.5 text-(--dim) hover:text-(--fg) transition-colors"
+      className="flex h-10 w-10 items-center justify-center rounded text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
       title={isDark ? "Light mode" : "Dark mode"}
     >
-      <Icon className="w-4 h-4" />
+      <Icon className="h-4 w-4" />
     </button>
   );
 }

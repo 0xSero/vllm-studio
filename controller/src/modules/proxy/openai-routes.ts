@@ -1,4 +1,5 @@
 // CRITICAL
+import { performance } from "node:perf_hooks";
 import type { Hono } from "hono";
 import { HttpStatus, notFound, serviceUnavailable } from "../../core/errors";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
@@ -272,6 +273,15 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       : bodyBuffer;
 
     const clientSignal = ctx.req.raw.signal;
+    const requestStart = performance.now();
+    const recordedModel =
+      matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown";
+    const sourceHeader =
+      ctx.req.header("x-vllm-source") ??
+      ctx.req.header("x-source") ??
+      ctx.req.header("user-agent") ??
+      null;
+    const recordedProvider = providerRouting ? requestProvider : "local";
 
     if (!isStreaming) {
       let response: Response;
@@ -314,6 +324,35 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
         }
         if (promptTokens > 0 || completionTokens > 0) {
           context.stores.lifetimeMetricsStore.addRequests(1);
+        }
+        try {
+          const promptDetails = usage["prompt_tokens_details"] as
+            | Record<string, number>
+            | undefined;
+          const completionDetails = usage["completion_tokens_details"] as
+            | Record<string, number>
+            | undefined;
+          context.stores.inferenceRequestStore.record({
+            model: recordedModel,
+            source: sourceHeader,
+            session_id: sessionId,
+            provider: recordedProvider,
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            reasoning_tokens:
+              (usage["reasoning_tokens"] as number | undefined) ??
+              completionDetails?.["reasoning_tokens"] ??
+              0,
+            cache_read_tokens: promptDetails?.["cached_tokens"] ?? 0,
+            cache_write_tokens: 0,
+            duration_ms: Math.round(performance.now() - requestStart),
+            status: response.status,
+            streamed: false,
+          });
+        } catch (recordError) {
+          context.logger.warn(
+            `Failed to record inference request: ${(recordError as Error).message}`
+          );
         }
       }
 
@@ -377,6 +416,26 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       }
       if (usage.prompt_tokens > 0 || usage.completion_tokens > 0) {
         context.stores.lifetimeMetricsStore.addRequests(1);
+        try {
+          context.stores.inferenceRequestStore.record({
+            model: recordedModel,
+            source: sourceHeader,
+            session_id: sessionId,
+            provider: recordedProvider,
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            reasoning_tokens: usage.reasoning_tokens ?? 0,
+            cache_read_tokens: usage.cache_read_tokens ?? 0,
+            cache_write_tokens: usage.cache_write_tokens ?? 0,
+            duration_ms: Math.round(performance.now() - requestStart),
+            status: upstreamResponse.status,
+            streamed: true,
+          });
+        } catch (recordError) {
+          context.logger.warn(
+            `Failed to record inference request: ${(recordError as Error).message}`
+          );
+        }
       }
     });
 

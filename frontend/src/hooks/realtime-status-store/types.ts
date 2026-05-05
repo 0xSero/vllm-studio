@@ -39,14 +39,6 @@ export interface LeaseInfo {
   since: string | null;
 }
 
-export interface JobEntry {
-  id: string;
-  type: string;
-  status: string;
-  progress: number;
-  updated_at: string;
-}
-
 export interface RealtimeStatusSnapshot {
   status: StatusData | null;
   gpus: GPU[];
@@ -56,6 +48,5 @@ export interface RealtimeStatusSnapshot {
   runtimeSummary: RuntimeSummaryData | null;
   services: ServiceEntry[];
   lease: LeaseInfo | null;
-  jobs: JobEntry[];
   lastEventAt: number;
 }

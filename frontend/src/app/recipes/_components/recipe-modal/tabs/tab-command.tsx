@@ -18,8 +18,8 @@ export function RecipeModalTabCommand({
       </div>
 
       <p className="text-xs text-(--dim)">
-        This is the generated command. You can copy it for reference or edit it directly.
-        <strong className="text-(--accent)"> Note: Direct edits here are not saved yet.</strong>
+        Edit this launch command directly when the form does not expose the flag you need.
+        <strong className="text-(--accent)"> Direct edits are saved with the recipe.</strong>
       </p>
 
       <div className="flex-1 bg-(--bg) border border-(--border) rounded-lg overflow-hidden flex flex-col">
@@ -40,7 +40,7 @@ export function RecipeModalTabCommand({
         <Info className="w-4 h-4 text-(--accent) mt-0.5 shrink-0" />
         <div className="text-xs text-(--dim) space-y-1">
           <p>Use the form tabs to configure the recipe. This preview updates automatically.</p>
-          <p>If you edit this command directly, those changes won&apos;t be saved with the recipe.</p>
+          <p>Once you edit the command, the saved plaintext command becomes the source of truth for launch.</p>
         </div>
       </div>
     </div>

@@ -96,6 +96,17 @@ export function RecipeModal({
   const generatedCommand = useMemo(() => generateCommand(recipe), [recipe]);
   const commandText = editedCommand ?? generatedCommand;
 
+  const handleCommandChange = (value: string) => {
+    setEditedCommand(value);
+    const nextExtraArgs = { ...(recipe.extra_args ?? {}) };
+    if (value.trim()) {
+      nextExtraArgs["launch_command"] = value;
+    } else {
+      delete nextExtraArgs["launch_command"];
+    }
+    onChange({ ...recipe, extra_args: nextExtraArgs });
+  };
+
   const handleExtraArgsChange = (value: string) => {
     setExtraArgsText(value);
     if (!value.trim()) {
@@ -195,7 +206,7 @@ export function RecipeModal({
             llamaConfigLoading={llamaConfigLoading}
             llamaConfigHelp={llamaConfigHelp}
             commandText={commandText}
-            onCommandChange={setEditedCommand}
+            onCommandChange={handleCommandChange}
           />
         </div>
 

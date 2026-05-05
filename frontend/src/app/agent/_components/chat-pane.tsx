@@ -1,16 +1,26 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   AttachIcon,
   CloseIcon,
   FileIcon,
+  GitBranchIcon,
   GlobeIcon,
-  PlusIcon,
   SendIcon,
   StopIcon,
 } from "@/components/icons";
+import { safeJson } from "@/lib/agent/safe-json";
 import { AssistantMarkdown } from "./assistant-markdown";
+
+// Imperative handle exposed by ChatPane so the workspace can replay a past
+// pi session into the focused pane without going through useEffect-driven
+// prop plumbing. The workspace calls this directly from event/click handlers
+// so the control flow is auditable in one place.
+export type ChatPaneHandle = {
+  loadAndReplay: (piSessionId: string) => Promise<void>;
+};
 
 export type ToolBlock = {
   kind: "tool";
@@ -63,6 +73,9 @@ export type SessionTab = {
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).
   piSessionId: string | null;
+  projectId?: string;
+  cwd?: string;
+  modelId?: string;
   // Display title — derived from the first user message of the session, or a
   // placeholder while empty.
   title: string;
@@ -95,6 +108,16 @@ type Props = {
   contextWindow: number;
   cwd: string;
   projectName: string | null;
+  projectSelector?: ReactNode;
+  modelSelector?: ReactNode;
+  gitBranch?: string | null;
+  gitSummary?: {
+    isRepo: boolean;
+    additions: number;
+    deletions: number;
+    statusCount: number;
+  } | null;
+  onInitGit?: () => void;
   browserToolEnabled: boolean;
   onToggleBrowserTool: () => void;
   isFocused: boolean;
@@ -108,17 +131,29 @@ type Props = {
   activeTabId: string;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
   onClose?: () => void;
-  // When non-null, the pane should replay this pi session into the active tab
-  // on its next render. After replay starts, ChatPane calls
-  // onInitialSessionConsumed so the parent clears the field and we never
-  // replay twice. This replaces the older loader-registration pattern (which
-  // raced against component mount).
-  initialSessionId?: string | null;
-  onInitialSessionConsumed?: () => void;
+  // Workspace hands ChatPane a setter so it can register/unregister an
+  // imperative handle. There is no useEffect-driven `initialSessionId` field
+  // anymore — the workspace calls handle.loadAndReplay() directly when the
+  // user clicks a session in the navbar. One source of truth, no race.
+  onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
 };
 
+function randomIdSegment(length: number): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
+  }
+  const bytes = new Uint8Array(Math.ceil(length / 2));
+  if (cryptoApi?.getRandomValues) {
+    cryptoApi.getRandomValues(bytes);
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, length);
+}
+
 function newId(prefix: string) {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${Date.now().toString(36)}-${randomIdSegment(8)}`;
 }
 
 function nowLabel() {
@@ -231,12 +266,15 @@ function piSessionIdFromEvent(event: Record<string, unknown>): string | null {
   return null;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function usageFromEvent(event: Record<string, unknown>): TokenStats | null {
   if (event.type !== "message" && event.type !== "message_end") return null;
-  const message =
-    event.message && typeof event.message === "object" && !Array.isArray(event.message)
-      ? (event.message as Record<string, unknown>)
-      : null;
+  const message = asRecord(event.message);
   if (!message || message.role !== "assistant") return null;
   const usage =
     message.usage && typeof message.usage === "object" && !Array.isArray(message.usage)
@@ -255,6 +293,61 @@ function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
   return String(Math.max(0, Math.round(tokens)));
+}
+
+type StreamingToolCallSnapshot = {
+  id: string;
+  name: string;
+  args?: Record<string, unknown>;
+};
+
+function contentPartAt(
+  messageLike: unknown,
+  contentIndex: unknown,
+): Record<string, unknown> | null {
+  const message = asRecord(messageLike);
+  const content = Array.isArray(message?.content) ? message.content : null;
+  if (!content) return null;
+  if (typeof contentIndex === "number") return asRecord(content[contentIndex]);
+  for (let idx = content.length - 1; idx >= 0; idx -= 1) {
+    const part = asRecord(content[idx]);
+    if (part?.type === "toolCall") return part;
+  }
+  return null;
+}
+
+function toolCallSnapshotFromUpdate(
+  assistantMessageEvent: Record<string, unknown> | undefined,
+  message?: unknown,
+): StreamingToolCallSnapshot | null {
+  if (!assistantMessageEvent) return null;
+  const explicit = asRecord(assistantMessageEvent.toolCall);
+  const part =
+    explicit ??
+    contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex) ??
+    contentPartAt(message, assistantMessageEvent.contentIndex);
+  const idValue = part?.id ?? assistantMessageEvent.toolCallId;
+  const id = typeof idValue === "string" && idValue.trim() ? idValue.trim() : "";
+  if (!id) return null;
+  const nameValue = part?.name ?? assistantMessageEvent.toolName;
+  const name = typeof nameValue === "string" && nameValue.trim() ? nameValue.trim() : "tool";
+  const args = asRecord(part?.arguments) ?? undefined;
+  return { id, name, args };
+}
+
+function toolCallDeltaFromUpdate(
+  assistantMessageEvent: Record<string, unknown> | undefined,
+): string {
+  const value = assistantMessageEvent?.delta ?? assistantMessageEvent?.argumentsDelta;
+  return typeof value === "string" ? value : "";
+}
+
+function stringifyToolArgs(args: Record<string, unknown> | undefined): string | undefined {
+  return args && Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : undefined;
+}
+
+export function sessionTitleFromPrompt(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 48) || "New session";
 }
 
 function messageText(
@@ -348,7 +441,7 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
         pendingAssistantId = null;
         const text = messageText(msg.content);
         if (text) {
-          if (!title) title = text.slice(0, 40);
+          if (!title) title = sessionTitleFromPrompt(text);
           replayed.push({ id: newId("user"), role: "user", text, timestamp: nowLabel() });
         }
         continue;
@@ -423,6 +516,58 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
           ...msg,
           blocks: appendDelta(msg.blocks ?? [], "thinking", delta),
         }));
+      } else if (updateType === "toolcall_start") {
+        const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
+        if (!snapshot) continue;
+        localPatch(assistantId, (msg) => ({
+          ...msg,
+          blocks: upsertTool(
+            msg.blocks ?? [],
+            snapshot.id,
+            (existing) => ({
+              ...existing,
+              name: snapshot.name,
+              args: snapshot.args ?? existing.args,
+            }),
+            () => ({
+              kind: "tool",
+              id: snapshot.id,
+              name: snapshot.name,
+              status: "running",
+              text: "",
+              argsText: stringifyToolArgs(snapshot.args) ?? "",
+              args: snapshot.args,
+            }),
+          ),
+        }));
+      } else if (updateType === "toolcall_delta") {
+        const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
+        const delta = toolCallDeltaFromUpdate(ame);
+        if (!snapshot || (!delta && !snapshot.args)) continue;
+        localPatch(assistantId, (msg) => ({
+          ...msg,
+          blocks: upsertTool(
+            msg.blocks ?? [],
+            snapshot.id,
+            (existing) => ({
+              ...existing,
+              name: snapshot.name || existing.name,
+              args: snapshot.args ?? existing.args,
+              argsText: delta
+                ? (existing.argsText ?? "") + delta
+                : existing.argsText || stringifyToolArgs(snapshot.args),
+            }),
+            () => ({
+              kind: "tool",
+              id: snapshot.id,
+              name: snapshot.name,
+              status: "running",
+              text: "",
+              argsText: delta || stringifyToolArgs(snapshot.args) || "",
+              args: snapshot.args,
+            }),
+          ),
+        }));
       } else if (updateType === "toolcall_end") {
         const toolCall = ame?.toolCall as
           | { id?: string; name?: string; arguments?: unknown }
@@ -442,6 +587,7 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
               id,
               (existing) => ({
                 ...existing,
+                name,
                 argsText,
                 args: argsObj ?? existing.args,
                 text: existing.text || argsText,
@@ -556,6 +702,11 @@ export function ChatPane({
   contextWindow,
   cwd,
   projectName,
+  projectSelector,
+  modelSelector,
+  gitBranch,
+  gitSummary,
+  onInitGit,
   browserToolEnabled,
   onToggleBrowserTool,
   isFocused,
@@ -564,8 +715,7 @@ export function ChatPane({
   tabs,
   activeTabId,
   onTabsChange,
-  initialSessionId,
-  onInitialSessionConsumed,
+  onRegisterHandle,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -580,6 +730,7 @@ export function ChatPane({
     [tabs, activeTabId],
   );
   const running = activeTab?.status === "running" || activeTab?.status === "starting";
+  const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
 
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
@@ -636,38 +787,56 @@ export function ChatPane({
           return;
         }
         if (updateType === "toolcall_start") {
-          const toolCall = ame?.toolCall as { id?: string; name?: string } | undefined;
-          if (!toolCall?.id) return;
-          const id = toolCall.id;
-          const name = toolCall.name || "tool";
+          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
+          if (!snapshot) return;
           patchAssistant(tabId, assistantId, (msg) => ({
             ...msg,
             blocks: upsertTool(
               msg.blocks ?? [],
-              id,
-              (existing) => ({ ...existing, name }),
-              () => ({ kind: "tool", id, name, status: "running", text: "", argsText: "" }),
+              snapshot.id,
+              (existing) => ({
+                ...existing,
+                name: snapshot.name,
+                args: snapshot.args ?? existing.args,
+              }),
+              () => ({
+                kind: "tool",
+                id: snapshot.id,
+                name: snapshot.name,
+                status: "running",
+                text: "",
+                argsText: stringifyToolArgs(snapshot.args) ?? "",
+                args: snapshot.args,
+              }),
             ),
           }));
           return;
         }
         if (updateType === "toolcall_delta") {
-          const id = String(ame?.toolCallId || "");
-          const delta = typeof ame?.argumentsDelta === "string" ? ame.argumentsDelta : "";
-          if (!id || !delta) return;
+          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
+          const delta = toolCallDeltaFromUpdate(ame);
+          if (!snapshot || (!delta && !snapshot.args)) return;
           patchAssistant(tabId, assistantId, (msg) => ({
             ...msg,
             blocks: upsertTool(
               msg.blocks ?? [],
-              id,
-              (existing) => ({ ...existing, argsText: (existing.argsText ?? "") + delta }),
+              snapshot.id,
+              (existing) => ({
+                ...existing,
+                name: snapshot.name || existing.name,
+                args: snapshot.args ?? existing.args,
+                argsText: delta
+                  ? (existing.argsText ?? "") + delta
+                  : existing.argsText || stringifyToolArgs(snapshot.args),
+              }),
               () => ({
                 kind: "tool",
-                id,
-                name: "tool",
+                id: snapshot.id,
+                name: snapshot.name,
                 status: "running",
                 text: "",
-                argsText: delta,
+                argsText: delta || stringifyToolArgs(snapshot.args) || "",
+                args: snapshot.args,
               }),
             ),
           }));
@@ -824,12 +993,13 @@ export function ChatPane({
       // Optimistic update: show the user's turn + a blank assistant message.
       updateTab(tabId, (tab) => ({
         ...tab,
+        modelId: tab.modelId || modelId,
         input: "",
         error: "",
         status: "starting",
         title:
           tab.messages.filter((m) => m.role === "user").length === 0
-            ? userText.slice(0, 40)
+            ? sessionTitleFromPrompt(userText)
             : tab.title,
         messages: [
           ...tab.messages,
@@ -881,12 +1051,17 @@ export function ChatPane({
             const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
             if (!line) continue;
             const payload = JSON.parse(line.slice(6)) as
-              | { type: "status"; phase: string }
+              | { type: "status"; phase: string; piSessionId?: string | null }
               | { type: "error"; error: string }
               | { type: "pi"; event: Record<string, unknown> };
             if (payload.type === "status") {
               const phase = payload.phase;
-              updateTab(tabId, (tab) => ({ ...tab, status: phase === "done" ? "idle" : phase }));
+              updateTab(tabId, (tab) => ({
+                ...tab,
+                piSessionId: payload.piSessionId || tab.piSessionId,
+                status: phase === "done" ? "idle" : phase,
+              }));
+              if (payload.piSessionId) onPiSessionIdChange?.(payload.piSessionId);
             } else if (payload.type === "error") {
               updateTab(tabId, (tab) => ({ ...tab, error: payload.error, status: "idle" }));
             } else if (payload.type === "pi") {
@@ -1051,22 +1226,23 @@ export function ChatPane({
     updateTab(tabId, (tab) => ({ ...tab, status: "idle" }));
   }, [activeTab, runtimeSessionId, updateTab]);
 
-  // Replay a past pi session into the active tab.
+  // Replay a past pi session into the currently active tab. Looks up the
+  // active tab by id at call time so concurrent updates don't race.
   const loadAndReplay = useCallback(
     async (piSessionId: string) => {
       if (!cwd) return;
-      if (!activeTab) return;
-      const tabId = activeTab.id;
+      const tabId = activeTabId;
+      if (!tabId) return;
       updateTab(tabId, (tab) => ({ ...tab, status: "loading", error: "" }));
       try {
         const response = await fetch(
           `/api/agent/sessions/${encodeURIComponent(piSessionId)}?cwd=${encodeURIComponent(cwd)}`,
           { cache: "no-store" },
         );
-        const payload = (await response.json()) as {
+        const payload = await safeJson<{
           events?: Record<string, unknown>[];
           error?: string;
-        };
+        }>(response);
         if (!response.ok) throw new Error(payload.error || "Failed to load session");
 
         const { messages, title } = replaySessionEvents(payload.events ?? []);
@@ -1092,24 +1268,29 @@ export function ChatPane({
         }));
       }
     },
-    [cwd, activeTab, updateTab],
+    [cwd, activeTabId, updateTab],
   );
 
-  // Replay the pending initialSessionId (set by parent for split-drop or
-  // sidebar navigation). Each id is consumed exactly once via
-  // onInitialSessionConsumed.
+  // Register a stable imperative handle so the workspace can call
+  // loadAndReplay directly from event handlers. This replaces the previous
+  // useEffect that watched an `initialSessionId` prop and chained side
+  // effects on every re-render.
+  const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
+  handleRef.current = { loadAndReplay };
   useEffect(() => {
-    if (!initialSessionId) return;
-    if (!cwd) return;
-    void loadAndReplay(initialSessionId);
-    onInitialSessionConsumed?.();
-  }, [initialSessionId, cwd, loadAndReplay, onInitialSessionConsumed]);
+    if (!onRegisterHandle) return;
+    const handle: ChatPaneHandle = {
+      loadAndReplay: (id) => handleRef.current.loadAndReplay(id),
+    };
+    onRegisterHandle(handle);
+    return () => onRegisterHandle(null);
+  }, [onRegisterHandle]);
 
   return (
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
-      className={`flex min-w-0 min-h-0 flex-1 flex-col bg-(--bg) ${isFocused ? "" : "opacity-95"}`}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
     >
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
@@ -1125,11 +1306,11 @@ export function ChatPane({
             element.scrollHeight - element.scrollTop - element.clientHeight;
           stickToBottomRef.current = distanceFromBottom <= 80;
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-6 py-8"
+        className={`min-h-0 flex-1 overflow-y-auto px-6 py-8 ${showEmptyPrompt ? "flex" : ""}`}
       >
-        <div className="mx-auto w-full max-w-3xl">
-          {activeTab && activeTab.messages.length === 0 && !running ? (
-            <div className="flex min-h-[40vh] flex-col items-center justify-center text-center gap-2">
+        <div className={`mx-auto w-full max-w-3xl ${showEmptyPrompt ? "flex flex-1" : ""}`}>
+          {showEmptyPrompt ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
               <h1 className="text-xl font-semibold tracking-tight text-(--fg)">
                 What should we work on{projectName ? ` in ${projectName}` : ""}?
               </h1>
@@ -1156,7 +1337,7 @@ export function ChatPane({
       </div>
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-3 pt-1.5">
-        <div className="mx-auto max-w-3xl rounded-lg border border-(--border)/50 bg-(--surface)">
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-(--border)/50 bg-(--surface)">
           {(activeTab?.queue ?? []).length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
               {(activeTab?.queue ?? []).map((item) => (
@@ -1262,7 +1443,7 @@ export function ChatPane({
             }
             className="min-h-[34px] max-h-[160px] w-full resize-none overflow-y-auto bg-transparent px-2.5 py-1.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex items-center gap-1.5 px-2 pb-1.5">
+          <div className="flex items-center gap-1.5 px-2 pb-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -1344,6 +1525,40 @@ export function ChatPane({
               </button>
             )}
           </div>
+          <div className="flex min-h-9 items-center gap-2 border-t border-(--border)/50 bg-(--bg)/45 px-2 py-1.5 text-xs">
+            {projectSelector ? (
+              projectSelector
+            ) : cwd ? (
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--dim)">
+                {cwd}
+              </span>
+            ) : null}
+            {gitBranch ? (
+              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded border border-(--border) bg-(--surface) px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
+                <GitBranchIcon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{gitBranch}</span>
+              </span>
+            ) : gitSummary && !gitSummary.isRepo ? (
+              <button
+                type="button"
+                onClick={onInitGit}
+                className="inline-flex shrink-0 items-center rounded border border-(--border) bg-(--surface) px-1.5 py-0.5 text-[10px] text-(--dim) hover:text-(--fg)"
+              >
+                Init git
+              </button>
+            ) : null}
+            {gitSummary?.isRepo ? (
+              <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                <span className="text-emerald-400">+{gitSummary.additions}</span>
+                <span className="text-red-400">-{gitSummary.deletions}</span>
+                {gitSummary.statusCount > 0 ? (
+                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
+                ) : null}
+              </span>
+            ) : null}
+            <div className="min-w-0 flex-1" />
+            {modelSelector}
+          </div>
         </div>
         <div className="mx-auto mt-1 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
           <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
@@ -1359,24 +1574,20 @@ export function ChatPane({
 }
 
 export function SessionTabsBar({
+  paneId,
   tabs,
   activeTabId,
   onActiveTabChange,
   onTabsChange,
   onRenameTab,
 }: {
+  paneId: string;
   tabs: SessionTab[];
   activeTabId: string;
   onActiveTabChange: (tabId: string) => void;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
   onRenameTab: (tabId: string, title: string) => void;
 }) {
-  const newTab = useCallback(() => {
-    const tab = makeFreshTab();
-    onTabsChange((current) => [...current, tab]);
-    onActiveTabChange(tab.id);
-  }, [onTabsChange, onActiveTabChange]);
-
   const closeTab = useCallback(
     (tabId: string) => {
       const remaining = tabs.filter((tab) => tab.id !== tabId);
@@ -1398,33 +1609,27 @@ export function SessionTabsBar({
         <TabPill
           key={tab.id}
           tab={tab}
+          paneId={paneId}
           active={tab.id === activeTabId}
           onSelect={() => onActiveTabChange(tab.id)}
           onClose={() => closeTab(tab.id)}
           onRename={(title) => onRenameTab(tab.id, title)}
         />
       ))}
-      <button
-        type="button"
-        onClick={newTab}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-        title="New tab in this pane"
-        aria-label="New tab in this pane"
-      >
-        <PlusIcon className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }
 
 function TabPill({
   tab,
+  paneId,
   active,
   onSelect,
   onClose,
   onRename,
 }: {
   tab: SessionTab;
+  paneId: string;
   active: boolean;
   onSelect: () => void;
   onClose: () => void;
@@ -1443,13 +1648,22 @@ function TabPill({
     <div
       role="tab"
       aria-selected={active}
-      draggable={Boolean(tab.piSessionId)}
+      draggable
       onDragStart={(event) => {
-        if (!tab.piSessionId) {
-          event.preventDefault();
-          return;
+        if (tab.piSessionId) {
+          event.dataTransfer.setData("application/x-vllm-session", tab.piSessionId);
         }
-        event.dataTransfer.setData("application/x-vllm-session", tab.piSessionId);
+        event.dataTransfer.setData(
+          "application/x-vllm-agent-session",
+          JSON.stringify({
+            piSessionId: tab.piSessionId,
+            projectId: tab.projectId,
+            cwd: tab.cwd,
+            paneId,
+            tabId: tab.id,
+            title: tab.title,
+          }),
+        );
         event.dataTransfer.effectAllowed = "copy";
       }}
       onClick={onSelect}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { RuntimeTorchBuildInfo } from "../../models/types";
-import { detectPlatformKind } from "../../engines/layers/runtime-info";
+import { detectPlatformKind } from "../../engines/runtimes/runtime-info";
 
 const torch = (overrides: Partial<RuntimeTorchBuildInfo> = {}): RuntimeTorchBuildInfo => ({
   torch_version: null,

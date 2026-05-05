@@ -22,9 +22,8 @@ export function useRealtimeStatus() {
       runtimeSummary: snap.runtimeSummary,
       services: snap.services,
       lease: snap.lease,
-      jobs: snap.jobs,
       isConnected: connected,
     }),
-    [connected, snap.gpus, snap.jobs, snap.launchProgress, snap.lease, snap.metrics, snap.platformKind, snap.runtimeSummary, snap.services, snap.status],
+    [connected, snap.gpus, snap.launchProgress, snap.lease, snap.metrics, snap.platformKind, snap.runtimeSummary, snap.services, snap.status],
   );
 }

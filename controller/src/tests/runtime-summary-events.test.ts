@@ -49,30 +49,4 @@ describe("runtime_summary event contract", () => {
     const lease = event.data["lease"] as { holder: string };
     expect(lease.holder).toBe("test-model");
   });
-
-  it("publishJobUpdated emits event with job data", async () => {
-    const em = createEventManager();
-    const collected: Event[] = [];
-
-    const sub = (async (): Promise<void> => {
-      for await (const event of em.subscribe()) {
-        collected.push(event);
-        break;
-      }
-    })();
-
-    await em.publishJobUpdated({
-      id: "job-1",
-      type: "voice_assistant_turn",
-      status: "running",
-      progress: 50,
-    });
-
-    await sub;
-
-    expect(collected.length).toBe(1);
-    expect(collected[0]!.type).toBe(CONTROLLER_EVENTS.JOB_UPDATED);
-    expect(collected[0]!.data["id"]).toBe("job-1");
-    expect(collected[0]!.data["status"]).toBe("running");
-  });
 });

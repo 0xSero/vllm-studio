@@ -12,7 +12,9 @@ function normalizePeakNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function useUsage() {
+export type UsageSource = "provider" | "pi-sessions";
+
+export function useUsage(source: UsageSource = "provider") {
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [peakMetrics, setPeakMetrics] = useState<Map<string, PeakMetrics>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -25,7 +27,9 @@ export function useUsage() {
     try {
       setLoading(true);
       setError(null);
-      const [usageData, peakData] = await Promise.all([api.getUsageStats(), api.getPeakMetrics()]);
+      const fetchUsage =
+        source === "pi-sessions" ? api.getPiSessionsUsageStats() : api.getUsageStats();
+      const [usageData, peakData] = await Promise.all([fetchUsage, api.getPeakMetrics()]);
       setStats(normalizeUsageStats(usageData));
 
       if (Array.isArray(peakData.metrics)) {
@@ -49,7 +53,7 @@ export function useUsage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     loadStats();

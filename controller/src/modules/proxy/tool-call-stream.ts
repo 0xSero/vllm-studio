@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { createToolCallId, parseToolCallsFromContent, type ToolCall } from "./tool-call-parser";
+import { parseToolCallsFromContent, type ToolCall } from "./tool-call-parser";
 
 export interface StreamUsage {
   prompt_tokens: number;
   completion_tokens: number;
+  reasoning_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
 }
 
 export const createToolCallStream = (
@@ -200,6 +203,17 @@ export const createToolCallStream = (
       onUsage({
         prompt_tokens: usage["prompt_tokens"] ?? 0,
         completion_tokens: usage["completion_tokens"] ?? 0,
+        reasoning_tokens:
+          (usage["reasoning_tokens"] as number | undefined) ??
+          (usage["completion_tokens_details"] as Record<string, number> | undefined)?.[
+            "reasoning_tokens"
+          ] ??
+          0,
+        cache_read_tokens:
+          (usage["prompt_tokens_details"] as Record<string, number> | undefined)?.[
+            "cached_tokens"
+          ] ?? 0,
+        cache_write_tokens: 0,
       });
       usageTracked = true;
     }

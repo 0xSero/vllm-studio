@@ -68,4 +68,18 @@ describe("recipe device visibility normalization", () => {
 
     expect(command).toContain("--enable-metrics");
   });
+
+  it("uses a saved plaintext launch command as the preview", () => {
+    const command = generateCommand({
+      id: "r1",
+      name: "test",
+      model_path: "/models/test",
+      backend: "sglang",
+      extra_args: {
+        launch_command: "python -m sglang.launch_server --model-path /models/custom --grammar-backend xgrammar",
+      },
+    });
+
+    expect(command).toBe("python -m sglang.launch_server --model-path /models/custom --grammar-backend xgrammar");
+  });
 });

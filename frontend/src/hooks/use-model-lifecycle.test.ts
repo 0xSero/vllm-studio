@@ -16,7 +16,6 @@ type RealtimeSnapshot = {
   runtimeSummary: null;
   services: [];
   lease: null;
-  jobs: [];
   isConnected: boolean;
 };
 
@@ -59,7 +58,6 @@ function createRealtimeFixture(): { snapshot: RealtimeSnapshot } {
       runtimeSummary: null,
       services: [],
       lease: null,
-      jobs: [],
       isConnected: true,
     },
   };

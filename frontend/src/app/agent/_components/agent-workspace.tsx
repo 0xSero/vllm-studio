@@ -6,16 +6,21 @@ import { useSearchParams } from "next/navigation";
 import {
   loadAgentProjects,
   ACTIVE_AGENT_SESSIONS_EVENT,
+  ACTIVE_AGENT_SESSION_OPEN_EVENT,
+  ACTIVE_AGENT_SESSION_RENAME_EVENT,
+  NEW_AGENT_SESSION_EVENT,
   PROJECTS_CHANGED_EVENT,
   SESSIONS_CHANGED_EVENT,
   triggerAddProjectFlow,
 } from "@/components/projects-nav-section";
 import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
-import { ChevronDownIcon, CloseIcon, GitBranchIcon, PlusIcon } from "@/components/icons";
+import { ChevronDownIcon, CloseIcon, ComputerIcon, PlusIcon } from "@/components/icons";
+import { safeJson } from "@/lib/agent/safe-json";
 import { AgentBrowser, type AgentBrowserHandle, type WebviewElement } from "./agent-browser";
-import { ChatPane, makeFreshTab, SessionTabsBar, type SessionTab } from "./chat-pane";
+import { ChatPane, makeFreshTab, type ChatPaneHandle, type SessionTab } from "./chat-pane";
 import { FilesystemPanel } from "./filesystem-panel";
-import { PaneGrid } from "./pane-grid";
+import { GitDiffPanel } from "./git-diff-panel";
+import { PaneGrid, type SessionDropPayload } from "./pane-grid";
 import {
   collectLeaves,
   removeLeaf,
@@ -43,6 +48,14 @@ type ProjectEntry = {
   exists: boolean;
   hasGit: boolean;
   branch: string | null;
+};
+
+type GitSummary = {
+  isRepo: boolean;
+  branch: string | null;
+  additions: number;
+  deletions: number;
+  statusCount: number;
 };
 
 const DEFAULT_AGENT_CWD = "";
@@ -115,24 +128,38 @@ const COMPUTER_FILES_OPEN_KEY = "vllm-studio.agent.computer.filesOpen";
 const COMPUTER_DEFAULT_CLOSED_MIGRATION_KEY = "vllm-studio.agent.computer.defaultClosedMigrated";
 const PANE_LAYOUT_KEY = "vllm-studio.agent.paneLayout";
 
-type ComputerTab = "browser" | "files";
+type ComputerTab = "browser" | "files" | "diff";
+
+function randomIdSegment(length: number): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
+  }
+  const bytes = new Uint8Array(Math.ceil(length / 2));
+  if (cryptoApi?.getRandomValues) {
+    cryptoApi.getRandomValues(bytes);
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, length);
+}
+
+function isSafeBrowserSelector(selector: string): boolean {
+  return selector.length > 0 && selector.length <= 240 && !/[`;{}]/.test(selector);
+}
 
 function newPaneId(): PaneId {
-  return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return `p-${Date.now().toString(36)}-${randomIdSegment(6)}`;
 }
 
 function newRuntimeId(): string {
-  return `rt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return `rt-${Date.now().toString(36)}-${randomIdSegment(6)}`;
 }
 
 type PaneState = {
   tabs: SessionTab[];
   activeTabId: string;
   runtimeSessionId: string;
-  // Optional pi session UUID to replay into the active tab on the next
-  // render of the corresponding ChatPane. ChatPane consumes-and-clears it
-  // via onInitialSessionConsumed so subsequent re-renders don't replay.
-  initialSessionId?: string | null;
 };
 
 export function AgentWorkspace() {
@@ -141,7 +168,7 @@ export function AgentWorkspace() {
   const [agentCwd, setAgentCwd] = useState(DEFAULT_AGENT_CWD);
   const [error, setError] = useState("");
   const [loadingModels, setLoadingModels] = useState(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [browserUrl, setBrowserUrl] = useState("https://www.google.com");
   const [browserInput, setBrowserInput] = useState("https://www.google.com");
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
@@ -150,6 +177,7 @@ export function AgentWorkspace() {
   const [browserToolEnabled, setBrowserToolEnabled] = useState(false);
   const [activeComputerTab, setActiveComputerTab] = useState<ComputerTab>("browser");
   const [computerWidth, setComputerWidth] = useState(DEFAULT_COMPUTER_WIDTH);
+  const [gitSummary, setGitSummary] = useState<GitSummary | null>(null);
 
   // Pane state: a tree-shaped Layout where each leaf is identified by a
   // PaneId and points into panesById, which holds tabs + the per-pane
@@ -165,7 +193,7 @@ export function AgentWorkspace() {
         {
           tabs: [tab],
           activeTabId: tab.id,
-          runtimeSessionId: `rt-${Math.random().toString(36).slice(2, 9)}`,
+          runtimeSessionId: `rt-${randomIdSegment(9)}`,
         },
       ],
     ]);
@@ -178,26 +206,31 @@ export function AgentWorkspace() {
   const getWebview = (): WebviewElement | null => browserRef.current?.webview ?? null;
   const getIframe = (): HTMLIFrameElement | null => browserRef.current?.iframe ?? null;
   const searchParams = useSearchParams();
-  // Track which (project, session) URL params we've already consumed so
-  // navigation back/forward doesn't re-trigger session replays.
-  const handledNavRef = useRef<string>("");
 
-  const activeModel = useMemo(
-    () => models.find((model) => model.id === selectedModel),
-    [models, selectedModel],
-  );
-
-  // Mark a pane's pending initialSessionId as consumed so we never replay
-  // a session twice. The actual loading happens inside ChatPane.
-  const consumeInitialSessionId = useCallback((paneId: PaneId) => {
-    setPanesById((current) => {
-      const cur = current.get(paneId);
-      if (!cur || !cur.initialSessionId) return current;
-      const next = new Map(current);
-      next.set(paneId, { ...cur, initialSessionId: null });
-      return next;
-    });
+  // Imperative handles registered by each ChatPane. The workspace calls
+  // handle.loadAndReplay(piSessionId) directly when the user opens a past
+  // session — no useEffect-driven prop chain, no replay races.
+  const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
+  const pendingSessionReplaysRef = useRef<Map<PaneId, string>>(new Map());
+  const queueSessionReplay = useCallback((paneId: PaneId, sessionId: string) => {
+    pendingSessionReplaysRef.current.set(paneId, sessionId);
+    window.setTimeout(() => {
+      const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
+      const handle = paneHandlesRef.current.get(paneId);
+      if (!pendingSessionId || !handle) return;
+      pendingSessionReplaysRef.current.delete(paneId);
+      void handle.loadAndReplay(pendingSessionId);
+    }, 0);
   }, []);
+  const registerPaneHandle = useCallback(
+    (paneId: PaneId, handle: ChatPaneHandle | null) => {
+      if (handle) paneHandlesRef.current.set(paneId, handle);
+      else paneHandlesRef.current.delete(paneId);
+      const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
+      if (handle && pendingSessionId) queueSessionReplay(paneId, pendingSessionId);
+    },
+    [queueSessionReplay],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -206,7 +239,7 @@ export function AgentWorkspace() {
       setError("");
       try {
         const response = await fetch("/api/agent/models", { cache: "no-store" });
-        const payload = (await response.json()) as { models?: AgentModel[]; error?: string };
+        const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
         if (!response.ok) throw new Error(payload.error || "Failed to load models");
         if (cancelled) return;
         const nextModels = payload.models ?? [];
@@ -280,6 +313,9 @@ export function AgentWorkspace() {
             case "click": {
               const selector = String(payload.selector || "");
               if (!selector) return { ok: false, error: "selector required" };
+              if (!isSafeBrowserSelector(selector)) {
+                return { ok: false, error: "unsupported selector" };
+              }
               const script = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found: false }; (el).click(); return { found: true }; })()`;
               const result = (await withBrowserTimeout(
                 webview.executeJavaScript(script, true),
@@ -292,7 +328,10 @@ export function AgentWorkspace() {
               };
             }
             case "scroll": {
-              const deltaY = Number(payload.deltaY ?? 0);
+              const rawDeltaY = Number(payload.deltaY ?? 0);
+              const deltaY = Number.isFinite(rawDeltaY)
+                ? Math.max(-10_000, Math.min(10_000, Math.trunc(rawDeltaY)))
+                : 0;
               await withBrowserTimeout(
                 webview.executeJavaScript(`window.scrollBy(0, ${deltaY})`),
                 "Browser scroll",
@@ -311,6 +350,10 @@ export function AgentWorkspace() {
             case "fill": {
               const selector = String(payload.selector || "");
               const value = String(payload.value ?? "");
+              if (!selector) return { ok: false, error: "selector required" };
+              if (!isSafeBrowserSelector(selector)) {
+                return { ok: false, error: "unsupported selector" };
+              }
               const script = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found: false }; el.focus(); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { found: true }; })()`;
               const result = (await withBrowserTimeout(
                 webview.executeJavaScript(script, true),
@@ -408,12 +451,13 @@ export function AgentWorkspace() {
     if (browserOn === "1") setBrowserToolEnabled(true);
     const computerMigrated = window.localStorage.getItem(COMPUTER_DEFAULT_CLOSED_MIGRATION_KEY);
     if (!computerMigrated) {
-      window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "0");
+      window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "1");
       window.localStorage.setItem(COMPUTER_FILES_OPEN_KEY, "0");
       window.localStorage.setItem(COMPUTER_DEFAULT_CLOSED_MIGRATION_KEY, "1");
     }
     const filesOpenStored = window.localStorage.getItem(COMPUTER_FILES_OPEN_KEY);
     setActiveComputerTab(filesOpenStored === "1" ? "files" : "browser");
+    setRightPanelOpen(window.localStorage.getItem(COMPUTER_BROWSER_OPEN_KEY) !== "0");
     const storedComputerWidth = Number(window.localStorage.getItem(COMPUTER_WIDTH_KEY));
     if (Number.isFinite(storedComputerWidth)) {
       setComputerWidth(clampComputerWidth(storedComputerWidth));
@@ -459,7 +503,7 @@ export function AgentWorkspace() {
   const selectComputerTab = useCallback((tab: ComputerTab) => {
     setActiveComputerTab(tab);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, tab === "browser" ? "1" : "0");
+      window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "1");
       window.localStorage.setItem(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
     }
   }, []);
@@ -551,10 +595,75 @@ export function AgentWorkspace() {
     [persistSelectedProjectId],
   );
 
-  // Consume `?project=...&session=...` URL params from the new top-level
-  // sidebar nav. When the linked project is already loaded, switch to it; if
-  // a session id is provided, hand it to the focused pane's loader once
-  // registered. handledNavRef guards against re-replay on re-renders.
+  // Imperative session-management primitives. Every code path that opens a
+  // new tab or replays a past session goes through these — no useEffect
+  // chain, no `initialSessionId` field on PaneState. Read top-down to audit.
+
+  // Idempotent "open a fresh chat tab in the focused pane". If the pane
+  // already has an empty starter (no piSessionId, no messages, no input)
+  // we focus that tab instead of stacking yet another empty one.
+  const openNewSessionInFocusedPane = useCallback(() => {
+    setPanesById((current) => {
+      const cur = current.get(focusedPaneId);
+      if (!cur) return current;
+      const existing = cur.tabs.find(
+        (tab) => !tab.piSessionId && tab.messages.length === 0 && !tab.input,
+      );
+      const next = new Map(current);
+      if (existing) {
+        next.set(focusedPaneId, { ...cur, activeTabId: existing.id });
+        return next;
+      }
+      const tab = makeFreshTab();
+      next.set(focusedPaneId, { ...cur, tabs: [...cur.tabs, tab], activeTabId: tab.id });
+      return next;
+    });
+  }, [focusedPaneId]);
+
+  // Replay a past pi session into the focused pane via the pane's
+  // imperative handle. No race: the handle was registered when the pane
+  // mounted; if it isn't ready yet the call is a no-op and the next click
+  // will retry.
+  const replaySessionInFocusedPane = useCallback(
+    (piSessionId: string) => {
+      queueSessionReplay(focusedPaneId, piSessionId);
+    },
+    [focusedPaneId, queueSessionReplay],
+  );
+
+  // Open a past session in a side-by-side pane. Splits the layout if there
+  // isn't already a second pane, then queues the replay against that pane —
+  // the queue drains as soon as the new ChatPane registers its handle.
+  const replaySessionInSplitPane = useCallback(
+    (piSessionId: string) => {
+      const leaves = collectLeaves(layout);
+      if (leaves.length >= 2) {
+        const targetPaneId = leaves.find((id) => id !== focusedPaneId) ?? focusedPaneId;
+        setFocusedPaneId(targetPaneId);
+        queueSessionReplay(targetPaneId, piSessionId);
+        return;
+      }
+      const id = newPaneId();
+      const baseTab = makeFreshTab();
+      setPanesById((current) => {
+        const next = new Map(current);
+        next.set(id, {
+          tabs: [baseTab],
+          activeTabId: baseTab.id,
+          runtimeSessionId: newRuntimeId(),
+        });
+        return next;
+      });
+      setLayout((prev) => splitLeaf(prev, focusedPaneId, id, "vertical", "b"));
+      setFocusedPaneId(id);
+      queueSessionReplay(id, piSessionId);
+    },
+    [focusedPaneId, layout, queueSessionReplay],
+  );
+
+  // Single source of truth for URL nav. Re-run only when the URL string
+  // changes; the ref guard makes it idempotent.
+  const handledNavRef = useRef<string>("");
   useEffect(() => {
     if (!searchParams) return;
     const projectParam = searchParams.get("project");
@@ -568,67 +677,30 @@ export function AgentWorkspace() {
     if (projectParam) {
       const target = projects.find((entry) => entry.id === projectParam);
       if (!target) return; // wait for projects to load
-      if (selectedProjectId !== target.id) {
-        selectProject(target);
-      }
+      if (selectedProjectId !== target.id) selectProject(target);
     }
     handledNavRef.current = key;
 
     if (newParam === "1" && !sessionParam) {
-      const tab = makeFreshTab();
-      setPanesById((current) => {
-        const cur = current.get(focusedPaneId);
-        if (!cur) return current;
-        const next = new Map(current);
-        next.set(focusedPaneId, { ...cur, tabs: [tab], activeTabId: tab.id });
-        return next;
-      });
+      openNewSessionInFocusedPane();
       return;
     }
-
     if (sessionParam && splitParam === "1") {
-      const leaves = collectLeaves(layout);
-      if (leaves.length < 2) {
-        const id = newPaneId();
-        const baseTab = makeFreshTab();
-        setPanesById((current) => {
-          const next = new Map(current);
-          next.set(id, {
-            tabs: [baseTab],
-            activeTabId: baseTab.id,
-            runtimeSessionId: newRuntimeId(),
-            initialSessionId: sessionParam,
-          });
-          return next;
-        });
-        setLayout((prev) => splitLeaf(prev, focusedPaneId, id, "vertical", "b"));
-        setFocusedPaneId(id);
-      } else {
-        const targetPaneId = leaves.find((id) => id !== focusedPaneId) ?? focusedPaneId;
-        setFocusedPaneId(targetPaneId);
-        setPanesById((current) => {
-          const cur = current.get(targetPaneId);
-          if (!cur) return current;
-          const next = new Map(current);
-          next.set(targetPaneId, { ...cur, initialSessionId: sessionParam });
-          return next;
-        });
-      }
+      replaySessionInSplitPane(sessionParam);
       return;
     }
-
     if (sessionParam) {
-      // Stamp the session id onto the focused pane state. ChatPane will pick
-      // it up on its next render and replay it without any timer-based race.
-      setPanesById((current) => {
-        const cur = current.get(focusedPaneId);
-        if (!cur) return current;
-        const next = new Map(current);
-        next.set(focusedPaneId, { ...cur, initialSessionId: sessionParam });
-        return next;
-      });
+      replaySessionInFocusedPane(sessionParam);
     }
-  }, [searchParams, projects, selectedProjectId, selectProject, focusedPaneId, layout]);
+  }, [
+    searchParams,
+    projects,
+    selectedProjectId,
+    selectProject,
+    openNewSessionInFocusedPane,
+    replaySessionInFocusedPane,
+    replaySessionInSplitPane,
+  ]);
 
   function normalizeBrowserInput(raw: string): string {
     const value = raw.trim();
@@ -703,114 +775,269 @@ export function AgentWorkspace() {
   );
   const focusedPane = panesById.get(focusedPaneId) ?? panesById.values().next().value ?? null;
   const focusedTab = focusedPane?.tabs.find((tab) => tab.id === focusedPane.activeTabId) ?? null;
+  const focusedProject =
+    projects.find((entry) => entry.id === focusedTab?.projectId) ??
+    projects.find((entry) => entry.path === focusedTab?.cwd) ??
+    activeProject;
+
+  const refreshGitSummary = useCallback(async () => {
+    if (!focusedProject?.path) {
+      setGitSummary(null);
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/agent/git-diff?cwd=${encodeURIComponent(focusedProject.path)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await safeJson<{
+        isRepo?: boolean;
+        branch?: string | null;
+        additions?: number;
+        deletions?: number;
+        status?: string[];
+      }>(response)) as {
+        isRepo?: boolean;
+        branch?: string | null;
+        additions?: number;
+        deletions?: number;
+        status?: string[];
+      };
+      setGitSummary({
+        isRepo: payload.isRepo === true,
+        branch: payload.branch ?? null,
+        additions: payload.additions ?? 0,
+        deletions: payload.deletions ?? 0,
+        statusCount: payload.status?.length ?? 0,
+      });
+    } catch {
+      setGitSummary(null);
+    }
+  }, [focusedProject?.path]);
+
+  useEffect(() => {
+    void refreshGitSummary();
+  }, [refreshGitSummary]);
+
+  const initGitForActiveProject = useCallback(async () => {
+    if (!focusedProject?.path) return;
+    const response = await fetch(
+      `/api/agent/git-diff?cwd=${encodeURIComponent(focusedProject.path)}`,
+      { method: "POST" },
+    );
+    if (!response.ok) {
+      const payload = await safeJson<{ error?: string }>(response);
+      setError(payload.error || "Failed to initialize git repository");
+      return;
+    }
+    await refreshGitSummary();
+    window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+  }, [focusedProject?.path, refreshGitSummary]);
+
+  const focusedTabIsNew =
+    Boolean(focusedTab) && !focusedTab?.piSessionId && (focusedTab?.messages.length ?? 0) === 0;
   const shouldShowProjectEmptyState =
     projectsLoaded && !searchParams.get("project") && !selectedProjectId && projects.length === 0;
 
+  // Broadcast the set of *real* in-flight sessions (i.e. tabs that have
+  // either been assigned a pi UUID or already contain user messages) to the
+  // navbar. Empty starter tabs are intentionally excluded so the navbar
+  // doesn't list them as "sessions".
   useEffect(() => {
     if (typeof window === "undefined" || !activeProject) return;
     const sessions = [...panesById.entries()].flatMap(([paneId, pane]) =>
-      pane.tabs.map((tab) => ({
-        projectId: activeProject.id,
-        cwd: activeProject.path,
-        paneId,
-        tabId: tab.id,
-        piSessionId: tab.piSessionId,
-        title: tab.title,
-        status: tab.status,
-        updatedAt: new Date().toISOString(),
-      })),
+      pane.tabs
+        .filter((tab) => Boolean(tab.piSessionId) || tab.messages.length > 0)
+        .map((tab) => {
+          const project =
+            projects.find((entry) => entry.id === tab.projectId) ??
+            projects.find((entry) => entry.path === tab.cwd) ??
+            activeProject;
+          return {
+            projectId: project.id,
+            cwd: tab.cwd ?? project.path,
+            paneId,
+            tabId: tab.id,
+            piSessionId: tab.piSessionId,
+            title: tab.title,
+            status: tab.status,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
     );
     window.dispatchEvent(new CustomEvent(ACTIVE_AGENT_SESSIONS_EVENT, { detail: { sessions } }));
-  }, [activeProject, panesById]);
+  }, [activeProject, panesById, projects]);
+
+  const openSessionPayloadInPane = useCallback(
+    (paneId: PaneId, payload: SessionDropPayload) => {
+      let needsReplay = false;
+      setPanesById((current) => {
+        const target = current.get(paneId);
+        if (!target) return current;
+        const next = new Map(current);
+        if (payload.piSessionId) {
+          const tab = {
+            ...makeFreshTab(),
+            projectId: payload.projectId,
+            cwd: payload.cwd,
+            title: payload.title ?? "Loading session",
+          };
+          next.set(paneId, {
+            ...target,
+            tabs: [...target.tabs, tab],
+            activeTabId: tab.id,
+          });
+          needsReplay = true;
+          return next;
+        }
+        if (payload.paneId && payload.tabId) {
+          const source = current.get(payload.paneId);
+          const sourceTab = source?.tabs.find((tab) => tab.id === payload.tabId);
+          if (!sourceTab) return current;
+          const fresh = makeFreshTab();
+          const tab = {
+            ...sourceTab,
+            id: fresh.id,
+            runtimeSessionId: fresh.runtimeSessionId,
+          };
+          next.set(paneId, { ...target, tabs: [...target.tabs, tab], activeTabId: tab.id });
+        }
+        return next;
+      });
+      setFocusedPaneId(paneId);
+      if (needsReplay && payload.piSessionId) {
+        queueSessionReplay(paneId, payload.piSessionId);
+      }
+    },
+    [queueSessionReplay],
+  );
+
+  // Imperative tab actions used by both URL nav and DOM-event listeners.
+  const renameTab = useCallback((paneId: PaneId, tabId: string, title: string) => {
+    setPanesById((current) => {
+      const pane = current.get(paneId);
+      if (!pane) return current;
+      const next = new Map(current);
+      next.set(paneId, {
+        ...pane,
+        tabs: pane.tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab)),
+      });
+      return next;
+    });
+  }, []);
+
+  const focusTab = useCallback((paneId: PaneId, tabId: string) => {
+    setFocusedPaneId(paneId);
+    setPanesById((current) => {
+      const pane = current.get(paneId);
+      if (!pane) return current;
+      const next = new Map(current);
+      next.set(paneId, { ...pane, activeTabId: tabId });
+      return next;
+    });
+  }, []);
+
+  const splitTabIntoNewPane = useCallback(
+    (sourcePaneId: PaneId, sourceTabId: string) => {
+      const leaves = collectLeaves(layout);
+      const source = panesById.get(sourcePaneId);
+      const sourceTab = source?.tabs.find((tab) => tab.id === sourceTabId);
+      const fresh = makeFreshTab();
+      const tab = sourceTab
+        ? { ...sourceTab, id: fresh.id, runtimeSessionId: fresh.runtimeSessionId }
+        : fresh;
+      if (leaves.length >= 2) {
+        const targetPaneId = leaves.find((leafId) => leafId !== focusedPaneId) ?? focusedPaneId;
+        setPanesById((current) => {
+          const target = current.get(targetPaneId);
+          if (!target) return current;
+          const next = new Map(current);
+          next.set(targetPaneId, {
+            ...target,
+            tabs: [...target.tabs, tab],
+            activeTabId: tab.id,
+          });
+          return next;
+        });
+        setFocusedPaneId(targetPaneId);
+        return;
+      }
+      const id = newPaneId();
+      setPanesById((current) => {
+        const next = new Map(current);
+        next.set(id, { tabs: [tab], activeTabId: tab.id, runtimeSessionId: newRuntimeId() });
+        return next;
+      });
+      setLayout((prev) => splitLeaf(prev, focusedPaneId, id, "vertical", "b"));
+      setFocusedPaneId(id);
+    },
+    [focusedPaneId, layout, panesById],
+  );
+
+  // Bridge from window events (dispatched by the navbar) to the imperative
+  // helpers above. We use a ref so listeners stay mount-only — this is the
+  // only effect for the navbar event API and its handler is trivially
+  // auditable in one spot.
+  const navHandlersRef = useRef({
+    openNewSessionInFocusedPane,
+    renameTab,
+    focusTab,
+    splitTabIntoNewPane,
+    selectProject,
+    selectedProjectId,
+    projects,
+  });
+  navHandlersRef.current = {
+    openNewSessionInFocusedPane,
+    renameTab,
+    focusTab,
+    splitTabIntoNewPane,
+    selectProject,
+    selectedProjectId,
+    projects,
+  };
+  useEffect(() => {
+    const onNewSession = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      const h = navHandlersRef.current;
+      if (detail?.projectId) {
+        const target = h.projects.find((entry) => entry.id === detail.projectId);
+        if (target && h.selectedProjectId !== target.id) {
+          h.selectProject(target);
+          return;
+        }
+      }
+      h.openNewSessionInFocusedPane();
+    };
+    const onRename = (event: Event) => {
+      const detail = (event as CustomEvent<{ paneId?: PaneId; tabId?: string; title?: string }>)
+        .detail;
+      if (!detail?.paneId || !detail.tabId || !detail.title) return;
+      navHandlersRef.current.renameTab(detail.paneId, detail.tabId, detail.title);
+    };
+    const onOpen = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ paneId?: PaneId; tabId?: string; mode?: "focus" | "split" }>
+      ).detail;
+      if (!detail?.paneId || !detail.tabId) return;
+      if (detail.mode === "split") {
+        navHandlersRef.current.splitTabIntoNewPane(detail.paneId, detail.tabId);
+        return;
+      }
+      navHandlersRef.current.focusTab(detail.paneId, detail.tabId);
+    };
+    window.addEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
+    window.addEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
+    window.addEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
+      window.removeEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
+      window.removeEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
+    };
+  }, []);
 
   return (
-    <div className="flex h-[calc(100dvh-2.5rem)] min-h-0 w-full flex-col bg-(--bg) text-(--fg) md:h-[100dvh]">
-      <header className="flex h-11 shrink-0 items-center gap-3 border-b border-(--border) px-3">
-        <div className="flex shrink-0 items-center gap-1.5 text-sm">
-          <span className="font-semibold tracking-tight text-[13px]">Agent</span>
-          {activeProject ? (
-            <span className="hidden items-center gap-1 truncate text-xs text-(--dim) sm:inline-flex">
-              <span className="opacity-60">/</span>
-              <span className="truncate">{activeProject.name}</span>
-              {activeProject.hasGit && activeProject.branch ? (
-                <span className="ml-1 inline-flex items-center gap-1 rounded border border-(--border) px-1 py-0.5 font-mono text-[10px]">
-                  <GitBranchIcon className="h-3 w-3" />
-                  {activeProject.branch}
-                </span>
-              ) : null}
-            </span>
-          ) : null}
-        </div>
-
-        {focusedPane ? (
-          <SessionTabsBar
-            tabs={focusedPane.tabs}
-            activeTabId={focusedPane.activeTabId}
-            onTabsChange={(nextTabsOrUpdater) => {
-              setPanesById((current) => {
-                const cur = current.get(focusedPaneId);
-                if (!cur) return current;
-                const nextTabs =
-                  typeof nextTabsOrUpdater === "function"
-                    ? nextTabsOrUpdater(cur.tabs)
-                    : nextTabsOrUpdater;
-                const next = new Map(current);
-                next.set(focusedPaneId, { ...cur, tabs: nextTabs });
-                return next;
-              });
-            }}
-            onActiveTabChange={(tabId) => {
-              setPanesById((current) => {
-                const cur = current.get(focusedPaneId);
-                if (!cur) return current;
-                const next = new Map(current);
-                next.set(focusedPaneId, { ...cur, activeTabId: tabId });
-                return next;
-              });
-            }}
-            onRenameTab={(tabId, title) => {
-              setPanesById((current) => {
-                const cur = current.get(focusedPaneId);
-                if (!cur) return current;
-                const next = new Map(current);
-                next.set(focusedPaneId, {
-                  ...cur,
-                  tabs: cur.tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab)),
-                });
-                return next;
-              });
-            }}
-          />
-        ) : (
-          <div className="flex-1" />
-        )}
-
-        <ModelPicker
-          models={models}
-          selectedModel={selectedModel}
-          onSelect={setSelectedModel}
-          loading={loadingModels}
-        />
-
-        <button
-          type="button"
-          onClick={() => setRightPanelOpen((value) => !value)}
-          aria-pressed={rightPanelOpen}
-          className={`hidden h-7 items-center gap-1.5 rounded border px-2 text-xs xl:inline-flex ${
-            rightPanelOpen
-              ? "border-(--border) bg-(--surface) text-(--fg)"
-              : "border-transparent text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
-          }`}
-          title={
-            rightPanelOpen
-              ? "Hide browser/files computer panel"
-              : "Show browser/files computer panel for the focused agent"
-          }
-        >
-          {rightPanelOpen ? "Hide computer" : "Show computer"}
-        </button>
-      </header>
-
+    <div className="agent-workspace flex h-full min-h-0 w-full flex-col bg-(--bg) text-(--fg) md:h-[100dvh]">
       {error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {error}
@@ -818,7 +1045,27 @@ export function AgentWorkspace() {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <section className="flex min-w-0 flex-1 flex-col">
+        <section className="relative flex min-w-0 flex-1 flex-col">
+          <button
+            type="button"
+            onClick={() =>
+              setRightPanelOpen((value) => {
+                const next = !value;
+                window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, next ? "1" : "0");
+                return next;
+              })
+            }
+            aria-pressed={rightPanelOpen}
+            className={`absolute right-3 top-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-md border backdrop-blur ${
+              rightPanelOpen
+                ? "border-(--accent)/50 bg-(--accent)/10 text-(--accent)"
+                : "border-(--border) bg-(--surface)/90 text-(--dim) hover:text-(--fg)"
+            }`}
+            title={rightPanelOpen ? "Hide computer" : "Show computer"}
+            aria-label={rightPanelOpen ? "Hide computer" : "Show computer"}
+          >
+            <ComputerIcon className="h-4 w-4" />
+          </button>
           {shouldShowProjectEmptyState ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6">
               <div className="max-w-sm text-center">
@@ -846,17 +1093,95 @@ export function AgentWorkspace() {
                   const pane = panesById.get(paneId);
                   if (!pane) return null;
                   const onlyOne = collectLeaves(layout).length === 1;
+                  const paneActiveTab =
+                    pane.tabs.find((tab) => tab.id === pane.activeTabId) ?? pane.tabs[0] ?? null;
+                  const paneProject =
+                    projects.find((project) => project.id === paneActiveTab?.projectId) ??
+                    projects.find((project) => project.path === paneActiveTab?.cwd) ??
+                    activeProject;
+                  const paneCwd = paneActiveTab?.cwd ?? paneProject?.path ?? agentCwd;
+                  const paneModelId = paneActiveTab?.modelId ?? selectedModel;
+                  const paneModel = models.find((model) => model.id === paneModelId) ?? null;
+                  const paneTabIsNew =
+                    Boolean(paneActiveTab) &&
+                    !paneActiveTab?.piSessionId &&
+                    (paneActiveTab?.messages.length ?? 0) === 0;
                   return (
                     <ChatPane
                       key={paneId}
                       paneId={paneId}
                       runtimeSessionId={pane.runtimeSessionId}
-                      modelId={selectedModel}
-                      modelName={activeModel?.name ?? null}
+                      modelId={paneModelId}
+                      modelName={paneModel?.name ?? null}
                       modelsLoading={loadingModels}
-                      contextWindow={activeModel?.contextWindow ?? 0}
-                      cwd={agentCwd}
-                      projectName={activeProject?.name ?? null}
+                      contextWindow={paneModel?.contextWindow ?? 0}
+                      cwd={paneCwd}
+                      projectName={paneProject?.name ?? null}
+                      projectSelector={
+                        paneProject && projects.length > 0 ? (
+                          <select
+                            value={paneProject.id}
+                            onChange={(event) => {
+                              const project = projects.find(
+                                (entry) => entry.id === event.target.value,
+                              );
+                              if (!project) return;
+                              setPanesById((current) => {
+                                const cur = current.get(paneId);
+                                if (!cur) return current;
+                                const next = new Map(current);
+                                next.set(paneId, {
+                                  ...cur,
+                                  tabs: cur.tabs.map((tab) =>
+                                    tab.id === cur.activeTabId
+                                      ? { ...tab, projectId: project.id, cwd: project.path }
+                                      : tab,
+                                  ),
+                                });
+                                return next;
+                              });
+                            }}
+                            disabled={!paneTabIsNew}
+                            className="min-w-0 max-w-[280px] truncate rounded border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[11px] text-(--dim) outline-none hover:text-(--fg) disabled:opacity-100"
+                            title={
+                              paneTabIsNew
+                                ? "Change directory for this new session"
+                                : paneProject.path
+                            }
+                            aria-label="Session directory"
+                          >
+                            {projects.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.path}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null
+                      }
+                      gitBranch={gitSummary?.branch ?? paneProject?.branch ?? null}
+                      gitSummary={gitSummary}
+                      onInitGit={initGitForActiveProject}
+                      modelSelector={
+                        <ModelPicker
+                          models={models}
+                          selectedModel={paneModelId}
+                          onSelect={(modelId) => {
+                            setPanesById((current) => {
+                              const cur = current.get(paneId);
+                              if (!cur) return current;
+                              const next = new Map(current);
+                              next.set(paneId, {
+                                ...cur,
+                                tabs: cur.tabs.map((tab) =>
+                                  tab.id === cur.activeTabId ? { ...tab, modelId } : tab,
+                                ),
+                              });
+                              return next;
+                            });
+                          }}
+                          loading={loadingModels}
+                        />
+                      }
                       browserToolEnabled={focusedPaneId === paneId && browserToolEnabled}
                       onToggleBrowserTool={toggleBrowserTool}
                       onPiSessionIdChange={notifySessionsChanged}
@@ -895,33 +1220,52 @@ export function AgentWorkspace() {
                               }
                             }
                       }
-                      initialSessionId={pane.initialSessionId ?? null}
-                      onInitialSessionConsumed={() => consumeInitialSessionId(paneId)}
+                      onRegisterHandle={(handle) => registerPaneHandle(paneId, handle)}
                     />
                   );
                 }}
                 onSplit={(paneId, direction, side, payload) => {
-                  // Create a new pane next to the drop target. If a session
-                  // payload is included, stamp it as the new pane's
-                  // initialSessionId so its ChatPane replays the session on
-                  // first render — no loader-registration race.
+                  // Create a new pane next to the drop target.
                   const id = newPaneId();
                   if (collectLeaves(layout).length >= 2) return;
                   const runtime = newRuntimeId();
-                  const baseTab = makeFreshTab();
+                  const baseTab = {
+                    ...makeFreshTab(),
+                    projectId: payload.projectId,
+                    cwd: payload.cwd,
+                    title: payload.title ?? "Loading session",
+                  };
                   setPanesById((current) => {
                     const next = new Map(current);
                     next.set(id, {
                       tabs: [baseTab],
                       activeTabId: baseTab.id,
                       runtimeSessionId: runtime,
-                      initialSessionId: payload.piSessionId ?? null,
                     });
+                    if (!payload.piSessionId && payload.paneId && payload.tabId) {
+                      const source = current.get(payload.paneId);
+                      const sourceTab = source?.tabs.find((tab) => tab.id === payload.tabId);
+                      if (sourceTab) {
+                        next.set(id, {
+                          tabs: [
+                            {
+                              ...sourceTab,
+                              id: baseTab.id,
+                              runtimeSessionId: baseTab.runtimeSessionId,
+                            },
+                          ],
+                          activeTabId: baseTab.id,
+                          runtimeSessionId: runtime,
+                        });
+                      }
+                    }
                     return next;
                   });
                   setLayout((prev) => splitLeaf(prev, paneId, id, direction, side));
                   setFocusedPaneId(id);
+                  if (payload.piSessionId) queueSessionReplay(id, payload.piSessionId);
                 }}
+                onOpenTab={openSessionPayloadInPane}
                 onResize={(path, ratio) => {
                   setLayout((prev) => setSplitRatio(prev, path, ratio));
                 }}
@@ -932,9 +1276,9 @@ export function AgentWorkspace() {
 
         {rightPanelOpen ? (
           <aside
-            className="relative hidden shrink-0 flex-col border-l border-(--border) bg-(--bg) xl:flex"
+            className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--bg)"
             ref={computerAsideRef}
-            style={{ width: computerWidth }}
+            style={{ width: `min(${computerWidth}px, 48vw)` }}
           >
             <div
               role="separator"
@@ -974,7 +1318,21 @@ export function AgentWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => setRightPanelOpen(false)}
+                onClick={() => selectComputerTab("diff")}
+                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
+                  activeComputerTab === "diff"
+                    ? "bg-(--surface) text-(--fg)"
+                    : "hover:bg-(--surface) hover:text-(--fg)"
+                }`}
+              >
+                Diff
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRightPanelOpen(false);
+                  window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "0");
+                }}
                 className="ml-1 rounded p-1 hover:bg-(--surface) hover:text-(--fg)"
                 title="Close"
                 aria-label="Close computer"
@@ -993,12 +1351,14 @@ export function AgentWorkspace() {
                 onClose={() => setRightPanelOpen(false)}
                 isElectron={isElectron}
               />
-            ) : (
+            ) : activeComputerTab === "files" ? (
               <section className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1">
                   <FilesystemPanel cwd={activeProject?.path ?? null} />
                 </div>
               </section>
+            ) : (
+              <GitDiffPanel cwd={activeProject?.path ?? null} />
             )}
           </aside>
         ) : null}
@@ -1059,9 +1419,6 @@ function ModelPicker({
           <div className="max-h-72 overflow-y-auto p-1">
             {models.map((model) => {
               const isActive = model.id === selectedModel;
-              const ctxLabel = model.contextWindow
-                ? `${Math.round(model.contextWindow / 1024)}k`
-                : null;
               return (
                 <button
                   key={model.id}
@@ -1079,9 +1436,6 @@ function ModelPicker({
                   </span>
                   {model.reasoning ? (
                     <span className="shrink-0 text-[10px] text-(--dim)">· reasoning</span>
-                  ) : null}
-                  {ctxLabel ? (
-                    <span className="shrink-0 text-[10px] text-(--dim)">· {ctxLabel}</span>
                   ) : null}
                 </button>
               );

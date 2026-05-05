@@ -1,4 +1,0 @@
-interface:
-  display_name: "Evidence Evaluator"
-  short_description: "Evidence-first repo readiness report"
-  default_prompt: "Use $evidence-heavy-evaluator to evaluate this repo and generate a scored readiness report with evidence files."

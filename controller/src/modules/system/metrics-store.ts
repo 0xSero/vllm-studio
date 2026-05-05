@@ -2,14 +2,24 @@
 import type { Database } from "bun:sqlite";
 import { openSqliteDatabase } from "../../stores/sqlite";
 
+/**
+ *
+ */
 export class PeakMetricsStore {
   private readonly db: Database;
 
+  /**
+   *
+   * @param dbPath
+   */
   public constructor(dbPath: string) {
     this.db = openSqliteDatabase(dbPath);
     this.migrate();
   }
 
+  /**
+   *
+   */
   private migrate(): void {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS peak_metrics (
@@ -24,6 +34,10 @@ export class PeakMetricsStore {
     `);
   }
 
+  /**
+   *
+   * @param modelId
+   */
   public get(modelId: string): Record<string, unknown> | null {
     const row = this.db
       .query("SELECT * FROM peak_metrics WHERE model_id = ?")
@@ -31,7 +45,13 @@ export class PeakMetricsStore {
     return row ? { ...row } : null;
   }
 
-  /** Upserts peak values — only overwrites if the new value is better. */
+  /**
+   * Upserts peak values — only overwrites if the new value is better.
+   * @param modelId
+   * @param prefillTps
+   * @param generationTps
+   * @param ttftMs
+   */
   public updateIfBetter(
     modelId: string,
     prefillTps?: number,
@@ -103,6 +123,12 @@ export class PeakMetricsStore {
     return this.get(modelId) ?? {};
   }
 
+  /**
+   *
+   * @param modelId
+   * @param tokens
+   * @param requests
+   */
   public addTokens(modelId: string, tokens: number, requests = 1): void {
     this.db
       .query(
@@ -118,6 +144,9 @@ export class PeakMetricsStore {
       .run(modelId, tokens, requests);
   }
 
+  /**
+   *
+   */
   public getAll(): Array<Record<string, unknown>> {
     const rows = this.db.query("SELECT * FROM peak_metrics ORDER BY model_id").all() as Array<
       Record<string, unknown>
@@ -126,14 +155,24 @@ export class PeakMetricsStore {
   }
 }
 
+/**
+ *
+ */
 export class LifetimeMetricsStore {
   private readonly db: Database;
 
+  /**
+   *
+   * @param dbPath
+   */
   public constructor(dbPath: string) {
     this.db = openSqliteDatabase(dbPath);
     this.migrate();
   }
 
+  /**
+   *
+   */
   private migrate(): void {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS lifetime_metrics (
@@ -158,6 +197,10 @@ export class LifetimeMetricsStore {
     }
   }
 
+  /**
+   *
+   * @param key
+   */
   public get(key: string): number {
     const row = this.db.query("SELECT value FROM lifetime_metrics WHERE key = ?").get(key) as {
       value?: number;
@@ -165,6 +208,9 @@ export class LifetimeMetricsStore {
     return row?.value ?? 0;
   }
 
+  /**
+   *
+   */
   public getAll(): Record<string, number> {
     const rows = this.db.query("SELECT key, value FROM lifetime_metrics").all() as Array<{
       key: string;
@@ -173,6 +219,11 @@ export class LifetimeMetricsStore {
     return Object.fromEntries(rows.map((row) => [row.key, row.value]));
   }
 
+  /**
+   *
+   * @param key
+   * @param value
+   */
   public set(key: string, value: number): void {
     this.db
       .query(
@@ -183,6 +234,11 @@ export class LifetimeMetricsStore {
       .run(key, value);
   }
 
+  /**
+   *
+   * @param key
+   * @param delta
+   */
   public increment(key: string, delta: number): number {
     this.db
       .query(
@@ -194,6 +250,9 @@ export class LifetimeMetricsStore {
     return this.get(key);
   }
 
+  /**
+   *
+   */
   public ensureFirstStarted(): void {
     const current = this.get("first_started_at");
     if (current === 0) {
@@ -201,26 +260,50 @@ export class LifetimeMetricsStore {
     }
   }
 
+  /**
+   *
+   * @param wattHours
+   */
   public addEnergy(wattHours: number): void {
     this.increment("energy_wh", wattHours);
   }
 
+  /**
+   *
+   * @param tokens
+   */
   public addTokens(tokens: number): void {
     this.increment("tokens_total", tokens);
   }
 
+  /**
+   *
+   * @param tokens
+   */
   public addPromptTokens(tokens: number): void {
     this.increment("prompt_tokens_total", tokens);
   }
 
+  /**
+   *
+   * @param tokens
+   */
   public addCompletionTokens(tokens: number): void {
     this.increment("completion_tokens_total", tokens);
   }
 
+  /**
+   *
+   * @param seconds
+   */
   public addUptime(seconds: number): void {
     this.increment("uptime_seconds", seconds);
   }
 
+  /**
+   *
+   * @param count
+   */
   public addRequests(count = 1): void {
     this.increment("requests_total", count);
   }

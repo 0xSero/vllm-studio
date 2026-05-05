@@ -1,7 +1,7 @@
 // CRITICAL
 import type { AppContext } from "../../../types/context";
 import { getGpuInfo } from "../platform/gpu";
-import { getSystemRuntimeInfo } from "../../engines/layers/runtime-info";
+import { getSystemRuntimeInfo } from "../../engines/runtimes/runtime-info";
 import { delay } from "../../../core/async";
 import { listLogFiles, resolveExistingLogPath, tailFileLines } from "../../../core/log-files";
 import { fetchLocal } from "../../../http/local-fetch";

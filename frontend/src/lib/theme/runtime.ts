@@ -11,8 +11,8 @@ import {
   type ThemeTokens,
 } from "@/lib/themes";
 
-const STORE_KEY = "vllm-studio-chat-state";
-const DEFAULT_THEME_ID: ThemeId = "omlx-light";
+const STORE_KEY = "vllm-studio-state";
+const DEFAULT_THEME_ID: ThemeId = "omlx-dark";
 
 const THEME_TOKENS_BY_ID = Object.fromEntries(
   Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [id, theme.tokens]),
@@ -47,7 +47,8 @@ export function applyThemeToDocument(themeId: ThemeId): ThemeId {
 export function applyFontFamilyToDocument(fontFamilyId: FontFamilyId): FontFamilyId {
   if (typeof document === "undefined") return fontFamilyId;
 
-  const nextFont = FONT_FAMILY_BY_ID.get(fontFamilyId) ?? FONT_FAMILY_BY_ID.get(DEFAULT_FONT_FAMILY_ID);
+  const nextFont =
+    FONT_FAMILY_BY_ID.get(fontFamilyId) ?? FONT_FAMILY_BY_ID.get(DEFAULT_FONT_FAMILY_ID);
   if (!nextFont) return fontFamilyId;
 
   document.documentElement.style.setProperty("--font-sans", nextFont.cssValue);

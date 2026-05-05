@@ -22,12 +22,6 @@ export interface ControllerProviderRoutingConfig {
   providers?: ProviderConfig[];
 }
 
-const resolveEnvValue = (value: string | undefined): string | undefined => {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
 export const parseProviderModel = (rawModel: string): ParsedProviderModel => {
   const trimmed = rawModel.trim();
   if (!trimmed) {
@@ -53,9 +47,7 @@ export const resolveConfiguredProviderConfig = (
   providerId: string,
   providers: ProviderConfig[] = []
 ): ProviderRouteConfig | null => {
-  const match = providers.find(
-    (p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled
-  );
+  const match = providers.find((p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled);
   if (!match || !match.api_key) return null;
   return { baseUrl: match.base_url, apiKey: match.api_key };
 };

@@ -8,7 +8,7 @@ import type { SystemConfigResponse } from "../models/types";
 import { badRequest, notFound } from "../../core/errors";
 import { estimateWeightsSizeBytes } from "../models/model-browser";
 import { getGpuInfo } from "./platform/gpu";
-import { getSystemRuntimeInfo } from "../engines/layers/runtime-info";
+import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import { buildCompatibilityReport } from "./platform/compatibility-report";
 import { fetchLocal } from "../../http/local-fetch";
 import { registerMonitoringRoutes } from "./metrics-routes";

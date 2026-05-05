@@ -16,3 +16,57 @@
   display: block;
 }
 
+/* Mobile/PWA chrome: reserve the notch/status area once, then give content the
+   full bottom of the viewport. The mobile nav lives in a drawer, not a footer. */
+:root {
+  --mobile-topbar-height: calc(3rem + env(safe-area-inset-top, 0px));
+}
+
+@media (max-width: 767px) {
+  .mobile-pwa-topbar {
+    height: var(--mobile-topbar-height);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mobile-pwa-main {
+    padding-top: var(--mobile-topbar-height);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-pwa-drawer {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-pwa-drawer-header {
+    min-height: var(--mobile-topbar-height);
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .agent-workspace {
+    height: calc(100dvh - var(--mobile-topbar-height));
+  }
+
+  .agent-workspace-header {
+    min-height: 3.25rem;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .agent-workspace-header > :first-child {
+    min-width: 0;
+  }
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .mobile-pwa-topbar,
+  .mobile-pwa-drawer {
+    background: color-mix(in srgb, var(--bg) 96%, transparent);
+  }
+}

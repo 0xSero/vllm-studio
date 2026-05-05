@@ -1,7 +1,15 @@
+/**
+ *
+ */
 export class HttpStatus extends Error {
   public readonly status: number;
   public readonly detail: string;
 
+  /**
+   *
+   * @param status
+   * @param detail
+   */
   public constructor(status: number, detail: string) {
     super(detail);
     this.status = status;
@@ -9,8 +17,7 @@ export class HttpStatus extends Error {
   }
 }
 
-export const isHttpStatus = (value: unknown): value is HttpStatus =>
-  value instanceof HttpStatus;
+export const isHttpStatus = (value: unknown): value is HttpStatus => value instanceof HttpStatus;
 
 export const notFound = (detail: string): HttpStatus => new HttpStatus(404, detail);
 

@@ -2,6 +2,12 @@
   "name": "frontend",
   "version": "0.2.1",
   "private": true,
+  "scripts": {
+    "release:notes": "node scripts/release-statement.mjs",
+    "release:notes:week": "node scripts/release-statement.mjs --since '1 week ago'",
+    "release:check-commits": "node scripts/check-conventional-commits.mjs --range origin/main..HEAD",
+    "setup:git-hooks": "git config core.hooksPath .githooks"
+  },
   "dependencies": {
     "electron-updater": "^6.6.2",
     "framer-motion": "^12.24.10",

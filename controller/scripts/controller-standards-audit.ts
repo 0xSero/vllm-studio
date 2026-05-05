@@ -31,21 +31,27 @@ const stats: AuditStats = {
 };
 const modulesRoot = path.join(SRC_DIR, "modules");
 
-const moduleDirs = new Set<string>();
+const moduleDirectories = new Set<string>();
 if (fs.existsSync(MODULES_DIR)) {
   for (const item of fs.readdirSync(MODULES_DIR, { withFileTypes: true })) {
     if (item.isDirectory() && !item.name.startsWith(".")) {
-      moduleDirs.add(path.join(MODULES_DIR, item.name));
+      moduleDirectories.add(path.join(MODULES_DIR, item.name));
     }
   }
 }
 
 const kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 
+/**
+ *
+ * @param dir
+ */
 function scanDirectory(dir: string): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const directFiles = entries.filter((entry) => entry.isFile());
-  const directDirs = entries.filter((entry) => entry.isDirectory() && !entry.name.startsWith("."));
+  const directDirectories = entries.filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith(".")
+  );
 
   stats.directories += 1;
   stats.files += directFiles.length;
@@ -59,12 +65,12 @@ function scanDirectory(dir: string): void {
     });
   }
 
-  if (dir !== modulesRoot && directDirs.length > MAX_SUBDIRS_PER_DIR) {
+  if (dir !== modulesRoot && directDirectories.length > MAX_SUBDIRS_PER_DIR) {
     findings.push({
       level: "error",
       rule: "directory-subdir-limit",
       path: dir,
-      detail: `${directDirs.length} subdirectories (limit ${MAX_SUBDIRS_PER_DIR})`,
+      detail: `${directDirectories.length} subdirectories (limit ${MAX_SUBDIRS_PER_DIR})`,
     });
   }
 
@@ -91,16 +97,19 @@ function scanDirectory(dir: string): void {
   }
 }
 
+/**
+ *
+ * @param filePath
+ */
 function checkFunctionDocs(filePath: string): void {
   const lines = fs.readFileSync(filePath, "utf8").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
     if (!line) continue;
 
     const trimmed = line.trim();
     const exportFunction =
-      /^(export\s+)?(async\s+)?function\s+\w+/.test(trimmed) &&
-      (trimmed.startsWith("export "));
+      /^(export\s+)?(async\s+)?function\s+\w+/.test(trimmed) && trimmed.startsWith("export ");
     const exportArrowFunction =
       /^(export\s+)?const\s+\w+\s*=\s*(async\s+)?\(.+\)\s*=>/.test(trimmed) ||
       /^(export\s+)?const\s+\w+\s*:\s*\(.*\)\s*=>/.test(trimmed) ||
@@ -110,54 +119,57 @@ function checkFunctionDocs(filePath: string): void {
       continue;
     }
 
-    let hasJSDoc = false;
+    let hasJSDocument = false;
     let seenCommentStart = false;
-    for (let j = i - 1; j >= Math.max(0, i - MAX_DOC_LOOKBACK); j--) {
-      const prev = lines[j];
-      if (prev === undefined) {
+    for (let index_ = index - 1; index_ >= Math.max(0, index - MAX_DOC_LOOKBACK); index_--) {
+      const previous = lines[index_];
+      if (previous === undefined) {
         continue;
       }
-      const trimmedPrev = prev.trim();
-      if (trimmedPrev === "") {
+      const trimmedPrevious = previous.trim();
+      if (trimmedPrevious === "") {
         continue;
       }
-      if (trimmedPrev.startsWith("/**")) {
-        hasJSDoc = true;
+      if (trimmedPrevious.startsWith("/**")) {
+        hasJSDocument = true;
         break;
       }
-      if (trimmedPrev.endsWith("*/")) {
+      if (trimmedPrevious.endsWith("*/")) {
         seenCommentStart = true;
-        if (trimmedPrev.startsWith("/*")) {
-          hasJSDoc = true;
+        if (trimmedPrevious.startsWith("/*")) {
+          hasJSDocument = true;
           break;
         }
         continue;
       }
       if (seenCommentStart) {
-        if (trimmedPrev.startsWith("*") || trimmedPrev.startsWith("* ")) {
+        if (trimmedPrevious.startsWith("*") || trimmedPrevious.startsWith("* ")) {
           continue;
         }
-        if (trimmedPrev.startsWith("/**")) {
-          hasJSDoc = true;
+        if (trimmedPrevious.startsWith("/**")) {
+          hasJSDocument = true;
         }
         break;
       }
       break;
     }
 
-    if (!hasJSDoc) {
+    if (!hasJSDocument) {
       findings.push({
         level: "warning",
         rule: "function-doc-comment",
         path: filePath,
-        detail: `Missing comment block above exported function on line ${i + 1}`,
+        detail: `Missing comment block above exported function on line ${index + 1}`,
       });
     }
   }
 }
 
+/**
+ *
+ */
 function evaluateModuleContracts(): void {
-  for (const moduleDir of moduleDirs) {
+  for (const moduleDir of moduleDirectories) {
     const hasRequiredFiles = new Set<string>();
     const entries = fs.readdirSync(moduleDir, { withFileTypes: true });
 
@@ -169,7 +181,9 @@ function evaluateModuleContracts(): void {
       }
     }
 
-    const missing = REQUIRED_MODULE_CONTRACT_FILES.filter((fileName) => !hasRequiredFiles.has(fileName));
+    const missing = REQUIRED_MODULE_CONTRACT_FILES.filter(
+      (fileName) => !hasRequiredFiles.has(fileName)
+    );
     if (missing.length > 0) {
       findings.push({
         level: "warning",
@@ -181,6 +195,9 @@ function evaluateModuleContracts(): void {
   }
 }
 
+/**
+ *
+ */
 function printSummary(): void {
   const errors = findings.filter((f) => f.level === "error");
   const warnings = findings.filter((f) => f.level === "warning");
@@ -207,6 +224,9 @@ function printSummary(): void {
   }
 }
 
+/**
+ *
+ */
 function run(): number {
   if (!fs.existsSync(SRC_DIR)) {
     console.error("ERROR: src directory not found");

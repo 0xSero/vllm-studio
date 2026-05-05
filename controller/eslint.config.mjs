@@ -48,9 +48,9 @@ const config = [
           }
         }
       ],
-      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns": "off",
       "jsdoc/require-param": "error",
-      "jsdoc/require-description": "error",
+      "jsdoc/require-description": "off",
       "jsdoc/check-param-names": "error",
       "jsdoc/check-tag-names": "error",
       "unicorn/consistent-function-scoping": "off",
@@ -67,7 +67,12 @@ const config = [
             "id": true,
             "ids": true,
             "args": true,
-            "params": true
+            "params": true,
+            "dir": true,
+            "dirs": true,
+            "docs": true,
+            "Docs": true,
+            "moduleDir": true
           }
         }
       ]

@@ -1,6 +1,6 @@
 // CRITICAL
 import type { GPU, LaunchProgressData, Metrics, ProcessInfo, RuntimePlatformKind } from "@/lib/types";
-import type { JobEntry, LeaseInfo, RuntimeSummaryData, ServiceEntry, StatusData } from "./types";
+import type { LeaseInfo, RuntimeSummaryData, ServiceEntry, StatusData } from "./types";
 
 function areProcessInfosEqual(a: ProcessInfo | null, b: ProcessInfo | null) {
   if (a === b) return true;
@@ -107,16 +107,5 @@ export function areLeasesEqual(a: LeaseInfo | null, b: LeaseInfo | null) {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.holder === b.holder;
-}
-
-export function areJobsEqual(a: JobEntry[], b: JobEntry[]) {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const l = a[i]!;
-    const r = b[i]!;
-    if (l.id !== r.id || l.status !== r.status || l.progress !== r.progress) return false;
-  }
-  return true;
 }
 

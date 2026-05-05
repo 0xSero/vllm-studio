@@ -23,9 +23,9 @@
     "check:fix": "knip --fix",
     "desktop:build:main": "tsc -p desktop/tsconfig.json",
     "desktop:start": "electron desktop/dist/main.js",
-    "desktop:start:dev": "cross-env VLLM_STUDIO_DESKTOP_DEV_SERVER_URL=http://127.0.0.1:3000 electron desktop/dist/main.js",
+    "desktop:start:dev": "VLLM_STUDIO_DESKTOP_DEV_SERVER_URL=http://127.0.0.1:3000 electron desktop/dist/main.js",
     "desktop:build": "npm run build && npm run desktop:build:main",
-    "desktop:dev": "npm run desktop:build:main && concurrently -k -n NEXT,ELECTRON -c cyan,magenta \"npm run dev\" \"wait-on tcp:3000 && npm run desktop:start:dev\"",
+    "desktop:dev": "npm run desktop:build:main && concurrently -k -n NEXT,ELECTRON -c cyan,magenta \"npm run dev\" \"node -e \\\"setTimeout(() => process.exit(0), 3000)\\\" && npm run desktop:start:dev\"",
     "desktop:dist": "npm run desktop:build && electron-builder --config desktop/electron-builder.yml",
     "desktop:pack": "npm run desktop:build && electron-builder --dir --config desktop/electron-builder.yml"
   },
@@ -51,7 +51,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
     "depcheck": "^1.4.7",
     "electron": "^36.3.2",
     "electron-builder": "^26.0.12",
@@ -66,8 +65,7 @@
     "prettier": "^3.8.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.4",
-    "wait-on": "^9.0.2"
+    "vitest": "^3.2.4"
   },
   "main": "desktop/dist/main.js"
 }

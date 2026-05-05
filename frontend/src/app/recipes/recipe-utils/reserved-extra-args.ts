@@ -19,7 +19,7 @@ for (const field of EXTRA_ARG_FIELDS) {
   }
 }
 
-["env_vars", "env-vars", "envVars", "status"].forEach(addReservedKeys);
+["env_vars", "env-vars", "envVars", "status", "launch_command", "custom_command"].forEach(addReservedKeys);
 ["default-chat-template-kwargs", "default_chat_template_kwargs"].forEach(addReservedKeys);
 
 for (const key of LLAMACPP_OPTION_KEYS) {

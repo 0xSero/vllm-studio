@@ -17,7 +17,7 @@ export interface ThemeSlice {
 }
 
 export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => ({
-  themeId: "omlx-light",
+  themeId: "omlx-dark",
   fontFamilyId: DEFAULT_FONT_FAMILY_ID,
   fontSizeId: DEFAULT_FONT_SIZE_ID,
   setThemeId: (themeId: ThemeId) => {

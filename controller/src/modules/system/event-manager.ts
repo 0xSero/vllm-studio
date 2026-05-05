@@ -164,14 +164,6 @@ export class EventManager {
   }
 
   /**
-   * Publish a job update.
-   * @param jobData - Job payload.
-   */
-  public async publishJobUpdated(jobData: Record<string, unknown>): Promise<void> {
-    await this.publish(new Event(CONTROLLER_EVENTS.JOB_UPDATED, jobData));
-  }
-
-  /**
    * Publish a log line for a session.
    * @param sessionId - Log session id.
    * @param line - Log line.

@@ -9,6 +9,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig: NextConfig = {
   output: "standalone",
   images: { unoptimized: true },
+  serverExternalPackages: ["@mariozechner/pi-coding-agent"],
   turbopack: {
     root: path.join(__dirname, ".."),
     resolveAlias: {

@@ -1,16 +1,25 @@
 // CRITICAL
 "use client";
 
-import { RefreshButton, PageState } from "@/ui";
+import { useState } from "react";
+import { PageState } from "../../ui/page-state";
+import { RefreshButton } from "../../ui/refresh-button";
 import { DailyUsageChart } from "./_components/daily-usage-chart";
 import { ModelPerformanceTable } from "./_components/model-performance-table";
 import { PerformanceDetails } from "./_components/performance-details";
 import { SecondaryMetrics } from "./_components/secondary-metrics";
 import { OverviewMetrics } from "./_components/overview-metrics";
-import { useUsage } from "./hooks/use-usage";
+import { useUsage, type UsageSource } from "./hooks/use-usage";
 import { formatNumber } from "@/lib/formatters";
 import { normalizeUsageStats } from "./lib/normalize-usage-stats";
+
+const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
+  { id: "provider", label: "Provider", sublabel: "this controller" },
+  { id: "pi-sessions", label: "Pi sessions", sublabel: "coding-agent JSONL" },
+];
+
 export default function UsagePage() {
+  const [tab, setTab] = useState<UsageSource>("provider");
   const {
     stats,
     peakMetrics,
@@ -25,7 +34,7 @@ export default function UsagePage() {
     sortedModels,
     handleSort,
     toggleRow,
-  } = useUsage();
+  } = useUsage(tab);
 
   const pageStateRender = PageState({
     loading,
@@ -45,6 +54,28 @@ export default function UsagePage() {
   return (
     <div className="min-h-full overflow-y-auto bg-(--bg) text-(--fg)">
       <div className="mx-auto max-w-[118rem] px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 2xl:px-10">
+        <div className="mb-3 flex border border-(--border) bg-(--surface)">
+          {TABS.map((entry) => {
+            const active = entry.id === tab;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setTab(entry.id)}
+                className={`flex-1 px-4 py-2 text-left font-mono text-xs uppercase tracking-[0.18em] transition-colors ${
+                  active
+                    ? "bg-(--bg) text-(--fg)"
+                    : "text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
+                }`}
+              >
+                <div>{entry.label}</div>
+                <div className="mt-0.5 text-[9px] tracking-[0.14em] text-(--dim)">
+                  {entry.sublabel}
+                </div>
+              </button>
+            );
+          })}
+        </div>
         <div className="mb-5 border border-(--border) bg-(--surface)">
           <div className="grid gap-px bg-(--border) lg:grid-cols-[minmax(0,1fr)_auto]">
             <div className="bg-(--surface) px-4 py-4 sm:px-5">

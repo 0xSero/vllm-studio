@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#fafafa",
+  themeColor: "#0a0a0a",
 };
 
 export const metadata: Metadata = {
@@ -76,7 +76,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="omlx-light" suppressHydrationWarning>
+    <html lang="en" data-theme="omlx-dark" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" href="/mocks/logo-1.svg" type="image/svg+xml" />

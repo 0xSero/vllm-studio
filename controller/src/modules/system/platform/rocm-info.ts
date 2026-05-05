@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 import type { RuntimeRocmInfo, RuntimeRocmSmiTool } from "../../models/types";
 import { runCommand } from "../../../core/command";
 import { resolveAmdSmiBinary, resolveForcedRocmTool, resolveRocmSmiBinary } from "./smi-tools";
-import { ROCM_UPGRADE_ENV, isUpgradeCommandConfigured } from "../../engines/layers/upgrade-config";
+import {
+  ROCM_UPGRADE_ENV,
+  isUpgradeCommandConfigured,
+} from "../../engines/runtimes/upgrade-config";
 
 const parseHipccVersion = (output: string): string | null => {
   const match = output.match(/HIP version\s*:\s*([0-9.]+)/i);
@@ -73,7 +76,8 @@ export const getRocmInfo = (smiTool: RuntimeRocmSmiTool | null): RuntimeRocmInfo
   let hipVersion: string | null = null;
   const hipccResult = runCommand("hipcc", ["--version"]);
   if (hipccResult.status === 0) {
-    hipVersion = parseHipccVersion(hipccResult.stdout) ?? parseHipccVersion(hipccResult.stderr) ?? null;
+    hipVersion =
+      parseHipccVersion(hipccResult.stdout) ?? parseHipccVersion(hipccResult.stderr) ?? null;
   }
 
   const gpuArch = new Set<string>();

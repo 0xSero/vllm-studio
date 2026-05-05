@@ -4,18 +4,17 @@ import { resolve } from "node:path";
 import type { AppContext } from "./types/context";
 import { createConfig } from "./config/env";
 import { createEventManager } from "./modules/system/event-manager";
-import { createLaunchState } from "./modules/engines/layers/launch-state";
+import { createLaunchState } from "./modules/engines/process/launch-state";
 import { createMetrics } from "./modules/system/metrics";
-import { createProcessManager } from "./modules/engines/layers/process-manager";
-import { DownloadManager } from "./modules/engines/layers/download-manager";
-import { createEngineCoordinator } from "./modules/engines/layers/engine-coordinator";
+import { createProcessManager } from "./modules/engines/process/process-manager";
+import { DownloadManager } from "./modules/engines/downloads/download-manager";
+import { createEngineCoordinator } from "./modules/engines/engine-coordinator";
 import { createLogger, resolveLogLevel } from "./core/logger";
 import { primaryLogPathFor } from "./core/log-files";
-import { DownloadStore } from "./modules/engines/layers/download-store";
+import { DownloadStore } from "./modules/engines/downloads/download-store";
 import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics-store";
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
-import { JobStore } from "./stores/job-store";
-import { JobManager } from "./modules/jobs/job-manager";
+import { InferenceRequestStore } from "./stores/inference-request-store";
 
 /**
  * Create the application dependency container.
@@ -31,7 +30,7 @@ export const createAppContext = (): AppContext => {
   const downloadStore = new DownloadStore(dbPath);
   const peakMetricsStore = new PeakMetricsStore(dbPath);
   const lifetimeMetricsStore = new LifetimeMetricsStore(dbPath);
-  const jobStore = new JobStore(dbPath);
+  const inferenceRequestStore = new InferenceRequestStore(dbPath);
   const eventManager = createEventManager();
   const logger = createLogger(resolveLogLevel("info"), {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
@@ -69,14 +68,9 @@ export const createAppContext = (): AppContext => {
       downloadStore,
       peakMetricsStore,
       lifetimeMetricsStore,
-      jobStore,
+      inferenceRequestStore,
     },
-  } as Omit<AppContext, "jobManager">;
+  } satisfies AppContext;
 
-  const jobManager = new JobManager(baseContext as AppContext, jobStore);
-
-  return {
-    ...baseContext,
-    jobManager,
-  };
+  return baseContext;
 };

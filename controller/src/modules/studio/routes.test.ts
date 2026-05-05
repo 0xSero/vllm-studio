@@ -31,9 +31,7 @@ describe("deriveRecommendationVramGb", () => {
 
   it("sums pooled VRAM for 8x RTX 3090", () => {
     const value = deriveRecommendationVramGb(
-      Array.from({ length: 8 }, (_, i) =>
-        gpu({ index: i, memory_total_mb: 24576 }),
-      ),
+      Array.from({ length: 8 }, (_, index) => gpu({ index: index, memory_total_mb: 24576 }))
     );
     expect(value).toBe(192);
   });
