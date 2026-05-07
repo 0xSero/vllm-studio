@@ -13,7 +13,7 @@ import {
   SettingsValue,
   StatusPill,
   type StatusTone,
-} from "./settings-primitives";
+} from "@/components/settings-primitives";
 
 const ENGINE_META: Record<string, { label: string; description: string }> = {
   vllm: {

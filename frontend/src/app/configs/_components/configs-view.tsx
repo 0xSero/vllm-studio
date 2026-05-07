@@ -30,7 +30,7 @@ import {
   type SettingsSectionDef,
   type SettingsSectionId,
   type StatusTone,
-} from "./settings-primitives";
+} from "@/components/settings-primitives";
 
 interface ConfigsViewProps {
   data: ConfigData | null;

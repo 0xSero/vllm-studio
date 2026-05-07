@@ -4,6 +4,13 @@
 import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Pin, PinOff, Play, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
+import {
+  SettingsButton,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+  type StatusTone,
+} from "@/components/settings-primitives";
 import { formatBackendLabel } from "../../recipe-labels";
 
 type Props = {
@@ -18,6 +25,13 @@ type Props = {
   onEdit: (recipe: RecipeWithStatus) => void;
   onRequestDelete: (recipeId: string) => void;
 };
+
+function statusTone(status: string): StatusTone {
+  if (status === "running") return "good";
+  if (status === "starting") return "info";
+  if (status === "error") return "danger";
+  return "default";
+}
 
 export const RecipeRow = memo(function RecipeRow({
   recipe,
@@ -34,8 +48,8 @@ export const RecipeRow = memo(function RecipeRow({
   const handleTogglePin = useCallback(() => onTogglePin(recipe.id), [onTogglePin, recipe.id]);
   const handleLaunch = useCallback(() => onLaunch(recipe.id), [onLaunch, recipe.id]);
   const handleToggleMenu = useCallback(
-    (e: MouseEvent<HTMLButtonElement>) => {
-      e.stopPropagation();
+    (e?: MouseEvent<HTMLButtonElement>) => {
+      e?.stopPropagation();
       onToggleMenu(recipe.id);
     },
     [onToggleMenu, recipe.id],
@@ -49,95 +63,52 @@ export const RecipeRow = memo(function RecipeRow({
   const tp = recipe.tp || recipe.tensor_parallel_size || 1;
   const pp = recipe.pp || recipe.pipeline_parallel_size || 1;
   const status = recipe.status || "stopped";
-
-  const statusClassName =
-    status === "running"
-      ? "bg-(--hl2)/20 text-(--hl2) border border-(--hl2)/30"
-      : status === "starting"
-        ? "bg-(--accent)/20 text-(--accent) border border-(--accent)/30"
-        : "bg-(--border)/20 text-(--dim) border border-(--border)";
+  const modelName =
+    recipe.served_model_name || recipe.model_path.split("/").pop() || recipe.model_path;
 
   return (
-    <tr className="hover:bg-(--surface)/50 transition-colors">
-      <td className="px-4 py-3">
-        <button
-          onClick={handleTogglePin}
-          className="text-(--dim) hover:text-(--accent) transition-colors"
-          title={isPinned ? "Unpin" : "Pin"}
-        >
-          {isPinned ? <Pin className="w-4 h-4 fill-current" /> : <PinOff className="w-4 h-4" />}
-        </button>
-      </td>
-      <td className="px-4 py-3 font-medium text-sm">{recipe.name}</td>
-      <td
-        className="px-4 py-3 text-sm text-(--dim) font-mono truncate max-w-xs"
-        title={recipe.model_path}
-      >
-        {recipe.served_model_name || recipe.model_path.split("/").pop()}
-      </td>
-      <td className="px-4 py-3 text-sm">
-        <span className="px-2 py-1 bg-(--surface) border border-(--border) rounded text-xs">
-          {formatBackendLabel(recipe.backend)}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-sm text-(--dim)">
-        {tp}/{pp}
-      </td>
-      <td className="px-4 py-3">
-        <span
-          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClassName}`}
-        >
-          {status}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
+    <SettingsRow
+      label={recipe.name}
+      description={`${modelName} · ${formatBackendLabel(recipe.backend)} · tp/pp ${tp}/${pp}`}
+      value={<SettingsValue mono>{recipe.model_path}</SettingsValue>}
+      status={<StatusPill tone={statusTone(status)}>{status}</StatusPill>}
+      actions={
+        <>
+          <SettingsButton onClick={handleTogglePin} title={isPinned ? "Unpin" : "Pin"}>
+            {isPinned ? <Pin className="h-3 w-3 fill-current" /> : <PinOff className="h-3 w-3" />}
+          </SettingsButton>
           {status === "running" ? (
-            <button
-              onClick={onStop}
-              className="p-1.5 hover:bg-(--err)/20 text-(--err) rounded transition-colors"
-              title="Stop"
-            >
-              <Square className="w-4 h-4" />
-            </button>
+            <SettingsButton onClick={onStop} tone="danger" title="Stop">
+              <Square className="h-3 w-3" />
+            </SettingsButton>
           ) : (
-            <button
-              onClick={handleLaunch}
-              disabled={launchDisabled}
-              className="p-1.5 hover:bg-(--hl2)/20 text-(--hl2) rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Launch"
-            >
-              <Play className="w-4 h-4" />
-            </button>
+            <SettingsButton onClick={handleLaunch} disabled={launchDisabled} title="Launch">
+              <Play className="h-3 w-3" />
+            </SettingsButton>
           )}
           <div className="relative">
-            <button
-              onClick={handleToggleMenu}
-              className="p-1.5 hover:bg-(--surface) rounded transition-colors"
-              title="Actions"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-1 w-32 bg-(--surface) border border-(--border) rounded-lg shadow-lg z-50">
+            <SettingsButton onClick={() => handleToggleMenu()} title="Actions">
+              <MoreVertical className="h-3 w-3" />
+            </SettingsButton>
+            {isMenuOpen ? (
+              <div className="absolute right-0 z-50 mt-1 w-32 overflow-hidden rounded-lg border border-(--border) bg-(--surface) shadow-lg">
                 <button
                   onClick={handleEdit}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-(--border) transition-colors"
+                  className="w-full px-3 py-2 text-left text-[12px] hover:bg-(--hover)"
                 >
                   Edit
                 </button>
                 <button
                   onClick={handleRequestDelete}
-                  className="w-full px-3 py-2 text-left text-sm text-(--err) hover:bg-(--border) transition-colors"
+                  className="w-full px-3 py-2 text-left text-[12px] text-(--err) hover:bg-(--err)/10"
                 >
                   Delete
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
-        </div>
-      </td>
-    </tr>
+        </>
+      }
+    />
   );
 });
-

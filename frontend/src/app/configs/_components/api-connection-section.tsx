@@ -9,7 +9,7 @@ import {
   SettingsValue,
   StatusPill,
   type StatusTone,
-} from "./settings-primitives";
+} from "@/components/settings-primitives";
 
 export function ApiConnectionSection({
   apiSettingsLoading,

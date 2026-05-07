@@ -1,9 +1,8 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -18,6 +17,15 @@ import {
 } from "lucide-react";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatBytes, formatNumber } from "@/lib/formatters";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsInput,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+  type StatusTone,
+} from "@/components/settings-primitives";
 import { extractProvider, extractQuantizations } from "@/app/discover/_components/utils";
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
@@ -91,126 +99,99 @@ const ModelRow = memo(function ModelRow({
     setTimeout(() => setCopied(false), 2000);
   }, [model.modelId]);
 
+  const downloadTone: StatusTone = isLocal
+    ? "good"
+    : activeDownload?.status === "failed"
+      ? "danger"
+      : activeDownload
+        ? "info"
+        : "default";
+  const downloadLabel = isLocal
+    ? "local"
+    : isStarting
+      ? "starting"
+      : activeDownload
+        ? activeDownload.status
+        : "remote";
+
   return (
-    <tr className={child ? "bg-(--surface)/10" : ""}>
-      <td className="px-4 py-3">
-        <div className={`flex items-center gap-2 ${child ? "pl-5" : ""}`}>
-          {variantCount > 1 && !child && onToggleExpand && (
-            <button onClick={onToggleExpand} className="p-1 hover:bg-(--surface) rounded shrink-0">
+    <SettingsRow
+      label={child ? model.modelId.split("/").pop() || model.modelId : model.modelId}
+      description={`${provider}${variantCount > 1 && !child ? ` · ${variantCount} variants` : ""}`}
+      value={
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-(--dim)">
+          <span className="font-mono text-(--fg)">
+            {quants.length ? quants.join(", ") : "format unknown"}
+          </span>
+          <ExploreVramCell needGb={weightEstimateGb ?? null} poolGb={pooledVramGb} />
+          <span>{formatNumber(displayDownloads ?? model.downloads)} downloads</span>
+          <span>{formatNumber(displayLikes ?? model.likes)} likes</span>
+        </div>
+      }
+      status={<StatusPill tone={downloadTone}>{downloadLabel}</StatusPill>}
+      actions={
+        <>
+          {variantCount > 1 && !child && onToggleExpand ? (
+            <SettingsButton
+              onClick={onToggleExpand}
+              title={expanded ? "Hide variants" : "Show variants"}
+            >
               {expanded ? (
-                <ChevronDown className="h-3.5 w-3.5 text-(--dim)" />
+                <ChevronDown className="h-3 w-3" />
               ) : (
-                <ChevronRight className="h-3.5 w-3.5 text-(--dim)" />
+                <ChevronRight className="h-3 w-3" />
               )}
-            </button>
-          )}
-          <span className="text-sm text-(--fg) truncate max-w-[280px]" title={model.modelId}>
-            {model.modelId}
-          </span>
-          <button onClick={copyId} className="p-0.5 hover:bg-(--surface) rounded shrink-0">
-            {copied ? (
-              <Check className="h-3 w-3 text-(--hl2)" />
-            ) : (
-              <Copy className="h-3 w-3 text-(--dim)" />
-            )}
-          </button>
-        </div>
-        {!child && variantCount > 1 && (
-          <div className="text-[11px] text-(--dim) mt-0.5 pl-7">{variantCount} variants</div>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        <span className="text-xs text-(--dim)">{provider}</span>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-wrap gap-1">
-          {quants.length > 0 ? (
-            quants.map((q) => (
-              <span
-                key={q}
-                className="px-1.5 py-0.5 bg-(--surface) border border-(--border) rounded text-[11px] text-(--dim)"
-              >
-                {q}
-              </span>
-            ))
-          ) : (
-            <span className="text-xs text-(--dim)">—</span>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <ExploreVramCell needGb={weightEstimateGb ?? null} poolGb={pooledVramGb} />
-      </td>
-      <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-3 text-xs text-(--dim)">
-          <span className="flex items-center gap-1" title="Downloads (Hugging Face)">
-            <Download className="h-3 w-3" />
-            {formatNumber(displayDownloads ?? model.downloads)}
-          </span>
-          <span className="flex items-center gap-1" title="Likes (Hugging Face)">
-            <Heart className="h-3 w-3" />
-            {formatNumber(displayLikes ?? model.likes)}
-          </span>
-        </div>
-      </td>
-      <td className="px-4 py-3 text-right">
-        {isLocal ? (
-          <span className="inline-flex items-center gap-1 text-xs text-(--hl2)">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Local
-          </span>
-        ) : isStarting ? (
-          <span className="text-xs text-(--dim)">Starting…</span>
-        ) : activeDownload ? (
-          <div className="flex items-center justify-end gap-2">
-            <div className="text-right" title={`Server path: ${activeDownload.target_dir}`}>
-              <div className="text-xs text-(--fg)">{activeDownload.status}</div>
-              <div className="text-[11px] text-(--dim)">
-                {formatBytes(activeDownload.downloaded_bytes)} /{" "}
-                {formatBytes(activeDownload.total_bytes)}
-              </div>
-            </div>
-            {activeDownload.status === "downloading" && (
-              <button
-                onClick={() => onPauseDownload(activeDownload.id)}
-                className="p-1 rounded border border-(--border) hover:bg-(--surface)"
-                title="Pause server download"
-              >
-                <Pause className="h-3.5 w-3.5" />
-              </button>
-            )}
-            {(activeDownload.status === "paused" || activeDownload.status === "failed") && (
-              <button
-                onClick={() => onResumeDownload(activeDownload.id)}
-                className="p-1 rounded border border-(--border) hover:bg-(--surface)"
-                title="Resume server download"
-              >
-                <Play className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        ) : (
-          <button
-            onClick={() => onStartDownload(model.modelId)}
-            disabled={isStarting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-(--hl1) text-white text-xs font-medium hover:opacity-90"
+            </SettingsButton>
+          ) : null}
+          <SettingsButton onClick={copyId} title="Copy model id">
+            {copied ? <Check className="h-3 w-3 text-(--hl2)" /> : <Copy className="h-3 w-3" />}
+          </SettingsButton>
+          {activeDownload?.status === "downloading" ? (
+            <SettingsButton
+              onClick={() => onPauseDownload(activeDownload.id)}
+              title="Pause server download"
+            >
+              <Pause className="h-3 w-3" />
+            </SettingsButton>
+          ) : activeDownload?.status === "paused" || activeDownload?.status === "failed" ? (
+            <SettingsButton
+              onClick={() => onResumeDownload(activeDownload.id)}
+              title="Resume server download"
+            >
+              <Play className="h-3 w-3" />
+            </SettingsButton>
+          ) : !isLocal ? (
+            <SettingsButton
+              onClick={() => onStartDownload(model.modelId)}
+              disabled={isStarting}
+              tone="primary"
+            >
+              <DownloadCloud className="h-3 w-3" />
+              Download
+            </SettingsButton>
+          ) : null}
+          <a
+            href={`https://huggingface.co/${model.modelId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+            title="Open on Hugging Face"
           >
-            <DownloadCloud className="h-3.5 w-3.5" />
-            Download
-          </button>
-        )}
-      </td>
-      <td className="px-4 py-3 text-right">
-        <a
-          href={`https://huggingface.co/${model.modelId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-1 hover:bg-(--surface) rounded inline-block text-(--dim) hover:text-(--fg)"
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </>
+      }
+    >
+      {activeDownload ? (
+        <div
+          className="text-[11px] text-(--dim)"
+          title={`Server path: ${activeDownload.target_dir}`}
         >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </td>
-    </tr>
+          {formatBytes(activeDownload.downloaded_bytes)} / {formatBytes(activeDownload.total_bytes)}{" "}
+          · {activeDownload.target_dir}
+        </div>
+      ) : null}
+    </SettingsRow>
   );
 });
 
@@ -326,196 +307,235 @@ export function ExploreTab() {
     [resumeDownload],
   );
 
+  const fallbackModels = [
+    [
+      "Qwen/Qwen3-32B",
+      "Recent dense model family with strong local-serving coverage.",
+      "~64 GB · text-generation",
+    ],
+    [
+      "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "Reasoning-oriented fallback suggestion for search and downloads.",
+      "~64 GB · reasoning",
+    ],
+    [
+      "microsoft/Phi-4-mini-instruct",
+      "Small template row that keeps Explore useful on limited VRAM.",
+      "~8 GB · compact",
+    ],
+  ] as const;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Search + VRAM badge */}
-      <div className="px-4 py-3 border-b border-(--border) flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-(--dim)" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search models on HuggingFace…"
-            className="w-full pl-9 pr-3 py-2 text-sm bg-(--surface) border border-(--border) rounded-lg text-(--fg) placeholder:text-(--dim) focus:outline-none focus:ring-1 focus:ring-(--hl1)"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-(--dim) shrink-0">
-          <span className="whitespace-nowrap">Pool (GB)</span>
-          <input
-            key={poolOverrideGb === null ? "pool-auto" : `pool-${poolOverrideGb}`}
-            type="number"
-            inputMode="decimal"
-            min={1}
-            step={1}
-            placeholder={detectedPoolGb > 0 ? String(Math.round(detectedPoolGb)) : "—"}
-            defaultValue={poolOverrideGb === null ? "" : String(poolOverrideGb)}
-            onBlur={(e) => {
-              const t = e.target.value.trim();
-              if (!t) {
-                setPoolOverrideGb(null);
-                return;
-              }
-              const n = parseFloat(t.replace(/,/g, ""));
-              if (!Number.isFinite(n) || n <= 0) {
-                e.target.value = poolOverrideGb === null ? "" : String(poolOverrideGb);
-                return;
-              }
-              setPoolOverrideGb(n);
-            }}
-            className="w-[5.5rem] px-2 py-1.5 rounded-md bg-(--surface) border border-(--border) text-(--fg) text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-(--hl1)"
-            title="Override total VRAM pool for Explore (saved in this browser). Clear to use GPUs + server hint."
-          />
-          {poolOverrideGb != null && (
-            <button
-              type="button"
-              onClick={() => {
-                setPoolOverrideGb(null);
-              }}
-              className="text-(--hl1) hover:underline"
-            >
-              Auto
-            </button>
-          )}
-        </label>
-        {maxVramGb > 0 && (
-          <span className="text-xs px-2.5 py-1.5 rounded-md bg-(--surface) border border-(--border) text-(--dim)">
-            Using {Math.round(maxVramGb)} GB
-            {poolOverrideGb != null
-              ? " (manual)"
-              : detectedPoolGb > 0 && gpuCount > 0
-                ? ` · ${gpuCount} GPU${gpuCount === 1 ? "" : "s"}`
-                : ""}
-          </span>
-        )}
-        <button
-          onClick={refresh}
-          className="p-2 hover:bg-(--surface) rounded-lg text-(--dim) hover:text-(--fg)"
-          title="Refresh"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-
-      {/* Results */}
-      <div className="flex-1 overflow-auto">
-        {error && <div className="p-4 text-center text-(--err) text-sm">{error}</div>}
-        {downloadError && (
-          <div className="mx-4 mt-4 rounded-lg border border-(--err)/30 bg-(--err)/10 px-3 py-2 text-sm text-(--err)">
-            {downloadError}
-          </div>
-        )}
-
-        {loading && groups.length === 0 && (
-          <div className="flex items-center justify-center py-16 text-(--dim)">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-          </div>
-        )}
-
-        {!loading && !error && groups.length === 0 && (
-          <div className="py-16 text-center text-(--dim) max-w-md mx-auto px-4">
-            <p>No models match Explore filters</p>
-            <p className="text-sm mt-2">
-              Try a repo id like <span className="font-mono">Qwen/Qwen3-32B</span>, a family name,
-              or adjust Pool (GB). Search results are no longer hidden by the recency filter.
-            </p>
-          </div>
-        )}
-
-        {groups.length > 0 && (
-          <>
-            <div className="px-4 pt-3 pb-1 text-xs text-(--dim)">
-              {groups.length} models — downloads happen on the server under the configured models
-              directory. Search is ranked by downloads; default Explore keeps recent HF repos with
-              engagement. Set Pool (GB) to override detected VRAM.
+    <div className="space-y-5">
+      <SettingsGroup
+        title="Explore controls"
+        description="Search Hugging Face, tune pooled VRAM, and refresh without changing the page structure."
+        actions={
+          <StatusPill tone={loading ? "info" : error ? "warning" : "good"}>
+            {loading ? "syncing" : error ? "fallback" : "ready"}
+          </StatusPill>
+        }
+      >
+        <SettingsRow
+          label="Search models"
+          description="Repo id, family name, quantization tag, or provider."
+          control={
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
+              <SettingsInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Search Hugging Face models"
+                className="pl-8"
+              />
             </div>
-            <table className="w-full">
-              <thead className="bg-(--surface) border-b border-(--border)">
-                <tr>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    Model
-                  </th>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    Provider
-                  </th>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    Format
-                  </th>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    VRAM
-                  </th>
-                  <th className="px-4 py-2 text-right text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    Stats
-                  </th>
-                  <th className="px-4 py-2 text-right text-[11px] font-medium text-(--dim) uppercase tracking-wider">
-                    Action
-                  </th>
-                  <th className="px-4 py-2 text-right text-[11px] font-medium text-(--dim) uppercase tracking-wider w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-(--border)">
-                {groups.map((group) => {
-                  const expanded = expandedKeys.has(group.key);
-                  return [
-                    <ModelRow
-                      key={group.key}
-                      model={group.lead}
-                      isLocal={isLocal(group.lead.modelId)}
-                      activeDownload={downloadsByModel.get(group.lead.modelId) ?? null}
-                      isStarting={startingModelIds.has(group.lead.modelId)}
-                      onStartDownload={handleStartDownload}
-                      onPauseDownload={handlePause}
-                      onResumeDownload={handleResume}
-                      variantCount={group.variants.length}
-                      expanded={expanded}
-                      onToggleExpand={
-                        group.variants.length > 1 ? () => toggleExpand(group.key) : undefined
-                      }
-                      displayDownloads={group.maxDownloads}
-                      displayLikes={group.maxLikes}
-                      weightEstimateGb={group.needGb}
-                      pooledVramGb={maxVramGb}
-                    />,
-                    ...(expanded
-                      ? group.variants
-                          .slice(1)
-                          .map((variant) => (
-                            <ModelRow
-                              key={variant._id}
-                              model={variant}
-                              isLocal={isLocal(variant.modelId)}
-                              activeDownload={downloadsByModel.get(variant.modelId) ?? null}
-                              isStarting={startingModelIds.has(variant.modelId)}
-                              onStartDownload={handleStartDownload}
-                              onPauseDownload={handlePause}
-                              onResumeDownload={handleResume}
-                              variantCount={1}
-                              expanded={false}
-                              child
-                              weightEstimateGb={estimateRoughWeightsGb(variant)}
-                              pooledVramGb={maxVramGb}
-                            />
-                          ))
-                      : []),
-                  ];
-                })}
-              </tbody>
-            </table>
+          }
+          status={<StatusPill>{groups.length || "defaults"}</StatusPill>}
+          actions={
+            <SettingsButton onClick={refresh} disabled={loading} title="Refresh Explore">
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            </SettingsButton>
+          }
+        />
+        <SettingsRow
+          label="VRAM pool"
+          description="Manual pool wins; clearing the input returns to detected GPUs and server hints."
+          control={
+            <input
+              key={poolOverrideGb === null ? "pool-auto" : `pool-${poolOverrideGb}`}
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step={1}
+              placeholder={detectedPoolGb > 0 ? String(Math.round(detectedPoolGb)) : "Auto"}
+              defaultValue={poolOverrideGb === null ? "" : String(poolOverrideGb)}
+              onBlur={(event) => {
+                const trimmed = event.target.value.trim();
+                if (!trimmed) {
+                  setPoolOverrideGb(null);
+                  return;
+                }
+                const parsed = parseFloat(trimmed.replace(/,/g, ""));
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                  event.target.value = poolOverrideGb === null ? "" : String(poolOverrideGb);
+                  return;
+                }
+                setPoolOverrideGb(parsed);
+              }}
+              className="h-8 w-full rounded-md border border-transparent bg-(--bg) px-2.5 text-[12px] text-(--fg) outline-none ring-1 ring-(--border)/70 transition placeholder:text-(--dim)/65 focus:ring-(--hl1)/70"
+              title="Override total VRAM pool for Explore."
+            />
+          }
+          status={
+            <StatusPill tone={maxVramGb > 0 ? "info" : "default"}>
+              {maxVramGb > 0 ? `${Math.round(maxVramGb)} GB` : "auto"}
+            </StatusPill>
+          }
+          actions={
+            poolOverrideGb != null ? (
+              <SettingsButton onClick={() => setPoolOverrideGb(null)}>Auto</SettingsButton>
+            ) : null
+          }
+        />
+        <SettingsRow
+          label="Hardware hint"
+          description="Detected GPU pool from the controller, plus manual override state."
+          value={
+            <SettingsValue>
+              {gpuCount > 0
+                ? `${gpuCount} GPU${gpuCount === 1 ? "" : "s"} detected`
+                : detectedPoolGb > 0
+                  ? `${Math.round(detectedPoolGb)} GB reported`
+                  : "No live GPU hint; estimates remain visible"}
+            </SettingsValue>
+          }
+          status={<StatusPill>{poolOverrideGb != null ? "manual" : "detected"}</StatusPill>}
+        />
+      </SettingsGroup>
 
-            {hasMore && (
-              <div className="py-6 text-center">
-                <button
-                  onClick={loadMore}
-                  disabled={loading}
-                  className="px-4 py-2 bg-(--surface) border border-(--border) rounded-lg text-sm text-(--fg) hover:bg-(--surface) disabled:opacity-50"
-                >
-                  {loading ? "Loading…" : "Load More"}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {downloadError ? (
+        <SettingsGroup
+          title="Download status"
+          description="Server-side download errors stay visible as rows."
+        >
+          <SettingsRow
+            label="Download worker"
+            description="The model browser remains usable while the download endpoint recovers."
+            value={<SettingsValue dim>{downloadError}</SettingsValue>}
+            status={<StatusPill tone="danger">error</StatusPill>}
+          />
+        </SettingsGroup>
+      ) : null}
+
+      <SettingsGroup
+        title="Model results"
+        description="Rows preserve provider, format, VRAM fit, engagement, download state, and source link."
+        actions={
+          <StatusPill tone={groups.length ? "good" : error ? "warning" : "default"}>
+            {groups.length ? `${groups.length} models` : "defaults"}
+          </StatusPill>
+        }
+      >
+        {error ? (
+          <SettingsRow
+            label="Explore API"
+            description="Remote discovery failed, so curated fallback rows are shown below."
+            value={<SettingsValue dim>{error}</SettingsValue>}
+            status={<StatusPill tone="warning">fallback</StatusPill>}
+          />
+        ) : null}
+
+        {groups.length > 0
+          ? groups.flatMap((group) => {
+              const expanded = expandedKeys.has(group.key);
+              const rows = [
+                <ModelRow
+                  key={group.key}
+                  model={group.lead}
+                  isLocal={isLocal(group.lead.modelId)}
+                  activeDownload={downloadsByModel.get(group.lead.modelId) ?? null}
+                  isStarting={startingModelIds.has(group.lead.modelId)}
+                  onStartDownload={handleStartDownload}
+                  onPauseDownload={handlePause}
+                  onResumeDownload={handleResume}
+                  variantCount={group.variants.length}
+                  expanded={expanded}
+                  onToggleExpand={
+                    group.variants.length > 1 ? () => toggleExpand(group.key) : undefined
+                  }
+                  displayDownloads={group.maxDownloads}
+                  displayLikes={group.maxLikes}
+                  weightEstimateGb={group.needGb}
+                  pooledVramGb={maxVramGb}
+                />,
+              ];
+              if (expanded) {
+                rows.push(
+                  ...group.variants
+                    .slice(1)
+                    .map((variant) => (
+                      <ModelRow
+                        key={variant._id}
+                        model={variant}
+                        isLocal={isLocal(variant.modelId)}
+                        activeDownload={downloadsByModel.get(variant.modelId) ?? null}
+                        isStarting={startingModelIds.has(variant.modelId)}
+                        onStartDownload={handleStartDownload}
+                        onPauseDownload={handlePause}
+                        onResumeDownload={handleResume}
+                        variantCount={1}
+                        expanded={false}
+                        child
+                        weightEstimateGb={estimateRoughWeightsGb(variant)}
+                        pooledVramGb={maxVramGb}
+                      />
+                    )),
+                );
+              }
+              return rows;
+            })
+          : fallbackModels.map(([label, description, value]) => (
+              <SettingsRow
+                key={label}
+                label={label}
+                description={
+                  search.trim()
+                    ? `No exact match yet for "${search.trim()}". ${description}`
+                    : description
+                }
+                value={<SettingsValue mono>{value}</SettingsValue>}
+                status={<StatusPill>{loading ? "syncing" : "fallback"}</StatusPill>}
+                actions={
+                  <a
+                    href={`https://huggingface.co/${label}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                }
+              />
+            ))}
+
+        {hasMore && groups.length > 0 ? (
+          <SettingsRow
+            label="More results"
+            description="Fetch the next page from Hugging Face."
+            value={
+              <SettingsValue dim>
+                {loading ? "Loading next page…" : "Additional rows available"}
+              </SettingsValue>
+            }
+            status={<StatusPill>{loading ? "loading" : "ready"}</StatusPill>}
+            actions={
+              <SettingsButton onClick={loadMore} disabled={loading}>
+                Load more
+              </SettingsButton>
+            }
+          />
+        ) : null}
+      </SettingsGroup>
     </div>
   );
 }

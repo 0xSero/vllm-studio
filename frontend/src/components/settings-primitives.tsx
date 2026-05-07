@@ -3,30 +3,25 @@
 import type { ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
-export type SettingsSectionId =
-  | "connection"
-  | "providers"
-  | "engines"
-  | "services"
-  | "system"
-  | "appearance"
-  | "agent";
+export type SettingsSectionId = string;
 export type StatusTone = "default" | "good" | "warning" | "danger" | "info";
-export type SettingsSectionDef = {
-  id: SettingsSectionId;
+export type SettingsSectionDef<Id extends SettingsSectionId = SettingsSectionId> = {
+  id: Id;
   label: string;
   description: string;
   icon: ReactNode;
 };
 
-type LayoutProps = {
-  sections: SettingsSectionDef[];
-  activeSection: SettingsSectionId;
+type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
+  sections: SettingsSectionDef<Id>[];
+  activeSection: Id;
   title: string;
   status: string;
   loading: boolean;
   onReload: () => void;
-  onSelectSection: (section: SettingsSectionId) => void;
+  onSelectSection: (section: Id) => void;
+  eyebrow?: string;
+  refreshLabel?: string;
   children: ReactNode;
 };
 
@@ -48,7 +43,7 @@ const pillClasses: Record<StatusTone, string> = {
   info: "border-(--hl1)/35 text-(--hl1) bg-(--hl1)/10",
 };
 
-export function SettingsLayout({
+export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
   sections,
   activeSection,
   title,
@@ -56,8 +51,10 @@ export function SettingsLayout({
   loading,
   onReload,
   onSelectSection,
+  eyebrow = title,
+  refreshLabel = `Refresh ${title.toLowerCase()}`,
   children,
-}: LayoutProps) {
+}: LayoutProps<Id>) {
   const activeLabel = sections.find((section) => section.id === activeSection)?.label ?? title;
   return (
     <main className="min-h-full overflow-y-auto overflow-x-hidden bg-(--bg) text-(--fg)">
@@ -70,14 +67,14 @@ export function SettingsLayout({
               onClick={onReload}
               disabled={loading}
               className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:opacity-50"
-              aria-label="Refresh settings"
-              title="Refresh settings"
+              aria-label={refreshLabel}
+              title={refreshLabel}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
           <nav
-            aria-label="Settings sections"
+            aria-label={`${title} sections`}
             className="-mx-1 overflow-x-auto pb-1 lg:mx-0 lg:overflow-visible"
           >
             <div className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
@@ -104,7 +101,7 @@ export function SettingsLayout({
         <section className="min-w-0 pb-10">
           <div className="mb-4 flex min-h-8 items-center justify-between gap-3 border-b border-(--border)/70 pb-3">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-(--dim)">Settings</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-(--dim)">{eyebrow}</div>
               <h2 className="mt-1 truncate text-[19px] font-semibold tracking-[-0.015em] text-(--fg)">
                 {activeLabel}
               </h2>
@@ -250,11 +247,13 @@ export function SettingsInput({
   onChange,
   placeholder,
   type = "text",
+  className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: "text" | "password";
+  className?: string;
 }) {
   return (
     <input
@@ -262,7 +261,7 @@ export function SettingsInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="h-8 w-full rounded-md border border-transparent bg-(--bg) px-2.5 text-[12px] text-(--fg) outline-none ring-1 ring-(--border)/70 transition placeholder:text-(--dim)/65 focus:ring-(--hl1)/70"
+      className={`h-8 w-full rounded-md border border-transparent bg-(--bg) px-2.5 text-[12px] text-(--fg) outline-none ring-1 ring-(--border)/70 transition placeholder:text-(--dim)/65 focus:ring-(--hl1)/70 ${className}`}
     />
   );
 }

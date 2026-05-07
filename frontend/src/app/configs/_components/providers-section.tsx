@@ -11,7 +11,7 @@ import {
   SettingsRow,
   SettingsValue,
   StatusPill,
-} from "./settings-primitives";
+} from "@/components/settings-primitives";
 
 interface ProviderEntry {
   id: string;

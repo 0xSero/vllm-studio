@@ -20,7 +20,7 @@ import {
   SettingsRow,
   SettingsValue,
   StatusPill,
-} from "./settings-primitives";
+} from "@/components/settings-primitives";
 
 export function AppearanceSettings() {
   const themeId = useAppStore((s) => s.themeId);

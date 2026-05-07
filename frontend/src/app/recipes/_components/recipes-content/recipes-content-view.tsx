@@ -1,11 +1,12 @@
 // CRITICAL
 "use client";
 
+import { Compass, HardDrive } from "lucide-react";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
+import { SettingsLayout, type SettingsSectionDef } from "@/components/settings-primitives";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";
-import { RecipesContentHeader } from "./recipes-content-header";
 import { RecipesTab } from "./recipes-tab";
 import { RecipeModal } from "../recipe-modal/recipe-modal";
 import { ExploreTab } from "./explore-tab";
@@ -40,6 +41,21 @@ type Props = {
   table: RecipesTableProps;
 };
 
+const MODEL_SECTIONS: SettingsSectionDef<RecipesContentTab>[] = [
+  {
+    id: "recipes",
+    label: "Your models",
+    description: "Local launch recipes, running state, and engine actions.",
+    icon: <HardDrive className="h-3.5 w-3.5" />,
+  },
+  {
+    id: "explore",
+    label: "Explore",
+    description: "Hugging Face discovery, downloads, and VRAM fit hints.",
+    icon: <Compass className="h-3.5 w-3.5" />,
+  },
+];
+
 export function RecipesContentView(props: Props) {
   const {
     tab,
@@ -70,13 +86,26 @@ export function RecipesContentView(props: Props) {
     onEvictModel,
     table,
   } = props;
+  const status = loading
+    ? "syncing recipes"
+    : recipes.length
+      ? `${recipes.length} configured`
+      : "stable defaults";
 
   return (
-    <div className="flex flex-col h-full bg-(--bg) text-(--fg)">
-      <RecipesContentHeader tab={tab} setTab={setTab} refreshing={refreshing} onRefresh={onRefresh} />
-
-      <div className="flex-1 overflow-auto">
-        {tab === "recipes" && (
+    <>
+      <SettingsLayout<RecipesContentTab>
+        sections={MODEL_SECTIONS}
+        activeSection={tab}
+        title="Models"
+        eyebrow="Model library"
+        status={refreshing ? "refreshing" : status}
+        loading={refreshing || loading}
+        onReload={onRefresh}
+        onSelectSection={setTab}
+        refreshLabel="Refresh models"
+      >
+        {tab === "recipes" ? (
           <RecipesTab
             loading={loading}
             filter={filter}
@@ -89,20 +118,20 @@ export function RecipesContentView(props: Props) {
             onNewRecipe={onNewRecipe}
             table={table}
           />
+        ) : (
+          <ExploreTab />
         )}
+      </SettingsLayout>
 
-        {tab === "explore" && <ExploreTab />}
-      </div>
-
-      {deleteConfirm && (
+      {deleteConfirm ? (
         <DeleteRecipeConfirmModal
           recipeName={deleteRecipeName}
           onCancel={onCancelDelete}
           onConfirm={onConfirmDelete}
         />
-      )}
+      ) : null}
 
-      {modalOpen && modalRecipe && (
+      {modalOpen && modalRecipe ? (
         <RecipeModal
           recipe={modalRecipe}
           onClose={onCloseRecipeModal}
@@ -112,7 +141,7 @@ export function RecipesContentView(props: Props) {
           availableModels={availableModels}
           recipes={recipes}
         />
-      )}
-    </div>
+      ) : null}
+    </>
   );
 }

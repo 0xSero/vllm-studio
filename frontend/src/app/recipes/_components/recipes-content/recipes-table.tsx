@@ -1,7 +1,15 @@
 // CRITICAL
 "use client";
 
+import { Plus } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+} from "@/components/settings-primitives";
 import { RecipeRow } from "./recipe-row";
 
 type Props = {
@@ -10,13 +18,37 @@ type Props = {
   recipeMenuOpen: string | null;
   launching: boolean;
   runningRecipeId: string | null;
+  loading: boolean;
+  filter: string;
   onTogglePin: (recipeId: string) => void;
   onToggleMenu: (recipeId: string) => void;
   onLaunch: (recipeId: string) => void;
   onStop: () => void;
   onEdit: (recipe: RecipeWithStatus) => void;
   onRequestDelete: (recipeId: string) => void;
+  onNewRecipe: () => void;
 };
+
+const TEMPLATE_ROWS = [
+  {
+    label: "vLLM default",
+    description: "CUDA-first OpenAI-compatible launch recipe.",
+    value: "backend vLLM · tp/pp 1/1",
+    status: "template",
+  },
+  {
+    label: "SGLang server",
+    description: "Structured generation runtime with metrics enabled by default.",
+    value: "backend SGLang · metrics ready",
+    status: "template",
+  },
+  {
+    label: "llama.cpp local",
+    description: "GGUF-oriented CPU, Metal, or CUDA target.",
+    value: "backend llama.cpp · local path",
+    status: "template",
+  },
+];
 
 export function RecipesTable({
   recipes,
@@ -24,63 +56,71 @@ export function RecipesTable({
   recipeMenuOpen,
   launching,
   runningRecipeId,
+  loading,
+  filter,
   onTogglePin,
   onToggleMenu,
   onLaunch,
   onStop,
   onEdit,
   onRequestDelete,
+  onNewRecipe,
 }: Props) {
+  const emptyBecauseSearch = Boolean(filter.trim()) && recipes.length === 0;
   return (
-    <div className="border border-(--border) rounded-lg overflow-visible">
-      <table className="w-full">
-        <thead className="bg-(--surface) border-b border-(--border)">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider w-8"></th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-              Name
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-              Model
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-              Backend
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-              TP/PP
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-(--dim) uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-(--border)">
-          {recipes.map((recipe) => {
-            const isPinned = pinnedRecipes.has(recipe.id);
-            const isMenuOpen = recipeMenuOpen === recipe.id;
-            const launchDisabled = launching || Boolean(runningRecipeId);
-            return (
-              <RecipeRow
-                key={recipe.id}
-                recipe={recipe}
-                isPinned={isPinned}
-                isMenuOpen={isMenuOpen}
-                launchDisabled={launchDisabled}
-                onTogglePin={onTogglePin}
-                onToggleMenu={onToggleMenu}
-                onLaunch={onLaunch}
-                onStop={onStop}
-                onEdit={onEdit}
-                onRequestDelete={onRequestDelete}
-              />
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <SettingsGroup
+      title="Launch recipes"
+      description="Compact rows show identity, path, backend, parallelism, state, and actions."
+      actions={
+        <StatusPill tone={recipes.length ? "good" : loading ? "info" : "default"}>
+          {recipes.length ? `${recipes.length} rows` : loading ? "syncing" : "defaults"}
+        </StatusPill>
+      }
+    >
+      {loading ? (
+        <SettingsRow
+          label="Controller sync"
+          description="Recipe requests are still in flight; stable defaults stay visible below."
+          value={<SettingsValue dim>Loading controller recipe rows…</SettingsValue>}
+          status={<StatusPill tone="info">syncing</StatusPill>}
+        />
+      ) : null}
+
+      {recipes.length
+        ? recipes.map((recipe) => (
+            <RecipeRow
+              key={recipe.id}
+              recipe={recipe}
+              isPinned={pinnedRecipes.has(recipe.id)}
+              isMenuOpen={recipeMenuOpen === recipe.id}
+              launchDisabled={launching || Boolean(runningRecipeId)}
+              onTogglePin={onTogglePin}
+              onToggleMenu={onToggleMenu}
+              onLaunch={onLaunch}
+              onStop={onStop}
+              onEdit={onEdit}
+              onRequestDelete={onRequestDelete}
+            />
+          ))
+        : TEMPLATE_ROWS.map((row) => (
+            <SettingsRow
+              key={row.label}
+              label={row.label}
+              description={
+                emptyBecauseSearch
+                  ? `No exact match for "${filter.trim()}". ${row.description}`
+                  : row.description
+              }
+              value={<SettingsValue mono>{row.value}</SettingsValue>}
+              status={<StatusPill>{row.status}</StatusPill>}
+              actions={
+                <SettingsButton onClick={onNewRecipe}>
+                  <Plus className="h-3 w-3" />
+                  Use
+                </SettingsButton>
+              }
+            />
+          ))}
+    </SettingsGroup>
   );
 }
-
