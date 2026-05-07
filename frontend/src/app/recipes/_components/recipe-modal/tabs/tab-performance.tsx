@@ -49,9 +49,12 @@ export function RecipeModalTabPerformance({
             <select
               value={recipe.kv_cache_dtype || "auto"}
               onChange={(e) =>
-                onChange({ ...recipe, kv_cache_dtype: e.target.value === "auto" ? undefined : e.target.value })
+                onChange({
+                  ...recipe,
+                  kv_cache_dtype: e.target.value === "auto" ? undefined : e.target.value,
+                })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             >
               <option value="auto">Auto</option>
               <option value="fp8">FP8</option>
@@ -63,8 +66,10 @@ export function RecipeModalTabPerformance({
             <label className="block text-xs font-medium text-(--dim) mb-2">Block Size</label>
             <select
               value={recipe.block_size || "16"}
-              onChange={(e) => onChange({ ...recipe, block_size: Number(e.target.value) || undefined })}
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              onChange={(e) =>
+                onChange({ ...recipe, block_size: Number(e.target.value) || undefined })
+              }
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             >
               <option value="8">8</option>
               <option value="16">16</option>
@@ -74,7 +79,7 @@ export function RecipeModalTabPerformance({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-lg">
+          <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
             <input
               type="checkbox"
               id="enable_prefix_caching"
@@ -83,14 +88,17 @@ export function RecipeModalTabPerformance({
               className="rounded border-(--border) bg-(--surface) w-4 h-4"
             />
             <div className="flex-1">
-              <label htmlFor="enable_prefix_caching" className="text-sm font-medium text-(--fg) cursor-pointer">
+              <label
+                htmlFor="enable_prefix_caching"
+                className="text-sm font-medium text-(--fg) cursor-pointer"
+              >
                 Prefix Caching
               </label>
               <p className="text-xs text-(--dim)">Cache shared prefixes</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-lg">
+          <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
             <input
               type="checkbox"
               id="enable_chunked_prefill"
@@ -99,7 +107,10 @@ export function RecipeModalTabPerformance({
               className="rounded border-(--border) bg-(--surface) w-4 h-4"
             />
             <div className="flex-1">
-              <label htmlFor="enable_chunked_prefill" className="text-sm font-medium text-(--fg) cursor-pointer">
+              <label
+                htmlFor="enable_chunked_prefill"
+                className="text-sm font-medium text-(--fg) cursor-pointer"
+              >
                 Chunked Prefill
               </label>
               <p className="text-xs text-(--dim)">Interleave prefill/decode</p>
@@ -121,13 +132,17 @@ export function RecipeModalTabPerformance({
             <input
               type="number"
               value={recipe.max_num_seqs || ""}
-              onChange={(e) => onChange({ ...recipe, max_num_seqs: Number(e.target.value) || undefined })}
+              onChange={(e) =>
+                onChange({ ...recipe, max_num_seqs: Number(e.target.value) || undefined })
+              }
               placeholder="256"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Max Batched Tokens</label>
+            <label className="block text-xs font-medium text-(--dim) mb-2">
+              Max Batched Tokens
+            </label>
             <input
               type="number"
               value={recipe.max_num_batched_tokens || ""}
@@ -135,7 +150,7 @@ export function RecipeModalTabPerformance({
                 onChange({ ...recipe, max_num_batched_tokens: Number(e.target.value) || undefined })
               }
               placeholder="Auto"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -143,9 +158,11 @@ export function RecipeModalTabPerformance({
             <input
               type="number"
               value={recipe.max_paddings || ""}
-              onChange={(e) => onChange({ ...recipe, max_paddings: Number(e.target.value) || undefined })}
+              onChange={(e) =>
+                onChange({ ...recipe, max_paddings: Number(e.target.value) || undefined })
+              }
               placeholder="Auto"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -157,10 +174,12 @@ export function RecipeModalTabPerformance({
             onChange={(e) =>
               onChange({
                 ...recipe,
-                scheduling_policy: e.target.value ? (e.target.value as "fcfs" | "priority") : undefined,
+                scheduling_policy: e.target.value
+                  ? (e.target.value as "fcfs" | "priority")
+                  : undefined,
               })
             }
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="">Default</option>
             <option value="fcfs">FCFS (First Come First Serve)</option>

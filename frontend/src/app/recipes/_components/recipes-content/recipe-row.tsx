@@ -5,12 +5,12 @@ import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Pin, PinOff, Play, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import {
-  SettingsButton,
-  SettingsRow,
-  SettingsValue,
-  StatusPill,
-  type StatusTone,
-} from "@/components/settings-primitives";
+  ModelButton,
+  ModelRow,
+  ModelStatus,
+  ModelValue,
+  type ModelStatusTone,
+} from "./model-page-primitives";
 import { formatBackendLabel } from "../../recipe-labels";
 
 type Props = {
@@ -26,7 +26,7 @@ type Props = {
   onRequestDelete: (recipeId: string) => void;
 };
 
-function statusTone(status: string): StatusTone {
+function statusTone(status: string): ModelStatusTone {
   if (status === "running") return "good";
   if (status === "starting") return "info";
   if (status === "error") return "danger";
@@ -67,31 +67,31 @@ export const RecipeRow = memo(function RecipeRow({
     recipe.served_model_name || recipe.model_path.split("/").pop() || recipe.model_path;
 
   return (
-    <SettingsRow
+    <ModelRow
       label={recipe.name}
       description={`${modelName} · ${formatBackendLabel(recipe.backend)} · tp/pp ${tp}/${pp}`}
-      value={<SettingsValue mono>{recipe.model_path}</SettingsValue>}
-      status={<StatusPill tone={statusTone(status)}>{status}</StatusPill>}
+      value={<ModelValue mono>{recipe.model_path}</ModelValue>}
+      status={<ModelStatus tone={statusTone(status)}>{status}</ModelStatus>}
       actions={
         <>
-          <SettingsButton onClick={handleTogglePin} title={isPinned ? "Unpin" : "Pin"}>
+          <ModelButton onClick={handleTogglePin} title={isPinned ? "Unpin" : "Pin"}>
             {isPinned ? <Pin className="h-3 w-3 fill-current" /> : <PinOff className="h-3 w-3" />}
-          </SettingsButton>
+          </ModelButton>
           {status === "running" ? (
-            <SettingsButton onClick={onStop} tone="danger" title="Stop">
+            <ModelButton onClick={onStop} tone="danger" title="Stop">
               <Square className="h-3 w-3" />
-            </SettingsButton>
+            </ModelButton>
           ) : (
-            <SettingsButton onClick={handleLaunch} disabled={launchDisabled} title="Launch">
+            <ModelButton onClick={handleLaunch} disabled={launchDisabled} title="Launch">
               <Play className="h-3 w-3" />
-            </SettingsButton>
+            </ModelButton>
           )}
           <div className="relative">
-            <SettingsButton onClick={() => handleToggleMenu()} title="Actions">
+            <ModelButton onClick={() => handleToggleMenu()} title="Actions">
               <MoreVertical className="h-3 w-3" />
-            </SettingsButton>
+            </ModelButton>
             {isMenuOpen ? (
-              <div className="absolute right-0 z-50 mt-1 w-32 overflow-hidden rounded-lg border border-(--border) bg-(--surface) shadow-lg">
+              <div className="absolute right-0 z-50 mt-1 w-32 overflow-hidden rounded-md border border-(--border) bg-(--surface) shadow-lg">
                 <button
                   onClick={handleEdit}
                   className="w-full px-3 py-2 text-left text-[12px] hover:bg-(--hover)"

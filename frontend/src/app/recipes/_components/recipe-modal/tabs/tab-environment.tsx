@@ -47,7 +47,7 @@ export function RecipeModalTabEnvironment({
               value={recipe.python_path || ""}
               onChange={(e) => onChange({ ...recipe, python_path: e.target.value || undefined })}
               placeholder="/usr/bin/python or venv/bin/python"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -69,7 +69,7 @@ export function RecipeModalTabEnvironment({
           <button
             type="button"
             onClick={onAddEnvVar}
-            className="flex items-center gap-1 px-3 py-1.5 bg-(--border) hover:bg-(--surface) rounded-lg text-xs transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 bg-(--border) hover:bg-(--surface) rounded-md text-xs transition-colors"
           >
             <Plus className="w-3 h-3" />
             Add
@@ -84,19 +84,19 @@ export function RecipeModalTabEnvironment({
                 value={entry.key}
                 onChange={(e) => onChangeEnvVar(index, "key", e.target.value)}
                 placeholder="KEY"
-                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm font-mono focus:outline-none focus:border-(--accent)"
+                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm font-mono focus:outline-none focus:border-(--accent)"
               />
               <input
                 type="text"
                 value={entry.value}
                 onChange={(e) => onChangeEnvVar(index, "value", e.target.value)}
                 placeholder="value"
-                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
               <button
                 type="button"
                 onClick={() => onRemoveEnvVar(index)}
-                className="px-3 py-2 bg-(--surface) hover:bg-(--border) rounded-lg text-xs transition-colors"
+                className="px-3 py-2 bg-(--surface) hover:bg-(--border) rounded-md text-xs transition-colors"
               >
                 Remove
               </button>
@@ -112,7 +112,7 @@ export function RecipeModalTabEnvironment({
           <span className="text-sm font-medium">Extra CLI Arguments</span>
         </div>
 
-        <div className="bg-(--bg) border border-(--border) rounded-lg overflow-hidden">
+        <div className="bg-(--bg) border border-(--border) rounded-md overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 bg-(--surface) border-b border-(--border)">
             <span className="text-xs text-(--dim)">JSON Editor</span>
             {extraArgsError && <span className="text-xs text-(--err)">Invalid JSON</span>}
@@ -132,12 +132,14 @@ export function RecipeModalTabEnvironment({
       </div>
 
       {isLlamacpp && (
-        <details className="bg-(--bg) border border-(--border) rounded-lg overflow-hidden">
+        <details className="bg-(--bg) border border-(--border) rounded-md overflow-hidden">
           <summary className="cursor-pointer px-3 py-2 text-xs text-(--dim) bg-(--surface) border-b border-(--border)">
             llama.cpp CLI Reference
           </summary>
           <div className="px-3 py-2">
-            {llamaConfigLoading && <div className="text-xs text-(--dim)">Loading llama.cpp config…</div>}
+            {llamaConfigLoading && (
+              <div className="text-xs text-(--dim)">Loading llama.cpp config…</div>
+            )}
             {!llamaConfigLoading && llamaConfigHelp?.error && (
               <div className="text-xs text-(--err)">{llamaConfigHelp.error}</div>
             )}

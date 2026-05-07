@@ -4,13 +4,13 @@
 import { Plus, Search, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsInput,
-  SettingsRow,
-  SettingsValue,
-  StatusPill,
-} from "@/components/settings-primitives";
+  ModelButton,
+  ModelInput,
+  ModelRow,
+  ModelSection,
+  ModelStatus,
+  ModelValue,
+} from "./model-page-primitives";
 import type { RecipesTableProps } from "./types";
 import { RecipesTable } from "./recipes-table";
 
@@ -40,65 +40,65 @@ export function RecipesTab({
   table,
 }: Props) {
   return (
-    <div className="space-y-5">
-      <SettingsGroup
+    <div className="space-y-6">
+      <ModelSection
         title="Model control"
-        description="Search, launch status, and creation live in rows instead of a wide toolbar."
+        description="Search, launch state, and creation actions stay compact."
         actions={
-          <StatusPill tone={runningRecipeId ? "good" : loading ? "info" : "default"}>
+          <ModelStatus tone={runningRecipeId ? "good" : loading ? "info" : "default"}>
             {runningRecipeId ? "running" : loading ? "syncing" : "ready"}
-          </StatusPill>
+          </ModelStatus>
         }
       >
-        <SettingsRow
+        <ModelRow
           label="Search recipes"
-          description="Filter by recipe name or model path without hiding the page shell."
+          description="Recipe name, model path, or served name."
           control={
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
-              <SettingsInput
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
+              <ModelInput
                 value={filter}
                 onChange={setFilter}
                 placeholder="Search recipes, paths, served names"
-                className="pl-8"
+                className="pl-7"
               />
             </div>
           }
-          status={<StatusPill>{sortedRecipes.length || "defaults"}</StatusPill>}
+          status={<ModelStatus>{sortedRecipes.length || "defaults"}</ModelStatus>}
           actions={
-            <SettingsButton onClick={onNewRecipe} tone="primary">
+            <ModelButton onClick={onNewRecipe} tone="primary">
               <Plus className="h-3 w-3" />
               New
-            </SettingsButton>
+            </ModelButton>
           }
         />
-        <SettingsRow
+        <ModelRow
           label="Active model"
           description="The currently loaded recipe, if the controller reports one."
           value={
-            <SettingsValue mono dim={!runningRecipeName}>
+            <ModelValue mono dim={!runningRecipeName}>
               {runningRecipeName ?? "No active launch"}
-            </SettingsValue>
+            </ModelValue>
           }
           status={
-            <StatusPill tone={runningRecipeId ? "good" : "default"}>
+            <ModelStatus tone={runningRecipeId ? "good" : "default"}>
               {runningRecipeId ? "live" : "idle"}
-            </StatusPill>
+            </ModelStatus>
           }
           actions={
             runningRecipeId ? (
-              <SettingsButton onClick={onEvictModel} tone="danger">
+              <ModelButton onClick={onEvictModel} tone="danger">
                 <Square className="h-3 w-3" />
                 Stop
-              </SettingsButton>
+              </ModelButton>
             ) : null
           }
         >
           {launchProgressMessage ? (
             <div className="text-[11px] text-(--dim)">{launchProgressMessage}</div>
           ) : null}
-        </SettingsRow>
-      </SettingsGroup>
+        </ModelRow>
+      </ModelSection>
 
       <RecipesTable
         {...table}

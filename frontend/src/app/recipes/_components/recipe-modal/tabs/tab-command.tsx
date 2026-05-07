@@ -22,7 +22,7 @@ export function RecipeModalTabCommand({
         <strong className="text-(--accent)"> Direct edits are saved with the recipe.</strong>
       </p>
 
-      <div className="flex-1 bg-(--bg) border border-(--border) rounded-lg overflow-hidden flex flex-col">
+      <div className="flex-1 bg-(--bg) border border-(--border) rounded-md overflow-hidden flex flex-col">
         <div className="flex items-center gap-2 px-3 py-2 bg-(--surface) border-b border-(--border)">
           <Terminal className="w-4 h-4 text-(--dim)" />
           <span className="text-xs text-(--dim)">Generated Command</span>
@@ -36,14 +36,16 @@ export function RecipeModalTabCommand({
         />
       </div>
 
-      <div className="flex items-start gap-2 p-3 bg-(--surface) border border-(--border) rounded-lg">
+      <div className="flex items-start gap-2 p-3 bg-(--surface) border border-(--border) rounded-md">
         <Info className="w-4 h-4 text-(--accent) mt-0.5 shrink-0" />
         <div className="text-xs text-(--dim) space-y-1">
           <p>Use the form tabs to configure the recipe. This preview updates automatically.</p>
-          <p>Once you edit the command, the saved plaintext command becomes the source of truth for launch.</p>
+          <p>
+            Once you edit the command, the saved plaintext command becomes the source of truth for
+            launch.
+          </p>
         </div>
       </div>
     </div>
   );
 }
-

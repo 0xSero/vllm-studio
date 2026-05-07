@@ -40,12 +40,13 @@ export function LlamacppOptionsSection({
       <div className="grid grid-cols-2 gap-3">
         {options.map((option) => {
           const value = getValueForKey(option.key);
-          const wide = option.type === "text" && /prompt|template|grammar|control|model/.test(option.key);
+          const wide =
+            option.type === "text" && /prompt|template|grammar|control|model/.test(option.key);
           if (option.type === "boolean") {
             return (
               <label
                 key={option.key}
-                className={`flex items-center gap-2 px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-xs text-(--dim) ${
+                className={`flex items-center gap-2 px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-xs text-(--dim) ${
                   wide ? "col-span-2" : ""
                 }`}
               >
@@ -62,11 +63,13 @@ export function LlamacppOptionsSection({
           if (option.type === "select") {
             return (
               <div key={option.key} className={wide ? "col-span-2" : ""}>
-                <label className="block text-xs font-medium text-(--dim) mb-2">{option.label}</label>
+                <label className="block text-xs font-medium text-(--dim) mb-2">
+                  {option.label}
+                </label>
                 <select
                   value={value ? String(value) : ""}
                   onChange={(e) => setValueForKey(option.key, e.target.value || undefined)}
-                  className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+                  className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
                 >
                   <option value="">Default</option>
                   {option.options?.map((entry) => (
@@ -89,20 +92,24 @@ export function LlamacppOptionsSection({
                 onChange={(e) =>
                   setValueForKey(
                     option.key,
-                    inputType === "number" ? (e.target.value ? Number(e.target.value) : undefined) : e.target.value,
+                    inputType === "number"
+                      ? e.target.value
+                        ? Number(e.target.value)
+                        : undefined
+                      : e.target.value,
                   )
                 }
                 placeholder={option.placeholder}
-                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
             </div>
           );
         })}
       </div>
       <p className="text-xs text-(--dim)">
-        All llama.cpp flags are supported via Extra CLI Arguments. These fields cover the most-used options.
+        All llama.cpp flags are supported via Extra CLI Arguments. These fields cover the most-used
+        options.
       </p>
     </div>
   );
 }
-

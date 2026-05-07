@@ -4,12 +4,12 @@
 import { Plus } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsRow,
-  SettingsValue,
-  StatusPill,
-} from "@/components/settings-primitives";
+  ModelButton,
+  ModelRow,
+  ModelSection,
+  ModelStatus,
+  ModelValue,
+} from "./model-page-primitives";
 import { RecipeRow } from "./recipe-row";
 
 type Props = {
@@ -68,21 +68,21 @@ export function RecipesTable({
 }: Props) {
   const emptyBecauseSearch = Boolean(filter.trim()) && recipes.length === 0;
   return (
-    <SettingsGroup
+    <ModelSection
       title="Launch recipes"
-      description="Compact rows show identity, path, backend, parallelism, state, and actions."
+      description="Identity, path, backend, parallelism, state, and actions."
       actions={
-        <StatusPill tone={recipes.length ? "good" : loading ? "info" : "default"}>
+        <ModelStatus tone={recipes.length ? "good" : loading ? "info" : "default"}>
           {recipes.length ? `${recipes.length} rows` : loading ? "syncing" : "defaults"}
-        </StatusPill>
+        </ModelStatus>
       }
     >
       {loading ? (
-        <SettingsRow
+        <ModelRow
           label="Controller sync"
           description="Recipe requests are still in flight; stable defaults stay visible below."
-          value={<SettingsValue dim>Loading controller recipe rows…</SettingsValue>}
-          status={<StatusPill tone="info">syncing</StatusPill>}
+          value={<ModelValue dim>Loading controller recipe rows…</ModelValue>}
+          status={<ModelStatus tone="info">syncing</ModelStatus>}
         />
       ) : null}
 
@@ -103,7 +103,7 @@ export function RecipesTable({
             />
           ))
         : TEMPLATE_ROWS.map((row) => (
-            <SettingsRow
+            <ModelRow
               key={row.label}
               label={row.label}
               description={
@@ -111,16 +111,16 @@ export function RecipesTable({
                   ? `No exact match for "${filter.trim()}". ${row.description}`
                   : row.description
               }
-              value={<SettingsValue mono>{row.value}</SettingsValue>}
-              status={<StatusPill>{row.status}</StatusPill>}
+              value={<ModelValue mono>{row.value}</ModelValue>}
+              status={<ModelStatus>{row.status}</ModelStatus>}
               actions={
-                <SettingsButton onClick={onNewRecipe}>
+                <ModelButton onClick={onNewRecipe}>
                   <Plus className="h-3 w-3" />
                   Use
-                </SettingsButton>
+                </ModelButton>
               }
             />
           ))}
-    </SettingsGroup>
+    </ModelSection>
   );
 }

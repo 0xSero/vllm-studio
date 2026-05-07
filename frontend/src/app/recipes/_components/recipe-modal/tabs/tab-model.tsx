@@ -37,7 +37,7 @@ export function RecipeModalTabModel({
                   onChange({ ...recipe, max_model_len: Number(e.target.value) || undefined })
                 }
                 placeholder="8192"
-                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
             </div>
             <div>
@@ -47,7 +47,7 @@ export function RecipeModalTabModel({
                 value={recipe.seed || ""}
                 onChange={(e) => onChange({ ...recipe, seed: Number(e.target.value) || undefined })}
                 placeholder="Random"
-                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
             </div>
           </div>
@@ -77,9 +77,11 @@ export function RecipeModalTabModel({
             <input
               type="number"
               value={recipe.max_model_len || ""}
-              onChange={(e) => onChange({ ...recipe, max_model_len: Number(e.target.value) || undefined })}
+              onChange={(e) =>
+                onChange({ ...recipe, max_model_len: Number(e.target.value) || undefined })
+              }
               placeholder="32768"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -89,7 +91,7 @@ export function RecipeModalTabModel({
               value={recipe.seed || ""}
               onChange={(e) => onChange({ ...recipe, seed: Number(e.target.value) || undefined })}
               placeholder="Random"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -102,7 +104,7 @@ export function RecipeModalTabModel({
               value={recipe.tokenizer || ""}
               onChange={(e) => onChange({ ...recipe, tokenizer: e.target.value || undefined })}
               placeholder="Path or name"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -113,10 +115,12 @@ export function RecipeModalTabModel({
                 onChange({
                   ...recipe,
                   tokenizer_mode:
-                    e.target.value === "auto" ? undefined : (e.target.value as "auto" | "slow" | "mistral"),
+                    e.target.value === "auto"
+                      ? undefined
+                      : (e.target.value as "auto" | "slow" | "mistral"),
                 })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             >
               <option value="auto">Auto</option>
               <option value="slow">Slow</option>
@@ -133,7 +137,7 @@ export function RecipeModalTabModel({
               value={recipe.revision || ""}
               onChange={(e) => onChange({ ...recipe, revision: e.target.value || undefined })}
               placeholder="e.g., main"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -143,7 +147,7 @@ export function RecipeModalTabModel({
               value={recipe.code_revision || ""}
               onChange={(e) => onChange({ ...recipe, code_revision: e.target.value || undefined })}
               placeholder="Optional"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -156,7 +160,7 @@ export function RecipeModalTabModel({
               value={recipe.load_format || ""}
               onChange={(e) => onChange({ ...recipe, load_format: e.target.value || undefined })}
               placeholder="auto, safetensors"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -166,19 +170,23 @@ export function RecipeModalTabModel({
               value={recipe.quantization || ""}
               onChange={(e) => onChange({ ...recipe, quantization: e.target.value || undefined })}
               placeholder="awq, gptq, fp8"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Quantization Param Path</label>
+          <label className="block text-xs font-medium text-(--dim) mb-2">
+            Quantization Param Path
+          </label>
           <input
             type="text"
             value={recipe.quantization_param_path || ""}
-            onChange={(e) => onChange({ ...recipe, quantization_param_path: e.target.value || undefined })}
+            onChange={(e) =>
+              onChange({ ...recipe, quantization_param_path: e.target.value || undefined })
+            }
             placeholder="Path to calibration file"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
         </div>
 
@@ -187,8 +195,13 @@ export function RecipeModalTabModel({
             <label className="block text-xs font-medium text-(--dim) mb-2">Dtype</label>
             <select
               value={recipe.dtype || "auto"}
-              onChange={(e) => onChange({ ...recipe, dtype: e.target.value === "auto" ? undefined : e.target.value })}
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              onChange={(e) =>
+                onChange({
+                  ...recipe,
+                  dtype: e.target.value === "auto" ? undefined : e.target.value,
+                })
+              }
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             >
               <option value="auto">Auto</option>
               <option value="float16">float16</option>

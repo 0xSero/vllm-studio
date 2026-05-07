@@ -1,9 +1,9 @@
 // CRITICAL
 "use client";
 
-import { Compass, HardDrive } from "lucide-react";
+import type { ReactNode } from "react";
+import { Compass, HardDrive, RefreshCw } from "lucide-react";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
-import { SettingsLayout, type SettingsSectionDef } from "@/components/settings-primitives";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";
@@ -41,7 +41,12 @@ type Props = {
   table: RecipesTableProps;
 };
 
-const MODEL_SECTIONS: SettingsSectionDef<RecipesContentTab>[] = [
+const MODEL_SECTIONS: Array<{
+  id: RecipesContentTab;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}> = [
   {
     id: "recipes",
     label: "Your models",
@@ -91,37 +96,93 @@ export function RecipesContentView(props: Props) {
     : recipes.length
       ? `${recipes.length} configured`
       : "stable defaults";
+  const activeLabel = MODEL_SECTIONS.find((section) => section.id === tab)?.label ?? "Models";
 
   return (
     <>
-      <SettingsLayout<RecipesContentTab>
-        sections={MODEL_SECTIONS}
-        activeSection={tab}
-        title="Models"
-        eyebrow="Model library"
-        status={refreshing ? "refreshing" : status}
-        loading={refreshing || loading}
-        onReload={onRefresh}
-        onSelectSection={setTab}
-        refreshLabel="Refresh models"
-      >
-        {tab === "recipes" ? (
-          <RecipesTab
-            loading={loading}
-            filter={filter}
-            setFilter={setFilter}
-            sortedRecipes={sortedRecipes}
-            runningRecipeId={runningRecipeId}
-            runningRecipeName={runningRecipeName}
-            launchProgressMessage={launchProgressMessage}
-            onEvictModel={onEvictModel}
-            onNewRecipe={onNewRecipe}
-            table={table}
-          />
-        ) : (
-          <ExploreTab />
-        )}
-      </SettingsLayout>
+      <main className="min-h-full overflow-y-auto overflow-x-hidden bg-(--bg) text-(--fg)">
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 px-4 py-4 sm:px-6 lg:grid-cols-[172px_minmax(0,1fr)] lg:gap-8 lg:py-6">
+          <aside className="lg:sticky lg:top-5 lg:self-start">
+            <div className="mb-3 flex h-8 items-center justify-between gap-2">
+              <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-(--fg)">
+                Models
+              </h1>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing || loading}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:opacity-50"
+                aria-label="Refresh models"
+                title="Refresh models"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${refreshing || loading ? "animate-spin" : ""}`}
+                />
+              </button>
+            </div>
+            <nav
+              aria-label="Model sections"
+              className="-mx-1 overflow-x-auto pb-1 lg:mx-0 lg:overflow-visible"
+            >
+              <div className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
+                {MODEL_SECTIONS.map((section) => {
+                  const active = tab === section.id;
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => setTab(section.id)}
+                      className={`group grid h-7 grid-cols-[18px_1fr] items-center gap-2 rounded-md px-2 text-left text-[12px] transition-colors lg:w-full ${
+                        active
+                          ? "bg-(--surface) text-(--fg)"
+                          : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                      }`}
+                      title={section.description}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center opacity-80">
+                        {section.icon}
+                      </span>
+                      <span className="truncate">{section.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          </aside>
+
+          <section className="min-w-0 pb-10">
+            <div className="mb-5 flex min-h-8 items-center justify-between gap-4 border-b border-(--border)/75 pb-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-(--dim)">
+                  Model library
+                </div>
+                <h2 className="mt-1 truncate text-[18px] font-semibold tracking-[-0.015em] text-(--fg)">
+                  {activeLabel}
+                </h2>
+              </div>
+              <span className="shrink-0 text-[11px] text-(--dim)">
+                {refreshing ? "refreshing" : status}
+              </span>
+            </div>
+            {tab === "recipes" ? (
+              <RecipesTab
+                loading={loading}
+                filter={filter}
+                setFilter={setFilter}
+                sortedRecipes={sortedRecipes}
+                runningRecipeId={runningRecipeId}
+                runningRecipeName={runningRecipeName}
+                launchProgressMessage={launchProgressMessage}
+                onEvictModel={onEvictModel}
+                onNewRecipe={onNewRecipe}
+                table={table}
+              />
+            ) : (
+              <ExploreTab />
+            )}
+          </section>
+        </div>
+      </main>
 
       {deleteConfirm ? (
         <DeleteRecipeConfirmModal

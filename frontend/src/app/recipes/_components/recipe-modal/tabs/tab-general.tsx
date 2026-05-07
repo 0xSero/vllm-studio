@@ -33,7 +33,7 @@ export function RecipeModalTabGeneral({
             value={recipe.name ?? ""}
             onChange={(e) => onChange({ ...recipe, name: e.target.value })}
             placeholder="e.g., Llama 3.1 8B Instruct"
-            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
+            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
           />
         </div>
 
@@ -44,7 +44,7 @@ export function RecipeModalTabGeneral({
           <select
             value={recipe.model_path ?? ""}
             onChange={(e) => onChange({ ...recipe, model_path: e.target.value })}
-            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
+            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
           >
             <option value="">Select a model...</option>
             {availableModels.map((model) => {
@@ -77,7 +77,7 @@ export function RecipeModalTabGeneral({
               onChange={(e) =>
                 onChange({ ...recipe, backend: e.target.value as "vllm" | "sglang" | "llamacpp" })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             >
               <option value="vllm">vLLM</option>
               <option value="sglang">SGLang</option>
@@ -91,7 +91,7 @@ export function RecipeModalTabGeneral({
               value={recipe.host ?? "0.0.0.0"}
               onChange={(e) => onChange({ ...recipe, host: e.target.value || undefined })}
               placeholder="0.0.0.0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -100,7 +100,7 @@ export function RecipeModalTabGeneral({
               type="number"
               value={recipe.port ?? 8000}
               onChange={(e) => onChange({ ...recipe, port: Number(e.target.value) })}
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -112,9 +112,11 @@ export function RecipeModalTabGeneral({
           <input
             type="text"
             value={recipe.served_model_name || ""}
-            onChange={(e) => onChange({ ...recipe, served_model_name: e.target.value || undefined })}
+            onChange={(e) =>
+              onChange({ ...recipe, served_model_name: e.target.value || undefined })
+            }
             placeholder="Custom name exposed in API"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
         </div>
       </div>

@@ -44,7 +44,7 @@ export function RecipeModalTabFeatures({
           <select
             value={recipe.tool_call_parser || ""}
             onChange={(e) => onChange({ ...recipe, tool_call_parser: e.target.value || undefined })}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="">None</option>
             <optgroup label="General">
@@ -84,13 +84,15 @@ export function RecipeModalTabFeatures({
           <input
             type="text"
             value={recipe.tool_parser_plugin || ""}
-            onChange={(e) => onChange({ ...recipe, tool_parser_plugin: e.target.value || undefined })}
+            onChange={(e) =>
+              onChange({ ...recipe, tool_parser_plugin: e.target.value || undefined })
+            }
             placeholder="Path to custom parser module"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
         </div>
 
-        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-lg">
+        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
           <input
             type="checkbox"
             id="enable_auto_tool_choice"
@@ -122,7 +124,7 @@ export function RecipeModalTabFeatures({
           <select
             value={recipe.reasoning_parser || ""}
             onChange={(e) => onChange({ ...recipe, reasoning_parser: e.target.value || undefined })}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="">None</option>
             <optgroup label="DeepSeek">
@@ -138,17 +140,21 @@ export function RecipeModalTabFeatures({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Guided Decoding Backend</label>
+          <label className="block text-xs font-medium text-(--dim) mb-2">
+            Guided Decoding Backend
+          </label>
           <input
             type="text"
             value={recipe.guided_decoding_backend || ""}
-            onChange={(e) => onChange({ ...recipe, guided_decoding_backend: e.target.value || undefined })}
+            onChange={(e) =>
+              onChange({ ...recipe, guided_decoding_backend: e.target.value || undefined })
+            }
             placeholder="e.g., xgrammar, outlines"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
         </div>
 
-        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-lg">
+        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
           <input
             type="checkbox"
             id="enable_thinking"
@@ -157,7 +163,10 @@ export function RecipeModalTabFeatures({
             className="rounded border-(--border) bg-(--surface) w-4 h-4"
           />
           <div className="flex-1">
-            <label htmlFor="enable_thinking" className="text-sm font-medium text-(--fg) cursor-pointer">
+            <label
+              htmlFor="enable_thinking"
+              className="text-sm font-medium text-(--fg) cursor-pointer"
+            >
               Enable Thinking Mode
             </label>
             <p className="text-xs text-(--dim)">Show model&apos;s thinking process</p>
@@ -166,13 +175,17 @@ export function RecipeModalTabFeatures({
 
         {recipe.enable_thinking && (
           <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Thinking Budget (tokens)</label>
+            <label className="block text-xs font-medium text-(--dim) mb-2">
+              Thinking Budget (tokens)
+            </label>
             <input
               type="number"
               value={recipe.thinking_budget || ""}
-              onChange={(e) => onChange({ ...recipe, thinking_budget: Number(e.target.value) || undefined })}
+              onChange={(e) =>
+                onChange({ ...recipe, thinking_budget: Number(e.target.value) || undefined })
+              }
               placeholder="1024"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         )}
@@ -193,7 +206,7 @@ export function RecipeModalTabFeatures({
               value={recipe.chat_template || ""}
               onChange={(e) => onChange({ ...recipe, chat_template: e.target.value || undefined })}
               placeholder="Path or name"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -203,23 +216,27 @@ export function RecipeModalTabFeatures({
               value={recipe.response_role || ""}
               onChange={(e) => onChange({ ...recipe, response_role: e.target.value || undefined })}
               placeholder="assistant"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Chat Template Format</label>
+          <label className="block text-xs font-medium text-(--dim) mb-2">
+            Chat Template Format
+          </label>
           <select
             value={recipe.chat_template_content_format || "auto"}
             onChange={(e) =>
               onChange({
                 ...recipe,
                 chat_template_content_format:
-                  e.target.value === "auto" ? undefined : (e.target.value as "auto" | "string" | "openai"),
+                  e.target.value === "auto"
+                    ? undefined
+                    : (e.target.value as "auto" | "string" | "openai"),
               })
             }
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="auto">Auto</option>
             <option value="string">String</option>

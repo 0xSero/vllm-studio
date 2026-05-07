@@ -6,10 +6,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Download,
   DownloadCloud,
   ExternalLink,
-  Heart,
   Pause,
   Play,
   RefreshCw,
@@ -18,14 +16,14 @@ import {
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatBytes, formatNumber } from "@/lib/formatters";
 import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsInput,
-  SettingsRow,
-  SettingsValue,
-  StatusPill,
-  type StatusTone,
-} from "@/components/settings-primitives";
+  ModelButton,
+  ModelSection,
+  ModelInput,
+  ModelRow,
+  ModelValue,
+  ModelStatus,
+  type ModelStatusTone,
+} from "./model-page-primitives";
 import { extractProvider, extractQuantizations } from "@/app/discover/_components/utils";
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
@@ -55,7 +53,7 @@ function ExploreVramCell({ needGb, poolGb }: { needGb: number | null; poolGb: nu
   );
 }
 
-const ModelRow = memo(function ModelRow({
+const ExploreModelRow = memo(function ExploreModelRow({
   model,
   isLocal,
   activeDownload,
@@ -99,7 +97,7 @@ const ModelRow = memo(function ModelRow({
     setTimeout(() => setCopied(false), 2000);
   }, [model.modelId]);
 
-  const downloadTone: StatusTone = isLocal
+  const downloadTone: ModelStatusTone = isLocal
     ? "good"
     : activeDownload?.status === "failed"
       ? "danger"
@@ -115,7 +113,7 @@ const ModelRow = memo(function ModelRow({
         : "remote";
 
   return (
-    <SettingsRow
+    <ModelRow
       label={child ? model.modelId.split("/").pop() || model.modelId : model.modelId}
       description={`${provider}${variantCount > 1 && !child ? ` · ${variantCount} variants` : ""}`}
       value={
@@ -128,11 +126,11 @@ const ModelRow = memo(function ModelRow({
           <span>{formatNumber(displayLikes ?? model.likes)} likes</span>
         </div>
       }
-      status={<StatusPill tone={downloadTone}>{downloadLabel}</StatusPill>}
+      status={<ModelStatus tone={downloadTone}>{downloadLabel}</ModelStatus>}
       actions={
         <>
           {variantCount > 1 && !child && onToggleExpand ? (
-            <SettingsButton
+            <ModelButton
               onClick={onToggleExpand}
               title={expanded ? "Hide variants" : "Show variants"}
             >
@@ -141,34 +139,34 @@ const ModelRow = memo(function ModelRow({
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-            </SettingsButton>
+            </ModelButton>
           ) : null}
-          <SettingsButton onClick={copyId} title="Copy model id">
+          <ModelButton onClick={copyId} title="Copy model id">
             {copied ? <Check className="h-3 w-3 text-(--hl2)" /> : <Copy className="h-3 w-3" />}
-          </SettingsButton>
+          </ModelButton>
           {activeDownload?.status === "downloading" ? (
-            <SettingsButton
+            <ModelButton
               onClick={() => onPauseDownload(activeDownload.id)}
               title="Pause server download"
             >
               <Pause className="h-3 w-3" />
-            </SettingsButton>
+            </ModelButton>
           ) : activeDownload?.status === "paused" || activeDownload?.status === "failed" ? (
-            <SettingsButton
+            <ModelButton
               onClick={() => onResumeDownload(activeDownload.id)}
               title="Resume server download"
             >
               <Play className="h-3 w-3" />
-            </SettingsButton>
+            </ModelButton>
           ) : !isLocal ? (
-            <SettingsButton
+            <ModelButton
               onClick={() => onStartDownload(model.modelId)}
               disabled={isStarting}
               tone="primary"
             >
               <DownloadCloud className="h-3 w-3" />
               Download
-            </SettingsButton>
+            </ModelButton>
           ) : null}
           <a
             href={`https://huggingface.co/${model.modelId}`}
@@ -191,7 +189,7 @@ const ModelRow = memo(function ModelRow({
           · {activeDownload.target_dir}
         </div>
       ) : null}
-    </SettingsRow>
+    </ModelRow>
   );
 });
 
@@ -327,22 +325,22 @@ export function ExploreTab() {
 
   return (
     <div className="space-y-5">
-      <SettingsGroup
+      <ModelSection
         title="Explore controls"
         description="Search Hugging Face, tune pooled VRAM, and refresh without changing the page structure."
         actions={
-          <StatusPill tone={loading ? "info" : error ? "warning" : "good"}>
+          <ModelStatus tone={loading ? "info" : error ? "warning" : "good"}>
             {loading ? "syncing" : error ? "fallback" : "ready"}
-          </StatusPill>
+          </ModelStatus>
         }
       >
-        <SettingsRow
+        <ModelRow
           label="Search models"
           description="Repo id, family name, quantization tag, or provider."
           control={
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
-              <SettingsInput
+              <ModelInput
                 value={search}
                 onChange={setSearch}
                 placeholder="Search Hugging Face models"
@@ -350,14 +348,14 @@ export function ExploreTab() {
               />
             </div>
           }
-          status={<StatusPill>{groups.length || "defaults"}</StatusPill>}
+          status={<ModelStatus>{groups.length || "defaults"}</ModelStatus>}
           actions={
-            <SettingsButton onClick={refresh} disabled={loading} title="Refresh Explore">
+            <ModelButton onClick={refresh} disabled={loading} title="Refresh Explore">
               <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-            </SettingsButton>
+            </ModelButton>
           }
         />
-        <SettingsRow
+        <ModelRow
           label="VRAM pool"
           description="Manual pool wins; clearing the input returns to detected GPUs and server hints."
           control={
@@ -382,66 +380,66 @@ export function ExploreTab() {
                 }
                 setPoolOverrideGb(parsed);
               }}
-              className="h-8 w-full rounded-md border border-transparent bg-(--bg) px-2.5 text-[12px] text-(--fg) outline-none ring-1 ring-(--border)/70 transition placeholder:text-(--dim)/65 focus:ring-(--hl1)/70"
+              className="h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[12px] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60"
               title="Override total VRAM pool for Explore."
             />
           }
           status={
-            <StatusPill tone={maxVramGb > 0 ? "info" : "default"}>
+            <ModelStatus tone={maxVramGb > 0 ? "info" : "default"}>
               {maxVramGb > 0 ? `${Math.round(maxVramGb)} GB` : "auto"}
-            </StatusPill>
+            </ModelStatus>
           }
           actions={
             poolOverrideGb != null ? (
-              <SettingsButton onClick={() => setPoolOverrideGb(null)}>Auto</SettingsButton>
+              <ModelButton onClick={() => setPoolOverrideGb(null)}>Auto</ModelButton>
             ) : null
           }
         />
-        <SettingsRow
+        <ModelRow
           label="Hardware hint"
           description="Detected GPU pool from the controller, plus manual override state."
           value={
-            <SettingsValue>
+            <ModelValue>
               {gpuCount > 0
                 ? `${gpuCount} GPU${gpuCount === 1 ? "" : "s"} detected`
                 : detectedPoolGb > 0
                   ? `${Math.round(detectedPoolGb)} GB reported`
                   : "No live GPU hint; estimates remain visible"}
-            </SettingsValue>
+            </ModelValue>
           }
-          status={<StatusPill>{poolOverrideGb != null ? "manual" : "detected"}</StatusPill>}
+          status={<ModelStatus>{poolOverrideGb != null ? "manual" : "detected"}</ModelStatus>}
         />
-      </SettingsGroup>
+      </ModelSection>
 
       {downloadError ? (
-        <SettingsGroup
+        <ModelSection
           title="Download status"
           description="Server-side download errors stay visible as rows."
         >
-          <SettingsRow
+          <ModelRow
             label="Download worker"
             description="The model browser remains usable while the download endpoint recovers."
-            value={<SettingsValue dim>{downloadError}</SettingsValue>}
-            status={<StatusPill tone="danger">error</StatusPill>}
+            value={<ModelValue dim>{downloadError}</ModelValue>}
+            status={<ModelStatus tone="danger">error</ModelStatus>}
           />
-        </SettingsGroup>
+        </ModelSection>
       ) : null}
 
-      <SettingsGroup
+      <ModelSection
         title="Model results"
         description="Rows preserve provider, format, VRAM fit, engagement, download state, and source link."
         actions={
-          <StatusPill tone={groups.length ? "good" : error ? "warning" : "default"}>
+          <ModelStatus tone={groups.length ? "good" : error ? "warning" : "default"}>
             {groups.length ? `${groups.length} models` : "defaults"}
-          </StatusPill>
+          </ModelStatus>
         }
       >
         {error ? (
-          <SettingsRow
+          <ModelRow
             label="Explore API"
             description="Remote discovery failed, so curated fallback rows are shown below."
-            value={<SettingsValue dim>{error}</SettingsValue>}
-            status={<StatusPill tone="warning">fallback</StatusPill>}
+            value={<ModelValue dim>{error}</ModelValue>}
+            status={<ModelStatus tone="warning">fallback</ModelStatus>}
           />
         ) : null}
 
@@ -449,7 +447,7 @@ export function ExploreTab() {
           ? groups.flatMap((group) => {
               const expanded = expandedKeys.has(group.key);
               const rows = [
-                <ModelRow
+                <ExploreModelRow
                   key={group.key}
                   model={group.lead}
                   isLocal={isLocal(group.lead.modelId)}
@@ -474,7 +472,7 @@ export function ExploreTab() {
                   ...group.variants
                     .slice(1)
                     .map((variant) => (
-                      <ModelRow
+                      <ExploreModelRow
                         key={variant._id}
                         model={variant}
                         isLocal={isLocal(variant.modelId)}
@@ -495,7 +493,7 @@ export function ExploreTab() {
               return rows;
             })
           : fallbackModels.map(([label, description, value]) => (
-              <SettingsRow
+              <ModelRow
                 key={label}
                 label={label}
                 description={
@@ -503,8 +501,8 @@ export function ExploreTab() {
                     ? `No exact match yet for "${search.trim()}". ${description}`
                     : description
                 }
-                value={<SettingsValue mono>{value}</SettingsValue>}
-                status={<StatusPill>{loading ? "syncing" : "fallback"}</StatusPill>}
+                value={<ModelValue mono>{value}</ModelValue>}
+                status={<ModelStatus>{loading ? "syncing" : "fallback"}</ModelStatus>}
                 actions={
                   <a
                     href={`https://huggingface.co/${label}`}
@@ -519,23 +517,23 @@ export function ExploreTab() {
             ))}
 
         {hasMore && groups.length > 0 ? (
-          <SettingsRow
+          <ModelRow
             label="More results"
             description="Fetch the next page from Hugging Face."
             value={
-              <SettingsValue dim>
+              <ModelValue dim>
                 {loading ? "Loading next page…" : "Additional rows available"}
-              </SettingsValue>
+              </ModelValue>
             }
-            status={<StatusPill>{loading ? "loading" : "ready"}</StatusPill>}
+            status={<ModelStatus>{loading ? "loading" : "ready"}</ModelStatus>}
             actions={
-              <SettingsButton onClick={loadMore} disabled={loading}>
+              <ModelButton onClick={loadMore} disabled={loading}>
                 Load more
-              </SettingsButton>
+              </ModelButton>
             }
           />
         ) : null}
-      </SettingsGroup>
+      </ModelSection>
     </div>
   );
 }

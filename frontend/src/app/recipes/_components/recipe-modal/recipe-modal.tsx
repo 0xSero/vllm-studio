@@ -47,9 +47,10 @@ export function RecipeModal({
     }));
     return entries.length ? entries : [{ key: "", value: "" }];
   });
-  const [llamaConfigHelp, setLlamaConfigHelp] = useState<{ config: string | null; error?: string | null } | null>(
-    null,
-  );
+  const [llamaConfigHelp, setLlamaConfigHelp] = useState<{
+    config: string | null;
+    error?: string | null;
+  } | null>(null);
 
   const backend = recipe.backend ?? "vllm";
   const isLlamacpp = backend === "llamacpp";
@@ -121,7 +122,10 @@ export function RecipeModal({
         setExtraArgsError("Extra args must be a JSON object.");
         return;
       }
-      const merged = mergeExtraArgsFromEditor(recipe.extra_args ?? {}, parsed as Record<string, unknown>);
+      const merged = mergeExtraArgsFromEditor(
+        recipe.extra_args ?? {},
+        parsed as Record<string, unknown>,
+      );
       onChange({ ...recipe, extra_args: merged });
       setExtraArgsError(null);
     } catch {
@@ -142,7 +146,9 @@ export function RecipeModal({
   };
 
   const handleEnvVarChange = (index: number, field: "key" | "value", value: string) => {
-    const next = envVarEntries.map((entry, idx) => (idx === index ? { ...entry, [field]: value } : entry));
+    const next = envVarEntries.map((entry, idx) =>
+      idx === index ? { ...entry, [field]: value } : entry,
+    );
     updateEnvVarEntries(next);
   };
 
@@ -158,35 +164,41 @@ export function RecipeModal({
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
-      <button className="flex-1 bg-black/60" onClick={onClose} aria-label="Close" />
+      <button className="flex-1 bg-black/50" onClick={onClose} aria-label="Close" />
 
       {/* Drawer */}
-      <div className="w-full max-w-2xl bg-(--surface) border-l border-(--border) flex flex-col h-full animate-in slide-in-from-right duration-200">
+      <div className="flex h-full w-full max-w-[720px] animate-in flex-col border-l border-(--border) bg-(--bg) slide-in-from-right duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-(--border) shrink-0 bg-(--surface)">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-(--accent)/10 rounded-lg flex items-center justify-center">
-              <Layers className="w-5 h-5 text-(--accent)" />
+        <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-(--border) bg-(--bg) px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-(--surface)">
+              <Layers className="h-4 w-4 text-(--accent)" />
             </div>
-            <div>
-              <h3 className="text-lg font-semibold">{recipe.id ? "Edit Recipe" : "New Recipe"}</h3>
+            <div className="min-w-0">
+              <h3 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-(--fg)">
+                {recipe.id ? "Edit Recipe" : "New Recipe"}
+              </h3>
               <div className="flex items-center gap-2 text-xs text-(--dim)">
                 <span>Engine</span>
-                <span className="px-2 py-0.5 rounded-full bg-(--surface) border border-(--border) text-(--accent)">
+                <span className="rounded-[5px] bg-(--surface) px-1.5 py-0.5 text-[10px] font-medium text-(--accent)">
                   {formatBackendLabel(recipe.backend)}
                 </span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-(--border) rounded-lg transition-colors">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+            aria-label="Close recipe drawer"
+          >
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <RecipeModalTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-5">
           <RecipeModalTabContent
             activeTab={activeTab}
             recipe={recipe}
@@ -211,32 +223,37 @@ export function RecipeModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-(--border) shrink-0 bg-(--surface)">
+        <div className="flex shrink-0 items-center justify-between border-t border-(--border) bg-(--bg) px-4 py-3">
           <div className="text-xs text-(--dim)">
             {recipe.id ? `Editing ${recipe.name}` : "Creating new recipe"}
             {extraArgsError && <span className="ml-3 text-(--err)">Extra args has errors</span>}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-2 bg-(--border) hover:bg-(--surface) rounded-lg text-sm transition-colors disabled:opacity-50"
+              className="inline-flex h-8 items-center rounded-md px-3 text-[12px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              disabled={saving || !!extraArgsError || !(recipe.name ?? "").trim() || !(recipe.model_path ?? "").trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-(--accent) hover:bg-(--accent) text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+                saving ||
+                !!extraArgsError ||
+                !(recipe.name ?? "").trim() ||
+                !(recipe.model_path ?? "").trim()
+              }
+              className="inline-flex h-8 items-center gap-2 rounded-md bg-(--surface) px-3 text-[12px] font-medium text-(--fg) transition-colors hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4" />
+                  <Save className="h-3.5 w-3.5" />
                   Save Recipe
                 </>
               )}

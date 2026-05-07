@@ -55,7 +55,7 @@ export function RecipeModalTabResources({
                   tensor_parallel_size: Number(e.target.value),
                 })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -73,7 +73,7 @@ export function RecipeModalTabResources({
                   pipeline_parallel_size: Number(e.target.value),
                 })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -86,7 +86,7 @@ export function RecipeModalTabResources({
                 onChange({ ...recipe, data_parallel_size: Number(e.target.value) || undefined })
               }
               placeholder="1"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>
@@ -125,7 +125,7 @@ export function RecipeModalTabResources({
               onChange={(e) =>
                 onChange({ ...recipe, gpu_memory_utilization: Number(e.target.value) })
               }
-              className="flex-1 h-2 bg-(--border) rounded-lg appearance-none cursor-pointer accent-(--accent)"
+              className="flex-1 h-2 bg-(--border) rounded-md appearance-none cursor-pointer accent-(--accent)"
             />
             <span className="text-sm font-mono w-12 text-right">
               {Math.round((recipe.gpu_memory_utilization ?? 0.9) * 100)}%
@@ -146,7 +146,7 @@ export function RecipeModalTabResources({
               })
             }
             placeholder="0,1,2,3 or all"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
         </div>
       </div>
@@ -168,7 +168,7 @@ export function RecipeModalTabResources({
                 onChange({ ...recipe, swap_space: Number(e.target.value) || undefined })
               }
               placeholder="0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -180,7 +180,7 @@ export function RecipeModalTabResources({
                 onChange({ ...recipe, cpu_offload_gb: Number(e.target.value) || undefined })
               }
               placeholder="0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
           <div>
@@ -197,7 +197,7 @@ export function RecipeModalTabResources({
                 })
               }
               placeholder="Auto"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm focus:outline-none focus:border-(--accent)"
+              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
           </div>
         </div>

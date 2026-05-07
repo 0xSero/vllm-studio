@@ -2,25 +2,17 @@
 "use client";
 
 import type { ReactNode } from "react";
-import {
-  Code,
-  Cpu,
-  Layers,
-  Sparkles,
-  Terminal,
-  Settings,
-  Zap,
-} from "lucide-react";
+import { Code, Cpu, Layers, Sparkles, Terminal, Settings, Zap } from "lucide-react";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 
 const tabDefinitions: Array<{ id: RecipeModalTabId; label: string; icon: ReactNode }> = [
-  { id: "general", label: "General", icon: <Settings className="w-4 h-4" /> },
-  { id: "model", label: "Model", icon: <Layers className="w-4 h-4" /> },
-  { id: "resources", label: "Resources", icon: <Cpu className="w-4 h-4" /> },
-  { id: "performance", label: "Performance", icon: <Zap className="w-4 h-4" /> },
-  { id: "features", label: "Features", icon: <Sparkles className="w-4 h-4" /> },
-  { id: "environment", label: "Environment", icon: <Terminal className="w-4 h-4" /> },
-  { id: "command", label: "Command", icon: <Code className="w-4 h-4" /> },
+  { id: "general", label: "General", icon: <Settings className="h-3.5 w-3.5" /> },
+  { id: "model", label: "Model", icon: <Layers className="h-3.5 w-3.5" /> },
+  { id: "resources", label: "Resources", icon: <Cpu className="h-3.5 w-3.5" /> },
+  { id: "performance", label: "Performance", icon: <Zap className="h-3.5 w-3.5" /> },
+  { id: "features", label: "Features", icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { id: "environment", label: "Environment", icon: <Terminal className="h-3.5 w-3.5" /> },
+  { id: "command", label: "Command", icon: <Code className="h-3.5 w-3.5" /> },
 ];
 
 export function RecipeModalTabBar({
@@ -31,14 +23,14 @@ export function RecipeModalTabBar({
   onSelectTab: (tab: RecipeModalTabId) => void;
 }) {
   return (
-    <div className="flex gap-1 px-4 py-3 border-b border-(--border) shrink-0 bg-(--bg) overflow-x-auto">
+    <div className="flex h-10 shrink-0 gap-1 overflow-x-auto border-b border-(--border) bg-(--bg) px-3 py-1.5">
       {tabDefinitions.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onSelectTab(tab.id)}
-          className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all whitespace-nowrap ${
+          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors whitespace-nowrap ${
             activeTab === tab.id
-              ? "bg-(--accent) text-white shadow-lg shadow-(--accent)/20"
+              ? "bg-(--surface) text-(--fg)"
               : "text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
           }`}
         >
