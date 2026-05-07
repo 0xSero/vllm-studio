@@ -95,3 +95,16 @@
   }
 }
 
+/* Dashboard metric strip must stay horizontal in the desktop app's narrow/zoomed views.
+   This intentionally beats the broad mobile max-width guard above. */
+@media (max-width: 1023px) {
+  .status-metric-strip {
+    max-width: min(100%, 32rem) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .status-metric-strip {
+    max-width: none !important;
+  }
+}

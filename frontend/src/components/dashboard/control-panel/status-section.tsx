@@ -192,13 +192,13 @@ export function StatusSection({
             className="mt-1.5 truncate text-[22px] font-semibold leading-tight tracking-[-0.01em] text-(--fg)"
             title={modelName || ""}
           >
-            {modelName || "No model loaded"}
+            {modelName || STABLE_SNAPSHOT.modelName}
           </h1>
         </div>
         {headerActions}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-y-4 border-b border-(--border)/40 pb-5 md:grid-cols-[1.15fr_1.15fr_1.2fr_0.75fr_0.95fr_0.95fr]">
+      <dl className="status-metric-strip mt-5 grid w-full grid-cols-[minmax(0,1.05fr)_minmax(0,0.92fr)_minmax(0,1.18fr)_minmax(0,0.58fr)_minmax(0,0.88fr)_minmax(0,0.88fr)] border-b border-(--border)/40 pb-5">
         <MetricColumn
           label="Decode"
           value={genTps > 0 ? genTps.toFixed(1) : null}
@@ -218,19 +218,17 @@ export function StatusSection({
         />
         <CompactMetric
           label="Req"
-          value={sessions > 0 ? `${sessions} / ${peakReq || sessions}` : null}
+          value={sessions > 0 ? `${sessions}/${peakReq || sessions}` : null}
         />
         <CompactMetric
           label="VRAM"
-          value={
-            totalMemUsed > 0 ? `${totalMemUsed.toFixed(1)} / ${vramCapacity.toFixed(0)}G` : null
-          }
+          value={totalMemUsed > 0 ? `${totalMemUsed.toFixed(1)}/${vramCapacity.toFixed(0)}G` : null}
         />
         <CompactMetric
           label="Power"
-          value={totalPower > 0 ? `${Math.round(totalPower)} / ${Math.round(powerLimit)}W` : null}
+          value={totalPower > 0 ? `${Math.round(totalPower)}/${Math.round(powerLimit)}W` : null}
         />
-      </div>
+      </dl>
 
       <MetricTrends samples={samples} />
     </section>
@@ -447,27 +445,58 @@ function MetricColumn({
   unit: string;
   detail?: string;
 }) {
+  const displayValue = value ?? "0";
+
   return (
-    <div className="min-w-0 border-r border-(--border)/40 pr-6 pl-7 first:pl-0 last:border-r-0">
-      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 sm:pr-4 sm:pl-5 last:border-r-0 [container-type:inline-size]">
+      <div className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
         {label}
       </div>
-      <div className="mt-2 flex items-baseline gap-2 font-mono tabular-nums">
-        <span className="text-[30px] leading-none text-(--fg)">{value ?? "—"}</span>
-        {value ? <span className="text-[11px] text-(--dim)">{unit}</span> : null}
-        {detail ? <span className="ml-auto text-[10.5px] text-(--dim)">{detail}</span> : null}
+      <div className="mt-2 flex min-w-0 items-baseline gap-1.5 font-mono tabular-nums">
+        <span
+          className={`min-w-0 shrink overflow-hidden leading-none text-(--fg) ${metricValueSizeClass(displayValue)}`}
+          title={displayValue}
+        >
+          {displayValue}
+        </span>
+        {value ? <span className="shrink-0 text-[11px] text-(--dim)">{unit}</span> : null}
       </div>
+      {detail ? (
+        <div className="mt-1 truncate font-mono text-[10.5px] tabular-nums text-(--dim)">
+          {detail}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function CompactMetric({ label, value }: { label: string; value: string | null }) {
+  const displayValue = value ?? "0";
+
   return (
-    <div className="min-w-0 pl-5 font-mono tabular-nums md:border-r md:border-(--border)/40 md:pr-5 md:first:pl-0 md:last:border-r-0">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-(--dim)">{label}</div>
-      <div className="mt-3 text-[16px] text-(--fg)/90">{value ?? "—"}</div>
+    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-1.5 pl-2 font-mono tabular-nums first:pl-0 sm:pr-3 sm:pl-4 last:border-r-0 [container-type:inline-size]">
+      <div className="truncate text-[9px] uppercase tracking-[0.1em] text-(--dim)">{label}</div>
+      <div
+        className={`mt-3 overflow-hidden whitespace-nowrap leading-none text-(--fg)/90 ${compactMetricSizeClass(displayValue)}`}
+        title={displayValue}
+      >
+        {displayValue}
+      </div>
     </div>
   );
+}
+
+function metricValueSizeClass(value: string): string {
+  if (value.length >= 8) return "text-[clamp(0.72rem,12cqw,1.2rem)]";
+  if (value.length >= 7) return "text-[clamp(0.78rem,14cqw,1.35rem)]";
+  if (value.length >= 6) return "text-[clamp(0.84rem,15cqw,1.55rem)]";
+  return "text-[clamp(0.9rem,17cqw,1.875rem)]";
+}
+
+function compactMetricSizeClass(value: string): string {
+  if (value.length >= 12) return "text-[clamp(0.48rem,6cqw,0.68rem)]";
+  if (value.length >= 9) return "text-[clamp(0.5rem,7cqw,0.72rem)]";
+  return "text-[clamp(0.62rem,10cqw,0.95rem)]";
 }
 
 function HeroStat({
@@ -498,7 +527,7 @@ function HeroStat({
             idle ? "text-(--dim)/60" : "text-(--fg)"
           }`}
         >
-          {idle ? "—" : value}
+          {idle ? "0" : value}
         </span>
         {!idle ? <span className="font-mono text-[11px] text-(--dim)">{unit}</span> : null}
       </div>
@@ -508,7 +537,7 @@ function HeroStat({
 
 function Pair({ value, unit }: { value: string | null; unit: string }) {
   if (value == null) {
-    return <span className="text-(--dim)/55">—</span>;
+    return <span className="text-(--dim)/55">0</span>;
   }
   return (
     <>
@@ -650,7 +679,19 @@ function ModelsDropdown({
           </div>
           <div className="max-h-[18rem] overflow-auto">
             {visible.length === 0 && (
-              <div className="px-3 py-4 font-mono text-xs text-(--dim)">No models</div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-(--fg)/5"
+              >
+                <span className="h-3 w-0.5 shrink-0 bg-(--fg)/60" />
+                <span className="flex-1 truncate font-mono text-xs text-(--fg)">
+                  {STABLE_SNAPSHOT.modelName}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-(--dim)">
+                  tp5
+                </span>
+              </button>
             )}
             {visible.map((r) => {
               const row = { isCurrent: r.id === currentRecipeId };
