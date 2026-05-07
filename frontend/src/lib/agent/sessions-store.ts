@@ -46,10 +46,6 @@ function sessionsDirsForCwd(cwd: string): string[] {
   return piSessionRoots().map((root) => path.join(root, encoded));
 }
 
-export function sessionsDirForCwd(cwd: string): string {
-  return sessionsDirsForCwd(cwd)[0];
-}
-
 async function readSessionSummary(
   filepath: string,
   filename: string,

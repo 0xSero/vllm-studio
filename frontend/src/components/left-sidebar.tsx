@@ -8,6 +8,7 @@ import {
   Bot,
   Database,
   HardDrive,
+  Search as SearchIcon,
   Server,
   Settings,
   Sun,
@@ -24,6 +25,24 @@ import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import { ProjectsNavSection } from "@/components/projects-nav-section";
 import { ModelStopConfirm } from "@/components/model-stop-confirm";
+import { SessionsCommand } from "@/components/sessions-command";
+
+// Custom event used by ProjectsNavSection to broadcast the set of currently
+// running agent panes/tabs. We listen for it here so the search palette can
+// surface "Running now" entries even when the project tree is collapsed.
+const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
+
+type ActiveSessionDetail = {
+  projectId: string;
+  cwd: string;
+  paneId: string;
+  tabId: string;
+  piSessionId: string | null;
+  title: string;
+  status: string;
+  active?: boolean;
+  updatedAt: string;
+};
 
 const tabs = [
   { href: "/", label: "Status", icon: BarChart3 },
@@ -83,6 +102,8 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
   );
   const isExpanded = desktopSidebarPinnedOpen;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSessionDetail[]>([]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -93,6 +114,29 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [mobileMenuOpen]);
 
+  // Global Cmd/Ctrl+K opens the session search palette.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Mirror active sessions broadcast by the agent workspace so the palette
+  // can show what's running even when the user is on a non-agent route.
+  useEffect(() => {
+    const onActive = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessions?: ActiveSessionDetail[] }>).detail;
+      setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);
+    };
+    window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
+    return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
+  }, []);
+
   if (pathname.startsWith("/setup")) {
     return <div className="h-full w-full">{children}</div>;
   }
@@ -100,19 +144,15 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       <aside
-        className={`hidden md:flex sticky top-0 h-[100dvh] transition-[width] duration-150 ease-out border-r border-(--border) bg-(--bg) flex-col shrink-0 z-40 overflow-hidden ${
-          isExpanded ? "w-52" : "w-14"
+        className={`hidden md:flex sticky top-0 h-[100dvh] transition-[width] duration-150 ease-out border-r border-(--border) bg-(--rail) flex-col shrink-0 z-40 overflow-hidden ${
+          isExpanded ? "w-[var(--sidebar-w)]" : "w-[var(--sidebar-w-collapsed)]"
         }`}
       >
         {/* Logo */}
-        <Link
-          href="/"
-          className="h-14 flex items-center gap-3 px-3 border-b border-(--border) shrink-0"
-          title="vLLM Studio"
-        >
+        <Link href="/" className="h-11 flex items-center gap-2.5 px-3 shrink-0" title="vLLM Studio">
           <LogoMark />
           <span
-            className={`text-sm font-bold tracking-tight whitespace-nowrap text-(--fg) transition-opacity duration-100 ${
+            className={`text-[13px] font-semibold tracking-tight whitespace-nowrap text-(--fg) transition-opacity duration-100 ${
               isExpanded ? "opacity-100" : "opacity-0"
             }`}
           >
@@ -121,7 +161,36 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         </Link>
 
         {/* Primary nav */}
-        <nav className="flex-1 min-h-0 flex flex-col py-2 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
+          {isExpanded ? (
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="mb-1 flex h-7 items-center gap-2 rounded-md bg-(--surface) px-2 text-(--dim) transition-colors hover:bg-(--surface-2) hover:text-(--fg)"
+              title="Search sessions (⌘K)"
+            >
+              <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 truncate text-left text-[12px]">Search sessions</span>
+              <kbd className="rounded bg-(--surface-2) px-1 py-0.5 text-[9.5px] font-mono text-(--dim)">
+                ⌘K
+              </kbd>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="mb-1 flex h-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+              title="Search sessions (⌘K)"
+              aria-label="Search sessions"
+            >
+              <SearchIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {isExpanded ? (
+            <div className="px-2 pb-1 pt-2 text-[length:var(--text-section)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
+              Workspace
+            </div>
+          ) : null}
           {tabs.map((tab) => (
             <NavItemDesktop
               key={tab.href}
@@ -136,7 +205,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer controls */}
-        <div className="border-t border-(--border) p-2 shrink-0">
+        <div className="p-2 shrink-0">
           <div className="flex items-center justify-between gap-1">
             <button
               onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
@@ -158,24 +227,26 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
-      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border) bg-(--bg) px-3">
-        <Link href="/" className="flex min-w-0 items-center gap-2">
+      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <LogoMark />
-          <span className="truncate text-sm font-bold tracking-tight text-(--fg)">vLLM Studio</span>
+          <span className="truncate text-[13px] font-semibold tracking-tight text-(--fg)">
+            vLLM Studio
+          </span>
         </Link>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <StopButtonMobile />
           <ThemeToggleMobile />
           <StatusRowMobile />
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded border border-(--border) bg-(--surface) text-(--fg)"
+            className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md border-0 bg-transparent text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
             aria-label="Open navigation menu"
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-navigation-drawer"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-[18px] w-[18px]" />
           </button>
         </div>
       </div>
@@ -183,6 +254,12 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
       {mobileMenuOpen ? (
         <MobileNavigationDrawer pathname={pathname} onClose={() => setMobileMenuOpen(false)} />
       ) : null}
+
+      <SessionsCommand
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        activeSessions={activeSessions}
+      />
 
       {/* Main content */}
       <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--bg) md:pt-0">
@@ -293,15 +370,13 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-10 flex items-center gap-3 px-3 transition-colors ${
-        active
-          ? "bg-(--surface) text-(--fg)"
-          : "text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
-      } shrink-0`}
+      className={`h-7 flex items-center gap-2.5 px-2 rounded-md transition-colors shrink-0 ${
+        active ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      }`}
     >
-      <Icon className="w-4 h-4 shrink-0" />
+      <Icon className="w-3.5 h-3.5 shrink-0" />
       <span
-        className={`text-sm font-medium whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[12.5px] font-medium whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -379,7 +454,7 @@ function StopButtonMobile() {
         <button
           onClick={open}
           disabled={stopping}
-          className="flex h-10 w-10 items-center justify-center rounded text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
+          className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
           title="Stop model"
           aria-label="Stop model"
         >
@@ -399,7 +474,7 @@ function ThemeToggleMobile() {
   return (
     <button
       onClick={() => setThemeId(isDark ? "omlx-light" : "omlx-dark")}
-      className="flex h-10 w-10 items-center justify-center rounded text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
+      className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
       title={isDark ? "Light mode" : "Dark mode"}
     >
       <Icon className="h-4 w-4" />

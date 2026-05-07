@@ -1,0 +1,54 @@
+import { NextRequest } from "next/server";
+import { existsSync, statSync } from "node:fs";
+import { listProjectsFromStore } from "@/lib/agent/projects-store";
+import { listSessions, type SessionSummary } from "@/lib/agent/sessions-store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Aggregated session index across every registered project. The agent
+// sidebar/dashboard loads this once and then filters/searches client-side so
+// search-as-you-type stays snappy without per-keystroke fetches.
+export type AggregatedSession = SessionSummary & {
+  projectId: string;
+  projectName: string;
+  projectPath: string;
+};
+
+function parseSince(value: string | null): Date | null {
+  if (!value) return null;
+  const match = value.match(/^(\d+)([dhm])$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const unit = match[2];
+  const multiplier = unit === "d" ? 86_400_000 : unit === "h" ? 3_600_000 : 60_000;
+  return new Date(Date.now() - amount * multiplier);
+}
+
+export async function GET(request: NextRequest) {
+  const sinceParam = request.nextUrl.searchParams.get("since");
+  const since = parseSince(sinceParam) ?? undefined;
+  const projects = listProjectsFromStore();
+  const aggregated: AggregatedSession[] = [];
+  await Promise.all(
+    projects.map(async (project) => {
+      try {
+        if (!existsSync(project.path) || !statSync(project.path).isDirectory()) return;
+        const sessions = await listSessions(project.path, since ? { since } : undefined);
+        for (const summary of sessions) {
+          aggregated.push({
+            ...summary,
+            projectId: project.id,
+            projectName: project.name,
+            projectPath: project.path,
+          });
+        }
+      } catch {
+        // Skip a project that can't be read; we still want results from the rest.
+      }
+    }),
+  );
+  aggregated.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return Response.json({ sessions: aggregated });
+}

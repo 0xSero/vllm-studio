@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ClipboardEvent, DragEvent, ReactNode } from "react";
 import {
   AttachIcon,
   CloseIcon,
@@ -13,6 +13,14 @@ import {
 } from "@/components/icons";
 import { safeJson } from "@/lib/agent/safe-json";
 import { AssistantMarkdown } from "./assistant-markdown";
+import {
+  attachmentPrompt,
+  createAttachment,
+  dataTransferHasFiles,
+  filesFromDataTransfer,
+  formatFileSize,
+  type ChatAttachment,
+} from "./chat-attachments";
 
 // Imperative handle exposed by ChatPane so the workspace can replay a past
 // pi session into the focused pane without going through useEffect-driven
@@ -89,15 +97,6 @@ export type SessionTab = {
   queue?: QueuedMessage[];
 };
 
-type ChatAttachment = {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  mode: "text" | "data-url" | "metadata";
-  content: string;
-};
-
 type Props = {
   paneId: string;
   // The unique runtime session id used as the PiRpcSession key on the server.
@@ -160,81 +159,6 @@ function nowLabel() {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(),
   );
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function isTextLike(file: File) {
-  if (file.type.startsWith("text/")) return true;
-  return /\.(md|markdown|txt|json|csv|tsv|log|yaml|yml|xml|html|css|js|jsx|ts|tsx|py|sh|sql)$/i.test(
-    file.name,
-  );
-}
-
-function readFileAsText(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-    reader.readAsText(file);
-  });
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function createAttachment(file: File): Promise<ChatAttachment> {
-  const id = newId("file");
-  if (isTextLike(file) && file.size <= 350_000) {
-    return {
-      id,
-      name: file.name,
-      type: file.type || "text/plain",
-      size: file.size,
-      mode: "text",
-      content: await readFileAsText(file),
-    };
-  }
-  if (file.size <= 1_500_000) {
-    return {
-      id,
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size,
-      mode: "data-url",
-      content: await readFileAsDataUrl(file),
-    };
-  }
-  return {
-    id,
-    name: file.name,
-    type: file.type || "application/octet-stream",
-    size: file.size,
-    mode: "metadata",
-    content: "File is too large to inline; only metadata is attached.",
-  };
-}
-
-function attachmentPrompt(attachments: ChatAttachment[]) {
-  if (attachments.length === 0) return "";
-  return attachments
-    .map((file, index) => {
-      const header = `Attachment ${index + 1}: ${file.name} (${file.type}, ${formatFileSize(file.size)})`;
-      if (file.mode === "text") return `${header}\n\`\`\`\n${file.content}\n\`\`\``;
-      if (file.mode === "data-url") return `${header}\nData URL:\n${file.content}`;
-      return `${header}\n${file.content}`;
-    })
-    .join("\n\n");
 }
 
 function extractToolText(value: unknown): string {
@@ -724,6 +648,7 @@ export function ChatPane({
   const [isMultiline, setIsMultiline] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingAttachments, setReadingAttachments] = useState(false);
+  const [composerDragActive, setComposerDragActive] = useState(false);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
@@ -938,7 +863,12 @@ export function ChatPane({
   // stream — pi delivers the queued message and continues emitting events on
   // the original prompt's stream. Returns true on success.
   const sendControlMessage = useCallback(
-    async (mode: "steer" | "follow_up", text: string, runtime: string): Promise<boolean> => {
+    async (
+      mode: "steer" | "follow_up",
+      text: string,
+      runtime: string,
+      piSessionId?: string | null,
+    ): Promise<boolean> => {
       if (!text.trim() || !modelId) return false;
       try {
         const response = await fetch("/api/agent/turn", {
@@ -949,6 +879,7 @@ export function ChatPane({
             modelId,
             message: text,
             cwd: cwd.trim() || undefined,
+            piSessionId,
             mode,
             browserToolEnabled,
           }),
@@ -1139,6 +1070,7 @@ export function ChatPane({
           "steer",
           text,
           activeTab.runtimeSessionId || runtimeSessionId,
+          activeTab.piSessionId,
         );
         if (ok) {
           updateTab(activeTab.id, (tab) => ({ ...tab, input: "" }));
@@ -1179,7 +1111,7 @@ export function ChatPane({
     }));
     if (running) {
       // Hand it to pi as a follow_up so the agent sees it after it finishes.
-      void sendControlMessage(mode, text, runtime);
+      void sendControlMessage(mode, text, runtime, activeTab.piSessionId);
     }
   }, [activeTab, modelId, running, runtimeSessionId, sendControlMessage, updateTab]);
 
@@ -1195,11 +1127,19 @@ export function ChatPane({
   );
 
   const attachFiles = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0 || !activeTab) return;
+    async (files: FileList | File[] | null) => {
+      const fileArray = files ? Array.from(files) : [];
+      if (fileArray.length === 0 || !activeTab) return;
+      if (running) {
+        updateTab(activeTab.id, (tab) => ({
+          ...tab,
+          error: "Pause or wait for the current turn before attaching files.",
+        }));
+        return;
+      }
       setReadingAttachments(true);
       try {
-        const next = await Promise.all(Array.from(files).map((file) => createAttachment(file)));
+        const next = await Promise.all(fileArray.map((file) => createAttachment(file)));
         setAttachments((current) => [...current, ...next]);
         updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
       } catch (err) {
@@ -1212,7 +1152,43 @@ export function ChatPane({
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [activeTab, updateTab],
+    [activeTab, running, updateTab],
+  );
+
+  const handleComposerPaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = filesFromDataTransfer(event.clipboardData);
+      if (files.length === 0) return;
+      event.preventDefault();
+      void attachFiles(files);
+    },
+    [attachFiles],
+  );
+
+  const handleComposerDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = running ? "none" : "copy";
+      setComposerDragActive(true);
+    },
+    [running],
+  );
+
+  const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setComposerDragActive(false);
+  }, []);
+
+  const handleComposerDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      setComposerDragActive(false);
+      void attachFiles(filesFromDataTransfer(event.dataTransfer));
+    },
+    [attachFiles],
   );
 
   const abortTurn = useCallback(async () => {
@@ -1306,16 +1282,16 @@ export function ChatPane({
             element.scrollHeight - element.scrollTop - element.clientHeight;
           stickToBottomRef.current = distanceFromBottom <= 80;
         }}
-        className={`min-h-0 flex-1 overflow-y-auto px-6 py-8 ${showEmptyPrompt ? "flex" : ""}`}
+        className={`min-h-0 flex-1 overflow-y-auto px-6 py-10 ${showEmptyPrompt ? "flex" : ""}`}
       >
-        <div className={`mx-auto w-full max-w-3xl ${showEmptyPrompt ? "flex flex-1" : ""}`}>
+        <div className={`mx-auto w-full max-w-[720px] ${showEmptyPrompt ? "flex flex-1" : ""}`}>
           {showEmptyPrompt ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-              <h1 className="text-xl font-semibold tracking-tight text-(--fg)">
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 -translate-y-12 text-center">
+              <h1 className="text-[26px] font-semibold tracking-[-0.04em] text-(--fg)">
                 What should we work on{projectName ? ` in ${projectName}` : ""}?
               </h1>
-              <p className="text-xs text-(--dim)">
-                Ask the agent to edit, inspect, or run something.
+              <p className="text-[12.5px] text-(--dim)">
+                Ask the agent to edit, inspect, or run something. Tab to queue · paste/drop files.
               </p>
             </div>
           ) : (
@@ -1337,7 +1313,19 @@ export function ChatPane({
       </div>
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-3 pt-1.5">
-        <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-(--border)/50 bg-(--surface)">
+        <div
+          onDragOver={handleComposerDragOver}
+          onDragLeave={handleComposerDragLeave}
+          onDrop={handleComposerDrop}
+          className={`mx-auto max-w-[var(--composer-w)] overflow-hidden rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-shadow)] transition-shadow ${
+            composerDragActive ? "ring-1 ring-(--accent)/60" : ""
+          }`}
+        >
+          {composerDragActive ? (
+            <div className="border-b border-(--accent)/50 bg-(--accent)/10 px-2 py-1.5 text-[11px] text-(--accent)">
+              Drop files to attach to the next message.
+            </div>
+          ) : null}
           {(activeTab?.queue ?? []).length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
               {(activeTab?.queue ?? []).map((item) => (
@@ -1369,7 +1357,7 @@ export function ChatPane({
                 <span
                   key={file.id}
                   className="inline-flex max-w-[220px] items-center gap-1 rounded border border-(--border)/70 bg-(--bg) px-1.5 py-0.5 text-[11px] text-(--dim)"
-                  title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}`}
+                  title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
                   <FileIcon className="h-3 w-3 shrink-0" />
                   <span className="truncate">{file.name}</span>
@@ -1392,6 +1380,7 @@ export function ChatPane({
           <textarea
             ref={textareaRef}
             value={activeTab?.input ?? ""}
+            onPaste={handleComposerPaste}
             onChange={(event) => {
               const value = event.target.value;
               if (!activeTab) return;
@@ -1439,11 +1428,11 @@ export function ChatPane({
                   ? "No models available — check /v1/models"
                   : running
                     ? `Steer ${modelName} (Enter) · queue with Tab · Esc to pause`
-                    : `Ask ${modelName} (Enter) · queue with Tab`
+                    : `Ask ${modelName} (Enter) · queue with Tab · paste/drop files`
             }
-            className="min-h-[34px] max-h-[160px] w-full resize-none overflow-y-auto bg-transparent px-2.5 py-1.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
+            className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex items-center gap-1.5 px-2 pb-2">
+          <div className="flex items-center gap-2 px-3 pb-1.5 pt-0.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -1455,9 +1444,9 @@ export function ChatPane({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={readingAttachments || running}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--dim) hover:bg-(--bg) hover:text-(--fg) disabled:opacity-30"
+              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--bg) hover:text-(--fg) disabled:opacity-30"
               aria-label="Attach files"
-              title="Attach files"
+              title="Attach files (or paste/drop into composer)"
             >
               <AttachIcon className="h-3.5 w-3.5" />
             </button>
@@ -1470,15 +1459,15 @@ export function ChatPane({
                   ? "Browser tool: ON — agent can drive the browser"
                   : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
               }
-              className={`inline-flex h-6 w-6 items-center justify-center rounded border ${
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md border ${
                 browserToolEnabled
                   ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
-                  : "border-transparent text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
-              } shrink-0`}
+                  : "border-(--border) text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+              }`}
             >
               <GlobeIcon className="h-3.5 w-3.5" />
             </button>
-            <div className="flex-1" />
+            <div className="min-w-0 flex-1" />
             {running ? (
               <>
                 {activeTab?.input.trim() ? (
@@ -1486,14 +1475,14 @@ export function ChatPane({
                     <button
                       type="button"
                       onClick={() => void queueMessage()}
-                      className="inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--bg) px-2 text-[11px] text-(--dim) hover:text-(--fg)"
+                      className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--bg) px-2 text-[11px] text-(--dim) hover:text-(--fg)"
                       title="Queue (Tab)"
                     >
                       Queue
                     </button>
                     <button
                       type="submit"
-                      className="inline-flex h-6 items-center gap-1 rounded border border-(--accent) bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
+                      className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1 rounded-md border border-(--accent) bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
                       title="Steer (Enter): interrupt current turn and send"
                     >
                       <SendIcon className="h-3 w-3" /> Steer
@@ -1503,7 +1492,7 @@ export function ChatPane({
                 <button
                   type="button"
                   onClick={() => void abortTurn()}
-                  className="inline-flex h-6 items-center gap-1.5 rounded border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
+                  className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1.5 rounded-md border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
                   title="Pause (Esc)"
                 >
                   <StopIcon className="h-3 w-3" /> Pause
@@ -1517,7 +1506,7 @@ export function ChatPane({
                   !modelId ||
                   readingAttachments
                 }
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-(--fg) hover:bg-(--bg) disabled:opacity-30"
+                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--fg) hover:bg-(--bg) disabled:opacity-30"
                 aria-label="Send"
                 title="Send (Enter) · Queue (Tab)"
               >
@@ -1525,16 +1514,16 @@ export function ChatPane({
               </button>
             )}
           </div>
-          <div className="flex min-h-9 items-center gap-2 border-t border-(--border)/50 bg-(--bg)/45 px-2 py-1.5 text-xs">
+          <div className="flex min-h-9 items-center gap-2 border-t border-(--border) bg-(--composer-footer) px-3 py-1 text-xs">
             {projectSelector ? (
-              projectSelector
+              <div className="min-w-0 flex-1">{projectSelector}</div>
             ) : cwd ? (
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--dim)">
                 {cwd}
               </span>
             ) : null}
             {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded border border-(--border) bg-(--surface) px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
+              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded-md border border-(--border) bg-(--surface) px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
                 <GitBranchIcon className="h-3 w-3 shrink-0" />
                 <span className="truncate">{gitBranch}</span>
               </span>
@@ -1542,9 +1531,11 @@ export function ChatPane({
               <button
                 type="button"
                 onClick={onInitGit}
-                className="inline-flex shrink-0 items-center rounded border border-(--border) bg-(--surface) px-1.5 py-0.5 text-[10px] text-(--dim) hover:text-(--fg)"
+                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface) text-(--dim) hover:text-(--fg)"
+                aria-label="Initialize git repository"
+                title="Init git"
               >
-                Init git
+                <GitBranchIcon className="h-3 w-3" />
               </button>
             ) : null}
             {gitSummary?.isRepo ? (

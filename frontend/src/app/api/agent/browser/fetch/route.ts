@@ -7,12 +7,12 @@
 //
 // The route deliberately:
 // - Refuses non-http(s) and private/loopback hosts (delegated to
-//   sanitizeEmbeddedBrowserUrl) so we never get tricked into SSRF.
+//   sanitizePublicBrowserUrl) so we never get tricked into SSRF.
 // - Strips scripts/styles/iframes from the HTML before extracting text.
 // - Caps response size to 512KB to avoid runaway pages.
 
 import { NextRequest, NextResponse } from "next/server";
-import { sanitizeEmbeddedBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,7 +98,7 @@ async function readBoundedBody(response: Response): Promise<string> {
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("url");
   if (!raw) return NextResponse.json({ error: "url is required" }, { status: 400 });
-  const safe = sanitizeEmbeddedBrowserUrl(raw);
+  const safe = sanitizePublicBrowserUrl(raw);
   if (!safe) {
     return NextResponse.json(
       { error: "url rejected (must be public http/https)" },

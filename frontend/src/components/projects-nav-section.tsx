@@ -72,6 +72,7 @@ type ActiveAgentSession = {
   piSessionId: string | null;
   title: string;
   status: string;
+  active?: boolean;
   updatedAt: string;
 };
 
@@ -517,11 +518,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
       setActiveSessions(sessions);
       saveActiveAgentSessions(sessions);
-      setOpenIds((current) => {
-        const next = new Set(current);
-        for (const session of sessions) next.add(session.projectId);
-        return next;
-      });
     };
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
@@ -582,10 +578,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         onSelect={(directoryPath) => void handleDirectoryPicked(directoryPath)}
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
-        <div className="flex flex-col border-b border-(--border)/60 pb-1">
-          <div className="mt-2 flex h-7 items-center gap-2 px-3 text-[10px] font-medium uppercase tracking-wide text-(--dim)">
+        <div className="flex flex-col pb-1">
+          <div className="mt-3 flex h-5 items-center gap-1.5 px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-(--dim)/80">
             <PinIcon className="h-3 w-3" />
-            Pinned sessions
+            Pinned
           </div>
           {pinnedActiveSessions.map(({ session, project }) => (
             <ActiveSessionRow
@@ -632,16 +628,16 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ))}
         </div>
       ) : null}
-      <div className="mt-2 flex h-7 items-center px-3 text-[10px] font-medium uppercase tracking-wide text-(--dim)">
+      <div className="mt-3 flex h-5 items-center px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-(--dim)/80">
         Projects
       </div>
       <button
         type="button"
         onClick={handleAddProject}
-        className="h-9 flex items-center gap-2 px-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+        className="h-7 flex items-center gap-1.5 px-2 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
       >
         <PlusIcon className="w-3 h-3 shrink-0" />
-        <span className="truncate text-sm font-medium text-(--fg)">Add project</span>
+        <span className="truncate text-[12.5px] font-medium">Add project</span>
       </button>
       {projects.length === 0 ? (
         <button
@@ -700,16 +696,16 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-9 items-center text-(--dim) hover:bg-(--surface) hover:text-(--fg) transition-colors">
+      <div className="group flex h-7 items-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg) transition-colors">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left"
         >
-          <Chevron className="w-3 h-3 shrink-0" />
-          <Icon className="w-4 h-4 shrink-0" />
-          <span className="truncate text-sm font-medium text-(--fg)">{project.name}</span>
+          <Chevron className="w-3 h-3 shrink-0 opacity-70" />
+          <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+          <span className="truncate text-[12.5px] font-medium text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -854,11 +850,11 @@ function ProjectSessions({
             new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
           );
         }}
-        className="h-8 flex items-center gap-2 pl-9 pr-3 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+        className="h-6 flex items-center gap-1.5 pl-7 pr-2 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
         title="Start a new chat in this project"
       >
         <PlusIcon className="w-3 h-3 shrink-0" />
-        <span className="truncate text-xs">New session</span>
+        <span className="truncate text-[11.5px]">New session</span>
       </Link>
 
       {visibleActiveSessions.map((session) => (
@@ -952,9 +948,13 @@ function ActiveSessionRow({
     setRenaming(false);
   };
 
-  const isRunning = session.status !== "idle";
-  const rowClass =
-    "group h-8 flex items-center gap-2 border-l-2 border-(--accent) bg-(--surface)/60 animate-pulse pl-7 pr-2 text-(--fg) hover:bg-(--surface) transition-colors";
+  const isRunning = session.status !== "idle" && session.status !== "done";
+  const isActive = session.active === true;
+  const rowClass = `group h-7 flex items-center gap-1.5 rounded-md border-l-2 pl-6 pr-2 transition-colors ${
+    isActive
+      ? "border-(--accent)/80 bg-(--active) text-(--fg) hover:bg-(--active)"
+      : "border-transparent text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+  }`;
 
   if (renaming) {
     return (
@@ -980,14 +980,23 @@ function ActiveSessionRow({
 
   const content = (
     <>
+      <span
+        className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+          isRunning ? "bg-(--hl2) animate-pulse" : "bg-(--dim)"
+        }`}
+        aria-hidden
+        title={isRunning ? `Running: ${session.status}` : "Idle"}
+      />
       {pref.pinned ? (
-        <PinIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+        <PinIcon className="w-3 h-3 shrink-0 text-(--dim)" />
       ) : (
-        <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+        <ChatIcon className="w-3 h-3 shrink-0 text-(--dim)" />
       )}
-      <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[12px]">{label}</span>
       {isRunning ? (
-        <span className="shrink-0 text-[10px] text-(--accent)">{session.status}</span>
+        <span className="shrink-0 truncate text-[10px] text-(--dim)" title={session.status}>
+          {session.status}
+        </span>
       ) : null}
     </>
   );
@@ -1172,7 +1181,7 @@ function SessionRow({
 
   return (
     <div
-      className="group h-8 flex items-center gap-2 pl-9 pr-2 text-(--dim) hover:text-(--fg) hover:bg-(--surface) transition-colors"
+      className="group h-6 flex items-center gap-1.5 pl-7 pr-1.5 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);

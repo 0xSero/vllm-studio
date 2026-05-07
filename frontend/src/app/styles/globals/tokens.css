@@ -1,30 +1,84 @@
-/* CRITICAL — 10-variable theme system */
+/* CRITICAL — theme system
+
+   Single source of truth for the visual language. Every component reads from
+   these CSS variables; no hardcoded colors, radii, or row heights live in
+   component files.
+
+   Design philosophy: separation by *contrast* and *spacing*, with explicit
+   theme-driven surfaces for the rail, chat canvas, composer, and borders. */
 :root {
-  --bg: hsl(40, 20%, 95%);
+  /* Core surfaces — light mode */
+  --bg: hsl(40, 20%, 96%);
   --fg: hsl(30, 10%, 10%);
   --dim: hsl(30, 5%, 44%);
-  --border: hsl(35, 12%, 87%);
-  --surface: hsl(38, 18%, 91%);
+  --surface: hsl(38, 18%, 92%);
+  --surface-2: hsl(38, 18%, 89%);
+  --surface-3: hsl(38, 18%, 85%);
+  --rail: hsl(38, 18%, 91%);
+
+  --border: rgba(0, 0, 0, 0.12);
+  --separator: rgba(0, 0, 0, 0.18);
+
+  --hover: rgba(0, 0, 0, 0.055);
+  --active: rgba(0, 0, 0, 0.085);
+  --composer: hsl(38, 18%, 92%);
+  --composer-footer: hsl(38, 18%, 91%);
+
+  /* Accents */
   --accent: hsl(217, 91%, 60%);
   --hl1: hsl(217, 91%, 60%);
   --hl2: hsl(142, 71%, 45%);
   --hl3: hsl(38, 92%, 50%);
   --err: hsl(0, 84%, 60%);
+
+  /* Density / dimensions */
+  --sidebar-w: 200px;
+  --sidebar-w-collapsed: 48px;
+  --row-h: 28px;
+  --row-h-sm: 24px;
+  --row-radius: 8px;
+  --thread-w: 720px;
+  --composer-w: 760px;
+  --composer-radius: 14px;
+  --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.08);
+
+  /* Typography */
+  --text-nav: 12.5px;
+  --text-section: 10px;
+  --section-tracking: 0.14em;
+
   --app-height: 100vh;
   --app-font-size: 16px;
 }
 
+:root[data-theme="omlx-dark"],
 .dark {
-  --bg: hsl(0, 0%, 4%);
-  --fg: hsl(0, 0%, 92%);
-  --dim: hsl(0, 0%, 46%);
-  --border: hsl(0, 0%, 14%);
-  --surface: hsl(0, 0%, 8%);
-  --accent: hsl(217, 91%, 65%);
+  /* Codex-inspired warm grayscale ramp.
+     Reference: /Applications/Codex.app -> index-DJG96UDN.css gray ladder
+     (#0d0d0d, #181818, #212121, #282828, #303030). */
+  --bg: #0d0d0d;
+  --fg: #ededed;
+  --dim: #8a8a8a;
+  --surface: #161616;
+  --surface-2: #1c1c1c;
+  --surface-3: #232323;
+  --rail: #151515;
+
+  --border: rgba(255, 255, 255, 0.12);
+  --separator: rgba(255, 255, 255, 0.18);
+
+  --hover: rgba(255, 255, 255, 0.07);
+  --active: rgba(255, 255, 255, 0.11);
+  --composer: #171717;
+  --composer-footer: #151515;
+
+  --accent: #ededed;
   --hl1: hsl(217, 70%, 60%);
   --hl2: hsl(142, 50%, 50%);
   --hl3: hsl(38, 80%, 55%);
   --err: hsl(0, 70%, 60%);
+
+  --composer-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
 }
 
 @supports (height: 100dvh) {
@@ -36,6 +90,12 @@
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--fg);
+  --color-separator: var(--separator);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+.dark hr,
+hr {
+  border-color: var(--separator);
 }
