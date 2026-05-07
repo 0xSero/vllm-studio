@@ -6,13 +6,29 @@ import { ArrowUpCircle, Check, Loader2, Settings, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+  type StatusTone,
+} from "./settings-primitives";
 
 const ENGINE_META: Record<string, { label: string; description: string }> = {
-  vllm: { label: "vLLM", description: "High-throughput LLM serving (CUDA)" },
-  sglang: { label: "SGLang", description: "Fast structured generation engine" },
-  llamacpp: { label: "llama.cpp", description: "CPU / Metal / CUDA GGUF inference" },
-  exllamav3: { label: "ExLlama v3", description: "EXL3 quantized inference" },
+  vllm: {
+    label: "vLLM",
+    description: "High-throughput LLM serving with CUDA-oriented scheduling.",
+  },
+  sglang: { label: "SGLang", description: "Fast structured generation and multi-turn serving." },
+  llamacpp: {
+    label: "llama.cpp",
+    description: "GGUF inference through CPU, Metal, or CUDA builds.",
+  },
+  exllamav3: { label: "ExLlama v3", description: "EXL3 quantized inference target." },
 };
+
+const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "exllamav3"] as const;
 
 type UpgradeState = { status: "idle" | "upgrading" | "success" | "error"; message?: string };
 
@@ -22,228 +38,6 @@ const isRunningJob = (job: EngineJob | undefined): boolean =>
 const jobForTarget = (jobs: EngineJob[], target: RuntimeTarget): EngineJob | undefined =>
   jobs.find((job) => job.targetId === target.id && isRunningJob(job)) ??
   jobs.find((job) => job.targetId === target.id);
-
-function RuntimeTargetCard({
-  target,
-  job,
-  onJobCreated,
-}: {
-  target: RuntimeTarget;
-  job?: EngineJob;
-  onJobCreated: () => Promise<void>;
-}) {
-  const meta = ENGINE_META[target.backend] ?? { label: target.backend, description: "" };
-  const running = isRunningJob(job);
-  const action = target.capabilities.canUpdate
-    ? target.installed
-      ? "Update"
-      : "Install"
-    : "Configure";
-  const actionDisabled = running || !target.capabilities.canUpdate;
-  const disabledReason = !target.capabilities.canUpdate
-    ? (target.health.message ?? "Updates are unsupported for this target.")
-    : null;
-
-  const handleAction = useCallback(async () => {
-    if (actionDisabled) return;
-    await api.createRuntimeJob({
-      backend: target.backend,
-      targetId: target.id,
-      type: target.installed ? "update" : "install",
-    });
-    await onJobCreated();
-  }, [actionDisabled, onJobCreated, target.backend, target.id, target.installed]);
-
-  return (
-    <div className="px-4 py-3.5 rounded-xl bg-(--surface) border border-(--border)/30">
-      <div className="flex items-start justify-between gap-3 mb-1.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full shrink-0 ${target.installed ? "bg-(--hl2)" : "bg-(--dim)/30"}`}
-            />
-            <span className="text-sm font-semibold text-(--fg) truncate">
-              {target.label || meta.label}
-            </span>
-          </div>
-          <div className="text-[11px] text-(--dim)/60 mt-1">
-            {meta.description} · {target.kind} · {target.source}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {target.active && (
-            <span className="rounded border border-(--hl2)/30 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-(--hl2)">
-              active
-            </span>
-          )}
-          <button
-            onClick={() => void handleAction()}
-            disabled={actionDisabled}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors bg-(--fg)/[0.05] hover:bg-(--fg)/[0.1] text-(--fg)/70 disabled:opacity-50"
-            title={disabledReason ?? undefined}
-          >
-            {running ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : target.capabilities.canUpdate ? (
-              <ArrowUpCircle className="w-3 h-3" />
-            ) : (
-              <Settings className="w-3 h-3" />
-            )}
-            <span>{running ? job?.status : action}</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-1 mt-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-(--dim)">Version</span>
-          <span
-            className={`text-[12px] font-mono ${target.installed ? "text-(--fg)" : "text-(--dim)/40"}`}
-          >
-            {target.installed ? (target.version ?? "installed") : "not installed"}
-          </span>
-        </div>
-        {(target.pythonPath || target.binaryPath || target.dockerImage) && (
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-[11px] text-(--dim) shrink-0">
-              {target.pythonPath ? "Python" : target.binaryPath ? "Binary" : "Image"}
-            </span>
-            <span className="text-[11px] font-mono text-(--dim)/60 truncate">
-              {target.pythonPath ?? target.binaryPath ?? target.dockerImage}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {disabledReason && <div className="mt-2 text-[10px] text-(--dim)/80">{disabledReason}</div>}
-      {job && (
-        <div
-          className={`mt-2 text-[10px] font-mono ${job.status === "error" ? "text-(--err)" : "text-(--dim)/80"}`}
-        >
-          <div>{job.message}</div>
-          {job.command && <div className="truncate">Command: {job.command}</div>}
-          {(job.error || job.outputTail) && (
-            <div className="whitespace-pre-wrap line-clamp-3">{job.error ?? job.outputTail}</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EngineCard({
-  id,
-  info,
-  active,
-  onUpgrade,
-}: {
-  id: string;
-  info: RuntimeBackendInfo;
-  active?: boolean;
-  onUpgrade?: () => Promise<void>;
-}) {
-  const meta = ENGINE_META[id] ?? { label: id, description: "" };
-  const [state, setState] = useState<UpgradeState>({ status: "idle" });
-
-  const handleUpgrade = useCallback(async () => {
-    if (!onUpgrade) return;
-    setState({ status: "upgrading" });
-    try {
-      await onUpgrade();
-      setState({ status: "success", message: "Upgrade complete" });
-      setTimeout(() => setState({ status: "idle" }), 4000);
-    } catch (err) {
-      setState({ status: "error", message: err instanceof Error ? err.message : "Upgrade failed" });
-      setTimeout(() => setState({ status: "idle" }), 6000);
-    }
-  }, [onUpgrade]);
-
-  return (
-    <div className="px-4 py-3.5 rounded-xl bg-(--surface) border border-(--border)/30">
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              info.installed ? "bg-(--hl2)" : "bg-(--dim)/30"
-            }`}
-          />
-          <span className="text-sm font-semibold text-(--fg)">{meta.label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {active && (
-            <span className="rounded border border-(--hl2)/30 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-(--hl2)">
-              active
-            </span>
-          )}
-          {onUpgrade && info.upgrade_command_available && (
-            <button
-              onClick={handleUpgrade}
-              disabled={state.status === "upgrading"}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors bg-(--fg)/[0.05] hover:bg-(--fg)/[0.1] text-(--fg)/70 disabled:opacity-50"
-            >
-              {state.status === "upgrading" ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Upgrading...</span>
-                </>
-              ) : state.status === "success" ? (
-                <>
-                  <Check className="w-3 h-3 text-(--hl2)" />
-                  <span>Done</span>
-                </>
-              ) : state.status === "error" ? (
-                <>
-                  <XCircle className="w-3 h-3 text-(--err)" />
-                  <span>Failed</span>
-                </>
-              ) : (
-                <>
-                  <ArrowUpCircle className="w-3 h-3" />
-                  <span>{info.installed ? "Update" : "Install"}</span>
-                </>
-              )}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="text-[11px] text-(--dim)/60 mb-2">{meta.description}</div>
-
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-(--dim)">Version</span>
-          <span
-            className={`text-[12px] font-mono ${
-              info.installed ? "text-(--fg)" : "text-(--dim)/40"
-            }`}
-          >
-            {info.installed ? (info.version ?? "installed") : "not installed"}
-          </span>
-        </div>
-        {info.python_path && (
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-[11px] text-(--dim) shrink-0">Python</span>
-            <span className="text-[11px] font-mono text-(--dim)/60 truncate">
-              {info.python_path}
-            </span>
-          </div>
-        )}
-        {info.binary_path && (
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-[11px] text-(--dim) shrink-0">Binary</span>
-            <span className="text-[11px] font-mono text-(--dim)/60 truncate">
-              {info.binary_path}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {state.status === "error" && state.message && (
-        <div className="mt-2 text-[10px] text-(--err)/80 font-mono truncate">{state.message}</div>
-      )}
-    </div>
-  );
-}
 
 export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null }) {
   const { runtimeSummary, status, lease } = useRealtimeStatus();
@@ -265,9 +59,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
 
   useEffect(() => {
     void Promise.resolve().then(refreshRuntimeJobs);
-    const timer = setInterval(() => {
-      void refreshRuntimeJobs();
-    }, 2000);
+    const timer = setInterval(() => void refreshRuntimeJobs(), 2500);
     return () => clearInterval(timer);
   }, [refreshRuntimeJobs]);
 
@@ -280,89 +72,264 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     [targets],
   );
 
-  const upgradeHandlers: Record<string, (() => Promise<void>) | undefined> = {
-    vllm: async () => {
-      await api.upgradeVllmRuntime();
-    },
-    sglang: async () => {
-      await api.upgradeSglangRuntime();
-    },
-    llamacpp: async () => {
-      await api.upgradeLlamacppRuntime();
-    },
-  };
+  const hasRows = inferenceTargets.length > 0 || Boolean(backends);
 
   return (
-    <div className="space-y-6">
-      {/* Inference engines */}
-      <div>
-        <h3 className="text-[11px] uppercase tracking-[0.12em] font-medium text-(--dim) mb-3">
-          Inference Engines
-        </h3>
-        {inferenceTargets.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {inferenceTargets.map((target) => (
-              <RuntimeTargetCard
+    <div className="space-y-5">
+      <SettingsGroup
+        title="Inference engines"
+        description="Codex-style status rows instead of install cards; each row keeps an action or a fallback."
+        actions={
+          <StatusPill tone={hasRows ? "good" : "info"}>
+            {hasRows ? "hydrated" : "waiting"}
+          </StatusPill>
+        }
+      >
+        {inferenceTargets.length > 0
+          ? inferenceTargets.map((target) => (
+              <RuntimeTargetRow
                 key={target.id}
                 target={target}
                 job={jobForTarget(jobs, target)}
                 onJobCreated={refreshRuntimeJobs}
               />
-            ))}
-          </div>
-        ) : backends ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {(["vllm", "sglang", "llamacpp", "exllamav3"] as const).map((key) => {
-              const b = backends[key];
-              if (!b) return null;
-              return (
-                <EngineCard
+            ))
+          : backends
+            ? FALLBACK_ENGINES.map((key) => {
+                const info = backends[key];
+                return info ? (
+                  <BackendRow key={key} id={key} info={info} active={activeBackend === key} />
+                ) : null;
+              })
+            : FALLBACK_ENGINES.map((key) => (
+                <SettingsRow
                   key={key}
-                  id={key}
-                  info={b}
-                  active={activeBackend === key}
-                  onUpgrade={upgradeHandlers[key]}
+                  label={ENGINE_META[key].label}
+                  description={ENGINE_META[key].description}
+                  value={<SettingsValue dim>Runtime data has not hydrated yet.</SettingsValue>}
+                  status={<StatusPill tone="info">pending</StatusPill>}
                 />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-xs text-(--dim)">Waiting for runtime data...</div>
-        )}
-      </div>
+              ))}
+      </SettingsGroup>
 
-      {/* GPU Monitoring */}
-      {gpuMon && (
-        <div>
-          <h3 className="text-[11px] uppercase tracking-[0.12em] font-medium text-(--dim) mb-3">
-            GPU Monitoring
-          </h3>
-          <div className="px-4 py-3 rounded-xl bg-(--surface) border border-(--border)/30">
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${gpuMon.available ? "bg-(--hl2)" : "bg-(--dim)/30"}`}
-              />
-              <span
-                className={`text-sm font-mono ${gpuMon.available ? "text-(--fg)" : "text-(--dim)/50"}`}
-              >
-                {gpuMon.available ? (gpuMon.tool ?? "available") : "unavailable"}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lease */}
-      {lease?.holder && (
-        <div>
-          <h3 className="text-[11px] uppercase tracking-[0.12em] font-medium text-(--dim) mb-3">
-            GPU Lease
-          </h3>
-          <div className="px-4 py-3 rounded-xl bg-(--surface) border border-(--border)/30">
-            <span className="text-sm font-mono text-(--fg)">{lease.holder}</span>
-          </div>
-        </div>
-      )}
+      <SettingsGroup
+        title="Hardware monitor"
+        description="GPU telemetry rows stay visible even before live samples arrive."
+      >
+        <SettingsRow
+          label="GPU monitoring"
+          description="nvidia-smi, amd-smi, or rocm-smi discovery from the controller."
+          value={
+            <SettingsValue mono>
+              {gpuMon?.available ? (gpuMon.tool ?? "available") : "not available yet"}
+            </SettingsValue>
+          }
+          status={
+            <StatusPill tone={gpuMon?.available ? "good" : "warning"}>
+              {gpuMon?.available ? "online" : "fallback"}
+            </StatusPill>
+          }
+        />
+        <SettingsRow
+          label="GPU lease"
+          description="Current runtime lock holder when a launch or engine job owns the GPU lane."
+          value={<SettingsValue mono>{lease?.holder ?? "No active lease"}</SettingsValue>}
+          status={<StatusPill>{lease?.holder ? "held" : "free"}</StatusPill>}
+        />
+      </SettingsGroup>
     </div>
   );
+}
+
+function RuntimeTargetRow({
+  target,
+  job,
+  onJobCreated,
+}: {
+  target: RuntimeTarget;
+  job?: EngineJob;
+  onJobCreated: () => Promise<void>;
+}) {
+  const meta = ENGINE_META[target.backend] ?? {
+    label: target.backend,
+    description: "Runtime target",
+  };
+  const running = isRunningJob(job);
+  const action = target.capabilities.canUpdate
+    ? target.installed
+      ? "Update"
+      : "Install"
+    : "Configure";
+  const actionDisabled = running || !target.capabilities.canUpdate;
+  const disabledReason = !target.capabilities.canUpdate
+    ? (target.health.message ?? "Updates are unsupported for this target.")
+    : undefined;
+
+  const handleAction = useCallback(async () => {
+    if (actionDisabled) return;
+    await api.createRuntimeJob({
+      backend: target.backend,
+      targetId: target.id,
+      type: target.installed ? "update" : "install",
+    });
+    await onJobCreated();
+  }, [actionDisabled, onJobCreated, target.backend, target.id, target.installed]);
+
+  return (
+    <SettingsRow
+      label={target.label || meta.label}
+      description={`${meta.description} · ${target.kind} · ${target.source}`}
+      value={
+        <SettingsValue mono>
+          {target.installed ? (target.version ?? "installed") : "not installed"}
+          {pathForTarget(target) ? ` · ${pathForTarget(target)}` : ""}
+        </SettingsValue>
+      }
+      status={
+        <EngineStatus
+          installed={target.installed}
+          active={target.active}
+          health={target.health.status}
+        />
+      }
+      actions={
+        <SettingsButton
+          onClick={() => void handleAction()}
+          disabled={actionDisabled}
+          title={disabledReason}
+        >
+          {running ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : target.capabilities.canUpdate ? (
+            <ArrowUpCircle className="h-3 w-3" />
+          ) : (
+            <Settings className="h-3 w-3" />
+          )}
+          {running ? job?.status : action}
+        </SettingsButton>
+      }
+    >
+      {job ? <JobMessage job={job} /> : null}
+      {disabledReason ? <p className="text-[11px] text-(--dim)">{disabledReason}</p> : null}
+    </SettingsRow>
+  );
+}
+
+function BackendRow({
+  id,
+  info,
+  active,
+}: {
+  id: string;
+  info: RuntimeBackendInfo;
+  active?: boolean;
+}) {
+  const meta = ENGINE_META[id] ?? { label: id, description: "Runtime backend" };
+  const [state, setState] = useState<UpgradeState>({ status: "idle" });
+  const onUpgrade = upgradeHandler(id);
+
+  const handleUpgrade = useCallback(async () => {
+    if (!onUpgrade) return;
+    setState({ status: "upgrading" });
+    try {
+      await onUpgrade();
+      setState({ status: "success", message: "Upgrade complete" });
+      setTimeout(() => setState({ status: "idle" }), 4000);
+    } catch (err) {
+      setState({ status: "error", message: err instanceof Error ? err.message : "Upgrade failed" });
+      setTimeout(() => setState({ status: "idle" }), 6000);
+    }
+  }, [onUpgrade]);
+
+  return (
+    <SettingsRow
+      label={meta.label}
+      description={meta.description}
+      value={
+        <SettingsValue mono>
+          {info.installed ? (info.version ?? "installed") : "not installed"}
+        </SettingsValue>
+      }
+      status={<EngineStatus installed={info.installed} active={active} />}
+      actions={
+        onUpgrade && info.upgrade_command_available ? (
+          <SettingsButton
+            onClick={() => void handleUpgrade()}
+            disabled={state.status === "upgrading"}
+          >
+            {state.status === "upgrading" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : state.status === "success" ? (
+              <Check className="h-3 w-3 text-(--hl2)" />
+            ) : state.status === "error" ? (
+              <XCircle className="h-3 w-3 text-(--err)" />
+            ) : (
+              <ArrowUpCircle className="h-3 w-3" />
+            )}
+            {state.status === "idle" ? (info.installed ? "Update" : "Install") : state.status}
+          </SettingsButton>
+        ) : null
+      }
+    >
+      {info.python_path || info.binary_path ? (
+        <SettingsValue mono dim>
+          {info.python_path ?? info.binary_path}
+        </SettingsValue>
+      ) : null}
+      {state.status === "error" && state.message ? (
+        <p className="truncate text-[11px] text-(--err)">{state.message}</p>
+      ) : null}
+    </SettingsRow>
+  );
+}
+
+function EngineStatus({
+  installed,
+  active,
+  health,
+}: {
+  installed: boolean;
+  active?: boolean;
+  health?: RuntimeTarget["health"]["status"];
+}) {
+  const tone: StatusTone = active
+    ? "good"
+    : health === "error"
+      ? "danger"
+      : installed
+        ? "info"
+        : "default";
+  const label = active
+    ? "active"
+    : health === "error"
+      ? "error"
+      : installed
+        ? "installed"
+        : "available";
+  return <StatusPill tone={tone}>{label}</StatusPill>;
+}
+
+function JobMessage({ job }: { job: EngineJob }) {
+  return (
+    <div
+      className={`space-y-1 text-[11px] ${job.status === "error" ? "text-(--err)" : "text-(--dim)"}`}
+    >
+      <p>{job.message}</p>
+      {job.command ? <p className="truncate font-mono">{job.command}</p> : null}
+      {job.error || job.outputTail ? (
+        <p className="line-clamp-3 whitespace-pre-wrap font-mono">{job.error ?? job.outputTail}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function pathForTarget(target: RuntimeTarget) {
+  return target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
+}
+
+function upgradeHandler(id: string) {
+  if (id === "vllm") return () => api.upgradeVllmRuntime();
+  if (id === "sglang") return () => api.upgradeSglangRuntime();
+  if (id === "llamacpp") return () => api.upgradeLlamacppRuntime();
+  return undefined;
 }

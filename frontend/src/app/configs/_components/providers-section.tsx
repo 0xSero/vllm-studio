@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Eye, EyeOff, Loader2, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
 import api from "@/lib/api";
+import {
+  EmptySafeNotice,
+  SettingsButton,
+  SettingsGroup,
+  SettingsInput,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+} from "./settings-primitives";
 
 interface ProviderEntry {
   id: string;
@@ -12,37 +21,36 @@ interface ProviderEntry {
   has_api_key: boolean;
 }
 
-const WELL_KNOWN_PROVIDERS: Record<string, { name: string; baseUrl: string }> = {
-  openai: { name: "OpenAI", baseUrl: "https://api.openai.com" },
-  anthropic: { name: "Anthropic", baseUrl: "https://api.anthropic.com" },
-};
+type Draft = { id: string; name: string; base_url: string; api_key: string; show: boolean };
+type Editor = { id: string; key: string; show: boolean };
 
-const WELL_KNOWN_IDS = Object.keys(WELL_KNOWN_PROVIDERS);
+const DEFAULT_DRAFT: Draft = { id: "", name: "", base_url: "", api_key: "", show: false };
+const WELL_KNOWN: Record<string, { name: string; base_url: string; note: string }> = {
+  openai: {
+    name: "OpenAI",
+    base_url: "https://api.openai.com",
+    note: "Official OpenAI-compatible hosted models.",
+  },
+  anthropic: {
+    name: "Anthropic",
+    base_url: "https://api.anthropic.com",
+    note: "Claude models through the Anthropic API.",
+  },
+};
 
 export function ProvidersSection() {
   const [providers, setProviders] = useState<ProviderEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [formId, setFormId] = useState("");
-  const [formName, setFormName] = useState("");
-  const [formBaseUrl, setFormBaseUrl] = useState("");
-  const [formApiKey, setFormApiKey] = useState("");
-  const [showFormApiKey, setShowFormApiKey] = useState(false);
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editApiKey, setEditApiKey] = useState("");
-  const [showEditApiKey, setShowEditApiKey] = useState(false);
-  const [editSaving, setEditSaving] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const loadProviders = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const result = await api.getProviders();
-      setProviders(result.providers);
+      setProviders((await api.getProviders()).providers);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -54,295 +62,315 @@ export function ProvidersSection() {
     void loadProviders();
   }, [loadProviders]);
 
-  const resetForm = () => {
-    setFormId("");
-    setFormName("");
-    setFormBaseUrl("");
-    setFormApiKey("");
-    setShowFormApiKey(false);
-    setAdding(false);
-  };
-
-  const handleQuickAdd = (knownId: string) => {
-    const known = WELL_KNOWN_PROVIDERS[knownId];
-    if (!known) return;
-    setFormId(knownId);
-    setFormName(known.name);
-    setFormBaseUrl(known.baseUrl);
-    setFormApiKey("");
-    setAdding(true);
-  };
-
-  const handleCreate = async () => {
-    if (!formId.trim() || !formName.trim() || !formBaseUrl.trim()) return;
+  const mutate = async (work: () => Promise<unknown>) => {
     try {
-      setSaving(true);
+      setBusy(true);
       setError(null);
+      await work();
+      await loadProviders();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDraft = () =>
+    draft &&
+    mutate(async () => {
       await api.createProvider({
-        id: formId.trim().toLowerCase(),
-        name: formName.trim(),
-        base_url: formBaseUrl.trim(),
-        api_key: formApiKey.trim(),
+        id: draft.id.trim().toLowerCase(),
+        name: draft.name.trim(),
+        base_url: draft.base_url.trim(),
+        api_key: draft.api_key.trim(),
       });
-      resetForm();
-      await loadProviders();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
+      setDraft(null);
+    });
 
-  const handleToggle = async (provider: ProviderEntry) => {
-    try {
-      await api.updateProvider(provider.id, { enabled: !provider.enabled });
-      await loadProviders();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
+  const providerRows = providers.length ? (
+    providers.map((provider) => (
+      <SettingsRow
+        key={provider.id}
+        label={provider.name}
+        description={provider.base_url}
+        value={
+          <SettingsValue>
+            {provider.enabled ? "Enabled" : "Disabled"} ·{" "}
+            {provider.has_api_key ? "key stored" : "key missing"}
+          </SettingsValue>
+        }
+        status={
+          <StatusPill
+            tone={provider.enabled ? (provider.has_api_key ? "good" : "warning") : "default"}
+          >
+            {provider.enabled ? (provider.has_api_key ? "active" : "needs key") : "off"}
+          </StatusPill>
+        }
+        actions={
+          <>
+            <SettingsButton onClick={() => setEditor({ id: provider.id, key: "", show: false })}>
+              Key
+            </SettingsButton>
+            <SettingsButton
+              onClick={() =>
+                void mutate(() => api.updateProvider(provider.id, { enabled: !provider.enabled }))
+              }
+            >
+              {provider.enabled ? <Power className="h-3 w-3" /> : <PowerOff className="h-3 w-3" />}
+            </SettingsButton>
+            <SettingsButton
+              tone="danger"
+              onClick={() => void mutate(() => api.deleteProvider(provider.id))}
+            >
+              <Trash2 className="h-3 w-3" />
+            </SettingsButton>
+          </>
+        }
+      >
+        {editor?.id === provider.id ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <KeyInput
+              value={editor.key}
+              show={editor.show}
+              placeholder={provider.has_api_key ? "••••••••" : "Enter API key"}
+              onChange={(key) => setEditor({ ...editor, key })}
+              onToggle={() => setEditor({ ...editor, show: !editor.show })}
+            />
+            <SettingsButton
+              tone="primary"
+              disabled={busy || !editor.key.trim()}
+              onClick={() =>
+                void mutate(() =>
+                  api.updateProvider(provider.id, { api_key: editor.key.trim() }),
+                ).then(() => setEditor(null))
+              }
+            >
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            </SettingsButton>
+            <SettingsButton onClick={() => setEditor(null)}>
+              <X className="h-3 w-3" />
+            </SettingsButton>
+          </div>
+        ) : null}
+      </SettingsRow>
+    ))
+  ) : (
+    <SettingsRow
+      label="Provider registry"
+      description="No installed external provider yet; use the ready rows below."
+      value={<SettingsValue dim>Local inference still works through the controller.</SettingsValue>}
+      status={<StatusPill>ready</StatusPill>}
+    />
+  );
 
-  const handleDelete = async (id: string) => {
-    try {
-      await api.deleteProvider(id);
-      await loadProviders();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const handleUpdateApiKey = async (id: string) => {
-    try {
-      setEditSaving(true);
-      await api.updateProvider(id, { api_key: editApiKey.trim() });
-      setEditingId(null);
-      setEditApiKey("");
-      setShowEditApiKey(false);
-      await loadProviders();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const availableQuickAdds = WELL_KNOWN_IDS.filter(
-    (knownId) => !providers.some((p) => p.id === knownId)
+  const available = Object.entries(WELL_KNOWN).filter(
+    ([id]) => !providers.some((provider) => provider.id === id),
   );
 
   return (
-    <div className="mb-6 sm:mb-8">
-      <div className="text-xs text-(--dim) uppercase tracking-wider mb-3">Providers</div>
-      <p className="text-xs text-(--dim) mb-4">
-        Configure external LLM providers to use their models alongside your local inference backend.
-        Models will appear in the chat model selector as <code className="text-(--fg)">provider/model-name</code>.
-      </p>
-
-      <div className="bg-(--surface) rounded-lg p-4 sm:p-6 space-y-4">
-        {loading && (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 text-(--dim) animate-spin" />
-          </div>
+    <div className="space-y-5">
+      <SettingsGroup
+        title="Providers"
+        description="External routes are plugin-like: installed, enabled, keyed, and safe to disable."
+        actions={
+          <StatusPill
+            tone={loading ? "info" : error ? "danger" : providers.length ? "good" : "default"}
+          >
+            {loading ? "loading" : error ? "needs attention" : `${providers.length} configured`}
+          </StatusPill>
+        }
+      >
+        {loading ? (
+          <SettingsRow
+            label="Provider registry"
+            description="Fetching provider rows from the controller."
+            value={<SettingsValue dim>Loading providers…</SettingsValue>}
+            status={<StatusPill tone="info">syncing</StatusPill>}
+          />
+        ) : error ? (
+          <SettingsRow
+            label="Controller response"
+            description="Provider rows remain populated while the backend recovers."
+            value={<SettingsValue dim>{error}</SettingsValue>}
+            status={<StatusPill tone="danger">error</StatusPill>}
+          />
+        ) : (
+          providerRows
         )}
+      </SettingsGroup>
 
-        {error && (
-          <div className="text-xs text-(--err) bg-(--err)/10 rounded px-3 py-2">{error}</div>
-        )}
-
-        {!loading && providers.length === 0 && !adding && (
-          <div className="text-center py-6 text-xs text-(--dim)">
-            No providers configured. Add one below to get started.
-          </div>
-        )}
-
-        {!loading &&
-          providers.map((provider) => (
-            <div
-              key={provider.id}
-              className="flex items-center gap-3 bg-(--bg) border border-(--border) rounded-lg px-4 py-3"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-(--fg) truncate">{provider.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-(--border) text-(--dim)">
-                    {provider.id}
-                  </span>
-                  {provider.enabled ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-(--hl2)/15 text-(--hl2)">
-                      active
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-(--dim)/15 text-(--dim)">
-                      disabled
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-(--dim) mt-0.5 truncate">{provider.base_url}</div>
-
-                {editingId === provider.id ? (
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type={showEditApiKey ? "text" : "password"}
-                        value={editApiKey}
-                        onChange={(e) => setEditApiKey(e.target.value)}
-                        placeholder={provider.has_api_key ? "••••••••" : "Enter API key"}
-                        className="w-full px-2 py-1.5 pr-8 bg-(--surface) border border-(--border) rounded text-xs text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--hl1)"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowEditApiKey(!showEditApiKey)}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) hover:text-(--fg)"
-                      >
-                        {showEditApiKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => handleUpdateApiKey(provider.id)}
-                      disabled={editSaving}
-                      className="px-2 py-1.5 bg-(--hl1) rounded text-[11px] text-(--fg) hover:opacity-90 disabled:opacity-50"
-                    >
-                      {editSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingId(null);
-                        setEditApiKey("");
-                        setShowEditApiKey(false);
-                      }}
-                      className="px-2 py-1.5 bg-(--border) rounded text-[11px] text-(--dim) hover:text-(--fg)"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditingId(provider.id);
-                      setEditApiKey("");
-                      setShowEditApiKey(false);
-                    }}
-                    className="mt-1 text-[11px] text-(--hl1) hover:underline"
-                  >
-                    {provider.has_api_key ? "Update API key" : "Set API key"}
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleToggle(provider)}
-                  title={provider.enabled ? "Disable" : "Enable"}
-                  className="p-1.5 rounded hover:bg-(--border) text-(--dim) hover:text-(--fg)"
-                >
-                  {provider.enabled ? <Power className="h-3.5 w-3.5" /> : <PowerOff className="h-3.5 w-3.5" />}
-                </button>
-                <button
-                  onClick={() => handleDelete(provider.id)}
-                  title="Remove"
-                  className="p-1.5 rounded hover:bg-(--err)/10 text-(--dim) hover:text-(--err)"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-        {adding && (
-          <div className="bg-(--bg) border border-(--hl1)/30 rounded-lg p-4 space-y-3">
-            <div className="text-xs font-medium text-(--fg) mb-2">Add Provider</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-(--dim) mb-1">Provider ID</label>
-                <input
-                  type="text"
-                  value={formId}
-                  onChange={(e) => setFormId(e.target.value)}
-                  placeholder="e.g. openai"
-                  className="w-full px-2 py-1.5 bg-(--surface) border border-(--border) rounded text-xs text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--hl1)"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-(--dim) mb-1">Display Name</label>
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. OpenAI"
-                  className="w-full px-2 py-1.5 bg-(--surface) border border-(--border) rounded text-xs text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--hl1)"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11px] text-(--dim) mb-1">Base URL</label>
-              <input
-                type="text"
-                value={formBaseUrl}
-                onChange={(e) => setFormBaseUrl(e.target.value)}
-                placeholder="https://api.openai.com"
-                className="w-full px-2 py-1.5 bg-(--surface) border border-(--border) rounded text-xs text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--hl1)"
+      <SettingsGroup
+        title="Add provider"
+        description="Common providers stay visible before they are installed."
+      >
+        {draft ? (
+          <DraftRows
+            draft={draft}
+            busy={busy}
+            onChange={setDraft}
+            onCancel={() => setDraft(null)}
+            onSave={saveDraft}
+          />
+        ) : (
+          <>
+            {available.map(([id, known]) => (
+              <SettingsRow
+                key={id}
+                label={known.name}
+                description={known.note}
+                value={<SettingsValue mono>{known.base_url}</SettingsValue>}
+                status={<StatusPill tone="info">available</StatusPill>}
+                actions={
+                  <SettingsButton onClick={() => setDraft({ ...DEFAULT_DRAFT, id, ...known })}>
+                    <Plus className="h-3 w-3" />
+                    Add
+                  </SettingsButton>
+                }
               />
-            </div>
-            <div>
-              <label className="block text-[11px] text-(--dim) mb-1">API Key</label>
-              <div className="relative">
-                <input
-                  type={showFormApiKey ? "text" : "password"}
-                  value={formApiKey}
-                  onChange={(e) => setFormApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full px-2 py-1.5 pr-8 bg-(--surface) border border-(--border) rounded text-xs text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--hl1)"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowFormApiKey(!showFormApiKey)}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) hover:text-(--fg)"
-                >
-                  {showFormApiKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={handleCreate}
-                disabled={saving || !formId.trim() || !formName.trim() || !formBaseUrl.trim()}
-                className="px-3 py-1.5 bg-(--hl1) rounded-lg text-xs text-(--fg) hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                Add
-              </button>
-              <button
-                onClick={resetForm}
-                className="px-3 py-1.5 bg-(--border) rounded-lg text-xs text-(--dim) hover:text-(--fg)"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!adding && (
-          <div className="flex items-center gap-2 pt-1">
-            {availableQuickAdds.map((knownId) => (
-              <button
-                key={knownId}
-                onClick={() => handleQuickAdd(knownId)}
-                className="px-3 py-1.5 bg-(--border) rounded-lg text-xs text-(--fg) hover:bg-(--surface) flex items-center gap-1.5"
-              >
-                <Plus className="h-3 w-3" />
-                {WELL_KNOWN_PROVIDERS[knownId].name}
-              </button>
             ))}
-            <button
-              onClick={() => setAdding(true)}
-              className="px-3 py-1.5 bg-(--border) rounded-lg text-xs text-(--dim) hover:text-(--fg) flex items-center gap-1.5"
-            >
-              <Plus className="h-3 w-3" />
-              Custom
-            </button>
-          </div>
+            <SettingsRow
+              label="Custom provider"
+              description="Any OpenAI-compatible endpoint with a base URL and optional key."
+              value={<SettingsValue dim>Base URL + name + model probe later.</SettingsValue>}
+              status={<StatusPill>template</StatusPill>}
+              actions={
+                <SettingsButton onClick={() => setDraft(DEFAULT_DRAFT)}>
+                  <Plus className="h-3 w-3" />
+                  Add
+                </SettingsButton>
+              }
+            />
+          </>
         )}
-      </div>
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function DraftRows({
+  draft,
+  busy,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  draft: Draft;
+  busy: boolean;
+  onChange: (draft: Draft) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const required = Boolean(draft.id.trim() && draft.name.trim() && draft.base_url.trim());
+  const fields = [
+    [
+      "Provider ID",
+      "Lowercase route prefix, for example provider/model-name.",
+      "id",
+      "openai",
+      true,
+    ],
+    [
+      "Display name",
+      "Human-readable name shown in model routing controls.",
+      "name",
+      "OpenAI",
+      true,
+    ],
+    [
+      "Base URL",
+      "Provider API origin resolved by the controller.",
+      "base_url",
+      "https://api.openai.com",
+      true,
+    ],
+  ] as const;
+
+  return (
+    <>
+      {fields.map(([label, description, key, placeholder, requiredField]) => (
+        <SettingsRow
+          key={key}
+          label={label}
+          description={description}
+          control={
+            <SettingsInput
+              value={draft[key]}
+              placeholder={placeholder}
+              onChange={(value) => onChange({ ...draft, [key]: value })}
+            />
+          }
+          status={
+            <StatusPill tone={draft[key].trim() ? "good" : requiredField ? "warning" : "default"}>
+              {requiredField ? "required" : "optional"}
+            </StatusPill>
+          }
+        />
+      ))}
+      <SettingsRow
+        label="API key"
+        description="Optional for local gateways; masked when saved."
+        control={
+          <KeyInput
+            value={draft.api_key}
+            show={draft.show}
+            placeholder="sk-..."
+            onChange={(api_key) => onChange({ ...draft, api_key })}
+            onToggle={() => onChange({ ...draft, show: !draft.show })}
+          />
+        }
+        status={<StatusPill>{draft.api_key.trim() ? "provided" : "optional"}</StatusPill>}
+      />
+      <SettingsRow
+        label="Create"
+        description="The provider appears immediately after the controller accepts it."
+        value={
+          <EmptySafeNotice>
+            All required fields stay visible until the provider is created or cancelled.
+          </EmptySafeNotice>
+        }
+        actions={
+          <>
+            <SettingsButton onClick={onCancel}>Cancel</SettingsButton>
+            <SettingsButton onClick={onSave} disabled={busy || !required} tone="primary">
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              Add
+            </SettingsButton>
+          </>
+        }
+      />
+    </>
+  );
+}
+
+function KeyInput({
+  value,
+  show,
+  placeholder,
+  onChange,
+  onToggle,
+}: {
+  value: string;
+  show: boolean;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="relative min-w-0 flex-1">
+      <SettingsInput
+        type={show ? "text" : "password"}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        aria-label={show ? "Hide API key" : "Reveal API key"}
+      >
+        {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </button>
     </div>
   );
 }
