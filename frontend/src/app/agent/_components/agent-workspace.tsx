@@ -1149,7 +1149,7 @@ export function AgentWorkspace() {
                               });
                             }}
                             disabled={!paneTabIsNew}
-                            className="!h-7 !min-h-7 w-full min-w-0 truncate rounded-md border border-(--border) bg-(--bg) px-2 py-0 font-mono !text-[11px] text-(--dim) outline-none hover:text-(--fg) disabled:opacity-100"
+                            className="!h-7 !min-h-7 w-full min-w-0 truncate rounded-md border-0 bg-transparent px-2 py-0 font-mono !text-[11px] text-(--dim) outline-none hover:bg-(--surface) hover:text-(--fg) disabled:opacity-100"
                             title={
                               paneTabIsNew
                                 ? "Change directory for this new session"
@@ -1424,7 +1424,7 @@ function ModelPicker({
           setOpen((value) => !value);
         }}
         disabled={disabled}
-        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[150px] items-center gap-1.5 rounded-md border border-(--border) bg-(--surface) px-2 !text-xs text-(--fg) hover:bg-(--bg) disabled:opacity-60"
+        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[140px] items-center gap-1.5 rounded-md border-0 bg-transparent px-2 !text-xs text-(--fg) hover:bg-(--surface) disabled:opacity-60"
         title={active?.name || triggerLabel}
       >
         <span className="min-w-0 max-w-[118px] truncate">{triggerLabel}</span>

@@ -1312,7 +1312,7 @@ export function ChatPane({
         </div>
       </div>
 
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-3 pt-1.5">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
         <div
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
@@ -1432,7 +1432,7 @@ export function ChatPane({
             }
             className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex items-center gap-2 px-3 pb-1.5 pt-0.5">
+          <div className="flex min-h-10 items-center gap-1.5 overflow-hidden border-t border-(--border) bg-(--composer-footer) px-3 py-1.5 text-xs">
             <input
               ref={fileInputRef}
               type="file"
@@ -1459,71 +1459,25 @@ export function ChatPane({
                   ? "Browser tool: ON — agent can drive the browser"
                   : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
               }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md border ${
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${
                 browserToolEnabled
-                  ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
-                  : "border-(--border) text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                  ? "bg-(--accent)/10 text-(--accent)"
+                  : "text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
               }`}
             >
               <GlobeIcon className="h-3.5 w-3.5" />
             </button>
-            <div className="min-w-0 flex-1" />
-            {running ? (
-              <>
-                {activeTab?.input.trim() ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void queueMessage()}
-                      className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--bg) px-2 text-[11px] text-(--dim) hover:text-(--fg)"
-                      title="Queue (Tab)"
-                    >
-                      Queue
-                    </button>
-                    <button
-                      type="submit"
-                      className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1 rounded-md border border-(--accent) bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
-                      title="Steer (Enter): interrupt current turn and send"
-                    >
-                      <SendIcon className="h-3 w-3" /> Steer
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void abortTurn()}
-                  className="inline-flex !h-7 !min-h-7 !min-w-0 shrink-0 items-center gap-1.5 rounded-md border border-(--border) bg-(--bg) px-2 text-xs text-(--dim) hover:text-(--fg)"
-                  title="Pause (Esc)"
-                >
-                  <StopIcon className="h-3 w-3" /> Pause
-                </button>
-              </>
-            ) : (
-              <button
-                type="submit"
-                disabled={
-                  (!activeTab?.input.trim() && attachments.length === 0) ||
-                  !modelId ||
-                  readingAttachments
-                }
-                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--fg) hover:bg-(--bg) disabled:opacity-30"
-                aria-label="Send"
-                title="Send (Enter) · Queue (Tab)"
-              >
-                <SendIcon className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="flex min-h-9 items-center gap-2 border-t border-(--border) bg-(--composer-footer) px-3 py-1 text-xs">
-            {projectSelector ? (
-              <div className="min-w-0 flex-1">{projectSelector}</div>
-            ) : cwd ? (
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--dim)">
-                {cwd}
-              </span>
-            ) : null}
+            <div className="min-w-0 flex-1">
+              {projectSelector ? (
+                projectSelector
+              ) : cwd ? (
+                <span className="block min-w-0 truncate font-mono text-[11px] text-(--dim)">
+                  {cwd}
+                </span>
+              ) : null}
+            </div>
             {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded-md border border-(--border) bg-(--surface) px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
+              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
                 <GitBranchIcon className="h-3 w-3 shrink-0" />
                 <span className="truncate">{gitBranch}</span>
               </span>
@@ -1531,7 +1485,7 @@ export function ChatPane({
               <button
                 type="button"
                 onClick={onInitGit}
-                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface) text-(--dim) hover:text-(--fg)"
+                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
                 aria-label="Initialize git repository"
                 title="Init git"
               >
@@ -1547,11 +1501,57 @@ export function ChatPane({
                 ) : null}
               </span>
             ) : null}
-            <div className="min-w-0 flex-1" />
             {modelSelector}
+            <div className="flex shrink-0 items-center gap-1">
+              {running ? (
+                <>
+                  {activeTab?.input.trim() ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void queueMessage()}
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-2 text-[11px] text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                        title="Queue (Tab)"
+                      >
+                        Queue
+                      </button>
+                      <button
+                        type="submit"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
+                        title="Steer (Enter): interrupt current turn and send"
+                      >
+                        <SendIcon className="h-3 w-3" /> Steer
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void abortTurn()}
+                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                    title="Pause (Esc)"
+                  >
+                    <StopIcon className="h-3 w-3" /> Pause
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={
+                    (!activeTab?.input.trim() && attachments.length === 0) ||
+                    !modelId ||
+                    readingAttachments
+                  }
+                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--fg) hover:bg-(--bg) disabled:opacity-30"
+                  aria-label="Send"
+                  title="Send (Enter) · Queue (Tab)"
+                >
+                  <SendIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
-        <div className="mx-auto mt-1 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
+        <div className="mx-auto mt-0.5 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
           <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
           <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
           <span>
