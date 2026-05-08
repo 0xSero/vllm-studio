@@ -24,11 +24,13 @@ import {
 import { safeJson } from "@/lib/agent/safe-json";
 import { AssistantMarkdown } from "./assistant-markdown";
 import {
+  attachmentDedupKey,
   attachmentPrompt,
   createAttachment,
   dataTransferHasFiles,
   filesFromDataTransfer,
   formatFileSize,
+  isImageAttachment,
   type ChatAttachment,
 } from "./chat-attachments";
 
@@ -1150,7 +1152,17 @@ export function ChatPane({
       setReadingAttachments(true);
       try {
         const next = await Promise.all(fileArray.map((file) => createAttachment(file)));
-        setAttachments((current) => [...current, ...next]);
+        setAttachments((current) => {
+          const seen = new Set(current.map(attachmentDedupKey));
+          const uniqueNext: ChatAttachment[] = [];
+          next.forEach((file) => {
+            const key = attachmentDedupKey(file);
+            if (seen.has(key)) return;
+            seen.add(key);
+            uniqueNext.push(file);
+          });
+          return [...current, ...uniqueNext];
+        });
         updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
       } catch (err) {
         updateTab(activeTab.id, (tab) => ({
@@ -1371,7 +1383,17 @@ export function ChatPane({
                   className="inline-flex max-w-[220px] items-center gap-1 rounded border border-(--border)/70 bg-(--bg) px-1.5 py-0.5 text-[11px] text-(--dim)"
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
-                  <FileIcon className="h-3 w-3 shrink-0" />
+                  {isImageAttachment(file) ? (
+                    // Keep composer image previews intentionally small; the
+                    // attachment is still sent at full inline/file fidelity.
+                    <img
+                      src={file.content}
+                      alt=""
+                      className="h-7 w-7 shrink-0 rounded border border-(--border)/70 object-cover"
+                    />
+                  ) : (
+                    <FileIcon className="h-3 w-3 shrink-0" />
+                  )}
                   <span className="truncate">{file.name}</span>
                   <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>
                   <button

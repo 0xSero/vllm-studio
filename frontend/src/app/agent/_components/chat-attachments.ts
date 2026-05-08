@@ -10,6 +10,18 @@ export type ChatAttachment = {
   content: string;
 };
 
+export function attachmentDedupKey(file: Pick<ChatAttachment, "name" | "type" | "size" | "path">) {
+  const path = file.path?.trim();
+  if (path) return `path:${path}`;
+  return `file:${file.name.trim().toLowerCase()}:${file.type}:${file.size}`;
+}
+
+export function isImageAttachment(file: Pick<ChatAttachment, "type" | "mode" | "content">) {
+  return (
+    file.type.startsWith("image/") && file.mode === "data-url" && file.content.startsWith("data:")
+  );
+}
+
 function randomIdSegment(length: number): string {
   const cryptoApi = globalThis.crypto;
   if (cryptoApi?.randomUUID) {
@@ -93,7 +105,11 @@ export function filesFromDataTransfer(dataTransfer: DataTransfer | null): File[]
   const seen = new Set<string>();
   const push = (file: File | null) => {
     if (!file) return;
-    const key = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+    // Chromium/Electron can expose the same pasted file through both
+    // DataTransfer.files and DataTransfer.items with different lastModified
+    // values. Deliberately leave lastModified out so one paste yields one
+    // composer attachment.
+    const key = `${file.name.trim().toLowerCase()}:${file.type}:${file.size}`;
     if (seen.has(key)) return;
     seen.add(key);
     files.push(file);
