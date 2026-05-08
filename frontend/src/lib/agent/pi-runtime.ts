@@ -380,32 +380,43 @@ class PiRpcSession extends EventEmitter {
   ): Promise<void> {
     const listener = (event: PiEvent) => onEvent(event);
     this.on("event", listener);
+    let settleDone: (() => void) | null = null;
+    let settleError: ((error: Error) => void) | null = null;
+    const donePromise = new Promise<void>((resolve, reject) => {
+      settleDone = resolve;
+      settleError = reject;
+    });
+    const timeout = setTimeout(
+      () => settleError?.(new Error("Timed out waiting for pi agent completion")),
+      30 * 60_000,
+    );
+    const done = (event: PiEvent) => {
+      if (event.type === "agent_end" || event.type === "turn_end") {
+        clearTimeout(timeout);
+        this.off("event", done);
+        settleDone?.();
+      }
+      if (event.type === "process_exit") {
+        clearTimeout(timeout);
+        this.off("event", done);
+        settleError?.(new Error("pi rpc process exited during turn"));
+      }
+    };
+    // Pi RPC writes the command response before the streamed turn events. When
+    // stdout delivers response + events in the same chunk, a listener installed
+    // after `sendCommand()` resolves can miss `agent_end` and leave the UI
+    // permanently "running" even though the JSONL has the assistant reply.
+    this.on("event", done);
     try {
       const command: Record<string, unknown> = { type: "prompt", message };
       if (options.streamingBehavior) {
         command.streamingBehavior = options.streamingBehavior;
       }
       await this.sendCommand(command);
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error("Timed out waiting for pi agent completion")),
-          30 * 60_000,
-        );
-        const done = (event: PiEvent) => {
-          if (event.type === "agent_end") {
-            clearTimeout(timeout);
-            this.off("event", done);
-            resolve();
-          }
-          if (event.type === "process_exit") {
-            clearTimeout(timeout);
-            this.off("event", done);
-            reject(new Error("pi rpc process exited during turn"));
-          }
-        };
-        this.on("event", done);
-      });
+      await donePromise;
     } finally {
+      clearTimeout(timeout);
+      this.off("event", done);
       this.off("event", listener);
     }
   }
