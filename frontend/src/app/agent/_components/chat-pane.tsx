@@ -1300,7 +1300,7 @@ export function ChatPane({
             event.stopPropagation();
             onClose();
           }}
-          className="absolute right-2 top-2 z-30 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          className="absolute right-12 top-2 z-30 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
           aria-label="Close pane"
           title="Close pane"
         >
