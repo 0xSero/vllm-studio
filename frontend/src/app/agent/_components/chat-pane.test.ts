@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { replaySessionEvents } from "./chat-pane";
+import { drainQueueAfterAgentEnd, replaySessionEvents } from "./chat-pane";
+
+describe("drainQueueAfterAgentEnd", () => {
+  it("drops transient steers and returns the next follow-up", () => {
+    const result = drainQueueAfterAgentEnd([
+      { id: "steer-1", mode: "steer", text: "adjust current run" },
+      { id: "follow-1", mode: "follow_up", text: "next prompt" },
+      { id: "follow-2", mode: "follow_up", text: "third prompt" },
+    ]);
+
+    expect(result.next).toEqual({ id: "follow-1", mode: "follow_up", text: "next prompt" });
+    expect(result.remaining).toEqual([{ id: "follow-2", mode: "follow_up", text: "third prompt" }]);
+  });
+
+  it("returns an empty drain result when no follow-ups are pending", () => {
+    expect(
+      drainQueueAfterAgentEnd([{ id: "steer-1", mode: "steer", text: "visible steer" }]),
+    ).toEqual({
+      next: null,
+      remaining: [],
+    });
+  });
+});
 
 describe("replaySessionEvents", () => {
   it("hydrates current Pi message events from stored sessions", () => {

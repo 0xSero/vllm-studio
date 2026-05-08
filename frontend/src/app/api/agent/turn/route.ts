@@ -62,8 +62,15 @@ export async function POST(request: NextRequest) {
       try {
         const turnStartedAt = new Date(Date.now() - 2_000);
         const session = piRuntimeManager.getSession(sessionId);
+        const existingStatus = session.status;
+        const effectivePiSessionId =
+          mode === "prompt"
+            ? piSessionId
+            : existingStatus.running
+              ? (existingStatus.piSessionId ?? piSessionId)
+              : piSessionId;
         sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd });
-        await session.ensureStarted(modelId, cwd, piSessionId, browserToolEnabled);
+        await session.ensureStarted(modelId, cwd, effectivePiSessionId, browserToolEnabled);
         sse(controller, { type: "status", phase: "running", session: session.status });
         if (mode === "steer") {
           await session.steer(message);

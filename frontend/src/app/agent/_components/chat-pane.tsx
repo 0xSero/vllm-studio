@@ -84,6 +84,15 @@ export type QueuedMessage = {
   text: string;
 };
 
+export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
+  next: QueuedMessage | null;
+  remaining: QueuedMessage[];
+} {
+  const followUps = queue.filter((item) => item.mode === "follow_up");
+  const [next, ...remaining] = followUps;
+  return { next: next ?? null, remaining };
+}
+
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
@@ -662,6 +671,11 @@ export function ChatPane({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
+  const tabsRef = useRef(tabs);
+
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
@@ -872,17 +886,16 @@ export function ChatPane({
     [patchAssistant],
   );
 
-  // Send a control-mode message (steer / follow_up) without reading the SSE
-  // stream — pi delivers the queued message and continues emitting events on
-  // the original prompt's stream. Returns true on success.
+  // Send a control-mode message (steer / follow_up) without taking ownership of
+  // the long-running prompt stream.
   const sendControlMessage = useCallback(
     async (
       mode: "steer" | "follow_up",
       text: string,
       runtime: string,
       piSessionId?: string | null,
-    ): Promise<boolean> => {
-      if (!text.trim() || !modelId) return false;
+    ): Promise<{ ok: boolean; error?: string }> => {
+      if (!text.trim() || !modelId) return { ok: false };
       try {
         const response = await fetch("/api/agent/turn", {
           method: "POST",
@@ -903,28 +916,45 @@ export function ChatPane({
         }
         // Drain the short SSE stream so the connection closes cleanly.
         const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let controlError = "";
         while (true) {
-          const { done } = await reader.read();
+          const { done, value } = await reader.read();
           if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split("\n\n");
+          buffer = chunks.pop() || "";
+          for (const chunk of chunks) {
+            const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
+            if (!line) continue;
+            const payload = JSON.parse(line.slice(6)) as
+              | { type: "status"; phase: string }
+              | { type: "error"; error: string };
+            if (payload.type === "error") controlError = payload.error;
+          }
         }
-        return true;
-      } catch {
-        return false;
+        if (controlError) throw new Error(controlError);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
       }
     },
     [modelId, cwd, browserToolEnabled],
   );
 
   const submitPrompt = useCallback(
-    async (rawText: string) => {
-      if (!activeTab) return;
+    async (rawText: string, targetTabId?: string) => {
+      const selectedTab =
+        (targetTabId ? tabsRef.current.find((tab) => tab.id === targetTabId) : null) ?? activeTab;
+      if (!selectedTab) return;
       const text = rawText.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
 
-      const tabId = activeTab.id;
+      const tabId = selectedTab.id;
       const userId = newId("user");
       const assistantId = newId("assistant");
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      const runtime = selectedTab.runtimeSessionId || runtimeSessionId;
       const attachedText = attachmentPrompt(attachments);
       const attachmentSummary =
         attachments.length > 0
@@ -937,6 +967,7 @@ export function ChatPane({
       // Optimistic update: show the user's turn + a blank assistant message.
       updateTab(tabId, (tab) => ({
         ...tab,
+        cwd: tab.cwd || cwd,
         modelId: tab.modelId || modelId,
         input: "",
         error: "",
@@ -973,7 +1004,9 @@ export function ChatPane({
             modelId,
             message: promptText,
             cwd: cwd.trim() || undefined,
-            piSessionId: activeTab.piSessionId,
+            piSessionId:
+              tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
+              selectedTab.piSessionId,
             browserToolEnabled,
           }),
         });
@@ -1017,7 +1050,12 @@ export function ChatPane({
               }
               if (piEvent.type === "agent_end") {
                 agentEnded = true;
-                onPiSessionIdChange?.(eventId ?? activeTab.piSessionId ?? "");
+                const latestPiSessionId =
+                  eventId ??
+                  tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
+                  selectedTab.piSessionId ??
+                  "";
+                onPiSessionIdChange?.(latestPiSessionId);
               }
               applyPiEvent(tabId, assistantId, piEvent);
             }
@@ -1035,16 +1073,15 @@ export function ChatPane({
 
       // Drain queued messages once the agent finished its run.
       if (agentEnded) {
-        const queued = (activeTab.queue ?? []).slice();
-        if (queued.length > 0) {
-          // Pop the first queued message and replay it as a fresh prompt. Any
-          // remaining items stay in the queue and chain through subsequent
-          // submitPrompt calls.
-          const [next, ...rest] = queued;
-          updateTab(tabId, (tab) => ({ ...tab, queue: rest }));
+        const queued = (tabsRef.current.find((tab) => tab.id === tabId)?.queue ?? []).slice();
+        const { next, remaining } = drainQueueAfterAgentEnd(queued);
+        if (next) {
+          updateTab(tabId, (tab) => ({ ...tab, queue: remaining }));
           // Schedule on the next tick so React commits the optimistic
           // update before we kick off the next prompt.
-          setTimeout(() => void submitPromptRef.current?.(next.text), 0);
+          setTimeout(() => void submitPromptRef.current?.(next.text, tabId), 0);
+        } else if (queued.length > 0) {
+          updateTab(tabId, (tab) => ({ ...tab, queue: remaining }));
         }
       }
     },
@@ -1064,7 +1101,9 @@ export function ChatPane({
 
   // Stable ref so the queue-drain inside submitPrompt can re-enter without
   // forming a useCallback cycle.
-  const submitPromptRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
+  const submitPromptRef = useRef<(text: string, targetTabId?: string) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
   useEffect(() => {
     submitPromptRef.current = submitPrompt;
   }, [submitPrompt]);
@@ -1079,18 +1118,30 @@ export function ChatPane({
       // While running, Enter sends a steering message instead of a fresh prompt.
       if (running) {
         if (!text) return;
-        const ok = await sendControlMessage(
+        const queuedId = newId("queue");
+        updateTab(activeTab.id, (tab) => ({
+          ...tab,
+          input: "",
+          error: "",
+          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text }],
+        }));
+        const result = await sendControlMessage(
           "steer",
           text,
           activeTab.runtimeSessionId || runtimeSessionId,
           activeTab.piSessionId,
         );
-        if (ok) {
-          updateTab(activeTab.id, (tab) => ({ ...tab, input: "" }));
+        if (!result.ok) {
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            input: text,
+            error: result.error || "Message failed",
+            queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
+          }));
         }
         return;
       }
-      await submitPrompt(text);
+      await submitPrompt(text, activeTab.id);
     },
     [
       activeTab,
@@ -1105,28 +1156,28 @@ export function ChatPane({
     ],
   );
 
-  // Tab-key behavior: queue the current input as a follow-up. If the agent is
-  // running, also fire a steer() so pi has the message in its own queue
-  // (one-at-a-time). Local queue state mirrors what's pending so we can show
-  // chips and drain on agent_end.
+  // Tab-key behavior: when idle, submit immediately; while a turn is running,
+  // keep the follow-up visibly queued and replay it as a normal prompt after
+  // agent_end. This avoids the "message vanished" state where a chip was added
+  // but no prompt was ever sent.
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
     const tabId = activeTab.id;
-    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-    const mode: "steer" | "follow_up" = running ? "follow_up" : "follow_up";
+    if (!running) {
+      await submitPromptRef.current(text, tabId);
+      return;
+    }
     const queuedId = newId("queue");
     updateTab(tabId, (tab) => ({
       ...tab,
+      cwd: tab.cwd || cwd,
       input: "",
-      queue: [...(tab.queue ?? []), { id: queuedId, mode, text }],
+      error: "",
+      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text }],
     }));
-    if (running) {
-      // Hand it to pi as a follow_up so the agent sees it after it finishes.
-      void sendControlMessage(mode, text, runtime, activeTab.piSessionId);
-    }
-  }, [activeTab, modelId, running, runtimeSessionId, sendControlMessage, updateTab]);
+  }, [activeTab, modelId, running, cwd, updateTab]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -1254,6 +1305,8 @@ export function ChatPane({
           ...tab,
           messages,
           piSessionId,
+          cwd: tab.cwd || cwd,
+          modelId: tab.modelId || modelId,
           title: title ?? tab.title,
           tokenStats: tokenStats ?? tab.tokenStats,
           status: "idle",
@@ -1267,7 +1320,7 @@ export function ChatPane({
         }));
       }
     },
-    [cwd, activeTabId, updateTab],
+    [cwd, modelId, activeTabId, updateTab],
   );
 
   // Register a stable imperative handle so the workspace can call

@@ -70,6 +70,7 @@ type ActiveAgentSession = {
   paneId: string;
   tabId: string;
   piSessionId: string | null;
+  modelId?: string;
   title: string;
   status: string;
   active?: boolean;
@@ -101,11 +102,12 @@ function loadActiveAgentSessions(): ActiveAgentSession[] {
 
 function saveActiveAgentSessions(sessions: ActiveAgentSession[]) {
   if (typeof window === "undefined") return;
-  if (sessions.length === 0) {
+  const recoverable = sessions.filter((session) => Boolean(session.piSessionId));
+  if (recoverable.length === 0) {
     window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_KEY);
     return;
   }
-  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(sessions));
+  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(recoverable));
 }
 
 function setAgentSessionDragData(

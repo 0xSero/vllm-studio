@@ -130,6 +130,8 @@ function expandHomeFilePath(cwd: string, value: string): string | null {
 const COMPUTER_FILES_OPEN_KEY = "vllm-studio.agent.computer.filesOpen";
 const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "vllm-studio.agent.computer.defaultCollapsedV2";
 const PANE_LAYOUT_KEY = "vllm-studio.agent.paneLayout";
+const PANE_STATE_KEY = "vllm-studio.agent.paneState";
+const ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY = "vllm-studio.agent.activeSessions.snapshot";
 
 type ComputerTab = "browser" | "files" | "diff";
 
@@ -165,6 +167,186 @@ type PaneState = {
   runtimeSessionId: string;
 };
 
+type PersistedPaneState = {
+  version: 1;
+  layout: Layout;
+  focusedPaneId: PaneId;
+  panes: Record<
+    string,
+    {
+      tabs?: unknown[];
+      activeTabId?: unknown;
+      runtimeSessionId?: unknown;
+    }
+  >;
+};
+
+function normalizePersistedTab(value: unknown): SessionTab | null {
+  if (!value || typeof value !== "object") return null;
+  const tab = value as Partial<SessionTab>;
+  if (typeof tab.id !== "string" || typeof tab.runtimeSessionId !== "string") return null;
+  const fallback = makeFreshTab();
+  return {
+    ...fallback,
+    ...tab,
+    id: tab.id,
+    runtimeSessionId: tab.runtimeSessionId,
+    piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
+    title: typeof tab.title === "string" && tab.title.trim() ? tab.title : fallback.title,
+    messages: Array.isArray(tab.messages) ? tab.messages.slice(-80) : [],
+    status:
+      tab.status === "running" || tab.status === "starting" || tab.status === "loading"
+        ? "idle"
+        : typeof tab.status === "string"
+          ? tab.status
+          : "idle",
+    error: "",
+    input: typeof tab.input === "string" ? tab.input : "",
+    queue: Array.isArray(tab.queue) ? tab.queue : undefined,
+  };
+}
+
+function restorePersistedPaneState(raw: string): {
+  layout: Layout;
+  panesById: Map<PaneId, PaneState>;
+  focusedPaneId: PaneId;
+} | null {
+  const parsed = JSON.parse(raw) as Partial<PersistedPaneState>;
+  if (!parsed.layout || typeof parsed.layout !== "object") return null;
+  const leaves = collectLeaves(parsed.layout as Layout);
+  if (leaves.length === 0) return null;
+  const panes = parsed.panes && typeof parsed.panes === "object" ? parsed.panes : {};
+  const panesById = new Map<PaneId, PaneState>();
+  for (const paneId of leaves) {
+    const pane = panes[paneId] ?? {};
+    const restoredTabs = Array.isArray(pane.tabs)
+      ? pane.tabs.map(normalizePersistedTab).filter((tab): tab is SessionTab => Boolean(tab))
+      : [];
+    const tabs = restoredTabs.length > 0 ? restoredTabs : [makeFreshTab()];
+    const activeTabId =
+      typeof pane.activeTabId === "string" && tabs.some((tab) => tab.id === pane.activeTabId)
+        ? pane.activeTabId
+        : tabs[0].id;
+    panesById.set(paneId, {
+      tabs,
+      activeTabId,
+      runtimeSessionId:
+        typeof pane.runtimeSessionId === "string" && pane.runtimeSessionId.trim()
+          ? pane.runtimeSessionId
+          : newRuntimeId(),
+    });
+  }
+  const focusedPaneId =
+    typeof parsed.focusedPaneId === "string" && leaves.includes(parsed.focusedPaneId)
+      ? parsed.focusedPaneId
+      : leaves[0];
+  return { layout: parsed.layout as Layout, panesById, focusedPaneId };
+}
+
+function tabForPersistence(tab: SessionTab): SessionTab {
+  return {
+    ...tab,
+    messages: tab.messages.slice(-80),
+    status:
+      tab.status === "running" || tab.status === "starting" || tab.status === "loading"
+        ? "idle"
+        : tab.status,
+    error: "",
+  };
+}
+
+type ActiveAgentSessionSnapshot = {
+  projectId: string;
+  cwd: string;
+  paneId: string;
+  tabId: string;
+  piSessionId: string | null;
+  modelId?: string;
+  title: string;
+  status: string;
+  active?: boolean;
+  updatedAt: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(isRecord)
+      .map((entry) => {
+        const piSessionId = typeof entry.piSessionId === "string" ? entry.piSessionId.trim() : null;
+        return {
+          projectId: typeof entry.projectId === "string" ? entry.projectId : "",
+          cwd: typeof entry.cwd === "string" ? entry.cwd : "",
+          paneId: typeof entry.paneId === "string" ? entry.paneId : "",
+          tabId: typeof entry.tabId === "string" ? entry.tabId : "",
+          piSessionId: piSessionId || null,
+          modelId: typeof entry.modelId === "string" ? entry.modelId : undefined,
+          title: typeof entry.title === "string" ? entry.title : "Loading session",
+          status: typeof entry.status === "string" ? entry.status : "idle",
+          active: entry.active === true,
+          updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : "",
+        };
+      })
+      .filter(
+        (entry) =>
+          Boolean(entry.piSessionId) &&
+          Boolean(entry.projectId) &&
+          Boolean(entry.cwd) &&
+          Boolean(entry.paneId),
+      );
+  } catch {
+    return [];
+  }
+}
+
+function persistActiveAgentSessions(sessions: ActiveAgentSessionSnapshot[]) {
+  if (typeof window === "undefined") return;
+  const recoverable = sessions.filter((session) => Boolean(session.piSessionId));
+  if (recoverable.length === 0) {
+    window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY);
+    return;
+  }
+  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY, JSON.stringify(recoverable));
+}
+
+function layoutFromPaneIds(paneIds: PaneId[]): Layout {
+  if (paneIds.length <= 1) return { kind: "leaf", paneId: paneIds[0] ?? "p-init" };
+  const [first, ...rest] = paneIds;
+  return {
+    kind: "split",
+    direction: "vertical",
+    ratio: 0.5,
+    a: { kind: "leaf", paneId: first },
+    b: layoutFromPaneIds(rest),
+  };
+}
+
+function tabFromSnapshot(session: ActiveAgentSessionSnapshot): SessionTab {
+  const fresh = makeFreshTab();
+  return {
+    ...fresh,
+    id: session.tabId || fresh.id,
+    piSessionId: session.piSessionId,
+    projectId: session.projectId,
+    cwd: session.cwd,
+    modelId: session.modelId,
+    title: session.title || "Loading session",
+    // The previous SSE stream is gone after navigation. Replay the persisted
+    // JSONL and let the user continue from the recovered tab instead of
+    // resurrecting a permanently "running" UI state.
+    status: "loading",
+  };
+}
+
 export function AgentWorkspace() {
   const [models, setModels] = useState<AgentModel[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -181,6 +363,7 @@ export function AgentWorkspace() {
   const [activeComputerTab, setActiveComputerTab] = useState<ComputerTab>("browser");
   const [computerWidth, setComputerWidth] = useState(DEFAULT_COMPUTER_WIDTH);
   const [gitSummaries, setGitSummaries] = useState<Map<string, GitSummary>>(new Map());
+  const [panePersistenceReady, setPanePersistenceReady] = useState(false);
 
   // Pane state: a tree-shaped Layout where each leaf is identified by a
   // PaneId and points into panesById, which holds tabs + the per-pane
@@ -202,6 +385,7 @@ export function AgentWorkspace() {
     ]);
   });
   const [focusedPaneId, setFocusedPaneId] = useState<PaneId>("p-init");
+  const [sessionSnapshotRestored, setSessionSnapshotRestored] = useState(false);
 
   const browserRef = useRef<AgentBrowserHandle | null>(null);
   const computerAsideRef = useRef<HTMLElement | null>(null);
@@ -468,43 +652,74 @@ export function AgentWorkspace() {
     if (Number.isFinite(storedComputerWidth)) {
       setComputerWidth(clampComputerWidth(storedComputerWidth));
     }
-    // Restore the pane layout shape only (split ratios + leaf placement). Each
-    // referenced pane gets a fresh PaneState — we don't persist tab content
-    // because pi sessions live in their own files and are picked from the
-    // left sidebar URL navigation after restore.
+    // Restore full pane/tab metadata first so leaving /agent and coming back
+    // does not erase active sessions before the sidebar can point back to them.
+    // The legacy layout-only value remains as a fallback for older installs.
     try {
-      const raw = window.localStorage.getItem(PANE_LAYOUT_KEY);
-      if (!raw) return;
-      const restored = JSON.parse(raw) as Layout;
-      if (!restored || typeof restored !== "object") return;
-      const leaves = collectLeaves(restored);
-      if (leaves.length === 0) return;
-      const next = new Map<PaneId, PaneState>();
-      for (const id of leaves) {
-        const tab = makeFreshTab();
-        next.set(id, {
-          tabs: [tab],
-          activeTabId: tab.id,
-          runtimeSessionId: newRuntimeId(),
-        });
+      const rawState = window.localStorage.getItem(PANE_STATE_KEY);
+      if (rawState) {
+        const restored = restorePersistedPaneState(rawState);
+        if (restored) {
+          setPanesById(restored.panesById);
+          setLayout(restored.layout);
+          setFocusedPaneId(restored.focusedPaneId);
+          setPanePersistenceReady(true);
+          return;
+        }
       }
-      setPanesById(next);
-      setLayout(restored);
-      setFocusedPaneId(leaves[0]);
+    } catch {
+      // ignore — fall through to legacy/fresh state
+    }
+    try {
+      const rawLayout = window.localStorage.getItem(PANE_LAYOUT_KEY);
+      if (rawLayout) {
+        const restored = JSON.parse(rawLayout) as Layout;
+        if (!restored || typeof restored !== "object") return;
+        const leaves = collectLeaves(restored);
+        if (leaves.length === 0) return;
+        const next = new Map<PaneId, PaneState>();
+        for (const id of leaves) {
+          const tab = makeFreshTab();
+          next.set(id, {
+            tabs: [tab],
+            activeTabId: tab.id,
+            runtimeSessionId: newRuntimeId(),
+          });
+        }
+        setPanesById(next);
+        setLayout(restored);
+        setFocusedPaneId(leaves[0]);
+      }
     } catch {
       // ignore — fresh state
+    } finally {
+      setPanePersistenceReady(true);
     }
   }, []);
 
-  // Persist layout shape whenever it changes.
+  // Persist pane/session metadata whenever it changes. This is deliberately
+  // small (last 80 messages per tab, no transient running status) but enough to
+  // re-open active/past sessions after navigation or reload.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !panePersistenceReady) return;
     try {
+      const panes: PersistedPaneState["panes"] = {};
+      for (const [paneId, pane] of panesById.entries()) {
+        panes[paneId] = {
+          activeTabId: pane.activeTabId,
+          runtimeSessionId: pane.runtimeSessionId,
+          tabs: pane.tabs.map(tabForPersistence),
+        };
+      }
+      window.localStorage.setItem(
+        PANE_STATE_KEY,
+        JSON.stringify({ version: 1, layout, focusedPaneId, panes }),
+      );
       window.localStorage.setItem(PANE_LAYOUT_KEY, JSON.stringify(layout));
     } catch {
       // ignore quota errors
     }
-  }, [layout]);
+  }, [focusedPaneId, layout, panesById, panePersistenceReady]);
 
   const selectComputerTab = useCallback((tab: ComputerTab) => {
     setActiveComputerTab(tab);
@@ -600,6 +815,92 @@ export function AgentWorkspace() {
     [persistSelectedProjectId],
   );
 
+  // Rehydrate recoverable pi sessions after leaving `/agent` and coming back.
+  // We persist only session metadata here; message bodies stay in Pi's JSONL
+  // files and are loaded through `loadAndReplay` once the panes mount.
+  useEffect(() => {
+    if (sessionSnapshotRestored || !projectsLoaded) return;
+    const hasExplicitSessionNav = Boolean(searchParams.get("session") || searchParams.get("new"));
+    if (hasExplicitSessionNav) {
+      setSessionSnapshotRestored(true);
+      return;
+    }
+    const paneStateAlreadyRestored = [...panesById.values()].some((pane) =>
+      pane.tabs.some((tab) => Boolean(tab.piSessionId) || tab.messages.length > 0),
+    );
+    if (paneStateAlreadyRestored) {
+      for (const [paneId, pane] of panesById.entries()) {
+        const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId) ?? pane.tabs[0];
+        // If paneState already has local messages, keep that transcript as the
+        // newest source of truth. A replay can lag an interrupted in-flight
+        // turn and would otherwise erase the visible prompt the user just sent.
+        if (activeTab?.piSessionId && activeTab.messages.length === 0) {
+          queueSessionReplay(paneId, activeTab.piSessionId);
+        }
+      }
+      setSessionSnapshotRestored(true);
+      return;
+    }
+
+    const snapshots = loadPersistedActiveAgentSessions();
+    const restorable = snapshots.filter((session) =>
+      projects.some((project) => project.id === session.projectId || project.path === session.cwd),
+    );
+    if (restorable.length === 0) {
+      setSessionSnapshotRestored(true);
+      return;
+    }
+
+    const panes = new Map<PaneId, ActiveAgentSessionSnapshot[]>();
+    for (const session of restorable) {
+      const current = panes.get(session.paneId) ?? [];
+      current.push(session);
+      panes.set(session.paneId, current);
+    }
+
+    const paneIds = [...panes.keys()];
+    const nextPanes = new Map<PaneId, PaneState>();
+    for (const paneId of paneIds) {
+      const group = panes.get(paneId) ?? [];
+      const tabs = group.map(tabFromSnapshot);
+      const activeTab =
+        group.find((session) => session.active)?.tabId || tabs[0]?.id || makeFreshTab().id;
+      nextPanes.set(paneId, {
+        tabs: tabs.length > 0 ? tabs : [makeFreshTab()],
+        activeTabId: activeTab,
+        runtimeSessionId: newRuntimeId(),
+      });
+    }
+
+    const activeSnapshot = restorable.find((session) => session.active) ?? restorable[0];
+    const activeProjectForSnapshot =
+      projects.find((project) => project.id === activeSnapshot.projectId) ??
+      projects.find((project) => project.path === activeSnapshot.cwd) ??
+      null;
+
+    setPanesById(nextPanes);
+    setLayout(layoutFromPaneIds(paneIds));
+    setFocusedPaneId(activeSnapshot.paneId);
+    if (activeProjectForSnapshot) {
+      setSelectedProjectId(activeProjectForSnapshot.id);
+      setAgentCwd(activeProjectForSnapshot.path);
+      persistSelectedProjectId(activeProjectForSnapshot.id);
+    }
+    setSessionSnapshotRestored(true);
+
+    for (const session of restorable) {
+      if (session.piSessionId) queueSessionReplay(session.paneId, session.piSessionId);
+    }
+  }, [
+    projects,
+    projectsLoaded,
+    queueSessionReplay,
+    panesById,
+    searchParams,
+    sessionSnapshotRestored,
+    persistSelectedProjectId,
+  ]);
+
   // Imperative session-management primitives. Every code path that opens a
   // new tab or replays a past session goes through these — no useEffect
   // chain, no `initialSessionId` field on PaneState. Read top-down to audit.
@@ -682,7 +983,10 @@ export function AgentWorkspace() {
     if (projectParam) {
       const target = projects.find((entry) => entry.id === projectParam);
       if (!target) return; // wait for projects to load
-      if (selectedProjectId !== target.id) selectProject(target);
+      if (selectedProjectId !== target.id || agentCwd !== target.path) {
+        selectProject(target);
+        return; // rerun with the correct cwd before replaying a session id
+      }
     }
     handledNavRef.current = key;
 
@@ -701,6 +1005,7 @@ export function AgentWorkspace() {
     searchParams,
     projects,
     selectedProjectId,
+    agentCwd,
     selectProject,
     openNewSessionInFocusedPane,
     replaySessionInFocusedPane,
@@ -850,7 +1155,7 @@ export function AgentWorkspace() {
   // navbar. Empty starter tabs are intentionally excluded so the navbar
   // doesn't list them as "sessions".
   useEffect(() => {
-    if (typeof window === "undefined" || !activeProject) return;
+    if (typeof window === "undefined" || !activeProject || !sessionSnapshotRestored) return;
     const sessions = [...panesById.entries()].flatMap(([paneId, pane]) =>
       pane.tabs
         .filter((tab) => Boolean(tab.piSessionId) || tab.messages.length > 0)
@@ -865,6 +1170,7 @@ export function AgentWorkspace() {
             paneId,
             tabId: tab.id,
             piSessionId: tab.piSessionId,
+            modelId: tab.modelId ?? selectedModel,
             title: tab.title,
             status: tab.status,
             active: paneId === focusedPaneId && tab.id === pane.activeTabId,
@@ -872,8 +1178,9 @@ export function AgentWorkspace() {
           };
         }),
     );
+    persistActiveAgentSessions(sessions);
     window.dispatchEvent(new CustomEvent(ACTIVE_AGENT_SESSIONS_EVENT, { detail: { sessions } }));
-  }, [activeProject, focusedPaneId, panesById, projects]);
+  }, [activeProject, focusedPaneId, panesById, projects, selectedModel, sessionSnapshotRestored]);
 
   const openSessionPayloadInPane = useCallback(
     (paneId: PaneId, payload: SessionDropPayload) => {
