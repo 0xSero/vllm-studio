@@ -651,6 +651,7 @@ export function ChatPane({
   tabs,
   activeTabId,
   onTabsChange,
+  onClose,
   onRegisterHandle,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1288,8 +1289,24 @@ export function ChatPane({
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
-      className="flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
     >
+      {onClose ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          className="absolute right-2 top-2 z-30 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          aria-label="Close pane"
+          title="Close pane"
+        >
+          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />
+        </button>
+      ) : null}
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {activeTab.error}

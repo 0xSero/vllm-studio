@@ -1342,15 +1342,17 @@ export function AgentWorkspace() {
               </button>
               <button
                 type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
                 onClick={() => {
                   setRightPanelOpen(false);
                   window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "0");
                 }}
-                className="ml-1 rounded p-1 hover:bg-(--surface) hover:text-(--fg)"
+                className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-(--surface) hover:text-(--fg)"
                 title="Close"
                 aria-label="Close computer"
               >
-                <CloseIcon className="h-3 w-3" />
+                <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />
               </button>
             </div>
 

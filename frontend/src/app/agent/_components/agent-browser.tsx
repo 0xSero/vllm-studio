@@ -224,12 +224,14 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
         </button>
         <button
           type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
           onClick={onClose}
-          className="ml-1 rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
           title="Close"
           aria-label="Close browser"
         >
-          <CloseIcon className="h-3 w-3" />
+          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />
         </button>
       </form>
 
