@@ -1312,7 +1312,7 @@ export function ChatPane({
           {showEmptyPrompt ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 -translate-y-12 text-center">
               <h1 className="text-[26px] font-semibold tracking-[-0.04em] text-(--fg)">
-                What should we work on{projectName ? ` in ${projectName}` : ""}?
+                A dream is something you do for yourself
               </h1>
               <p className="text-[12.5px] text-(--dim)">
                 Ask the agent to edit, inspect, or run something. Tab to queue · paste/drop files.
