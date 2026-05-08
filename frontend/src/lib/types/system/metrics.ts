@@ -24,6 +24,9 @@ export interface GPU {
 
 // Metrics
 export interface Metrics {
+  model_id?: string | null;
+  model_path?: string | null;
+  served_model_name?: string | null;
   requests_total?: number;
   tokens_total?: number;
   latency_avg?: number;
@@ -102,4 +105,3 @@ export interface PeakMetrics {
   total_tokens: number;
   total_requests: number;
 }
-

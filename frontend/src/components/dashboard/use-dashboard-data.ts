@@ -1,6 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { scopedMetrics } from "./dashboard-metrics";
 import { useDashboardActions } from "./use-dashboard-actions";
 import { useDashboardRecipes } from "./use-dashboard-recipes";
 
@@ -8,6 +9,7 @@ export function useDashboardData() {
   const router = useRouter();
   const realtime = useRealtimeStatus();
   const currentProcess = realtime.status?.process || null;
+  const metrics = scopedMetrics(realtime.metrics, currentProcess);
   const gpus = realtime.gpus.length > 0 ? realtime.gpus : [];
   const recipesState = useDashboardRecipes(currentProcess);
   const lifecycle = useModelLifecycle();
@@ -18,7 +20,7 @@ export function useDashboardData() {
   return {
     currentProcess,
     currentRecipe: recipesState.currentRecipe,
-    metrics: realtime.metrics,
+    metrics,
     gpus,
     recipes: recipesState.recipes,
     logs: recipesState.logs,

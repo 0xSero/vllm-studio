@@ -454,6 +454,9 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
 
         await context.eventManager.publishMetrics({
           ...baseMetrics,
+          model_id: modelId,
+          model_path: current.model_path ?? null,
+          served_model_name: current.served_model_name ?? null,
           running_requests: runningRequests,
           pending_requests: pendingRequests,
           kv_cache_usage: kvCacheUsage,
@@ -486,6 +489,9 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         bumpPeak(sessionPeaks, "vram_used_gb", totalVramUsedGb);
         await context.eventManager.publishMetrics({
           ...baseMetrics,
+          model_id: null,
+          model_path: null,
+          served_model_name: null,
           vram_used_gb: Math.round(totalVramUsedGb * 10) / 10,
           vram_capacity_gb: Math.round(totalVramCapacityGb * 10) / 10,
           power_limit_watts: Math.round(totalPowerLimitWatts),

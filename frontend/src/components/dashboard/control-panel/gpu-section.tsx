@@ -11,67 +11,8 @@ interface GpuSectionProps {
   currentProcess: ProcessInfo | null;
 }
 
-const STABLE_GPUS: GPU[] = [
-  {
-    index: 0,
-    name: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
-    memory_used: 94.7,
-    memory_total: 96,
-    memory_free: 1.3,
-    utilization: 89,
-    temperature: 41,
-    power_draw: 186,
-    power_limit: 275,
-  },
-  {
-    index: 2,
-    name: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
-    memory_used: 94.7,
-    memory_total: 96,
-    memory_free: 1.3,
-    utilization: 88,
-    temperature: 39,
-    power_draw: 182,
-    power_limit: 275,
-  },
-  {
-    index: 3,
-    name: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
-    memory_used: 94.7,
-    memory_total: 96,
-    memory_free: 1.3,
-    utilization: 85,
-    temperature: 40,
-    power_draw: 176,
-    power_limit: 275,
-  },
-  {
-    index: 4,
-    name: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
-    memory_used: 94.7,
-    memory_total: 96,
-    memory_free: 1.3,
-    utilization: 84,
-    temperature: 42,
-    power_draw: 174,
-    power_limit: 275,
-  },
-  {
-    index: 1,
-    name: "NVIDIA GeForce RTX 3090",
-    memory_used: 0.2,
-    memory_total: 24,
-    memory_free: 23.8,
-    utilization: 4,
-    temperature: 45,
-    power_draw: 15,
-    power_limit: 150,
-  },
-];
-
 export function GpuSection({ gpus }: GpuSectionProps) {
-  const sourceGpus = gpus.length > 0 ? gpus : STABLE_GPUS;
-  const sortedGpus = [...sourceGpus].sort((a, b) => gpuMemoryTotal(b) - gpuMemoryTotal(a));
+  const sortedGpus = [...gpus].sort((a, b) => gpuMemoryTotal(b) - gpuMemoryTotal(a));
   const hasGpus = sortedGpus.length > 0;
   const [expanded, setExpanded] = useState(true);
 
@@ -86,13 +27,27 @@ export function GpuSection({ gpus }: GpuSectionProps) {
   const maxTemp = temps.length > 0 ? Math.max(...temps) : 0;
   const memPct = totalCap > 0 ? clamp((totalUsed / totalCap) * 100, 0, 100) : 0;
 
-  // Quiet empty state — no broken aggregate row staring back.
   if (!hasGpus) {
     return (
       <section className="mt-4 border-t border-(--border)/40 px-2 pt-3 pb-4">
-        <div className="flex items-baseline gap-3 font-mono text-[11px] tracking-[0.04em] text-(--dim)">
-          <span className="text-[10px] font-medium uppercase tracking-[0.18em]">GPUs</span>
-          <span className="text-(--dim)/65">waiting for telemetry…</span>
+        <div className="flex w-full items-center gap-4 text-left">
+          <div className="flex shrink-0 items-baseline gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+              GPUs
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-(--dim)/65">0</span>
+          </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="h-[3px] min-w-[5rem] flex-1 max-w-[18rem] overflow-hidden rounded-[2px] bg-(--dim)/15" />
+            <span className="font-mono text-[11.5px] tabular-nums text-(--fg)/85">
+              0.0<span className="text-(--dim)/65">/0G</span>
+            </span>
+          </div>
+          <div className="hidden items-baseline gap-5 font-mono text-[11px] tabular-nums sm:flex">
+            <Aggregate label="util" value="0%" />
+            <Aggregate label="temp" value="0°" />
+            <Aggregate label="pwr" value="0/0W" />
+          </div>
         </div>
       </section>
     );

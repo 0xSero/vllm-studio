@@ -11,11 +11,7 @@ import type {
 } from "@/lib/types";
 import api from "@/lib/api";
 import type { RealtimeStatusSnapshot } from "./realtime-status-store/types";
-import type {
-  LeaseInfo,
-  RuntimeSummaryData,
-  ServiceEntry,
-} from "./realtime-status-store/types";
+import type { LeaseInfo, RuntimeSummaryData, ServiceEntry } from "./realtime-status-store/types";
 import {
   areGpusEqual,
   areLaunchProgressEqual,
@@ -66,6 +62,17 @@ let started = false;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
 
+function processKey(process: ProcessInfo | null | undefined): string {
+  if (!process) return "";
+  return [
+    process.pid,
+    process.backend,
+    process.port,
+    process.served_model_name ?? "",
+    process.model_path ?? "",
+  ].join("|");
+}
+
 function emitIfChanged(next: RealtimeStatusSnapshot) {
   const changed =
     !areStatusEqual(snapshot.status, next.status) ||
@@ -112,10 +119,14 @@ async function fetchStatusNow() {
     compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null;
   const gpus =
     gpuResult.status === "fulfilled" ? (gpuResult.value.gpus ?? snapshot.gpus) : snapshot.gpus;
+  const previousProcessKey = processKey(snapshot.status?.process);
+  const nextProcessKey = processKey(status?.process);
   const polledMetrics =
     metricsResult.status === "fulfilled" && metricsResult.value
       ? (metricsResult.value as Metrics)
-      : snapshot.metrics;
+      : previousProcessKey === nextProcessKey
+        ? snapshot.metrics
+        : null;
 
   if (status) {
     const { running, process, inference_port } = status;
@@ -166,9 +177,12 @@ function start() {
       const running = Boolean(data["running"] ?? data["process"]);
       const process = (data["process"] ?? null) as ProcessInfo | null;
       const inference_port = Number(data["inference_port"] ?? 8000);
+      const previousProcessKey = processKey(snapshot.status?.process);
+      const nextProcessKey = processKey(process);
       emitIfChanged({
         ...snapshot,
         status: { running, process, inference_port },
+        metrics: previousProcessKey === nextProcessKey ? snapshot.metrics : null,
         lastEventAt: now,
       });
       return;
@@ -185,11 +199,9 @@ function start() {
     }
 
     if (type === "metrics") {
-      // Merge with previous so a partial event doesn't blank fields.
-      const merged = { ...(snapshot.metrics ?? {}), ...(data as Metrics) } as Metrics;
       emitIfChanged({
         ...snapshot,
-        metrics: merged,
+        metrics: data as Metrics,
         lastEventAt: now,
       });
       return;
