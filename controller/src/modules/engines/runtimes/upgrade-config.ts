@@ -16,7 +16,10 @@ export const VLLM_UPGRADE_ENV = "VLLM_STUDIO_VLLM_UPGRADE_CMD";
 export const CUDA_UPGRADE_ENV = "VLLM_STUDIO_CUDA_UPGRADE_CMD";
 export const ROCM_UPGRADE_ENV = "VLLM_STUDIO_ROCM_UPGRADE_CMD";
 export const VLLM_UPGRADE_VERSION_ENV = "VLLM_STUDIO_VLLM_UPGRADE_VERSION";
-const DEFAULT_VLLM_UPGRADE_VERSION = "0.15.1";
+// Empty default means "upgrade the controller-owned runtime to the package
+// manager's latest vLLM" instead of showing a stale hard-coded target as if it
+// were the installed version.
+const DEFAULT_VLLM_UPGRADE_VERSION = "";
 
 export const getUpgradeCommandFromEnvironment = (envKey: string): string | null =>
   normalizeEnvironmentCommand(envKey);

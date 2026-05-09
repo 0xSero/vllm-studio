@@ -6,7 +6,12 @@ import { resolveBinary, runCommand } from "../../../core/command";
 import type { ProcessInfo } from "../../models/types";
 import type { EngineBackend, RuntimeBackendInfo, RuntimeTarget } from "../../shared/system-types";
 import { detectBackend, listProcesses } from "../process/process-utilities";
-import { isUpgradeCommandConfigured, LLAMACPP_UPGRADE_ENV } from "./upgrade-config";
+import {
+  getVllmUpgradeVersion,
+  isUpgradeCommandConfigured,
+  LLAMACPP_UPGRADE_ENV,
+  VLLM_UPGRADE_VERSION_ENV,
+} from "./upgrade-config";
 import { resolveVllmPythonPath } from "./vllm-python-path";
 
 type RuntimeTargetSource = RuntimeTarget["source"];
@@ -114,6 +119,51 @@ const createHealth = (
   return message ? { status, message } : { status };
 };
 
+const RELEASE_NOTES: Record<EngineBackend, string> = {
+  vllm: "https://github.com/vllm-project/vllm/releases",
+  sglang: "https://github.com/sgl-project/sglang/releases",
+  llamacpp: "https://github.com/ggml-org/llama.cpp/releases",
+};
+
+const packageSpecForTarget = (backend: EngineBackend): string => {
+  if (backend === "vllm") {
+    const target = getVllmUpgradeVersion().trim();
+    return target ? `vllm==${target}` : "vllm";
+  }
+  if (backend === "sglang") return "sglang";
+  return "configured llama.cpp upgrade command";
+};
+
+const updateMetadata = (args: {
+  backend: EngineBackend;
+  version?: string | null | undefined;
+  capabilities: RuntimeTarget["capabilities"];
+}): RuntimeTarget["update"] | undefined => {
+  if (!args.capabilities.canUpdate) return undefined;
+  const configuredVllmTarget = args.backend === "vllm" ? getVllmUpgradeVersion().trim() : "";
+  const targetVersion =
+    args.backend === "vllm" && configuredVllmTarget
+      ? configuredVllmTarget
+      : args.backend === "llamacpp"
+        ? "configured"
+        : "latest";
+  return {
+    currentVersion: args.version ?? null,
+    targetVersion,
+    packageSpec: packageSpecForTarget(args.backend),
+    releaseNotesUrl: RELEASE_NOTES[args.backend],
+    restartRequired: true,
+    changes: [
+      `${args.backend} runtime package/binary`,
+      "Controller runtime target metadata after completion",
+      "Running model process after restart/reload",
+      ...(args.backend === "vllm" && !configuredVllmTarget
+        ? [`Set ${VLLM_UPGRADE_VERSION_ENV} to pin a specific target version.`]
+        : []),
+    ],
+  };
+};
+
 const makeTarget = (args: {
   backend: EngineBackend;
   kind: RuntimeTargetKind;
@@ -134,6 +184,12 @@ const makeTarget = (args: {
     installed: args.installed,
     source: args.source,
   };
+  const capabilities = createCapabilities(base);
+  const update = updateMetadata({
+    backend: args.backend,
+    version: args.version,
+    capabilities,
+  });
   return {
     id: targetId(args.backend, args.kind, args.key),
     backend: args.backend,
@@ -146,8 +202,9 @@ const makeTarget = (args: {
     binaryPath: args.binaryPath ?? null,
     dockerImage: args.dockerImage ?? null,
     source: args.source,
-    capabilities: createCapabilities(base),
+    capabilities,
     health: createHealth(args.installed, args.source, args.healthMessage),
+    ...(update ? { update } : {}),
   };
 };
 

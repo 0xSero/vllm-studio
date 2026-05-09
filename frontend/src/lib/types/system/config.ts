@@ -67,6 +67,14 @@ export interface RuntimeTarget {
     status: "ok" | "warning" | "error" | "unknown";
     message?: string;
   };
+  update?: {
+    currentVersion: string | null;
+    targetVersion: string;
+    packageSpec: string;
+    releaseNotesUrl: string;
+    restartRequired: boolean;
+    changes: string[];
+  };
 }
 
 export interface EngineJob {

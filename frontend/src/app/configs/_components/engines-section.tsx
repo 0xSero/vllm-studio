@@ -210,6 +210,7 @@ function RuntimeTargetRow({
       }
     >
       {job ? <JobMessage job={job} /> : null}
+      {target.update ? <UpdateDetails update={target.update} /> : null}
       {disabledReason ? <p className="text-[11px] text-(--dim)">{disabledReason}</p> : null}
     </SettingsRow>
   );
@@ -319,6 +320,34 @@ function JobMessage({ job }: { job: EngineJob }) {
       {job.error || job.outputTail ? (
         <p className="line-clamp-3 whitespace-pre-wrap font-mono">{job.error ?? job.outputTail}</p>
       ) : null}
+    </div>
+  );
+}
+
+function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
+  return (
+    <div className="grid gap-1.5 border-t border-(--border)/30 pt-2 text-[11px] text-(--dim)">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
+        <span>current {update.currentVersion ?? "unknown"}</span>
+        <span>target {update.targetVersion}</span>
+        <span>{update.restartRequired ? "restart required" : "no restart"}</span>
+      </div>
+      <div className="font-mono">{update.packageSpec}</div>
+      <div className="flex flex-wrap gap-1">
+        {update.changes.map((change) => (
+          <span key={change} className="rounded border border-(--border)/60 px-1.5 py-[1px]">
+            {change}
+          </span>
+        ))}
+      </div>
+      <a
+        href={update.releaseNotesUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="w-fit text-(--accent) hover:underline"
+      >
+        release notes
+      </a>
     </div>
   );
 }
