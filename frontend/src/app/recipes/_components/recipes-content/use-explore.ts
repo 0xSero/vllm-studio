@@ -37,6 +37,11 @@ function groupPassesExploreFilters(group: ModelGroup, search: string): boolean {
   return isRecentlyCreatedOnHf(group.lead);
 }
 
+export function exploreGroupKey(modelId: string): string {
+  const normalized = normalizeModelId(modelId) || modelId.toLowerCase();
+  return normalized.split("/").filter(Boolean).pop() ?? normalized;
+}
+
 export function derivativeScore(model: HuggingFaceModel, search: string): number {
   const id = model.modelId.toLowerCase();
   const tags = model.tags.join(" ").toLowerCase();
@@ -164,16 +169,14 @@ export function useExplore() {
   const recByKey = useMemo(() => {
     const m = new Map<string, ModelRecommendation>();
     for (const r of recommendations) {
-      const k = normalizeModelId(r.id) || r.id.toLowerCase();
+      const k = exploreGroupKey(r.id);
       m.set(k, r);
     }
     return m;
   }, [recommendations]);
 
   const spotlightRecKeys = useMemo(() => {
-    return new Set(
-      spotlightRecommendations.map((r) => normalizeModelId(r.id) || r.id.toLowerCase()),
-    );
+    return new Set(spotlightRecommendations.map((r) => exploreGroupKey(r.id)));
   }, [spotlightRecommendations]);
 
   const groupedModels = useMemo((): ModelGroup[] => {
@@ -181,7 +184,7 @@ export function useExplore() {
     const seen = new Set<string>();
 
     for (const model of models) {
-      const key = normalizeModelId(model.modelId) || model.modelId.toLowerCase();
+      const key = exploreGroupKey(model.modelId);
       const existing = groups.get(key);
       if (existing) {
         existing.push(model);
