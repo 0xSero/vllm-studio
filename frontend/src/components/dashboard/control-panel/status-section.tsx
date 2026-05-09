@@ -2,8 +2,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Moon, Square, Sun } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
+import { ModelStopConfirm } from "@/components/model-stop-confirm";
+import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import type { GPU, Metrics, ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
 import { toGB, toGBFromMB } from "@/lib/formatters";
+import { useAppStore } from "@/store";
 
 interface StatusSectionProps {
   currentProcess: ProcessInfo | null;
@@ -90,6 +95,8 @@ export function StatusSection({
 
   const headerActions = (
     <div className="flex items-center gap-1.5">
+      <HeaderThemeToggle />
+      <HeaderStopButton running={isRunning} />
       {recipes && onLaunch && (
         <ModelsDropdown
           recipes={recipes}
@@ -146,17 +153,17 @@ export function StatusSection({
       <dl className="status-metric-strip mt-5 grid w-full grid-cols-[minmax(0,1.05fr)_minmax(0,0.92fr)_minmax(0,1.18fr)_minmax(0,0.58fr)_minmax(0,0.88fr)_minmax(0,0.88fr)] border-b border-(--border)/40 pb-5">
         <MetricColumn
           label="Decode"
-          value={genTps.toFixed(1)}
+          value={metricValue(genTps, 1)}
           unit="tok/s"
           detail={peakGenTps > 0 ? `peak ${peakGenTps.toFixed(1)}` : undefined}
         />
         <MetricColumn
           label="TTFT"
-          value={ttftMs.toFixed(0)}
+          value={metricValue(ttftMs, 0)}
           unit="ms"
           detail={peakTtftMs > 0 ? `peak ${peakTtftMs.toFixed(0)} ms` : undefined}
         />
-        <MetricColumn label="Prefill" value={prefillTps.toFixed(1)} unit="t/s" />
+        <MetricColumn label="Prefill" value={metricValue(prefillTps, 1)} unit="t/s" />
         <CompactMetric label="Req" value={`${sessions}/${peakReq || sessions}`} />
         <CompactMetric
           label="VRAM"
@@ -168,8 +175,85 @@ export function StatusSection({
         />
       </dl>
 
+      <dl className="mt-3 grid gap-2 font-mono text-[10.5px] text-(--dim) sm:grid-cols-4">
+        <RuntimeMetric
+          label="total tokens"
+          value={tokenMetric(metrics?.total_tokens, metrics?.tokens_total)}
+        />
+        <RuntimeMetric label="prompt tokens" value={tokenMetric(metrics?.prompt_tokens_total)} />
+        <RuntimeMetric
+          label="completion tokens"
+          value={tokenMetric(metrics?.generation_tokens_total)}
+        />
+        <RuntimeMetric label="duration" value={durationMetric(metrics?.latency_avg)} />
+      </dl>
+
       <MetricTrends samples={samples} />
     </section>
+  );
+}
+
+function HeaderThemeToggle() {
+  const { themeId, setThemeId } = useAppStore(
+    useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
+  );
+  const isDark = themeId === "omlx-dark";
+  const Icon = isDark ? Sun : Moon;
+  return (
+    <button
+      type="button"
+      onClick={() => setThemeId(isDark ? "omlx-light" : "omlx-dark")}
+      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      title={isDark ? "Light mode" : "Dark mode"}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
+    </button>
+  );
+}
+
+function HeaderStopButton({ running }: { running: boolean }) {
+  const { stop } = useModelLifecycle();
+  if (!running) return null;
+  return (
+    <ModelStopConfirm
+      onStop={stop}
+      trigger={({ open, stopping }) => (
+        <button
+          type="button"
+          onClick={open}
+          disabled={stopping}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
+          title="Stop model"
+        >
+          <Square className="h-3.5 w-3.5" fill="currentColor" />
+          {stopping ? "Stopping" : "Stop"}
+        </button>
+      )}
+    />
+  );
+}
+
+function metricValue(value: number, digits: number): string | null {
+  return value > 0 ? value.toFixed(digits) : null;
+}
+
+function tokenMetric(...values: Array<number | undefined>): string {
+  const value = values.find((item) => typeof item === "number" && item > 0);
+  return value ? Math.round(value).toLocaleString() : "unavailable";
+}
+
+function durationMetric(value: number | undefined): string {
+  if (!value || value <= 0) return "unavailable";
+  return value > 1000 ? `${(value / 1000).toFixed(2)}s` : `${value.toFixed(0)}ms`;
+}
+
+function RuntimeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-baseline justify-between gap-2 border-t border-(--border)/25 pt-1">
+      <dt className="truncate uppercase tracking-[0.12em]">{label}</dt>
+      <dd className="truncate text-(--fg)">{value}</dd>
+    </div>
   );
 }
 
@@ -362,7 +446,7 @@ function MetricColumn({
   unit: string;
   detail?: string;
 }) {
-  const displayValue = value ?? "0";
+  const displayValue = value ?? "unavailable";
 
   return (
     <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 sm:pr-4 sm:pl-5 last:border-r-0 [container-type:inline-size]">

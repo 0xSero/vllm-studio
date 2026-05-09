@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import {
-  ChatIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -102,7 +101,10 @@ function loadActiveAgentSessions(): ActiveAgentSession[] {
 
 function saveActiveAgentSessions(sessions: ActiveAgentSession[]) {
   if (typeof window === "undefined") return;
-  const recoverable = sessions.filter((session) => Boolean(session.piSessionId));
+  const prefs = loadSessionPrefs();
+  const recoverable = sessions.filter(
+    (session) => Boolean(session.piSessionId) && !prefs[session.piSessionId ?? ""]?.hidden,
+  );
   if (recoverable.length === 0) {
     window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_KEY);
     return;
@@ -400,7 +402,12 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>([]);
   const prefs = useSessionPrefs();
   const pinnedActiveSessions = activeSessions
-    .filter((session) => session.piSessionId && prefs[session.piSessionId]?.pinned)
+    .filter(
+      (session) =>
+        session.piSessionId &&
+        prefs[session.piSessionId]?.pinned &&
+        !prefs[session.piSessionId]?.hidden,
+    )
     .map((session) => ({
       session,
       project: projects.find((project) => project.id === session.projectId),
@@ -591,19 +598,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               project={project}
               session={session}
               pref={session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {}}
-              onDelete={async (sessionId) => {
-                const response = await fetch(
-                  `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&id=${encodeURIComponent(sessionId)}`,
-                  { method: "DELETE" },
-                );
-                if (!response.ok) {
-                  const payload = (await safeJson<{ error?: string }>(response).catch(
-                    () => ({}),
-                  )) as { error?: string };
-                  throw new Error(payload.error || "Failed to delete session");
-                }
-                removeSessionPref(sessionId);
-              }}
             />
           ))}
           {pinnedSessions.map((session) => (
@@ -612,20 +606,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               project={session.project}
               session={session}
               pref={prefs[session.id] ?? {}}
-              onDelete={async (sessionId) => {
-                const response = await fetch(
-                  `/api/agent/sessions?cwd=${encodeURIComponent(session.project.path)}&id=${encodeURIComponent(sessionId)}`,
-                  { method: "DELETE" },
-                );
-                if (!response.ok) {
-                  const payload = (await safeJson<{ error?: string }>(response).catch(
-                    () => ({}),
-                  )) as { error?: string };
-                  throw new Error(payload.error || "Failed to delete session");
-                }
-                removeSessionPref(sessionId);
-                setPinnedSessions((current) => current.filter((row) => row.id !== sessionId));
-              }}
             />
           ))}
         </div>
@@ -785,24 +765,6 @@ function ProjectSessions({
     }
   }, [project.path]);
 
-  const deleteSessionById = useCallback(
-    async (sessionId: string) => {
-      const response = await fetch(
-        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&id=${encodeURIComponent(sessionId)}`,
-        { method: "DELETE" },
-      );
-      if (!response.ok) {
-        const payload = (await safeJson<{ error?: string }>(response).catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(payload.error || "Failed to delete session");
-      }
-      removeSessionPref(sessionId);
-      setSessions((current) => current?.filter((session) => session.id !== sessionId) ?? current);
-    },
-    [project.path],
-  );
-
   useEffect(() => {
     void reload();
     window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
@@ -865,7 +827,6 @@ function ProjectSessions({
           project={project}
           session={session}
           pref={session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {}}
-          onDelete={deleteSessionById}
         />
       ))}
 
@@ -881,7 +842,6 @@ function ProjectSessions({
               project={project}
               session={session}
               pref={prefs[session.id] ?? {}}
-              onDelete={deleteSessionById}
             />
           ))}
           {hidden.length > 0 ? (
@@ -902,7 +862,6 @@ function ProjectSessions({
                   project={project}
                   session={session}
                   pref={prefs[session.id] ?? {}}
-                  onDelete={deleteSessionById}
                 />
               ))
             : null}
@@ -916,12 +875,10 @@ function ActiveSessionRow({
   project,
   session,
   pref,
-  onDelete,
 }: {
   project: ProjectEntry;
   session: ActiveAgentSession;
   pref: SessionPref;
-  onDelete: (sessionId: string) => Promise<void>;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(pref.title ?? session.title ?? "");
@@ -961,7 +918,7 @@ function ActiveSessionRow({
   if (renaming) {
     return (
       <div className={rowClass}>
-        <ChatIcon className="w-3 h-3 shrink-0 text-(--accent)" />
+        <PinIcon className="w-3 h-3 shrink-0 text-(--accent)" />
         <input
           autoFocus
           value={draft}
@@ -982,21 +939,12 @@ function ActiveSessionRow({
 
   const content = (
     <>
-      <span
-        className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-          isRunning ? "bg-(--hl2) animate-pulse" : "bg-(--dim)"
-        }`}
-        aria-hidden
-        title={isRunning ? `Running: ${session.status}` : "Idle"}
-      />
-      {pref.pinned ? (
-        <PinIcon className="w-3 h-3 shrink-0 text-(--dim)" />
-      ) : (
-        <ChatIcon className="w-3 h-3 shrink-0 text-(--dim)" />
-      )}
       <span className="min-w-0 flex-1 truncate text-[12px]">{label}</span>
       {isRunning ? (
-        <span className="shrink-0 truncate text-[10px] text-(--dim)" title={session.status}>
+        <span
+          className="shrink-0 truncate text-[10px] text-(--dim) animate-pulse"
+          title={session.status}
+        >
           {session.status}
         </span>
       ) : null}
@@ -1005,6 +953,13 @@ function ActiveSessionRow({
 
   return (
     <div className={rowClass}>
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        disabled={!session.piSessionId}
+        onToggle={() => {
+          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
+        }}
+      />
       {session.piSessionId ? (
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
@@ -1108,16 +1063,6 @@ function ActiveSessionRow({
             >
               {pref.hidden ? "Unarchive" : "Archive"}
             </SessionMenuItem>
-            <SessionMenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                if (session.piSessionId && window.confirm("Delete this session from disk?")) {
-                  void onDelete(session.piSessionId);
-                }
-              }}
-            >
-              <span className="text-(--err)">Delete</span>
-            </SessionMenuItem>
           </div>
         ) : null}
       </div>
@@ -1129,12 +1074,10 @@ function SessionRow({
   project,
   session,
   pref,
-  onDelete,
 }: {
   project: ProjectEntry;
   session: SessionSummary;
   pref: SessionPref;
-  onDelete: (sessionId: string) => Promise<void>;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(pref.title ?? session.firstUserMessage ?? "");
@@ -1162,7 +1105,7 @@ function SessionRow({
   if (renaming) {
     return (
       <div className="h-8 flex items-center gap-2 pl-9 pr-3 bg-(--surface)/60">
-        <ChatIcon className="w-3 h-3 shrink-0 text-(--dim)" />
+        <PinIcon className="w-3 h-3 shrink-0 text-(--dim)" />
         <input
           autoFocus
           value={draft}
@@ -1189,6 +1132,10 @@ function SessionRow({
         setMenuOpen(true);
       }}
     >
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
+      />
       <Link
         href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
         title={label}
@@ -1203,11 +1150,6 @@ function SessionRow({
         }}
         className="flex min-w-0 flex-1 items-center gap-2"
       >
-        {pref.pinned ? (
-          <PinIcon className="w-3 h-3 shrink-0 text-(--accent)" />
-        ) : (
-          <ChatIcon className="w-3 h-3 shrink-0" />
-        )}
         <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
         <span className="shrink-0 text-[10px] text-(--dim)">
           {formatRelative(session.updatedAt)}
@@ -1271,18 +1213,6 @@ function SessionRow({
                 <EyeOffIcon className="h-3 w-3" /> {pref.hidden ? "Unarchive" : "Archive"}
               </span>
             </SessionMenuItem>
-            <SessionMenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                if (window.confirm("Delete this session from disk?")) {
-                  void onDelete(session.id);
-                }
-              }}
-            >
-              <span className="inline-flex items-center gap-2 text-(--err)">
-                <TrashIcon className="h-3 w-3" /> Delete
-              </span>
-            </SessionMenuItem>
             {pref.title || pref.pinned || pref.hidden ? (
               <SessionMenuItem
                 onClick={() => {
@@ -1303,6 +1233,36 @@ function SessionRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function SessionPinButton({
+  pinned,
+  onToggle,
+  disabled = false,
+}: {
+  pinned: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!disabled) onToggle();
+      }}
+      disabled={disabled}
+      className={`shrink-0 rounded p-0.5 transition-opacity hover:bg-(--bg) hover:text-(--fg) disabled:opacity-20 ${
+        pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-0 group-hover:opacity-100"
+      }`}
+      aria-pressed={pinned}
+      aria-label={pinned ? "Unpin session" : "Pin session"}
+      title={pinned ? "Unpin session" : "Pin session"}
+    >
+      {pinned ? <PinIcon className="h-3 w-3" /> : <PinSlashIcon className="h-3 w-3" />}
+    </button>
   );
 }
 

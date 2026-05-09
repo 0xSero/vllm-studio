@@ -3,14 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Blocks,
-  Bot,
+  Archive,
   Cable,
   Cpu,
-  Database,
-  FolderOpen,
+  GraduationCap,
+  Plug,
   type LucideIcon,
-  Network,
   Paintbrush,
   ServerCog,
 } from "lucide-react";
@@ -19,7 +17,7 @@ import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-confi
 import { ApiConnectionSection } from "./api-connection-section";
 import { AppearanceSettings } from "./appearance-settings";
 import { EnginesSection } from "./engines-section";
-import { ProvidersSection } from "./providers-section";
+import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import {
   SettingsButton,
   SettingsGroup,
@@ -57,12 +55,17 @@ const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
 const SECTIONS: SettingsSectionDef[] = [
   ["connection", "Connection", "Controller URL, API key, voice defaults.", Cable],
-  ["providers", "Providers", "External model providers and keys.", Blocks],
-  ["engines", "Engines", "Runtime targets, installers, GPU lease.", Cpu],
-  ["services", "Services", "Controller, inference, frontend topology.", Network],
-  ["system", "System", "Storage, hardware, compatibility checks.", ServerCog],
+  ["engines", "Engines / Services / System", "Runtime targets, services, storage, hardware.", Cpu],
   ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
-  ["agent", "Agent tools", "Files, git, browser, computer, and design defaults.", Bot],
+  ["archive", "Archived chats", "Hidden Pi sessions tracked by stable ID.", Archive],
+  ["plugins", "Plugins", "Codex plugin discovery and composer availability.", Plug],
+  [
+    "skills",
+    "Skills",
+    "Normalized local skills from Codex, Pi, Claude, Factory, OpenCode.",
+    GraduationCap,
+  ],
+  ["setup", "Setup", "First-run checks for Pi, controller, and local directories.", ServerCog],
 ].map(([id, label, description, Icon]) => ({
   id: id as SettingsSectionId,
   label: label as string,
@@ -150,21 +153,23 @@ export function ConfigsView({
         />
       ) : null}
 
-      {activeSection === "providers" ? <ProvidersSection /> : null}
-      {activeSection === "engines" ? <EnginesSection runtime={data?.runtime ?? null} /> : null}
-      {activeSection === "services" ? (
-        <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
-      ) : null}
-      {activeSection === "system" ? (
-        <SystemSettings
-          data={data}
-          compatibilityReport={compatibilityReport}
-          loading={loading}
-          error={error}
-        />
+      {activeSection === "engines" ? (
+        <div className="space-y-5">
+          <EnginesSection runtime={data?.runtime ?? null} />
+          <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
+          <SystemSettings
+            data={data}
+            compatibilityReport={compatibilityReport}
+            loading={loading}
+            error={error}
+          />
+        </div>
       ) : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
-      {activeSection === "agent" ? <AgentToolsSettings /> : null}
+      {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
+      {activeSection === "plugins" ? <PluginsSettings /> : null}
+      {activeSection === "skills" ? <SkillsSettings /> : null}
+      {activeSection === "setup" ? <SetupChecksSettings /> : null}
     </SettingsLayout>
   );
 }
@@ -441,116 +446,265 @@ function CompatibilitySettings({
   );
 }
 
-function AgentToolsSettings() {
-  const openAgent = () => {
-    if (typeof window !== "undefined") window.location.href = "/agent";
+function ArchivedChatsSettings() {
+  type Pref = { title?: string; pinned?: boolean; hidden?: boolean };
+  type Session = {
+    id: string;
+    projectName?: string;
+    projectPath?: string;
+    firstUserMessage?: string | null;
+    updatedAt?: string;
   };
-  const groups: Array<{
-    title: string;
-    description: string;
-    rows: Array<{
-      label: string;
-      description: string;
-      value: string;
-      tone?: StatusTone;
-      status: string;
-      mono?: boolean;
-      action?: boolean;
-    }>;
-  }> = [
-    {
-      title: "Agent workspace",
-      description: "Files/git/browser/computer defaults as stable Codex-like rows.",
-      rows: [
-        {
-          label: "Files",
-          description: "Chat file operations are local-only and scoped under app data.",
-          value: "data/agentfs",
-          tone: "good",
-          status: "local",
-          mono: true,
-          action: true,
-        },
-        {
-          label: "Git",
-          description: "Repository detection, status counts, diff, and init when needed.",
-          value: "Available from the computer panel and composer rail.",
-          tone: "info",
-          status: "scoped",
-        },
-        {
-          label: "Browser tool",
-          description: "Agent browser automation is opt-in and defaults off after migration.",
-          value: "Off by default; enable per focused session.",
-          status: "approval",
-        },
-        {
-          label: "Computer panel",
-          description: "The browser/files/diff panel starts collapsed on every load.",
-          value: "Collapsed by default; width is remembered only after opening.",
-          tone: "good",
-          status: "collapsed",
-        },
-      ],
-    },
-    {
-      title: "Design defaults",
-      description: "Approved desktop direction captured as stable interface rules.",
-      rows: [
-        {
-          label: "Density",
-          description: "One left rail, centered content, row groups, minimal chrome.",
-          value: "No horizontal tab strip or nested dashboard cards.",
-          tone: "good",
-          status: "Codex-like",
-        },
-        {
-          label: "Screenshots and actions",
-          description: "Transcript actions render inline with compact status.",
-          value: "Tool output, screenshots, and browser actions stay grouped by turn.",
-          tone: "info",
-          status: "planned",
-        },
-        {
-          label: "Theme variables",
-          description: "Rows use --bg, --fg, --surface, --border, --dim, and accents.",
-          value: "tokens.css",
-          tone: "good",
-          status: "shared",
-          mono: true,
-        },
-      ],
-    },
-  ];
+  const [prefs, setPrefs] = useState<Record<string, Pref>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("vllm-studio.agent.sessionPrefs");
+      return raw ? (JSON.parse(raw) as Record<string, Pref>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [sessions, setSessions] = useState<Session[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/agent/sessions/all?since=365d", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ sessions?: Session[] }>)
+      .then((payload) => setSessions(payload.sessions ?? []))
+      .catch(() => setSessions([]));
+  }, []);
+
+  const archivedIds = Object.entries(prefs)
+    .filter(([, pref]) => pref.hidden)
+    .map(([id]) => id);
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+
+  const unarchive = (id: string) => {
+    const next = { ...prefs, [id]: { ...prefs[id], hidden: undefined } };
+    if (!next[id].title && !next[id].pinned && !next[id].hidden) delete next[id];
+    localStorage.setItem("vllm-studio.agent.sessionPrefs", JSON.stringify(next));
+    window.dispatchEvent(new Event("vllm-studio.agent.sessionPrefs.changed"));
+    setPrefs(next);
+  };
+
+  return (
+    <SettingsGroup
+      title="Archived chats"
+      description="Archived sessions are hidden from normal session lists and restart hydration by stable Pi session ID."
+      actions={<StatusPill>{archivedIds.length} archived</StatusPill>}
+    >
+      {archivedIds.length === 0 ? (
+        <SettingsRow
+          label="Archive"
+          description="Use a session row menu to archive instead of deleting from disk."
+          value={<SettingsValue dim>No archived chats.</SettingsValue>}
+          status={<StatusPill>empty</StatusPill>}
+        />
+      ) : (
+        archivedIds.map((id) => {
+          const session = byId.get(id);
+          const pref = prefs[id] ?? {};
+          return (
+            <SettingsRow
+              key={id}
+              label={pref.title || session?.firstUserMessage || id}
+              description={
+                session?.projectPath ||
+                "Session metadata will hydrate when its project is available."
+              }
+              value={<SettingsValue mono>{id}</SettingsValue>}
+              status={<StatusPill tone="info">archived</StatusPill>}
+              actions={<SettingsButton onClick={() => unarchive(id)}>Restore</SettingsButton>}
+            >
+              <div className="text-[11px] text-(--dim)">
+                {session?.projectName ? `${session.projectName} · ` : ""}
+                {session?.updatedAt ?? "no timestamp"}
+              </div>
+            </SettingsRow>
+          );
+        })
+      )}
+    </SettingsGroup>
+  );
+}
+
+function PluginsSettings() {
+  type Plugin = {
+    id: string;
+    name: string;
+    path: string;
+    installed: boolean;
+    enabled: boolean;
+    description?: string;
+  };
+  type PluginValidation = {
+    browserUseAvailable?: boolean;
+    computerUseAvailable?: boolean;
+  };
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [validation, setValidation] = useState<PluginValidation | null>(null);
+
+  useEffect(() => {
+    void fetch("/api/agent/plugins", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
+      .then((payload) => {
+        setPlugins(payload.plugins ?? []);
+        setValidation(payload.validation ?? null);
+      })
+      .catch(() => {
+        setPlugins([]);
+        setValidation({ browserUseAvailable: false, computerUseAvailable: false });
+      });
+  }, []);
 
   return (
     <div className="space-y-5">
-      {groups.map((group) => (
-        <SettingsGroup
-          key={group.title}
-          title={group.title}
-          description={group.description}
-          actions={
-            group.title === "Agent workspace" ? (
-              <StatusPill tone="good">populated</StatusPill>
-            ) : null
+      <SettingsGroup
+        title="Plugin registry"
+        description="Discovers Codex plugin bundles from the local Codex plugin cache. Composer/runtime wiring stays modular."
+        actions={
+          <StatusPill tone={plugins.length ? "good" : "warning"}>{plugins.length} found</StatusPill>
+        }
+      >
+        <SettingsRow
+          label="Browser-use"
+          description="Required composer plugin for browser control via @browser-use."
+          value={
+            <SettingsValue>
+              {validation?.browserUseAvailable
+                ? "Available and selectable in the composer"
+                : "Not discovered"}
+            </SettingsValue>
           }
-        >
-          {group.rows.map((row) => (
-            <SettingsRow
-              key={row.label}
-              label={row.label}
-              description={row.description}
-              value={<SettingsValue mono={row.mono}>{row.value}</SettingsValue>}
-              status={<StatusPill tone={row.tone}>{row.status}</StatusPill>}
-              actions={
-                row.action ? <SettingsButton onClick={openAgent}>Open</SettingsButton> : null
-              }
-            />
-          ))}
-        </SettingsGroup>
-      ))}
+          status={
+            <StatusPill tone={validation?.browserUseAvailable ? "good" : "warning"}>
+              {validation?.browserUseAvailable ? "loaded" : "missing"}
+            </StatusPill>
+          }
+        />
+        <SettingsRow
+          label="Computer-use"
+          description="Specific parity check requested for the Codex computer-use helper."
+          value={
+            <SettingsValue>
+              {validation?.computerUseAvailable
+                ? "Available and selectable in the composer"
+                : "Not discovered"}
+            </SettingsValue>
+          }
+          status={
+            <StatusPill tone={validation?.computerUseAvailable ? "good" : "warning"}>
+              {validation?.computerUseAvailable ? "loaded" : "missing"}
+            </StatusPill>
+          }
+        />
+        {plugins.slice(0, 40).map((plugin) => (
+          <SettingsRow
+            key={plugin.path}
+            label={plugin.name}
+            description={
+              plugin.description ? `${plugin.description} · ${plugin.path}` : plugin.path
+            }
+            value={<SettingsValue>{plugin.enabled ? "Enabled" : "Disabled"}</SettingsValue>}
+            status={
+              <StatusPill tone={plugin.enabled ? "good" : "default"}>
+                {plugin.installed ? "installed" : "available"}
+              </StatusPill>
+            }
+          />
+        ))}
+      </SettingsGroup>
     </div>
+  );
+}
+
+function SkillsSettings() {
+  type Skill = { id: string; name: string; source: string; path: string };
+  const [skills, setSkills] = useState<Skill[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/agent/skills", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ skills?: Skill[] }>)
+      .then((payload) => setSkills(payload.skills ?? []))
+      .catch(() => setSkills([]));
+  }, []);
+
+  return (
+    <SettingsGroup
+      title="Skills"
+      description="Normalized, deduplicated skills discovered from ~/.claude, ~/.pi, ~/.codex, ~/.factory, and ~/.opencode."
+      actions={
+        <StatusPill tone={skills.length ? "good" : "warning"}>{skills.length} skills</StatusPill>
+      }
+    >
+      {skills.length === 0 ? (
+        <SettingsRow
+          label="Skill discovery"
+          description="No SKILL.md entries were found in the configured roots."
+          value={<SettingsValue dim>Empty discovery result</SettingsValue>}
+          status={<StatusPill tone="warning">empty</StatusPill>}
+        />
+      ) : (
+        skills
+          .slice(0, 80)
+          .map((skill) => (
+            <SettingsRow
+              key={skill.id}
+              label={skill.name}
+              description={skill.path}
+              value={<SettingsValue mono>{skill.source}</SettingsValue>}
+              status={<StatusPill tone="info">discovered</StatusPill>}
+            />
+          ))
+      )}
+    </SettingsGroup>
+  );
+}
+
+function SetupChecksSettings() {
+  type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
+  const [checks, setChecks] = useState<Check[]>([]);
+  const controllerStatus = useSidebarStatus();
+
+  useEffect(() => {
+    void fetch("/api/agent/setup-checks", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ checks?: Check[] }>)
+      .then((payload) => setChecks(payload.checks ?? []))
+      .catch(() => setChecks([]));
+  }, []);
+
+  const controllerCheck: Check = {
+    id: "controller",
+    label: "Controller connection",
+    ok: controllerStatus.online,
+    value: controllerStatus.online ? controllerStatus.activityLine : "offline",
+    guidance: "Set a reachable controller URL in Settings → Connection before using Agents.",
+  };
+  const rows = [...checks, controllerCheck];
+  const blockers = rows.filter((check) => !check.ok);
+  return (
+    <SettingsGroup
+      title="First-time setup"
+      description="Preflight checks prevent new users from landing in an empty Agent tab without explanation."
+      actions={
+        <StatusPill tone={blockers.length ? "warning" : "good"}>
+          {blockers.length ? `${blockers.length} blockers` : "ready"}
+        </StatusPill>
+      }
+    >
+      {rows.map((check) => (
+        <SettingsRow
+          key={check.id}
+          label={check.label}
+          description={check.guidance}
+          value={<SettingsValue mono>{check.value}</SettingsValue>}
+          status={
+            <StatusPill tone={check.ok ? "good" : "warning"}>
+              {check.ok ? "ok" : "missing"}
+            </StatusPill>
+          }
+        />
+      ))}
+    </SettingsGroup>
   );
 }
 

@@ -194,15 +194,13 @@ function normalizePersistedTab(value: unknown): SessionTab | null {
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: typeof tab.title === "string" && tab.title.trim() ? tab.title : fallback.title,
     messages: Array.isArray(tab.messages) ? tab.messages.slice(-80) : [],
-    status:
-      tab.status === "running" || tab.status === "starting" || tab.status === "loading"
-        ? "idle"
-        : typeof tab.status === "string"
-          ? tab.status
-          : "idle",
+    status: typeof tab.status === "string" ? tab.status : "idle",
     error: "",
     input: typeof tab.input === "string" ? tab.input : "",
     queue: Array.isArray(tab.queue) ? tab.queue : undefined,
+    activeAssistantId:
+      typeof tab.activeAssistantId === "string" ? tab.activeAssistantId : undefined,
+    lastEventSeq: typeof tab.lastEventSeq === "number" ? tab.lastEventSeq : undefined,
   };
 }
 
@@ -247,10 +245,7 @@ function tabForPersistence(tab: SessionTab): SessionTab {
   return {
     ...tab,
     messages: tab.messages.slice(-80),
-    status:
-      tab.status === "running" || tab.status === "starting" || tab.status === "loading"
-        ? "idle"
-        : tab.status,
+    status: tab.status,
     error: "",
   };
 }
@@ -277,6 +272,8 @@ function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
   try {
     const raw = window.localStorage.getItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY);
     if (!raw) return [];
+    const prefsRaw = window.localStorage.getItem("vllm-studio.agent.sessionPrefs");
+    const prefs = prefsRaw ? (JSON.parse(prefsRaw) as Record<string, { hidden?: boolean }>) : {};
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
@@ -299,6 +296,7 @@ function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
       .filter(
         (entry) =>
           Boolean(entry.piSessionId) &&
+          !prefs[entry.piSessionId ?? ""]?.hidden &&
           Boolean(entry.projectId) &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId),
@@ -310,7 +308,16 @@ function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
 
 function persistActiveAgentSessions(sessions: ActiveAgentSessionSnapshot[]) {
   if (typeof window === "undefined") return;
-  const recoverable = sessions.filter((session) => Boolean(session.piSessionId));
+  let prefs: Record<string, { hidden?: boolean }> = {};
+  try {
+    const raw = window.localStorage.getItem("vllm-studio.agent.sessionPrefs");
+    prefs = raw ? (JSON.parse(raw) as Record<string, { hidden?: boolean }>) : {};
+  } catch {
+    prefs = {};
+  }
+  const recoverable = sessions.filter(
+    (session) => Boolean(session.piSessionId) && !prefs[session.piSessionId ?? ""]?.hidden,
+  );
   if (recoverable.length === 0) {
     window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY);
     return;
@@ -364,6 +371,7 @@ export function AgentWorkspace() {
   const [computerWidth, setComputerWidth] = useState(DEFAULT_COMPUTER_WIDTH);
   const [gitSummaries, setGitSummaries] = useState<Map<string, GitSummary>>(new Map());
   const [panePersistenceReady, setPanePersistenceReady] = useState(false);
+  const [setupWarning, setSetupWarning] = useState<string>("");
 
   // Pane state: a tree-shaped Layout where each leaf is identified by a
   // PaneId and points into panesById, which holds tabs + the per-pane
@@ -421,6 +429,16 @@ export function AgentWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
+    void fetch("/api/agent/setup-checks", { cache: "no-store" })
+      .then((res) =>
+        safeJson<{ checks?: Array<{ id: string; ok: boolean; guidance?: string }> }>(res),
+      )
+      .then((payload) => {
+        if (cancelled) return;
+        const pi = payload.checks?.find((check) => check.id === "pi");
+        if (pi && !pi.ok) setSetupWarning(pi.guidance ?? "Pi is not installed.");
+      })
+      .catch(() => undefined);
     async function loadModels() {
       setLoadingModels(true);
       setError("");
@@ -831,10 +849,12 @@ export function AgentWorkspace() {
     if (paneStateAlreadyRestored) {
       for (const [paneId, pane] of panesById.entries()) {
         const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId) ?? pane.tabs[0];
-        // If paneState already has local messages, keep that transcript as the
-        // newest source of truth. A replay can lag an interrupted in-flight
-        // turn and would otherwise erase the visible prompt the user just sent.
-        if (activeTab?.piSessionId && activeTab.messages.length === 0) {
+        if (
+          activeTab?.piSessionId &&
+          (activeTab.messages.length === 0 ||
+            activeTab.status === "running" ||
+            activeTab.status === "starting")
+        ) {
           queueSessionReplay(paneId, activeTab.piSessionId);
         }
       }
@@ -1355,6 +1375,11 @@ export function AgentWorkspace() {
       {error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {error}
+        </div>
+      ) : null}
+      {setupWarning ? (
+        <div className="border-b border-(--border) bg-(--hl3)/10 px-4 py-2 text-xs text-(--hl3)">
+          Agent setup: {setupWarning} Open Settings → Setup for details.
         </div>
       ) : null}
 

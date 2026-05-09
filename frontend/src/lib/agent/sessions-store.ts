@@ -1,5 +1,4 @@
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
-import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -184,11 +183,4 @@ export async function loadSession(cwd: string, sessionId: string): Promise<Sessi
     }
   }
   return events;
-}
-
-export async function deleteSession(cwd: string, sessionId: string): Promise<boolean> {
-  const filepath = findSessionFile(cwd, sessionId);
-  if (!filepath) return false;
-  await unlink(filepath);
-  return true;
 }

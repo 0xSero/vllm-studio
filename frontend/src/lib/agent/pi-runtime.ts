@@ -23,6 +23,12 @@ type PiResponse = {
 
 type PiEvent = Record<string, unknown> & { type?: string };
 
+export type LoggedPiEvent = {
+  seq: number;
+  event: PiEvent;
+  timestamp: string;
+};
+
 type PendingCommand = {
   resolve: (response: PiResponse) => void;
   reject: (error: Error) => void;
@@ -181,6 +187,10 @@ class PiRpcSession extends EventEmitter {
   private currentCwd = "";
   private currentPiSessionId: string | null = null;
   private agentDir = "";
+  private eventSeq = 0;
+  private eventLog: LoggedPiEvent[] = [];
+  private activePromptCount = 0;
+  private lastError: string | null = null;
 
   private currentBrowserToolEnabled = false;
 
@@ -226,6 +236,10 @@ class PiRpcSession extends EventEmitter {
     browserToolEnabled: boolean,
   ): Promise<void> {
     await this.stop();
+    this.eventSeq = 0;
+    this.eventLog = [];
+    this.activePromptCount = 0;
+    this.lastError = null;
     const { models, agentDir } = await refreshPiModels();
     const selectedModel = models.find((model) => model.id === modelId);
     if (!selectedModel) {
@@ -277,10 +291,10 @@ class PiRpcSession extends EventEmitter {
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.handleStdout(chunk));
     child.stderr.on("data", (chunk: string) => {
-      this.emit("event", { type: "stderr", text: chunk });
+      this.recordEvent({ type: "stderr", text: chunk });
     });
     child.on("exit", (code, signal) => {
-      this.emit("event", { type: "process_exit", code, signal });
+      this.recordEvent({ type: "process_exit", code, signal });
       for (const pending of this.pending.values()) {
         pending.reject(new Error(`pi rpc exited before response (code=${code}, signal=${signal})`));
       }
@@ -314,7 +328,7 @@ class PiRpcSession extends EventEmitter {
     try {
       parsed = JSON.parse(raw) as PiResponse | PiEvent;
     } catch {
-      this.emit("event", { type: "stdout", text: raw });
+      this.recordEvent({ type: "stdout", text: raw });
       return;
     }
 
@@ -347,7 +361,19 @@ class PiRpcSession extends EventEmitter {
       }
     }
 
-    this.emit("event", parsed);
+    this.recordEvent(parsed);
+  }
+
+  private recordEvent(event: PiEvent) {
+    const logged: LoggedPiEvent = {
+      seq: ++this.eventSeq,
+      event,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventLog.push(logged);
+    if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
+    this.emit("loggedEvent", logged);
+    this.emit("event", event);
   }
 
   private sendCommand(command: Record<string, unknown>): Promise<PiResponse> {
@@ -375,11 +401,13 @@ class PiRpcSession extends EventEmitter {
    */
   async prompt(
     message: string,
-    onEvent: (event: PiEvent) => void,
+    onEvent: (event: PiEvent, seq: number) => void,
     options: { streamingBehavior?: "steer" | "followUp" } = {},
   ): Promise<void> {
-    const listener = (event: PiEvent) => onEvent(event);
-    this.on("event", listener);
+    const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
+    this.on("loggedEvent", listener);
+    this.activePromptCount += 1;
+    this.lastError = null;
     let settleDone: (() => void) | null = null;
     let settleError: ((error: Error) => void) | null = null;
     const donePromise = new Promise<void>((resolve, reject) => {
@@ -414,10 +442,14 @@ class PiRpcSession extends EventEmitter {
       }
       await this.sendCommand(command);
       await donePromise;
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
     } finally {
+      this.activePromptCount = Math.max(0, this.activePromptCount - 1);
       clearTimeout(timeout);
       this.off("event", done);
-      this.off("event", listener);
+      this.off("loggedEvent", listener);
     }
   }
 
@@ -458,11 +490,24 @@ class PiRpcSession extends EventEmitter {
   get status() {
     return {
       running: Boolean(this.process && !this.process.killed),
+      active: this.activePromptCount > 0,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,
       agentDir: this.agentDir,
+      eventSeq: this.eventSeq,
+      lastError: this.lastError,
     };
+  }
+
+  getEventsAfter(seq: number): LoggedPiEvent[] {
+    const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
+    return this.eventLog.filter((entry) => entry.seq > floor);
+  }
+
+  onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
+    this.on("loggedEvent", listener);
+    return () => this.off("loggedEvent", listener);
   }
 }
 

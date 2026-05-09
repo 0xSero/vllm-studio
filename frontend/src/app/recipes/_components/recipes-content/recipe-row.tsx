@@ -65,11 +65,14 @@ export const RecipeRow = memo(function RecipeRow({
   const status = recipe.status || "stopped";
   const modelName =
     recipe.served_model_name || recipe.model_path.split("/").pop() || recipe.model_path;
+  const context = recipe.max_model_len
+    ? `${recipe.max_model_len.toLocaleString()} ctx`
+    : "ctx auto";
 
   return (
     <ModelRow
       label={recipe.name}
-      description={`${modelName} · ${formatBackendLabel(recipe.backend)} · tp/pp ${tp}/${pp}`}
+      description={`${modelName} · engine ${formatBackendLabel(recipe.backend)} · ${context} · tp/pp ${tp}/${pp}`}
       value={<ModelValue mono>{recipe.model_path}</ModelValue>}
       status={<ModelStatus tone={statusTone(status)}>{status}</ModelStatus>}
       actions={

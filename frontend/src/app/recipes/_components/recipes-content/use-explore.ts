@@ -37,6 +37,19 @@ function groupPassesExploreFilters(group: ModelGroup, search: string): boolean {
   return isRecentlyCreatedOnHf(group.lead);
 }
 
+export function derivativeScore(model: HuggingFaceModel, search: string): number {
+  const id = model.modelId.toLowerCase();
+  const tags = model.tags.join(" ").toLowerCase();
+  const query = search.trim().toLowerCase();
+  let score = 0;
+  if (query && (id === query || id.endsWith(`/${query}`))) score -= 50;
+  if (/(gguf|awq|gptq|exl2|exl3|mlx|onnx|quant|int4|int8|fp8)/.test(`${id} ${tags}`)) {
+    score += 20;
+  }
+  if (/instruct|chat|base/.test(id)) score -= 2;
+  return score;
+}
+
 export function useExplore() {
   const [models, setModels] = useState<HuggingFaceModel[]>([]);
   const [gpus, setGpus] = useState<GPU[]>([]);
@@ -183,6 +196,8 @@ export function useExplore() {
 
     return Array.from(groups.entries()).map(([key, variants]) => {
       const sorted = [...variants].sort((a, b) => {
+        const derivativeDelta = derivativeScore(a, search) - derivativeScore(b, search);
+        if (derivativeDelta !== 0) return derivativeDelta;
         const tm = modelRecencyMs(b) - modelRecencyMs(a);
         if (tm !== 0) return tm;
         if (b.downloads !== a.downloads) return b.downloads - a.downloads;
@@ -195,7 +210,7 @@ export function useExplore() {
       const needGb = resolveGroupNeedGb(key, recByKey, lead);
       return { key, lead, variants: sorted, maxDownloads, maxLikes, lastModifiedMs, needGb };
     });
-  }, [models, recByKey]);
+  }, [models, recByKey, search]);
 
   const sortedGroups = useMemo(() => {
     return [...groupedModels].sort((a, b) => {

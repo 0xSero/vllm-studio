@@ -22,6 +22,15 @@ import {
   StopIcon,
 } from "@/components/icons";
 import { safeJson } from "@/lib/agent/safe-json";
+import {
+  byQuery,
+  detectComposerMention,
+  replaceComposerMention,
+  selectedContextPrompt,
+  type ComposerMention,
+  type ComposerPluginRef,
+  type ComposerSkillRef,
+} from "@/lib/agent/composer-context";
 import { AssistantMarkdown } from "./assistant-markdown";
 import {
   attachmentDedupKey,
@@ -113,6 +122,10 @@ export type SessionTab = {
   error: string;
   input: string;
   tokenStats?: TokenStats;
+  activeAssistantId?: string;
+  lastEventSeq?: number;
+  plugins?: ComposerPluginRef[];
+  skills?: ComposerSkillRef[];
   // Outgoing pending messages (steer + follow_up). Drawn as chips above the
   // input. Steers fire immediately; follow-ups wait for `agent_end`.
   queue?: QueuedMessage[];
@@ -671,7 +684,11 @@ export function ChatPane({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
+  const [pluginRows, setPluginRows] = useState<ComposerPluginRef[]>([]);
+  const [skillRows, setSkillRows] = useState<ComposerSkillRef[]>([]);
+  const [mention, setMention] = useState<ComposerMention | null>(null);
   const tabsRef = useRef(tabs);
+  const localStreamTabsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -683,6 +700,33 @@ export function ChatPane({
   );
   const running = activeTab?.status === "running" || activeTab?.status === "starting";
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
+  const mentionRows = useMemo(() => {
+    if (!mention) return [];
+    return mention.kind === "plugin"
+      ? byQuery(pluginRows, mention.query, 8)
+      : byQuery(skillRows, mention.query, 8);
+  }, [mention, pluginRows, skillRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      fetch("/api/agent/plugins", { cache: "no-store" })
+        .then((res) => res.json() as Promise<{ plugins?: ComposerPluginRef[] }>)
+        .then((payload) => payload.plugins ?? [])
+        .catch(() => [] as ComposerPluginRef[]),
+      fetch("/api/agent/skills", { cache: "no-store" })
+        .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
+        .then((payload) => payload.skills ?? [])
+        .catch(() => [] as ComposerSkillRef[]),
+    ]).then(([plugins, skills]) => {
+      if (cancelled) return;
+      setPluginRows(plugins);
+      setSkillRows(skills);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
@@ -691,6 +735,47 @@ export function ChatPane({
       );
     },
     [onTabsChange],
+  );
+
+  const selectMentionRow = useCallback(
+    (row: ComposerPluginRef | ComposerSkillRef) => {
+      if (!activeTab || !mention) return;
+      const input = replaceComposerMention(activeTab.input, mention, row.name);
+      updateTab(activeTab.id, (tab) => {
+        if (mention.kind === "plugin") {
+          const plugins = tab.plugins ?? [];
+          return plugins.some((plugin) => plugin.id === row.id)
+            ? { ...tab, input }
+            : { ...tab, input, plugins: [...plugins, row as ComposerPluginRef] };
+        }
+        const skills = tab.skills ?? [];
+        return skills.some((skill) => skill.id === row.id)
+          ? { ...tab, input }
+          : { ...tab, input, skills: [...skills, row as ComposerSkillRef] };
+      });
+      if (mention.kind === "plugin" && row.name.includes("browser-use") && !browserToolEnabled) {
+        onToggleBrowserTool();
+      }
+      setMention(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    [activeTab, browserToolEnabled, mention, onToggleBrowserTool, updateTab],
+  );
+
+  const removeLoadedContext = useCallback(
+    (kind: "plugin" | "skill", id: string) => {
+      if (!activeTab) return;
+      updateTab(activeTab.id, (tab) => ({
+        ...tab,
+        plugins:
+          kind === "plugin"
+            ? (tab.plugins ?? []).filter((plugin) => plugin.id !== id)
+            : tab.plugins,
+        skills:
+          kind === "skill" ? (tab.skills ?? []).filter((skill) => skill.id !== id) : tab.skills,
+      }));
+    },
+    [activeTab, updateTab],
   );
 
   useEffect(() => {
@@ -886,6 +971,27 @@ export function ChatPane({
     [patchAssistant],
   );
 
+  const loadRuntimeStatus = useCallback(
+    async (
+      sessionId: string,
+    ): Promise<{ active?: boolean; piSessionId?: string | null; eventSeq?: number } | null> => {
+      try {
+        const payload = await fetch(
+          `/api/agent/runtime/status?sessionId=${encodeURIComponent(sessionId)}`,
+          { cache: "no-store" },
+        ).then((res) =>
+          safeJson<{
+            status?: { active?: boolean; piSessionId?: string | null; eventSeq?: number };
+          }>(res),
+        );
+        return payload.status ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   // Send a control-mode message (steer / follow_up) without taking ownership of
   // the long-running prompt stream.
   const sendControlMessage = useCallback(
@@ -962,7 +1068,12 @@ export function ChatPane({
           : "";
       const userText = text || attachmentSummary;
       const displayText = [text, attachmentSummary].filter(Boolean).join("\n\n");
-      const promptText = [text, attachedText].filter(Boolean).join("\n\n");
+      const contextText = selectedContextPrompt(
+        text,
+        selectedTab.plugins ?? [],
+        selectedTab.skills ?? [],
+      );
+      const promptText = [contextText, attachedText].filter(Boolean).join("\n\n");
 
       // Optimistic update: show the user's turn + a blank assistant message.
       updateTab(tabId, (tab) => ({
@@ -972,6 +1083,7 @@ export function ChatPane({
         input: "",
         error: "",
         status: "starting",
+        activeAssistantId: assistantId,
         title:
           tab.messages.filter((m) => m.role === "user").length === 0
             ? sessionTitleFromPrompt(userText)
@@ -995,6 +1107,8 @@ export function ChatPane({
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       let agentEnded = false;
+      let streamError = "";
+      localStreamTabsRef.current.add(tabId);
       try {
         const response = await fetch("/api/agent/turn", {
           method: "POST",
@@ -1030,16 +1144,18 @@ export function ChatPane({
             const payload = JSON.parse(line.slice(6)) as
               | { type: "status"; phase: string; piSessionId?: string | null }
               | { type: "error"; error: string }
-              | { type: "pi"; event: Record<string, unknown> };
+              | { type: "pi"; seq?: number; event: Record<string, unknown> };
             if (payload.type === "status") {
               const phase = payload.phase;
               updateTab(tabId, (tab) => ({
                 ...tab,
                 piSessionId: payload.piSessionId || tab.piSessionId,
                 status: phase === "done" ? "idle" : phase,
+                activeAssistantId: phase === "done" ? undefined : tab.activeAssistantId,
               }));
               if (payload.piSessionId) onPiSessionIdChange?.(payload.piSessionId);
             } else if (payload.type === "error") {
+              streamError = payload.error;
               updateTab(tabId, (tab) => ({ ...tab, error: payload.error, status: "idle" }));
             } else if (payload.type === "pi") {
               const piEvent = payload.event;
@@ -1048,7 +1164,10 @@ export function ChatPane({
                 updateTab(tabId, (tab) => ({ ...tab, piSessionId: eventId }));
                 onPiSessionIdChange?.(eventId);
               }
-              if (piEvent.type === "agent_end") {
+              if (typeof payload.seq === "number") {
+                updateTab(tabId, (tab) => ({ ...tab, lastEventSeq: payload.seq }));
+              }
+              if (piEvent.type === "agent_end" || piEvent.type === "turn_end") {
                 agentEnded = true;
                 const latestPiSessionId =
                   eventId ??
@@ -1062,13 +1181,29 @@ export function ChatPane({
           }
         }
       } catch (err) {
+        streamError = err instanceof Error ? err.message : "Agent request failed";
+      } finally {
+        localStreamTabsRef.current.delete(tabId);
+        const runtimeStatus = agentEnded ? null : await loadRuntimeStatus(runtime);
+        const currentPiSessionId =
+          tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
+          selectedTab.piSessionId ??
+          null;
+        const runtimeStillActive =
+          runtimeStatus?.active === true &&
+          (!runtimeStatus.piSessionId ||
+            !currentPiSessionId ||
+            runtimeStatus.piSessionId === currentPiSessionId);
         updateTab(tabId, (tab) => ({
           ...tab,
-          error: err instanceof Error ? err.message : "Agent request failed",
-          status: "idle",
+          status: runtimeStillActive ? "running" : "idle",
+          activeAssistantId: runtimeStillActive ? assistantId : undefined,
+          error: streamError
+            ? runtimeStillActive
+              ? `${streamError}; reattaching to the running session.`
+              : streamError
+            : tab.error,
         }));
-      } finally {
-        updateTab(tabId, (tab) => ({ ...tab, status: "idle" }));
       }
 
       // Drain queued messages once the agent finished its run.
@@ -1095,6 +1230,7 @@ export function ChatPane({
       browserToolEnabled,
       onPiSessionIdChange,
       applyPiEvent,
+      loadRuntimeStatus,
       updateTab,
     ],
   );
@@ -1276,6 +1412,134 @@ export function ChatPane({
     updateTab(tabId, (tab) => ({ ...tab, status: "idle" }));
   }, [activeTab, runtimeSessionId, updateTab]);
 
+  const resumeRuntimeTabId =
+    activeTab && (activeTab.status === "running" || activeTab.status === "starting")
+      ? activeTab.id
+      : null;
+  const resumeRuntimeSessionId = resumeRuntimeTabId
+    ? activeTab?.runtimeSessionId || runtimeSessionId
+    : null;
+
+  useEffect(() => {
+    if (!resumeRuntimeTabId || !resumeRuntimeSessionId) return;
+    if (localStreamTabsRef.current.has(resumeRuntimeTabId)) return;
+    let closed = false;
+    const current = tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId);
+    const params = new URLSearchParams({
+      sessionId: resumeRuntimeSessionId,
+      after: String(current?.lastEventSeq ?? 0),
+    });
+    const source = new EventSource(`/api/agent/runtime/events?${params.toString()}`);
+
+    const ensureAssistantId = (): string => {
+      const current = tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId);
+      const existing =
+        (current?.activeAssistantId &&
+          current.messages.some((message) => message.id === current.activeAssistantId) &&
+          current.activeAssistantId) ||
+        [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")
+          ?.id;
+      if (existing) {
+        updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, activeAssistantId: existing }));
+        return existing;
+      }
+      const assistantId = newId("assistant");
+      updateTab(resumeRuntimeTabId, (tab) => ({
+        ...tab,
+        activeAssistantId: assistantId,
+        messages: [
+          ...tab.messages,
+          { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
+        ],
+      }));
+      return assistantId;
+    };
+
+    source.onmessage = (event) => {
+      if (closed) return;
+      let payload:
+        | { type: "status"; phase: string; session?: { piSessionId?: string | null } }
+        | { type: "pi"; seq?: number; event: Record<string, unknown> };
+      try {
+        payload = JSON.parse(event.data) as typeof payload;
+      } catch {
+        return;
+      }
+      if (payload.type === "status") {
+        updateTab(resumeRuntimeTabId, (tab) => ({
+          ...tab,
+          piSessionId: payload.session?.piSessionId || tab.piSessionId,
+          status: payload.phase === "done" || payload.phase === "idle" ? "idle" : "running",
+          activeAssistantId:
+            payload.phase === "done" || payload.phase === "idle"
+              ? undefined
+              : tab.activeAssistantId,
+        }));
+        return;
+      }
+      if (payload.type === "pi") {
+        const eventId = piSessionIdFromEvent(payload.event);
+        const assistantId = ensureAssistantId();
+        updateTab(resumeRuntimeTabId, (tab) => ({
+          ...tab,
+          piSessionId: eventId || tab.piSessionId,
+          lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
+          status:
+            payload.event.type === "agent_end" || payload.event.type === "turn_end"
+              ? "idle"
+              : "running",
+          activeAssistantId:
+            payload.event.type === "agent_end" || payload.event.type === "turn_end"
+              ? undefined
+              : assistantId,
+        }));
+        if (eventId) onPiSessionIdChange?.(eventId);
+        applyPiEvent(resumeRuntimeTabId, assistantId, payload.event);
+      }
+    };
+    source.onerror = () => {
+      if (closed) return;
+      void fetch(
+        `/api/agent/runtime/status?sessionId=${encodeURIComponent(resumeRuntimeSessionId)}`,
+        { cache: "no-store" },
+      )
+        .then((res) =>
+          safeJson<{ status?: { active?: boolean; piSessionId?: string | null } }>(res),
+        )
+        .then((payload) => {
+          if (closed) return;
+          if (payload.status?.active) {
+            updateTab(resumeRuntimeTabId, (tab) => ({
+              ...tab,
+              piSessionId: payload.status?.piSessionId || tab.piSessionId,
+              status: "running",
+            }));
+            return;
+          }
+          source.close();
+          updateTab(resumeRuntimeTabId, (tab) =>
+            tab.status === "running" || tab.status === "starting"
+              ? { ...tab, status: "idle", activeAssistantId: undefined }
+              : tab,
+          );
+        })
+        .catch(() => {
+          // Keep EventSource's built-in retry path alive for transient drops.
+        });
+    };
+    return () => {
+      closed = true;
+      source.close();
+    };
+  }, [
+    applyPiEvent,
+    onPiSessionIdChange,
+    resumeRuntimeSessionId,
+    resumeRuntimeTabId,
+    runtimeSessionId,
+    updateTab,
+  ]);
+
   // Replay a past pi session into the currently active tab. Looks up the
   // active tab by id at call time so concurrent updates don't race.
   const loadAndReplay = useCallback(
@@ -1300,6 +1564,19 @@ export function ChatPane({
           .reverse()
           .map(usageFromEvent)
           .find((stats): stats is TokenStats => Boolean(stats));
+        const runtimeId =
+          tabsRef.current.find((tab) => tab.id === tabId)?.runtimeSessionId || runtimeSessionId;
+        const previousTab = tabsRef.current.find((tab) => tab.id === tabId);
+        const runtimeStatus = await loadRuntimeStatus(runtimeId);
+        const runtimeActive =
+          runtimeStatus?.active === true &&
+          (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId);
+        const replaySeq =
+          runtimeActive && previousTab?.piSessionId === piSessionId
+            ? (previousTab.lastEventSeq ?? runtimeStatus?.eventSeq)
+            : runtimeActive
+              ? runtimeStatus?.eventSeq
+              : undefined;
 
         updateTab(tabId, (tab) => ({
           ...tab,
@@ -1309,7 +1586,9 @@ export function ChatPane({
           modelId: tab.modelId || modelId,
           title: title ?? tab.title,
           tokenStats: tokenStats ?? tab.tokenStats,
-          status: "idle",
+          status: runtimeActive ? "running" : "idle",
+          activeAssistantId: undefined,
+          lastEventSeq: replaySeq,
           error: "",
         }));
       } catch (err) {
@@ -1320,7 +1599,7 @@ export function ChatPane({
         }));
       }
     },
-    [cwd, modelId, activeTabId, updateTab],
+    [cwd, modelId, activeTabId, runtimeSessionId, loadRuntimeStatus, updateTab],
   );
 
   // Register a stable imperative handle so the workspace can call
@@ -1398,7 +1677,7 @@ export function ChatPane({
               {running ? (
                 <div className="flex items-center gap-2 py-4 text-xs text-(--dim)">
                   <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
-                  <span>Pi is {activeTab?.status}…</span>
+                  <span className="animate-pulse">Pi is {activeTab?.status}…</span>
                 </div>
               ) : null}
             </div>
@@ -1418,6 +1697,28 @@ export function ChatPane({
           {composerDragActive ? (
             <div className="border-b border-(--accent)/50 bg-(--accent)/10 px-2 py-1.5 text-[11px] text-(--accent)">
               Drop files to attach to the next message.
+            </div>
+          ) : null}
+          {(activeTab?.plugins?.length ?? 0) + (activeTab?.skills?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
+              {(activeTab?.plugins ?? []).map((plugin) => (
+                <LoadedContextTab
+                  key={`plugin-${plugin.id}`}
+                  prefix="@"
+                  label={plugin.name}
+                  title={plugin.path}
+                  onRemove={() => removeLoadedContext("plugin", plugin.id)}
+                />
+              ))}
+              {(activeTab?.skills ?? []).map((skill) => (
+                <LoadedContextTab
+                  key={`skill-${skill.id}`}
+                  prefix="$"
+                  label={skill.name}
+                  title={skill.path}
+                  onRemove={() => removeLoadedContext("skill", skill.id)}
+                />
+              ))}
             </div>
           ) : null}
           {(activeTab?.queue ?? []).length > 0 ? (
@@ -1443,6 +1744,39 @@ export function ChatPane({
                   </button>
                 </span>
               ))}
+            </div>
+          ) : null}
+          {mention ? (
+            <div className="border-b border-(--border)/60 bg-(--bg)/70 px-2 py-1.5">
+              <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
+                {mention.kind === "plugin" ? "Plugins" : "Skills"}
+              </div>
+              {mentionRows.length ? (
+                <div className="grid gap-1">
+                  {mentionRows.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectMentionRow(row)}
+                      className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1 text-left hover:bg-(--hover)"
+                    >
+                      <span className="min-w-0 truncate text-[12px] text-(--fg)">
+                        {mention.kind === "plugin" ? "@" : "$"}
+                        {row.name}
+                      </span>
+                      <span className="truncate font-mono text-[10px] text-(--dim)">
+                        {"path" in row ? row.path : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-2 py-1 text-[11px] text-(--dim)">
+                  No {mention.kind === "plugin" ? "plugins" : "skills"} match{" "}
+                  <span className="font-mono">{mention.query || "…"}</span>.
+                </div>
+              )}
             </div>
           ) : null}
           {attachments.length > 0 ? (
@@ -1489,10 +1823,12 @@ export function ChatPane({
               const value = event.target.value;
               if (!activeTab) return;
               updateTab(activeTab.id, (tab) => ({ ...tab, input: value }));
+              setMention(detectComposerMention(value, event.currentTarget.selectionStart));
               const element = event.currentTarget;
               if (!value) {
                 element.style.height = "";
                 setIsMultiline(false);
+                setMention(null);
                 return;
               }
               element.style.height = "auto";
@@ -1500,6 +1836,18 @@ export function ChatPane({
               setIsMultiline(element.scrollHeight > 38);
             }}
             onKeyDown={(event) => {
+              if (mention) {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setMention(null);
+                  return;
+                }
+                if ((event.key === "Enter" || event.key === "Tab") && mentionRows[0]) {
+                  event.preventDefault();
+                  selectMentionRow(mentionRows[0]);
+                  return;
+                }
+              }
               // Enter (no shift) → send. While running, this becomes a steer.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -1571,7 +1919,7 @@ export function ChatPane({
             >
               <GlobeIcon className="h-3.5 w-3.5" />
             </button>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-[7rem] max-w-[12rem] flex-[0_1_12rem]">
               {projectSelector ? (
                 projectSelector
               ) : cwd ? (
@@ -1606,6 +1954,12 @@ export function ChatPane({
               </span>
             ) : null}
             {modelSelector}
+            {running ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--accent)/30 px-1.5 py-0.5 text-[10px] text-(--accent)">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
+                session running
+              </span>
+            ) : null}
             <div className="flex shrink-0 items-center gap-1">
               {running ? (
                 <>
@@ -1665,6 +2019,37 @@ export function ChatPane({
         </div>
       </form>
     </section>
+  );
+}
+
+function LoadedContextTab({
+  prefix,
+  label,
+  title,
+  onRemove,
+}: {
+  prefix: "@" | "$";
+  label: string;
+  title?: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span
+      className="inline-flex max-w-[240px] items-center gap-1 rounded-t-md border border-b-0 border-(--border) bg-(--surface) px-2 py-1 text-[11px] text-(--fg)"
+      title={title ?? label}
+    >
+      <span className="font-mono text-(--accent)">{prefix}</span>
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded p-0.5 text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+        aria-label={`Unload ${prefix}${label}`}
+        title={`Unload ${prefix}${label}`}
+      >
+        <CloseIcon className="h-3 w-3" />
+      </button>
+    </span>
   );
 }
 
@@ -2129,7 +2514,7 @@ function ToolBlockView({ block }: { block: ToolBlock }) {
   if (isFileWrite && (fileContent !== null || patchContent !== null)) {
     const body = fileContent ?? patchContent ?? "";
     return (
-      <ToolSummary block={block} filePath={filePath} open>
+      <ToolSummary block={block} filePath={filePath} open={block.status === "running"}>
         <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
           <span>{lang || "source"}</span>
           {isHtml ? (
@@ -2167,10 +2552,7 @@ function ToolBlockView({ block }: { block: ToolBlock }) {
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (
-    <ToolSummary
-      block={block}
-      open={block.status === "running" || (Boolean(display) && display.length < 2400)}
-    >
+    <ToolSummary block={block} open={block.status === "running"}>
       {display ? <ToolOutput>{display}</ToolOutput> : null}
     </ToolSummary>
   );

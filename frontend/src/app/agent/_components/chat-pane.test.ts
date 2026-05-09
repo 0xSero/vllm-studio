@@ -159,4 +159,52 @@ describe("replaySessionEvents", () => {
       },
     ]);
   });
+
+  it("keeps failed tool calls as failed blocks instead of dropping the session", () => {
+    const result = replaySessionEvents([
+      {
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Run the flaky tool" }],
+        },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "toolcall_start",
+          partial: {
+            content: [{ type: "toolCall", id: "call-flaky", name: "flaky", arguments: {} }],
+          },
+        },
+      },
+      {
+        type: "tool_execution_end",
+        toolCallId: "call-flaky",
+        toolName: "flaky",
+        isError: true,
+        result: { content: [{ type: "text", text: "boom" }] },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "I can continue after that failed tool.",
+        },
+      },
+    ]);
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].blocks?.[0]).toMatchObject({
+      kind: "tool",
+      id: "call-flaky",
+      name: "flaky",
+      status: "error",
+      resultText: "boom",
+    });
+    expect(result.messages[1].blocks?.[1]).toMatchObject({
+      kind: "text",
+      text: "I can continue after that failed tool.",
+    });
+  });
 });

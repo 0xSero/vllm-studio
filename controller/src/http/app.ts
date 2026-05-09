@@ -61,6 +61,43 @@ export const createApp = (context: AppContext): Hono => {
   registerAudioRoutes(app, context);
   registerAllProxyRoutes(app, context);
 
+  app.all("/controllers/route/*", async (ctx) => {
+    const target = ctx.req.query("target") || ctx.req.header("x-vllm-target-controller") || "";
+    if (!target) return ctx.json({ detail: "target controller is required" }, { status: 400 });
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(target);
+      if (targetUrl.protocol !== "http:" && targetUrl.protocol !== "https:") {
+        throw new Error("unsupported protocol");
+      }
+    } catch {
+      return ctx.json({ detail: "target must be an http(s) controller URL" }, { status: 400 });
+    }
+    const suffix = ctx.req.path.replace(/^\/controllers\/route\/?/, "");
+    const upstream = new URL(suffix, `${targetUrl.toString().replace(/\/+$/, "")}/`);
+    for (const [key, value] of new URL(ctx.req.url).searchParams.entries()) {
+      if (key !== "target") upstream.searchParams.append(key, value);
+    }
+    const init: RequestInit = {
+      method: ctx.req.method,
+      headers: {
+        "content-type": ctx.req.header("content-type") ?? "application/json",
+        authorization: ctx.req.header("authorization") ?? "",
+      },
+    };
+    if (ctx.req.method !== "GET" && ctx.req.method !== "HEAD") {
+      init.body = await ctx.req.raw.clone().arrayBuffer();
+    }
+    const response = await fetch(upstream, init);
+    return new Response(response.body, {
+      status: response.status,
+      headers: {
+        "content-type": response.headers.get("content-type") ?? "application/json",
+        "x-vllm-routed-controller": targetUrl.origin,
+      },
+    });
+  });
+
   // OpenAPI documentation endpoints
   app.get("/api/spec", (ctx) => ctx.json(createOpenApiSpec(context)));
 

@@ -1,5 +1,6 @@
 // CRITICAL
-import { Check, Eye, EyeOff, Link, Loader2, Save, X } from "lucide-react";
+import { useState } from "react";
+import { Check, Eye, EyeOff, Link, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-configs";
 import {
   SettingsButton,
@@ -36,6 +37,23 @@ export function ApiConnectionSection({
   onTestConnection: () => void;
   onSave: () => void;
 }) {
+  const [controllers, setControllers] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("vllm-studio.controllers");
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [draftController, setDraftController] = useState("");
+
+  const persistControllers = (next: string[]) => {
+    const deduped = [...new Set(next.map((url) => url.trim()).filter(Boolean))];
+    setControllers(deduped);
+    localStorage.setItem("vllm-studio.controllers", JSON.stringify(deduped));
+  };
+
   return (
     <div className="space-y-5">
       <SettingsGroup
@@ -117,6 +135,54 @@ export function ApiConnectionSection({
                 Save
               </SettingsButton>
             </>
+          }
+        />
+        <SettingsRow
+          label="Additional controllers"
+          description="Optional second, third, and fourth controllers for status tabs and routing ownership."
+          control={
+            <div className="space-y-2">
+              {controllers.map((url, index) => (
+                <div key={`${url}-${index}`} className="flex min-w-0 items-center gap-2">
+                  <SettingsInput
+                    value={url}
+                    onChange={(value) => {
+                      const next = controllers.slice();
+                      next[index] = value;
+                      persistControllers(next);
+                    }}
+                  />
+                  <SettingsButton
+                    tone="danger"
+                    onClick={() => persistControllers(controllers.filter((_, i) => i !== index))}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </SettingsButton>
+                </div>
+              ))}
+              <div className="flex min-w-0 items-center gap-2">
+                <SettingsInput
+                  value={draftController}
+                  placeholder="http://192.168.1.70:8080"
+                  onChange={setDraftController}
+                />
+                <SettingsButton
+                  onClick={() => {
+                    if (!draftController.trim()) return;
+                    persistControllers([...controllers, draftController.trim()]);
+                    setDraftController("");
+                  }}
+                >
+                  <Plus className="h-3 w-3" />
+                  Add
+                </SettingsButton>
+              </div>
+            </div>
+          }
+          status={
+            <StatusPill tone={controllers.length ? "info" : "default"}>
+              {controllers.length}
+            </StatusPill>
           }
         />
       </SettingsGroup>

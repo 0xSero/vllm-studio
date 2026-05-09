@@ -58,7 +58,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   const activeLabel = sections.find((section) => section.id === activeSection)?.label ?? title;
   return (
     <main className="min-h-full overflow-y-auto overflow-x-hidden bg-(--bg) text-(--fg)">
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[176px_minmax(0,760px)] lg:gap-8 lg:py-7">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[180px_minmax(0,860px)] lg:gap-7 lg:py-7">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
             <h1 className="text-[17px] font-semibold tracking-[-0.01em] text-(--fg)">{title}</h1>
@@ -127,7 +127,7 @@ export function SettingsGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-(--border) bg-(--surface)">
+    <section className="overflow-hidden rounded-md border border-(--border) bg-(--surface)">
       <div className="flex min-h-12 items-start justify-between gap-4 border-b border-(--border)/70 px-4 py-3">
         <div className="min-w-0">
           <h3 className="text-[13px] font-medium text-(--fg)">{title}</h3>
@@ -153,22 +153,26 @@ export function SettingsRow({
 }: RowProps) {
   return (
     <div className="px-4 py-3">
-      <div className="grid min-h-8 grid-cols-1 gap-2 sm:grid-cols-[minmax(130px,0.52fr)_minmax(0,1fr)] sm:items-center sm:gap-5">
+      <div className="flex min-h-8 flex-col gap-2">
         <div className="min-w-0">
           <div className="text-[12px] font-medium text-(--fg)">{label}</div>
           {description ? (
             <div className="mt-0.5 text-[11px] leading-4 text-(--dim)">{description}</div>
           ) : null}
         </div>
-        <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             {control ?? value ?? <SettingsValue dim>Not reported yet</SettingsValue>}
           </div>
-          {status ? <div className="shrink-0">{status}</div> : null}
-          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+          {status || actions ? (
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {status}
+              {actions}
+            </div>
+          ) : null}
         </div>
       </div>
-      {children ? <div className="mt-3 sm:ml-[calc(130px+1.25rem)]">{children}</div> : null}
+      {children ? <div className="mt-3">{children}</div> : null}
     </div>
   );
 }
@@ -184,7 +188,7 @@ export function SettingsValue({
 }) {
   return (
     <div
-      className={`truncate text-[12px] ${mono ? "font-mono" : ""} ${dim ? "text-(--dim)" : "text-(--fg)"}`}
+      className={`whitespace-normal break-words text-[12px] leading-4 ${mono ? "break-all font-mono" : ""} ${dim ? "text-(--dim)" : "text-(--fg)"}`}
       title={typeof children === "string" ? children : undefined}
     >
       {children || "Not set"}

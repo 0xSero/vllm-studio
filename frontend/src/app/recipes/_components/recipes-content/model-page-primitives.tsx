@@ -58,7 +58,7 @@ export function ModelRow({
   children,
 }: ModelRowProps) {
   return (
-    <div className="py-3">
+    <div className="my-1 rounded-md bg-(--surface)/70 px-2 py-3">
       <div className="grid min-h-7 grid-cols-1 gap-2 md:grid-cols-[minmax(150px,0.44fr)_minmax(0,1fr)] md:items-center md:gap-5">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-medium text-(--fg)" title={label}>

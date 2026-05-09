@@ -2,7 +2,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Compass, HardDrive, RefreshCw } from "lucide-react";
+import { Compass, Download, HardDrive, RefreshCw } from "lucide-react";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
@@ -10,6 +10,7 @@ import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";
 import { RecipesTab } from "./recipes-tab";
 import { RecipeModal } from "../recipe-modal/recipe-modal";
 import { ExploreTab } from "./explore-tab";
+import { DownloadsTab } from "./downloads-tab";
 
 type Props = {
   tab: RecipesContentTab;
@@ -48,16 +49,22 @@ const MODEL_SECTIONS: Array<{
   icon: ReactNode;
 }> = [
   {
+    id: "explore",
+    label: "Search Models",
+    description: "Base model search first; derivatives expand under the selected family.",
+    icon: <Compass className="h-3.5 w-3.5" />,
+  },
+  {
     id: "recipes",
-    label: "Your models",
+    label: "Current Running Models",
     description: "Local launch recipes, running state, and engine actions.",
     icon: <HardDrive className="h-3.5 w-3.5" />,
   },
   {
-    id: "explore",
-    label: "Explore",
-    description: "Hugging Face discovery, downloads, and VRAM fit hints.",
-    icon: <Compass className="h-3.5 w-3.5" />,
+    id: "downloads",
+    label: "Downloads",
+    description: "Download queue, progress, retry, and cancel controls.",
+    icon: <Download className="h-3.5 w-3.5" />,
   },
 ];
 
@@ -177,8 +184,10 @@ export function RecipesContentView(props: Props) {
                 onNewRecipe={onNewRecipe}
                 table={table}
               />
-            ) : (
+            ) : tab === "explore" ? (
               <ExploreTab />
+            ) : (
+              <DownloadsTab />
             )}
           </section>
         </div>

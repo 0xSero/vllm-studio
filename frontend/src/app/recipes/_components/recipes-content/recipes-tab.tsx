@@ -42,8 +42,8 @@ export function RecipesTab({
   return (
     <div className="space-y-6">
       <ModelSection
-        title="Model control"
-        description="Search, launch state, and creation actions stay compact."
+        title="Current Running Models"
+        description="Search configured launch rows and stop the active controller-owned model."
         actions={
           <ModelStatus tone={runningRecipeId ? "good" : loading ? "info" : "default"}>
             {runningRecipeId ? "running" : loading ? "syncing" : "ready"}

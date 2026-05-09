@@ -11,6 +11,7 @@ import {
   type FontSizeId,
   type ThemeId,
   type ThemeMeta,
+  type ThemeTokens,
 } from "@/lib/themes";
 import {
   EmptySafeNotice,
@@ -32,10 +33,18 @@ export function AppearanceSettings() {
   const [query, setQuery] = useState("");
 
   const currentTheme = THEMES.find((theme) => theme.id === themeId) ?? THEMES[0];
+  const [customTokens, setCustomTokens] = useState<ThemeTokens>(
+    () => readCustomTokens() ?? currentTheme.tokens,
+  );
   const filteredThemes = useMemo(() => filterThemes(query), [query]);
   const visibleThemes = filteredThemes.length
     ? filteredThemes
     : [currentTheme, ...THEMES.slice(0, 5)].filter(uniqueTheme);
+
+  const applyCustomTokens = () => {
+    writeCustomTokens(customTokens);
+    applyTokensToDocument(customTokens);
+  };
 
   return (
     <div className="space-y-5">
@@ -132,8 +141,80 @@ export function AppearanceSettings() {
           ))}
         </div>
       </SettingsGroup>
+
+      <SettingsGroup
+        title="Custom theme tokens"
+        description="Edits map directly onto the existing bg/fg/surface/accent token contract."
+        actions={<StatusPill tone="info">local</StatusPill>}
+      >
+        <SettingsRow
+          label="Token editor"
+          description="Use CSS colors such as hsl(...), #111827, or color-mix(...). Invalid values are ignored by the browser."
+          control={
+            <div className="grid gap-2">
+              {(Object.keys(customTokens) as Array<keyof ThemeTokens>).map((token) => (
+                <label
+                  key={token}
+                  className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2"
+                >
+                  <span className="font-mono text-[11px] text-(--dim)">--{token}</span>
+                  <SettingsInput
+                    value={customTokens[token]}
+                    onChange={(value) =>
+                      setCustomTokens((current) => ({ ...current, [token]: value }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          }
+          actions={
+            <>
+              <SettingsButton onClick={() => setCustomTokens(currentTheme.tokens)}>
+                Reset draft
+              </SettingsButton>
+              <SettingsButton onClick={applyCustomTokens} tone="primary">
+                Apply custom
+              </SettingsButton>
+            </>
+          }
+          status={<StatusPill>tokens</StatusPill>}
+        />
+      </SettingsGroup>
     </div>
   );
+}
+
+const CUSTOM_THEME_TOKEN_KEY = "vllm-studio.customThemeTokens";
+
+function readCustomTokens(): ThemeTokens | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_THEME_TOKEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ThemeTokens>;
+    const base = THEMES[0].tokens;
+    return Object.fromEntries(
+      (Object.keys(base) as Array<keyof ThemeTokens>).map((key) => [
+        key,
+        typeof parsed[key] === "string" && parsed[key] ? parsed[key] : base[key],
+      ]),
+    ) as unknown as ThemeTokens;
+  } catch {
+    return null;
+  }
+}
+
+function writeCustomTokens(tokens: ThemeTokens) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CUSTOM_THEME_TOKEN_KEY, JSON.stringify(tokens));
+}
+
+function applyTokensToDocument(tokens: ThemeTokens) {
+  if (typeof document === "undefined") return;
+  for (const [key, value] of Object.entries(tokens)) {
+    document.documentElement.style.setProperty(`--${key}`, value);
+  }
 }
 
 function SegmentedOptions({

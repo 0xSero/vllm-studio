@@ -2,36 +2,6 @@
  * Color utilities for status display
  */
 
-function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case "running":
-      return "text-(--hl2)";
-    case "stopped":
-      return "text-(--border)";
-    case "error":
-      return "text-(--err)";
-    case "degraded":
-      return "text-(--hl3)";
-    default:
-      return "text-(--hl3)";
-  }
-}
-
-function getStatusBg(status: string): string {
-  switch (status.toLowerCase()) {
-    case "running":
-      return "bg-(--hl2)";
-    case "stopped":
-      return "bg-(--border)";
-    case "error":
-      return "bg-(--err)";
-    case "degraded":
-      return "bg-(--hl3)";
-    default:
-      return "bg-(--hl3)";
-  }
-}
-
 function getModelColor(model: string): string {
   const colors = [
     "hsl(270, 50%, 55%)", // Purple
@@ -53,4 +23,4 @@ function getModelColor(model: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export { getStatusColor, getStatusBg, getModelColor };
+export { getModelColor };

@@ -1,9 +1,11 @@
 // CRITICAL
 "use client";
 
+import { useEffect, useState } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
+import { getStoredBackendUrl, setStoredBackendUrl } from "@/lib/backend-url";
 
 export function ControlPanel(props: DashboardLayoutProps) {
   const { currentProcess, currentRecipe, metrics, gpus, recipes } = props;
@@ -12,6 +14,7 @@ export function ControlPanel(props: DashboardLayoutProps) {
   // compact telemetry, and quiet graph density do the work.
   return (
     <div className="mx-auto w-full max-w-[86rem] px-1 pt-2">
+      <ControllerTabs />
       <StatusSection
         currentProcess={currentProcess}
         currentRecipe={currentRecipe}
@@ -35,59 +38,68 @@ export function ControlPanel(props: DashboardLayoutProps) {
   );
 }
 
-function ActivityStrip({
-  currentProcess,
-  currentRecipe,
-  metrics,
-  logs,
-  services,
-  isConnected,
-  inferencePort,
-}: DashboardLayoutProps) {
-  const serviceCounts = services?.reduce(
-    (acc, service) => {
-      const status = service.status.toLowerCase();
-      if (status.includes("error") || status.includes("fail")) acc.errors += 1;
-      else if (status.includes("running") || status.includes("ready") || status.includes("ok")) {
-        acc.ready += 1;
-      } else acc.other += 1;
-      return acc;
-    },
-    { ready: 0, other: 0, errors: 0 },
-  ) ?? { ready: 0, other: 0, errors: 0 };
-  const context = currentRecipe?.max_model_len ? formatCompact(currentRecipe.max_model_len) : "0";
-  const pending = metrics?.pending_requests ?? 0;
-  const clients = metrics?.running_requests ?? 0;
-  const tail = logs.length > 0 ? logs.slice(-3) : [];
+function ControllerTabs() {
+  const [controllers, setControllers] = useState<string[]>([]);
+  const [active, setActive] = useState("");
+
+  useEffect(() => {
+    const load = () => {
+      const primary = getStoredBackendUrl() || "http://127.0.0.1:8080";
+      let extras: string[] = [];
+      try {
+        const raw = window.localStorage.getItem("vllm-studio.controllers");
+        extras = raw ? (JSON.parse(raw) as string[]) : [];
+      } catch {
+        extras = [];
+      }
+      setActive(primary);
+      setControllers([...new Set([primary, ...extras].map((url) => url.trim()).filter(Boolean))]);
+    };
+    load();
+    window.addEventListener("storage", load);
+    return () => window.removeEventListener("storage", load);
+  }, []);
+
+  if (controllers.length <= 1) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--border)/35 pb-2">
+      <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.16em] text-(--dim)">
+        controllers
+      </span>
+      {controllers.map((url, index) => (
+        <button
+          key={url}
+          type="button"
+          onClick={() => {
+            setStoredBackendUrl(url);
+            window.location.reload();
+          }}
+          className={`h-7 rounded-md px-2 text-[11px] ${
+            url === active
+              ? "bg-(--active) text-(--fg)"
+              : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          }`}
+          title={url}
+        >
+          {index === 0 ? "primary" : `controller ${index + 1}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ActivityStrip({ logs }: DashboardLayoutProps) {
+  const tail = logs.length > 0 ? logs.slice(-120) : [];
 
   return (
     <section className="border-t border-(--border)/40 px-2 pt-4 pb-5">
-      <div className="grid gap-x-10 gap-y-4 lg:grid-cols-3">
-        <ActivityColumn title="Session">
-          <ActivityRow label="endpoint" value="/v1/chat/completions" />
-          <ActivityRow label="clients" value={String(clients)} extra={`queued ${pending}`} />
-          <ActivityRow label="queued" value={String(pending)} />
-          <ActivityRow label="uptime" value="0" />
-          <ActivityRow label="context" value={context} />
-          <ActivityRow
-            label="routing"
-            value={currentProcess ? `:${inferencePort ?? currentProcess.port}` : "standby"}
-          />
-        </ActivityColumn>
-        <ActivityColumn title="Agents">
-          <ActivityRow label="vllm-studio" value="~/work/vllm-studio" extra="running ■" />
-          <ActivityRow label="autoresearch" value="~/work/autoresearch" extra="idle ■" />
-          <ActivityRow label="benchmark" value="~/work/benchmark" extra="paused ‖" />
-        </ActivityColumn>
-        <ActivityColumn title="Health">
-          <ActivityRow label="controller" value={isConnected ? "ok" : "offline"} />
-          <ActivityRow label="proxy" value={currentProcess ? "ready" : "idle"} extra="ready" />
-          <ActivityRow label="SQLite" value="data/vllm_studio.db" extra="ok" />
-          <ActivityRow label="desktop" value="vLLM Studio.app" extra="current" />
-        </ActivityColumn>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+          Controller logs
+        </div>
+        <div className="text-[10.5px] text-(--dim)/70">{tail.length} lines</div>
       </div>
-
-      <div className="mt-5 border-t border-(--border)/25 pt-2 font-mono text-[10.5px] leading-5 text-(--dim)/70">
+      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[10.5px] leading-5 text-(--dim)/80">
         {tail.length > 0 ? (
           tail.map((line, index) => (
             <div key={`${index}-${line}`} className="truncate">
@@ -100,34 +112,6 @@ function ActivityStrip({
       </div>
     </section>
   );
-}
-
-function ActivityColumn({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="mb-2 font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
-        {title}
-      </div>
-      <div className="space-y-1">{children}</div>
-    </div>
-  );
-}
-
-function ActivityRow({ label, value, extra }: { label: string; value: string; extra?: string }) {
-  return (
-    <div className="flex min-w-0 items-baseline gap-2 font-mono text-[11px] tabular-nums">
-      <span className="w-16 shrink-0 text-[9.5px] uppercase tracking-[0.14em] text-(--dim)/55">
-        {label}
-      </span>
-      <span className="min-w-0 truncate text-(--fg)/82">{value}</span>
-      {extra ? <span className="truncate text-(--dim)/60">{extra}</span> : null}
-    </div>
-  );
-}
-
-function formatCompact(value: number): string {
-  if (value >= 1000) return `${Math.round(value / 1000)}k`;
-  return String(value);
 }
 
 function trimLogLine(line: string): string {

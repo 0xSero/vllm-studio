@@ -5,26 +5,20 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
-  Bot,
   Database,
   HardDrive,
   Search as SearchIcon,
   Server,
   Settings,
-  Sun,
-  Moon,
-  Square,
   PanelLeftClose,
   Menu,
   PanelLeftOpen,
   X,
+  Plus,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
-import { useSidebarStatus } from "@/hooks/use-sidebar-status";
-import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import { ProjectsNavSection } from "@/components/projects-nav-section";
-import { ModelStopConfirm } from "@/components/model-stop-confirm";
 import { SessionsCommand } from "@/components/sessions-command";
 
 // Custom event used by ProjectsNavSection to broadcast the set of currently
@@ -47,38 +41,9 @@ type ActiveSessionDetail = {
 const tabs = [
   { href: "/", label: "Status", icon: BarChart3 },
   { href: "/usage", label: "Usage", icon: Database },
-  { href: "/agent", label: "Agent", icon: Bot },
   { href: "/recipes", label: "Models", icon: HardDrive },
-  { href: "/logs", label: "Server", icon: Server },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/server", label: "Server", icon: Server },
 ];
-
-function LogoMark() {
-  return (
-    <svg
-      viewBox="0 0 48 48"
-      className="w-6 h-6 shrink-0 text-(--fg)"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="square"
-      strokeLinejoin="miter"
-    >
-      <rect x="6" y="6" width="36" height="36" />
-      <rect x="14" y="13.5" width="5" height="5" />
-      <rect x="21" y="21" width="6" height="6" fill="currentColor" stroke="none" />
-      <rect x="29" y="13.5" width="5" height="5" />
-      <rect x="29" y="29.5" width="5" height="5" />
-      <rect x="14" y="29.5" width="5" height="5" />
-      <line x1="16.5" y1="16" x2="24" y2="24" />
-      <line x1="31.5" y1="16" x2="24" y2="24" />
-      <line x1="16.5" y1="32" x2="24" y2="24" />
-      <line x1="31.5" y1="32" x2="24" y2="24" />
-      <line x1="16.5" y1="16" x2="31.5" y2="32" />
-      <line x1="31.5" y1="16" x2="16.5" y2="32" />
-    </svg>
-  );
-}
 
 function isRouteActive(pathname: string, href: string): boolean {
   if (href === "/") {
@@ -151,17 +116,20 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
           isExpanded ? "w-[var(--sidebar-w)]" : "w-[var(--sidebar-w-collapsed)]"
         }`}
       >
-        {/* Logo */}
-        <Link href="/" className="h-11 flex items-center gap-2.5 px-3 shrink-0" title="vLLM Studio">
-          <LogoMark />
-          <span
-            className={`text-[13px] font-semibold tracking-tight whitespace-nowrap text-(--fg) transition-opacity duration-100 ${
-              isExpanded ? "opacity-100" : "opacity-0"
-            }`}
+        <div className="sticky top-0 z-50 flex h-11 shrink-0 items-center px-2 bg-(--rail)">
+          <button
+            onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
+            title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+            aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
           >
-            vLLM Studio
-          </span>
-        </Link>
+            {isExpanded ? (
+              <PanelLeftClose className="h-4 w-4" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4" />
+            )}
+          </button>
+        </div>
 
         {/* Primary nav */}
         <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
@@ -204,43 +172,29 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
               expanded={isExpanded}
             />
           ))}
+          <NewChatNavItemDesktop expanded={isExpanded} pathname={pathname} />
           <ProjectsNavSection expanded={isExpanded} />
         </nav>
 
-        {/* Footer controls */}
-        <div className="p-2 shrink-0">
-          <div className="flex items-center justify-between gap-1">
-            <button
-              onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
-              className="flex h-9 w-9 items-center justify-center text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
-              title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
-              aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
-            >
-              {isExpanded ? (
-                <PanelLeftClose className="h-4 w-4" />
-              ) : (
-                <PanelLeftOpen className="h-4 w-4" />
-              )}
-            </button>
-            <StopButtonDesktop />
-            <ThemeToggleDesktop />
-            <StatusRowDesktop />
-          </div>
+        <div className="shrink-0 border-t border-(--border)/60 p-2">
+          <NavItemDesktop
+            href="/settings"
+            label="Settings"
+            Icon={Settings}
+            active={isRouteActive(pathname, "/settings")}
+            expanded={isExpanded}
+          />
         </div>
       </aside>
 
       {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
       <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
-          <LogoMark />
           <span className="truncate text-[13px] font-semibold tracking-tight text-(--fg)">
-            vLLM Studio
+            Status
           </span>
         </Link>
         <div className="flex items-center gap-2">
-          <StopButtonMobile />
-          <ThemeToggleMobile />
-          <StatusRowMobile />
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
@@ -287,7 +241,6 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
       >
         <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4">
           <div className="flex min-w-0 items-center gap-2">
-            <LogoMark />
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-(--fg)">vLLM Studio</div>
               <div className="text-[10px] uppercase tracking-[0.18em] text-(--dim)">PWA menu</div>
@@ -317,6 +270,20 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
               onClick={onClose}
             />
           ))}
+          <NavItemMobile
+            href="/agent?new=1"
+            label="New Chat"
+            Icon={Plus}
+            active={false}
+            onClick={onClose}
+          />
+          <NavItemMobile
+            href="/settings"
+            label="Settings"
+            Icon={Settings}
+            active={isRouteActive(pathname, "/settings")}
+            onClick={onClose}
+          />
           <div className="my-3 border-t border-(--border)" />
           <ProjectsNavSection expanded />
         </nav>
@@ -389,109 +356,26 @@ function NavItemDesktop({
   );
 }
 
-function ThemeToggleDesktop() {
-  const { themeId, setThemeId } = useAppStore(
-    useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
-  );
-  const isDark = themeId === "omlx-dark";
-  const Icon = isDark ? Sun : Moon;
-  const label = isDark ? "Light mode" : "Dark mode";
+function NewChatNavItemDesktop({ expanded, pathname }: { expanded: boolean; pathname: string }) {
   return (
-    <button
-      onClick={() => setThemeId(isDark ? "omlx-light" : "omlx-dark")}
-      className="flex h-9 w-9 items-center justify-center text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
-      title={label}
-      aria-label={label}
+    <Link
+      href="/agent?new=1"
+      title="New Chat"
+      onClick={(event) => {
+        if (pathname !== "/agent") return;
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("vllm-studio.agent.newSession", { detail: {} }));
+      }}
+      className="h-7 flex items-center gap-2.5 px-2 rounded-md transition-colors shrink-0 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
     >
-      <Icon className="h-4 w-4" />
-    </button>
-  );
-}
-
-function StopButtonDesktop() {
-  const status = useSidebarStatus();
-  const { stop } = useModelLifecycle();
-  if (!status.inferenceOnline) {
-    return <div className="h-9 w-9" />;
-  }
-  return (
-    <ModelStopConfirm
-      onStop={stop}
-      trigger={({ open, stopping }) => (
-        <button
-          onClick={open}
-          disabled={stopping}
-          className="flex h-9 w-9 items-center justify-center text-(--err) transition-colors hover:bg-(--err)/10 disabled:opacity-40"
-          title="Stop model"
-          aria-label="Stop model"
-        >
-          <Square className="h-4 w-4" fill="currentColor" />
-        </button>
-      )}
-    />
-  );
-}
-
-function StatusRowDesktop() {
-  const status = useSidebarStatus();
-  const color = status.inferenceOnline ? "bg-(--fg)" : status.online ? "bg-(--dim)" : "bg-(--err)";
-  const label = status.inferenceOnline ? "inference" : status.online ? "controller" : "offline";
-
-  return (
-    <div className="flex h-9 w-9 items-center justify-center" title={label} aria-label={label}>
-      <div className={`h-1.5 w-1.5 ${color}`} />
-    </div>
-  );
-}
-
-/* ---------- Mobile strip variants (always visible) ---------- */
-
-function StopButtonMobile() {
-  const status = useSidebarStatus();
-  const { stop } = useModelLifecycle();
-  if (!status.inferenceOnline) return null;
-  return (
-    <ModelStopConfirm
-      onStop={stop}
-      trigger={({ open, stopping }) => (
-        <button
-          onClick={open}
-          disabled={stopping}
-          className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
-          title="Stop model"
-          aria-label="Stop model"
-        >
-          <Square className="h-4 w-4" fill="currentColor" />
-        </button>
-      )}
-    />
-  );
-}
-
-function ThemeToggleMobile() {
-  const { themeId, setThemeId } = useAppStore(
-    useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
-  );
-  const isDark = themeId === "omlx-dark";
-  const Icon = isDark ? Sun : Moon;
-  return (
-    <button
-      onClick={() => setThemeId(isDark ? "omlx-light" : "omlx-dark")}
-      className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
-      title={isDark ? "Light mode" : "Dark mode"}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
-  );
-}
-
-function StatusRowMobile() {
-  const status = useSidebarStatus();
-  const color = status.inferenceOnline ? "bg-(--fg)" : status.online ? "bg-(--dim)" : "bg-(--err)";
-  const label = status.inferenceOnline ? "inference" : status.online ? "controller" : "offline";
-  return (
-    <div className="flex items-center gap-1.5" title={label}>
-      <div className={`h-1.5 w-1.5 ${color}`} />
-    </div>
+      <Plus className="w-3.5 h-3.5 shrink-0" />
+      <span
+        className={`text-[12.5px] font-medium whitespace-nowrap transition-opacity duration-100 ${
+          expanded ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        New Chat
+      </span>
+    </Link>
   );
 }

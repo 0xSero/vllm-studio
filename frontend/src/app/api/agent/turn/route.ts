@@ -24,9 +24,19 @@ type TurnRequest = {
   streamingBehavior?: "steer" | "followUp";
 };
 
-function sse(controller: ReadableStreamDefaultController<Uint8Array>, payload: unknown) {
+function sse(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  payload: unknown,
+  streamOpen: () => boolean = () => true,
+) {
+  if (!streamOpen()) return;
   const encoder = new TextEncoder();
-  controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  try {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  } catch {
+    // The browser may have navigated away. The Pi runtime must keep running;
+    // callers can reattach through /api/agent/runtime/events.
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -59,6 +69,11 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let open = true;
+      const isOpen = () => open;
+      request.signal.addEventListener("abort", () => {
+        open = false;
+      });
       try {
         const turnStartedAt = new Date(Date.now() - 2_000);
         const session = piRuntimeManager.getSession(sessionId);
@@ -69,22 +84,22 @@ export async function POST(request: NextRequest) {
             : existingStatus.running
               ? (existingStatus.piSessionId ?? piSessionId)
               : piSessionId;
-        sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd });
+        sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd }, isOpen);
         await session.ensureStarted(modelId, cwd, effectivePiSessionId, browserToolEnabled);
-        sse(controller, { type: "status", phase: "running", session: session.status });
+        sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);
         if (mode === "steer") {
           await session.steer(message);
           // Steer is a fire-and-forget control message — events keep flowing on
           // the original prompt's stream. Close ours immediately.
-          sse(controller, { type: "status", phase: "queued", queue: "steer" });
+          sse(controller, { type: "status", phase: "queued", queue: "steer" }, isOpen);
         } else if (mode === "follow_up") {
           await session.followUp(message);
-          sse(controller, { type: "status", phase: "queued", queue: "follow_up" });
+          sse(controller, { type: "status", phase: "queued", queue: "follow_up" }, isOpen);
         } else {
           await session.prompt(
             message,
-            (event) => {
-              sse(controller, { type: "pi", event });
+            (event, seq) => {
+              sse(controller, { type: "pi", seq, event }, isOpen);
             },
             { streamingBehavior },
           );
@@ -95,14 +110,27 @@ export async function POST(request: NextRequest) {
           const recent = await listSessions(status.cwd, { since: turnStartedAt });
           resolvedPiSessionId = recent[0]?.id ?? null;
         }
-        sse(controller, { type: "status", phase: "done", piSessionId: resolvedPiSessionId });
+        sse(
+          controller,
+          { type: "status", phase: "done", piSessionId: resolvedPiSessionId },
+          isOpen,
+        );
       } catch (error) {
-        sse(controller, {
-          type: "error",
-          error: error instanceof Error ? error.message : "Pi agent turn failed",
-        });
+        sse(
+          controller,
+          {
+            type: "error",
+            error: error instanceof Error ? error.message : "Pi agent turn failed",
+          },
+          isOpen,
+        );
       } finally {
-        controller.close();
+        open = false;
+        try {
+          controller.close();
+        } catch {
+          // already closed by client navigation
+        }
       }
     },
   });
