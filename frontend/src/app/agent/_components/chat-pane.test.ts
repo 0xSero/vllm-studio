@@ -207,4 +207,61 @@ describe("replaySessionEvents", () => {
       text: "I can continue after that failed tool.",
     });
   });
+
+  it("preserves multiple successful and failed tool calls in one assistant turn", () => {
+    const result = replaySessionEvents([
+      {
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Run a mixed tool batch" }],
+        },
+      },
+      { type: "tool_execution_start", toolCallId: "call-read", toolName: "read" },
+      {
+        type: "tool_execution_end",
+        toolCallId: "call-read",
+        toolName: "read",
+        isError: false,
+        result: { content: [{ type: "text", text: "read ok" }] },
+      },
+      { type: "tool_execution_start", toolCallId: "call-write", toolName: "write" },
+      {
+        type: "tool_execution_end",
+        toolCallId: "call-write",
+        toolName: "write",
+        isError: false,
+        result: { content: [{ type: "text", text: "write ok" }] },
+      },
+      { type: "tool_execution_start", toolCallId: "call-shell", toolName: "shell" },
+      {
+        type: "tool_execution_end",
+        toolCallId: "call-shell",
+        toolName: "shell",
+        isError: true,
+        result: { content: [{ type: "text", text: "shell failed" }] },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "I handled the failed shell tool and continued.",
+        },
+      },
+    ]);
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].blocks).toMatchObject([
+      { kind: "tool", id: "call-read", name: "read", status: "done", resultText: "read ok" },
+      { kind: "tool", id: "call-write", name: "write", status: "done", resultText: "write ok" },
+      {
+        kind: "tool",
+        id: "call-shell",
+        name: "shell",
+        status: "error",
+        resultText: "shell failed",
+      },
+      { kind: "text", text: "I handled the failed shell tool and continued." },
+    ]);
+  });
 });
