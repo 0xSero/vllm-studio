@@ -437,6 +437,7 @@ export function AgentWorkspace() {
         if (cancelled) return;
         const pi = payload.checks?.find((check) => check.id === "pi");
         if (pi && !pi.ok) setSetupWarning(pi.guidance ?? "Pi is not installed.");
+        else setSetupWarning("");
       })
       .catch(() => undefined);
     async function loadModels() {

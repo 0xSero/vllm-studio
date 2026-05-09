@@ -28,6 +28,20 @@ function metricIds(metrics: Metrics): Set<string> {
   return identitySet([metrics.model_id, metrics.served_model_name, metrics.model_path]);
 }
 
+export function metricsWithProcessIdentity(
+  metrics: Metrics | null,
+  process: ProcessInfo | null,
+): Metrics | null {
+  if (!metrics || !process) return metrics;
+  if (metricIds(metrics).size > 0) return metrics;
+  return {
+    ...metrics,
+    model_id: process.served_model_name ?? basename(process.model_path),
+    model_path: process.model_path,
+    served_model_name: process.served_model_name ?? null,
+  };
+}
+
 export function metricsBelongToProcess(
   metrics: Metrics | null,
   process: ProcessInfo | null,

@@ -1,30 +1,14 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { resolvePiBinaryPath } from "@/lib/agent/pi-binary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function executableOnPath(name: string): Promise<string | null> {
-  const paths = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  for (const dir of paths) {
-    const candidate = path.join(dir, name);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // keep looking
-    }
-  }
-  return null;
-}
-
 export async function GET() {
-  const localPi = path.join(process.cwd(), "node_modules", ".bin", "pi");
-  const piPath = existsSync(localPi) ? localPi : await executableOnPath("pi");
+  const piPath = resolvePiBinaryPath();
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
   return NextResponse.json({

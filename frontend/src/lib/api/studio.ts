@@ -213,7 +213,7 @@ export function createStudioApi(core: ApiCore) {
       core.request("/runtime/vllm/upgrade", {
         method: "POST",
         body: JSON.stringify({
-          prefer_bundled: payload.preferBundled ?? true,
+          prefer_bundled: payload.preferBundled,
           command: payload.command,
           args: payload.args,
           version: payload.version,

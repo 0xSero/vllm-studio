@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { piRuntimeManager, type LoggedPiEvent } from "@/lib/agent/pi-runtime";
+import { isAgentEndEvent } from "@/lib/agent/pi-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
         if (logged.seq <= after || sentSeqs.has(logged.seq)) return;
         sentSeqs.add(logged.seq);
         safeSend({ type: "pi", seq: logged.seq, event: logged.event });
-        if (logged.event.type === "agent_end" || logged.event.type === "turn_end") {
+        if (isAgentEndEvent(logged.event)) {
           safeSend({ type: "status", phase: "done", session: session.status });
           setTimeout(close, 25);
         }

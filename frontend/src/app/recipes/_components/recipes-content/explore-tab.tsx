@@ -266,12 +266,10 @@ export function ExploreTab() {
   }, [downloads]);
 
   const isLocal = useCallback(
-    (modelId: string) =>
-      localModelIds.has(modelId.toLowerCase()) ||
-      modelId
-        .toLowerCase()
-        .split("/")
-        .some((p) => localModelIds.has(p)),
+    (modelId: string) => {
+      const normalized = modelId.toLowerCase();
+      return localModelIds.has(normalized) || localModelIds.has(normalized.split("/").pop() ?? "");
+    },
     [localModelIds],
   );
 

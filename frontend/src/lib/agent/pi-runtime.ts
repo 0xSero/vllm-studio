@@ -7,6 +7,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
 import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
+import { isAgentEndEvent } from "./pi-events";
+import { piPathEnv, resolvePiBinaryPath } from "./pi-binary";
 import { listProjectsFromStore } from "./projects-store";
 
 const PROVIDER_ID = "vllm-studio";
@@ -111,22 +113,6 @@ function resolveBrowserExtensionPath(): string | null {
 function deriveFrontendBase(): string {
   const port = process.env.PORT || "3000";
   return `http://127.0.0.1:${port}`;
-}
-
-function piBinaryPath(): string {
-  const local = path.join(
-    process.cwd(),
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "pi.cmd" : "pi",
-  );
-  if (existsSync(local)) return local;
-  return "pi";
-}
-
-function piPathEnv(): string {
-  const additions = ["/opt/homebrew/bin", path.join(homedir(), ".bun", "bin")];
-  return [...additions, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
 }
 
 async function fetchModelsFromBackend(settings: ApiSettings): Promise<AgentModel[]> {
@@ -272,7 +258,7 @@ class PiRpcSession extends EventEmitter {
       if (extensionPath) args.push("--extension", extensionPath);
     }
 
-    const child = spawn(piBinaryPath(), args, {
+    const child = spawn(resolvePiBinaryPath() ?? "pi", args, {
       cwd,
       env: {
         ...process.env,
@@ -419,7 +405,7 @@ class PiRpcSession extends EventEmitter {
       30 * 60_000,
     );
     const done = (event: PiEvent) => {
-      if (event.type === "agent_end" || event.type === "turn_end") {
+      if (isAgentEndEvent(event)) {
         clearTimeout(timeout);
         this.off("event", done);
         settleDone?.();

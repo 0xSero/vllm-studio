@@ -73,9 +73,9 @@ export function StatusSection({
   const vramCapacity = firstPositive(metrics?.vram_capacity_gb, fallbackMemCapacity);
   const powerLimit = firstPositive(metrics?.power_limit_watts, fallbackPowerLimit);
 
-  const genTps = firstPositive(metrics?.session_avg_generation, metrics?.generation_throughput);
-  const prefillTps = firstPositive(metrics?.session_avg_prefill, metrics?.prompt_throughput);
-  const ttftMs = firstPositive(metrics?.avg_ttft_ms);
+  const genTps = firstFinite(metrics?.generation_throughput, metrics?.session_avg_generation);
+  const prefillTps = firstFinite(metrics?.prompt_throughput, metrics?.session_avg_prefill);
+  const ttftMs = firstFinite(metrics?.avg_ttft_ms);
   const sessions = metrics?.running_requests ?? 0;
   const peakGenTps = firstPositive(
     metrics?.session_peak_generation_throughput,
@@ -86,9 +86,9 @@ export function StatusSection({
   const peakReq = metrics?.session_peak_running_requests ?? 0;
   const samples = useMetricSamples({
     key: modelSampleKey,
-    generation: genTps,
-    prefill: prefillTps,
-    ttft: ttftMs,
+    generation: genTps ?? 0,
+    prefill: prefillTps ?? 0,
+    ttft: ttftMs ?? 0,
     requests: sessions,
     active: isRunning,
   });
@@ -176,10 +176,7 @@ export function StatusSection({
       </dl>
 
       <dl className="mt-3 grid gap-2 font-mono text-[10.5px] text-(--dim) sm:grid-cols-4">
-        <RuntimeMetric
-          label="total tokens"
-          value={tokenMetric(metrics?.total_tokens, metrics?.tokens_total)}
-        />
+        <RuntimeMetric label="total tokens" value={tokenTotalMetric(metrics)} />
         <RuntimeMetric label="prompt tokens" value={tokenMetric(metrics?.prompt_tokens_total)} />
         <RuntimeMetric
           label="completion tokens"
@@ -234,13 +231,29 @@ function HeaderStopButton({ running }: { running: boolean }) {
   );
 }
 
-function metricValue(value: number, digits: number): string | null {
-  return value > 0 ? value.toFixed(digits) : null;
+function metricValue(value: number | null, digits: number): string | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value.toFixed(digits)
+    : null;
 }
 
 function tokenMetric(...values: Array<number | undefined>): string {
-  const value = values.find((item) => typeof item === "number" && item > 0);
-  return value ? Math.round(value).toLocaleString() : "unavailable";
+  const value = values.find(
+    (item) => typeof item === "number" && Number.isFinite(item) && item >= 0,
+  );
+  return typeof value === "number" ? Math.round(value).toLocaleString() : "unavailable";
+}
+
+function tokenTotalMetric(metrics: Metrics | null): string {
+  const explicit = tokenMetric(metrics?.total_tokens, metrics?.tokens_total);
+  if (explicit !== "unavailable") return explicit;
+  if (
+    typeof metrics?.prompt_tokens_total === "number" &&
+    typeof metrics.generation_tokens_total === "number"
+  ) {
+    return tokenMetric(metrics.prompt_tokens_total + metrics.generation_tokens_total);
+  }
+  return "unavailable";
 }
 
 function durationMetric(value: number | undefined): string {
@@ -610,6 +623,13 @@ function firstPositive(...values: Array<number | null | undefined>): number {
     if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
   }
   return 0;
+}
+
+function firstFinite(...values: Array<number | null | undefined>): number | null {
+  for (const v of values) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return null;
 }
 
 /* Inline Models dropdown — auto-closes on outside click and selection. */

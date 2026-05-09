@@ -1,6 +1,6 @@
 // CRITICAL — copied from lifecycle/runtime/vllm-runtime.ts
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmPythonPath } from "./vllm-python-path";
@@ -94,12 +94,31 @@ const runCommand = (
   });
 };
 
-const resolvePythonBinary = (): string | null => {
+const resolvePythonFromScript = (scriptPath: string | null | undefined): string | null => {
+  if (!scriptPath || !existsSync(scriptPath)) return null;
+  try {
+    const firstLine = readFileSync(scriptPath, "utf8").split("\n")[0]?.trim() ?? "";
+    if (!firstLine.startsWith("#!")) return null;
+    const command = firstLine.slice(2).trim().split(/\s+/);
+    const executable = command[0];
+    const envPython = executable?.endsWith("/env") ? command.find((part) => part.startsWith("python")) : null;
+    const python = envPython ?? executable;
+    if (!python || !python.includes("python")) return null;
+    return python.includes("/") ? python : (resolveBinary(python) ?? python);
+  } catch {
+    return null;
+  }
+};
+
+const resolvePythonBinary = (preferredPython?: string | null): string | null => {
   const candidates: string[] = [];
-  const runtimePython = resolveVllmPythonPath();
-  if (runtimePython) candidates.push(runtimePython);
+  if (preferredPython) candidates.push(preferredPython);
   const override = process.env["VLLM_STUDIO_RUNTIME_PYTHON"];
   if (override) candidates.push(override);
+  const systemVllmPython = resolvePythonFromScript(resolveBinary("vllm"));
+  if (systemVllmPython) candidates.push(systemVllmPython);
+  const runtimePython = resolveVllmPythonPath();
+  if (runtimePython) candidates.push(runtimePython);
   candidates.push("python3", "python");
   for (const candidate of candidates) {
     try {
@@ -112,12 +131,15 @@ const resolvePythonBinary = (): string | null => {
   return null;
 };
 
-const collectPythonCandidates = (): string[] => {
+const collectPythonCandidates = (preferredPython?: string | null): string[] => {
   const candidates: string[] = [];
-  const runtimePython = resolveVllmPythonPath();
-  if (runtimePython) candidates.push(runtimePython);
+  if (preferredPython) candidates.push(preferredPython);
   const override = process.env["VLLM_STUDIO_RUNTIME_PYTHON"];
   if (override) candidates.push(override);
+  const systemVllmPython = resolvePythonFromScript(resolveBinary("vllm"));
+  if (systemVllmPython) candidates.push(systemVllmPython);
+  const runtimePython = resolveVllmPythonPath();
+  if (runtimePython) candidates.push(runtimePython);
   candidates.push("python3", "python");
   return candidates.filter((c, index, array) => array.indexOf(c) === index);
 };
@@ -152,7 +174,7 @@ const resolveVllmBinary = (pythonPath: string | null): string | null => {
 const VLLM_IMPORT_PROBE =
   "import json, sys\ntry:\n import vllm\n print(json.dumps({'version': vllm.__version__, 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
 
-export const getVllmRuntimeInfo = async (): Promise<{
+export const getVllmRuntimeInfo = async (preferredPython?: string | null): Promise<{
   installed: boolean;
   version: string | null;
   python_path: string | null;
@@ -161,7 +183,7 @@ export const getVllmRuntimeInfo = async (): Promise<{
   bundled_wheel: { path: string; version: string | null } | null;
 }> => {
   const bundledWheel = resolveBundledWheel();
-  const candidates = collectPythonCandidates();
+  const candidates = collectPythonCandidates(preferredPython);
   for (const candidate of candidates) {
     try {
       const check = spawnSync(candidate, ["--version"], { timeout: 2000 });
@@ -223,6 +245,7 @@ type VllmUpgradeOptions = {
   command?: string;
   args?: string[];
   version?: string;
+  pythonPath?: string | null;
 };
 
 export const upgradeVllmRuntime = async (
@@ -233,8 +256,9 @@ export const upgradeVllmRuntime = async (
   output: string | null;
   error: string | null;
   used_wheel: string | null;
+  used_command: string | null;
 }> => {
-  const pythonPath = resolvePythonBinary();
+  const pythonPath = resolvePythonBinary(options.pythonPath);
   if (!pythonPath)
     return {
       success: false,
@@ -242,6 +266,7 @@ export const upgradeVllmRuntime = async (
       output: null,
       error: "Python runtime not found",
       used_wheel: null,
+      used_command: null,
     };
 
   const preferredCommand =
@@ -263,6 +288,7 @@ export const upgradeVllmRuntime = async (
       resolvedCommand.args,
       VLLM_UPGRADE_TIMEOUT_MS
     );
+    const usedCommand = [resolvedCommand.command, ...resolvedCommand.args].join(" ");
     if (result.code !== 0) {
       const usedWheel = preferBundled ? (bundledWheel?.path ?? null) : null;
       return {
@@ -271,9 +297,10 @@ export const upgradeVllmRuntime = async (
         output: result.stdout || null,
         error: result.stderr || "Upgrade failed",
         used_wheel: usedWheel,
+        used_command: usedCommand,
       };
     }
-    const runtimeInfo = await getVllmRuntimeInfo();
+    const runtimeInfo = await getVllmRuntimeInfo(pythonPath);
     const usedWheel = preferBundled ? (bundledWheel?.path ?? null) : null;
     return {
       success: true,
@@ -281,10 +308,12 @@ export const upgradeVllmRuntime = async (
       output: result.stdout || null,
       error: result.stderr || null,
       used_wheel: usedWheel,
+      used_command: usedCommand,
     };
   }
   const customArguments = parsedArguments ?? [];
   const result = await runCommand(command, customArguments, VLLM_UPGRADE_TIMEOUT_MS);
+  const usedCommand = [command, ...customArguments].join(" ");
   if (result.code !== 0)
     return {
       success: false,
@@ -292,13 +321,15 @@ export const upgradeVllmRuntime = async (
       output: result.stdout || null,
       error: result.stderr || "Upgrade failed",
       used_wheel: null,
+      used_command: usedCommand,
     };
-  const runtimeInfo = await getVllmRuntimeInfo();
+  const runtimeInfo = await getVllmRuntimeInfo(pythonPath);
   return {
     success: true,
     version: runtimeInfo.version,
     output: result.stdout || null,
     error: result.stderr || null,
     used_wheel: null,
+    used_command: usedCommand,
   };
 };

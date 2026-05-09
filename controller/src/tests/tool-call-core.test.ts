@@ -374,6 +374,79 @@ describe("tool-call-core", () => {
     expect(delta.content).toBe(" after");
     expect(delta.reasoning).toBe("secret text");
   });
+
+  it("turns cumulative content snapshots into deltas before forwarding", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n')
+        );
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"Hello world"}}]}\n\n')
+        );
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"Hello world!"}}]}\n\n')
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const stream = createToolCallStream(source.getReader());
+    const output = await collectStream(stream);
+    const events = parseSseDataLines(output);
+    const delta = collectDeltaText(events);
+
+    expect(delta.content).toBe("Hello world!");
+  });
+
+  it("deduplicates tiny cumulative snapshots from the first token", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        for (const content of ["H", "He", "Hel", "Hell", "Hello"]) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+          );
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const stream = createToolCallStream(source.getReader());
+    const output = await collectStream(stream);
+    const events = parseSseDataLines(output);
+    const delta = collectDeltaText(events);
+
+    expect(delta.content).toBe("Hello");
+  });
+
+  it("treats message-shaped streaming chunks as snapshots", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"message":{"content":"First chunk"}}]}\n\n')
+        );
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"message":{"content":"First chunk plus more"}}]}\n\n'
+          )
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const stream = createToolCallStream(source.getReader());
+    const output = await collectStream(stream);
+    const events = parseSseDataLines(output);
+    const delta = collectDeltaText(events);
+
+    expect(delta.content).toBe("First chunk plus more");
+  });
 });
 
 describe("normalizeChatMessageContentParts", () => {

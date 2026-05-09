@@ -1,16 +1,36 @@
 import { describe, expect, it } from "vitest";
+import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import { drainQueueAfterAgentEnd, replaySessionEvents } from "./chat-pane";
+
+describe("isAgentEndEvent", () => {
+  it("does not treat per-tool turn_end as full agent completion", () => {
+    expect(isAgentEndEvent({ type: "turn_end" })).toBe(false);
+    expect(isAgentEndEvent({ type: "agent_end" })).toBe(true);
+  });
+});
 
 describe("drainQueueAfterAgentEnd", () => {
   it("drops transient steers and returns the next follow-up", () => {
     const result = drainQueueAfterAgentEnd([
-      { id: "steer-1", mode: "steer", text: "adjust current run" },
+      { id: "steer-1", mode: "steer", text: "adjust current run", sent: true },
       { id: "follow-1", mode: "follow_up", text: "next prompt" },
       { id: "follow-2", mode: "follow_up", text: "third prompt" },
     ]);
 
     expect(result.next).toEqual({ id: "follow-1", mode: "follow_up", text: "next prompt" });
     expect(result.remaining).toEqual([{ id: "follow-2", mode: "follow_up", text: "third prompt" }]);
+  });
+
+  it("does not resubmit follow-ups already queued inside Pi", () => {
+    expect(
+      drainQueueAfterAgentEnd([
+        { id: "follow-1", mode: "follow_up", text: "already sent", sent: true },
+        { id: "follow-2", mode: "follow_up", text: "local fallback" },
+      ]),
+    ).toEqual({
+      next: { id: "follow-2", mode: "follow_up", text: "local fallback" },
+      remaining: [],
+    });
   });
 
   it("returns an empty drain result when no follow-ups are pending", () => {
@@ -158,6 +178,56 @@ describe("replaySessionEvents", () => {
         text: "",
       },
     ]);
+  });
+
+  it("deduplicates cumulative Pi text snapshots during replay", () => {
+    const result = replaySessionEvents([
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "H" } },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "He" } },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hello" } },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_delta", delta: "I" },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_delta", delta: "I know" },
+      },
+    ]);
+
+    expect(result.messages[0].blocks).toMatchObject([
+      { kind: "text", text: "Hello" },
+      { kind: "thinking", text: "I know" },
+    ]);
+  });
+
+  it("merges final assistant message_end into the streamed assistant during replay", () => {
+    const result = replaySessionEvents([
+      {
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Say done" }],
+        },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "DONE" },
+      },
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "DONE" }],
+        },
+      },
+    ]);
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1]).toMatchObject({
+      role: "assistant",
+      text: "DONE",
+    });
   });
 
   it("keeps failed tool calls as failed blocks instead of dropping the session", () => {

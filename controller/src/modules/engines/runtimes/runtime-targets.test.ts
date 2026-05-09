@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Config } from "../../../config/env";
 import {
   clearRuntimeTargetsForTests,
+  getDefaultRuntimeTarget,
   getRuntimeTargets,
   selectRuntimeTarget,
 } from "./runtime-targets";
@@ -41,6 +42,7 @@ const createFakePython = (root: string, version: string): string => {
     python,
     `#!/bin/sh
 if [ "$1" = "--version" ]; then echo "Python 3.11.0"; exit 0; fi
+if [ "$2" = "--version" ]; then echo "${version}"; exit 0; fi
 if [ "$1" = "-c" ]; then
 cat <<'JSON'
 {"version":"${version}","python":"${python}"}
@@ -104,6 +106,37 @@ describe("runtime targets", () => {
       packageSpec: "vllm",
       restartRequired: true,
     });
+  });
+
+  it("prefers the newest system vLLM binary over a stale default venv", async () => {
+    const root = temporaryRoot();
+    const stale = createFakePython(join(root, "stale"), "0.15.1");
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeExecutable(
+      join(bin, "python3"),
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.11.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo '{"version":null,"python":"'"$0"'","error":"missing"}'; exit 0; fi
+exit 1
+`
+    );
+    const vllm = join(bin, "vllm");
+    writeExecutable(
+      vllm,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "0.20.0"; exit 0; fi
+exit 1
+`
+    );
+    process.env["PATH"] = `${bin}:${originalEnvironment["PATH"] ?? ""}`;
+    process.env["VLLM_STUDIO_RUNTIME_SKIP_SYSTEM"] = "0";
+    process.env["VLLM_STUDIO_VLLM_PYTHONS"] = stale;
+
+    const target = await getDefaultRuntimeTarget(configFor(root), "vllm");
+
+    expect(target?.binaryPath).toBe(vllm);
+    expect(target?.version).toBe("0.20.0");
   });
 
   it("distinguishes Docker and venv targets", async () => {

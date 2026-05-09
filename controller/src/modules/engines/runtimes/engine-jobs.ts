@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Config } from "../../../config/env";
-import type { EngineBackend, EngineJob } from "../../shared/system-types";
+import type { EngineBackend, EngineJob, RuntimeTarget } from "../../shared/system-types";
 import { upgradeVllmRuntime } from "./vllm-runtime";
 import {
   runPlatformUpgrade,
@@ -8,7 +8,11 @@ import {
   upgradeSglangRuntime,
   type RuntimeUpgradeOptions,
 } from "./runtime-upgrade";
-import { getRuntimeTarget } from "./runtime-targets";
+import {
+  clearRuntimeTargetsCache,
+  getDefaultRuntimeTarget,
+  getRuntimeTarget,
+} from "./runtime-targets";
 import type { ProcessInfo } from "../../models/types";
 
 type RuntimeJobBackend = EngineBackend | "cuda" | "rocm";
@@ -75,12 +79,16 @@ const runJob = async (
     command: describeDefaultCommand(options),
   });
   try {
+    let target: RuntimeTarget | null = null;
     if (options.targetId && options.backend !== "cuda" && options.backend !== "rocm") {
-      const target = await getRuntimeTarget(config, options.targetId, options.runningProcess);
+      target = await getRuntimeTarget(config, options.targetId, options.runningProcess);
       if (!target) throw new Error("Runtime target not found");
       if (options.type !== "inspect" && !target.capabilities.canUpdate) {
         throw new Error(target.health.message ?? "Update is unsupported for this target.");
       }
+    }
+    if (!target && options.backend === "vllm") {
+      target = await getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
     }
 
     const upgradeOptions: RuntimeUpgradeOptions = {
@@ -91,7 +99,8 @@ const runJob = async (
     const result =
       options.backend === "vllm"
         ? await upgradeVllmRuntime({
-            preferBundled: options.preferBundled ?? true,
+            preferBundled: options.preferBundled ?? false,
+            pythonPath: target?.pythonPath ?? null,
             ...upgradeOptions,
           })
         : options.backend === "sglang"
@@ -103,10 +112,7 @@ const runJob = async (
               : runPlatformUpgrade("rocm", upgradeOptions);
 
     const outputTail = tailOutput(result.output ?? result.error);
-    const command =
-      "used_command" in result
-        ? (result.used_command ?? job.command)
-        : (result.used_wheel ?? job.command);
+    const command = result.used_command ?? job.command;
     if (!result.success) {
       updateJob(job.id, {
         status: "error",
@@ -120,6 +126,7 @@ const runJob = async (
       return;
     }
 
+    clearRuntimeTargetsCache();
     updateJob(job.id, {
       status: "success",
       progress: 1,

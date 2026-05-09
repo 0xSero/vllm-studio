@@ -22,6 +22,7 @@ import {
   StopIcon,
 } from "@/components/icons";
 import { safeJson } from "@/lib/agent/safe-json";
+import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
   byQuery,
   detectComposerMention,
@@ -91,13 +92,14 @@ export type QueuedMessage = {
   // call; "follow_up" waits until the agent completely finishes.
   mode: "steer" | "follow_up";
   text: string;
+  sent?: boolean;
 };
 
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
   next: QueuedMessage | null;
   remaining: QueuedMessage[];
 } {
-  const followUps = queue.filter((item) => item.mode === "follow_up");
+  const followUps = queue.filter((item) => item.mode === "follow_up" && !item.sent);
   const [next, ...remaining] = followUps;
   return { next: next ?? null, remaining };
 }
@@ -405,15 +407,25 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
         continue;
       }
       if (msg?.role === "assistant") {
-        pendingAssistantId = null;
         const blocks = blocksFromMessageContent(msg.content);
+        const text = blocks
+          .filter((block): block is TextBlock => block.kind === "text")
+          .map((block) => block.text)
+          .join("\n");
+        if (pendingAssistantId && type === "message_end") {
+          localPatch(pendingAssistantId, (message) => ({
+            ...message,
+            text,
+            blocks,
+          }));
+          pendingAssistantId = null;
+          continue;
+        }
+        pendingAssistantId = null;
         replayed.push({
           id: newId("assistant"),
           role: "assistant",
-          text: blocks
-            .filter((block): block is TextBlock => block.kind === "text")
-            .map((block) => block.text)
-            .join("\n"),
+          text,
           blocks,
           timestamp: nowLabel(),
         });
@@ -620,7 +632,9 @@ function appendDelta(
 ): AssistantBlock[] {
   const last = blocks[blocks.length - 1];
   if (last && last.kind === kind) {
-    return [...blocks.slice(0, -1), { ...last, text: last.text + delta }];
+    const append = delta.startsWith(last.text) ? delta.slice(last.text.length) : delta;
+    if (!append) return blocks;
+    return [...blocks.slice(0, -1), { ...last, text: last.text + append }];
   }
   return [...blocks, { kind, id: newId(kind), text: delta }];
 }
@@ -1181,7 +1195,7 @@ export function ChatPane({
               if (typeof payload.seq === "number") {
                 updateTab(tabId, (tab) => ({ ...tab, lastEventSeq: payload.seq }));
               }
-              if (piEvent.type === "agent_end" || piEvent.type === "turn_end") {
+              if (isAgentEndEvent(piEvent)) {
                 agentEnded = true;
                 const latestPiSessionId =
                   eventId ??
@@ -1273,7 +1287,7 @@ export function ChatPane({
           ...tab,
           input: "",
           error: "",
-          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text }],
+          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text, sent: true }],
         }));
         const result = await sendControlMessage(
           "steer",
@@ -1325,9 +1339,23 @@ export function ChatPane({
       cwd: tab.cwd || cwd,
       input: "",
       error: "",
-      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text }],
+      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text, sent: true }],
     }));
-  }, [activeTab, modelId, running, cwd, updateTab]);
+    const result = await sendControlMessage(
+      "follow_up",
+      text,
+      activeTab.runtimeSessionId || runtimeSessionId,
+      activeTab.piSessionId,
+    );
+    if (!result.ok) {
+      updateTab(tabId, (tab) => ({
+        ...tab,
+        input: text,
+        error: result.error || "Message failed",
+        queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
+      }));
+    }
+  }, [activeTab, modelId, running, cwd, runtimeSessionId, sendControlMessage, updateTab]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -1498,14 +1526,8 @@ export function ChatPane({
           ...tab,
           piSessionId: eventId || tab.piSessionId,
           lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
-          status:
-            payload.event.type === "agent_end" || payload.event.type === "turn_end"
-              ? "idle"
-              : "running",
-          activeAssistantId:
-            payload.event.type === "agent_end" || payload.event.type === "turn_end"
-              ? undefined
-              : assistantId,
+          status: isAgentEndEvent(payload.event) ? "idle" : "running",
+          activeAssistantId: isAgentEndEvent(payload.event) ? undefined : assistantId,
         }));
         if (eventId) onPiSessionIdChange?.(eventId);
         applyPiEvent(resumeRuntimeTabId, assistantId, payload.event);

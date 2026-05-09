@@ -206,6 +206,9 @@ async function mockAppApis(page: Page) {
   await page.route("**/api/proxy/studio/models", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ models: [] }) });
   });
+  await page.route("**/api/proxy/v1/studio/models", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ models: [] }) });
+  });
   await page.route("**/api/proxy/studio/recommendations", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -267,6 +270,62 @@ test("agent composer loads plugins with @ and skills with $ as tabs", async ({ p
   const capturedTurn = turnRequest as { browserToolEnabled?: boolean; message?: string } | null;
   expect(capturedTurn?.message).toContain("Use fixture browser automation instructions.");
   expect(capturedTurn?.browserToolEnabled).toBe(true);
+});
+
+test("agent sends steer and follow-up controls to Pi while running", async ({ page }) => {
+  const turnRequests: Array<{ mode?: string; message?: string }> = [];
+  await page.route("**/api/agent/turn", async (route) => {
+    const body = route.request().postDataJSON() as { mode?: string; message?: string };
+    turnRequests.push(body);
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: body.mode
+        ? sse(
+            { type: "status", phase: "queued", queue: body.mode },
+            { type: "status", phase: "done" },
+          )
+        : sse(
+            { type: "status", phase: "starting", sessionId: "rt-running" },
+            { type: "status", phase: "running", piSessionId: "pi-running" },
+            {
+              type: "pi",
+              seq: 1,
+              event: {
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "working" },
+              },
+            },
+          ),
+    });
+  });
+  await page.route("**/api/agent/runtime/status**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ status: { active: true, piSessionId: "pi-running", eventSeq: 1 } }),
+    });
+  });
+  await page.route("**/api/agent/runtime/events**", async (route) => {
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: sse({ type: "status", phase: "running", session: { piSessionId: "pi-running" } }),
+    });
+  });
+
+  await page.goto("/agent?new=1");
+  const composer = page.getByPlaceholder(/Ask test-model/);
+  await composer.fill("start long run");
+  await composer.press("Enter");
+  await expect(page.getByText("working")).toBeVisible();
+  await expect(page.getByPlaceholder(/Steer test-model/)).toBeVisible();
+
+  const runningComposer = page.getByPlaceholder(/test-model/);
+  await runningComposer.fill("steer now");
+  await runningComposer.press("Enter");
+  await expect.poll(() => turnRequests.some((request) => request.mode === "steer")).toBe(true);
+
+  await runningComposer.fill("follow later");
+  await runningComposer.press("Tab");
+  await expect.poll(() => turnRequests.some((request) => request.mode === "follow_up")).toBe(true);
 });
 
 test("agent session reattaches after navigation and survives mixed tool calls", async ({

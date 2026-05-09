@@ -146,6 +146,9 @@ function getUpstreamTimeoutMs(path: string[]): number {
   if (route === "config" || route === "compat" || route === "evict") {
     return SYSTEM_UPSTREAM_TIMEOUT_MS;
   }
+  if (route.startsWith("runtime/")) {
+    return SYSTEM_UPSTREAM_TIMEOUT_MS;
+  }
   return DEFAULT_UPSTREAM_TIMEOUT_MS;
 }
 

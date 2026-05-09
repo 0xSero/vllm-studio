@@ -8,7 +8,7 @@ import { Event } from "../system/event-manager";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
 import { fetchInference } from "../../services/inference/inference-client";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
-import { getVllmConfigHelp } from "./runtimes/vllm-runtime";
+import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 import { getLlamacppConfigHelp } from "./runtimes/llamacpp-runtime";
 import { getExllamav3RuntimeInfo, getCudaInfo } from "./runtimes/runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
@@ -314,9 +314,7 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   });
 
   app.get("/runtime/vllm", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
-    const target = await getDefaultRuntimeTarget(context.config, "vllm", current);
-    return ctx.json(runtimeTargetToBackendInfo(target));
+    return ctx.json(await getVllmRuntimeInfo());
   });
 
   app.get("/runtime/vllm/config", async (ctx) => {
@@ -359,12 +357,16 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
 
   app.post("/runtime/vllm/upgrade", async (ctx) => {
     const body = await parseRuntimeJobBody(ctx);
+    const current = await context.engineService.getCurrentProcess();
     const job = createEngineJob(context.config, {
       backend: "vllm",
       type: "update",
+      ...(body.targetId ? { targetId: body.targetId } : {}),
+      ...(body.command ? { command: body.command } : {}),
       ...(body.args ? { args: body.args } : {}),
       ...(body.version ? { version: body.version.trim() } : {}),
-      preferBundled: body.preferBundled ?? true,
+      ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
+      runningProcess: current,
     });
     return ctx.json({ job_id: job.id, job });
   });
