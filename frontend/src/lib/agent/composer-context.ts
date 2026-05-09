@@ -3,6 +3,7 @@ export type ComposerPluginRef = {
   name: string;
   path?: string;
   enabled?: boolean;
+  description?: string;
 };
 
 export type ComposerSkillRef = {
@@ -10,6 +11,7 @@ export type ComposerSkillRef = {
   name: string;
   source?: string;
   path?: string;
+  instructions?: string;
 };
 
 export type ComposerMention = {
@@ -53,6 +55,9 @@ export function selectedContextPrompt(
   const lines: string[] = [];
   if (plugins.length) {
     lines.push(`Enabled plugins: ${plugins.map((plugin) => `@${plugin.name}`).join(", ")}.`);
+    for (const plugin of plugins) {
+      if (plugin.description) lines.push(`Plugin @${plugin.name}: ${plugin.description}`);
+    }
     if (plugins.some((plugin) => plugin.name.includes("browser-use"))) {
       lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
     }
@@ -63,11 +68,11 @@ export function selectedContextPrompt(
     }
   }
   if (skills.length) {
-    lines.push(
-      `Loaded skills: ${skills
-        .map((skill) => `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`)
-        .join(", ")}.`,
-    );
+    lines.push("Loaded skills:");
+    for (const skill of skills) {
+      const label = `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`;
+      lines.push(skill.instructions ? `${label}\n${skill.instructions}` : label);
+    }
   }
   if (!lines.length) return text;
   return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");

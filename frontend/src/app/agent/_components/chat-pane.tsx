@@ -738,22 +738,36 @@ export function ChatPane({
   );
 
   const selectMentionRow = useCallback(
-    (row: ComposerPluginRef | ComposerSkillRef) => {
+    async (row: ComposerPluginRef | ComposerSkillRef) => {
       if (!activeTab || !mention) return;
-      const input = replaceComposerMention(activeTab.input, mention, row.name);
+      const selectedMention = mention;
+      const input = replaceComposerMention(activeTab.input, selectedMention, row.name);
+      let selectedRow = row;
+      if (selectedMention.kind === "skill" && "path" in row && row.path) {
+        const loaded = await fetch(`/api/agent/skills/load?path=${encodeURIComponent(row.path)}`, {
+          cache: "no-store",
+        })
+          .then((res) => (res.ok ? (res.json() as Promise<{ skill?: ComposerSkillRef }>) : null))
+          .catch(() => null);
+        selectedRow = loaded?.skill ? { ...row, ...loaded.skill, id: row.id } : row;
+      }
       updateTab(activeTab.id, (tab) => {
-        if (mention.kind === "plugin") {
+        if (selectedMention.kind === "plugin") {
           const plugins = tab.plugins ?? [];
-          return plugins.some((plugin) => plugin.id === row.id)
+          return plugins.some((plugin) => plugin.id === selectedRow.id)
             ? { ...tab, input }
-            : { ...tab, input, plugins: [...plugins, row as ComposerPluginRef] };
+            : { ...tab, input, plugins: [...plugins, selectedRow as ComposerPluginRef] };
         }
         const skills = tab.skills ?? [];
-        return skills.some((skill) => skill.id === row.id)
+        return skills.some((skill) => skill.id === selectedRow.id)
           ? { ...tab, input }
-          : { ...tab, input, skills: [...skills, row as ComposerSkillRef] };
+          : { ...tab, input, skills: [...skills, selectedRow as ComposerSkillRef] };
       });
-      if (mention.kind === "plugin" && row.name.includes("browser-use") && !browserToolEnabled) {
+      if (
+        selectedMention.kind === "plugin" &&
+        row.name.includes("browser-use") &&
+        !browserToolEnabled
+      ) {
         onToggleBrowserTool();
       }
       setMention(null);
@@ -1758,7 +1772,7 @@ export function ChatPane({
                       key={row.id}
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => selectMentionRow(row)}
+                      onClick={() => void selectMentionRow(row)}
                       className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1 text-left hover:bg-(--hover)"
                     >
                       <span className="min-w-0 truncate text-[12px] text-(--fg)">

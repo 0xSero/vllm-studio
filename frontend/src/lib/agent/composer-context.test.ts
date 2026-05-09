@@ -31,10 +31,24 @@ describe("composer context helpers", () => {
     expect(
       selectedContextPrompt(
         "inspect localhost",
-        [{ id: "browser", name: "browser-use" }],
-        [{ id: "agent", name: "agent-browser", path: "/skills/agent-browser" }],
+        [{ id: "browser", name: "browser-use", description: "Control the in-app browser." }],
+        [
+          {
+            id: "agent",
+            name: "agent-browser",
+            path: "/skills/agent-browser",
+            instructions: "# agent-browser\nUse browser automation.",
+          },
+        ],
       ),
     ).toContain("Enabled plugins: @browser-use.");
+    expect(
+      selectedContextPrompt(
+        "inspect localhost",
+        [],
+        [{ id: "agent", name: "agent-browser", instructions: "Use browser automation." }],
+      ),
+    ).toContain("Use browser automation.");
   });
 
   it("filters rows with exact and prefix matches first", () => {

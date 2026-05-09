@@ -47,7 +47,10 @@ describe("discoverPlugins", () => {
     try {
       const plugin = path.join(root, "cache", "openai-bundled", "browser-use", "0.1.0");
       mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
-      writeFileSync(path.join(plugin, ".codex-plugin", "plugin.json"), '{"name":"browser-use"}');
+      writeFileSync(
+        path.join(plugin, ".codex-plugin", "plugin.json"),
+        '{"name":"browser-use","description":"Browser automation"}',
+      );
 
       expect(discoverPlugins([root])).toEqual([
         {
@@ -56,6 +59,7 @@ describe("discoverPlugins", () => {
           path: plugin,
           installed: true,
           enabled: true,
+          description: "Browser automation",
         },
       ]);
     } finally {

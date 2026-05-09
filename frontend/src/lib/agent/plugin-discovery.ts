@@ -25,9 +25,11 @@ function hasPluginMarker(dir: string): boolean {
   );
 }
 
+type PluginManifest = { name?: string; description?: string };
+
 function pluginNameFromPath(dir: string): string {
-  const manifestName = pluginNameFromManifest(dir);
-  if (manifestName) return manifestName;
+  const manifest = pluginManifest(dir);
+  if (manifest.name) return manifest.name;
   const base = path.basename(dir);
   const parent = path.basename(path.dirname(dir));
   // Cached Codex plugins usually live at `<plugin>/<version-or-hash>/skills`.
@@ -38,13 +40,19 @@ function pluginNameFromPath(dir: string): string {
   return base;
 }
 
-function pluginNameFromManifest(dir: string): string | null {
+function pluginManifest(dir: string): PluginManifest {
   try {
     const raw = readFileSync(path.join(dir, ".codex-plugin", "plugin.json"), "utf8");
-    const json = JSON.parse(raw) as { name?: unknown };
-    return typeof json.name === "string" && json.name.trim() ? json.name.trim() : null;
+    const json = JSON.parse(raw) as { description?: unknown; name?: unknown };
+    return {
+      name: typeof json.name === "string" && json.name.trim() ? json.name.trim() : undefined,
+      description:
+        typeof json.description === "string" && json.description.trim()
+          ? json.description.trim()
+          : undefined,
+    };
   } catch {
-    return null;
+    return {};
   }
 }
 
@@ -86,12 +94,14 @@ export function discoverPlugins(
     if (!stat.isDirectory()) return;
 
     if (hasPluginMarker(dir)) {
+      const manifest = pluginManifest(dir);
       rows.push({
         id: dir,
-        name: pluginNameFromPath(dir),
+        name: manifest.name ?? pluginNameFromPath(dir),
         path: dir,
         installed: true,
         enabled: true,
+        ...(manifest.description ? { description: manifest.description } : {}),
       });
       return;
     }

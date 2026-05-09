@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { discoverSkills } from "./skill-discovery";
+import { discoverSkills, loadSkillInstructions } from "./skill-discovery";
 
 describe("discoverSkills", () => {
   it("discovers and normalizes skills from every configured source", async () => {
@@ -86,6 +86,27 @@ describe("discoverSkills", () => {
         source: "~/.codex",
         path: browserSkill,
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads selected skill instructions only from configured roots", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-skill-discovery-"));
+    try {
+      const skill = path.join(root, ".codex", "skills", "agent-browser");
+      const outside = path.join(root, "outside");
+      mkdirSync(skill, { recursive: true });
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(path.join(skill, "SKILL.md"), "# agent-browser\nUse the browser.\n");
+      writeFileSync(path.join(outside, "SKILL.md"), "# nope\n");
+
+      const sources = [{ source: "~/.codex", dir: path.join(root, ".codex") }];
+      expect(loadSkillInstructions(skill, sources)).toMatchObject({
+        name: "agent browser",
+        instructions: "# agent-browser\nUse the browser.",
+      });
+      expect(loadSkillInstructions(outside, sources)).toBeNull();
     } finally {
       await rm(root, { recursive: true, force: true });
     }

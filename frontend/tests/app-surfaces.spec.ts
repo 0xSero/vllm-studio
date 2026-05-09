@@ -96,7 +96,31 @@ async function mockAppApis(page: Page) {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        skills: [{ id: "skill:test", name: "test skill", source: "~/.codex", path: "/tmp/skill" }],
+        skills: [
+          {
+            id: "skill:browser",
+            name: "browser-use:browser",
+            source: "~/.codex",
+            path: "/tmp/browser-skill",
+          },
+          { id: "skill:test", name: "test skill", source: "~/.codex", path: "/tmp/skill" },
+        ],
+      }),
+    });
+  });
+  await page.route("**/api/agent/skills/load**", async (route) => {
+    const url = new URL(route.request().url());
+    const skillPath = url.searchParams.get("path") ?? "";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        skill: {
+          id: skillPath.includes("browser") ? "skill:browser" : "skill:test",
+          name: skillPath.includes("browser") ? "browser-use:browser" : "test skill",
+          source: "~/.codex",
+          path: skillPath,
+          instructions: "Use fixture browser automation instructions.",
+        },
       }),
     });
   });
@@ -210,15 +234,30 @@ test("agent new chat surface renders with composer guidance", async ({ page }) =
 });
 
 test("agent composer loads plugins with @ and skills with $ as tabs", async ({ page }) => {
+  let turnRequest: { browserToolEnabled?: boolean; message?: string } | null = null;
+  await page.route("**/api/agent/turn", async (route) => {
+    turnRequest = route.request().postDataJSON();
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: 'data: {"type":"status","phase":"done"}\n\n',
+    });
+  });
+
   await page.goto("/agent?new=1");
   const composer = page.getByPlaceholder(/Ask test-model/);
   await composer.fill("@");
   await page.getByRole("button", { name: /@browser-use/ }).click();
   await expect(page.getByRole("button", { name: "Unload @browser-use" })).toBeVisible();
 
-  await composer.fill("$test");
-  await page.getByRole("button", { name: /\$test skill/ }).click();
-  await expect(page.getByRole("button", { name: "Unload $test skill" })).toBeVisible();
+  await composer.fill("$browser");
+  await page.getByRole("button", { name: /\$browser-use:browser/ }).click();
+  await expect(page.getByRole("button", { name: "Unload $browser-use:browser" })).toBeVisible();
+
+  await composer.press("Enter");
+  await expect.poll(() => turnRequest?.message ?? "").toContain("Enabled plugins: @browser-use.");
+  const capturedTurn = turnRequest as { browserToolEnabled?: boolean; message?: string } | null;
+  expect(capturedTurn?.message).toContain("Use fixture browser automation instructions.");
+  expect(capturedTurn?.browserToolEnabled).toBe(true);
 });
 
 test("settings exposes archive, plugin, skill, setup, and controller surfaces", async ({

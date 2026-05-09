@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -7,6 +7,7 @@ export type SkillRow = {
   name: string;
   source: string;
   path: string;
+  instructions?: string;
 };
 
 export type SkillSource = {
@@ -40,6 +41,39 @@ function skillNameFromDir(dir: string): string {
     if (plugin && skill) return `${plugin}:${skill.replace(/[-_]+/g, " ")}`.trim();
   }
   return path.basename(dir).replace(/[-_]+/g, " ").trim() || path.basename(dir);
+}
+
+function isInside(candidate: string, root: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+export function loadSkillInstructions(
+  skillPath: string,
+  sources: SkillSource[] = defaultSkillSources(),
+  maxChars = 6000,
+): SkillRow | null {
+  const resolved = path.resolve(skillPath);
+  if (
+    !sources.some(
+      (source) => isInside(resolved, source.dir) || path.resolve(source.dir) === resolved,
+    )
+  ) {
+    return null;
+  }
+  const file = path.join(resolved, "SKILL.md");
+  if (!existsSync(file)) return null;
+  const source = sources.find(
+    (item) => isInside(resolved, item.dir) || path.resolve(item.dir) === resolved,
+  );
+  const instructions = readFileSync(file, "utf8").slice(0, maxChars).trim();
+  return {
+    id: `${source?.source ?? "skill"}:${skillNameFromDir(resolved).toLowerCase()}`,
+    name: skillNameFromDir(resolved),
+    source: source?.source ?? "skill",
+    path: resolved,
+    instructions,
+  };
 }
 
 export function discoverSkills(
