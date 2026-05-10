@@ -464,6 +464,7 @@ export function AgentWorkspace() {
         if (!response.ok) throw new Error(payload.error || "Failed to load models");
         if (cancelled) return;
         const nextModels = payload.models ?? [];
+        if (nextModels.length > 0) setSetupWarning("");
         setModels(nextModels);
         setSelectedModel(
           (current) =>
