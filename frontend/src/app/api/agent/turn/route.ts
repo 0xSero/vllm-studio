@@ -22,6 +22,8 @@ type TurnRequest = {
     path?: string;
     skillPath?: string;
     mcpConfigPath?: string;
+    appConfigPath?: string;
+    appIds?: string[];
     appPath?: string;
   }>;
   skills?: Array<{
@@ -95,6 +97,11 @@ export async function POST(request: NextRequest) {
           skillPath: typeof plugin.skillPath === "string" ? plugin.skillPath : undefined,
           mcpConfigPath:
             typeof plugin.mcpConfigPath === "string" ? plugin.mcpConfigPath : undefined,
+          appConfigPath:
+            typeof plugin.appConfigPath === "string" ? plugin.appConfigPath : undefined,
+          appIds: Array.isArray(plugin.appIds)
+            ? plugin.appIds.filter((appId): appId is string => typeof appId === "string")
+            : undefined,
           appPath: typeof plugin.appPath === "string" ? plugin.appPath : undefined,
         }))
         .filter((plugin) => plugin.name || plugin.id)
