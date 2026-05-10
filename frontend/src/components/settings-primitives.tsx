@@ -153,23 +153,21 @@ export function SettingsRow({
 }: RowProps) {
   return (
     <div className="py-2.5">
-      <div className="flex min-h-8 flex-col gap-2">
-        <div className="min-w-0">
-          <div className="text-[12px] font-medium text-(--fg)">{label}</div>
-          {description ? (
-            <div className="mt-0.5 text-[11px] leading-4 text-(--dim)">{description}</div>
-          ) : null}
-        </div>
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
-            {control ?? value ?? <SettingsValue dim>Not reported yet</SettingsValue>}
-          </div>
+      <div className="flex min-h-8 flex-col gap-1.5">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0 text-[12px] font-medium text-(--fg)">{label}</div>
           {status || actions ? (
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               {status}
               {actions}
             </div>
           ) : null}
+        </div>
+        {description ? (
+          <div className="text-[11px] leading-4 text-(--dim)">{description}</div>
+        ) : null}
+        <div className="min-w-0">
+          {control ?? value ?? <SettingsValue dim>Not reported yet</SettingsValue>}
         </div>
       </div>
       {children ? <div className="mt-3">{children}</div> : null}
