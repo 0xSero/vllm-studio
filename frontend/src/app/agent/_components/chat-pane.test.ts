@@ -8,6 +8,7 @@ import {
   replayCursorAfterRuntimeHydration,
   replaySessionEvents,
   runtimeStatusLooksActive,
+  runtimeStatusAcceptsControl,
   statusAfterControlPhase,
   visibleQueuedMessages,
   visibleUserTextFromPi,
@@ -65,6 +66,15 @@ describe("replayCursorAfterRuntimeHydration", () => {
     expect(replayCursorAfterRuntimeHydration(true, 42)).toBe(42);
     expect(replayCursorAfterRuntimeHydration(true, undefined)).toBeUndefined();
     expect(replayCursorAfterRuntimeHydration(false, 42)).toBeUndefined();
+  });
+});
+
+describe("runtimeStatusAcceptsControl", () => {
+  it("rejects stale running UI when Pi has no active turn", () => {
+    expect(runtimeStatusAcceptsControl(null, "s1")).toBe(true);
+    expect(runtimeStatusAcceptsControl({ active: false, piSessionId: "s1" }, "s1")).toBe(false);
+    expect(runtimeStatusAcceptsControl({ active: true, piSessionId: "s1" }, "s1")).toBe(true);
+    expect(runtimeStatusAcceptsControl({ active: true, piSessionId: "s2" }, "s1")).toBe(false);
   });
 });
 

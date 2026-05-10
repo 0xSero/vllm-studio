@@ -204,6 +204,15 @@ export function runtimeStatusLooksActive(status: {
   return !isAgentEndEvent(lastEvent.event ?? {}) && lastEvent.event?.type !== "process_exit";
 }
 
+export function runtimeStatusAcceptsControl(
+  status: { active?: boolean; piSessionId?: string | null } | null,
+  piSessionId?: string | null,
+): boolean {
+  if (!status) return true;
+  if (!status.active) return false;
+  return !status.piSessionId || !piSessionId || status.piSessionId === piSessionId;
+}
+
 function eventKey(event: Record<string, unknown>): string {
   try {
     return JSON.stringify(event);
@@ -1589,9 +1598,22 @@ export function ChatPane({
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
 
-      // While running, Enter sends a steering message instead of a fresh prompt.
+      // While running, Enter sends a steering message. If the UI is stale
+      // (Pi has already ended but the composer still says running), fall back
+      // to a normal prompt so the model actually sees the message.
       if (running) {
         if (!text) return;
+        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+        const status = await loadRuntimeStatus(runtime);
+        if (!runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            status: "idle",
+            activeAssistantId: undefined,
+          }));
+          await submitPrompt(text, activeTab.id);
+          return;
+        }
         const queuedId = newId("queue");
         updateTab(activeTab.id, (tab) => ({
           ...tab,
@@ -1602,7 +1624,7 @@ export function ChatPane({
         const result = await sendControlMessage(
           "steer",
           text,
-          activeTab.runtimeSessionId || runtimeSessionId,
+          runtime,
           activeTab.id,
           activeTab.piSessionId,
         );
@@ -1622,6 +1644,7 @@ export function ChatPane({
       readingAttachments,
       running,
       runtimeSessionId,
+      loadRuntimeStatus,
       sendControlMessage,
       submitPrompt,
       updateTab,
@@ -1641,6 +1664,13 @@ export function ChatPane({
       await submitPromptRef.current(text, tabId);
       return;
     }
+    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+    const status = await loadRuntimeStatus(runtime);
+    if (!runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
+      updateTab(tabId, (tab) => ({ ...tab, status: "idle", activeAssistantId: undefined }));
+      await submitPromptRef.current(text, tabId);
+      return;
+    }
     updateTab(tabId, (tab) => ({
       ...tab,
       cwd: tab.cwd || cwd,
@@ -1648,7 +1678,7 @@ export function ChatPane({
       error: "",
       queue: [...(tab.queue ?? []), { id: newId("queue"), mode: "follow_up", text }],
     }));
-  }, [activeTab, modelId, running, cwd, updateTab]);
+  }, [activeTab, modelId, running, cwd, loadRuntimeStatus, runtimeSessionId, updateTab]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -1916,10 +1946,7 @@ export function ChatPane({
           .reverse()
           .map(usageFromEvent)
           .find((stats): stats is TokenStats => Boolean(stats));
-        const replaySeq = replayCursorAfterRuntimeHydration(
-          runtimeActive,
-          runtimeStatus?.eventSeq,
-        );
+        const replaySeq = replayCursorAfterRuntimeHydration(runtimeActive, runtimeStatus?.eventSeq);
 
         updateTab(tabId, (tab) => ({
           ...tab,
