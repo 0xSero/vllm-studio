@@ -544,7 +544,7 @@ function PluginsSettings() {
   const [validation, setValidation] = useState<PluginValidation | null>(null);
 
   useEffect(() => {
-    void fetch("/api/agent/plugins", { cache: "no-store" })
+    void fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
       .then((payload) => {
         setPlugins(payload.plugins ?? []);
