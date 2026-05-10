@@ -118,7 +118,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         <div className="sticky top-0 z-50 flex h-11 shrink-0 items-center px-2 bg-(--rail)">
           <button
             onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
+            className="flex h-8 w-8 items-center justify-center text-(--dim) transition-colors hover:text-(--fg)"
             title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
             aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
           >
@@ -136,12 +136,12 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="mb-1 flex h-7 items-center gap-2 rounded-md bg-(--surface) px-2 text-(--dim) transition-colors hover:bg-(--surface-2) hover:text-(--fg)"
+              className="mb-1 flex h-7 items-center gap-2 px-1 text-(--dim) transition-colors hover:text-(--fg)"
               title="Search sessions (⌘K)"
             >
               <SearchIcon className="h-3.5 w-3.5 shrink-0" />
               <span className="flex-1 truncate text-left text-[12px]">Search sessions</span>
-              <kbd className="rounded bg-(--surface-2) px-1 py-0.5 text-[9.5px] font-mono text-(--dim)">
+              <kbd className="px-1 py-0.5 text-[9.5px] font-mono text-(--dim)">
                 ⌘K
               </kbd>
             </button>
@@ -149,7 +149,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="mb-1 flex h-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+              className="mb-1 flex h-7 items-center justify-center text-(--dim) transition-colors hover:text-(--fg)"
               title="Search sessions (⌘K)"
               aria-label="Search sessions"
             >
@@ -174,7 +174,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
           <ProjectsNavSection expanded={isExpanded} />
         </nav>
 
-        <div className="shrink-0 border-t border-(--border)/60 p-2">
+        <div className="shrink-0 p-2">
           <NavItemDesktop
             href="/settings"
             label="Settings"
@@ -235,19 +235,18 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
       />
       <aside
         id="mobile-navigation-drawer"
-        className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col border-l border-(--border) bg-(--bg) shadow-2xl"
+        className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col border-l border-(--border) bg-(--bg)"
       >
         <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4">
           <div className="flex min-w-0 items-center gap-2">
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-(--fg)">vLLM Studio</div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-(--dim)">PWA menu</div>
+              <div className="truncate text-sm font-semibold text-(--fg)">Navigation</div>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded border border-(--border) text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            className="flex h-10 w-10 items-center justify-center text-(--dim) hover:text-(--fg)"
             aria-label="Close navigation menu"
           >
             <X className="h-5 w-5" />
@@ -300,10 +299,10 @@ function NavItemMobile({
     <Link
       href={href}
       onClick={onClick}
-      className={`mb-1 flex h-12 items-center gap-3 rounded px-3 text-sm font-medium transition-colors ${
+      className={`mb-1 flex h-12 items-center gap-3 border-l-2 px-2 text-sm font-medium transition-colors ${
         active
-          ? "bg-(--surface) text-(--fg)"
-          : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          ? "border-(--accent) text-(--fg)"
+          : "border-transparent text-(--dim) hover:text-(--fg)"
       }`}
     >
       <Icon className="h-5 w-5 shrink-0" />
@@ -331,8 +330,8 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-7 flex items-center gap-2.5 px-2 rounded-md transition-colors shrink-0 ${
-        active ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      className={`h-7 flex items-center gap-2.5 border-l-2 px-1.5 transition-colors shrink-0 ${
+        active ? "border-(--accent) text-(--fg)" : "border-transparent text-(--dim) hover:text-(--fg)"
       }`}
     >
       <Icon className="w-3.5 h-3.5 shrink-0" />
