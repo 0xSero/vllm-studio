@@ -782,7 +782,7 @@ function PluginsSettings() {
               key={plugin.path}
               label={plugin.name}
               description={pluginDescription(plugin)}
-              value={<SettingsValue>{plugin.enabled ? "Enabled" : "Disabled"}</SettingsValue>}
+              value={<SettingsValue mono>{pluginLocation(plugin)}</SettingsValue>}
               status={
                 <StatusPill tone={plugin.enabled ? "good" : "default"}>
                   {plugin.installed ? "installed" : "available"}
@@ -850,8 +850,12 @@ function PluginAvailabilityPill({
 function pluginDescription(plugin: { appIds?: string[]; description?: string; path: string }) {
   const summary = plugin.description?.replace(/\s+/g, " ").trim();
   const short = summary && summary.length > 150 ? `${summary.slice(0, 147)}…` : summary;
-  const connectors = plugin.appIds?.length ? ` · connectors: ${plugin.appIds.join(", ")}` : "";
-  return short ? `${short}${connectors} · ${plugin.path}` : `${plugin.path}${connectors}`;
+  const connectors = plugin.appIds?.length ? `Connectors: ${plugin.appIds.join(", ")}` : "";
+  return [short, connectors].filter(Boolean).join(" · ") || "Codex plugin bundle";
+}
+
+function pluginLocation(plugin: { enabled: boolean; source?: string; path: string }) {
+  return `${plugin.enabled ? "enabled" : "disabled"} · ${plugin.source ?? "local"} · ${plugin.path}`;
 }
 
 function SkillsSettings() {
