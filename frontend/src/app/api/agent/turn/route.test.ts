@@ -70,7 +70,7 @@ describe("POST /api/agent/turn", () => {
     });
   });
 
-  it("prompts instead of queueing control messages when the runtime is not active", async () => {
+  it("prompts instead of queueing control messages when the runtime is stopped", async () => {
     const session = {
       ensureStarted: vi.fn().mockResolvedValue(undefined),
       prompt: vi.fn().mockImplementation(async (_message, onEvent) => {
@@ -82,7 +82,7 @@ describe("POST /api/agent/turn", () => {
       }),
       steer: vi.fn(),
       followUp: vi.fn(),
-      status: { piSessionId: "pi-1", cwd: "/repo", active: false, running: true },
+      status: { piSessionId: "pi-1", cwd: "/repo", active: false, running: false },
       adoptPiSessionId: vi.fn(),
     };
     getSession.mockReturnValue(session as never);
@@ -110,6 +110,38 @@ describe("POST /api/agent/turn", () => {
     expect(session.followUp).not.toHaveBeenCalled();
     expect(body).toContain('"type":"pi"');
     expect(body).toContain('"delta":"ok"');
+  });
+
+  it("sends control messages to a running Pi process even after stream ownership detaches", async () => {
+    const session = {
+      ensureStarted: vi.fn(),
+      prompt: vi.fn(),
+      steer: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      status: { piSessionId: "pi-1", cwd: "/repo", active: false, running: true },
+      adoptPiSessionId: vi.fn(),
+    };
+    getSession.mockReturnValue(session as never);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/agent/turn", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "tab-1",
+          modelId: "hy3-preview",
+          message: "steer detached run",
+          cwd: "/repo",
+          piSessionId: "pi-1",
+          mode: "steer",
+        }),
+      }),
+    );
+
+    const body = await response.text();
+    expect(session.ensureStarted).not.toHaveBeenCalled();
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(session.steer).toHaveBeenCalledWith("steer detached run");
+    expect(body).toContain('"phase":"queued"');
   });
 
   it.each([

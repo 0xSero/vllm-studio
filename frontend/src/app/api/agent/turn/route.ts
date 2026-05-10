@@ -119,8 +119,12 @@ export async function POST(request: NextRequest) {
               ? (existingStatus.piSessionId ?? piSessionId)
               : piSessionId;
         sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd }, isOpen);
-        const ownsPromptStream = mode === "prompt" || !existingStatus.active;
-        if (ownsPromptStream || !existingStatus.running) {
+        // Control turns are keyed to the Pi process, not to this HTTP stream's
+        // ownership bit. The original prompt stream can detach while Pi keeps
+        // running; if we fall back to `prompt` in that window, steer/queue looks
+        // accepted in the UI but never reaches the active model turn.
+        const ownsPromptStream = mode === "prompt" || !existingStatus.running;
+        if (ownsPromptStream) {
           await session.ensureStarted(modelId, cwd, effectivePiSessionId, {
             browserToolEnabled,
             plugins,
