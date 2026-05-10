@@ -7,6 +7,7 @@ import {
   EyeOffIcon,
   FileIcon,
   Folder,
+  FolderOpen,
   MoreIcon,
   PinIcon,
   PlusIcon,
@@ -154,6 +155,18 @@ function patchSessionPref(piSessionId: string, patch: SessionPref) {
     all[piSessionId] = next;
   }
   saveSessionPrefs(all);
+}
+
+function relativeAge(value?: string | null): string {
+  const timestamp = value ? Date.parse(value) : NaN;
+  if (!Number.isFinite(timestamp)) return "";
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day" : `${days} days`;
 }
 
 function useSessionPrefs() {
@@ -651,15 +664,28 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-[18px] items-center text-(--dim) transition-colors hover:text-(--fg)">
+      <div className="group relative flex h-[18px] items-center pl-1.5 text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-0.5 px-0 pr-8 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 px-0 pr-8 text-left"
         >
-          <Folder className="h-3 w-3 shrink-0 opacity-75" />
-          <span className="truncate text-[10.5px] font-semibold text-(--fg)">{project.name}</span>
+          <span className="relative h-3 w-3 shrink-0 text-(--dim)">
+            <Folder
+              className={`absolute inset-0 h-3 w-3 transition-all duration-150 ${
+                open ? "scale-90 opacity-0" : "scale-100 opacity-75"
+              }`}
+            />
+            <FolderOpen
+              className={`absolute inset-0 h-3 w-3 transition-all duration-150 ${
+                open ? "scale-100 opacity-80" : "scale-90 opacity-0"
+              }`}
+            />
+          </span>
+          <span className="truncate pl-0.5 text-[10.5px] font-semibold text-(--fg)">
+            {project.name}
+          </span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -856,6 +882,7 @@ function ActiveSessionRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const label = pref.title || session.title || "Current session";
+  const age = relativeAge(session.startedAt ?? session.updatedAt);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -880,7 +907,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-[18px] items-center gap-0.5 pl-0 pr-0 transition-colors ${
+  const rowClass = `group relative flex h-[18px] items-center gap-0.5 pl-2 pr-0 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -911,7 +938,10 @@ function ActiveSessionRow({
         className={`h-3 w-3 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
         aria-label={isRunning ? `Session ${session.status}` : undefined}
       />
-      <span className="min-w-0 flex-1 truncate text-[10px] font-normal">{label}</span>
+      <span className="min-w-0 flex-1 truncate pl-0.5 text-[10px] font-normal">{label}</span>
+      {age ? (
+        <span className="shrink-0 pl-2.5 font-mono text-[10px] text-(--dim)">{age}</span>
+      ) : null}
     </>
   );
 
@@ -928,7 +958,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-0.5"
+          className="flex min-w-0 flex-1 items-center gap-1 pr-8"
         >
           {content}
         </Link>
@@ -948,7 +978,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-0.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 pr-8 text-left"
         >
           {content}
         </button>
@@ -1035,6 +1065,7 @@ function SessionRow({
   }, [menuOpen]);
 
   const label = pref.title || session.firstUserMessage || "Untitled session";
+  const age = relativeAge(session.startedAt);
 
   const finishRename = () => {
     const trimmed = draft.trim();
@@ -1044,7 +1075,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="flex h-[18px] items-center gap-0.5 pl-0 pr-0 bg-(--surface)/60">
+      <div className="flex h-[18px] items-center gap-0.5 pl-2 pr-0 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1065,7 +1096,7 @@ function SessionRow({
 
   return (
     <div
-      className="group relative flex h-[18px] items-center gap-0.5 pl-0 pr-0 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group relative flex h-[18px] items-center gap-0.5 pl-2 pr-0 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1083,10 +1114,13 @@ function SessionRow({
             title: label,
           });
         }}
-        className="flex min-w-0 flex-1 items-center gap-0.5"
+        className="flex min-w-0 flex-1 items-center gap-1 pr-8"
       >
         <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[10px] font-normal">{label}</span>
+        <span className="min-w-0 flex-1 truncate pl-0.5 text-[10px] font-normal">{label}</span>
+        {age ? (
+          <span className="shrink-0 pl-2.5 font-mono text-[10px] text-(--dim)">{age}</span>
+        ) : null}
       </Link>
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
