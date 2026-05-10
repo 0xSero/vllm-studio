@@ -587,6 +587,17 @@ class PiRpcSession extends EventEmitter {
     await this.sendCommand({ type: "follow_up", message });
   }
 
+  async compact(customInstructions?: string): Promise<unknown> {
+    if (this.activePromptCount > 0) {
+      throw new Error("Cannot compact while the agent is running.");
+    }
+    const response = await this.sendCommand({
+      type: "compact",
+      ...(customInstructions ? { customInstructions } : {}),
+    });
+    return response.data;
+  }
+
   async abort(): Promise<void> {
     if (!this.process || this.process.killed) return;
     await this.sendCommand({ type: "abort" }).catch(() => undefined);

@@ -730,6 +730,7 @@ export function ChatPane({
   const [pluginRows, setPluginRows] = useState<ComposerPluginRef[]>([]);
   const [skillRows, setSkillRows] = useState<ComposerSkillRef[]>([]);
   const [mention, setMention] = useState<ComposerMention | null>(null);
+  const [compacting, setCompacting] = useState(false);
   const tabsRef = useRef(tabs);
   const localStreamTabsRef = useRef<Set<string>>(new Set());
 
@@ -1703,6 +1704,48 @@ export function ChatPane({
   const queue = activeTab?.queue ?? [];
   const visibleQueue = queueExpanded ? queue : queue.slice(-1);
   const latestQueued = queue[queue.length - 1] ?? null;
+  const compactSession = useCallback(async () => {
+    if (!activeTab || running || compacting || !modelId) return;
+    setCompacting(true);
+    updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
+    try {
+      const response = await fetch("/api/agent/compact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: activeTab.runtimeSessionId || runtimeSessionId,
+          modelId,
+          cwd: cwd.trim() || undefined,
+          piSessionId: activeTab.piSessionId,
+          browserToolEnabled,
+          plugins: activeTab.plugins ?? [],
+        }),
+      });
+      const payload = await safeJson<{ error?: string; status?: { piSessionId?: string | null } }>(
+        response,
+      );
+      if (!response.ok) throw new Error(payload.error || "Compaction failed");
+      const nextSessionId = payload.status?.piSessionId || activeTab.piSessionId;
+      if (nextSessionId) await loadAndReplay(nextSessionId);
+    } catch (error) {
+      updateTab(activeTab.id, (tab) => ({
+        ...tab,
+        error: error instanceof Error ? error.message : "Compaction failed",
+      }));
+    } finally {
+      setCompacting(false);
+    }
+  }, [
+    activeTab,
+    browserToolEnabled,
+    compacting,
+    cwd,
+    loadAndReplay,
+    modelId,
+    running,
+    runtimeSessionId,
+    updateTab,
+  ]);
 
   return (
     <section
@@ -2139,6 +2182,16 @@ export function ChatPane({
           </div>
         </div>
         <div className="mx-auto mt-0.5 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
+          <button
+            type="button"
+            onClick={() => void compactSession()}
+            disabled={running || compacting || !activeTab?.piSessionId || !modelId}
+            className="mr-auto inline-flex items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
+            title="Compact this Pi session context"
+          >
+            {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            compact
+          </button>
           <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
           <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
           <span>
