@@ -34,7 +34,24 @@ export function defaultPluginRoots(): string[] {
       marketplace.source,
       path.join(marketplace.source, "plugins"),
     ]),
+    ...codexPluginCacheRoots(home),
+    ...codexAppPluginRoots(),
     path.join(home, ".codex", "plugins"),
+  ]);
+}
+
+export function codexPluginCacheRoots(home: string): string[] {
+  const cache = path.join(home, ".codex", "plugins", "cache");
+  return ["openai-bundled", "openai-curated", "openai-primary-runtime"].flatMap((name) => [
+    path.join(cache, name),
+    path.join(cache, name, "plugins"),
+  ]);
+}
+
+export function codexAppPluginRoots(): string[] {
+  return ["openai-bundled", "openai-curated", "openai-primary-runtime"].flatMap((name) => [
+    path.join("/Applications", "Codex.app", "Contents", "Resources", "plugins", name),
+    path.join("/Applications", "Codex.app", "Contents", "Resources", "plugins", name, "plugins"),
   ]);
 }
 

@@ -3,7 +3,26 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { discoverPlugins } from "./plugin-discovery";
+import { codexAppPluginRoots, codexPluginCacheRoots, discoverPlugins } from "./plugin-discovery";
+
+describe("Codex plugin roots", () => {
+  it("includes bundled app and Codex cache plugin locations without requiring config.toml", () => {
+    expect(codexPluginCacheRoots("/home/test")).toEqual(
+      expect.arrayContaining([
+        "/home/test/.codex/plugins/cache/openai-bundled",
+        "/home/test/.codex/plugins/cache/openai-bundled/plugins",
+        "/home/test/.codex/plugins/cache/openai-curated",
+        "/home/test/.codex/plugins/cache/openai-primary-runtime",
+      ]),
+    );
+    expect(codexAppPluginRoots()).toEqual(
+      expect.arrayContaining([
+        "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled",
+        "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins",
+      ]),
+    );
+  });
+});
 
 describe("discoverPlugins", () => {
   it("finds Codex cache plugins below owner/name/version/skills", async () => {
