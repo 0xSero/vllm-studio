@@ -5,6 +5,8 @@ import {
   byQuery,
   detectComposerMention,
   replaceComposerMention,
+  sanitizeComposerPlugins,
+  sanitizeComposerSkills,
   selectedContextInstructions,
   selectedContextPrompt,
 } from "./composer-context";
@@ -111,6 +113,39 @@ describe("composer context helpers", () => {
         activateComposerPlugin({ id: "computer", name: "computer-use", enabled: false }),
       ]),
     ).toEqual([{ id: "computer", name: "computer-use", enabled: true }]);
+  });
+
+  it("sanitizes API plugin and skill payloads before runtime loading", () => {
+    const plugins = sanitizeComposerPlugins([
+      {
+        id: "browser",
+        name: "browser-use",
+        enabled: true,
+        mcpConfigPath: "/plugins/browser/.mcp.json",
+        appIds: ["connector_browser", 123],
+      },
+      { id: "computer", name: "computer-use", enabled: false, mcpConfigPath: "/nope" },
+      { name: "" },
+    ]);
+    const skills = sanitizeComposerSkills([
+      { id: "agent", name: "agent-browser", path: "/skills/agent-browser" },
+      null,
+    ]);
+
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0]).toMatchObject({
+      id: "browser",
+      name: "browser-use",
+      enabled: true,
+      mcpConfigPath: "/plugins/browser/.mcp.json",
+      appIds: ["connector_browser"],
+    });
+    expect(skills).toHaveLength(1);
+    expect(skills[0]).toMatchObject({
+      id: "agent",
+      name: "agent-browser",
+      path: "/skills/agent-browser",
+    });
   });
 
   it("preserves plugin source identity in composer context", () => {

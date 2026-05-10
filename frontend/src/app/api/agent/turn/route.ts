@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { listSessions } from "@/lib/agent/sessions-store";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
+import { sanitizeComposerPlugins, sanitizeComposerSkills } from "@/lib/agent/composer-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,33 +89,8 @@ export async function POST(request: NextRequest) {
       ? body.piSessionId.trim()
       : null;
   const browserToolEnabled = body.browserToolEnabled === true;
-  const plugins = Array.isArray(body.plugins)
-    ? body.plugins
-        .map((plugin) => ({
-          id: typeof plugin.id === "string" ? plugin.id : "",
-          name: typeof plugin.name === "string" ? plugin.name : "",
-          path: typeof plugin.path === "string" ? plugin.path : undefined,
-          skillPath: typeof plugin.skillPath === "string" ? plugin.skillPath : undefined,
-          mcpConfigPath:
-            typeof plugin.mcpConfigPath === "string" ? plugin.mcpConfigPath : undefined,
-          appConfigPath:
-            typeof plugin.appConfigPath === "string" ? plugin.appConfigPath : undefined,
-          appIds: Array.isArray(plugin.appIds)
-            ? plugin.appIds.filter((appId): appId is string => typeof appId === "string")
-            : undefined,
-          appPath: typeof plugin.appPath === "string" ? plugin.appPath : undefined,
-        }))
-        .filter((plugin) => plugin.name || plugin.id)
-    : [];
-  const skills = Array.isArray(body.skills)
-    ? body.skills
-        .map((skill) => ({
-          id: typeof skill.id === "string" ? skill.id : "",
-          name: typeof skill.name === "string" ? skill.name : "",
-          path: typeof skill.path === "string" ? skill.path : undefined,
-        }))
-        .filter((skill) => skill.name || skill.id || skill.path)
-    : [];
+  const plugins = sanitizeComposerPlugins(body.plugins);
+  const skills = sanitizeComposerSkills(body.skills);
   const mode: TurnRequest["mode"] =
     body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const streamingBehavior =

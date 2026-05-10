@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
-import { selectedContextInstructions } from "@/lib/agent/composer-context";
+import {
+  sanitizeComposerPlugins,
+  sanitizeComposerSkills,
+  selectedContextInstructions,
+} from "@/lib/agent/composer-context";
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
 
@@ -29,17 +33,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const session = piRuntimeManager.getSession(sessionId);
+    const plugins = sanitizeComposerPlugins(body.plugins);
+    const skills = sanitizeComposerSkills(body.skills);
     await session.ensureStarted(modelId, cwd, piSessionId, {
       browserToolEnabled: body.browserToolEnabled === true,
-      plugins: Array.isArray(body.plugins) ? body.plugins : [],
-      skills: Array.isArray(body.skills) ? body.skills : [],
+      plugins,
+      skills,
     });
     const customInstructions =
-      body.customInstructions?.trim() ||
-      selectedContextInstructions(
-        Array.isArray(body.plugins) ? body.plugins : [],
-        Array.isArray(body.skills) ? body.skills : [],
-      );
+      body.customInstructions?.trim() || selectedContextInstructions(plugins, skills);
     const result = await session.compact(customInstructions);
     return Response.json({ ok: true, result, status: session.status });
   } catch (error) {

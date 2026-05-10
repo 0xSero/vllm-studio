@@ -43,6 +43,66 @@ export function activateComposerPlugin(plugin: ComposerPluginRef): ComposerPlugi
   return { ...plugin, enabled: true };
 }
 
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function stringArrayField(record: Record<string, unknown>, key: string): string[] | undefined {
+  const value = record[key];
+  if (!Array.isArray(value)) return undefined;
+  const strings = value.filter((item): item is string => typeof item === "string" && Boolean(item));
+  return strings.length ? strings : undefined;
+}
+
+export function sanitizeComposerPlugins(value: unknown): ComposerPluginRef[] {
+  if (!Array.isArray(value)) return [];
+  return activeComposerPlugins(
+    value.flatMap((item): ComposerPluginRef[] => {
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      const plugin: ComposerPluginRef = {
+        id: stringField(record, "id") ?? "",
+        name: stringField(record, "name") ?? "",
+        displayName: stringField(record, "displayName"),
+        version: stringField(record, "version"),
+        path: stringField(record, "path"),
+        enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
+        description: stringField(record, "description"),
+        shortDescription: stringField(record, "shortDescription"),
+        source: stringField(record, "source"),
+        category: stringField(record, "category"),
+        capabilities: stringArrayField(record, "capabilities"),
+        defaultPrompts: stringArrayField(record, "defaultPrompts"),
+        brandColor: stringField(record, "brandColor"),
+        iconPath: stringField(record, "iconPath"),
+        skillPath: stringField(record, "skillPath"),
+        mcpConfigPath: stringField(record, "mcpConfigPath"),
+        appConfigPath: stringField(record, "appConfigPath"),
+        appIds: stringArrayField(record, "appIds"),
+        appPath: stringField(record, "appPath"),
+      };
+      return plugin.name || plugin.id || plugin.path ? [plugin] : [];
+    }),
+  );
+}
+
+export function sanitizeComposerSkills(value: unknown): ComposerSkillRef[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): ComposerSkillRef[] => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const skill: ComposerSkillRef = {
+      id: stringField(record, "id") ?? "",
+      name: stringField(record, "name") ?? "",
+      source: stringField(record, "source"),
+      path: stringField(record, "path"),
+      instructions: stringField(record, "instructions"),
+    };
+    return skill.name || skill.id || skill.path ? [skill] : [];
+  });
+}
+
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
   const beforeCaret = value.slice(0, safeCaret);
