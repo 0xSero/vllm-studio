@@ -678,7 +678,7 @@ function ProjectRow({
               new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
             );
           }}
-          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-60 hover:text-(--fg) group-hover:opacity-100"
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
