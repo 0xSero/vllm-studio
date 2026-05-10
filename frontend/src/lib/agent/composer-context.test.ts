@@ -181,6 +181,19 @@ describe("composer context helpers", () => {
     ).toContain("call mcp_plugin_status before desktop control");
   });
 
+  it("recognizes core plugins case-insensitively from display metadata", () => {
+    expect(
+      selectedContextPrompt("inspect", [
+        { id: "browser", name: "BrowserUse", displayName: "Browser-Use" },
+      ]),
+    ).toContain("Browser-use is enabled");
+    expect(
+      selectedContextPrompt("control", [
+        { id: "computer", name: "ComputerUse", displayName: "Computer-Use" },
+      ]),
+    ).toContain("call mcp_plugin_status");
+  });
+
   it("builds reusable compaction instructions for selected plugins and skills", () => {
     const instructions = selectedContextInstructions(
       [{ id: "browser", name: "browser-use", shortDescription: "Browser control" }],

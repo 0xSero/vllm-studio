@@ -566,8 +566,10 @@ function PluginsSettings() {
   const [validation, setValidation] = useState<PluginValidation | null>(null);
   const [savingPlugin, setSavingPlugin] = useState<string | null>(null);
   const [upgradingMarketplace, setUpgradingMarketplace] = useState<string | null>(null);
-  const browserUse = plugins.find((plugin) => plugin.name.includes("browser-use")) ?? null;
-  const computerUse = plugins.find((plugin) => plugin.name.includes("computer-use")) ?? null;
+  const browserUse =
+    plugins.find((plugin) => plugin.name.toLowerCase().includes("browser-use")) ?? null;
+  const computerUse =
+    plugins.find((plugin) => plugin.name.toLowerCase().includes("computer-use")) ?? null;
 
   const loadPlugins = () =>
     fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
@@ -770,7 +772,8 @@ function PluginsSettings() {
         {plugins
           .filter(
             (plugin) =>
-              !plugin.name.includes("browser-use") && !plugin.name.includes("computer-use"),
+              !plugin.name.toLowerCase().includes("browser-use") &&
+              !plugin.name.toLowerCase().includes("computer-use"),
           )
           .slice(0, 40)
           .map((plugin) => (

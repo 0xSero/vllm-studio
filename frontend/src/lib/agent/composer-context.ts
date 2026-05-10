@@ -176,10 +176,10 @@ function selectedContextLines(
         lines.push(`Plugin ${label} declares app connectors: ${plugin.appIds.join(", ")}`);
       }
     }
-    if (enabledPlugins.some((plugin) => plugin.name.includes("browser-use"))) {
+    if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "browser-use"))) {
       lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
     }
-    if (enabledPlugins.some((plugin) => plugin.name.includes("computer-use"))) {
+    if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "computer-use"))) {
       lines.push(
         "Computer-use is selected; call mcp_plugin_status before desktop control and use computer-use tools only if the MCP status is ready.",
       );
@@ -207,6 +207,12 @@ function pluginRuntimeDetails(plugin: ComposerPluginRef): string[] {
 
 function pluginRefLabel(plugin: ComposerPluginRef): string {
   return plugin.source ? `@${plugin.name} (${plugin.source})` : `@${plugin.name}`;
+}
+
+function pluginNameIncludes(plugin: ComposerPluginRef, needle: string): boolean {
+  return [plugin.id, plugin.name, plugin.displayName, plugin.path]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function searchableText(row: {

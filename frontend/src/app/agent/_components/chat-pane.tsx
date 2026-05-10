@@ -923,7 +923,7 @@ export function ChatPane({
       });
       if (
         selectedMention.kind === "plugin" &&
-        row.name.includes("browser-use") &&
+        row.name.toLowerCase().includes("browser-use") &&
         !browserToolEnabled
       ) {
         onToggleBrowserTool();
