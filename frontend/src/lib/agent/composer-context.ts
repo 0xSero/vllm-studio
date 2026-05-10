@@ -94,12 +94,42 @@ export function selectedContextPrompt(
   return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");
 }
 
-export function byQuery<T extends { name: string }>(rows: T[], query: string, limit = 8): T[] {
+function searchableText(row: {
+  name: string;
+  displayName?: string;
+  source?: string;
+  category?: string;
+  shortDescription?: string;
+}): string[] {
+  return [row.name, row.displayName, row.source, row.category, row.shortDescription].filter(
+    (value): value is string => Boolean(value),
+  );
+}
+
+export function byQuery<
+  T extends {
+    name: string;
+    displayName?: string;
+    source?: string;
+    category?: string;
+    shortDescription?: string;
+  },
+>(rows: T[], query: string, limit = 8): T[] {
   const q = query.trim().toLowerCase();
   const scored = rows
     .map((row) => {
-      const name = row.name.toLowerCase();
-      const score = !q ? 2 : name === q ? 0 : name.startsWith(q) ? 1 : name.includes(q) ? 2 : 9;
+      const fields = searchableText(row).map((value) => value.toLowerCase());
+      const primary = row.name.toLowerCase();
+      const display = row.displayName?.toLowerCase();
+      const score = !q
+        ? 2
+        : primary === q || display === q
+          ? 0
+          : primary.startsWith(q) || Boolean(display?.startsWith(q))
+            ? 1
+            : fields.some((field) => field.includes(q))
+              ? 2
+              : 9;
       return { row, score };
     })
     .filter((item) => item.score < 9)
