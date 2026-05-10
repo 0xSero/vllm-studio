@@ -28,6 +28,7 @@ export const createToolCallStream = (
   let firstTokenTracked = false;
   const contentHistory = new Map<string, { text: string; snapshot: boolean }>();
   const reasoningHistory = new Map<string, { text: string; snapshot: boolean }>();
+  const replayCursors = new Map<string, number>();
   const tearDownUpstream = async (): Promise<void> => {
     try {
       await reader.cancel();
@@ -99,13 +100,31 @@ export const createToolCallStream = (
   ): string => {
     if (!text) return text;
     const previous = history.get(key) ?? { text: "", snapshot: forceSnapshot };
+    const replayCursor = replayCursors.get(key);
+    if (replayCursor !== undefined) {
+      const expected = previous.text.slice(replayCursor, replayCursor + text.length);
+      if (expected === text) {
+        const nextCursor = replayCursor + text.length;
+        if (nextCursor >= previous.text.length) replayCursors.delete(key);
+        else replayCursors.set(key, nextCursor);
+        return "";
+      }
+      replayCursors.delete(key);
+    }
     const isCumulative =
-      previous.text.length > 0 && text.length >= previous.text.length && text.startsWith(previous.text);
+      previous.text.length > 0 &&
+      text.length >= previous.text.length &&
+      text.startsWith(previous.text);
     const shouldSlice = forceSnapshot || previous.snapshot || isCumulative;
 
     if (shouldSlice) {
       history.set(key, { text, snapshot: true });
       return isCumulative ? text.slice(previous.text.length) : text;
+    }
+
+    if (previous.text.length > text.length && previous.text.startsWith(text)) {
+      replayCursors.set(key, text.length);
+      return "";
     }
 
     history.set(key, { text: previous.text + text, snapshot: false });

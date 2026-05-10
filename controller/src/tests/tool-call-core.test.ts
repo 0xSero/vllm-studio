@@ -398,9 +398,7 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'));
         controller.enqueue(
           encoder.encode('data: {"choices":[{"delta":{"content":"Hello world"}}]}\n\n')
         );
@@ -475,6 +473,28 @@ describe("tool-call-core", () => {
     expect(delta.content).toBe("Hello");
   });
 
+  it("deduplicates a replayed delta sequence that restarts from the beginning", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        for (const content of ["Hello", " world", "Hello", " world", "!"]) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+          );
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const stream = createToolCallStream(source.getReader());
+    const output = await collectStream(stream);
+    const events = parseSseDataLines(output);
+    const delta = collectDeltaText(events);
+
+    expect(delta.content).toBe("Hello world!");
+  });
+
   it("treats message-shaped streaming chunks as snapshots", async () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
@@ -483,9 +503,7 @@ describe("tool-call-core", () => {
           encoder.encode('data: {"choices":[{"message":{"content":"First chunk"}}]}\n\n')
         );
         controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"message":{"content":"First chunk plus more"}}]}\n\n'
-          )
+          encoder.encode('data: {"choices":[{"message":{"content":"First chunk plus more"}}]}\n\n')
         );
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -503,7 +521,9 @@ describe("tool-call-core", () => {
 
 describe("normalizeChatMessageContentParts", () => {
   it("collapses OpenAI text content arrays for text-only local backends", async () => {
-    const { normalizeChatMessageContentParts } = await import("../modules/proxy/content-normalizer");
+    const { normalizeChatMessageContentParts } = await import(
+      "../modules/proxy/content-normalizer"
+    );
     const payload: Record<string, unknown> = {
       messages: [
         {
@@ -527,7 +547,9 @@ describe("normalizeChatMessageContentParts", () => {
   });
 
   it("leaves multimodal arrays intact", async () => {
-    const { normalizeChatMessageContentParts } = await import("../modules/proxy/content-normalizer");
+    const { normalizeChatMessageContentParts } = await import(
+      "../modules/proxy/content-normalizer"
+    );
     const content = [
       { type: "text", text: "describe" },
       { type: "image_url", image_url: { url: "data:image/png;base64,abc" } },
