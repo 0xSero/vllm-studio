@@ -168,29 +168,23 @@ export function StatusSection({
           label="Decode"
           value={metricValue(genTps, 1)}
           unit="tok/s"
-          detail={peakGenTps > 0 ? `peak ${peakGenTps.toFixed(1)}` : undefined}
+          detail={peakMetricDetail(peakGenTps, 1)}
         />
         <MetricColumn
           label="TTFT"
           value={metricValue(ttftMs, 0)}
           unit="ms"
-          detail={peakTtftMs > 0 ? `peak ${peakTtftMs.toFixed(0)} ms` : undefined}
+          detail={peakMetricDetail(peakTtftMs, 0, " ms")}
         />
         <MetricColumn
           label="Prefill"
           value={metricValue(prefillTps, 1)}
           unit="t/s"
-          detail={peakPrefillTps > 0 ? `peak ${peakPrefillTps.toFixed(1)}` : undefined}
+          detail={peakMetricDetail(peakPrefillTps, 1)}
         />
         <CompactMetric label="Req" value={`${sessions}/${peakReq || sessions}`} />
-        <CompactMetric
-          label="VRAM"
-          value={`${totalMemUsed.toFixed(1)}/${vramCapacity.toFixed(0)}G`}
-        />
-        <CompactMetric
-          label="Power"
-          value={`${Math.round(totalPower)}/${Math.round(powerLimit)}W`}
-        />
+        <CompactMetric label="VRAM" value={ratioMetric(totalMemUsed, vramCapacity, "G", 1)} />
+        <CompactMetric label="Power" value={ratioMetric(totalPower, powerLimit, "W")} />
       </dl>
 
       <dl className="mt-3 grid gap-2 font-mono text-[10.5px] text-(--dim) sm:grid-cols-4">
@@ -249,10 +243,27 @@ function HeaderStopButton({ running }: { running: boolean }) {
   );
 }
 
-function metricValue(value: number | null, digits: number): string | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
+export function metricValue(value: number | null, digits: number): string | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value.toFixed(digits)
     : null;
+}
+
+export function ratioMetric(
+  value: number | null,
+  total: number | null,
+  unit: string,
+  valueDigits = 0,
+): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return null;
+  return `${value.toFixed(valueDigits)}/${total.toFixed(0)}${unit}`;
+}
+
+function peakMetricDetail(value: number | null, digits: number, suffix = ""): string | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? `peak ${value.toFixed(digits)}${suffix}`
+    : undefined;
 }
 
 function tokenMetric(...values: Array<number | undefined>): string {
@@ -636,11 +647,11 @@ function ActionBtn({
   );
 }
 
-function firstPositive(...values: Array<number | null | undefined>): number {
+export function firstPositive(...values: Array<number | null | undefined>): number | null {
   for (const v of values) {
     if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
   }
-  return 0;
+  return null;
 }
 
 /* Inline Models dropdown — auto-closes on outside click and selection. */
