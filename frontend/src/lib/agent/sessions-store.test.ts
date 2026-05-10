@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadSession } from "./sessions-store";
+import { listSessions, loadSession } from "./sessions-store";
 
 const originalEnv = { ...process.env };
 const roots: string[] = [];
@@ -49,5 +57,29 @@ describe("session store", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({ type: "session", id: sessionId });
+  });
+
+  it("orders sessions by start time instead of later file updates", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vllm-studio-sessions-"));
+    roots.push(root);
+    process.env.PI_CODING_AGENT_DIR = path.join(root, "pi-agent");
+
+    const cwd = path.join(root, "project");
+    const sessionDir = path.join(process.env.PI_CODING_AGENT_DIR, "sessions", encodeCwdForPi(cwd));
+    mkdirSync(sessionDir, { recursive: true });
+    const older = path.join(sessionDir, "older.jsonl");
+    const newer = path.join(sessionDir, "newer.jsonl");
+    writeFileSync(
+      older,
+      JSON.stringify({ type: "session", id: "older", cwd, timestamp: "2026-05-10T00:00:00.000Z" }),
+    );
+    writeFileSync(
+      newer,
+      JSON.stringify({ type: "session", id: "newer", cwd, timestamp: "2026-05-10T00:05:00.000Z" }),
+    );
+    utimesSync(older, new Date("2026-05-10T00:20:00.000Z"), new Date("2026-05-10T00:20:00.000Z"));
+    utimesSync(newer, new Date("2026-05-10T00:10:00.000Z"), new Date("2026-05-10T00:10:00.000Z"));
+
+    await expect(listSessions(cwd)).resolves.toMatchObject([{ id: "newer" }, { id: "older" }]);
   });
 });

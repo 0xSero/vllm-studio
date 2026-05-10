@@ -556,7 +556,11 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           rows
             .flat()
             .filter((session) => !activePiSessionIds.has(session.id))
-            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+            .sort(
+              (a, b) =>
+                new Date(b.startedAt || b.updatedAt).getTime() -
+                new Date(a.startedAt || a.updatedAt).getTime(),
+            ),
         );
       }
     })();

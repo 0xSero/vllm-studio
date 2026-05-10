@@ -22,6 +22,11 @@ type ListSessionsOptions = {
   since?: Date;
 };
 
+function summaryStartTime(session: Pick<SessionSummary, "startedAt" | "updatedAt">): number {
+  const value = Date.parse(session.startedAt || session.updatedAt);
+  return Number.isFinite(value) ? value : 0;
+}
+
 // Pi encodes the cwd by stripping the leading '/' and replacing remaining '/'
 // with '-', then wrapping with '--' on both sides. Example:
 //   /Users/sero/projects/vllm-studio  →  --Users-sero-projects-vllm-studio--
@@ -165,7 +170,7 @@ export async function listSessions(
     }
   }
   const summaries = [...summariesById.values()];
-  summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  summaries.sort((a, b) => summaryStartTime(b) - summaryStartTime(a));
   return summaries;
 }
 
