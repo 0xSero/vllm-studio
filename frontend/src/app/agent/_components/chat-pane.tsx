@@ -24,6 +24,7 @@ import {
 import { safeJson } from "@/lib/agent/safe-json";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
+  activateComposerPlugin,
   activeComposerPlugins,
   byQuery,
   detectComposerMention,
@@ -859,7 +860,7 @@ export function ChatPane({
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      fetch("/api/agent/plugins", { cache: "no-store" })
+      fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
         .then((res) => res.json() as Promise<{ plugins?: ComposerPluginRef[] }>)
         .then((payload) => payload.plugins ?? [])
         .catch(() => [] as ComposerPluginRef[]),
@@ -903,9 +904,10 @@ export function ChatPane({
       updateTab(activeTab.id, (tab) => {
         if (selectedMention.kind === "plugin") {
           const plugins = tab.plugins ?? [];
+          const plugin = activateComposerPlugin(selectedRow as ComposerPluginRef);
           return plugins.some((plugin) => plugin.id === selectedRow.id)
             ? { ...tab, input }
-            : { ...tab, input, plugins: [...plugins, selectedRow as ComposerPluginRef] };
+            : { ...tab, input, plugins: [...plugins, plugin] };
         }
         const skills = tab.skills ?? [];
         return skills.some((skill) => skill.id === selectedRow.id)

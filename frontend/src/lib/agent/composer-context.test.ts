@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activateComposerPlugin,
   activeComposerPlugins,
   byQuery,
   detectComposerMention,
@@ -102,6 +103,14 @@ describe("composer context helpers", () => {
     const prompt = selectedContextPrompt("inspect the page", plugins);
     expect(prompt).toContain("Enabled plugins: @browser-use.");
     expect(prompt).not.toContain("@computer-use");
+  });
+
+  it("locally activates a selected plugin without mutating global Codex config", () => {
+    expect(
+      activeComposerPlugins([
+        activateComposerPlugin({ id: "computer", name: "computer-use", enabled: false }),
+      ]),
+    ).toEqual([{ id: "computer", name: "computer-use", enabled: true }]);
   });
 
   it("preserves plugin source identity in composer context", () => {

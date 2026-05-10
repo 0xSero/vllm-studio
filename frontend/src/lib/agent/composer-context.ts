@@ -39,6 +39,10 @@ export function activeComposerPlugins(plugins: ComposerPluginRef[] = []): Compos
   return plugins.filter((plugin) => plugin.enabled !== false);
 }
 
+export function activateComposerPlugin(plugin: ComposerPluginRef): ComposerPluginRef {
+  return { ...plugin, enabled: true };
+}
+
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
   const beforeCaret = value.slice(0, safeCaret);
@@ -81,10 +85,7 @@ export function selectedContextInstructions(
 ): string | undefined {
   const lines = selectedContextLines(plugins, skills);
   if (!lines.length) return undefined;
-  return [
-    "Preserve this selected composer context after compaction.",
-    ...lines,
-  ].join("\n");
+  return ["Preserve this selected composer context after compaction.", ...lines].join("\n");
 }
 
 function selectedContextLines(
