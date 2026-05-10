@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
+import { createReadStream, existsSync, realpathSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -40,9 +40,24 @@ function piSessionRoots(): string[] {
   return [...new Set(roots.map((root) => path.resolve(root)))];
 }
 
+function cwdVariants(cwd: string): string[] {
+  const variants = [path.resolve(cwd)];
+  try {
+    variants.push(realpathSync.native(cwd));
+  } catch {
+    try {
+      variants.push(realpathSync(cwd));
+    } catch {
+      // If the cwd no longer exists, fall back to the lexical path. Old
+      // session loading should remain best-effort instead of throwing.
+    }
+  }
+  return [...new Set(variants.map((value) => path.resolve(value)))];
+}
+
 function sessionsDirsForCwd(cwd: string): string[] {
-  const encoded = encodeCwdForPi(cwd);
-  return piSessionRoots().map((root) => path.join(root, encoded));
+  const encodedCwds = [...new Set(cwdVariants(cwd).map(encodeCwdForPi))];
+  return piSessionRoots().flatMap((root) => encodedCwds.map((encoded) => path.join(root, encoded)));
 }
 
 async function readSessionSummary(
