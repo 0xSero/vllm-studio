@@ -127,6 +127,17 @@ export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
   return queue.filter((item) => item.mode === "follow_up");
 }
 
+export function statusAfterControlPhase(
+  current: SessionTab["status"],
+  phase?: string,
+): SessionTab["status"] {
+  // A steer/follow_up request has its own short SSE stream. Its final "done"
+  // only means the control message was accepted; the original Pi turn is still
+  // running on the owning stream. Do not mark the UI idle here.
+  if (phase === "done" || phase === "queued") return "running";
+  return current;
+}
+
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
   next: QueuedMessage | null;
   remaining: QueuedMessage[];
@@ -1303,7 +1314,7 @@ export function ChatPane({
               updateTab(tabId, (tab) => ({
                 ...tab,
                 piSessionId: payload.piSessionId || tab.piSessionId,
-                status: payload.phase === "done" ? "idle" : tab.status,
+                status: statusAfterControlPhase(tab.status, payload.phase),
               }));
             }
             if (payload?.type === "pi") {

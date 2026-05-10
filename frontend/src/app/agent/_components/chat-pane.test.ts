@@ -6,6 +6,7 @@ import {
   parseAgentTurnSsePayload,
   reconcileQueueWithPiEvent,
   replaySessionEvents,
+  statusAfterControlPhase,
   visibleQueuedMessages,
   visibleUserTextFromPi,
 } from "./chat-pane";
@@ -46,6 +47,14 @@ describe("visibleQueuedMessages", () => {
         { id: "follow", mode: "follow_up", text: "next" },
       ]),
     ).toEqual([{ id: "follow", mode: "follow_up", text: "next" }]);
+  });
+});
+
+describe("statusAfterControlPhase", () => {
+  it("keeps the composer running when a steer/follow-up SSE finishes", () => {
+    expect(statusAfterControlPhase("running", "queued")).toBe("running");
+    expect(statusAfterControlPhase("running", "done")).toBe("running");
+    expect(statusAfterControlPhase("idle", "starting")).toBe("idle");
   });
 });
 
