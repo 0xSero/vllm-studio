@@ -1156,9 +1156,14 @@ export function ChatPane({
       mode: "steer" | "follow_up",
       text: string,
       runtime: string,
+      tabId: string,
       piSessionId?: string | null,
     ): Promise<{ ok: boolean; error?: string }> => {
       if (!text.trim() || !modelId) return { ok: false };
+      const selectedTab = tabsRef.current.find((tab) => tab.id === tabId);
+      const plugins = activeComposerPlugins(selectedTab?.plugins ?? []);
+      const skills = selectedTab?.skills ?? [];
+      const message = selectedContextPrompt(text, plugins, skills);
       try {
         const response = await fetch("/api/agent/turn", {
           method: "POST",
@@ -1166,15 +1171,13 @@ export function ChatPane({
           body: JSON.stringify({
             sessionId: runtime,
             modelId,
-            message: text,
+            message,
             cwd: cwd.trim() || undefined,
             piSessionId,
             mode,
             browserToolEnabled,
-            plugins: activeComposerPlugins(
-              tabsRef.current.find((tab) => tab.id === activeTabId)?.plugins ?? [],
-            ),
-            skills: tabsRef.current.find((tab) => tab.id === activeTabId)?.skills ?? [],
+            plugins,
+            skills,
           }),
         });
         if (!response.ok || !response.body) {
@@ -1207,7 +1210,7 @@ export function ChatPane({
         return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
       }
     },
-    [modelId, cwd, browserToolEnabled, activeTabId],
+    [modelId, cwd, browserToolEnabled],
   );
 
   const submitPrompt = useCallback(
@@ -1429,6 +1432,7 @@ export function ChatPane({
           "steer",
           text,
           activeTab.runtimeSessionId || runtimeSessionId,
+          activeTab.id,
           activeTab.piSessionId,
         );
         if (!result.ok) {
