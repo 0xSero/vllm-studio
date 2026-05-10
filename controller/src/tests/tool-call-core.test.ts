@@ -99,6 +99,25 @@ describe("tool-call-core", () => {
     expect(output).toContain("data: [DONE]");
   });
 
+  it("calls first-token hook once when visible streaming output starts", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":""}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"!"}}]}\n\n'));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    let calls = 0;
+    const stream = createToolCallStream(source.getReader(), undefined, () => {
+      calls += 1;
+    });
+    await collectStream(stream);
+    expect(calls).toBe(1);
+  });
+
   it("moves split <think> blocks to reasoning_content in streaming output", async () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({

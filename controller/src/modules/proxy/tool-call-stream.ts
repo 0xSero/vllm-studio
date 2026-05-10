@@ -11,7 +11,8 @@ export interface StreamUsage {
 
 export const createToolCallStream = (
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onUsage?: (usage: StreamUsage) => void
+  onUsage?: (usage: StreamUsage) => void,
+  onFirstToken?: () => void
 ): ReadableStream<Uint8Array> => {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -24,6 +25,7 @@ export const createToolCallStream = (
   let inThink = false;
   let emittedLines = 0;
   let downstreamClosed = false;
+  let firstTokenTracked = false;
   const contentHistory = new Map<string, { text: string; snapshot: boolean }>();
   const reasoningHistory = new Map<string, { text: string; snapshot: boolean }>();
   const tearDownUpstream = async (): Promise<void> => {
@@ -242,6 +244,12 @@ export const createToolCallStream = (
     }
   };
 
+  const trackFirstToken = (): void => {
+    if (firstTokenTracked) return;
+    firstTokenTracked = true;
+    onFirstToken?.();
+  };
+
   const maybeInjectToolCalls = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
     if (toolCallsFound || !visibleContentBuffer) return;
     const parsed = parseToolCallsFromContent(visibleContentBuffer);
@@ -316,6 +324,7 @@ export const createToolCallStream = (
             const toolCalls = delta["tool_calls"];
             if (Array.isArray(toolCalls) && toolCalls.length > 0) {
               toolCallsFound = true;
+              trackFirstToken();
             }
             const rawContent = typeof delta["content"] === "string" ? String(delta["content"]) : "";
             const content = normalizeTextDelta(
@@ -333,6 +342,7 @@ export const createToolCallStream = (
                     !hasDelta
                   )
                 : "";
+            if (content || reasoningRaw) trackFirstToken();
             let reasoning = "";
             let reasoningFromContent = "";
             if (content) {

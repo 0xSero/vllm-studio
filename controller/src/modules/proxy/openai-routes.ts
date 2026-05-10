@@ -405,6 +405,7 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       );
     }
 
+    let ttftMs: number | null = null;
     const stream = createToolCallStream(reader, (usage) => {
       if (usage.prompt_tokens > 0) {
         context.stores.lifetimeMetricsStore.addPromptTokens(usage.prompt_tokens);
@@ -427,6 +428,7 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
             reasoning_tokens: usage.reasoning_tokens ?? 0,
             cache_read_tokens: usage.cache_read_tokens ?? 0,
             cache_write_tokens: usage.cache_write_tokens ?? 0,
+            ttft_ms: ttftMs,
             duration_ms: Math.round(performance.now() - requestStart),
             status: upstreamResponse.status,
             streamed: true,
@@ -437,6 +439,8 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
           );
         }
       }
+    }, () => {
+      ttftMs ??= Math.max(0, Math.round(performance.now() - requestStart));
     });
 
     return new Response(stream, { headers: buildSseHeaders() });
