@@ -65,10 +65,50 @@ describe("POST /api/agent/turn", () => {
       skills: [{ id: "agent", name: "agent-browser", path: "/skills/agent-browser" }],
     });
     expect(startOptions.plugins).toHaveLength(1);
-    expect(session.prompt).toHaveBeenCalledWith(
-      "inspect localhost",
-      expect.any(Function),
-      { streamingBehavior: undefined },
+    expect(session.prompt).toHaveBeenCalledWith("inspect localhost", expect.any(Function), {
+      streamingBehavior: undefined,
+    });
+  });
+
+  it("prompts instead of queueing control messages when the runtime is not active", async () => {
+    const session = {
+      ensureStarted: vi.fn().mockResolvedValue(undefined),
+      prompt: vi.fn().mockImplementation(async (_message, onEvent) => {
+        onEvent(
+          { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "ok" } },
+          1,
+        );
+        onEvent({ type: "agent_end" }, 2);
+      }),
+      steer: vi.fn(),
+      followUp: vi.fn(),
+      status: { piSessionId: "pi-1", cwd: "/repo", active: false, running: true },
+      adoptPiSessionId: vi.fn(),
+    };
+    getSession.mockReturnValue(session as never);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/agent/turn", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "tab-1",
+          modelId: "hy3-preview",
+          message: "continue",
+          cwd: "/repo",
+          piSessionId: "pi-1",
+          mode: "steer",
+        }),
+      }),
     );
+
+    const body = await response.text();
+    expect(session.ensureStarted).toHaveBeenCalled();
+    expect(session.prompt).toHaveBeenCalledWith("continue", expect.any(Function), {
+      streamingBehavior: undefined,
+    });
+    expect(session.steer).not.toHaveBeenCalled();
+    expect(session.followUp).not.toHaveBeenCalled();
+    expect(body).toContain('"type":"pi"');
+    expect(body).toContain('"delta":"ok"');
   });
 });

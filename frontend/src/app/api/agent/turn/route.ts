@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
               ? (existingStatus.piSessionId ?? piSessionId)
               : piSessionId;
         sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd }, isOpen);
-        if (mode === "prompt" || !existingStatus.running) {
+        const ownsPromptStream = mode === "prompt" || !existingStatus.active;
+        if (ownsPromptStream || !existingStatus.running) {
           await session.ensureStarted(modelId, cwd, effectivePiSessionId, {
             browserToolEnabled,
             plugins,
@@ -127,15 +128,7 @@ export async function POST(request: NextRequest) {
           });
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);
-        if (mode === "steer") {
-          await session.steer(message);
-          // Steer is a fire-and-forget control message — events keep flowing on
-          // the original prompt's stream. Close ours immediately.
-          sse(controller, { type: "status", phase: "queued", queue: "steer" }, isOpen);
-        } else if (mode === "follow_up") {
-          await session.followUp(message);
-          sse(controller, { type: "status", phase: "queued", queue: "follow_up" }, isOpen);
-        } else {
+        if (ownsPromptStream) {
           await session.prompt(
             message,
             (event, seq) => {
@@ -143,6 +136,14 @@ export async function POST(request: NextRequest) {
             },
             { streamingBehavior },
           );
+        } else if (mode === "steer") {
+          await session.steer(message);
+          // Steer is a fire-and-forget control message — events keep flowing on
+          // the original prompt's stream. Close ours immediately.
+          sse(controller, { type: "status", phase: "queued", queue: "steer" }, isOpen);
+        } else if (mode === "follow_up") {
+          await session.followUp(message);
+          sse(controller, { type: "status", phase: "queued", queue: "follow_up" }, isOpen);
         }
         const status = session.status;
         let resolvedPiSessionId = status.piSessionId;

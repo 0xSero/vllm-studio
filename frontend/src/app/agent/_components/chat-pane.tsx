@@ -1244,6 +1244,25 @@ export function ChatPane({
       const plugins = activeComposerPlugins(selectedTab?.plugins ?? []);
       const skills = selectedTab?.skills ?? [];
       const message = selectedContextPrompt(text, plugins, skills);
+      const ensureAssistantId = () => {
+        const current = tabsRef.current.find((tab) => tab.id === tabId);
+        const existing =
+          (current?.activeAssistantId &&
+            current.messages.some((entry) => entry.id === current.activeAssistantId) &&
+            current.activeAssistantId) ||
+          [...(current?.messages ?? [])].reverse().find((entry) => entry.role === "assistant")?.id;
+        if (existing) return existing;
+        const assistantId = newId("assistant");
+        updateTab(tabId, (tab) => ({
+          ...tab,
+          activeAssistantId: assistantId,
+          messages: [
+            ...tab.messages,
+            { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
+          ],
+        }));
+        return assistantId;
+      };
       try {
         const response = await fetch("/api/agent/turn", {
           method: "POST",
@@ -1280,6 +1299,27 @@ export function ChatPane({
             if (!line) continue;
             const payload = parseAgentTurnSsePayload(line);
             if (payload?.type === "error") controlError = payload.error;
+            if (payload?.type === "status") {
+              updateTab(tabId, (tab) => ({
+                ...tab,
+                piSessionId: payload.piSessionId || tab.piSessionId,
+                status: payload.phase === "done" ? "idle" : tab.status,
+              }));
+            }
+            if (payload?.type === "pi") {
+              const eventId = piSessionIdFromEvent(payload.event);
+              const assistantId = ensureAssistantId();
+              const agentEnded = isAgentEndEvent(payload.event);
+              updateTab(tabId, (tab) => ({
+                ...tab,
+                piSessionId: eventId || tab.piSessionId,
+                lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
+                status: agentEnded ? "idle" : tab.status,
+                activeAssistantId: agentEnded ? undefined : assistantId,
+              }));
+              if (eventId) onPiSessionIdChange?.(eventId);
+              applyPiEvent(tabId, assistantId, payload.event);
+            }
           }
         }
         if (controlError) throw new Error(controlError);
@@ -1288,7 +1328,7 @@ export function ChatPane({
         return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
       }
     },
-    [modelId, cwd, browserToolEnabled],
+    [applyPiEvent, browserToolEnabled, cwd, modelId, onPiSessionIdChange, updateTab],
   );
 
   const submitPrompt = useCallback(
