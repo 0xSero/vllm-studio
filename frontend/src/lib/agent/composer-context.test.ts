@@ -87,6 +87,21 @@ describe("composer context helpers", () => {
       ]),
     ).toContain("Plugin @browser-use declares app connectors: connector_browser");
     expect(
+      selectedContextPrompt("inspect localhost", [
+        {
+          id: "computer",
+          name: "computer-use",
+          path: "/plugins/computer-use",
+          skillPath: "/plugins/computer-use/skills",
+          mcpConfigPath: "/plugins/computer-use/.mcp.json",
+          appConfigPath: "/plugins/computer-use/apps.json",
+          appPath: "/plugins/computer-use/Codex Computer Use.app",
+        },
+      ]),
+    ).toContain(
+      "Plugin @computer-use runtime: plugin=/plugins/computer-use; skills=/plugins/computer-use/skills; mcp=/plugins/computer-use/.mcp.json; apps=/plugins/computer-use/apps.json; app=/plugins/computer-use/Codex Computer Use.app",
+    );
+    expect(
       selectedContextPrompt(
         "inspect localhost",
         [],

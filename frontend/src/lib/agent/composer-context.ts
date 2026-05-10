@@ -168,6 +168,10 @@ function selectedContextLines(
           `Plugin ${label} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`,
         );
       }
+      const runtime = pluginRuntimeDetails(plugin);
+      if (runtime.length) {
+        lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);
+      }
       if (plugin.appIds?.length) {
         lines.push(`Plugin ${label} declares app connectors: ${plugin.appIds.join(", ")}`);
       }
@@ -189,6 +193,16 @@ function selectedContextLines(
     }
   }
   return lines;
+}
+
+function pluginRuntimeDetails(plugin: ComposerPluginRef): string[] {
+  return [
+    plugin.path ? `plugin=${plugin.path}` : null,
+    plugin.skillPath ? `skills=${plugin.skillPath}` : null,
+    plugin.mcpConfigPath ? `mcp=${plugin.mcpConfigPath}` : null,
+    plugin.appConfigPath ? `apps=${plugin.appConfigPath}` : null,
+    plugin.appPath ? `app=${plugin.appPath}` : null,
+  ].filter((value): value is string => Boolean(value));
 }
 
 function pluginRefLabel(plugin: ComposerPluginRef): string {
