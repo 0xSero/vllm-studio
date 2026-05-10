@@ -122,6 +122,10 @@ export function parseAgentTurnSsePayload(line: string): AgentTurnSsePayload | nu
   return null;
 }
 
+export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
+  return queue.filter((item) => item.mode === "follow_up");
+}
+
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
   next: QueuedMessage | null;
   remaining: QueuedMessage[];
@@ -1455,14 +1459,11 @@ export function ChatPane({
           activeTab.id,
           activeTab.piSessionId,
         );
-        if (!result.ok) {
-          updateTab(activeTab.id, (tab) => ({
-            ...tab,
-            input: text,
-            error: result.error || "Message failed",
-            queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
-          }));
-        }
+        updateTab(activeTab.id, (tab) => ({
+          ...tab,
+          queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
+          ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
+        }));
         return;
       }
       await submitPrompt(text, activeTab.id);
@@ -1816,8 +1817,9 @@ export function ChatPane({
   }, [onRegisterHandle]);
 
   const queue = activeTab?.queue ?? [];
-  const visibleQueue = queueExpanded ? queue : queue.slice(-1);
-  const latestQueued = queue[queue.length - 1] ?? null;
+  const visibleQueueItems = visibleQueuedMessages(queue);
+  const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
+  const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -1930,7 +1932,7 @@ export function ChatPane({
       </div>
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
-        {queue.length > 0 ? (
+        {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-2xl bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button
               type="button"
@@ -1945,7 +1947,7 @@ export function ChatPane({
                 }`}
               />
               <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
-                queue {queue.length}
+                queue {visibleQueueItems.length}
               </span>
               <span className="min-w-0 flex-1 truncate">
                 {latestQueued?.text ?? "No queued message"}

@@ -6,6 +6,7 @@ import {
   parseAgentTurnSsePayload,
   reconcileQueueWithPiEvent,
   replaySessionEvents,
+  visibleQueuedMessages,
 } from "./chat-pane";
 
 describe("isAgentEndEvent", () => {
@@ -33,6 +34,17 @@ describe("parseAgentTurnSsePayload", () => {
     expect(
       parseAgentTurnSsePayload('data: {"type":"pi","seq":2,"event":{"type":"agent_end"}}'),
     ).toEqual({ type: "pi", seq: 2, event: { type: "agent_end" } });
+  });
+});
+
+describe("visibleQueuedMessages", () => {
+  it("shows only follow-up queue items, not transient steers", () => {
+    expect(
+      visibleQueuedMessages([
+        { id: "steer", mode: "steer", text: "interrupt", sent: true },
+        { id: "follow", mode: "follow_up", text: "next" },
+      ]),
+    ).toEqual([{ id: "follow", mode: "follow_up", text: "next" }]);
   });
 });
 
