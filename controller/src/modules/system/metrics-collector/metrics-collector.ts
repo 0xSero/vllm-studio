@@ -26,6 +26,17 @@ interface LlamacppThroughputSample {
   sampleKey: string;
 }
 
+type UsageAggregate = {
+  totals?: {
+    total_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_requests?: number;
+  };
+  latency?: { avg_ms?: number | null };
+  ttft?: { avg_ms?: number | null };
+};
+
 const parseTokensPerSecond = (line: string): number | null => {
   const match = line.match(TOKENS_PER_SECOND_PATTERN);
   if (!match?.[1]) return null;
@@ -97,6 +108,11 @@ const scrapeLlamacppThroughput = (
   if (!logPath) return null;
   const lines = tailFileLines(logPath, LLAMACPP_LOG_TAIL_LINES);
   return parseLlamacppThroughputFromLines(lines);
+};
+
+const positiveOrUndefined = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
 /**
@@ -452,6 +468,19 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         bumpPeak(sessionPeaks, "vram_used_gb", totalVramUsedGb);
 
         const peakData = context.stores.peakMetricsStore.get(modelId);
+        const usageAggregate = context.stores.inferenceRequestStore.aggregate(
+          new Set([modelId])
+        ) as UsageAggregate | null;
+        const usageTotals = usageAggregate?.totals;
+        const usageLatencyAvg = positiveOrUndefined(usageAggregate?.latency?.avg_ms);
+        const usageTtftAvg = positiveOrUndefined(usageAggregate?.ttft?.avg_ms);
+        const promptTokensDisplay =
+          positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens);
+        const generationTokensDisplay =
+          positiveOrUndefined(generationTokensTotal) ??
+          positiveOrUndefined(usageTotals?.completion_tokens);
+        const avgTtftDisplay =
+          avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : (usageTtftAvg ?? 0);
 
         await context.eventManager.publishMetrics({
           ...baseMetrics,
@@ -461,11 +490,14 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
           running_requests: runningRequests,
           pending_requests: pendingRequests,
           kv_cache_usage: kvCacheUsage,
-          prompt_tokens_total: promptTokensTotal,
-          generation_tokens_total: generationTokensTotal,
+          prompt_tokens_total: promptTokensDisplay,
+          generation_tokens_total: generationTokensDisplay,
+          total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
+          total_requests: positiveOrUndefined(usageTotals?.total_requests),
           prompt_throughput: Math.round(promptThroughput * 10) / 10,
           generation_throughput: Math.round(generationThroughput * 10) / 10,
-          avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : 0,
+          avg_ttft_ms: avgTtftDisplay,
+          latency_avg: usageLatencyAvg,
           vram_used_gb: Math.round(totalVramUsedGb * 10) / 10,
           vram_capacity_gb: Math.round(totalVramCapacityGb * 10) / 10,
           power_limit_watts: Math.round(totalPowerLimitWatts),
