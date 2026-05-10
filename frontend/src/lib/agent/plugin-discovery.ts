@@ -21,6 +21,7 @@ export type PluginRow = {
   iconPath?: string;
   skillPath?: string;
   mcpConfigPath?: string;
+  appConfigPath?: string;
   appPath?: string;
 };
 
@@ -102,6 +103,9 @@ type PluginManifest = {
   defaultPrompts?: string[];
   brandColor?: string;
   iconPath?: string;
+  skillsPath?: string;
+  mcpServersPath?: string;
+  appsPath?: string;
 };
 
 function pluginNameFromPath(dir: string): string {
@@ -134,6 +138,9 @@ function pluginManifest(dir: string): PluginManifest {
         composerIcon?: unknown;
         logo?: unknown;
       };
+      skills?: unknown;
+      mcpServers?: unknown;
+      apps?: unknown;
     };
     const iface = json.interface;
     const icon = stringField(iface?.composerIcon) ?? stringField(iface?.logo);
@@ -148,10 +155,18 @@ function pluginManifest(dir: string): PluginManifest {
       defaultPrompts: stringArray(iface?.defaultPrompt),
       brandColor: stringField(iface?.brandColor),
       iconPath: icon ? path.resolve(dir, icon) : undefined,
+      skillsPath: resolveManifestPath(dir, json.skills),
+      mcpServersPath: resolveManifestPath(dir, json.mcpServers),
+      appsPath: resolveManifestPath(dir, json.apps),
     };
   } catch {
     return {};
   }
+}
+
+function resolveManifestPath(dir: string, value: unknown): string | undefined {
+  const raw = stringField(value);
+  return raw ? path.resolve(dir, raw) : undefined;
 }
 
 function stringField(value: unknown): string | undefined {
@@ -159,6 +174,7 @@ function stringField(value: unknown): string | undefined {
 }
 
 function stringArray(value: unknown): string[] | undefined {
+  if (typeof value === "string" && value.trim()) return [value.trim()];
   if (!Array.isArray(value)) return undefined;
   const values = value.filter((entry): entry is string => typeof entry === "string" && !!entry);
   return values.length ? values : undefined;
@@ -175,13 +191,16 @@ function marketplaceFromPath(dir: string): string | undefined {
 
 function pluginResourcePaths(
   dir: string,
-): Pick<PluginRow, "appPath" | "mcpConfigPath" | "skillPath"> {
-  const skills = path.join(dir, "skills");
-  const mcp = path.join(dir, ".mcp.json");
+  manifest: PluginManifest,
+): Pick<PluginRow, "appConfigPath" | "appPath" | "mcpConfigPath" | "skillPath"> {
+  const skills = manifest.skillsPath ?? path.join(dir, "skills");
+  const mcp = manifest.mcpServersPath ?? path.join(dir, ".mcp.json");
+  const apps = manifest.appsPath ?? path.join(dir, ".app.json");
   const computerUseApp = path.join(dir, "Codex Computer Use.app");
   return {
     ...(existsSync(skills) ? { skillPath: skills } : {}),
     ...(existsSync(mcp) ? { mcpConfigPath: mcp } : {}),
+    ...(existsSync(apps) ? { appConfigPath: apps } : {}),
     ...(existsSync(computerUseApp) ? { appPath: computerUseApp } : {}),
   };
 }
@@ -255,7 +274,7 @@ export function discoverPlugins(
         ...(manifest.iconPath && existsSync(manifest.iconPath)
           ? { iconPath: manifest.iconPath }
           : {}),
-        ...pluginResourcePaths(dir),
+        ...pluginResourcePaths(dir, manifest),
       });
       return;
     }

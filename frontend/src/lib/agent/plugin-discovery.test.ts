@@ -77,20 +77,24 @@ describe("discoverPlugins", () => {
       const plugin = path.join(marketplace, "plugins", "computer-use");
       const config = path.join(root, "config.toml");
       mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
-      mkdirSync(path.join(plugin, "skills"), { recursive: true });
-      writeFileSync(path.join(plugin, ".mcp.json"), '{"mcpServers":{}}');
+      mkdirSync(path.join(plugin, "plugin-skills"), { recursive: true });
+      writeFileSync(path.join(plugin, "plugin-mcp.json"), '{"mcpServers":{}}');
+      writeFileSync(path.join(plugin, "plugin-app.json"), '{"apps":[]}');
       writeFileSync(
         path.join(plugin, ".codex-plugin", "plugin.json"),
         JSON.stringify({
           name: "computer-use",
           version: "1.0.780",
           description: "Control desktop apps.",
+          skills: "./plugin-skills",
+          mcpServers: "./plugin-mcp.json",
+          apps: "./plugin-app.json",
           interface: {
             displayName: "Computer Use",
             shortDescription: "Control Mac apps",
             category: "Productivity",
             capabilities: ["Interactive", "Read"],
-            defaultPrompt: ["Play Chess.app"],
+            defaultPrompt: "Play Chess.app",
             brandColor: "#0F172A",
           },
         }),
@@ -112,8 +116,9 @@ describe("discoverPlugins", () => {
           capabilities: ["Interactive", "Read"],
           defaultPrompts: ["Play Chess.app"],
           brandColor: "#0F172A",
-          skillPath: path.join(plugin, "skills"),
-          mcpConfigPath: path.join(plugin, ".mcp.json"),
+          skillPath: path.join(plugin, "plugin-skills"),
+          mcpConfigPath: path.join(plugin, "plugin-mcp.json"),
+          appConfigPath: path.join(plugin, "plugin-app.json"),
         }),
       ]);
     } finally {

@@ -15,6 +15,7 @@ export type ComposerPluginRef = {
   iconPath?: string;
   skillPath?: string;
   mcpConfigPath?: string;
+  appConfigPath?: string;
   appPath?: string;
 };
 
