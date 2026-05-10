@@ -29,8 +29,17 @@ type McpTool = {
   inputSchema?: Record<string, unknown>;
 };
 
+type McpBridgeStatus = {
+  pluginName: string;
+  serverName: string;
+  state: "starting" | "ready" | "failed";
+  tools: string[];
+  error?: string;
+};
+
 const STARTUP_TIMEOUT_MS = 5_000;
 const TOOL_TIMEOUT_MS = Number(process.env.VLLM_STUDIO_MCP_TOOL_TIMEOUT_MS || 120_000);
+const bridgeStatuses: McpBridgeStatus[] = [];
 
 function readPluginConfigs(): McpPluginConfig[] {
   try {
@@ -224,13 +233,24 @@ async function registerOneServer(
   serverName: string,
   serverConfig: McpServerConfig,
 ) {
+  const status: McpBridgeStatus = {
+    pluginName: plugin.pluginName,
+    serverName,
+    state: "starting",
+    tools: [],
+  };
+  bridgeStatuses.push(status);
   const baseDir = path.dirname(plugin.configPath);
   let client: McpClient;
   let tools: McpTool[];
   try {
     client = new McpClient(serverName, serverConfig, baseDir);
     tools = await client.init();
-  } catch {
+    status.state = "ready";
+    status.tools = tools.map((tool) => tool.name);
+  } catch (error) {
+    status.state = "failed";
+    status.error = error instanceof Error ? error.message : String(error);
     return;
   }
   for (const tool of tools) {
@@ -254,6 +274,27 @@ async function registerOneServer(
 }
 
 export default function registerMcpPlugins(pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "mcp_plugin_status",
+    label: "MCP Plugin Status",
+    description: "Report which selected Codex MCP plugins loaded, failed, and exposed tools.",
+    promptSnippet: "Inspect selected Codex MCP plugin runtime status",
+    parameters: Type.Object({}),
+    async execute() {
+      const text =
+        bridgeStatuses
+          .map((status) => {
+            const tools = status.tools.length ? status.tools.join(", ") : "no tools";
+            const error = status.error ? `; error: ${status.error}` : "";
+            return `${status.pluginName}/${status.serverName}: ${status.state}; ${tools}${error}`;
+          })
+          .join("\n") || "No MCP plugin servers configured.";
+      return {
+        content: [{ type: "text", text }],
+        details: { statuses: bridgeStatuses },
+      };
+    },
+  });
   for (const plugin of readPluginConfigs()) {
     let servers: Record<string, McpServerConfig> = {};
     try {
