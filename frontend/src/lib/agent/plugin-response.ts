@@ -29,8 +29,9 @@ export function buildPluginsResponse(
 ): PluginsResponse {
   const plugins = options.includeDisabled ? allPlugins : allPlugins.filter((row) => row.enabled);
   const computerUse =
-    plugins.find((row) => row.enabled && row.name.includes("computer-use")) ?? null;
-  const browserUse = plugins.find((row) => row.enabled && row.name.includes("browser-use")) ?? null;
+    plugins.find((row) => row.enabled && pluginMatches(row, "computer-use")) ?? null;
+  const browserUse =
+    plugins.find((row) => row.enabled && pluginMatches(row, "browser-use")) ?? null;
   return {
     plugins,
     validation: {
@@ -53,13 +54,19 @@ function pluginRuntimeCheck(plugin: PluginRow): PluginRuntimeCheck {
     mcpConfigured: Boolean(plugin.mcpConfigPath && existsSync(plugin.mcpConfigPath)),
     appConfigured: Boolean(plugin.appPath && existsSync(plugin.appPath)),
     ...(mcpExecutable === undefined ? {} : { mcpExecutableExists: mcpExecutable }),
-    ...(plugin.name.includes("computer-use") && plugin.mcpConfigPath
+    ...(pluginMatches(plugin, "computer-use") && plugin.mcpConfigPath
       ? {
           runtimeCheckRequired: true,
           note: "Computer-use is wired through MCP; verify helper launch from an active session with mcp_plugin_status before desktop control.",
         }
       : {}),
   };
+}
+
+function pluginMatches(plugin: PluginRow, needle: string): boolean {
+  return [plugin.id, plugin.name, plugin.displayName, plugin.path]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function firstMcpExecutableExists(configPath: string): boolean | undefined {

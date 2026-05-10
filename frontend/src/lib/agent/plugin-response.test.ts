@@ -37,6 +37,16 @@ describe("buildPluginsResponse", () => {
     expect(response.validation.computerUseAvailable).toBe(true);
   });
 
+  it("recognizes core plugin availability from display metadata case-insensitively", () => {
+    const response = buildPluginsResponse([
+      plugin({ id: "browser", name: "BrowserUse", displayName: "Browser-Use" }),
+      plugin({ id: "computer", name: "ComputerUse", displayName: "Computer-Use" }),
+    ]);
+
+    expect(response.validation.browserUseAvailable).toBe(true);
+    expect(response.validation.computerUseAvailable).toBe(true);
+  });
+
   it("reports runtime resource checks for MCP-backed plugins", () => {
     const root = mkdtempSync(path.join(tmpdir(), "plugin-response-"));
     mkdirSync(path.join(root, "bin"));
