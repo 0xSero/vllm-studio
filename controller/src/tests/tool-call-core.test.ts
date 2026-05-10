@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import { createToolCallStream } from "../modules/proxy/tool-call-stream";
 import { parseToolCallsFromContent } from "../modules/proxy/tool-call-parser";
+import { normalizeToolCallsInMessage } from "../modules/proxy/reasoning-extractor";
 
 const collectStream = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   const reader = stream.getReader();
@@ -77,6 +78,17 @@ describe("tool-call-core", () => {
 </use_mcp_tool>`;
     const calls = parseToolCallsFromContent(content);
     expect(calls.length).toBe(0);
+  });
+
+  it("does not extract non-streaming tool calls from reasoning_content", () => {
+    const message: Record<string, unknown> = {
+      content: "visible answer",
+      reasoning_content:
+        '<tool_call><function=calc><arguments>{"x":1}</arguments></tool_call>',
+    };
+
+    expect(normalizeToolCallsInMessage(message)).toBe(false);
+    expect(message["tool_calls"]).toBeUndefined();
   });
 
   it("injects tool_calls before [DONE] for streaming XML", async () => {

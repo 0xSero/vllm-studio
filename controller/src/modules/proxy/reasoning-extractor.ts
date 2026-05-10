@@ -148,9 +148,7 @@ export const normalizeToolCallsInMessage = (message: Record<string, unknown>): b
     return false;
   }
   const content = typeof message["content"] === "string" ? String(message["content"]) : "";
-  const reasoning =
-    typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : "";
-  const parsed = parseToolCallsFromContent(`${content}${reasoning}`);
+  const parsed = parseToolCallsFromContent(content);
   if (parsed.length > 0) {
     message["tool_calls"] = parsed;
     return true;
