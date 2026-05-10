@@ -21,6 +21,19 @@ describe("composer context helpers", () => {
     expect(detectComposerMention("email@host")).toBeNull();
   });
 
+  it("keeps mention menus open after trigger whitespace", () => {
+    expect(detectComposerMention("use @   ")).toMatchObject({
+      kind: "plugin",
+      query: "",
+      start: 4,
+    });
+    expect(detectComposerMention("load $ browser use")).toMatchObject({
+      kind: "skill",
+      query: "browser use",
+      start: 5,
+    });
+  });
+
   it("replaces a trigger token with the selected mention label", () => {
     const mention = detectComposerMention("use @bro")!;
     expect(replaceComposerMention("use @bro", mention, "browser-use")).toBe("use @browser-use ");

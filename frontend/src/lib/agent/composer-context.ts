@@ -36,12 +36,12 @@ export type ComposerMention = {
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
   const beforeCaret = value.slice(0, safeCaret);
-  const match = /(^|\s)([@$])([^\s@$]*)$/.exec(beforeCaret);
+  const match = /(^|\s)([@$])([^\n@$]{0,80})$/.exec(beforeCaret);
   if (!match) return null;
   const token = `${match[2]}${match[3] ?? ""}`;
   return {
     kind: match[2] === "@" ? "plugin" : "skill",
-    query: match[3] ?? "",
+    query: (match[3] ?? "").trimStart(),
     start: safeCaret - token.length,
     end: safeCaret,
   };
