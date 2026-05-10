@@ -40,6 +40,9 @@ type RuntimePluginRef = {
   id?: string;
   name?: string;
   path?: string;
+  skillPath?: string;
+  mcpConfigPath?: string;
+  appPath?: string;
 };
 
 type RuntimeStartOptions = {
@@ -136,14 +139,24 @@ function resolveTimeoutExtensionPath(): string | null {
 }
 
 function pluginNameMatches(plugin: RuntimePluginRef, needle: string): boolean {
-  return [plugin.id, plugin.name, plugin.path]
+  return [
+    plugin.id,
+    plugin.name,
+    plugin.path,
+    plugin.skillPath,
+    plugin.mcpConfigPath,
+    plugin.appPath,
+  ]
     .filter((value): value is string => Boolean(value))
     .some((value) => value.toLowerCase().includes(needle));
 }
 
 function pluginFingerprint(options: RuntimeStartOptions): string {
   const names = (options.plugins ?? [])
-    .map((plugin) => `${plugin.name ?? ""}:${plugin.path ?? ""}`)
+    .map(
+      (plugin) =>
+        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.appPath ?? ""}`,
+    )
     .sort();
   return JSON.stringify({
     browser: options.browserToolEnabled === true,
@@ -154,7 +167,12 @@ function pluginFingerprint(options: RuntimeStartOptions): string {
 function resolveComputerUseApp(plugins: RuntimePluginRef[]): string | null {
   const selected = plugins.find((plugin) => pluginNameMatches(plugin, "computer-use"));
   const candidates = [
+    selected?.appPath,
+    selected?.path && !selected.path.endsWith(".app")
+      ? path.join(selected.path, "Codex Computer Use.app")
+      : null,
     selected?.path,
+    "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app",
     path.join(homedir(), ".codex", "computer-use", "Codex Computer Use.app"),
   ].filter((value): value is string => Boolean(value));
   return (
@@ -171,6 +189,22 @@ function launchComputerUseApp(plugins: RuntimePluginRef[]) {
     stdio: "ignore",
   });
   child.unref();
+}
+
+function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
+  const seen = new Set<string>();
+  return plugins
+    .flatMap((plugin) => [
+      plugin.skillPath,
+      plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, "skills") : null,
+    ])
+    .filter((value): value is string => {
+      if (!value || !existsSync(value)) return false;
+      const resolved = path.resolve(value);
+      if (seen.has(resolved)) return false;
+      seen.add(resolved);
+      return true;
+    });
 }
 
 function deriveFrontendBase(): string {
@@ -318,6 +352,9 @@ class PiRpcSession extends EventEmitter {
       // Resume a specific pi session by UUID. Pi accepts a partial UUID and
       // resolves it within the current cwd's session directory.
       args.push("--session", piSessionId);
+    }
+    for (const skillPath of pluginSkillPaths(plugins)) {
+      args.push("--skill", skillPath);
     }
     const timeoutExtensionPath = resolveTimeoutExtensionPath();
     if (timeoutExtensionPath) args.push("--extension", timeoutExtensionPath);

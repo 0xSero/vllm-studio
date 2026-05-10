@@ -4,6 +4,9 @@ export type ComposerPluginRef = {
   path?: string;
   enabled?: boolean;
   description?: string;
+  skillPath?: string;
+  mcpConfigPath?: string;
+  appPath?: string;
 };
 
 export type ComposerSkillRef = {

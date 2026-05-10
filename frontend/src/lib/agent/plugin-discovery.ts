@@ -10,10 +10,36 @@ export type PluginRow = {
   enabled: boolean;
   description?: string;
   source?: string;
+  skillPath?: string;
+  mcpConfigPath?: string;
+  appPath?: string;
 };
 
 export function defaultPluginRoots(): string[] {
-  return [path.join(homedir(), ".codex", "plugins")];
+  const home = homedir();
+  return uniquePaths([
+    ...codexMarketplaceRoots(path.join(home, ".codex", "config.toml")),
+    path.join(home, ".codex", "plugins"),
+  ]);
+}
+
+function uniquePaths(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  return values.filter((value): value is string => {
+    if (!value || seen.has(path.resolve(value))) return false;
+    seen.add(path.resolve(value));
+    return true;
+  });
+}
+
+function codexMarketplaceRoots(configPath: string): string[] {
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    const roots = [...raw.matchAll(/^\s*source\s*=\s*"([^"]+)"\s*$/gm)].map((match) => match[1]);
+    return roots.flatMap((root) => [root, path.join(root, "plugins")]);
+  } catch {
+    return [];
+  }
 }
 
 function hasPluginMarker(dir: string): boolean {
@@ -56,6 +82,19 @@ function pluginManifest(dir: string): PluginManifest {
   }
 }
 
+function pluginResourcePaths(
+  dir: string,
+): Pick<PluginRow, "appPath" | "mcpConfigPath" | "skillPath"> {
+  const skills = path.join(dir, "skills");
+  const mcp = path.join(dir, ".mcp.json");
+  const computerUseApp = path.join(dir, "Codex Computer Use.app");
+  return {
+    ...(existsSync(skills) ? { skillPath: skills } : {}),
+    ...(existsSync(mcp) ? { mcpConfigPath: mcp } : {}),
+    ...(existsSync(computerUseApp) ? { appPath: computerUseApp } : {}),
+  };
+}
+
 function knownLocalPluginRows(): PluginRow[] {
   const home = homedir();
   const rows: PluginRow[] = [];
@@ -68,6 +107,7 @@ function knownLocalPluginRows(): PluginRow[] {
       installed: true,
       enabled: true,
       source: "openai-bundled",
+      appPath: computerUseApp,
       description: "Local Codex Computer Use helper app.",
     });
   }
@@ -102,6 +142,7 @@ export function discoverPlugins(
         installed: true,
         enabled: true,
         ...(manifest.description ? { description: manifest.description } : {}),
+        ...pluginResourcePaths(dir),
       });
       return;
     }
@@ -127,7 +168,7 @@ export function discoverPlugins(
       if (!rows.some((candidate) => candidate.name === row.name)) rows.push(row);
     }
   }
-  return [...new Map(rows.map((row) => [row.path, row])).values()]
+  return [...new Map(rows.map((row) => [row.name.toLowerCase(), row])).values()]
     .sort((a, b) => a.name.localeCompare(b.name))
     .sort((a, b) => Number(b.enabled) - Number(a.enabled));
 }

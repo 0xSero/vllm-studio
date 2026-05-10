@@ -16,7 +16,14 @@ type TurnRequest = {
   // When true, pi-runtime loads the browser extension so the agent can drive
   // the embedded webview via tool calls.
   browserToolEnabled?: boolean;
-  plugins?: Array<{ id?: string; name?: string; path?: string }>;
+  plugins?: Array<{
+    id?: string;
+    name?: string;
+    path?: string;
+    skillPath?: string;
+    mcpConfigPath?: string;
+    appPath?: string;
+  }>;
   // Send mode (matches pi-mono RPC): "prompt" runs immediately (or queues with
   // streamingBehavior), "steer" interrupts the current turn between tool
   // executions and the next LLM call, "follow_up" waits for the agent to
@@ -64,6 +71,10 @@ export async function POST(request: NextRequest) {
           id: typeof plugin.id === "string" ? plugin.id : "",
           name: typeof plugin.name === "string" ? plugin.name : "",
           path: typeof plugin.path === "string" ? plugin.path : undefined,
+          skillPath: typeof plugin.skillPath === "string" ? plugin.skillPath : undefined,
+          mcpConfigPath:
+            typeof plugin.mcpConfigPath === "string" ? plugin.mcpConfigPath : undefined,
+          appPath: typeof plugin.appPath === "string" ? plugin.appPath : undefined,
         }))
         .filter((plugin) => plugin.name || plugin.id)
     : [];

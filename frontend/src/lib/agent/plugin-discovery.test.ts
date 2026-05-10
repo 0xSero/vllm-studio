@@ -19,6 +19,7 @@ describe("discoverPlugins", () => {
           path: plugin,
           installed: true,
           enabled: true,
+          skillPath: path.join(plugin, "skills"),
         },
       ]);
     } finally {
