@@ -13,12 +13,16 @@ let mainWindow: BrowserWindow | null = null;
 let frontendServer: ServerHandle | undefined;
 
 async function bootstrap(): Promise<void> {
-  frontendServer = await startFrontendServer();
-  registerNavigationPolicy(new URL(frontendServer.runtime.url).origin);
-  mainWindow = createMainWindow(frontendServer.runtime.url);
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
+  if (!frontendServer) {
+    frontendServer = await startFrontendServer();
+    registerNavigationPolicy(new URL(frontendServer.runtime.url).origin);
+  }
+  if (!mainWindow) {
+    mainWindow = createMainWindow(frontendServer.runtime.url);
+    mainWindow.on("closed", () => {
+      mainWindow = null;
+    });
+  }
 
   appState = "ready";
   log.info(
@@ -81,6 +85,7 @@ async function shutdown(): Promise<void> {
   if (appState === "stopping") return;
   appState = "stopping";
   await stopFrontendServer(frontendServer);
+  frontendServer = undefined;
 }
 
 async function run(): Promise<void> {

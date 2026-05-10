@@ -1,5 +1,5 @@
 import { app } from "electron";
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fork, type ChildProcess } from "node:child_process";
 import { DESKTOP_CONFIG, resolveStandaloneBaseDir, resolveStaticAssetsSource } from "../configs";
@@ -10,6 +10,48 @@ import { allocatePort } from "../helpers/ports";
 interface ServerHandle {
   runtime: DesktopServerRuntime;
   process?: ChildProcess;
+}
+
+function embeddedServerPidPath(): string {
+  return path.join(DESKTOP_CONFIG.userDataDir, "embedded-frontend.pid");
+}
+
+function writeEmbeddedServerPid(pid: number | undefined): void {
+  mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
+  writeFileSync(embeddedServerPidPath(), String(pid ?? ""));
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function killStaleEmbeddedServer(): Promise<void> {
+  const pidFile = embeddedServerPidPath();
+  if (!existsSync(pidFile)) return;
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  rmSync(pidFile, { force: true });
+  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid || !isProcessAlive(pid)) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_500 && isProcessAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (isProcessAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
 }
 
 function resolveStandaloneServerRoot(): string {
@@ -55,6 +97,8 @@ export async function startFrontendServer(): Promise<ServerHandle> {
     };
     return { runtime };
   }
+
+  await killStaleEmbeddedServer();
 
   const serverRoot = resolveStandaloneServerRoot();
   const serverScript = path.join(serverRoot, "server.js");
@@ -113,8 +157,21 @@ export async function startFrontendServer(): Promise<ServerHandle> {
     log.warn(`frontend: ${String(chunk).trim()}`);
   });
 
+  writeEmbeddedServerPid(child.pid);
+
   child.once("exit", (code, signal) => {
+    try {
+      if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
+        rmSync(embeddedServerPidPath(), { force: true });
+      }
+    } catch {
+      // pid file already gone
+    }
     log.warn(`Embedded frontend exited code=${code ?? "null"} signal=${signal ?? "null"}`);
+  });
+
+  process.once("exit", () => {
+    if (!child.killed) child.kill("SIGTERM");
   });
 
   await waitForServer(url, DESKTOP_CONFIG.startupTimeoutMs);
@@ -133,6 +190,13 @@ export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
   if (!handle?.process || handle.process.killed) return;
 
   const child = handle.process;
+  try {
+    if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
+      rmSync(embeddedServerPidPath(), { force: true });
+    }
+  } catch {
+    // pid file already gone
+  }
   child.kill("SIGTERM");
 
   await new Promise<void>((resolve) => {
