@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { piPathEnv, resolvePiBinaryPath, resolvePiCliPath } from "./pi-binary";
+import {
+  piPathEnv,
+  resolvePiBinaryPath,
+  resolvePiCliPath,
+  resolvePiLaunchCommand,
+} from "./pi-binary";
 
 const originalEnv = { ...process.env };
 const originalCwd = process.cwd();
@@ -61,6 +66,28 @@ describe("pi binary resolution", () => {
     process.chdir(root);
 
     expect(resolvePiCliPath()?.endsWith(path.relative(root, cli))).toBe(true);
+  });
+
+  it("finds the packaged desktop Pi CLI from the forwarded resources path", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vllm-studio-resources-"));
+    roots.push(root);
+    const cli = path.join(
+      root,
+      "app",
+      "node_modules",
+      "@mariozechner",
+      "pi-coding-agent",
+      "dist",
+      "cli.js",
+    );
+    mkdirSync(path.dirname(cli), { recursive: true });
+    writeFileSync(cli, "console.log('pi')\n");
+    process.env.PATH = "";
+    process.env.VLLM_STUDIO_RESOURCES_PATH = root;
+    process.chdir(root);
+
+    expect(resolvePiCliPath()).toBe(cli);
+    expect(resolvePiLaunchCommand()).toEqual({ command: process.execPath, argsPrefix: [cli] });
   });
 
   it("adds common macOS and local Pi locations to PATH for spawned Pi", () => {

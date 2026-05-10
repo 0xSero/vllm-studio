@@ -138,6 +138,7 @@ export async function startFrontendServer(): Promise<ServerHandle> {
       HOSTNAME: "127.0.0.1",
       NEXT_TELEMETRY_DISABLED: "1",
       VLLM_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
+      VLLM_STUDIO_RESOURCES_PATH: process.resourcesPath,
       // In packaged Electron, process.cwd() is "/" — pi-runtime.resolveDefaultAgentCwd
       // does the right thing (prefers the most-recently-added project, falls back
       // to $HOME) when this env is empty, so leave it unset unless the operator

@@ -4,6 +4,9 @@ import path from "node:path";
 
 const PI_BIN = process.platform === "win32" ? "pi.cmd" : "pi";
 
+const resourcesPath = (): string | undefined =>
+  process.env.VLLM_STUDIO_RESOURCES_PATH || process.resourcesPath;
+
 const isExecutable = (file: string): boolean => {
   try {
     accessSync(file, process.platform === "win32" ? constants.F_OK : constants.X_OK);
@@ -28,9 +31,9 @@ const localBinDirs = (): string[] =>
     path.join(process.cwd(), "node_modules", ".bin"),
     path.join(process.cwd(), "frontend", "node_modules", ".bin"),
     path.join(process.cwd(), "..", "frontend", "node_modules", ".bin"),
-    process.resourcesPath
+    resourcesPath()
       ? path.join(
-          process.resourcesPath,
+          resourcesPath()!,
           "app",
           "frontend",
           ".next",
@@ -48,9 +51,23 @@ const localBinDirs = (): string[] =>
 
 const localCliFiles = (): string[] =>
   unique([
-    process.resourcesPath
+    resourcesPath()
       ? path.join(
-          process.resourcesPath,
+          resourcesPath()!,
+          "app",
+          "frontend",
+          ".next",
+          "standalone",
+          "node_modules",
+          "@mariozechner",
+          "pi-coding-agent",
+          "dist",
+          "cli.js",
+        )
+      : null,
+    resourcesPath()
+      ? path.join(
+          resourcesPath()!,
           "app.asar",
           "node_modules",
           "@mariozechner",
@@ -59,9 +76,9 @@ const localCliFiles = (): string[] =>
           "cli.js",
         )
       : null,
-    process.resourcesPath
+    resourcesPath()
       ? path.join(
-          process.resourcesPath,
+          resourcesPath()!,
           "app",
           "node_modules",
           "@mariozechner",
@@ -114,6 +131,8 @@ export function resolvePiCliPath(): string | null {
 }
 
 export function resolvePiLaunchCommand(): { command: string; argsPrefix: string[] } {
+  const embeddedCli = resourcesPath() ? resolvePiCliPath() : null;
+  if (embeddedCli) return { command: process.execPath, argsPrefix: [embeddedCli] };
   const binary = resolvePiBinaryPath();
   if (binary) return { command: binary, argsPrefix: [] };
   const cli = resolvePiCliPath();

@@ -51,3 +51,6 @@ next-env.d.ts
 # desktop artifacts
 /desktop/dist/
 /dist-desktop/
+
+# generated desktop Pi runtime
+/.desktop-pi-runtime/
