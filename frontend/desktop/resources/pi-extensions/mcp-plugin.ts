@@ -38,8 +38,15 @@ type McpBridgeStatus = {
 };
 
 const STARTUP_TIMEOUT_MS = 5_000;
-const TOOL_TIMEOUT_MS = Number(process.env.VLLM_STUDIO_MCP_TOOL_TIMEOUT_MS || 120_000);
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 const bridgeStatuses: McpBridgeStatus[] = [];
+
+function readTimeoutMs(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+const TOOL_TIMEOUT_MS = readTimeoutMs("VLLM_STUDIO_MCP_TOOL_TIMEOUT_MS", DEFAULT_TOOL_TIMEOUT_MS);
 
 function readPluginConfigs(): McpPluginConfig[] {
   try {

@@ -17,7 +17,17 @@ type ToolResult = {
 };
 
 const FRONTEND_BASE = process.env.VLLM_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
-const BROWSER_TOOL_TIMEOUT_MS = Number(process.env.VLLM_STUDIO_BROWSER_TOOL_TIMEOUT_MS || 60_000);
+const DEFAULT_BROWSER_TOOL_TIMEOUT_MS = 60_000;
+
+function readTimeoutMs(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+const BROWSER_TOOL_TIMEOUT_MS = readTimeoutMs(
+  "VLLM_STUDIO_BROWSER_TOOL_TIMEOUT_MS",
+  DEFAULT_BROWSER_TOOL_TIMEOUT_MS,
+);
 
 function failedToolResult(
   verb: string,
@@ -40,6 +50,7 @@ async function callBrowserAction(
   const timeout = setTimeout(() => controller.abort(), BROWSER_TOOL_TIMEOUT_MS);
   const abort = () => controller.abort();
   signal.addEventListener("abort", abort, { once: true });
+  if (signal.aborted) controller.abort();
   const response = await fetch(`${FRONTEND_BASE}/api/agent/browser/${verb}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
