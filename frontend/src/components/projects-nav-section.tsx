@@ -652,15 +652,15 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-5 items-center text-(--dim) transition-colors hover:text-(--fg)">
+      <div className="group flex h-[19px] items-center text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-1 px-0.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-0.5 px-0 text-left"
         >
           <Folder className="h-3 w-3 shrink-0 opacity-80" />
-          <span className="truncate text-[11.5px] font-semibold text-(--fg)">{project.name}</span>
+          <span className="truncate text-[11px] font-semibold text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -678,7 +678,7 @@ function ProjectRow({
               new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
             );
           }}
-          className="p-0.5 text-(--dim) opacity-60 hover:text-(--fg) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-55 hover:text-(--fg) group-hover:opacity-100"
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
@@ -881,7 +881,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group flex h-5 items-center gap-1 pl-1 pr-0.5 transition-colors ${
+  const rowClass = `group flex h-[19px] items-center gap-0.5 pl-0 pr-0.5 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -912,7 +912,7 @@ function ActiveSessionRow({
         className={`h-3 w-3 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
         aria-label={isRunning ? `Session ${session.status}` : undefined}
       />
-      <span className="min-w-0 flex-1 truncate text-[11px] font-normal">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal">{label}</span>
     </>
   );
 
@@ -929,7 +929,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-1"
+          className="flex min-w-0 flex-1 items-center gap-0.5"
         >
           {content}
         </Link>
@@ -949,7 +949,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-1 text-left"
+          className="flex min-w-0 flex-1 items-center gap-0.5 text-left"
         >
           {content}
         </button>
@@ -1045,7 +1045,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="flex h-5 items-center gap-1 pl-1 pr-1 bg-(--surface)/60">
+      <div className="flex h-[19px] items-center gap-0.5 pl-0 pr-1 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1066,7 +1066,7 @@ function SessionRow({
 
   return (
     <div
-      className="group flex h-5 items-center gap-1 pl-1 pr-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group flex h-[19px] items-center gap-0.5 pl-0 pr-0.5 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1084,10 +1084,10 @@ function SessionRow({
             title: label,
           });
         }}
-        className="flex min-w-0 flex-1 items-center gap-1"
+        className="flex min-w-0 flex-1 items-center gap-0.5"
       >
         <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-normal">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal">{label}</span>
       </Link>
       <SessionPinButton
         pinned={Boolean(pref.pinned)}

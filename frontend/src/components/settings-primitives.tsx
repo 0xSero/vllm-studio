@@ -152,16 +152,12 @@ export function SettingsRow({
   children,
 }: RowProps) {
   return (
-    <div className="py-2">
-      <div className="flex min-h-8 flex-col gap-1.5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0 text-[12px] font-medium text-(--fg)">{label}</div>
-          {status || actions ? (
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              {status}
-              {actions}
-            </div>
-          ) : null}
+    <div className="py-2.5">
+      <div className="flex min-h-8 min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="min-w-0 text-[12px] font-semibold text-(--fg)">{label}</div>
+          {status}
+          {actions}
         </div>
         {description ? (
           <div className="text-[11px] leading-4 text-(--dim)">{description}</div>
