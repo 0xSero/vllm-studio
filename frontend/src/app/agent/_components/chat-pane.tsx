@@ -1789,13 +1789,8 @@ export function ChatPane({
           className={`mx-auto w-full max-w-[var(--thread-w)] ${showEmptyPrompt ? "flex flex-1" : ""}`}
         >
           {showEmptyPrompt ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 -translate-y-12 text-center">
-              <h1 className="text-[26px] font-semibold tracking-[-0.04em] text-(--fg)">
-                A dream is something you do for yourself
-              </h1>
-              <p className="text-[12.5px] text-(--dim)">
-                Ask the agent to edit, inspect, or run something. Tab to queue · paste/drop files.
-              </p>
+            <div className="flex flex-1 items-end pb-4 text-[12px] text-(--dim)">
+              <p>New session. Enter sends, Tab queues, @ loads plugins, $ loads skills.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-5">
