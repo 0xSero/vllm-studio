@@ -113,6 +113,34 @@ describe("discoverPlugins", () => {
     }
   });
 
+  it("prefers the newest same-marketplace plugin instead of root traversal order", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
+    try {
+      const oldPlugin = path.join(root, "cache", "openai-bundled", "browser-use", "0.1.0");
+      const newPlugin = path.join(root, "app", "openai-bundled", "plugins", "browser-use");
+      mkdirSync(path.join(oldPlugin, ".codex-plugin"), { recursive: true });
+      mkdirSync(path.join(newPlugin, ".codex-plugin"), { recursive: true });
+      writeFileSync(
+        path.join(oldPlugin, ".codex-plugin", "plugin.json"),
+        '{"name":"browser-use","version":"0.1.0-alpha1"}',
+      );
+      writeFileSync(
+        path.join(newPlugin, ".codex-plugin", "plugin.json"),
+        '{"name":"browser-use","version":"0.1.0-alpha2"}',
+      );
+
+      expect(discoverPlugins([newPlugin, oldPlugin])).toEqual([
+        expect.objectContaining({
+          name: "browser-use",
+          version: "0.1.0-alpha2",
+          path: newPlugin,
+        }),
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("hydrates Codex interface metadata and enabled state", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
     try {

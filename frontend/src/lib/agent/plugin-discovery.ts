@@ -335,13 +335,43 @@ export function discoverPlugins(
       if (!rows.some((candidate) => candidate.name === row.name)) rows.push(row);
     }
   }
-  return [
-    ...new Map(
-      rows.map((row) => [pluginConfigKey(row.name.toLowerCase(), row.source), row]),
-    ).values(),
-  ]
+  const deduped = new Map<string, PluginRow>();
+  for (const row of rows) {
+    const key = pluginConfigKey(row.name.toLowerCase(), row.source);
+    const current = deduped.get(key);
+    deduped.set(key, current ? preferredPluginRow(current, row) : row);
+  }
+  return [...deduped.values()]
     .sort((a, b) => a.name.localeCompare(b.name))
     .sort((a, b) => Number(b.enabled) - Number(a.enabled));
+}
+
+function preferredPluginRow(current: PluginRow, candidate: PluginRow): PluginRow {
+  if (current.enabled !== candidate.enabled) return candidate.enabled ? candidate : current;
+  const versionDelta = comparePluginVersions(candidate.version, current.version);
+  if (versionDelta !== 0) return versionDelta > 0 ? candidate : current;
+  const candidateBundled = candidate.path.includes("/Applications/Codex.app/");
+  const currentBundled = current.path.includes("/Applications/Codex.app/");
+  if (candidateBundled !== currentBundled) return candidateBundled ? candidate : current;
+  return candidate;
+}
+
+function comparePluginVersions(left?: string, right?: string): number {
+  const l = versionParts(left);
+  const r = versionParts(right);
+  for (let i = 0; i < Math.max(l.length, r.length); i += 1) {
+    const delta = (l[i] ?? 0) - (r[i] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
+function versionParts(value?: string): number[] {
+  return (value ?? "")
+    .split(/[^0-9]+/)
+    .filter(Boolean)
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part));
 }
 
 function isInside(candidate: string, root: string): boolean {
