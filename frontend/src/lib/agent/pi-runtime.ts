@@ -626,6 +626,11 @@ class PiRpcSession extends EventEmitter {
     await this.sendCommand({ type: "follow_up", message });
   }
 
+  adoptPiSessionId(piSessionId: string | null | undefined): void {
+    const next = piSessionId?.trim();
+    if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
+  }
+
   async compact(customInstructions?: string): Promise<unknown> {
     if (this.activePromptCount > 0) {
       throw new Error("Cannot compact while the agent is running.");

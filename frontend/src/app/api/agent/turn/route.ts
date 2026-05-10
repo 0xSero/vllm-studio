@@ -52,6 +52,22 @@ function sse(
   }
 }
 
+function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | undefined) {
+  const next = piSessionId?.trim();
+  if (!next || !session || typeof session !== "object") return;
+  const runtime = session as {
+    adoptPiSessionId?: (value: string) => void;
+    currentPiSessionId?: string | null;
+  };
+  if (typeof runtime.adoptPiSessionId === "function") {
+    runtime.adoptPiSessionId(next);
+  } else if (!runtime.currentPiSessionId) {
+    // Dev HMR can keep a PiRpcSession instance from the previous module
+    // version alive. Preserve reattach correctness for those sessions too.
+    runtime.currentPiSessionId = next;
+  }
+}
+
 export async function POST(request: NextRequest) {
   let body: TurnRequest;
   try {
@@ -151,6 +167,7 @@ export async function POST(request: NextRequest) {
           const recent = await listSessions(status.cwd, { since: turnStartedAt });
           resolvedPiSessionId = recent[0]?.id ?? null;
         }
+        adoptRuntimePiSessionId(session, resolvedPiSessionId);
         sse(
           controller,
           { type: "status", phase: "done", piSessionId: resolvedPiSessionId },
