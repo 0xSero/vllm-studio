@@ -1,9 +1,18 @@
 export type ComposerPluginRef = {
   id: string;
   name: string;
+  displayName?: string;
+  version?: string;
   path?: string;
   enabled?: boolean;
   description?: string;
+  shortDescription?: string;
+  source?: string;
+  category?: string;
+  capabilities?: string[];
+  defaultPrompts?: string[];
+  brandColor?: string;
+  iconPath?: string;
   skillPath?: string;
   mcpConfigPath?: string;
   appPath?: string;
@@ -59,7 +68,11 @@ export function selectedContextPrompt(
   if (plugins.length) {
     lines.push(`Enabled plugins: ${plugins.map((plugin) => `@${plugin.name}`).join(", ")}.`);
     for (const plugin of plugins) {
-      if (plugin.description) lines.push(`Plugin @${plugin.name}: ${plugin.description}`);
+      const summary = plugin.shortDescription ?? plugin.description;
+      if (summary) lines.push(`Plugin @${plugin.name}: ${summary}`);
+      if (plugin.capabilities?.length) {
+        lines.push(`Plugin @${plugin.name} capabilities: ${plugin.capabilities.join(", ")}`);
+      }
     }
     if (plugins.some((plugin) => plugin.name.includes("browser-use"))) {
       lines.push("Browser-use is enabled; use browser tools when the task requires page control.");

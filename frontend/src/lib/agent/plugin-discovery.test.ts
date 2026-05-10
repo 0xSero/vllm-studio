@@ -19,6 +19,7 @@ describe("discoverPlugins", () => {
           path: plugin,
           installed: true,
           enabled: true,
+          source: "openai-bundled",
           skillPath: path.join(plugin, "skills"),
         },
       ]);
@@ -61,7 +62,55 @@ describe("discoverPlugins", () => {
           installed: true,
           enabled: true,
           description: "Browser automation",
+          source: "openai-bundled",
         },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("hydrates Codex interface metadata and enabled state", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
+    try {
+      const marketplace = path.join(root, "openai-bundled");
+      const plugin = path.join(marketplace, "plugins", "computer-use");
+      const config = path.join(root, "config.toml");
+      mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
+      writeFileSync(
+        path.join(plugin, ".codex-plugin", "plugin.json"),
+        JSON.stringify({
+          name: "computer-use",
+          version: "1.0.780",
+          description: "Control desktop apps.",
+          interface: {
+            displayName: "Computer Use",
+            shortDescription: "Control Mac apps",
+            category: "Productivity",
+            capabilities: ["Interactive", "Read"],
+            defaultPrompt: ["Play Chess.app"],
+            brandColor: "#0F172A",
+          },
+        }),
+      );
+      writeFileSync(
+        config,
+        `[marketplaces.openai-bundled]\nsource = "${marketplace}"\n\n[plugins."computer-use@openai-bundled"]\nenabled = false\n`,
+      );
+
+      expect(discoverPlugins([path.join(marketplace, "plugins")], { configPath: config })).toEqual([
+        expect.objectContaining({
+          name: "computer-use",
+          displayName: "Computer Use",
+          version: "1.0.780",
+          enabled: false,
+          source: "openai-bundled",
+          shortDescription: "Control Mac apps",
+          category: "Productivity",
+          capabilities: ["Interactive", "Read"],
+          defaultPrompts: ["Play Chess.app"],
+          brandColor: "#0F172A",
+        }),
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });

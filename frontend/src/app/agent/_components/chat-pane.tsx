@@ -70,7 +70,8 @@ export type ToolBlock = {
 };
 export type TextBlock = { kind: "text"; id: string; text: string };
 export type ThinkingBlock = { kind: "thinking"; id: string; text: string };
-export type AssistantBlock = TextBlock | ThinkingBlock | ToolBlock;
+export type EventBlock = { kind: "event"; id: string; text: string };
+export type AssistantBlock = TextBlock | ThinkingBlock | ToolBlock | EventBlock;
 
 export type ChatMessage = {
   id: string;
@@ -250,6 +251,16 @@ function usageFromEvent(event: Record<string, unknown>): TokenStats | null {
   return { read, write, current };
 }
 
+function compactionTextFromEvent(event: Record<string, unknown>): string | null {
+  const type = typeof event.type === "string" ? event.type.toLowerCase() : "";
+  if (!type.includes("compact") && !type.includes("compaction")) return null;
+  return (
+    [event.message, event.summary, event.text].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    ) ?? "Context automatically compacted"
+  );
+}
+
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
@@ -387,6 +398,16 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
   };
 
   for (const event of events) {
+    const compactionText = compactionTextFromEvent(event);
+    if (compactionText) {
+      const assistantId = ensureAssistant();
+      localPatch(assistantId, (message) => ({
+        ...message,
+        blocks: appendEventBlock(message.blocks ?? [], compactionText),
+      }));
+      continue;
+    }
+
     const type = event.type;
     if (type === "message" || type === "message_end") {
       const msg = event.message as
@@ -653,6 +674,12 @@ function upsertTool(
   return next;
 }
 
+function appendEventBlock(blocks: AssistantBlock[], text: string): AssistantBlock[] {
+  const last = blocks[blocks.length - 1];
+  if (last?.kind === "event" && last.text === text) return blocks;
+  return [...blocks, { kind: "event", id: newId("event"), text }];
+}
+
 export function makeFreshTab(): SessionTab {
   return {
     id: newId("tab"),
@@ -838,6 +865,15 @@ export function ChatPane({
       const usage = usageFromEvent(event);
       if (usage) {
         updateTab(tabId, (tab) => ({ ...tab, tokenStats: usage }));
+      }
+
+      const compactionText = compactionTextFromEvent(event);
+      if (compactionText) {
+        patchAssistant(tabId, assistantId, (msg) => ({
+          ...msg,
+          blocks: appendEventBlock(msg.blocks ?? [], compactionText),
+        }));
+        return;
       }
 
       if (eventType === "message_update") {
@@ -1808,7 +1844,7 @@ export function ChatPane({
                 <LoadedContextTab
                   key={`plugin-${plugin.id}`}
                   prefix="@"
-                  label={plugin.name}
+                  label={plugin.displayName ?? plugin.name}
                   title={plugin.path}
                   active={plugin.name.toLowerCase().includes("computer-use")}
                   onRemove={() => removeLoadedContext("plugin", plugin.id)}
@@ -1839,14 +1875,30 @@ export function ChatPane({
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => void selectMentionRow(row)}
-                      className="flex min-w-0 items-center justify-between gap-3 py-1 text-left text-(--dim) hover:text-(--fg)"
+                      className="flex min-w-0 items-start justify-between gap-3 py-1 text-left text-(--dim) hover:text-(--fg)"
                     >
-                      <span className="min-w-0 truncate text-[12px] text-(--fg)">
-                        {mention.kind === "plugin" ? "@" : "$"}
-                        {row.name}
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] text-(--fg)">
+                          {mention.kind === "plugin" ? "@" : "$"}
+                          {"displayName" in row && row.displayName ? row.displayName : row.name}
+                          {"version" in row && row.version ? (
+                            <span className="ml-1 font-mono text-[10px] text-(--dim)">
+                              {row.version}
+                            </span>
+                          ) : null}
+                        </span>
+                        {"shortDescription" in row && row.shortDescription ? (
+                          <span className="block truncate text-[10.5px] text-(--dim)">
+                            {row.shortDescription}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="truncate font-mono text-[10px] text-(--dim)">
-                        {"path" in row ? row.path : ""}
+                        {"source" in row && row.source
+                          ? row.source
+                          : "source" in row
+                            ? row.source
+                            : ""}
                       </span>
                     </button>
                   ))}
@@ -2312,6 +2364,18 @@ function TimelineMessage({ message }: { message: ChatMessage }) {
             }
             if (block.kind === "text") {
               return <AssistantMarkdown key={block.id} text={block.text} />;
+            }
+            if (block.kind === "event") {
+              return (
+                <div
+                  key={block.id}
+                  className="flex items-center gap-3 py-1 text-[11px] text-(--dim)"
+                >
+                  <span className="h-px flex-1 bg-(--border)" />
+                  <span>{block.text}</span>
+                  <span className="h-px flex-1 bg-(--border)" />
+                </div>
+              );
             }
             return <ToolBlockView key={block.id} block={block} />;
           })}

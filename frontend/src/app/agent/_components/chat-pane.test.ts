@@ -278,6 +278,26 @@ describe("replaySessionEvents", () => {
     });
   });
 
+  it("renders compaction events as timeline event blocks during replay", () => {
+    const result = replaySessionEvents([
+      {
+        type: "context_compacted",
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "Continuing after compaction.",
+        },
+      },
+    ]);
+
+    expect(result.messages[0].blocks).toMatchObject([
+      { kind: "event", text: "Context automatically compacted" },
+      { kind: "text", text: "Continuing after compaction." },
+    ]);
+  });
+
   it("preserves multiple successful and failed tool calls in one assistant turn", () => {
     const result = replaySessionEvents([
       {

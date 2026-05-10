@@ -5,11 +5,19 @@ import path from "node:path";
 export type PluginRow = {
   id: string;
   name: string;
+  displayName?: string;
+  version?: string;
   path: string;
   installed: boolean;
   enabled: boolean;
   description?: string;
+  shortDescription?: string;
   source?: string;
+  category?: string;
+  capabilities?: string[];
+  defaultPrompts?: string[];
+  brandColor?: string;
+  iconPath?: string;
   skillPath?: string;
   mcpConfigPath?: string;
   appPath?: string;
@@ -17,8 +25,12 @@ export type PluginRow = {
 
 export function defaultPluginRoots(): string[] {
   const home = homedir();
+  const config = readCodexConfig(path.join(home, ".codex", "config.toml"));
   return uniquePaths([
-    ...codexMarketplaceRoots(path.join(home, ".codex", "config.toml")),
+    ...config.marketplaces.flatMap((marketplace) => [
+      marketplace.source,
+      path.join(marketplace.source, "plugins"),
+    ]),
     path.join(home, ".codex", "plugins"),
   ]);
 }
@@ -32,14 +44,41 @@ function uniquePaths(values: Array<string | null | undefined>): string[] {
   });
 }
 
-function codexMarketplaceRoots(configPath: string): string[] {
+type CodexConfig = {
+  marketplaces: Array<{ name: string; source: string }>;
+  pluginEnabled: Map<string, boolean>;
+};
+
+function readCodexConfig(configPath: string): CodexConfig {
+  const config: CodexConfig = { marketplaces: [], pluginEnabled: new Map() };
   try {
     const raw = readFileSync(configPath, "utf8");
-    const roots = [...raw.matchAll(/^\s*source\s*=\s*"([^"]+)"\s*$/gm)].map((match) => match[1]);
-    return roots.flatMap((root) => [root, path.join(root, "plugins")]);
+    let section: { kind: "marketplace" | "plugin"; key: string } | null = null;
+    for (const line of raw.split(/\r?\n/)) {
+      const marketplace = /^\[marketplaces\.([^\]]+)\]\s*$/.exec(line);
+      if (marketplace) {
+        section = { kind: "marketplace", key: marketplace[1].replaceAll('"', "") };
+        continue;
+      }
+      const plugin = /^\[plugins\."([^"]+)"\]\s*$/.exec(line);
+      if (plugin) {
+        section = { kind: "plugin", key: plugin[1] };
+        config.pluginEnabled.set(plugin[1], true);
+        continue;
+      }
+      const source = /^\s*source\s*=\s*"([^"]+)"\s*$/.exec(line)?.[1];
+      if (section?.kind === "marketplace" && source) {
+        config.marketplaces.push({ name: section.key, source });
+      }
+      const enabled = /^\s*enabled\s*=\s*(true|false)\s*$/.exec(line)?.[1];
+      if (section?.kind === "plugin" && enabled) {
+        config.pluginEnabled.set(section.key, enabled === "true");
+      }
+    }
   } catch {
-    return [];
+    // Missing Codex config is fine; we still scan ~/.codex/plugins.
   }
+  return config;
 }
 
 function hasPluginMarker(dir: string): boolean {
@@ -51,7 +90,18 @@ function hasPluginMarker(dir: string): boolean {
   );
 }
 
-type PluginManifest = { name?: string; description?: string };
+type PluginManifest = {
+  name?: string;
+  version?: string;
+  description?: string;
+  displayName?: string;
+  shortDescription?: string;
+  category?: string;
+  capabilities?: string[];
+  defaultPrompts?: string[];
+  brandColor?: string;
+  iconPath?: string;
+};
 
 function pluginNameFromPath(dir: string): string {
   const manifest = pluginManifest(dir);
@@ -69,17 +119,57 @@ function pluginNameFromPath(dir: string): string {
 function pluginManifest(dir: string): PluginManifest {
   try {
     const raw = readFileSync(path.join(dir, ".codex-plugin", "plugin.json"), "utf8");
-    const json = JSON.parse(raw) as { description?: unknown; name?: unknown };
+    const json = JSON.parse(raw) as {
+      description?: unknown;
+      name?: unknown;
+      version?: unknown;
+      interface?: {
+        displayName?: unknown;
+        shortDescription?: unknown;
+        category?: unknown;
+        capabilities?: unknown;
+        defaultPrompt?: unknown;
+        brandColor?: unknown;
+        composerIcon?: unknown;
+        logo?: unknown;
+      };
+    };
+    const iface = json.interface;
+    const icon = stringField(iface?.composerIcon) ?? stringField(iface?.logo);
     return {
-      name: typeof json.name === "string" && json.name.trim() ? json.name.trim() : undefined,
-      description:
-        typeof json.description === "string" && json.description.trim()
-          ? json.description.trim()
-          : undefined,
+      name: stringField(json.name),
+      version: stringField(json.version),
+      description: stringField(json.description),
+      displayName: stringField(iface?.displayName),
+      shortDescription: stringField(iface?.shortDescription),
+      category: stringField(iface?.category),
+      capabilities: stringArray(iface?.capabilities),
+      defaultPrompts: stringArray(iface?.defaultPrompt),
+      brandColor: stringField(iface?.brandColor),
+      iconPath: icon ? path.resolve(dir, icon) : undefined,
     };
   } catch {
     return {};
   }
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((entry): entry is string => typeof entry === "string" && !!entry);
+  return values.length ? values : undefined;
+}
+
+function marketplaceFromPath(dir: string): string | undefined {
+  const parts = dir.split(path.sep);
+  const cacheIdx = parts.lastIndexOf("cache");
+  if (cacheIdx !== -1 && parts[cacheIdx + 1]) return parts[cacheIdx + 1];
+  const pluginsIdx = parts.lastIndexOf("plugins");
+  if (pluginsIdx > 0 && parts[pluginsIdx - 1]?.startsWith("openai-")) return parts[pluginsIdx - 1];
+  return undefined;
 }
 
 function pluginResourcePaths(
@@ -103,10 +193,13 @@ function knownLocalPluginRows(): PluginRow[] {
     rows.push({
       id: "builtin:computer-use",
       name: "computer-use",
+      displayName: "Computer Use",
       path: computerUseApp,
       installed: true,
       enabled: true,
       source: "openai-bundled",
+      category: "Productivity",
+      capabilities: ["Interactive", "Read", "Write"],
       appPath: computerUseApp,
       description: "Local Codex Computer Use helper app.",
     });
@@ -116,9 +209,12 @@ function knownLocalPluginRows(): PluginRow[] {
 
 export function discoverPlugins(
   roots: string[] = defaultPluginRoots(),
-  options: { maxDepth?: number } = {},
+  options: { configPath?: string; maxDepth?: number } = {},
 ): PluginRow[] {
   const maxDepth = options.maxDepth ?? 8;
+  const codexConfig = readCodexConfig(
+    options.configPath ?? path.join(homedir(), ".codex", "config.toml"),
+  );
   const rows: PluginRow[] = [];
   const seen = new Set<string>();
 
@@ -135,13 +231,28 @@ export function discoverPlugins(
 
     if (hasPluginMarker(dir)) {
       const manifest = pluginManifest(dir);
+      const name = manifest.name ?? pluginNameFromPath(dir);
+      const source = marketplaceFromPath(dir);
+      const enabled =
+        (source ? codexConfig.pluginEnabled.get(`${name}@${source}`) : undefined) ?? true;
       rows.push({
         id: dir,
-        name: manifest.name ?? pluginNameFromPath(dir),
+        name,
+        ...(manifest.displayName ? { displayName: manifest.displayName } : {}),
+        ...(manifest.version ? { version: manifest.version } : {}),
         path: dir,
         installed: true,
-        enabled: true,
+        enabled,
+        ...(source ? { source } : {}),
         ...(manifest.description ? { description: manifest.description } : {}),
+        ...(manifest.shortDescription ? { shortDescription: manifest.shortDescription } : {}),
+        ...(manifest.category ? { category: manifest.category } : {}),
+        ...(manifest.capabilities ? { capabilities: manifest.capabilities } : {}),
+        ...(manifest.defaultPrompts ? { defaultPrompts: manifest.defaultPrompts } : {}),
+        ...(manifest.brandColor ? { brandColor: manifest.brandColor } : {}),
+        ...(manifest.iconPath && existsSync(manifest.iconPath)
+          ? { iconPath: manifest.iconPath }
+          : {}),
         ...pluginResourcePaths(dir),
       });
       return;
