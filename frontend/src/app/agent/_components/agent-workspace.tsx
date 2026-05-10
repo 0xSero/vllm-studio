@@ -284,6 +284,10 @@ function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
           active: entry.active === true,
           startedAt: typeof entry.startedAt === "string" ? entry.startedAt : undefined,
           updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : "",
+          plugins: Array.isArray(entry.plugins)
+            ? (entry.plugins as SessionTab["plugins"])
+            : undefined,
+          skills: Array.isArray(entry.skills) ? (entry.skills as SessionTab["skills"]) : undefined,
         };
       })
       .filter(
@@ -343,6 +347,8 @@ function tabFromSnapshot(session: ActiveAgentSessionSnapshot): SessionTab {
     // resurrecting a permanently "running" UI state.
     status: "loading",
     startedAt: session.startedAt ?? session.updatedAt,
+    plugins: session.plugins,
+    skills: session.skills,
   };
 }
 
@@ -1264,6 +1270,8 @@ export function AgentWorkspace() {
             active: paneId === focusedPaneId && tab.id === pane.activeTabId,
             startedAt: tab.startedAt,
             updatedAt: new Date().toISOString(),
+            plugins: tab.plugins,
+            skills: tab.skills,
           };
         }),
     );

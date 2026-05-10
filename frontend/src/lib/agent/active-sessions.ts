@@ -1,3 +1,5 @@
+import type { ComposerPluginRef, ComposerSkillRef } from "./composer-context";
+
 export type ActiveAgentSessionSnapshot = {
   projectId: string;
   cwd: string;
@@ -10,6 +12,8 @@ export type ActiveAgentSessionSnapshot = {
   active?: boolean;
   startedAt?: string;
   updatedAt: string;
+  plugins?: ComposerPluginRef[];
+  skills?: ComposerSkillRef[];
 };
 
 export type ActiveSessionPrefs = Record<string, { hidden?: boolean }>;
@@ -57,6 +61,8 @@ export function mergeActiveAgentSessions(
         updatedAt: session.updatedAt || existing.updatedAt,
         piSessionId: session.piSessionId ?? existing.piSessionId ?? null,
         startedAt: existing.startedAt ?? session.startedAt ?? session.updatedAt,
+        plugins: session.plugins ?? existing.plugins,
+        skills: session.skills ?? existing.skills,
       });
     } else {
       byKey.set(key, {
@@ -64,6 +70,8 @@ export function mergeActiveAgentSessions(
         ...session,
         piSessionId: session.piSessionId ?? existing?.piSessionId ?? null,
         startedAt: existing?.startedAt ?? session.startedAt ?? session.updatedAt,
+        plugins: session.plugins ?? existing?.plugins,
+        skills: session.skills ?? existing?.skills,
       });
     }
   }

@@ -28,6 +28,26 @@ describe("mergeActiveAgentSessions", () => {
     expect(merged[0]).toMatchObject({ piSessionId: "pi-a", title: "real" });
   });
 
+  it("preserves selected plugin and skill context across Pi id merge", () => {
+    const merged = mergeActiveAgentSessions(
+      [
+        session({
+          title: "temp",
+          plugins: [{ id: "browser", name: "browser-use" }],
+          skills: [{ id: "agent", name: "agent-browser", path: "/skills/agent-browser" }],
+        }),
+      ],
+      [session({ piSessionId: "pi-a", title: "real" })],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      piSessionId: "pi-a",
+      plugins: [{ id: "browser", name: "browser-use" }],
+      skills: [{ id: "agent", name: "agent-browser", path: "/skills/agent-browser" }],
+    });
+  });
+
   it("filters archived sessions by stable Pi id", () => {
     const merged = mergeActiveAgentSessions(
       [session({ piSessionId: "pi-a" })],
