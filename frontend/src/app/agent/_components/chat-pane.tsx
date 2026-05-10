@@ -135,6 +135,39 @@ export function reconcileQueueWithPiEvent(
   return next;
 }
 
+type RuntimeLoggedEvent = {
+  seq?: number;
+  event?: Record<string, unknown>;
+};
+
+function eventKey(event: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(event);
+  } catch {
+    return `${String(event.type ?? "event")}:${Object.keys(event).join(",")}`;
+  }
+}
+
+export function mergeCanonicalAndRuntimeEvents(
+  canonicalEvents: Record<string, unknown>[],
+  runtimeEvents: RuntimeLoggedEvent[] = [],
+): Record<string, unknown>[] {
+  const merged: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const push = (event: Record<string, unknown>) => {
+    const key = eventKey(event);
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(event);
+  };
+  canonicalEvents.forEach(push);
+  runtimeEvents
+    .filter((entry) => entry.event && typeof entry.event === "object")
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .forEach((entry) => push(entry.event as Record<string, unknown>));
+  return merged;
+}
+
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
@@ -1085,7 +1118,12 @@ export function ChatPane({
   const loadRuntimeStatus = useCallback(
     async (
       sessionId: string,
-    ): Promise<{ active?: boolean; piSessionId?: string | null; eventSeq?: number } | null> => {
+    ): Promise<{
+      active?: boolean;
+      piSessionId?: string | null;
+      eventSeq?: number;
+      events?: RuntimeLoggedEvent[];
+    } | null> => {
       try {
         const payload = await fetch(
           `/api/agent/runtime/status?sessionId=${encodeURIComponent(sessionId)}`,
@@ -1093,9 +1131,10 @@ export function ChatPane({
         ).then((res) =>
           safeJson<{
             status?: { active?: boolean; piSessionId?: string | null; eventSeq?: number };
+            events?: RuntimeLoggedEvent[];
           }>(res),
         );
-        return payload.status ?? null;
+        return payload.status ? { ...payload.status, events: payload.events ?? [] } : null;
       } catch {
         return null;
       }
@@ -1683,11 +1722,6 @@ export function ChatPane({
         }>(response);
         if (!response.ok) throw new Error(payload.error || "Failed to load session");
 
-        const { messages, title } = replaySessionEvents(payload.events ?? []);
-        const tokenStats = [...(payload.events ?? [])]
-          .reverse()
-          .map(usageFromEvent)
-          .find((stats): stats is TokenStats => Boolean(stats));
         const runtimeId =
           tabsRef.current.find((tab) => tab.id === tabId)?.runtimeSessionId || runtimeSessionId;
         const previousTab = tabsRef.current.find((tab) => tab.id === tabId);
@@ -1695,6 +1729,15 @@ export function ChatPane({
         const runtimeActive =
           runtimeStatus?.active === true &&
           (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId);
+        const replayEvents = mergeCanonicalAndRuntimeEvents(
+          payload.events ?? [],
+          runtimeActive ? runtimeStatus?.events : [],
+        );
+        const { messages, title } = replaySessionEvents(replayEvents);
+        const tokenStats = [...replayEvents]
+          .reverse()
+          .map(usageFromEvent)
+          .find((stats): stats is TokenStats => Boolean(stats));
         const replaySeq =
           runtimeActive && previousTab?.piSessionId === piSessionId
             ? (previousTab.lastEventSeq ?? runtimeStatus?.eventSeq)

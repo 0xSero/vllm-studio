@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
   drainQueueAfterAgentEnd,
+  mergeCanonicalAndRuntimeEvents,
   reconcileQueueWithPiEvent,
   replaySessionEvents,
 } from "./chat-pane";
@@ -62,6 +63,32 @@ describe("reconcileQueueWithPiEvent", () => {
       { id: "local", mode: "follow_up", text: "local only" },
       { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
       { id: expect.any(String), mode: "steer", text: "new steer", sent: true },
+    ]);
+  });
+});
+
+describe("mergeCanonicalAndRuntimeEvents", () => {
+  it("dedupes stored events and appends live runtime events in seq order", () => {
+    const stored = [
+      { type: "session", id: "s1" },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hel" } },
+    ];
+
+    expect(
+      mergeCanonicalAndRuntimeEvents(stored, [
+        {
+          seq: 3,
+          event: {
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", delta: "Hello" },
+          },
+        },
+        { seq: 2, event: stored[1] },
+      ]),
+    ).toEqual([
+      { type: "session", id: "s1" },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hel" } },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hello" } },
     ]);
   });
 });
