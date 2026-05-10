@@ -79,7 +79,10 @@ describe("discoverPlugins", () => {
       mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
       mkdirSync(path.join(plugin, "plugin-skills"), { recursive: true });
       writeFileSync(path.join(plugin, "plugin-mcp.json"), '{"mcpServers":{}}');
-      writeFileSync(path.join(plugin, "plugin-app.json"), '{"apps":[]}');
+      writeFileSync(
+        path.join(plugin, "plugin-app.json"),
+        '{"apps":{"computer-use":{"id":"connector_computer"}}}',
+      );
       writeFileSync(
         path.join(plugin, ".codex-plugin", "plugin.json"),
         JSON.stringify({
@@ -119,6 +122,7 @@ describe("discoverPlugins", () => {
           skillPath: path.join(plugin, "plugin-skills"),
           mcpConfigPath: path.join(plugin, "plugin-mcp.json"),
           appConfigPath: path.join(plugin, "plugin-app.json"),
+          appIds: ["connector_computer"],
         }),
       ]);
     } finally {

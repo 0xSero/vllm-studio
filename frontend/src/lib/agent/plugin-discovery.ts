@@ -22,6 +22,7 @@ export type PluginRow = {
   skillPath?: string;
   mcpConfigPath?: string;
   appConfigPath?: string;
+  appIds?: string[];
   appPath?: string;
 };
 
@@ -192,17 +193,33 @@ function marketplaceFromPath(dir: string): string | undefined {
 function pluginResourcePaths(
   dir: string,
   manifest: PluginManifest,
-): Pick<PluginRow, "appConfigPath" | "appPath" | "mcpConfigPath" | "skillPath"> {
+): Pick<PluginRow, "appConfigPath" | "appIds" | "appPath" | "mcpConfigPath" | "skillPath"> {
   const skills = manifest.skillsPath ?? path.join(dir, "skills");
   const mcp = manifest.mcpServersPath ?? path.join(dir, ".mcp.json");
   const apps = manifest.appsPath ?? path.join(dir, ".app.json");
+  const appIds = existsSync(apps) ? readAppIds(apps) : [];
   const computerUseApp = path.join(dir, "Codex Computer Use.app");
   return {
     ...(existsSync(skills) ? { skillPath: skills } : {}),
     ...(existsSync(mcp) ? { mcpConfigPath: mcp } : {}),
     ...(existsSync(apps) ? { appConfigPath: apps } : {}),
+    ...(appIds.length ? { appIds } : {}),
     ...(existsSync(computerUseApp) ? { appPath: computerUseApp } : {}),
   };
+}
+
+function readAppIds(appConfigPath: string): string[] {
+  try {
+    const parsed = JSON.parse(readFileSync(appConfigPath, "utf8")) as { apps?: unknown };
+    if (!parsed.apps || typeof parsed.apps !== "object") return [];
+    return Object.values(parsed.apps as Record<string, unknown>).flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const id = (entry as { id?: unknown }).id;
+      return typeof id === "string" && id.trim() ? [id.trim()] : [];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function knownLocalPluginRows(): PluginRow[] {

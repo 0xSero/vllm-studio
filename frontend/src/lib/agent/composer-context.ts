@@ -16,6 +16,7 @@ export type ComposerPluginRef = {
   skillPath?: string;
   mcpConfigPath?: string;
   appConfigPath?: string;
+  appIds?: string[];
   appPath?: string;
 };
 
@@ -104,6 +105,9 @@ function selectedContextLines(
         lines.push(
           `Plugin @${plugin.name} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`,
         );
+      }
+      if (plugin.appIds?.length) {
+        lines.push(`Plugin @${plugin.name} declares app connectors: ${plugin.appIds.join(", ")}`);
       }
     }
     if (enabledPlugins.some((plugin) => plugin.name.includes("browser-use"))) {

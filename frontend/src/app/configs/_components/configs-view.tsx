@@ -538,6 +538,7 @@ function PluginsSettings() {
     installed: boolean;
     enabled: boolean;
     description?: string;
+    appIds?: string[];
   };
   type PluginValidation = {
     browserUseAvailable?: boolean;
@@ -786,10 +787,11 @@ function PluginAvailabilityPill({
   return <StatusPill tone="good">selectable</StatusPill>;
 }
 
-function pluginDescription(plugin: { description?: string; path: string }) {
+function pluginDescription(plugin: { appIds?: string[]; description?: string; path: string }) {
   const summary = plugin.description?.replace(/\s+/g, " ").trim();
   const short = summary && summary.length > 150 ? `${summary.slice(0, 147)}…` : summary;
-  return short ? `${short} · ${plugin.path}` : plugin.path;
+  const connectors = plugin.appIds?.length ? ` · connectors: ${plugin.appIds.join(", ")}` : "";
+  return short ? `${short}${connectors} · ${plugin.path}` : `${plugin.path}${connectors}`;
 }
 
 function SkillsSettings() {

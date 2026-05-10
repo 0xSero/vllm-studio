@@ -44,6 +44,7 @@ type RuntimePluginRef = {
   skillPath?: string;
   mcpConfigPath?: string;
   appConfigPath?: string;
+  appIds?: string[];
   appPath?: string;
 };
 
@@ -169,7 +170,7 @@ function pluginFingerprint(options: RuntimeStartOptions): string {
   const names = (options.plugins ?? [])
     .map(
       (plugin) =>
-        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.mcpConfigPath ?? ""}:${plugin.appConfigPath ?? ""}:${plugin.appPath ?? ""}`,
+        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.mcpConfigPath ?? ""}:${plugin.appConfigPath ?? ""}:${plugin.appIds?.join(",") ?? ""}:${plugin.appPath ?? ""}`,
     )
     .sort();
   const skills = (options.skills ?? [])

@@ -70,9 +70,19 @@ describe("composer context helpers", () => {
           id: "browser",
           name: "browser-use",
           defaultPrompts: ["Inspect the current page"],
+          appIds: ["connector_browser"],
         },
       ]),
     ).toContain("Plugin @browser-use default prompts: Inspect the current page");
+    expect(
+      selectedContextPrompt("inspect localhost", [
+        {
+          id: "browser",
+          name: "browser-use",
+          appIds: ["connector_browser"],
+        },
+      ]),
+    ).toContain("Plugin @browser-use declares app connectors: connector_browser");
     expect(
       selectedContextPrompt(
         "inspect localhost",
