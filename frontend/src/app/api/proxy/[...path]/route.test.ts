@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "./route";
+import { getUpstreamTimeoutMs } from "./proxy-timeouts";
 import { getApiSettings } from "@/lib/api-settings";
 
 vi.mock("@/lib/api-settings", () => ({
@@ -10,6 +11,15 @@ vi.mock("@/lib/api-settings", () => ({
 
 const getApiSettingsMock = vi.mocked(getApiSettings);
 const ALLOWLIST_ENV_KEY = "VLLM_STUDIO_PROXY_OVERRIDE_ALLOWLIST";
+
+describe("proxy upstream timeouts", () => {
+  it("gives slow status/log/metrics endpoints enough time", () => {
+    expect(getUpstreamTimeoutMs(["logs"])).toBe(20_000);
+    expect(getUpstreamTimeoutMs(["logs", "session", "stream"])).toBe(20_000);
+    expect(getUpstreamTimeoutMs(["v1", "metrics", "vllm"])).toBe(20_000);
+    expect(getUpstreamTimeoutMs(["status"])).toBe(5_000);
+  });
+});
 
 describe("GET /api/proxy/[...path]", () => {
   beforeEach(() => {
