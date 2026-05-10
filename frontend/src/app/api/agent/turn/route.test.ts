@@ -111,4 +111,42 @@ describe("POST /api/agent/turn", () => {
     expect(body).toContain('"type":"pi"');
     expect(body).toContain('"delta":"ok"');
   });
+
+  it.each([
+    ["steer", "steer"],
+    ["follow_up", "followUp"],
+  ] as const)(
+    "sends active %s messages through Pi control without restarting",
+    async (mode, fn) => {
+      const session = {
+        ensureStarted: vi.fn(),
+        prompt: vi.fn(),
+        steer: vi.fn().mockResolvedValue(undefined),
+        followUp: vi.fn().mockResolvedValue(undefined),
+        status: { piSessionId: "pi-1", cwd: "/repo", active: true, running: true },
+        adoptPiSessionId: vi.fn(),
+      };
+      getSession.mockReturnValue(session as never);
+
+      const response = await POST(
+        new NextRequest("http://localhost/api/agent/turn", {
+          method: "POST",
+          body: JSON.stringify({
+            sessionId: "tab-1",
+            modelId: "hy3-preview",
+            message: "adjust the active run",
+            cwd: "/repo",
+            piSessionId: "pi-1",
+            mode,
+          }),
+        }),
+      );
+
+      const body = await response.text();
+      expect(session.ensureStarted).not.toHaveBeenCalled();
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(session[fn]).toHaveBeenCalledWith("adjust the active run");
+      expect(body).toContain('"phase":"queued"');
+    },
+  );
 });
