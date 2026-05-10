@@ -212,23 +212,6 @@ export async function loadAgentProjects(): Promise<ProjectEntry[]> {
   return payload.projects ?? [];
 }
 
-function formatRelative(isoString: string): string {
-  const then = new Date(isoString).getTime();
-  if (!Number.isFinite(then)) return "";
-  const diffMs = Date.now() - then;
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(isoString).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function ProjectDirectoryPickerModal({
   open,
   error,
@@ -605,22 +588,20 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ))}
         </div>
       ) : null}
-      <div className="mt-3 flex h-5 items-center px-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-(--dim)/80">
-        Projects
-      </div>
       <button
         type="button"
         onClick={handleAddProject}
-        className="h-6 flex items-center gap-1 px-1.5 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
+        className="mt-2 flex h-5 items-center gap-1 px-0.5 text-left text-[11px] font-medium text-(--dim) transition-colors hover:text-(--fg)"
+        title="Add folder"
       >
-        <PlusIcon className="w-3 h-3 shrink-0" />
-        <span className="truncate text-[12.5px] font-medium">Add project</span>
+        <PlusIcon className="h-3 w-3 shrink-0" />
+        <span className="truncate">Add folder</span>
       </button>
       {projects.length === 0 ? (
         <button
           type="button"
           onClick={handleAddProject}
-          className="px-3 py-1.5 text-left text-[11px] text-(--dim) hover:text-(--fg)"
+          className="px-0.5 py-1 text-left text-[11px] text-(--dim) hover:text-(--fg)"
         >
           No projects yet — pick a folder to get started.
         </button>
@@ -671,15 +652,15 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-6 items-center text-(--dim) transition-colors hover:text-(--fg)">
+      <div className="group flex h-5 items-center text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 px-0.5 text-left"
         >
-          <Folder className="w-3.5 h-3.5 shrink-0 opacity-80" />
-          <span className="truncate text-[12px] font-semibold text-(--fg)">{project.name}</span>
+          <Folder className="h-3 w-3 shrink-0 opacity-80" />
+          <span className="truncate text-[11.5px] font-semibold text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -697,7 +678,7 @@ function ProjectRow({
               new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
             );
           }}
-          className="mr-0.5 p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
@@ -710,7 +691,7 @@ function ProjectRow({
             event.stopPropagation();
             onRemove();
           }}
-          className="mr-1 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
           title="Remove from list"
           aria-label="Remove project"
         >
@@ -822,9 +803,9 @@ function ProjectSessions({
       ))}
 
       {loading && !sessions ? (
-        <div className="pl-5 pr-2 py-1 text-[11px] text-(--dim)">Loading…</div>
+        <div className="pl-4 pr-1 py-0.5 text-[11px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-5 pr-2 py-1 text-[11px] text-(--dim)">No recent sessions</div>
+        <div className="pl-4 pr-1 py-0.5 text-[11px] text-(--dim)">No recent sessions</div>
       ) : (
         <>
           {recent.map((session) => (
@@ -839,7 +820,7 @@ function ProjectSessions({
             <button
               type="button"
               onClick={toggleShowHidden}
-              className="h-6 flex items-center gap-1 pl-5 pr-2 text-[10px] text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
+              className="flex h-5 items-center gap-1 pl-4 pr-1 text-[10px] text-(--dim) hover:text-(--fg)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
               <EyeOffIcon className="w-3 h-3 shrink-0" />
@@ -900,7 +881,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group flex h-6 items-center gap-1 pl-1.5 pr-1 transition-colors ${
+  const rowClass = `group flex h-5 items-center gap-1 pl-1 pr-0.5 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -928,7 +909,7 @@ function ActiveSessionRow({
   const content = (
     <>
       <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
-      <span className="min-w-0 flex-1 truncate text-[11.5px] font-normal">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-normal">{label}</span>
       {isRunning ? (
         <span
           className="shrink-0 truncate text-[10px] text-(--dim) animate-pulse"
@@ -953,7 +934,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-1.5"
+          className="flex min-w-0 flex-1 items-center gap-1"
         >
           {content}
         </Link>
@@ -973,7 +954,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 text-left"
         >
           {content}
         </button>
@@ -1093,7 +1074,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="h-6 flex items-center gap-1 pl-1.5 pr-2 bg-(--surface)/60">
+      <div className="flex h-5 items-center gap-1 pl-1 pr-1 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1114,7 +1095,7 @@ function SessionRow({
 
   return (
     <div
-      className="group flex h-6 items-center gap-1 pl-1.5 pr-1 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group flex h-5 items-center gap-1 pl-1 pr-0.5 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1135,10 +1116,7 @@ function SessionRow({
         className="flex min-w-0 flex-1 items-center gap-1"
       >
         <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-normal">{label}</span>
-        <span className="shrink-0 text-[10px] text-(--dim)">
-          {formatRelative(session.updatedAt)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-normal">{label}</span>
       </Link>
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
@@ -1266,7 +1244,7 @@ function SessionMenuItem({
     <button
       type="button"
       onClick={onClick}
-      className="block w-full rounded px-2 py-1 text-left text-xs text-(--fg) hover:bg-(--surface)"
+      className="block w-full px-2 py-1 text-left text-xs text-(--fg) hover:bg-(--surface)"
     >
       {children}
     </button>
