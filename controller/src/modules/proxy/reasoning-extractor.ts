@@ -9,6 +9,20 @@ const stripToolCallXmlBlocks = (text: string): string => {
   return cleaned.trim();
 };
 
+const collapseRepeatedVisibleContent = (text: string): string => {
+  const trimmed = text.trim();
+  if (trimmed.length < 80) return text;
+  for (let separatorLength = 0; separatorLength <= 4; separatorLength += 1) {
+    const contentLength = trimmed.length - separatorLength;
+    if (contentLength <= 0 || contentLength % 2 !== 0) continue;
+    const midpoint = contentLength / 2;
+    const first = trimmed.slice(0, midpoint).trimEnd();
+    const second = trimmed.slice(midpoint + separatorLength).trimStart();
+    if (first.length >= 40 && first === second) return first;
+  }
+  return text;
+};
+
 const extractThinkBlocks = (text: string): { cleaned: string; extracted: string[] } => {
   if (!text) return { cleaned: "", extracted: [] };
 
@@ -133,7 +147,7 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
   const strippedReasoning = stripToolCallXmlBlocks(
     typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : ""
   );
-  message["content"] = strippedContent;
+  message["content"] = collapseRepeatedVisibleContent(strippedContent);
   if (strippedReasoning) {
     message["reasoning_content"] = strippedReasoning;
   } else {

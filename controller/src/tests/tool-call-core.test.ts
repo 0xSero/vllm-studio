@@ -2,7 +2,10 @@
 import { describe, expect, it } from "bun:test";
 import { createToolCallStream } from "../modules/proxy/tool-call-stream";
 import { parseToolCallsFromContent } from "../modules/proxy/tool-call-parser";
-import { normalizeToolCallsInMessage } from "../modules/proxy/reasoning-extractor";
+import {
+  normalizeReasoningAndContentInMessage,
+  normalizeToolCallsInMessage,
+} from "../modules/proxy/reasoning-extractor";
 
 const collectStream = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   const reader = stream.getReader();
@@ -89,6 +92,20 @@ describe("tool-call-core", () => {
 
     expect(normalizeToolCallsInMessage(message)).toBe(false);
     expect(message["tool_calls"]).toBeUndefined();
+  });
+
+  it("collapses exact duplicated visible content without touching reasoning", () => {
+    const visible =
+      "This is the actual assistant answer with enough text to avoid collapsing short intentional repetition.";
+    const message: Record<string, unknown> = {
+      content: `${visible}\n\n${visible}`,
+      reasoning_content: "normal reasoning",
+    };
+
+    normalizeReasoningAndContentInMessage(message);
+
+    expect(message["content"]).toBe(visible);
+    expect(message["reasoning_content"]).toBe("normal reasoning");
   });
 
   it("injects tool_calls before [DONE] for streaming XML", async () => {
