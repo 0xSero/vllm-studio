@@ -22,6 +22,7 @@ import {
   EmptySafeNotice,
   SettingsButton,
   SettingsGroup,
+  SettingsInput,
   SettingsLayout,
   SettingsRow,
   SettingsValue,
@@ -550,6 +551,7 @@ function PluginsSettings() {
   };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
+  const [marketplaceSource, setMarketplaceSource] = useState("");
   const [validation, setValidation] = useState<PluginValidation | null>(null);
   const [savingPlugin, setSavingPlugin] = useState<string | null>(null);
   const [upgradingMarketplace, setUpgradingMarketplace] = useState<string | null>(null);
@@ -630,6 +632,33 @@ function PluginsSettings() {
       .finally(() => setUpgradingMarketplace(null));
   };
 
+  const addMarketplace = () => {
+    const source = marketplaceSource.trim();
+    if (!source) return;
+    setUpgradingMarketplace("add");
+    void fetch("/api/agent/plugins", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "add_marketplace", source }),
+    })
+      .then(
+        (res) =>
+          res.json() as Promise<{
+            plugins?: Plugin[];
+            marketplaces?: Marketplace[];
+            validation?: PluginValidation;
+          }>,
+      )
+      .then((payload) => {
+        setPlugins(payload.plugins ?? []);
+        setMarketplaces(payload.marketplaces ?? []);
+        setValidation(payload.validation ?? null);
+        setMarketplaceSource("");
+      })
+      .catch(() => void loadPlugins())
+      .finally(() => setUpgradingMarketplace(null));
+  };
+
   return (
     <div className="space-y-5">
       <SettingsGroup
@@ -668,6 +697,25 @@ function PluginsSettings() {
         ) : (
           <EmptySafeNotice>No Codex plugin marketplaces found in config.</EmptySafeNotice>
         )}
+        <SettingsRow
+          label="Add marketplace"
+          description="Accepts the same source syntax as Codex: owner/repo[@ref], Git URL, SSH URL, or a local marketplace root."
+          control={
+            <SettingsInput
+              value={marketplaceSource}
+              onChange={setMarketplaceSource}
+              placeholder="owner/repo[@ref] or /path/to/marketplace"
+            />
+          }
+          actions={
+            <SettingsButton
+              onClick={addMarketplace}
+              disabled={!marketplaceSource.trim() || upgradingMarketplace === "add"}
+            >
+              Add
+            </SettingsButton>
+          }
+        />
       </SettingsGroup>
       <SettingsGroup
         title="Plugin registry"

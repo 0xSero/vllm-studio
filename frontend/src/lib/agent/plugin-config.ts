@@ -79,6 +79,10 @@ export function upgradeCodexMarketplace(name?: string, timeoutMs = 120_000) {
   );
 }
 
+export function addCodexMarketplace(source: string, timeoutMs = 120_000) {
+  return runCodexPluginCommand(["plugin", "marketplace", "add", source.trim()], timeoutMs);
+}
+
 export function setCodexPluginEnabled({
   name,
   source,

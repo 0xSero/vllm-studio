@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { discoverPlugins } from "@/lib/agent/plugin-discovery";
 import { buildPluginsResponse } from "@/lib/agent/plugin-response";
 import {
+  addCodexMarketplace,
   readCodexMarketplaces,
   setCodexPluginEnabled,
   upgradeCodexMarketplace,
@@ -26,6 +27,17 @@ export async function POST(request: NextRequest) {
     const updated = await upgradeCodexMarketplace(
       typeof body.name === "string" ? body.name : undefined,
     );
+    return NextResponse.json({
+      ...buildPluginsResponse(discoverPlugins(), { includeDisabled: true }),
+      marketplaces: readCodexMarketplaces(),
+      updated,
+    });
+  }
+  if (body?.action === "add_marketplace") {
+    if (typeof body.source !== "string" || !body.source.trim()) {
+      return NextResponse.json({ error: "source is required" }, { status: 400 });
+    }
+    const updated = await addCodexMarketplace(body.source);
     return NextResponse.json({
       ...buildPluginsResponse(discoverPlugins(), { includeDisabled: true }),
       marketplaces: readCodexMarketplaces(),
