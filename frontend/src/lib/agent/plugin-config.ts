@@ -1,6 +1,14 @@
+import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+
+export type CodexMarketplace = {
+  name: string;
+  source?: string;
+  sourceType?: string;
+  lastUpdated?: string;
+};
 
 export function defaultCodexConfigPath() {
   return path.join(homedir(), ".codex", "config.toml");
@@ -39,6 +47,38 @@ export function setPluginEnabledInConfig(
   return before + `${section.trimEnd()}\n${enabledLine}\n` + after;
 }
 
+export function readCodexMarketplaces(configPath = defaultCodexConfigPath()): CodexMarketplace[] {
+  const raw = safeRead(configPath);
+  const rows: CodexMarketplace[] = [];
+  let current: CodexMarketplace | null = null;
+  for (const line of raw.split(/\r?\n/)) {
+    const header = /^\[marketplaces\.([^\]]+)\]\s*$/.exec(line);
+    if (header) {
+      current = { name: header[1].replaceAll('"', "") };
+      rows.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (/^\[/.test(line)) {
+      current = null;
+      continue;
+    }
+    const value = /^\s*([A-Za-z_]+)\s*=\s*"([^"]*)"\s*$/.exec(line);
+    if (!value) continue;
+    if (value[1] === "source") current.source = value[2];
+    if (value[1] === "source_type") current.sourceType = value[2];
+    if (value[1] === "last_updated") current.lastUpdated = value[2];
+  }
+  return rows;
+}
+
+export function upgradeCodexMarketplace(name?: string, timeoutMs = 120_000) {
+  return runCodexPluginCommand(
+    ["plugin", "marketplace", "upgrade", ...(name?.trim() ? [name.trim()] : [])],
+    timeoutMs,
+  );
+}
+
 export function setCodexPluginEnabled({
   name,
   source,
@@ -71,4 +111,32 @@ function safeRead(filePath: string) {
   } catch {
     return "";
   }
+}
+
+function runCodexPluginCommand(args: string[], timeoutMs: number) {
+  const command = process.env.CODEX_BIN || "codex";
+  return new Promise<{ ok: boolean; stdout: string; stderr: string }>((resolve) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const limit = 20_000;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      stderr += `\nTimed out after ${timeoutMs}ms.`;
+    }, timeoutMs);
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout = (stdout + chunk.toString()).slice(-limit);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-limit);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ ok: false, stdout, stderr: stderr || error.message });
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, stdout, stderr });
+    });
+  });
 }

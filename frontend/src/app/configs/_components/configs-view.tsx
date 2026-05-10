@@ -19,6 +19,7 @@ import { AppearanceSettings } from "./appearance-settings";
 import { EnginesSection } from "./engines-section";
 import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import {
+  EmptySafeNotice,
   SettingsButton,
   SettingsGroup,
   SettingsLayout,
@@ -541,21 +542,38 @@ function PluginsSettings() {
     browserUseAvailable?: boolean;
     computerUseAvailable?: boolean;
   };
+  type Marketplace = {
+    name: string;
+    source?: string;
+    sourceType?: string;
+    lastUpdated?: string;
+  };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [validation, setValidation] = useState<PluginValidation | null>(null);
   const [savingPlugin, setSavingPlugin] = useState<string | null>(null);
+  const [upgradingMarketplace, setUpgradingMarketplace] = useState<string | null>(null);
   const browserUse = plugins.find((plugin) => plugin.name.includes("browser-use")) ?? null;
   const computerUse = plugins.find((plugin) => plugin.name.includes("computer-use")) ?? null;
 
   const loadPlugins = () =>
     fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
+      .then(
+        (res) =>
+          res.json() as Promise<{
+            plugins?: Plugin[];
+            marketplaces?: Marketplace[];
+            validation?: PluginValidation;
+          }>,
+      )
       .then((payload) => {
         setPlugins(payload.plugins ?? []);
+        setMarketplaces(payload.marketplaces ?? []);
         setValidation(payload.validation ?? null);
       })
       .catch(() => {
         setPlugins([]);
+        setMarketplaces([]);
         setValidation({ browserUseAvailable: false, computerUseAvailable: false });
       });
 
@@ -570,17 +588,87 @@ function PluginsSettings() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: plugin.name, source: plugin.source, enabled }),
     })
-      .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
+      .then(
+        (res) =>
+          res.json() as Promise<{
+            plugins?: Plugin[];
+            marketplaces?: Marketplace[];
+            validation?: PluginValidation;
+          }>,
+      )
       .then((payload) => {
         setPlugins(payload.plugins ?? []);
+        setMarketplaces(payload.marketplaces ?? []);
         setValidation(payload.validation ?? null);
       })
       .catch(() => void loadPlugins())
       .finally(() => setSavingPlugin(null));
   };
 
+  const upgradeMarketplace = (marketplace?: Marketplace) => {
+    const key = marketplace?.name ?? "all";
+    setUpgradingMarketplace(key);
+    void fetch("/api/agent/plugins", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "upgrade_marketplace", name: marketplace?.name }),
+    })
+      .then(
+        (res) =>
+          res.json() as Promise<{
+            plugins?: Plugin[];
+            marketplaces?: Marketplace[];
+            validation?: PluginValidation;
+          }>,
+      )
+      .then((payload) => {
+        setPlugins(payload.plugins ?? []);
+        setMarketplaces(payload.marketplaces ?? []);
+        setValidation(payload.validation ?? null);
+      })
+      .catch(() => void loadPlugins())
+      .finally(() => setUpgradingMarketplace(null));
+  };
+
   return (
     <div className="space-y-5">
+      <SettingsGroup
+        title="Plugin marketplaces"
+        description="Uses Codex marketplace metadata and the Codex CLI upgrade path instead of a vLLM-specific plugin registry."
+        actions={
+          <SettingsButton
+            onClick={() => upgradeMarketplace()}
+            disabled={upgradingMarketplace === "all"}
+          >
+            Upgrade all
+          </SettingsButton>
+        }
+      >
+        {marketplaces.length ? (
+          marketplaces.map((marketplace) => (
+            <SettingsRow
+              key={marketplace.name}
+              label={marketplace.name}
+              description={marketplace.source ?? "No source reported"}
+              value={
+                <SettingsValue>
+                  {marketplace.sourceType ?? "source"} · {marketplace.lastUpdated ?? "never"}
+                </SettingsValue>
+              }
+              actions={
+                <SettingsButton
+                  onClick={() => upgradeMarketplace(marketplace)}
+                  disabled={upgradingMarketplace === marketplace.name}
+                >
+                  Upgrade
+                </SettingsButton>
+              }
+            />
+          ))
+        ) : (
+          <EmptySafeNotice>No Codex plugin marketplaces found in config.</EmptySafeNotice>
+        )}
+      </SettingsGroup>
       <SettingsGroup
         title="Plugin registry"
         description="Discovers Codex plugin bundles from the local Codex plugin cache. Composer/runtime wiring stays modular."

@@ -1,5 +1,6 @@
+import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { pluginConfigKey, setPluginEnabledInConfig } from "./plugin-config";
+import { pluginConfigKey, readCodexMarketplaces, setPluginEnabledInConfig } from "./plugin-config";
 
 describe("plugin config", () => {
   it("builds Codex plugin keys", () => {
@@ -25,5 +26,24 @@ describe("plugin config", () => {
     expect(setPluginEnabledInConfig("model = \"x\"\n", "github@openai-curated", true)).toBe(
       'model = "x"\n\n[plugins."github@openai-curated"]\nenabled = true\n',
     );
+  });
+
+  it("reads Codex marketplace metadata", () => {
+    const raw =
+      '[marketplaces.openai-bundled]\nlast_updated = "2026-04-18T22:03:02Z"\nsource_type = "local"\nsource = "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled"\n\n[plugins."browser-use@openai-bundled"]\nenabled = true\n';
+    const tmp = `/tmp/vllm-plugin-config-${process.pid}.toml`;
+    writeFileSync(tmp, raw);
+    try {
+      expect(readCodexMarketplaces(tmp)).toEqual([
+        {
+          name: "openai-bundled",
+          lastUpdated: "2026-04-18T22:03:02Z",
+          sourceType: "local",
+          source: "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled",
+        },
+      ]);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
   });
 });
