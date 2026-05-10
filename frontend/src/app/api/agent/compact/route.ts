@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { selectedContextInstructions } from "@/lib/agent/composer-context";
+import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
 
 export const runtime = "nodejs";
@@ -11,15 +13,8 @@ type CompactRequest = {
   piSessionId?: string | null;
   customInstructions?: string;
   browserToolEnabled?: boolean;
-  plugins?: Array<{
-    id?: string;
-    name?: string;
-    path?: string;
-    skillPath?: string;
-    mcpConfigPath?: string;
-    appPath?: string;
-  }>;
-  skills?: Array<{ id?: string; name?: string; path?: string }>;
+  plugins?: ComposerPluginRef[];
+  skills?: ComposerSkillRef[];
 };
 
 export async function POST(request: NextRequest) {
@@ -39,7 +34,13 @@ export async function POST(request: NextRequest) {
       plugins: Array.isArray(body.plugins) ? body.plugins : [],
       skills: Array.isArray(body.skills) ? body.skills : [],
     });
-    const result = await session.compact(body.customInstructions?.trim() || undefined);
+    const customInstructions =
+      body.customInstructions?.trim() ||
+      selectedContextInstructions(
+        Array.isArray(body.plugins) ? body.plugins : [],
+        Array.isArray(body.skills) ? body.skills : [],
+      );
+    const result = await session.compact(customInstructions);
     return Response.json({ ok: true, result, status: session.status });
   } catch (error) {
     return Response.json(

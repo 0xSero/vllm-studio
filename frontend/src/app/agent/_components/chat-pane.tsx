@@ -28,6 +28,7 @@ import {
   byQuery,
   detectComposerMention,
   replaceComposerMention,
+  selectedContextInstructions,
   selectedContextPrompt,
   type ComposerMention,
   type ComposerPluginRef,
@@ -1806,6 +1807,10 @@ export function ChatPane({
           modelId,
           cwd: cwd.trim() || undefined,
           piSessionId: activeTab.piSessionId,
+          customInstructions: selectedContextInstructions(
+            activeComposerPlugins(activeTab.plugins ?? []),
+            activeTab.skills ?? [],
+          ),
           browserToolEnabled,
           plugins: activeComposerPlugins(activeTab.plugins ?? []),
           skills: activeTab.skills ?? [],

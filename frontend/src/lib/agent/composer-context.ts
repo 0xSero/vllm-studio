@@ -68,6 +68,27 @@ export function selectedContextPrompt(
   plugins: ComposerPluginRef[] = [],
   skills: ComposerSkillRef[] = [],
 ): string {
+  const lines = selectedContextLines(plugins, skills);
+  if (!lines.length) return text;
+  return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");
+}
+
+export function selectedContextInstructions(
+  plugins: ComposerPluginRef[] = [],
+  skills: ComposerSkillRef[] = [],
+): string | undefined {
+  const lines = selectedContextLines(plugins, skills);
+  if (!lines.length) return undefined;
+  return [
+    "Preserve this selected composer context after compaction.",
+    ...lines,
+  ].join("\n");
+}
+
+function selectedContextLines(
+  plugins: ComposerPluginRef[] = [],
+  skills: ComposerSkillRef[] = [],
+): string[] {
   const lines: string[] = [];
   const enabledPlugins = activeComposerPlugins(plugins);
   if (enabledPlugins.length) {
@@ -95,8 +116,7 @@ export function selectedContextPrompt(
       lines.push(skill.instructions ? `${label}\n${skill.instructions}` : label);
     }
   }
-  if (!lines.length) return text;
-  return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");
+  return lines;
 }
 
 function searchableText(row: {

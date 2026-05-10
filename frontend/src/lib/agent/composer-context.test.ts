@@ -4,6 +4,7 @@ import {
   byQuery,
   detectComposerMention,
   replaceComposerMention,
+  selectedContextInstructions,
   selectedContextPrompt,
 } from "./composer-context";
 
@@ -83,6 +84,17 @@ describe("composer context helpers", () => {
         { id: "computer", name: "computer-use", displayName: "Computer Use" },
       ]),
     ).toContain("call mcp_plugin_status before desktop control");
+  });
+
+  it("builds reusable compaction instructions for selected plugins and skills", () => {
+    const instructions = selectedContextInstructions(
+      [{ id: "browser", name: "browser-use", shortDescription: "Browser control" }],
+      [{ id: "skill", name: "agent-browser", instructions: "Use the browser harness." }],
+    );
+
+    expect(instructions).toContain("Preserve this selected composer context after compaction.");
+    expect(instructions).toContain("Enabled plugins: @browser-use.");
+    expect(instructions).toContain("Use the browser harness.");
   });
 
   it("filters rows with exact and prefix matches first", () => {
