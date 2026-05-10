@@ -235,8 +235,10 @@ function SegmentedOptions({
             key={option.id}
             type="button"
             onClick={() => onChange(option.id)}
-            className={`h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
-              active ? "bg-(--fg) text-(--bg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+            className={`h-7 px-1.5 text-[11px] font-medium transition-colors ${
+              active
+                ? "text-(--fg) underline decoration-(--dim) underline-offset-4"
+                : "text-(--dim) hover:text-(--fg)"
             }`}
           >
             {option.label}
