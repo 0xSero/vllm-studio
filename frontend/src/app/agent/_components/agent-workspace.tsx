@@ -595,6 +595,9 @@ export function AgentWorkspace() {
       // Iframe fallback (dev or non-electron). Cross-origin restrictions make
       // most operations impossible — handle the few that are still useful.
       const iframe = getIframe();
+      if (!iframe && verb === "get-url") {
+        return { ok: true, data: { url: browserUrl, title: "" } };
+      }
       if (!iframe) return { ok: false, error: "Browser panel not mounted" };
       switch (verb) {
         case "navigate": {
@@ -614,7 +617,7 @@ export function AgentWorkspace() {
           };
       }
     },
-    [isElectron],
+    [browserUrl, isElectron],
   );
 
   // Open an SSE subscription to /api/agent/browser/events whenever the
