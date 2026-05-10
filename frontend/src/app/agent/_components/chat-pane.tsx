@@ -431,6 +431,12 @@ function messageText(
     .join(separator);
 }
 
+export function visibleUserTextFromPi(text: string): string {
+  const marker = "\n\nUser prompt:\n";
+  const idx = text.lastIndexOf(marker);
+  return (idx === -1 ? text : text.slice(idx + marker.length)).trim();
+}
+
 function blocksFromMessageContent(content: string | Array<Record<string, unknown>> | undefined) {
   if (typeof content === "string") {
     return content ? [{ kind: "text" as const, id: newId("text"), text: content }] : [];
@@ -515,7 +521,7 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
         | undefined;
       if (msg?.role === "user") {
         pendingAssistantId = null;
-        const text = messageText(msg.content);
+        const text = visibleUserTextFromPi(messageText(msg.content));
         if (text) {
           if (!title) title = sessionTitleFromPrompt(text);
           replayed.push({ id: newId("user"), role: "user", text, timestamp: nowLabel() });
@@ -995,7 +1001,7 @@ export function ChatPane({
           | { role?: string; content?: string | Record<string, unknown>[] }
           | undefined;
         if (msg?.role === "user") {
-          const text = messageText(msg.content);
+          const text = visibleUserTextFromPi(messageText(msg.content));
           if (!text) return;
           const current = tabsRef.current.find((tab) => tab.id === tabId);
           const lastUser = [...(current?.messages ?? [])]

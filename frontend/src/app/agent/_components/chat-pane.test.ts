@@ -7,6 +7,7 @@ import {
   reconcileQueueWithPiEvent,
   replaySessionEvents,
   visibleQueuedMessages,
+  visibleUserTextFromPi,
 } from "./chat-pane";
 
 describe("isAgentEndEvent", () => {
@@ -127,6 +128,16 @@ describe("mergeCanonicalAndRuntimeEvents", () => {
   });
 });
 
+describe("visibleUserTextFromPi", () => {
+  it("hides composer context wrappers from displayed Pi user messages", () => {
+    expect(
+      visibleUserTextFromPi(
+        "Composer context:\nEnabled plugins: @browser-use.\n\nUser prompt:\ninspect localhost",
+      ),
+    ).toBe("inspect localhost");
+  });
+});
+
 describe("replaySessionEvents", () => {
   it("hydrates current Pi message events from stored sessions", () => {
     const result = replaySessionEvents([
@@ -198,6 +209,22 @@ describe("replaySessionEvents", () => {
       role: "assistant",
       text: "Done. I found the Next dev script.",
     });
+  });
+
+  it("replays selected-context user messages using only the visible prompt", () => {
+    const result = replaySessionEvents([
+      {
+        type: "message",
+        message: {
+          role: "user",
+          content:
+            "Composer context:\nEnabled plugins: @computer-use.\n\nUser prompt:\nmove the window",
+        },
+      },
+    ]);
+
+    expect(result.title).toBe("move the window");
+    expect(result.messages[0]).toMatchObject({ role: "user", text: "move the window" });
   });
 
   it("replays streamed tool-call argument deltas from Pi", () => {
