@@ -49,6 +49,10 @@ export async function GET(request: NextRequest) {
       }
     }),
   );
-  aggregated.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  aggregated.sort(
+    (a, b) =>
+      new Date(b.startedAt || b.updatedAt).getTime() -
+      new Date(a.startedAt || a.updatedAt).getTime(),
+  );
   return Response.json({ sessions: aggregated });
 }
