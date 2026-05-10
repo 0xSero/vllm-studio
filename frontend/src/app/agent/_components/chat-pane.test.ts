@@ -268,6 +268,39 @@ describe("replaySessionEvents", () => {
     expect(result.messages[0].blocks).toMatchObject([{ kind: "text", text: "Hello world!" }]);
   });
 
+  it("merges final assistant message snapshots into streamed text during replay", () => {
+    const result = replaySessionEvents([
+      {
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Say done" }],
+        },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "DO" },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "DONE" },
+      },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "DONE" }],
+        },
+      },
+    ]);
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1]).toMatchObject({
+      role: "assistant",
+      text: "DONE",
+    });
+  });
+
   it("merges final assistant message_end into the streamed assistant during replay", () => {
     const result = replaySessionEvents([
       {

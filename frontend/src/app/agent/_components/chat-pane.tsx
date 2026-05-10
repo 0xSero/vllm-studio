@@ -497,14 +497,19 @@ export function replaySessionEvents(events: Record<string, unknown>[]) {
           .filter((block): block is TextBlock => block.kind === "text")
           .map((block) => block.text)
           .join("\n");
-        if (pendingAssistantId && type === "message_end") {
-          localPatch(pendingAssistantId, (message) => ({
-            ...message,
-            text,
-            blocks,
-          }));
-          pendingAssistantId = null;
-          continue;
+        if (pendingAssistantId) {
+          const pending = replayed.find((message) => message.id === pendingAssistantId);
+          const pendingHasTools = (pending?.blocks ?? []).some((block) => block.kind === "tool");
+          const incomingHasTools = blocks.some((block) => block.kind === "tool");
+          if (type === "message_end" || (!pendingHasTools && !incomingHasTools)) {
+            localPatch(pendingAssistantId, (message) => ({
+              ...message,
+              text,
+              blocks,
+            }));
+            pendingAssistantId = null;
+            continue;
+          }
         }
         pendingAssistantId = null;
         replayed.push({
