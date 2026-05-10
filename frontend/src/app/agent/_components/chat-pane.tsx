@@ -105,6 +105,36 @@ export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
   return { next: next ?? null, remaining };
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+export function reconcileQueueWithPiEvent(
+  queue: QueuedMessage[],
+  event: Record<string, unknown>,
+): QueuedMessage[] {
+  if (event.type !== "queue_update") return queue;
+  const pending = {
+    steer: stringArray(event.steering),
+    follow_up: stringArray(event.followUp),
+  };
+  const next = queue.filter((item) => !item.sent || pending[item.mode].includes(item.text));
+  const seen = new Set(next.map((item) => `${item.mode}:${item.text}`));
+  for (const [mode, messages] of Object.entries(pending) as Array<
+    [QueuedMessage["mode"], string[]]
+  >) {
+    for (const text of messages) {
+      const key = `${mode}:${text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push({ id: newId("queue"), mode, text, sent: true });
+    }
+  }
+  return next;
+}
+
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
@@ -864,6 +894,13 @@ export function ChatPane({
   const applyPiEvent = useCallback(
     (tabId: string, assistantId: string, event: Record<string, unknown>) => {
       const eventType = event.type;
+      if (eventType === "queue_update") {
+        updateTab(tabId, (tab) => ({
+          ...tab,
+          queue: reconcileQueueWithPiEvent(tab.queue ?? [], event),
+        }));
+        return;
+      }
       const usage = usageFromEvent(event);
       if (usage) {
         updateTab(tabId, (tab) => ({ ...tab, tokenStats: usage }));
@@ -1042,7 +1079,7 @@ export function ChatPane({
         }));
       }
     },
-    [patchAssistant],
+    [patchAssistant, updateTab],
   );
 
   const loadRuntimeStatus = useCallback(

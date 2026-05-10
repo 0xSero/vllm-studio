@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
-import { drainQueueAfterAgentEnd, replaySessionEvents } from "./chat-pane";
+import {
+  drainQueueAfterAgentEnd,
+  reconcileQueueWithPiEvent,
+  replaySessionEvents,
+} from "./chat-pane";
 
 describe("isAgentEndEvent", () => {
   it("does not treat per-tool turn_end as full agent completion", () => {
@@ -40,6 +44,25 @@ describe("drainQueueAfterAgentEnd", () => {
       next: null,
       remaining: [],
     });
+  });
+});
+
+describe("reconcileQueueWithPiEvent", () => {
+  it("mirrors Pi queue updates without dropping local unsent follow-ups", () => {
+    const result = reconcileQueueWithPiEvent(
+      [
+        { id: "local", mode: "follow_up", text: "local only" },
+        { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
+        { id: "sent-steer", mode: "steer", text: "delivered", sent: true },
+      ],
+      { type: "queue_update", steering: ["new steer"], followUp: ["kept"] },
+    );
+
+    expect(result).toEqual([
+      { id: "local", mode: "follow_up", text: "local only" },
+      { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
+      { id: expect.any(String), mode: "steer", text: "new steer", sent: true },
+    ]);
   });
 });
 
