@@ -64,6 +64,14 @@ describe("composer context helpers", () => {
     ).toContain("Use browser automation.");
   });
 
+  it("tells computer-use sessions to inspect MCP status before desktop control", () => {
+    expect(
+      selectedContextPrompt("control the desktop", [
+        { id: "computer", name: "computer-use", displayName: "Computer Use" },
+      ]),
+    ).toContain("call mcp_plugin_status before desktop control");
+  });
+
   it("filters rows with exact and prefix matches first", () => {
     expect(byQuery([{ name: "computer-use" }, { name: "browser-use" }], "bro")).toEqual([
       { name: "browser-use" },

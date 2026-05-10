@@ -79,7 +79,7 @@ export function selectedContextPrompt(
     }
     if (plugins.some((plugin) => plugin.name.includes("computer-use"))) {
       lines.push(
-        "Computer-use is available locally; use it only when desktop control is required.",
+        "Computer-use is selected; call mcp_plugin_status before desktop control and use computer-use tools only if the MCP status is ready.",
       );
     }
   }
