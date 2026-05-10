@@ -3,6 +3,7 @@ import {
   activateComposerPlugin,
   activeComposerPlugins,
   byQuery,
+  consumeComposerMention,
   detectComposerMention,
   replaceComposerMention,
   sanitizeComposerPlugins,
@@ -42,6 +43,16 @@ describe("composer context helpers", () => {
   it("replaces a trigger token with the selected mention label", () => {
     const mention = detectComposerMention("use @bro")!;
     expect(replaceComposerMention("use @bro", mention, "browser-use")).toBe("use @browser-use ");
+  });
+
+  it("consumes selected mentions so composer tabs become the source of truth", () => {
+    expect(consumeComposerMention("use @bro", detectComposerMention("use @bro")!)).toBe("use");
+    expect(consumeComposerMention("@browser inspect page", detectComposerMention("@browser")!)).toBe(
+      "inspect page",
+    );
+    expect(consumeComposerMention("load $agent now", detectComposerMention("load $agent")!)).toBe(
+      "load now",
+    );
   });
 
   it("prepends selected plugin and skill context without changing empty selections", () => {

@@ -131,6 +131,14 @@ export function replaceComposerMention(
   return `${prefix}${mention.kind === "plugin" ? "@" : "$"}${label} ${suffix}`.trimStart();
 }
 
+export function consumeComposerMention(value: string, mention: ComposerMention): string {
+  const before = value.slice(0, mention.start).replace(/[ \t]+$/, "");
+  const after = value.slice(mention.end).replace(/^[ \t]+/, "");
+  if (!before) return after;
+  if (!after) return before;
+  return `${before} ${after}`;
+}
+
 export function selectedContextPrompt(
   text: string,
   plugins: ComposerPluginRef[] = [],

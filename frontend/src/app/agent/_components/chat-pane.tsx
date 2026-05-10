@@ -28,7 +28,7 @@ import {
   activeComposerPlugins,
   byQuery,
   detectComposerMention,
-  replaceComposerMention,
+  consumeComposerMention,
   selectedContextInstructions,
   selectedContextPrompt,
   type ComposerMention,
@@ -932,7 +932,7 @@ export function ChatPane({
     async (row: ComposerPluginRef | ComposerSkillRef) => {
       if (!activeTab || !mention) return;
       const selectedMention = mention;
-      const input = replaceComposerMention(activeTab.input, selectedMention, row.name);
+      const input = consumeComposerMention(activeTab.input, selectedMention);
       let selectedRow = row;
       if ("path" in row && row.path) {
         const endpoint =
