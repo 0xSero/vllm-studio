@@ -7,6 +7,7 @@ import {
   reconcileQueueWithPiEvent,
   replayCursorAfterRuntimeHydration,
   replaySessionEvents,
+  runtimeStatusLooksActive,
   statusAfterControlPhase,
   visibleQueuedMessages,
   visibleUserTextFromPi,
@@ -64,6 +65,34 @@ describe("replayCursorAfterRuntimeHydration", () => {
     expect(replayCursorAfterRuntimeHydration(true, 42)).toBe(42);
     expect(replayCursorAfterRuntimeHydration(true, undefined)).toBeUndefined();
     expect(replayCursorAfterRuntimeHydration(false, 42)).toBeUndefined();
+  });
+});
+
+describe("runtimeStatusLooksActive", () => {
+  it("keeps detached-but-running runtime sessions alive until a terminal event arrives", () => {
+    expect(
+      runtimeStatusLooksActive({
+        active: false,
+        running: true,
+        events: [
+          {
+            seq: 4,
+            event: {
+              type: "message_update",
+              assistantMessageEvent: { type: "text_delta", delta: "still running" },
+            },
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      runtimeStatusLooksActive({
+        active: false,
+        running: true,
+        events: [{ seq: 5, event: { type: "agent_end" } }],
+      }),
+    ).toBe(false);
   });
 });
 

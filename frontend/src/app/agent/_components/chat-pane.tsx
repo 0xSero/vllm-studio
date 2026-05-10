@@ -193,6 +193,18 @@ type RuntimeLoggedEvent = {
   event?: Record<string, unknown>;
 };
 
+export function runtimeStatusLooksActive(status: {
+  active?: boolean;
+  running?: boolean;
+  events?: RuntimeLoggedEvent[];
+}): boolean {
+  if (status.active) return true;
+  if (!status.running) return false;
+  const lastEvent = [...(status.events ?? [])].reverse().find((entry) => entry.event);
+  if (!lastEvent) return true;
+  return !isAgentEndEvent(lastEvent.event ?? {}) && lastEvent.event?.type !== "process_exit";
+}
+
 function eventKey(event: Record<string, unknown>): string {
   try {
     return JSON.stringify(event);
@@ -1242,6 +1254,7 @@ export function ChatPane({
       sessionId: string,
     ): Promise<{
       active?: boolean;
+      running?: boolean;
       piSessionId?: string | null;
       eventSeq?: number;
       events?: RuntimeLoggedEvent[];
@@ -1252,7 +1265,12 @@ export function ChatPane({
           { cache: "no-store" },
         ).then((res) =>
           safeJson<{
-            status?: { active?: boolean; piSessionId?: string | null; eventSeq?: number };
+            status?: {
+              active?: boolean;
+              running?: boolean;
+              piSessionId?: string | null;
+              eventSeq?: number;
+            };
             events?: RuntimeLoggedEvent[];
           }>(res),
         );
@@ -1509,11 +1527,12 @@ export function ChatPane({
           tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
           selectedTab.piSessionId ??
           null;
-        const runtimeStillActive =
-          runtimeStatus?.active === true &&
-          (!runtimeStatus.piSessionId ||
-            !currentPiSessionId ||
-            runtimeStatus.piSessionId === currentPiSessionId);
+        const runtimeStillActive = runtimeStatus
+          ? runtimeStatusLooksActive(runtimeStatus) &&
+            (!runtimeStatus.piSessionId ||
+              !currentPiSessionId ||
+              runtimeStatus.piSessionId === currentPiSessionId)
+          : false;
         updateTab(tabId, (tab) => ({
           ...tab,
           status: runtimeStillActive ? "running" : "idle",
