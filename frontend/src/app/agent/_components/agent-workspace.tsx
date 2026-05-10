@@ -211,6 +211,14 @@ export function normalizePersistedTab(value: unknown): SessionTab | null {
   };
 }
 
+export function setupWarningFromPiCheck(
+  piCheck: { ok: boolean; guidance?: string } | undefined,
+  hasUsableModels: boolean,
+): string {
+  if (hasUsableModels || !piCheck || piCheck.ok) return "";
+  return piCheck.guidance ?? "Pi is not installed.";
+}
+
 function restorePersistedPaneState(raw: string): {
   layout: Layout;
   panesById: Map<PaneId, PaneState>;
@@ -422,6 +430,7 @@ export function AgentWorkspace() {
   // session — no useEffect-driven prop chain, no replay races.
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const pendingSessionReplaysRef = useRef<Map<PaneId, string>>(new Map());
+  const usableModelsRef = useRef(false);
   const queueSessionReplay = useCallback((paneId: PaneId, sessionId: string) => {
     pendingSessionReplaysRef.current.set(paneId, sessionId);
     window.setTimeout(() => {
@@ -451,8 +460,7 @@ export function AgentWorkspace() {
       .then((payload) => {
         if (cancelled) return;
         const pi = payload.checks?.find((check) => check.id === "pi");
-        if (pi && !pi.ok) setSetupWarning(pi.guidance ?? "Pi is not installed.");
-        else setSetupWarning("");
+        setSetupWarning(setupWarningFromPiCheck(pi, usableModelsRef.current));
       })
       .catch(() => undefined);
     async function loadModels() {
@@ -464,7 +472,8 @@ export function AgentWorkspace() {
         if (!response.ok) throw new Error(payload.error || "Failed to load models");
         if (cancelled) return;
         const nextModels = payload.models ?? [];
-        if (nextModels.length > 0) setSetupWarning("");
+        usableModelsRef.current = nextModels.length > 0;
+        if (usableModelsRef.current) setSetupWarning("");
         setModels(nextModels);
         setSelectedModel(
           (current) =>
