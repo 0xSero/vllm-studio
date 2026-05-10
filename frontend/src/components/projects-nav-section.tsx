@@ -9,7 +9,6 @@ import {
   Folder,
   MoreIcon,
   PinIcon,
-  PinSlashIcon,
   PlusIcon,
   TrashIcon,
 } from "@/components/icons";
@@ -591,7 +590,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       <button
         type="button"
         onClick={handleAddProject}
-        className="mt-2 flex h-5 items-center gap-1 px-0.5 text-left text-[11px] font-medium text-(--dim) transition-colors hover:text-(--fg)"
+        className="mt-2 flex h-5 items-center gap-1 px-0 text-left text-[10.5px] font-medium text-(--dim) transition-colors hover:text-(--fg)"
         title="Add folder"
       >
         <PlusIcon className="h-3 w-3 shrink-0" />
@@ -601,7 +600,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         <button
           type="button"
           onClick={handleAddProject}
-          className="px-0.5 py-1 text-left text-[11px] text-(--dim) hover:text-(--fg)"
+          className="px-0 py-1 text-left text-[10.5px] text-(--dim) hover:text-(--fg)"
         >
           No projects yet — pick a folder to get started.
         </button>
@@ -652,15 +651,15 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-[19px] items-center text-(--dim) transition-colors hover:text-(--fg)">
+      <div className="group relative flex h-[18px] items-center text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-0.5 px-0 text-left"
+          className="flex min-w-0 flex-1 items-center gap-0.5 px-0 pr-8 text-left"
         >
-          <Folder className="h-3 w-3 shrink-0 opacity-80" />
-          <span className="truncate text-[11px] font-semibold text-(--fg)">{project.name}</span>
+          <Folder className="h-3 w-3 shrink-0 opacity-75" />
+          <span className="truncate text-[10.5px] font-semibold text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -678,7 +677,7 @@ function ProjectRow({
               new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
             );
           }}
-          className="p-0.5 text-(--dim) opacity-55 hover:text-(--fg) group-hover:opacity-100"
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-65 hover:text-(--fg) group-hover:opacity-100"
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
@@ -691,7 +690,7 @@ function ProjectRow({
             event.stopPropagation();
             onRemove();
           }}
-          className="p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
+          className="absolute right-0 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
           title="Remove from list"
           aria-label="Remove project"
         >
@@ -881,7 +880,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group flex h-[19px] items-center gap-0.5 pl-0 pr-0.5 transition-colors ${
+  const rowClass = `group relative flex h-[18px] items-center gap-0.5 pl-0 pr-0 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -912,7 +911,7 @@ function ActiveSessionRow({
         className={`h-3 w-3 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
         aria-label={isRunning ? `Session ${session.status}` : undefined}
       />
-      <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[10px] font-normal">{label}</span>
     </>
   );
 
@@ -961,7 +960,7 @@ function ActiveSessionRow({
           if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
         }}
       />
-      <div ref={menuRef} className="relative shrink-0">
+      <div ref={menuRef} className="absolute right-0 top-1/2 -translate-y-1/2 shrink-0">
         <button
           type="button"
           onClick={(event) => {
@@ -1045,7 +1044,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="flex h-[19px] items-center gap-0.5 pl-0 pr-1 bg-(--surface)/60">
+      <div className="flex h-[18px] items-center gap-0.5 pl-0 pr-0 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1066,7 +1065,7 @@ function SessionRow({
 
   return (
     <div
-      className="group flex h-[19px] items-center gap-0.5 pl-0 pr-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group relative flex h-[18px] items-center gap-0.5 pl-0 pr-0 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1087,13 +1086,13 @@ function SessionRow({
         className="flex min-w-0 flex-1 items-center gap-0.5"
       >
         <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-[10px] font-normal">{label}</span>
       </Link>
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
         onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
       />
-      <div ref={menuRef} className="relative shrink-0">
+      <div ref={menuRef} className="absolute right-0 top-1/2 -translate-y-1/2 shrink-0">
         <button
           type="button"
           onClick={(event) => {
@@ -1126,7 +1125,7 @@ function SessionRow({
             >
               {pref.pinned ? (
                 <span className="inline-flex items-center gap-2">
-                  <PinSlashIcon className="h-3 w-3" /> Unpin
+                  <PinIcon className="h-3 w-3" /> Unpin
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-2">
@@ -1185,14 +1184,14 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`shrink-0 p-0.5 transition-opacity hover:text-(--fg) disabled:opacity-20 ${
+      className={`absolute right-3.5 top-1/2 -translate-y-1/2 shrink-0 p-0.5 transition-opacity hover:text-(--fg) disabled:opacity-20 ${
         pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-0 group-hover:opacity-100"
       }`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}
     >
-      {pinned ? <PinIcon className="h-3 w-3" /> : <PinSlashIcon className="h-3 w-3" />}
+      <PinIcon className="h-3 w-3" />
     </button>
   );
 }

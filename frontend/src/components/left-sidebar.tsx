@@ -131,7 +131,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Primary nav */}
-        <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 min-h-0 flex flex-col px-1.5 py-1 overflow-y-auto overflow-x-hidden">
           {isExpanded ? (
             <button
               type="button"
@@ -174,7 +174,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
           <ProjectsNavSection expanded={isExpanded} />
         </nav>
 
-        <div className="shrink-0 p-2">
+        <div className="shrink-0 p-1.5">
           <NavItemDesktop
             href="/settings"
             label="Settings"
