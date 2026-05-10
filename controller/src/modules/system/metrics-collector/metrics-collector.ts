@@ -230,6 +230,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         running: Boolean(current),
         process: current,
         inference_port: context.config.inference_port,
+        launching: context.launchState.getLaunchingRecipeId(),
       });
       await context.eventManager.publishGpu(gpuList.map((gpu) => ({ ...gpu })));
 

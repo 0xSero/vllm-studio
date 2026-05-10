@@ -13,6 +13,7 @@ export interface StatusData {
   running: boolean;
   process: ProcessInfo | null;
   inference_port: number;
+  launching: string | null;
 }
 
 export interface RuntimeSummaryData {

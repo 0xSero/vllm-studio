@@ -74,11 +74,15 @@ function updateFromStatusPayload(payload: Record<string, unknown>) {
   const running = Boolean(payload["running"] ?? process);
   const model = computeModelName(process);
 
+  const launching =
+    typeof payload["launching"] === "string" && payload["launching"] ? payload["launching"] : null;
   const nextBase: InternalState = {
     ...state,
     online: true,
     inferenceOnline: running,
     model: model ?? state.model,
+    launchActive: running || launching ? state.launchActive : false,
+    launchMessage: running || launching ? state.launchMessage : null,
     lastUpdateAt: Date.now(),
   };
   const next: InternalState = { ...nextBase, activityLine: recomputeActivityLine(nextBase) };
@@ -123,12 +127,15 @@ async function fetchNow() {
 
   const inferenceOnline = Boolean(status?.running || status?.process);
   const model = computeModelName(status?.process ?? null);
+  const launching = Boolean(status?.launching);
 
   const nextBase: InternalState = {
     ...state,
     online: true,
     inferenceOnline,
     model: model ?? state.model,
+    launchActive: inferenceOnline || launching ? state.launchActive : false,
+    launchMessage: inferenceOnline || launching ? state.launchMessage : null,
     lastUpdateAt: Date.now(),
   };
   const next: InternalState = { ...nextBase, activityLine: recomputeActivityLine(nextBase) };

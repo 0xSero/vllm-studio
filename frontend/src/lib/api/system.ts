@@ -111,17 +111,20 @@ export function createSystemApi(core: ApiCore) {
       running: boolean;
       process: ProcessInfo | null;
       inference_port: number;
+      launching: string | null;
     }> => {
       const data = await core.request<{
         running: boolean;
         process: ProcessInfo | null;
         inference_port: number;
+        launching?: string | null;
       }>("/status", options);
 
       return {
         running: data.running ?? !!data.process,
         process: data.process ?? null,
         inference_port: data.inference_port || 8000,
+        launching: typeof data.launching === "string" && data.launching ? data.launching : null,
       };
     },
 

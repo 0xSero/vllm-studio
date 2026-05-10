@@ -30,6 +30,7 @@ describe("createSystemApi", () => {
       running: false,
       process: null,
       inference_port: 8000,
+      launching: null,
     });
   });
 });

@@ -55,11 +55,13 @@ export function useModelLifecycle(): ModelLifecycle {
 
   const status = useMemo<ModelLifecycleStatus>(() => {
     const stage = realtime.launchProgress?.stage;
-    if (stage && STARTING_STAGES.has(stage)) return "starting";
-    if (stage === "error") return "error";
     if (realtime.status?.process) return "ready";
+    if (stage && STARTING_STAGES.has(stage)) {
+      return realtime.status?.launching ? "starting" : "idle";
+    }
+    if (stage === "error") return "error";
     return "idle";
-  }, [realtime.launchProgress?.stage, realtime.status?.process]);
+  }, [realtime.launchProgress?.stage, realtime.status?.launching, realtime.status?.process]);
 
   const visibleError = status === "error" ? (realtime.launchProgress?.message ?? error) : error;
 

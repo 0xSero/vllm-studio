@@ -90,6 +90,22 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
   for (const l of listeners) l();
 }
 
+function isActiveLaunchStage(stage: LaunchProgressData["stage"] | null | undefined): boolean {
+  return (
+    stage === "preempting" || stage === "evicting" || stage === "launching" || stage === "waiting"
+  );
+}
+
+function reconcileLaunchProgress(
+  progress: LaunchProgressData | null,
+  status: { process: ProcessInfo | null; launching: string | null } | null,
+): LaunchProgressData | null {
+  if (!progress || !isActiveLaunchStage(progress.stage)) return progress;
+  if (!status) return progress;
+  if (status.process || status.launching) return progress;
+  return null;
+}
+
 function scheduleLaunchClear(stage: LaunchProgressData["stage"]) {
   if (clearLaunchTimer) {
     clearTimeout(clearLaunchTimer);
@@ -148,10 +164,13 @@ async function fetchStatusNow() {
     }
 
     emitIfChanged({
-      status: { running, process, inference_port },
+      status: { running, process, inference_port, launching: status.launching ?? null },
       gpus,
       metrics: polledMetrics,
-      launchProgress: snapshot.launchProgress,
+      launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
+        process: process ?? null,
+        launching: status.launching ?? null,
+      }),
       platformKind: compatibility?.platform?.kind ?? snapshot.platformKind,
       runtimeSummary,
       services: snapshot.services,
@@ -177,12 +196,15 @@ function start() {
       const running = Boolean(data["running"] ?? data["process"]);
       const process = (data["process"] ?? null) as ProcessInfo | null;
       const inference_port = Number(data["inference_port"] ?? 8000);
+      const launching =
+        typeof data["launching"] === "string" && data["launching"] ? data["launching"] : null;
       const previousProcessKey = processKey(snapshot.status?.process);
       const nextProcessKey = processKey(process);
       emitIfChanged({
         ...snapshot,
-        status: { running, process, inference_port },
+        status: { running, process, inference_port, launching },
         metrics: previousProcessKey === nextProcessKey ? snapshot.metrics : null,
+        launchProgress: reconcileLaunchProgress(snapshot.launchProgress, { process, launching }),
         lastEventAt: now,
       });
       return;

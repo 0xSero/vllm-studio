@@ -8,7 +8,12 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 type RealtimeFixture = ReturnType<typeof createRealtimeFixture>;
 type RealtimeSnapshot = {
-  status: { running: boolean; process: ProcessInfo | null; inference_port: number };
+  status: {
+    running: boolean;
+    process: ProcessInfo | null;
+    inference_port: number;
+    launching: string | null;
+  };
   gpus: [];
   metrics: null;
   launchProgress: LaunchProgressData | null;
@@ -50,7 +55,7 @@ const recipe = (id: string): RecipeWithStatus =>
 function createRealtimeFixture(): { snapshot: RealtimeSnapshot } {
   return {
     snapshot: {
-      status: { running: false, process: null, inference_port: 8000 },
+      status: { running: false, process: null, inference_port: 8000, launching: null },
       gpus: [],
       metrics: null,
       launchProgress: null,
@@ -128,6 +133,7 @@ describe("useModelLifecycle", () => {
     });
 
     expect(apiMocks.launch).toHaveBeenCalledWith("alpha", true);
+    realtimeFixture.current!.snapshot.status.launching = "alpha";
     realtimeFixture.current!.snapshot.launchProgress = {
       recipe_id: "alpha",
       stage: "waiting",
@@ -146,6 +152,7 @@ describe("useModelLifecycle", () => {
         served_model_name: "alpha",
       },
       inference_port: 8000,
+      launching: null,
     };
     realtimeFixture.current!.snapshot.launchProgress = {
       recipe_id: "alpha",
@@ -164,6 +171,7 @@ describe("useModelLifecycle", () => {
     await flushEffects();
 
     expect(hook.result.status).toBe("idle");
+    realtimeFixture.current!.snapshot.status.launching = "alpha";
     realtimeFixture.current!.snapshot.launchProgress = {
       recipe_id: "alpha",
       stage: "launching",
@@ -181,6 +189,27 @@ describe("useModelLifecycle", () => {
 
     expect(hook.result.status).toBe("error");
     expect(hook.result.error).toBe("Launch failed");
+    hook.unmount();
+  });
+
+  it("ignores stale active launch progress when status says no launch is active", async () => {
+    const hook = renderLifecycleHook();
+    await flushEffects();
+
+    realtimeFixture.current!.snapshot.status = {
+      running: false,
+      process: null,
+      inference_port: 8000,
+      launching: null,
+    };
+    realtimeFixture.current!.snapshot.launchProgress = {
+      recipe_id: "alpha",
+      stage: "waiting",
+      message: "Loading model...",
+    };
+    hook.rerender();
+
+    expect(hook.result.status).toBe("idle");
     hook.unmount();
   });
 
@@ -211,6 +240,7 @@ describe("useModelLifecycle", () => {
         served_model_name: "alpha",
       },
       inference_port: 8000,
+      launching: null,
     };
     hook.rerender();
     expect(hook.result.status).toBe("ready");
@@ -224,6 +254,7 @@ describe("useModelLifecycle", () => {
       running: false,
       process: null,
       inference_port: 8000,
+      launching: null,
     };
     hook.rerender();
     expect(hook.result.status).toBe("idle");
