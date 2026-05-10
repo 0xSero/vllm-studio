@@ -545,6 +545,7 @@ function PluginsSettings() {
     mcpConfigured?: boolean;
     appConfigured?: boolean;
     mcpExecutableExists?: boolean;
+    runtimeCheckRequired?: boolean;
     note?: string;
   };
   type PluginValidation = {
@@ -800,7 +801,12 @@ function PluginsSettings() {
 
 function pluginAvailabilityText(
   plugin: { enabled: boolean } | null,
-  runtime?: { mcpConfigured?: boolean; mcpExecutableExists?: boolean; note?: string } | null,
+  runtime?: {
+    mcpConfigured?: boolean;
+    mcpExecutableExists?: boolean;
+    runtimeCheckRequired?: boolean;
+    note?: string;
+  } | null,
 ) {
   if (!plugin) return "Not discovered";
   if (!plugin.enabled) return "Discovered but disabled in Codex plugin config";
@@ -817,13 +823,18 @@ function PluginAvailabilityPill({
 }: {
   plugin: { enabled: boolean } | null;
   available?: boolean;
-  runtime?: { mcpConfigured?: boolean; mcpExecutableExists?: boolean } | null;
+  runtime?: {
+    mcpConfigured?: boolean;
+    mcpExecutableExists?: boolean;
+    runtimeCheckRequired?: boolean;
+  } | null;
 }) {
   if (!plugin) return <StatusPill tone="warning">missing</StatusPill>;
   if (!plugin.enabled || !available) return <StatusPill tone="default">disabled</StatusPill>;
   if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
     return <StatusPill tone="warning">mcp missing</StatusPill>;
   }
+  if (runtime?.runtimeCheckRequired) return <StatusPill tone="info">runtime check</StatusPill>;
   if (runtime?.mcpConfigured) return <StatusPill tone="info">mcp wired</StatusPill>;
   return <StatusPill tone="good">selectable</StatusPill>;
 }

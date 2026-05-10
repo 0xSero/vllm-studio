@@ -59,7 +59,8 @@ describe("buildPluginsResponse", () => {
       mcpConfigured: true,
       appConfigured: true,
       mcpExecutableExists: true,
+      runtimeCheckRequired: true,
     });
-    expect(response.validation.computerUseRuntime?.note).toContain("MCP server");
+    expect(response.validation.computerUseRuntime?.note).toContain("mcp_plugin_status");
   });
 });

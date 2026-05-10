@@ -7,6 +7,7 @@ export type PluginRuntimeCheck = {
   mcpConfigured: boolean;
   appConfigured: boolean;
   mcpExecutableExists?: boolean;
+  runtimeCheckRequired?: boolean;
   note?: string;
 };
 
@@ -54,7 +55,8 @@ function pluginRuntimeCheck(plugin: PluginRow): PluginRuntimeCheck {
     ...(mcpExecutable === undefined ? {} : { mcpExecutableExists: mcpExecutable }),
     ...(plugin.name.includes("computer-use") && plugin.mcpConfigPath
       ? {
-          note: "Computer-use exposes an MCP server; macOS may still block the signed helper at launch time if the host is not allowed.",
+          runtimeCheckRequired: true,
+          note: "Computer-use is wired through MCP; verify helper launch from an active session with mcp_plugin_status before desktop control.",
         }
       : {}),
   };
