@@ -531,6 +531,7 @@ function PluginsSettings() {
   type Plugin = {
     id: string;
     name: string;
+    source?: string;
     path: string;
     installed: boolean;
     enabled: boolean;
@@ -542,11 +543,12 @@ function PluginsSettings() {
   };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [validation, setValidation] = useState<PluginValidation | null>(null);
+  const [savingPlugin, setSavingPlugin] = useState<string | null>(null);
   const browserUse = plugins.find((plugin) => plugin.name.includes("browser-use")) ?? null;
   const computerUse = plugins.find((plugin) => plugin.name.includes("computer-use")) ?? null;
 
-  useEffect(() => {
-    void fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
+  const loadPlugins = () =>
+    fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
       .then((payload) => {
         setPlugins(payload.plugins ?? []);
@@ -556,7 +558,26 @@ function PluginsSettings() {
         setPlugins([]);
         setValidation({ browserUseAvailable: false, computerUseAvailable: false });
       });
+
+  useEffect(() => {
+    void loadPlugins();
   }, []);
+
+  const setPluginEnabled = (plugin: Plugin, enabled: boolean) => {
+    setSavingPlugin(plugin.id);
+    void fetch("/api/agent/plugins", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: plugin.name, source: plugin.source, enabled }),
+    })
+      .then((res) => res.json() as Promise<{ plugins?: Plugin[]; validation?: PluginValidation }>)
+      .then((payload) => {
+        setPlugins(payload.plugins ?? []);
+        setValidation(payload.validation ?? null);
+      })
+      .catch(() => void loadPlugins())
+      .finally(() => setSavingPlugin(null));
+  };
 
   return (
     <div className="space-y-5">
@@ -594,6 +615,14 @@ function PluginsSettings() {
               <StatusPill tone={plugin.enabled ? "good" : "default"}>
                 {plugin.installed ? "installed" : "available"}
               </StatusPill>
+            }
+            actions={
+              <SettingsButton
+                onClick={() => setPluginEnabled(plugin, !plugin.enabled)}
+                disabled={savingPlugin === plugin.id}
+              >
+                {plugin.enabled ? "Disable" : "Enable"}
+              </SettingsButton>
             }
           />
         ))}

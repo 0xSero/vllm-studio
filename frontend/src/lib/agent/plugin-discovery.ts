@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { defaultCodexConfigPath, pluginConfigKey } from "./plugin-config";
 
 export type PluginRow = {
   id: string;
@@ -213,7 +214,7 @@ export function discoverPlugins(
 ): PluginRow[] {
   const maxDepth = options.maxDepth ?? 8;
   const codexConfig = readCodexConfig(
-    options.configPath ?? path.join(homedir(), ".codex", "config.toml"),
+    options.configPath ?? defaultCodexConfigPath(),
   );
   const rows: PluginRow[] = [];
   const seen = new Set<string>();
@@ -234,7 +235,8 @@ export function discoverPlugins(
       const name = manifest.name ?? pluginNameFromPath(dir);
       const source = marketplaceFromPath(dir);
       const enabled =
-        (source ? codexConfig.pluginEnabled.get(`${name}@${source}`) : undefined) ?? true;
+        (source ? codexConfig.pluginEnabled.get(pluginConfigKey(name, source)) : undefined) ??
+        true;
       rows.push({
         id: dir,
         name,
