@@ -49,12 +49,23 @@ export function mergeActiveAgentSessions(
     if (session.piSessionId) byKey.delete(tabKey);
     const key = session.piSessionId ? `pi:${session.piSessionId}` : (existingPiKey ?? tabKey);
     const existing = byKey.get(key) ?? existingTab;
-    byKey.set(key, {
-      ...existing,
-      ...session,
-      piSessionId: session.piSessionId ?? existing?.piSessionId ?? null,
-      startedAt: existing?.startedAt ?? session.startedAt ?? session.updatedAt,
-    });
+    if (existing?.active && !session.active) {
+      byKey.set(key, {
+        ...existing,
+        title: session.title || existing.title,
+        status: session.status || existing.status,
+        updatedAt: session.updatedAt || existing.updatedAt,
+        piSessionId: session.piSessionId ?? existing.piSessionId ?? null,
+        startedAt: existing.startedAt ?? session.startedAt ?? session.updatedAt,
+      });
+    } else {
+      byKey.set(key, {
+        ...existing,
+        ...session,
+        piSessionId: session.piSessionId ?? existing?.piSessionId ?? null,
+        startedAt: existing?.startedAt ?? session.startedAt ?? session.updatedAt,
+      });
+    }
   }
   return [...byKey.values()].sort((a, b) => startTime(b) - startTime(a));
 }

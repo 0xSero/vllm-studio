@@ -66,4 +66,22 @@ describe("mergeActiveAgentSessions", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ piSessionId: "pi-a", title: "second" });
   });
+
+  it("keeps the active tab identity when duplicate Pi rows arrive", () => {
+    const merged = mergeActiveAgentSessions(
+      [],
+      [
+        session({ piSessionId: "pi-a", tabId: "tab-active", title: "active", active: true }),
+        session({ piSessionId: "pi-a", tabId: "tab-inactive", title: "newer status" }),
+      ],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      piSessionId: "pi-a",
+      tabId: "tab-active",
+      title: "newer status",
+      active: true,
+    });
+  });
 });
