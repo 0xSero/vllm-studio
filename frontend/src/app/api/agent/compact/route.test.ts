@@ -62,4 +62,38 @@ describe("POST /api/agent/compact", () => {
     );
     expect(session.compact).toHaveBeenCalledWith(expect.not.stringContaining("@computer-use"));
   });
+
+  it("derives plugin context on the server before appending custom compaction text", async () => {
+    const session = {
+      ensureStarted: vi.fn().mockResolvedValue(undefined),
+      compact: vi.fn().mockResolvedValue({ ok: true }),
+      status: { piSessionId: "pi-1", active: false },
+    };
+    getSession.mockReturnValue(session as never);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/agent/compact", {
+        method: "POST",
+        body: JSON.stringify({
+          modelId: "hy3-preview",
+          customInstructions: "Keep the summary short.",
+          plugins: [
+            {
+              id: "computer",
+              name: "computer-use",
+              enabled: true,
+              mcpConfigPath: "/plugins/computer-use/.mcp.json",
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const instructions = session.compact.mock.calls[0]?.[0] as string;
+    expect(instructions).toContain("Enabled plugins: @computer-use.");
+    expect(instructions).toContain("mcp=/plugins/computer-use/.mcp.json");
+    expect(instructions).toContain("Additional compaction instructions:");
+    expect(instructions).toContain("Keep the summary short.");
+  });
 });

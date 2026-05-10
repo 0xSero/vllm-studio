@@ -21,6 +21,18 @@ type CompactRequest = {
   skills?: ComposerSkillRef[];
 };
 
+function compactInstructions(
+  plugins: ComposerPluginRef[],
+  skills: ComposerSkillRef[],
+  custom?: string,
+): string | undefined {
+  const selected = selectedContextInstructions(plugins, skills);
+  const extra = custom?.trim();
+  return [selected, extra && `Additional compaction instructions:\n${extra}`]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as CompactRequest | null;
   if (!body) return Response.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -40,9 +52,9 @@ export async function POST(request: NextRequest) {
       plugins,
       skills,
     });
-    const customInstructions =
-      body.customInstructions?.trim() || selectedContextInstructions(plugins, skills);
-    const result = await session.compact(customInstructions);
+    const result = await session.compact(
+      compactInstructions(plugins, skills, body.customInstructions),
+    );
     return Response.json({ ok: true, result, status: session.status });
   } catch (error) {
     return Response.json(
