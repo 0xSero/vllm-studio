@@ -88,6 +88,7 @@ class McpClient {
   private child: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private buffer = Buffer.alloc(0);
+  private stderr = "";
   private pending = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -108,14 +109,24 @@ class McpClient {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.onData(chunk));
-    this.child.stderr.on("data", () => undefined);
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      this.stderr = `${this.stderr}${chunk.toString("utf8")}`.slice(-4000);
+    });
     this.child.on("error", (error) => {
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
     });
-    this.child.on("exit", () => {
-      for (const pending of this.pending.values())
-        pending.reject(new Error(`${name} MCP server exited`));
+    this.child.on("exit", (code, signal) => {
+      const detail = [
+        `${name} MCP server exited`,
+        code === null ? null : `code=${code}`,
+        signal ? `signal=${signal}` : null,
+        this.stderr.trim() ? `stderr=${this.stderr.trim()}` : null,
+        computerUseLaunchHint(name, command),
+      ]
+        .filter(Boolean)
+        .join("; ");
+      for (const pending of this.pending.values()) pending.reject(new Error(detail));
       this.pending.clear();
     });
   }
@@ -229,6 +240,13 @@ class McpClient {
     if (message.error) pending.reject(new Error(message.error.message || `${this.name} MCP error`));
     else pending.resolve(message.result);
   }
+}
+
+function computerUseLaunchHint(serverName: string, command: string): string | null {
+  if (process.platform !== "darwin") return null;
+  const marker = `${serverName} ${command}`.toLowerCase();
+  if (!marker.includes("computer-use") && !marker.includes("skycomputeruseclient")) return null;
+  return "hint=macOS AMFI launch constraints can block Codex Computer Use MCP outside the Codex-signed host";
 }
 
 async function registerOneServer(
