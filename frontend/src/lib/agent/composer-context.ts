@@ -33,6 +33,10 @@ export type ComposerMention = {
   end: number;
 };
 
+export function activeComposerPlugins(plugins: ComposerPluginRef[] = []): ComposerPluginRef[] {
+  return plugins.filter((plugin) => plugin.enabled !== false);
+}
+
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
   const beforeCaret = value.slice(0, safeCaret);
@@ -65,19 +69,20 @@ export function selectedContextPrompt(
   skills: ComposerSkillRef[] = [],
 ): string {
   const lines: string[] = [];
-  if (plugins.length) {
-    lines.push(`Enabled plugins: ${plugins.map((plugin) => `@${plugin.name}`).join(", ")}.`);
-    for (const plugin of plugins) {
+  const enabledPlugins = activeComposerPlugins(plugins);
+  if (enabledPlugins.length) {
+    lines.push(`Enabled plugins: ${enabledPlugins.map((plugin) => `@${plugin.name}`).join(", ")}.`);
+    for (const plugin of enabledPlugins) {
       const summary = plugin.shortDescription ?? plugin.description;
       if (summary) lines.push(`Plugin @${plugin.name}: ${summary}`);
       if (plugin.capabilities?.length) {
         lines.push(`Plugin @${plugin.name} capabilities: ${plugin.capabilities.join(", ")}`);
       }
     }
-    if (plugins.some((plugin) => plugin.name.includes("browser-use"))) {
+    if (enabledPlugins.some((plugin) => plugin.name.includes("browser-use"))) {
       lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
     }
-    if (plugins.some((plugin) => plugin.name.includes("computer-use"))) {
+    if (enabledPlugins.some((plugin) => plugin.name.includes("computer-use"))) {
       lines.push(
         "Computer-use is selected; call mcp_plugin_status before desktop control and use computer-use tools only if the MCP status is ready.",
       );

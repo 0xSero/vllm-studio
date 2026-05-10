@@ -24,6 +24,7 @@ import {
 import { safeJson } from "@/lib/agent/safe-json";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
+  activeComposerPlugins,
   byQuery,
   detectComposerMention,
   replaceComposerMention,
@@ -1169,7 +1170,9 @@ export function ChatPane({
             piSessionId,
             mode,
             browserToolEnabled,
-            plugins: tabsRef.current.find((tab) => tab.id === activeTabId)?.plugins ?? [],
+            plugins: activeComposerPlugins(
+              tabsRef.current.find((tab) => tab.id === activeTabId)?.plugins ?? [],
+            ),
             skills: tabsRef.current.find((tab) => tab.id === activeTabId)?.skills ?? [],
           }),
         });
@@ -1227,7 +1230,7 @@ export function ChatPane({
       const displayText = [text, attachmentSummary].filter(Boolean).join("\n\n");
       const contextText = selectedContextPrompt(
         text,
-        selectedTab.plugins ?? [],
+        activeComposerPlugins(selectedTab.plugins ?? []),
         selectedTab.skills ?? [],
       );
       const promptText = [contextText, attachedText].filter(Boolean).join("\n\n");
@@ -1280,7 +1283,7 @@ export function ChatPane({
               tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
               selectedTab.piSessionId,
             browserToolEnabled,
-            plugins: selectedTab.plugins ?? [],
+            plugins: activeComposerPlugins(selectedTab.plugins ?? []),
             skills: selectedTab.skills ?? [],
           }),
         });
@@ -1791,7 +1794,7 @@ export function ChatPane({
           cwd: cwd.trim() || undefined,
           piSessionId: activeTab.piSessionId,
           browserToolEnabled,
-          plugins: activeTab.plugins ?? [],
+          plugins: activeComposerPlugins(activeTab.plugins ?? []),
           skills: activeTab.skills ?? [],
         }),
       });

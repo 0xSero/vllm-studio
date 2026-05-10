@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeComposerPlugins,
   byQuery,
   detectComposerMention,
   replaceComposerMention,
@@ -62,6 +63,18 @@ describe("composer context helpers", () => {
         [{ id: "agent", name: "agent-browser", instructions: "Use browser automation." }],
       ),
     ).toContain("Use browser automation.");
+  });
+
+  it("excludes disabled plugins from composer context and runtime selections", () => {
+    const plugins = [
+      { id: "browser", name: "browser-use" },
+      { id: "computer", name: "computer-use", enabled: false },
+    ];
+
+    expect(activeComposerPlugins(plugins).map((plugin) => plugin.name)).toEqual(["browser-use"]);
+    const prompt = selectedContextPrompt("inspect the page", plugins);
+    expect(prompt).toContain("Enabled plugins: @browser-use.");
+    expect(prompt).not.toContain("@computer-use");
   });
 
   it("tells computer-use sessions to inspect MCP status before desktop control", () => {
