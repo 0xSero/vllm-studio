@@ -70,6 +70,25 @@ describe("discoverPlugins", () => {
     }
   });
 
+  it("keeps same-name plugins from different marketplaces separate", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
+    try {
+      const first = path.join(root, "openai-bundled", "plugins", "browser-use");
+      const second = path.join(root, "local-market", "plugins", "browser-use");
+      mkdirSync(path.join(first, ".codex-plugin"), { recursive: true });
+      mkdirSync(path.join(second, ".codex-plugin"), { recursive: true });
+      writeFileSync(path.join(first, ".codex-plugin", "plugin.json"), '{"name":"browser-use"}');
+      writeFileSync(path.join(second, ".codex-plugin", "plugin.json"), '{"name":"browser-use"}');
+
+      expect(discoverPlugins([root]).map((row) => `${row.name}@${row.source ?? "local"}`)).toEqual([
+        "browser-use@local",
+        "browser-use@openai-bundled",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("hydrates Codex interface metadata and enabled state", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
     try {

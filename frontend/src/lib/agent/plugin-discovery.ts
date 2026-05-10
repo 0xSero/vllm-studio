@@ -317,7 +317,11 @@ export function discoverPlugins(
       if (!rows.some((candidate) => candidate.name === row.name)) rows.push(row);
     }
   }
-  return [...new Map(rows.map((row) => [row.name.toLowerCase(), row])).values()]
+  return [
+    ...new Map(
+      rows.map((row) => [pluginConfigKey(row.name.toLowerCase(), row.source), row]),
+    ).values(),
+  ]
     .sort((a, b) => a.name.localeCompare(b.name))
     .sort((a, b) => Number(b.enabled) - Number(a.enabled));
 }
