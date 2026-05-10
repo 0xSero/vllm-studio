@@ -27,10 +27,13 @@ function compactInstructions(
   custom?: string,
 ): string | undefined {
   const selected = selectedContextInstructions(plugins, skills);
-  const extra = custom?.trim();
-  return [selected, extra && `Additional compaction instructions:\n${extra}`]
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n");
+  let extra = custom?.trim() || "";
+  if (selected && extra) {
+    if (selected.includes(extra)) extra = "";
+    else if (extra.includes(selected)) extra = extra.replace(selected, "").trim();
+  }
+  const additional = extra ? `Additional compaction instructions:\n${extra}` : null;
+  return [selected, additional].filter((value): value is string => Boolean(value)).join("\n\n");
 }
 
 export async function POST(request: NextRequest) {

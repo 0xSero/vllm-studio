@@ -63,6 +63,33 @@ describe("POST /api/agent/compact", () => {
     expect(session.compact).toHaveBeenCalledWith(expect.not.stringContaining("@computer-use"));
   });
 
+
+  it("does not duplicate selected composer context when older clients send it as custom text", async () => {
+    const session = {
+      ensureStarted: vi.fn().mockResolvedValue(undefined),
+      compact: vi.fn().mockResolvedValue({ ok: true }),
+      status: { piSessionId: "pi-1", active: false },
+    };
+    getSession.mockReturnValue(session as never);
+
+    const selected = "Preserve this selected composer context after compaction.\nEnabled plugins: @browser-use.";
+    const response = await POST(
+      new NextRequest("http://localhost/api/agent/compact", {
+        method: "POST",
+        body: JSON.stringify({
+          modelId: "hy3-preview",
+          customInstructions: selected,
+          plugins: [{ id: "browser", name: "browser-use", enabled: true }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const instructions = session.compact.mock.calls[0]?.[0] as string;
+    expect(instructions.match(/Preserve this selected composer context/g)).toHaveLength(1);
+    expect(instructions).not.toContain("Additional compaction instructions");
+  });
+
   it("derives plugin context on the server before appending custom compaction text", async () => {
     const session = {
       ensureStarted: vi.fn().mockResolvedValue(undefined),
