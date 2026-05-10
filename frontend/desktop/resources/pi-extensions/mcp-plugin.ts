@@ -105,6 +105,7 @@ class McpClient {
     readonly name: string,
     config: McpServerConfig,
     baseDir: string,
+    readonly onFailure?: (message: string) => void,
   ) {
     const cwd = path.resolve(baseDir, config.cwd || ".");
     const command = config.command?.startsWith(".")
@@ -120,6 +121,7 @@ class McpClient {
       this.stderr = `${this.stderr}${chunk.toString("utf8")}`.slice(-4000);
     });
     this.child.on("error", (error) => {
+      this.onFailure?.(error.message);
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
     });
@@ -133,6 +135,7 @@ class McpClient {
       ]
         .filter(Boolean)
         .join("; ");
+      this.onFailure?.(detail);
       for (const pending of this.pending.values()) pending.reject(new Error(detail));
       this.pending.clear();
     });
@@ -273,7 +276,10 @@ async function registerOneServer(
   let client: McpClient;
   let tools: McpTool[];
   try {
-    client = new McpClient(serverName, serverConfig, baseDir);
+    client = new McpClient(serverName, serverConfig, baseDir, (message) => {
+      status.state = "failed";
+      status.error = message;
+    });
     tools = await client.init();
     process.once("exit", () => client.dispose());
     status.state = "ready";
