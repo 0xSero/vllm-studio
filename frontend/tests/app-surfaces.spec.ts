@@ -241,7 +241,7 @@ test.beforeEach(async ({ page }) => {
 
 test("agent new chat surface renders with composer guidance", async ({ page }) => {
   await page.goto("/agent?new=1");
-  await expect(page.getByText("A dream is something you do for yourself")).toBeVisible();
+  await expect(page.getByText(/New session\. Enter sends/)).toBeVisible();
   await expect(page.getByPlaceholder(/Ask test-model/)).toBeVisible();
 });
 
@@ -258,15 +258,17 @@ test("agent composer loads plugins with @ and skills with $ as tabs", async ({ p
   await page.goto("/agent?new=1");
   const composer = page.getByPlaceholder(/Ask test-model/);
   await composer.fill("@");
-  await page.getByRole("button", { name: /@browser-use/ }).click();
-  await expect(page.getByRole("button", { name: "Unload @browser-use" })).toBeVisible();
+  await page.getByRole("button", { name: /@Browser Use/ }).click();
+  await expect(page.getByRole("button", { name: "Unload @Browser Use" })).toBeVisible();
 
   await composer.fill("$browser");
   await page.getByRole("button", { name: /\$browser-use:browser/ }).click();
   await expect(page.getByRole("button", { name: "Unload $browser-use:browser" })).toBeVisible();
 
   await composer.press("Enter");
-  await expect.poll(() => turnRequest?.message ?? "").toContain("Enabled plugins: @browser-use.");
+  await expect
+    .poll(() => turnRequest?.message ?? "")
+    .toContain("Enabled plugins: @browser-use (openai-bundled).");
   const capturedTurn = turnRequest as { browserToolEnabled?: boolean; message?: string } | null;
   expect(capturedTurn?.message).toContain("Use fixture browser automation instructions.");
   expect(capturedTurn?.browserToolEnabled).toBe(true);
@@ -325,7 +327,8 @@ test("agent sends steer and follow-up controls to Pi while running", async ({ pa
 
   await runningComposer.fill("follow later");
   await runningComposer.press("Tab");
-  await expect.poll(() => turnRequests.some((request) => request.mode === "follow_up")).toBe(true);
+  await expect(page.getByRole("button", { name: /queue 1 follow later/ })).toBeVisible();
+  expect(turnRequests.some((request) => request.mode === "follow_up")).toBe(false);
 });
 
 test("agent session reattaches after navigation and survives mixed tool calls", async ({
@@ -476,14 +479,14 @@ test("archived active sessions are excluded from restart hydration", async ({ pa
 
   await page.goto("/agent");
   await expect(page.getByText("Archived should stay hidden")).toHaveCount(0);
-  await expect(page.getByText("A dream is something you do for yourself")).toBeVisible();
+  await expect(page.getByText(/New session\. Enter sends/)).toBeVisible();
 });
 
 test("settings exposes archive, plugin, skill, setup, and controller surfaces", async ({
   page,
 }) => {
   await page.goto("/settings#plugins");
-  await expect(page.getByText("Plugin registry")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plugin registry" })).toBeVisible();
   await expect(page.getByText("Computer-use", { exact: true })).toBeVisible();
   await expect(page.getByText("Browser-use", { exact: true })).toBeVisible();
 
