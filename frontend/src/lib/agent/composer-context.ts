@@ -106,6 +106,10 @@ function searchableText(row: {
   );
 }
 
+function normalized(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
 export function byQuery<
   T extends {
     name: string;
@@ -116,18 +120,27 @@ export function byQuery<
   },
 >(rows: T[], query: string, limit = 8): T[] {
   const q = query.trim().toLowerCase();
+  const nq = normalized(q);
   const scored = rows
     .map((row) => {
       const fields = searchableText(row).map((value) => value.toLowerCase());
+      const normalizedFields = fields.map(normalized);
       const primary = row.name.toLowerCase();
       const display = row.displayName?.toLowerCase();
       const score = !q
         ? 2
-        : primary === q || display === q
+        : primary === q ||
+            display === q ||
+            normalized(primary) === nq ||
+            normalized(display ?? "") === nq
           ? 0
-          : primary.startsWith(q) || Boolean(display?.startsWith(q))
+          : primary.startsWith(q) ||
+              Boolean(display?.startsWith(q)) ||
+              normalized(primary).startsWith(nq) ||
+              normalized(display ?? "").startsWith(nq)
             ? 1
-            : fields.some((field) => field.includes(q))
+            : fields.some((field) => field.includes(q)) ||
+                normalizedFields.some((field) => field.includes(nq))
               ? 2
               : 9;
       return { row, score };

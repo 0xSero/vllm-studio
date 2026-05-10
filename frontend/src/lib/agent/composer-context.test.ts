@@ -57,18 +57,27 @@ describe("composer context helpers", () => {
     ]);
   });
 
-  it("matches plugin display names and metadata", () => {
+  it("matches plugin display names and metadata across separators", () => {
     expect(
       byQuery(
         [
           { name: "browser-use", displayName: "Browser Use", source: "openai-bundled" },
           { name: "computer-use", displayName: "Computer Use", shortDescription: "Desktop UI" },
         ],
-        "computer",
+        "computer use",
       ),
     ).toEqual([
       { name: "computer-use", displayName: "Computer Use", shortDescription: "Desktop UI" },
     ]);
+    expect(
+      byQuery(
+        [
+          { name: "browser-use", displayName: "Browser Use", source: "openai-bundled" },
+          { name: "local-tool", displayName: "Local Tool", source: "user" },
+        ],
+        "browser use",
+      ),
+    ).toEqual([{ name: "browser-use", displayName: "Browser Use", source: "openai-bundled" }]);
     expect(
       byQuery(
         [

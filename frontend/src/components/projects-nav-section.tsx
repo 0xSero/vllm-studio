@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import {
   CloseIcon,
   EyeOffIcon,
+  FileIcon,
   Folder,
   MoreIcon,
   PinIcon,
@@ -724,7 +725,7 @@ function ProjectRow({
           </button>
         </div>
       ) : null}
-      {open && project.exists ? (
+      {(open || activeSessions.length > 0) && project.exists ? (
         <ProjectSessions project={project} activeSessions={activeSessions} />
       ) : null}
     </div>
@@ -895,7 +896,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group flex h-6 items-center gap-1 pl-5 pr-1.5 transition-colors ${
+  const rowClass = `group flex h-6 items-center gap-1 pl-1.5 pr-1 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -922,7 +923,8 @@ function ActiveSessionRow({
 
   const content = (
     <>
-      <span className="min-w-0 flex-1 truncate text-[12px]">{label}</span>
+      <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
+      <span className="min-w-0 flex-1 truncate text-[11.5px] font-normal">{label}</span>
       {isRunning ? (
         <span
           className="shrink-0 truncate text-[10px] text-(--dim) animate-pulse"
@@ -1087,7 +1089,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="h-6 flex items-center gap-1 pl-5 pr-2 bg-(--surface)/60">
+      <div className="h-6 flex items-center gap-1 pl-1.5 pr-2 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1108,7 +1110,7 @@ function SessionRow({
 
   return (
     <div
-      className="group flex h-6 items-center gap-1 pl-5 pr-1.5 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group flex h-6 items-center gap-1 pl-1.5 pr-1 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1126,9 +1128,10 @@ function SessionRow({
             title: label,
           });
         }}
-        className="flex min-w-0 flex-1 items-center gap-1.5"
+        className="flex min-w-0 flex-1 items-center gap-1"
       >
-        <span className="min-w-0 flex-1 truncate text-[11.5px]">{label}</span>
+        <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
+        <span className="min-w-0 flex-1 truncate text-[11.5px] font-normal">{label}</span>
         <span className="shrink-0 text-[10px] text-(--dim)">
           {formatRelative(session.updatedAt)}
         </span>
