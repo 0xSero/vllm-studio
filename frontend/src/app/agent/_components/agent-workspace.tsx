@@ -19,6 +19,10 @@ import {
 } from "@/lib/sanitize-embedded-browser-url";
 import { ChevronDownIcon, CloseIcon, ComputerIcon, PlusIcon } from "@/components/icons";
 import { safeJson } from "@/lib/agent/safe-json";
+import {
+  mergeActiveAgentSessions,
+  type ActiveAgentSessionSnapshot,
+} from "@/lib/agent/active-sessions";
 import { AgentBrowser, type AgentBrowserHandle, type WebviewElement } from "./agent-browser";
 import { ChatPane, makeFreshTab, type ChatPaneHandle, type SessionTab } from "./chat-pane";
 import { FilesystemPanel } from "./filesystem-panel";
@@ -250,19 +254,6 @@ function tabForPersistence(tab: SessionTab): SessionTab {
   };
 }
 
-type ActiveAgentSessionSnapshot = {
-  projectId: string;
-  cwd: string;
-  paneId: string;
-  tabId: string;
-  piSessionId: string | null;
-  modelId?: string;
-  title: string;
-  status: string;
-  active?: boolean;
-  updatedAt: string;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -295,11 +286,11 @@ function loadPersistedActiveAgentSessions(): ActiveAgentSessionSnapshot[] {
       })
       .filter(
         (entry) =>
-          Boolean(entry.piSessionId) &&
           !prefs[entry.piSessionId ?? ""]?.hidden &&
           Boolean(entry.projectId) &&
           Boolean(entry.cwd) &&
-          Boolean(entry.paneId),
+          Boolean(entry.paneId) &&
+          Boolean(entry.tabId),
       );
   } catch {
     return [];
@@ -315,14 +306,12 @@ function persistActiveAgentSessions(sessions: ActiveAgentSessionSnapshot[]) {
   } catch {
     prefs = {};
   }
-  const recoverable = sessions.filter(
-    (session) => Boolean(session.piSessionId) && !prefs[session.piSessionId ?? ""]?.hidden,
-  );
-  if (recoverable.length === 0) {
+  const merged = mergeActiveAgentSessions([], sessions, prefs);
+  if (merged.length > 0) {
+    window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY, JSON.stringify(merged));
+  } else {
     window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY);
-    return;
   }
-  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY, JSON.stringify(recoverable));
 }
 
 function layoutFromPaneIds(paneIds: PaneId[]): Layout {
@@ -352,6 +341,21 @@ function tabFromSnapshot(session: ActiveAgentSessionSnapshot): SessionTab {
     // resurrecting a permanently "running" UI state.
     status: "loading",
   };
+}
+
+function isEmptyStarterTab(tab: SessionTab): boolean {
+  return !tab.piSessionId && tab.messages.length === 0 && !tab.input.trim();
+}
+
+function findPaneTabByPiSessionId(
+  panes: Map<PaneId, PaneState>,
+  piSessionId: string,
+): { paneId: PaneId; tab: SessionTab } | null {
+  for (const [paneId, pane] of panes.entries()) {
+    const tab = pane.tabs.find((entry) => entry.piSessionId === piSessionId);
+    if (tab) return { paneId, tab };
+  }
+  return null;
 }
 
 export function AgentWorkspace() {
@@ -814,22 +818,6 @@ export function AgentWorkspace() {
       setSelectedProjectId(project.id);
       setAgentCwd(project.path);
       persistSelectedProjectId(project.id);
-      // A different project has its own session pool — reset every pane to a
-      // fresh tab so the next turn starts a brand-new pi session in the new
-      // project. Each pane keeps its runtimeSessionId so the pi child gets
-      // a clean restart on the next /api/agent/turn.
-      setPanesById((current) => {
-        const next = new Map<PaneId, PaneState>();
-        for (const [paneId, pane] of current.entries()) {
-          const tab = makeFreshTab();
-          next.set(paneId, {
-            tabs: [tab],
-            activeTabId: tab.id,
-            runtimeSessionId: pane.runtimeSessionId,
-          });
-        }
-        return next;
-      });
     },
     [persistSelectedProjectId],
   );
@@ -929,23 +917,48 @@ export function AgentWorkspace() {
   // Idempotent "open a fresh chat tab in the focused pane". If the pane
   // already has an empty starter (no piSessionId, no messages, no input)
   // we focus that tab instead of stacking yet another empty one.
-  const openNewSessionInFocusedPane = useCallback(() => {
-    setPanesById((current) => {
-      const cur = current.get(focusedPaneId);
-      if (!cur) return current;
-      const existing = cur.tabs.find(
-        (tab) => !tab.piSessionId && tab.messages.length === 0 && !tab.input,
-      );
-      const next = new Map(current);
-      if (existing) {
-        next.set(focusedPaneId, { ...cur, activeTabId: existing.id });
-        return next;
+  const openNewSessionInFocusedPane = useCallback(
+    (projectOverride?: ProjectEntry) => {
+      if (projectOverride) {
+        setSelectedProjectId(projectOverride.id);
+        setAgentCwd(projectOverride.path);
+        persistSelectedProjectId(projectOverride.id);
       }
-      const tab = makeFreshTab();
-      next.set(focusedPaneId, { ...cur, tabs: [...cur.tabs, tab], activeTabId: tab.id });
-      return next;
-    });
-  }, [focusedPaneId]);
+      setPanesById((current) => {
+        const cur = current.get(focusedPaneId);
+        if (!cur) return current;
+        const targetProjectId = projectOverride?.id;
+        const targetCwd = projectOverride?.path;
+        const existing = cur.tabs.find((tab) => {
+          if (!isEmptyStarterTab(tab)) return false;
+          if (targetProjectId && tab.projectId && tab.projectId !== targetProjectId) return false;
+          if (targetCwd && tab.cwd && tab.cwd !== targetCwd) return false;
+          return true;
+        });
+        const next = new Map(current);
+        if (existing) {
+          next.set(focusedPaneId, {
+            ...cur,
+            tabs: cur.tabs.map((tab) =>
+              tab.id === existing.id && projectOverride
+                ? { ...tab, projectId: projectOverride.id, cwd: projectOverride.path }
+                : tab,
+            ),
+            activeTabId: existing.id,
+          });
+          return next;
+        }
+        const tab = {
+          ...makeFreshTab(),
+          projectId: projectOverride?.id,
+          cwd: projectOverride?.path,
+        };
+        next.set(focusedPaneId, { ...cur, tabs: [...cur.tabs, tab], activeTabId: tab.id });
+        return next;
+      });
+    },
+    [focusedPaneId, persistSelectedProjectId],
+  );
 
   // Replay a past pi session into the focused pane via the pane's
   // imperative handle. No race: the handle was registered when the pane
@@ -953,9 +966,35 @@ export function AgentWorkspace() {
   // will retry.
   const replaySessionInFocusedPane = useCallback(
     (piSessionId: string) => {
-      queueSessionReplay(focusedPaneId, piSessionId);
+      const existingPaneTab = findPaneTabByPiSessionId(panesById, piSessionId);
+      const replayPaneId = existingPaneTab?.paneId ?? focusedPaneId;
+      setPanesById((current) => {
+        const existing = findPaneTabByPiSessionId(current, piSessionId);
+        if (existing) {
+          const pane = current.get(existing.paneId);
+          if (!pane || pane.activeTabId === existing.tab.id) return current;
+          const next = new Map(current);
+          next.set(existing.paneId, { ...pane, activeTabId: existing.tab.id });
+          return next;
+        }
+        const pane = current.get(focusedPaneId);
+        if (!pane) return current;
+        const active = pane.tabs.find((tab) => tab.id === pane.activeTabId);
+        const targetTab = active && isEmptyStarterTab(active) ? active : null;
+        const replayTab = targetTab
+          ? { ...targetTab, piSessionId, title: targetTab.title || "Loading session" }
+          : { ...makeFreshTab(), piSessionId, title: "Loading session" };
+        const nextTabs = targetTab
+          ? pane.tabs.map((tab) => (tab.id === targetTab.id ? replayTab : tab))
+          : [...pane.tabs, replayTab];
+        const next = new Map(current);
+        next.set(focusedPaneId, { ...pane, tabs: nextTabs, activeTabId: replayTab.id });
+        return next;
+      });
+      setFocusedPaneId(replayPaneId);
+      queueSessionReplay(replayPaneId, piSessionId);
     },
-    [focusedPaneId, queueSessionReplay],
+    [focusedPaneId, panesById, queueSessionReplay],
   );
 
   // Open a past session in a side-by-side pane. Splits the layout if there
@@ -963,15 +1002,35 @@ export function AgentWorkspace() {
   // the queue drains as soon as the new ChatPane registers its handle.
   const replaySessionInSplitPane = useCallback(
     (piSessionId: string) => {
+      const existing = findPaneTabByPiSessionId(panesById, piSessionId);
+      if (existing) {
+        setFocusedPaneId(existing.paneId);
+        setPanesById((current) => {
+          const pane = current.get(existing.paneId);
+          if (!pane || pane.activeTabId === existing.tab.id) return current;
+          const next = new Map(current);
+          next.set(existing.paneId, { ...pane, activeTabId: existing.tab.id });
+          return next;
+        });
+        return;
+      }
       const leaves = collectLeaves(layout);
       if (leaves.length >= 2) {
         const targetPaneId = leaves.find((id) => id !== focusedPaneId) ?? focusedPaneId;
+        setPanesById((current) => {
+          const pane = current.get(targetPaneId);
+          if (!pane) return current;
+          const tab = { ...makeFreshTab(), piSessionId, title: "Loading session" };
+          const next = new Map(current);
+          next.set(targetPaneId, { ...pane, tabs: [...pane.tabs, tab], activeTabId: tab.id });
+          return next;
+        });
         setFocusedPaneId(targetPaneId);
         queueSessionReplay(targetPaneId, piSessionId);
         return;
       }
       const id = newPaneId();
-      const baseTab = makeFreshTab();
+      const baseTab = { ...makeFreshTab(), piSessionId, title: "Loading session" };
       setPanesById((current) => {
         const next = new Map(current);
         next.set(id, {
@@ -985,7 +1044,7 @@ export function AgentWorkspace() {
       setFocusedPaneId(id);
       queueSessionReplay(id, piSessionId);
     },
-    [focusedPaneId, layout, queueSessionReplay],
+    [focusedPaneId, layout, panesById, queueSessionReplay],
   );
 
   // Single source of truth for URL nav. Re-run only when the URL string
@@ -1206,15 +1265,27 @@ export function AgentWorkspace() {
   const openSessionPayloadInPane = useCallback(
     (paneId: PaneId, payload: SessionDropPayload) => {
       let needsReplay = false;
+      const existingPaneTab = payload.piSessionId
+        ? findPaneTabByPiSessionId(panesById, payload.piSessionId)
+        : null;
+      const replayPaneId = existingPaneTab?.paneId ?? paneId;
       setPanesById((current) => {
         const target = current.get(paneId);
         if (!target) return current;
         const next = new Map(current);
         if (payload.piSessionId) {
+          const existing = findPaneTabByPiSessionId(current, payload.piSessionId);
+          if (existing) {
+            const existingPane = current.get(existing.paneId);
+            if (!existingPane) return current;
+            next.set(existing.paneId, { ...existingPane, activeTabId: existing.tab.id });
+            return next;
+          }
           const tab = {
             ...makeFreshTab(),
             projectId: payload.projectId,
             cwd: payload.cwd,
+            piSessionId: payload.piSessionId,
             title: payload.title ?? "Loading session",
           };
           next.set(paneId, {
@@ -1239,12 +1310,12 @@ export function AgentWorkspace() {
         }
         return next;
       });
-      setFocusedPaneId(paneId);
+      setFocusedPaneId(replayPaneId);
       if (needsReplay && payload.piSessionId) {
-        queueSessionReplay(paneId, payload.piSessionId);
+        queueSessionReplay(replayPaneId, payload.piSessionId);
       }
     },
-    [queueSessionReplay],
+    [panesById, queueSessionReplay],
   );
 
   // Imperative tab actions used by both URL nav and DOM-event listeners.
@@ -1337,8 +1408,9 @@ export function AgentWorkspace() {
       const h = navHandlersRef.current;
       if (detail?.projectId) {
         const target = h.projects.find((entry) => entry.id === detail.projectId);
-        if (target && h.selectedProjectId !== target.id) {
-          h.selectProject(target);
+        if (target) {
+          if (h.selectedProjectId !== target.id) h.selectProject(target);
+          h.openNewSessionInFocusedPane(target);
           return;
         }
       }
@@ -1572,6 +1644,20 @@ export function AgentWorkspace() {
                 }}
                 onSplit={(paneId, direction, side, payload) => {
                   // Create a new pane next to the drop target.
+                  if (payload.piSessionId) {
+                    const existing = findPaneTabByPiSessionId(panesById, payload.piSessionId);
+                    if (existing) {
+                      setFocusedPaneId(existing.paneId);
+                      setPanesById((current) => {
+                        const pane = current.get(existing.paneId);
+                        if (!pane) return current;
+                        const next = new Map(current);
+                        next.set(existing.paneId, { ...pane, activeTabId: existing.tab.id });
+                        return next;
+                      });
+                      return;
+                    }
+                  }
                   const id = newPaneId();
                   if (collectLeaves(layout).length >= 2) return;
                   const runtime = newRuntimeId();
@@ -1579,6 +1665,7 @@ export function AgentWorkspace() {
                     ...makeFreshTab(),
                     projectId: payload.projectId,
                     cwd: payload.cwd,
+                    piSessionId: payload.piSessionId ?? null,
                     title: payload.title ?? "Loading session",
                   };
                   setPanesById((current) => {

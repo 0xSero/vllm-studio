@@ -17,6 +17,10 @@ import {
 } from "@/components/icons";
 import { Button, UiModal, UiModalHeader } from "@/components/ui-kit";
 import { safeJson } from "@/lib/agent/safe-json";
+import {
+  mergeActiveAgentSessions,
+  type ActiveAgentSessionSnapshot,
+} from "@/lib/agent/active-sessions";
 
 type ProjectEntry = {
   id: string;
@@ -63,18 +67,7 @@ export const NEW_AGENT_SESSION_EVENT = "vllm-studio.agent.newSession";
 export const ACTIVE_AGENT_SESSION_RENAME_EVENT = "vllm-studio.agent.activeSessionRename";
 export const ACTIVE_AGENT_SESSION_OPEN_EVENT = "vllm-studio.agent.activeSessionOpen";
 
-type ActiveAgentSession = {
-  projectId: string;
-  cwd: string;
-  paneId: string;
-  tabId: string;
-  piSessionId: string | null;
-  modelId?: string;
-  title: string;
-  status: string;
-  active?: boolean;
-  updatedAt: string;
-};
+type ActiveAgentSession = ActiveAgentSessionSnapshot;
 
 type SessionPref = {
   title?: string;
@@ -102,14 +95,12 @@ function loadActiveAgentSessions(): ActiveAgentSession[] {
 function saveActiveAgentSessions(sessions: ActiveAgentSession[]) {
   if (typeof window === "undefined") return;
   const prefs = loadSessionPrefs();
-  const recoverable = sessions.filter(
-    (session) => Boolean(session.piSessionId) && !prefs[session.piSessionId ?? ""]?.hidden,
-  );
-  if (recoverable.length === 0) {
+  const merged = mergeActiveAgentSessions([], sessions, prefs);
+  if (merged.length > 0) {
+    window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(merged));
+  } else {
     window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_KEY);
-    return;
   }
-  window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(recoverable));
 }
 
 function setAgentSessionDragData(
@@ -525,7 +516,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     const onActiveSessions = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
       const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
-      setActiveSessions(sessions);
+      setActiveSessions(mergeActiveAgentSessions([], sessions, loadSessionPrefs()));
       saveActiveAgentSessions(sessions);
     };
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
