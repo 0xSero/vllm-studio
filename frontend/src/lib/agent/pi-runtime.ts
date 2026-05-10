@@ -138,6 +138,10 @@ function resolveTimeoutExtensionPath(): string | null {
   );
 }
 
+function resolveMcpExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("mcp-plugin.ts", process.env.VLLM_STUDIO_MCP_EXTENSION_PATH);
+}
+
 function pluginNameMatches(plugin: RuntimePluginRef, needle: string): boolean {
   return [
     plugin.id,
@@ -155,7 +159,7 @@ function pluginFingerprint(options: RuntimeStartOptions): string {
   const names = (options.plugins ?? [])
     .map(
       (plugin) =>
-        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.appPath ?? ""}`,
+        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.mcpConfigPath ?? ""}:${plugin.appPath ?? ""}`,
     )
     .sort();
   return JSON.stringify({
@@ -205,6 +209,24 @@ function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
       seen.add(resolved);
       return true;
     });
+}
+
+function pluginMcpConfigs(
+  plugins: RuntimePluginRef[],
+): Array<{ pluginName: string; configPath: string }> {
+  const seen = new Set<string>();
+  return plugins.flatMap((plugin) => {
+    const configPath =
+      plugin.mcpConfigPath ??
+      (plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, ".mcp.json") : null);
+    if (!configPath || !existsSync(configPath)) return [];
+    const resolved = path.resolve(configPath);
+    if (seen.has(resolved)) return [];
+    seen.add(resolved);
+    return [
+      { pluginName: plugin.name || path.basename(path.dirname(resolved)), configPath: resolved },
+    ];
+  });
 }
 
 function deriveFrontendBase(): string {
@@ -356,8 +378,13 @@ class PiRpcSession extends EventEmitter {
     for (const skillPath of pluginSkillPaths(plugins)) {
       args.push("--skill", skillPath);
     }
+    const mcpConfigs = pluginMcpConfigs(plugins);
     const timeoutExtensionPath = resolveTimeoutExtensionPath();
     if (timeoutExtensionPath) args.push("--extension", timeoutExtensionPath);
+    if (mcpConfigs.length) {
+      const mcpExtensionPath = resolveMcpExtensionPath();
+      if (mcpExtensionPath) args.push("--extension", mcpExtensionPath);
+    }
     if (shouldLoadBrowserTool) {
       const extensionPath = resolveBrowserExtensionPath();
       if (extensionPath) args.push("--extension", extensionPath);
@@ -374,6 +401,7 @@ class PiRpcSession extends EventEmitter {
         // The browser extension uses this base URL to call back into the
         // frontend's /api/agent/browser/* endpoints.
         VLLM_STUDIO_FRONTEND_BASE: process.env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(),
+        VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

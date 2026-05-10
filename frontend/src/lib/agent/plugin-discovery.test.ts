@@ -77,6 +77,8 @@ describe("discoverPlugins", () => {
       const plugin = path.join(marketplace, "plugins", "computer-use");
       const config = path.join(root, "config.toml");
       mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
+      mkdirSync(path.join(plugin, "skills"), { recursive: true });
+      writeFileSync(path.join(plugin, ".mcp.json"), '{"mcpServers":{}}');
       writeFileSync(
         path.join(plugin, ".codex-plugin", "plugin.json"),
         JSON.stringify({
@@ -110,6 +112,8 @@ describe("discoverPlugins", () => {
           capabilities: ["Interactive", "Read"],
           defaultPrompts: ["Play Chess.app"],
           brandColor: "#0F172A",
+          skillPath: path.join(plugin, "skills"),
+          mcpConfigPath: path.join(plugin, ".mcp.json"),
         }),
       ]);
     } finally {

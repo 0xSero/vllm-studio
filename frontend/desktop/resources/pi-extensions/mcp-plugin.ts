@@ -1,0 +1,274 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type, type TSchema } from "typebox";
+
+type McpServerConfig = {
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+};
+
+type McpPluginConfig = {
+  pluginName: string;
+  configPath: string;
+};
+
+type JsonRpc = {
+  id?: number;
+  method?: string;
+  result?: unknown;
+  error?: { message?: string };
+};
+
+type McpTool = {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+};
+
+const STARTUP_TIMEOUT_MS = 5_000;
+const TOOL_TIMEOUT_MS = Number(process.env.VLLM_STUDIO_MCP_TOOL_TIMEOUT_MS || 120_000);
+
+function readPluginConfigs(): McpPluginConfig[] {
+  try {
+    const parsed = JSON.parse(process.env.VLLM_STUDIO_MCP_PLUGIN_CONFIGS || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const record = entry as Record<string, unknown>;
+      const configPath = typeof record.configPath === "string" ? record.configPath : "";
+      if (!configPath || !existsSync(configPath)) return [];
+      return [
+        {
+          pluginName: String(record.pluginName || path.basename(path.dirname(configPath))),
+          configPath,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function safeToolName(serverName: string, toolName: string): string {
+  const raw = toolName.startsWith(`${serverName}_`) ? toolName : `${serverName}_${toolName}`;
+  return raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+}
+
+function schemaForTool(schema: Record<string, unknown> | undefined): TSchema {
+  if (!schema || typeof schema !== "object") return Type.Object({});
+  return Type.Unsafe(schema);
+}
+
+function contentToText(value: unknown): string {
+  if (!value || typeof value !== "object") return JSON.stringify(value);
+  const result = value as { content?: Array<Record<string, unknown>> };
+  if (!Array.isArray(result.content)) return JSON.stringify(value, null, 2);
+  return result.content
+    .map((item) => {
+      if (typeof item.text === "string") return item.text;
+      return JSON.stringify(item);
+    })
+    .join("\n");
+}
+
+class McpClient {
+  private child: ChildProcessWithoutNullStreams;
+  private nextId = 1;
+  private buffer = Buffer.alloc(0);
+  private pending = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  >();
+
+  constructor(
+    readonly name: string,
+    config: McpServerConfig,
+    baseDir: string,
+  ) {
+    const cwd = path.resolve(baseDir, config.cwd || ".");
+    const command = config.command?.startsWith(".")
+      ? path.resolve(cwd, config.command)
+      : (config.command ?? "");
+    this.child = spawn(command, config.args ?? [], {
+      cwd,
+      env: { ...process.env, ...(config.env ?? {}) },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.child.stdout.on("data", (chunk: Buffer) => this.onData(chunk));
+    this.child.stderr.on("data", () => undefined);
+    this.child.on("error", (error) => {
+      for (const pending of this.pending.values()) pending.reject(error);
+      this.pending.clear();
+    });
+    this.child.on("exit", () => {
+      for (const pending of this.pending.values())
+        pending.reject(new Error(`${name} MCP server exited`));
+      this.pending.clear();
+    });
+  }
+
+  async init(): Promise<McpTool[]> {
+    await this.request(
+      "initialize",
+      {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "vllm-studio", version: "0.1.0" },
+      },
+      STARTUP_TIMEOUT_MS,
+    );
+    this.notify("notifications/initialized", {});
+    const listed = (await this.request("tools/list", {}, STARTUP_TIMEOUT_MS)) as {
+      tools?: McpTool[];
+    };
+    return Array.isArray(listed.tools) ? listed.tools : [];
+  }
+
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+  ): Promise<unknown> {
+    return this.request("tools/call", { name, arguments: args }, TOOL_TIMEOUT_MS, signal);
+  }
+
+  private request(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const id = this.nextId++;
+    const payload = { jsonrpc: "2.0", id, method, params };
+    const promise = new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${this.name} MCP ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      const abort = () => {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new Error(`${this.name} MCP ${method} aborted`));
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", abort);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", abort);
+          reject(error);
+        },
+      });
+    });
+    this.write(payload);
+    return promise;
+  }
+
+  private notify(method: string, params: unknown) {
+    this.write({ jsonrpc: "2.0", method, params });
+  }
+
+  private write(payload: unknown) {
+    const body = Buffer.from(JSON.stringify(payload), "utf8");
+    this.child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+    this.child.stdin.write(body);
+  }
+
+  private onData(chunk: Buffer) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    while (true) {
+      const headerEnd = this.buffer.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+      const header = this.buffer.slice(0, headerEnd).toString("utf8");
+      const length = Number(/content-length:\s*(\d+)/i.exec(header)?.[1]);
+      if (!Number.isFinite(length)) {
+        this.buffer = Buffer.alloc(0);
+        return;
+      }
+      const bodyStart = headerEnd + 4;
+      const bodyEnd = bodyStart + length;
+      if (this.buffer.length < bodyEnd) return;
+      const body = this.buffer.slice(bodyStart, bodyEnd).toString("utf8");
+      this.buffer = this.buffer.slice(bodyEnd);
+      this.handleMessage(body);
+    }
+  }
+
+  private handleMessage(body: string) {
+    let message: JsonRpc;
+    try {
+      message = JSON.parse(body) as JsonRpc;
+    } catch {
+      return;
+    }
+    if (typeof message.id !== "number") return;
+    const pending = this.pending.get(message.id);
+    if (!pending) return;
+    this.pending.delete(message.id);
+    if (message.error) pending.reject(new Error(message.error.message || `${this.name} MCP error`));
+    else pending.resolve(message.result);
+  }
+}
+
+async function registerOneServer(
+  pi: ExtensionAPI,
+  plugin: McpPluginConfig,
+  serverName: string,
+  serverConfig: McpServerConfig,
+) {
+  const baseDir = path.dirname(plugin.configPath);
+  let client: McpClient;
+  let tools: McpTool[];
+  try {
+    client = new McpClient(serverName, serverConfig, baseDir);
+    tools = await client.init();
+  } catch {
+    return;
+  }
+  for (const tool of tools) {
+    const piToolName = safeToolName(serverName, tool.name);
+    pi.registerTool({
+      name: piToolName,
+      label: `${plugin.pluginName}: ${tool.name}`,
+      description:
+        tool.description || `Call ${tool.name} from the ${plugin.pluginName} MCP plugin.`,
+      promptSnippet: tool.description || `Call ${tool.name} from ${plugin.pluginName}`,
+      parameters: schemaForTool(tool.inputSchema),
+      async execute(_toolCallId, params, signal) {
+        const result = await client.callTool(tool.name, params as Record<string, unknown>, signal);
+        return {
+          content: [{ type: "text", text: contentToText(result) }],
+          details: { plugin: plugin.pluginName, server: serverName, tool: tool.name, result },
+        };
+      },
+    });
+  }
+}
+
+export default function registerMcpPlugins(pi: ExtensionAPI) {
+  for (const plugin of readPluginConfigs()) {
+    let servers: Record<string, McpServerConfig> = {};
+    try {
+      servers =
+        (
+          JSON.parse(readFileSync(plugin.configPath, "utf8")) as {
+            mcpServers?: Record<string, McpServerConfig>;
+          }
+        ).mcpServers ?? {};
+    } catch {
+      continue;
+    }
+    for (const [serverName, serverConfig] of Object.entries(servers)) {
+      if (!serverConfig.command) continue;
+      void registerOneServer(pi, plugin, serverName, serverConfig);
+    }
+  }
+}
