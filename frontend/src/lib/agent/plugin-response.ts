@@ -7,6 +7,7 @@ export type PluginRuntimeCheck = {
   mcpConfigured: boolean;
   appConfigured: boolean;
   mcpExecutableExists?: boolean;
+  runtimeBlockedOutsideCodex?: boolean;
   runtimeCheckRequired?: boolean;
   note?: string;
 };
@@ -49,15 +50,21 @@ function pluginRuntimeCheck(plugin: PluginRow): PluginRuntimeCheck {
   const mcpExecutable = plugin.mcpConfigPath
     ? allMcpExecutablesExist(plugin.mcpConfigPath)
     : undefined;
+  const launchConstrained = plugin.mcpConfigPath
+    ? mcpConfigUsesSkyComputerUseClient(plugin.mcpConfigPath)
+    : false;
   return {
     skillConfigured: Boolean(plugin.skillPath && existsSync(plugin.skillPath)),
     mcpConfigured: Boolean(plugin.mcpConfigPath && existsSync(plugin.mcpConfigPath)),
     appConfigured: Boolean(plugin.appPath && existsSync(plugin.appPath)),
     ...(mcpExecutable === undefined ? {} : { mcpExecutableExists: mcpExecutable }),
+    ...(launchConstrained ? { runtimeBlockedOutsideCodex: true } : {}),
     ...(pluginMatches(plugin, "computer-use") && plugin.mcpConfigPath
       ? {
           runtimeCheckRequired: true,
-          note: "Computer-use is wired through MCP; verify helper launch from an active session with mcp_plugin_status before desktop control.",
+          note: launchConstrained
+            ? "Computer-use is discovered and selectable, but its SkyComputerUseClient MCP binary is launch-constrained by macOS to the Codex-signed host; vLLM Studio can load its skill context, while desktop-control tools will report failed until a signed/brokered runtime is available."
+            : "Computer-use is wired through MCP; verify helper launch from an active session with mcp_plugin_status before desktop control.",
         }
       : {}),
   };
@@ -85,6 +92,15 @@ function allMcpExecutablesExist(configPath: string): boolean | undefined {
       const resolved = command.startsWith(".") ? path.resolve(base, command) : command;
       return path.isAbsolute(resolved) ? existsSync(resolved) : true;
     });
+  } catch {
+    return false;
+  }
+}
+
+function mcpConfigUsesSkyComputerUseClient(configPath: string): boolean {
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    return raw.toLowerCase().includes("skycomputeruseclient");
   } catch {
     return false;
   }

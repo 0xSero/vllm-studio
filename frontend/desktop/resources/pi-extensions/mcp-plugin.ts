@@ -265,7 +265,7 @@ function computerUseLaunchHint(serverName: string, command: string): string | nu
   if (process.platform !== "darwin") return null;
   const marker = `${serverName} ${command}`.toLowerCase();
   if (!marker.includes("computer-use") && !marker.includes("skycomputeruseclient")) return null;
-  return "hint=macOS AMFI launch constraints can block Codex Computer Use MCP outside the Codex-signed host";
+  return "hint=macOS AMFI launch constraints block SkyComputerUseClient when launched outside the Codex-signed host; use a signed/brokered runtime before desktop-control tools can work";
 }
 
 async function registerOneServer(

@@ -545,6 +545,7 @@ function PluginsSettings() {
     mcpConfigured?: boolean;
     appConfigured?: boolean;
     mcpExecutableExists?: boolean;
+    runtimeBlockedOutsideCodex?: boolean;
     runtimeCheckRequired?: boolean;
     note?: string;
   };
@@ -807,6 +808,7 @@ function pluginAvailabilityText(
   runtime?: {
     mcpConfigured?: boolean;
     mcpExecutableExists?: boolean;
+    runtimeBlockedOutsideCodex?: boolean;
     runtimeCheckRequired?: boolean;
     note?: string;
   } | null,
@@ -816,6 +818,7 @@ function pluginAvailabilityText(
   if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
     return "Selectable, but its MCP command is missing";
   }
+  if (runtime?.runtimeBlockedOutsideCodex) return runtime.note ?? "Runtime blocked outside Codex";
   return runtime?.note ?? "Available and selectable in the composer";
 }
 
@@ -829,6 +832,7 @@ function PluginAvailabilityPill({
   runtime?: {
     mcpConfigured?: boolean;
     mcpExecutableExists?: boolean;
+    runtimeBlockedOutsideCodex?: boolean;
     runtimeCheckRequired?: boolean;
   } | null;
 }) {
@@ -837,6 +841,7 @@ function PluginAvailabilityPill({
   if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
     return <StatusPill tone="warning">mcp missing</StatusPill>;
   }
+  if (runtime?.runtimeBlockedOutsideCodex) return <StatusPill tone="warning">blocked</StatusPill>;
   if (runtime?.runtimeCheckRequired) return <StatusPill tone="info">runtime check</StatusPill>;
   if (runtime?.mcpConfigured) return <StatusPill tone="info">mcp wired</StatusPill>;
   return <StatusPill tone="good">selectable</StatusPill>;

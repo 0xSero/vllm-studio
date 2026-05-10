@@ -74,6 +74,36 @@ describe("buildPluginsResponse", () => {
     expect(response.validation.computerUseRuntime?.note).toContain("mcp_plugin_status");
   });
 
+  it("reports Codex Computer Use launch constraints truthfully", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "plugin-response-"));
+    mkdirSync(path.join(root, "Codex Computer Use.app", "Contents", "SharedSupport"), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(root, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "computer-use": {
+            command:
+              "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient",
+            args: ["mcp"],
+            cwd: ".",
+          },
+        },
+      }),
+    );
+
+    const response = buildPluginsResponse([
+      plugin({ name: "computer-use", path: root, mcpConfigPath: path.join(root, ".mcp.json") }),
+    ]);
+
+    expect(response.validation.computerUseRuntime).toMatchObject({
+      runtimeBlockedOutsideCodex: true,
+      runtimeCheckRequired: true,
+    });
+    expect(response.validation.computerUseRuntime?.note).toContain("launch-constrained");
+  });
+
   it("marks MCP runtime incomplete when any configured server executable is missing", () => {
     const root = mkdtempSync(path.join(tmpdir(), "plugin-response-"));
     mkdirSync(path.join(root, "bin"));
