@@ -542,6 +542,8 @@ function PluginsSettings() {
   };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [validation, setValidation] = useState<PluginValidation | null>(null);
+  const browserUse = plugins.find((plugin) => plugin.name.includes("browser-use")) ?? null;
+  const computerUse = plugins.find((plugin) => plugin.name.includes("computer-use")) ?? null;
 
   useEffect(() => {
     void fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
@@ -568,33 +570,18 @@ function PluginsSettings() {
         <SettingsRow
           label="Browser-use"
           description="Required composer plugin for browser control via @browser-use."
-          value={
-            <SettingsValue>
-              {validation?.browserUseAvailable
-                ? "Available and selectable in the composer"
-                : "Not discovered"}
-            </SettingsValue>
-          }
-          status={
-            <StatusPill tone={validation?.browserUseAvailable ? "good" : "warning"}>
-              {validation?.browserUseAvailable ? "selectable" : "missing"}
-            </StatusPill>
-          }
+          value={<SettingsValue>{pluginAvailabilityText(browserUse)}</SettingsValue>}
+          status={<PluginAvailabilityPill plugin={browserUse} available={validation?.browserUseAvailable} />}
         />
         <SettingsRow
           label="Computer-use"
           description="Specific parity check requested for the Codex computer-use helper."
-          value={
-            <SettingsValue>
-              {validation?.computerUseAvailable
-                ? "Available and selectable in the composer"
-                : "Not discovered"}
-            </SettingsValue>
-          }
+          value={<SettingsValue>{pluginAvailabilityText(computerUse)}</SettingsValue>}
           status={
-            <StatusPill tone={validation?.computerUseAvailable ? "good" : "warning"}>
-              {validation?.computerUseAvailable ? "selectable" : "missing"}
-            </StatusPill>
+            <PluginAvailabilityPill
+              plugin={computerUse}
+              available={validation?.computerUseAvailable}
+            />
           }
         />
         {plugins.slice(0, 40).map((plugin) => (
@@ -613,6 +600,25 @@ function PluginsSettings() {
       </SettingsGroup>
     </div>
   );
+}
+
+function pluginAvailabilityText(plugin: { enabled: boolean } | null) {
+  if (!plugin) return "Not discovered";
+  return plugin.enabled
+    ? "Available and selectable in the composer"
+    : "Discovered but disabled in Codex plugin config";
+}
+
+function PluginAvailabilityPill({
+  plugin,
+  available,
+}: {
+  plugin: { enabled: boolean } | null;
+  available?: boolean;
+}) {
+  if (!plugin) return <StatusPill tone="warning">missing</StatusPill>;
+  if (!plugin.enabled || !available) return <StatusPill tone="default">disabled</StatusPill>;
+  return <StatusPill tone="good">selectable</StatusPill>;
 }
 
 function pluginDescription(plugin: { description?: string; path: string }) {
