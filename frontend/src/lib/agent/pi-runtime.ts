@@ -36,6 +36,17 @@ type PendingCommand = {
   reject: (error: Error) => void;
 };
 
+type RuntimePluginRef = {
+  id?: string;
+  name?: string;
+  path?: string;
+};
+
+type RuntimeStartOptions = {
+  browserToolEnabled?: boolean;
+  plugins?: RuntimePluginRef[];
+};
+
 function normalizeBackendUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
@@ -124,6 +135,44 @@ function resolveTimeoutExtensionPath(): string | null {
   );
 }
 
+function pluginNameMatches(plugin: RuntimePluginRef, needle: string): boolean {
+  return [plugin.id, plugin.name, plugin.path]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
+function pluginFingerprint(options: RuntimeStartOptions): string {
+  const names = (options.plugins ?? [])
+    .map((plugin) => `${plugin.name ?? ""}:${plugin.path ?? ""}`)
+    .sort();
+  return JSON.stringify({
+    browser: options.browserToolEnabled === true,
+    plugins: names,
+  });
+}
+
+function resolveComputerUseApp(plugins: RuntimePluginRef[]): string | null {
+  const selected = plugins.find((plugin) => pluginNameMatches(plugin, "computer-use"));
+  const candidates = [
+    selected?.path,
+    path.join(homedir(), ".codex", "computer-use", "Codex Computer Use.app"),
+  ].filter((value): value is string => Boolean(value));
+  return (
+    candidates.find((candidate) => candidate.endsWith(".app") && existsSync(candidate)) ?? null
+  );
+}
+
+function launchComputerUseApp(plugins: RuntimePluginRef[]) {
+  if (process.platform !== "darwin") return;
+  const appPath = resolveComputerUseApp(plugins);
+  if (!appPath) return;
+  const child = spawn("open", ["-gj", appPath], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+}
+
 function deriveFrontendBase(): string {
   const port = process.env.PORT || "3000";
   return `http://127.0.0.1:${port}`;
@@ -192,23 +241,24 @@ class PiRpcSession extends EventEmitter {
   private activePromptCount = 0;
   private lastError: string | null = null;
 
-  private currentBrowserToolEnabled = false;
+  private currentPluginFingerprint = "";
 
   async ensureStarted(
     modelId: string,
     cwd?: string,
     piSessionId?: string | null,
-    browserToolEnabled = false,
+    options: RuntimeStartOptions = {},
   ): Promise<void> {
     const resolvedCwd = await resolveAgentCwd(cwd);
     const desiredSessionId = piSessionId ?? null;
+    const desiredPluginFingerprint = pluginFingerprint(options);
     const matches =
       this.process &&
       !this.process.killed &&
       this.currentModelId === modelId &&
       this.currentCwd === resolvedCwd &&
       this.currentPiSessionId === desiredSessionId &&
-      this.currentBrowserToolEnabled === browserToolEnabled;
+      this.currentPluginFingerprint === desiredPluginFingerprint;
     if (matches) return;
 
     if (this.starting) await this.starting;
@@ -218,14 +268,12 @@ class PiRpcSession extends EventEmitter {
       this.currentModelId === modelId &&
       this.currentCwd === resolvedCwd &&
       this.currentPiSessionId === desiredSessionId &&
-      this.currentBrowserToolEnabled === browserToolEnabled;
+      this.currentPluginFingerprint === desiredPluginFingerprint;
     if (matchesAfter) return;
 
-    this.starting = this.start(modelId, resolvedCwd, desiredSessionId, browserToolEnabled).finally(
-      () => {
-        this.starting = null;
-      },
-    );
+    this.starting = this.start(modelId, resolvedCwd, desiredSessionId, options).finally(() => {
+      this.starting = null;
+    });
     await this.starting;
   }
 
@@ -233,7 +281,7 @@ class PiRpcSession extends EventEmitter {
     modelId: string,
     cwd: string,
     piSessionId: string | null,
-    browserToolEnabled: boolean,
+    options: RuntimeStartOptions,
   ): Promise<void> {
     await this.stop();
     this.eventSeq = 0;
@@ -249,7 +297,11 @@ class PiRpcSession extends EventEmitter {
     this.currentModelId = modelId;
     this.currentCwd = cwd;
     this.currentPiSessionId = piSessionId;
-    this.currentBrowserToolEnabled = browserToolEnabled;
+    this.currentPluginFingerprint = pluginFingerprint(options);
+    const plugins = options.plugins ?? [];
+    const shouldLoadBrowserTool =
+      options.browserToolEnabled === true ||
+      plugins.some((plugin) => pluginNameMatches(plugin, "browser-use"));
 
     const args = [
       "--mode",
@@ -269,10 +321,11 @@ class PiRpcSession extends EventEmitter {
     }
     const timeoutExtensionPath = resolveTimeoutExtensionPath();
     if (timeoutExtensionPath) args.push("--extension", timeoutExtensionPath);
-    if (browserToolEnabled) {
+    if (shouldLoadBrowserTool) {
       const extensionPath = resolveBrowserExtensionPath();
       if (extensionPath) args.push("--extension", extensionPath);
     }
+    launchComputerUseApp(plugins);
 
     const child = spawn(resolvePiBinaryPath() ?? "pi", args, {
       cwd,

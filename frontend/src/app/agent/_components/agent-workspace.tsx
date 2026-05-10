@@ -1164,6 +1164,11 @@ export function AgentWorkspace() {
   );
   const focusedPane = panesById.get(focusedPaneId) ?? panesById.values().next().value ?? null;
   const focusedTab = focusedPane?.tabs.find((tab) => tab.id === focusedPane.activeTabId) ?? null;
+  const focusedComputerUseLoaded = (focusedTab?.plugins ?? []).some((plugin) =>
+    [plugin.id, plugin.name, plugin.path].some((value) =>
+      value?.toLowerCase().includes("computer-use"),
+    ),
+  );
   const focusedProject =
     projects.find((entry) => entry.id === focusedTab?.projectId) ??
     projects.find((entry) => entry.path === focusedTab?.cwd) ??
@@ -1480,7 +1485,12 @@ export function AgentWorkspace() {
             title={rightPanelOpen ? "Hide computer" : "Show computer"}
             aria-label={rightPanelOpen ? "Hide computer" : "Show computer"}
           >
-            <ComputerIcon className="h-4 w-4" />
+            <span className="relative inline-flex">
+              <ComputerIcon className="h-4 w-4" />
+              {focusedComputerUseLoaded ? (
+                <span className="absolute -right-1 -top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
+              ) : null}
+            </span>
           </button>
           {shouldShowProjectEmptyState ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6">
@@ -1724,7 +1734,7 @@ export function AgentWorkspace() {
               onMouseDown={startComputerResize}
               className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--accent)/20"
             />
-            <div className="flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-2 text-xs text-(--dim)">
+            <div className="flex h-9 shrink-0 items-center gap-3 px-3 text-xs text-(--dim)">
               <span
                 className="min-w-0 flex-1 truncate px-1 text-[10px] uppercase tracking-wide"
                 title={`Computer follows focused session: ${focusedTab?.title ?? "New session"}`}
@@ -1734,10 +1744,8 @@ export function AgentWorkspace() {
               <button
                 type="button"
                 onClick={() => selectComputerTab("browser")}
-                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
-                  activeComputerTab === "browser"
-                    ? "bg-(--surface) text-(--fg)"
-                    : "hover:bg-(--surface) hover:text-(--fg)"
+                className={`h-6 shrink-0 font-medium uppercase tracking-wide ${
+                  activeComputerTab === "browser" ? "text-(--fg)" : "hover:text-(--fg)"
                 }`}
               >
                 Browser
@@ -1745,10 +1753,8 @@ export function AgentWorkspace() {
               <button
                 type="button"
                 onClick={() => selectComputerTab("files")}
-                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
-                  activeComputerTab === "files"
-                    ? "bg-(--surface) text-(--fg)"
-                    : "hover:bg-(--surface) hover:text-(--fg)"
+                className={`h-6 shrink-0 font-medium uppercase tracking-wide ${
+                  activeComputerTab === "files" ? "text-(--fg)" : "hover:text-(--fg)"
                 }`}
               >
                 Files
@@ -1756,10 +1762,8 @@ export function AgentWorkspace() {
               <button
                 type="button"
                 onClick={() => selectComputerTab("diff")}
-                className={`h-6 shrink-0 rounded px-2 font-medium uppercase tracking-wide ${
-                  activeComputerTab === "diff"
-                    ? "bg-(--surface) text-(--fg)"
-                    : "hover:bg-(--surface) hover:text-(--fg)"
+                className={`h-6 shrink-0 font-medium uppercase tracking-wide ${
+                  activeComputerTab === "diff" ? "text-(--fg)" : "hover:text-(--fg)"
                 }`}
               >
                 Diff
@@ -1772,7 +1776,7 @@ export function AgentWorkspace() {
                   setRightPanelOpen(false);
                   window.localStorage.setItem(COMPUTER_BROWSER_OPEN_KEY, "0");
                 }}
-                className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-(--surface) hover:text-(--fg)"
+                className="ml-1 inline-flex h-7 w-7 items-center justify-center hover:text-(--fg)"
                 title="Close"
                 aria-label="Close computer"
               >
@@ -1850,14 +1854,14 @@ function ModelPicker({
           setOpen((value) => !value);
         }}
         disabled={disabled}
-        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[140px] items-center gap-1.5 rounded-md border-0 bg-transparent px-2 !text-xs text-(--fg) hover:bg-(--surface) disabled:opacity-60"
+        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[150px] items-center gap-1.5 bg-transparent px-2 !text-xs text-(--fg) hover:text-(--accent) disabled:opacity-60"
         title={active?.name || triggerLabel}
       >
         <span className="min-w-0 max-w-[118px] truncate">{triggerLabel}</span>
         <ChevronDownIcon className="h-3 w-3 shrink-0 text-(--dim)" />
       </button>
       {open ? (
-        <div className="absolute right-0 top-10 z-50 w-72 rounded-md border border-(--border) bg-(--surface) shadow-lg">
+        <div className="absolute bottom-9 right-0 z-50 w-72 rounded-md border border-(--border) bg-(--surface) shadow-lg">
           <div className="max-h-72 overflow-y-auto p-1">
             {models.map((model) => {
               const isActive = model.id === selectedModel;
@@ -1869,7 +1873,7 @@ function ModelPicker({
                     onSelect(model.id);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-(--bg) ${
+                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-xs hover:bg-(--bg) ${
                     isActive ? "bg-(--bg)" : ""
                   }`}
                 >

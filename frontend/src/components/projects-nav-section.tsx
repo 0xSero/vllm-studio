@@ -671,7 +671,7 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-7 items-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg) transition-colors">
+      <div className="group flex h-7 items-center text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
@@ -696,7 +696,7 @@ function ProjectRow({
             event.stopPropagation();
             onRemove();
           }}
-          className="mr-2 rounded p-0.5 text-(--dim) opacity-0 hover:bg-(--surface) hover:text-(--err) group-hover:opacity-100"
+          className="mr-2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
           title="Remove from list"
           aria-label="Remove project"
         >
@@ -807,7 +807,7 @@ function ProjectSessions({
             new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
           );
         }}
-        className="h-6 flex items-center gap-1.5 pl-7 pr-2 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
+        className="flex h-6 items-center gap-1.5 pl-[3.25rem] pr-2 text-(--dim) transition-colors hover:text-(--fg)"
         title="Start a new chat in this project"
       >
         <PlusIcon className="w-3 h-3 shrink-0" />
@@ -902,10 +902,8 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group h-7 flex items-center gap-1.5 rounded-md border-l-2 pl-6 pr-2 transition-colors ${
-    isActive
-      ? "border-(--accent)/80 bg-(--active) text-(--fg) hover:bg-(--active)"
-      : "border-transparent text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+  const rowClass = `group flex h-7 items-center gap-1.5 pl-[3.25rem] pr-2 transition-colors ${
+    isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
   if (renaming) {
@@ -992,7 +990,7 @@ function ActiveSessionRow({
       {session.piSessionId ? (
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}&split=1`}
-          className="rounded px-1 text-[10px] text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
@@ -1007,7 +1005,7 @@ function ActiveSessionRow({
               }),
             );
           }}
-          className="rounded px-1 text-[10px] text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
@@ -1021,7 +1019,7 @@ function ActiveSessionRow({
             event.stopPropagation();
             setMenuOpen((value) => !value);
           }}
-          className="rounded p-0.5 text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           aria-label="Session options"
           title="Session options"
         >
@@ -1119,7 +1117,7 @@ function SessionRow({
 
   return (
     <div
-      className="group h-6 flex items-center gap-1.5 pl-7 pr-1.5 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
+      className="group flex h-6 items-center gap-1.5 pl-[3.25rem] pr-1.5 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1151,7 +1149,7 @@ function SessionRow({
       <div ref={menuRef} className="relative shrink-0">
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&split=1`}
-          className="rounded px-1 text-[10px] text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
@@ -1163,7 +1161,7 @@ function SessionRow({
             event.stopPropagation();
             setMenuOpen((value) => !value);
           }}
-          className="rounded p-0.5 text-(--dim) opacity-0 hover:bg-(--bg) hover:text-(--fg) group-hover:opacity-100"
+          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           aria-label="Session options"
           title="Session options"
         >
@@ -1247,7 +1245,7 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`shrink-0 rounded p-0.5 transition-opacity hover:bg-(--bg) hover:text-(--fg) disabled:opacity-20 ${
+      className={`shrink-0 p-0.5 transition-opacity hover:text-(--fg) disabled:opacity-20 ${
         pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-0 group-hover:opacity-100"
       }`}
       aria-pressed={pinned}

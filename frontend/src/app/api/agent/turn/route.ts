@@ -16,6 +16,7 @@ type TurnRequest = {
   // When true, pi-runtime loads the browser extension so the agent can drive
   // the embedded webview via tool calls.
   browserToolEnabled?: boolean;
+  plugins?: Array<{ id?: string; name?: string; path?: string }>;
   // Send mode (matches pi-mono RPC): "prompt" runs immediately (or queues with
   // streamingBehavior), "steer" interrupts the current turn between tool
   // executions and the next LLM call, "follow_up" waits for the agent to
@@ -57,6 +58,15 @@ export async function POST(request: NextRequest) {
       ? body.piSessionId.trim()
       : null;
   const browserToolEnabled = body.browserToolEnabled === true;
+  const plugins = Array.isArray(body.plugins)
+    ? body.plugins
+        .map((plugin) => ({
+          id: typeof plugin.id === "string" ? plugin.id : "",
+          name: typeof plugin.name === "string" ? plugin.name : "",
+          path: typeof plugin.path === "string" ? plugin.path : undefined,
+        }))
+        .filter((plugin) => plugin.name || plugin.id)
+    : [];
   const mode: TurnRequest["mode"] =
     body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const streamingBehavior =
@@ -85,7 +95,12 @@ export async function POST(request: NextRequest) {
               ? (existingStatus.piSessionId ?? piSessionId)
               : piSessionId;
         sse(controller, { type: "status", phase: "starting", sessionId, modelId, cwd }, isOpen);
-        await session.ensureStarted(modelId, cwd, effectivePiSessionId, browserToolEnabled);
+        if (mode === "prompt" || !existingStatus.running) {
+          await session.ensureStarted(modelId, cwd, effectivePiSessionId, {
+            browserToolEnabled,
+            plugins,
+          });
+        }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);
         if (mode === "steer") {
           await session.steer(message);

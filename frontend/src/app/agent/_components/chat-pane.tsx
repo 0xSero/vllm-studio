@@ -715,6 +715,12 @@ export function ChatPane({
     [tabs, activeTabId],
   );
   const running = activeTab?.status === "running" || activeTab?.status === "starting";
+  const selectedPlugins = activeTab?.plugins ?? [];
+  const computerUseLoaded = selectedPlugins.some((plugin) =>
+    [plugin.id, plugin.name, plugin.path].some((value) =>
+      value?.toLowerCase().includes("computer-use"),
+    ),
+  );
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
   const mentionRows = useMemo(() => {
     if (!mention) return [];
@@ -1044,6 +1050,7 @@ export function ChatPane({
             piSessionId,
             mode,
             browserToolEnabled,
+            plugins: tabsRef.current.find((tab) => tab.id === activeTabId)?.plugins ?? [],
           }),
         });
         if (!response.ok || !response.body) {
@@ -1076,7 +1083,7 @@ export function ChatPane({
         return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
       }
     },
-    [modelId, cwd, browserToolEnabled],
+    [modelId, cwd, browserToolEnabled, activeTabId],
   );
 
   const submitPrompt = useCallback(
@@ -1153,6 +1160,7 @@ export function ChatPane({
               tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
               selectedTab.piSessionId,
             browserToolEnabled,
+            plugins: selectedTab.plugins ?? [],
           }),
         });
         if (!response.ok || !response.body) {
@@ -1656,6 +1664,10 @@ export function ChatPane({
     return () => onRegisterHandle(null);
   }, [onRegisterHandle]);
 
+  const queue = activeTab?.queue ?? [];
+  const visibleQueue = queueExpanded ? queue : queue.slice(-1);
+  const latestQueued = queue[queue.length - 1] ?? null;
+
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -1725,27 +1737,80 @@ export function ChatPane({
       </div>
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
+        {queue.length > 0 ? (
+          <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-2xl bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
+            <button
+              type="button"
+              onClick={() => setQueueExpanded((value) => !value)}
+              className="flex w-full min-w-0 items-center gap-2 text-left"
+              aria-expanded={queueExpanded}
+              title="Queued follow-ups and steers"
+            >
+              <ChevronDownIcon
+                className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${
+                  queueExpanded ? "rotate-180" : "-rotate-90"
+                }`}
+              />
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
+                queue {queue.length}
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {latestQueued?.text ?? "No queued message"}
+              </span>
+            </button>
+            {queueExpanded ? (
+              <div className="mt-1 space-y-0.5">
+                {visibleQueue.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex min-w-0 items-center gap-2 py-1"
+                    title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
+                  >
+                    <span
+                      className={`shrink-0 font-mono text-[10px] uppercase tracking-wide ${
+                        item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"
+                      }`}
+                    >
+                      {item.mode === "steer" ? "steer" : "queue"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{item.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeQueued(item.id)}
+                      className="shrink-0 p-0.5 text-(--dim) hover:text-(--fg)"
+                      aria-label="Remove queued message"
+                      title="Remove queued message"
+                    >
+                      <CloseIcon className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-hidden rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-shadow)] transition-shadow ${
-            composerDragActive ? "ring-1 ring-(--accent)/60" : ""
+          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-2xl bg-(--composer) shadow-none transition-colors ${
+            composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""
           }`}
         >
           {composerDragActive ? (
-            <div className="border-b border-(--accent)/50 bg-(--accent)/10 px-2 py-1.5 text-[11px] text-(--accent)">
+            <div className="px-4 pt-2 text-[11px] text-(--accent)">
               Drop files to attach to the next message.
             </div>
           ) : null}
           {(activeTab?.plugins?.length ?? 0) + (activeTab?.skills?.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[11px]">
               {(activeTab?.plugins ?? []).map((plugin) => (
                 <LoadedContextTab
                   key={`plugin-${plugin.id}`}
                   prefix="@"
                   label={plugin.name}
                   title={plugin.path}
+                  active={plugin.name.toLowerCase().includes("computer-use")}
                   onRemove={() => removeLoadedContext("plugin", plugin.id)}
                 />
               ))}
@@ -1755,71 +1820,14 @@ export function ChatPane({
                   prefix="$"
                   label={skill.name}
                   title={skill.path}
+                  active={false}
                   onRemove={() => removeLoadedContext("skill", skill.id)}
                 />
               ))}
             </div>
           ) : null}
-          {(activeTab?.queue ?? []).length > 0 ? (
-            <div className="border-b border-(--border)/50 px-2 py-1.5">
-              <div className="mx-auto w-[85%] max-w-full rounded-md border border-(--border)/70 bg-(--bg)/60 text-[11px]">
-                {(() => {
-                  const queue = activeTab?.queue ?? [];
-                  const visibleQueue = queueExpanded ? queue : queue.slice(-1);
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setQueueExpanded((value) => !value)}
-                        className="flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left text-(--fg) hover:bg-(--hover)"
-                        aria-expanded={queueExpanded}
-                        title="Queued follow-ups and steers"
-                      >
-                        <ChevronDownIcon
-                          className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${
-                            queueExpanded ? "rotate-180" : "-rotate-90"
-                          }`}
-                        />
-                        <span className="shrink-0 rounded border border-(--border)/70 px-1 text-[9px] uppercase text-(--dim)">
-                          queue {queue.length}
-                        </span>
-                        <span className="min-w-0 truncate text-(--fg)">
-                          {queue[queue.length - 1]?.text}
-                        </span>
-                      </button>
-                      {queueExpanded ? (
-                        <div className="border-t border-(--border)/60">
-                          {visibleQueue.map((item) => (
-                            <div
-                              key={item.id}
-                              className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-(--fg)"
-                              title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
-                            >
-                              <span className="shrink-0 rounded border border-(--accent)/40 px-1 text-[9px] uppercase text-(--accent)">
-                                {item.mode === "steer" ? "steer" : "queue"}
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">{item.text}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeQueued(item.id)}
-                                className="shrink-0 rounded p-0.5 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-                                aria-label="Remove queued message"
-                                title="Remove queued message"
-                              >
-                                <CloseIcon className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          ) : null}
           {mention ? (
-            <div className="border-b border-(--border)/60 bg-(--bg)/70 px-2 py-1.5">
+            <div className="px-4 pt-2">
               <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
                 {mention.kind === "plugin" ? "Plugins" : "Skills"}
               </div>
@@ -1831,7 +1839,7 @@ export function ChatPane({
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => void selectMentionRow(row)}
-                      className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1 text-left hover:bg-(--hover)"
+                      className="flex min-w-0 items-center justify-between gap-3 py-1 text-left text-(--dim) hover:text-(--fg)"
                     >
                       <span className="min-w-0 truncate text-[12px] text-(--fg)">
                         {mention.kind === "plugin" ? "@" : "$"}
@@ -1852,11 +1860,11 @@ export function ChatPane({
             </div>
           ) : null}
           {attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 border-b border-(--border)/50 px-2 py-1.5">
+            <div className="flex flex-wrap gap-1.5 px-4 pt-2">
               {attachments.map((file) => (
                 <span
                   key={file.id}
-                  className="inline-flex max-w-[220px] items-center gap-1 rounded border border-(--border)/70 bg-(--bg) px-1.5 py-0.5 text-[11px] text-(--dim)"
+                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[11px] text-(--dim)"
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
                   {isImageAttachment(file) ? (
@@ -1865,7 +1873,7 @@ export function ChatPane({
                     <img
                       src={file.content}
                       alt=""
-                      className="h-7 w-7 shrink-0 rounded border border-(--border)/70 object-cover"
+                      className="h-7 w-7 shrink-0 rounded object-cover"
                     />
                   ) : (
                     <FileIcon className="h-3 w-3 shrink-0" />
@@ -1877,7 +1885,7 @@ export function ChatPane({
                     onClick={() =>
                       setAttachments((current) => current.filter((item) => item.id !== file.id))
                     }
-                    className="rounded p-0.5 hover:bg-(--surface) hover:text-(--fg)"
+                    className="p-0.5 hover:text-(--fg)"
                     aria-label={`Remove ${file.name}`}
                     title={`Remove ${file.name}`}
                   >
@@ -1954,9 +1962,9 @@ export function ChatPane({
                     ? `Steer ${modelName} (Enter) · queue with Tab · Esc to pause`
                     : `Ask ${modelName} (Enter) · queue with Tab · paste/drop files`
             }
-            className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
+            className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex min-h-10 items-center gap-1.5 overflow-hidden border-t border-(--border) bg-(--composer-footer) px-3 py-1.5 text-xs">
+          <div className="flex min-h-10 items-center gap-1.5 overflow-hidden bg-transparent px-3 pb-2 pt-1 text-xs">
             <input
               ref={fileInputRef}
               type="file"
@@ -1968,7 +1976,7 @@ export function ChatPane({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={readingAttachments || running}
-              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--bg) hover:text-(--fg) disabled:opacity-30"
+              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg) disabled:opacity-30"
               aria-label="Attach files"
               title="Attach files (or paste/drop into composer)"
             >
@@ -1984,12 +1992,15 @@ export function ChatPane({
                   : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
               }
               className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${
-                browserToolEnabled
-                  ? "bg-(--accent)/10 text-(--accent)"
-                  : "text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                browserToolEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"
               }`}
             >
-              <GlobeIcon className="h-3.5 w-3.5" />
+              <span className="relative inline-flex">
+                <GlobeIcon className="h-3.5 w-3.5" />
+                {computerUseLoaded ? (
+                  <span className="absolute -right-1 -top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
+                ) : null}
+              </span>
             </button>
             <div className="min-w-[7rem] max-w-[12rem] flex-[0_1_12rem]">
               {projectSelector ? (
@@ -2001,7 +2012,7 @@ export function ChatPane({
               ) : null}
             </div>
             {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
+              <span className="inline-flex min-w-0 shrink items-center gap-1 px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
                 <GitBranchIcon className="h-3 w-3 shrink-0" />
                 <span className="truncate">{gitBranch}</span>
               </span>
@@ -2009,7 +2020,7 @@ export function ChatPane({
               <button
                 type="button"
                 onClick={onInitGit}
-                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg)"
                 aria-label="Initialize git repository"
                 title="Init git"
               >
@@ -2025,8 +2036,8 @@ export function ChatPane({
                 ) : null}
               </span>
             ) : null}
-            {modelSelector}
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {modelSelector}
               {running ? (
                 <>
                   {activeTab?.input.trim() ? (
@@ -2034,14 +2045,14 @@ export function ChatPane({
                       <button
                         type="button"
                         onClick={() => void queueMessage()}
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-2 text-[11px] text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center px-1.5 text-[11px] text-(--dim) underline-offset-2 hover:text-(--fg) hover:underline"
                         title="Queue (Tab)"
                       >
                         Queue
                       </button>
                       <button
                         type="submit"
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/20"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/15 hover:text-(--fg)"
                         title="Steer (Enter): interrupt current turn and send"
                       >
                         <SendIcon className="h-3 w-3" /> Steer
@@ -2051,7 +2062,7 @@ export function ChatPane({
                   <button
                     type="button"
                     onClick={() => void abortTurn()}
-                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 px-2 text-xs text-(--dim) hover:text-(--fg)"
                     title="Pause (Esc)"
                   >
                     <StopIcon className="h-3 w-3" /> Pause
@@ -2065,7 +2076,7 @@ export function ChatPane({
                     !modelId ||
                     readingAttachments
                   }
-                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--fg) hover:bg-(--bg) disabled:opacity-30"
+                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--fg) hover:text-(--accent) disabled:opacity-30"
                   aria-label="Send"
                   title="Send (Enter) · Queue (Tab)"
                 >
@@ -2092,24 +2103,32 @@ function LoadedContextTab({
   prefix,
   label,
   title,
+  active,
   onRemove,
 }: {
   prefix: "@" | "$";
   label: string;
   title?: string;
+  active?: boolean;
   onRemove: () => void;
 }) {
   return (
     <span
-      className="inline-flex max-w-[240px] items-center gap-1 rounded-t-md border border-b-0 border-(--border) bg-(--surface) px-2 py-1 text-[11px] text-(--fg)"
+      className="inline-flex max-w-[240px] items-center gap-1 py-0.5 text-[11px] text-(--fg)"
       title={title ?? label}
     >
       <span className="font-mono text-(--accent)">{prefix}</span>
+      {active ? (
+        <span
+          className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--accent)"
+          aria-hidden="true"
+        />
+      ) : null}
       <span className="truncate">{label}</span>
       <button
         type="button"
         onClick={onRemove}
-        className="rounded p-0.5 text-(--dim) hover:bg-(--bg) hover:text-(--fg)"
+        className="p-0.5 text-(--dim) hover:text-(--fg)"
         aria-label={`Unload ${prefix}${label}`}
         title={`Unload ${prefix}${label}`}
       >
