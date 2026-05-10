@@ -1,16 +1,16 @@
 // CRITICAL
 "use client";
 
-import { formatDuration } from "@/lib/formatters";
+import { formatDurationOrUnavailable } from "@/lib/formatters";
 import { Timer, TrendingDown, TrendingUp } from "lucide-react";
 
 interface LatencyStats {
-  avg_ms: number;
-  p50_ms: number;
-  p95_ms: number;
-  p99_ms: number;
-  min_ms?: number;
-  max_ms?: number;
+  avg_ms: number | null;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  min_ms?: number | null;
+  max_ms?: number | null;
 }
 
 interface PerformanceStats {
@@ -23,11 +23,11 @@ function MiniBar({
   max,
   colorClass = "bg-(--fg)/30",
 }: {
-  value: number;
+  value: number | null;
   max: number;
   colorClass?: string;
 }) {
-  const percentage = Math.min(100, (value / max) * 100);
+  const percentage = Math.min(100, ((value ?? 0) / (max > 0 ? max : 1)) * 100);
   return (
     <div className="h-2 w-full border border-(--border) bg-(--bg)">
       <div className={`h-full ${colorClass}`} style={{ width: `${percentage}%` }} />
@@ -36,8 +36,12 @@ function MiniBar({
 }
 
 export function PerformanceDetails(stats: PerformanceStats) {
-  const maxLatency = Math.max(stats.latency.avg_ms, stats.latency.p95_ms, stats.latency.p99_ms);
-  const maxTTFT = Math.max(stats.ttft.avg_ms, stats.ttft.p95_ms, stats.ttft.p99_ms);
+  const maxLatency = Math.max(
+    stats.latency.avg_ms ?? 0,
+    stats.latency.p95_ms ?? 0,
+    stats.latency.p99_ms ?? 0,
+  );
+  const maxTTFT = Math.max(stats.ttft.avg_ms ?? 0, stats.ttft.p95_ms ?? 0, stats.ttft.p99_ms ?? 0);
 
   return (
     <div className="border border-(--border) bg-(--surface) overflow-hidden">
@@ -69,7 +73,7 @@ export function PerformanceDetails(stats: PerformanceStats) {
               <div key={item.label} className="space-y-1.5">
                 <div className="flex items-center justify-between font-mono text-sm">
                   <span className="text-(--dim)">{item.label}</span>
-                  <span className="tabular-nums">{formatDuration(item.value)}</span>
+                  <span className="tabular-nums">{formatDurationOrUnavailable(item.value)}</span>
                 </div>
                 <MiniBar value={item.value} max={maxLatency} colorClass={item.color} />
               </div>
@@ -80,11 +84,11 @@ export function PerformanceDetails(stats: PerformanceStats) {
             <div className="mt-3 flex items-center justify-between border-t border-(--border) pt-3 font-mono text-xs text-(--dim)">
               <div className="flex items-center gap-1">
                 <TrendingDown className="h-3 w-3" />
-                <span>Min: {formatDuration(stats.latency.min_ms)}</span>
+                <span>Min: {formatDurationOrUnavailable(stats.latency.min_ms)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" />
-                <span>Max: {formatDuration(stats.latency.max_ms)}</span>
+                <span>Max: {formatDurationOrUnavailable(stats.latency.max_ms)}</span>
               </div>
             </div>
           )}
@@ -114,7 +118,7 @@ export function PerformanceDetails(stats: PerformanceStats) {
               <div key={item.label} className="space-y-1.5">
                 <div className="flex items-center justify-between font-mono text-sm">
                   <span className="text-(--dim)">{item.label}</span>
-                  <span className="tabular-nums">{formatDuration(item.value)}</span>
+                  <span className="tabular-nums">{formatDurationOrUnavailable(item.value)}</span>
                 </div>
                 <MiniBar value={item.value} max={maxTTFT} />
               </div>

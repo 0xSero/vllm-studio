@@ -5,7 +5,7 @@ import type { PeakMetrics } from "@/lib/types";
 import type { SortDirection, SortField } from "@/lib/types";
 import { Fragment } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { formatNumber, formatDuration } from "@/lib/formatters";
+import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
 import { getModelColor } from "@/lib/colors";
 import { SortHeader, StatusPill } from "./model-performance-table/components";
 
@@ -14,15 +14,15 @@ interface ModelData {
   requests: number;
   total_tokens: number;
   success_rate: number;
-  avg_latency_ms: number;
-  avg_ttft_ms: number;
+  avg_latency_ms: number | null;
+  avg_ttft_ms: number | null;
   tokens_per_sec: number | null;
   prefill_tps: number | null;
   generation_tps: number | null;
   prompt_tokens: number;
   completion_tokens: number;
   avg_tokens: number;
-  p50_latency_ms: number;
+  p50_latency_ms: number | null;
 }
 
 export function ModelPerformanceTable(
@@ -165,7 +165,7 @@ export function ModelPerformanceTable(
                         <StatusPill value={model.avg_latency_ms} type="latency" />
                       </td>
                       <td className="py-3 px-3 sm:px-4 text-right tabular-nums text-(--dim)">
-                        {formatDuration(model.avg_ttft_ms)}
+                        {formatDurationOrUnavailable(model.avg_ttft_ms)}
                       </td>
                       <td className="py-3 px-3 sm:px-4 text-right">
                         {model.prefill_tps || model.generation_tps ? (
@@ -236,7 +236,7 @@ export function ModelPerformanceTable(
                                 P50 Latency
                               </div>
                               <div className="px-3 py-3 font-mono tabular-nums">
-                                {formatDuration(model.p50_latency_ms)}
+                                {formatDurationOrUnavailable(model.p50_latency_ms)}
                               </div>
                             </div>
                             {peak && (

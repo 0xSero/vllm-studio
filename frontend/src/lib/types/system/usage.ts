@@ -16,18 +16,18 @@ export interface UsageStats {
     unique_users: number;
   };
   latency: {
-    avg_ms: number;
-    p50_ms: number;
-    p95_ms: number;
-    p99_ms: number;
-    min_ms: number;
-    max_ms: number;
+    avg_ms: number | null;
+    p50_ms: number | null;
+    p95_ms: number | null;
+    p99_ms: number | null;
+    min_ms: number | null;
+    max_ms: number | null;
   };
   ttft: {
-    avg_ms: number;
-    p50_ms: number;
-    p95_ms: number;
-    p99_ms: number;
+    avg_ms: number | null;
+    p50_ms: number | null;
+    p95_ms: number | null;
+    p99_ms: number | null;
   };
   tokens_per_request: {
     avg: number;
@@ -85,9 +85,9 @@ export interface UsageStats {
     prompt_tokens: number;
     completion_tokens: number;
     avg_tokens: number;
-    avg_latency_ms: number;
-    p50_latency_ms: number;
-    avg_ttft_ms: number;
+    avg_latency_ms: number | null;
+    p50_latency_ms: number | null;
+    avg_ttft_ms: number | null;
     tokens_per_sec: number | null;
     prefill_tps: number | null;
     generation_tps: number | null;
@@ -122,4 +122,3 @@ export interface UsageStats {
 
 export type SortField = "model" | "requests" | "tokens" | "success" | "latency" | "ttft" | "speed";
 export type SortDirection = "asc" | "desc";
-

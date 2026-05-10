@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatNumber } from "@/lib/formatters";
+import { formatDuration, formatDurationOrUnavailable, formatNumber } from "@/lib/formatters";
 import { normalizeUsageStats } from "./normalize-usage-stats";
 import type { UsageStats } from "@/lib/types";
 
@@ -17,6 +17,7 @@ describe("usage normalization", () => {
           requests: null,
           total_tokens: "2500",
           success_rate: null,
+          avg_ttft_ms: null,
           prefill_tps: "18393.5",
           generation_tps: null,
         },
@@ -33,6 +34,7 @@ describe("usage normalization", () => {
       requests: 0,
       total_tokens: 2500,
       success_rate: 0,
+      avg_ttft_ms: null,
       prefill_tps: 18393.5,
       generation_tps: null,
     });
@@ -44,5 +46,7 @@ describe("usage normalization", () => {
     expect(formatNumber(null)).toBe("0");
     expect(formatNumber(undefined)).toBe("0");
     expect(formatDuration(null)).toBe("0ms");
+    expect(formatDurationOrUnavailable(null)).toBe("unavailable");
+    expect(formatDurationOrUnavailable(0)).toBe("unavailable");
   });
 });

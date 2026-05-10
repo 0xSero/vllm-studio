@@ -88,4 +88,35 @@ describe("InferenceRequestStore", () => {
       success_rate: 50,
     });
   });
+
+  it("keeps unavailable timing metrics null instead of fake zeroes", () => {
+    const store = new InferenceRequestStore(temporaryDatabasePath());
+    store.record({
+      model: "glm-4.7",
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      status: 200,
+    });
+
+    const result = store.aggregate(new Set(["glm-4.7"]));
+    expect(result).not.toBeNull();
+    expect(result!["latency"]).toMatchObject({
+      avg_ms: null,
+      p50_ms: null,
+      p95_ms: null,
+      p99_ms: null,
+    });
+    expect(result!["ttft"]).toMatchObject({
+      avg_ms: null,
+      p50_ms: null,
+      p95_ms: null,
+      p99_ms: null,
+    });
+    const byModel = result!["by_model"] as Array<Record<string, unknown>>;
+    expect(byModel[0]).toMatchObject({
+      avg_latency_ms: null,
+      p50_latency_ms: null,
+      avg_ttft_ms: null,
+    });
+  });
 });

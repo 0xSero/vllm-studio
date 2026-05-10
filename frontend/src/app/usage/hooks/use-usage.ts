@@ -82,8 +82,8 @@ export function useUsage(source: UsageSource = "provider") {
     if (!stats) return [];
     const sorted = [...stats.by_model];
     sorted.sort((a, b) => {
-      let aVal: number | string;
-      let bVal: number | string;
+      let aVal: number | string | null;
+      let bVal: number | string | null;
 
       switch (sortField) {
         case "model":
@@ -121,9 +121,11 @@ export function useUsage(source: UsageSource = "provider") {
       if (typeof aVal === "string" && typeof bVal === "string") {
         return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
+      const aNumber = aVal ?? -1;
+      const bNumber = bVal ?? -1;
       return sortDirection === "asc"
-        ? (aVal as number) - (bVal as number)
-        : (bVal as number) - (aVal as number);
+        ? (aNumber as number) - (bNumber as number)
+        : (bNumber as number) - (aNumber as number);
     });
     return sorted;
   }, [sortField, sortDirection, stats]);

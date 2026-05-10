@@ -3,7 +3,7 @@
 
 import type { ReactNode } from "react";
 import type { SortDirection, SortField } from "@/lib/types";
-import { formatDuration } from "@/lib/formatters";
+import { formatDurationOrUnavailable } from "@/lib/formatters";
 
 export function SortHeader({
   field,
@@ -37,7 +37,17 @@ export function SortHeader({
   );
 }
 
-export function StatusPill({ value, type }: { value: number; type: "success" | "latency" }) {
+export function StatusPill({
+  value,
+  type,
+}: {
+  value: number | null;
+  type: "success" | "latency";
+}) {
+  if (value === null) {
+    return <span className="font-mono text-sm tabular-nums text-(--dim)">unavailable</span>;
+  }
+
   const getColor = () => {
     if (type === "success") {
       if (value >= 95) return "text-(--hl2)";
@@ -51,7 +61,7 @@ export function StatusPill({ value, type }: { value: number; type: "success" | "
 
   return (
     <span className={`font-mono text-sm tabular-nums ${getColor()}`}>
-      {type === "success" ? `${value.toFixed(1)}%` : formatDuration(value)}
+      {type === "success" ? `${value.toFixed(1)}%` : formatDurationOrUnavailable(value)}
     </span>
   );
 }

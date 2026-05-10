@@ -53,6 +53,14 @@ function formatDuration(value: number | null | undefined): string {
   return Math.round(ms) + "ms";
 }
 
+function formatDurationOrUnavailable(value: number | null | undefined): string {
+  const parsed = Number(value);
+  if (value === null || value === undefined || !Number.isFinite(parsed) || parsed <= 0) {
+    return "unavailable";
+  }
+  return formatDuration(value);
+}
+
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -73,4 +81,12 @@ function formatBytes(bytes: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export { toGB, toGBFromMB, formatNumber, formatDuration, formatDate, formatBytes };
+export {
+  toGB,
+  toGBFromMB,
+  formatNumber,
+  formatDuration,
+  formatDurationOrUnavailable,
+  formatDate,
+  formatBytes,
+};

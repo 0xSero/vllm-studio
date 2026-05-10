@@ -41,6 +41,12 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 /**
  * Persistent log of every inference request that traverses the OpenAI
  * proxy. Source of truth for the /usage analytics dashboard.
@@ -314,18 +320,18 @@ export class InferenceRequestStore {
         unique_users: 0,
       },
       latency: {
-        avg_ms: toFiniteNumber(successRow?.["avg_dur"]),
-        p50_ms: 0,
-        p95_ms: 0,
-        p99_ms: 0,
-        min_ms: 0,
-        max_ms: 0,
+        avg_ms: toNullableNumber(successRow?.["avg_dur"]),
+        p50_ms: null,
+        p95_ms: null,
+        p99_ms: null,
+        min_ms: null,
+        max_ms: null,
       },
       ttft: {
-        avg_ms: toFiniteNumber(successRow?.["avg_ttft"]),
-        p50_ms: 0,
-        p95_ms: 0,
-        p99_ms: 0,
+        avg_ms: toNullableNumber(successRow?.["avg_ttft"]),
+        p50_ms: null,
+        p95_ms: null,
+        p99_ms: null,
       },
       tokens_per_request: {
         avg: totalRequests ? Math.round(totalTokens / totalRequests) : 0,
@@ -399,9 +405,9 @@ export class InferenceRequestStore {
           prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
           completion_tokens: toFiniteNumber(row["completion_tokens"]),
           avg_tokens: requests ? Math.round(toFiniteNumber(row["total_tokens"]) / requests) : 0,
-          avg_latency_ms: toFiniteNumber(row["avg_latency_ms"]),
-          p50_latency_ms: 0,
-          avg_ttft_ms: toFiniteNumber(row["avg_ttft_ms"]),
+          avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
+          p50_latency_ms: null,
+          avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
           tokens_per_sec: null,
           prefill_tps: null,
           generation_tps: null,
