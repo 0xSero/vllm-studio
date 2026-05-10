@@ -891,8 +891,8 @@ function SkillsSettings() {
             <SettingsRow
               key={skill.id}
               label={skill.name}
-              description={skill.path}
-              value={<SettingsValue mono>{skill.source}</SettingsValue>}
+              description="Available in the composer with $."
+              value={<SettingsValue mono>{`${skill.source} · ${skill.path}`}</SettingsValue>}
               status={<StatusPill tone="info">discovered</StatusPill>}
             />
           ))
