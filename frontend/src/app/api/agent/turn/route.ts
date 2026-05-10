@@ -24,6 +24,11 @@ type TurnRequest = {
     mcpConfigPath?: string;
     appPath?: string;
   }>;
+  skills?: Array<{
+    id?: string;
+    name?: string;
+    path?: string;
+  }>;
   // Send mode (matches pi-mono RPC): "prompt" runs immediately (or queues with
   // streamingBehavior), "steer" interrupts the current turn between tool
   // executions and the next LLM call, "follow_up" waits for the agent to
@@ -78,6 +83,15 @@ export async function POST(request: NextRequest) {
         }))
         .filter((plugin) => plugin.name || plugin.id)
     : [];
+  const skills = Array.isArray(body.skills)
+    ? body.skills
+        .map((skill) => ({
+          id: typeof skill.id === "string" ? skill.id : "",
+          name: typeof skill.name === "string" ? skill.name : "",
+          path: typeof skill.path === "string" ? skill.path : undefined,
+        }))
+        .filter((skill) => skill.name || skill.id || skill.path)
+    : [];
   const mode: TurnRequest["mode"] =
     body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const streamingBehavior =
@@ -110,6 +124,7 @@ export async function POST(request: NextRequest) {
           await session.ensureStarted(modelId, cwd, effectivePiSessionId, {
             browserToolEnabled,
             plugins,
+            skills,
           });
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);

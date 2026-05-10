@@ -145,6 +145,10 @@ class McpClient {
     return this.request("tools/call", { name, arguments: args }, TOOL_TIMEOUT_MS, signal);
   }
 
+  dispose() {
+    if (!this.child.killed) this.child.kill("SIGTERM");
+  }
+
   private request(
     method: string,
     params: unknown,
@@ -246,6 +250,7 @@ async function registerOneServer(
   try {
     client = new McpClient(serverName, serverConfig, baseDir);
     tools = await client.init();
+    process.once("exit", () => client.dispose());
     status.state = "ready";
     status.tools = tools.map((tool) => tool.name);
   } catch (error) {
@@ -273,7 +278,7 @@ async function registerOneServer(
   }
 }
 
-export default function registerMcpPlugins(pi: ExtensionAPI) {
+export default async function registerMcpPlugins(pi: ExtensionAPI) {
   pi.registerTool({
     name: "mcp_plugin_status",
     label: "MCP Plugin Status",
@@ -295,6 +300,7 @@ export default function registerMcpPlugins(pi: ExtensionAPI) {
       };
     },
   });
+  const registrations: Promise<void>[] = [];
   for (const plugin of readPluginConfigs()) {
     let servers: Record<string, McpServerConfig> = {};
     try {
@@ -309,7 +315,8 @@ export default function registerMcpPlugins(pi: ExtensionAPI) {
     }
     for (const [serverName, serverConfig] of Object.entries(servers)) {
       if (!serverConfig.command) continue;
-      void registerOneServer(pi, plugin, serverName, serverConfig);
+      registrations.push(registerOneServer(pi, plugin, serverName, serverConfig));
     }
   }
+  await Promise.all(registrations);
 }

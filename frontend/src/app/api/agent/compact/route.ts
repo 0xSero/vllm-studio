@@ -19,6 +19,7 @@ type CompactRequest = {
     mcpConfigPath?: string;
     appPath?: string;
   }>;
+  skills?: Array<{ id?: string; name?: string; path?: string }>;
 };
 
 export async function POST(request: NextRequest) {
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
     await session.ensureStarted(modelId, cwd, piSessionId, {
       browserToolEnabled: body.browserToolEnabled === true,
       plugins: Array.isArray(body.plugins) ? body.plugins : [],
+      skills: Array.isArray(body.skills) ? body.skills : [],
     });
     const result = await session.compact(body.customInstructions?.trim() || undefined);
     return Response.json({ ok: true, result, status: session.status });

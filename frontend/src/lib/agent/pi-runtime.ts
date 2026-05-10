@@ -13,6 +13,7 @@ import { listProjectsFromStore } from "./projects-store";
 
 const PROVIDER_ID = "vllm-studio";
 const DEFAULT_SESSION_ID = "default";
+const RPC_COMMAND_TIMEOUT_MS = 30_000;
 
 type PiResponse = {
   id?: string;
@@ -45,9 +46,16 @@ type RuntimePluginRef = {
   appPath?: string;
 };
 
+type RuntimeSkillRef = {
+  id?: string;
+  name?: string;
+  path?: string;
+};
+
 type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   plugins?: RuntimePluginRef[];
+  skills?: RuntimeSkillRef[];
 };
 
 function normalizeBackendUrl(value: string): string {
@@ -162,9 +170,13 @@ function pluginFingerprint(options: RuntimeStartOptions): string {
         `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.mcpConfigPath ?? ""}:${plugin.appPath ?? ""}`,
     )
     .sort();
+  const skills = (options.skills ?? [])
+    .map((skill) => `${skill.name ?? ""}:${skill.path ?? ""}`)
+    .sort();
   return JSON.stringify({
     browser: options.browserToolEnabled === true,
     plugins: names,
+    skills,
   });
 }
 
@@ -196,19 +208,27 @@ function launchComputerUseApp(plugins: RuntimePluginRef[]) {
 }
 
 function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
-  const seen = new Set<string>();
-  return plugins
-    .flatMap((plugin) => [
+  return uniqueExistingPaths(
+    plugins.flatMap((plugin) => [
       plugin.skillPath,
       plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, "skills") : null,
-    ])
-    .filter((value): value is string => {
-      if (!value || !existsSync(value)) return false;
-      const resolved = path.resolve(value);
-      if (seen.has(resolved)) return false;
-      seen.add(resolved);
-      return true;
-    });
+    ]),
+  );
+}
+
+function selectedSkillPaths(skills: RuntimeSkillRef[]): string[] {
+  return uniqueExistingPaths(skills.map((skill) => skill.path));
+}
+
+function uniqueExistingPaths(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  return values.filter((value): value is string => {
+    if (!value || !existsSync(value)) return false;
+    const resolved = path.resolve(value);
+    if (seen.has(resolved)) return false;
+    seen.add(resolved);
+    return true;
+  });
 }
 
 function pluginMcpConfigs(
@@ -355,6 +375,7 @@ class PiRpcSession extends EventEmitter {
     this.currentPiSessionId = piSessionId;
     this.currentPluginFingerprint = pluginFingerprint(options);
     const plugins = options.plugins ?? [];
+    const skills = options.skills ?? [];
     const shouldLoadBrowserTool =
       options.browserToolEnabled === true ||
       plugins.some((plugin) => pluginNameMatches(plugin, "browser-use"));
@@ -375,7 +396,10 @@ class PiRpcSession extends EventEmitter {
       // resolves it within the current cwd's session directory.
       args.push("--session", piSessionId);
     }
-    for (const skillPath of pluginSkillPaths(plugins)) {
+    for (const skillPath of uniqueExistingPaths([
+      ...pluginSkillPaths(plugins),
+      ...selectedSkillPaths(skills),
+    ])) {
       args.push("--skill", skillPath);
     }
     const mcpConfigs = pluginMcpConfigs(plugins);
@@ -505,10 +529,24 @@ class PiRpcSession extends EventEmitter {
     const payload = { id, ...command };
     const line = `${JSON.stringify(payload)}\n`;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Timed out waiting for pi rpc command '${String(command.type ?? id)}'`));
+      }, RPC_COMMAND_TIMEOUT_MS);
+      this.pending.set(id, {
+        resolve: (response) => {
+          clearTimeout(timeout);
+          resolve(response);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
       this.process?.stdin.write(line, (error) => {
         if (error) {
           this.pending.delete(id);
+          clearTimeout(timeout);
           reject(error);
         }
       });

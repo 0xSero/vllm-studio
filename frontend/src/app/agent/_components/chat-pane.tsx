@@ -1088,6 +1088,7 @@ export function ChatPane({
             mode,
             browserToolEnabled,
             plugins: tabsRef.current.find((tab) => tab.id === activeTabId)?.plugins ?? [],
+            skills: tabsRef.current.find((tab) => tab.id === activeTabId)?.skills ?? [],
           }),
         });
         if (!response.ok || !response.body) {
@@ -1198,6 +1199,7 @@ export function ChatPane({
               selectedTab.piSessionId,
             browserToolEnabled,
             plugins: selectedTab.plugins ?? [],
+            skills: selectedTab.skills ?? [],
           }),
         });
         if (!response.ok || !response.body) {
@@ -1719,6 +1721,7 @@ export function ChatPane({
           piSessionId: activeTab.piSessionId,
           browserToolEnabled,
           plugins: activeTab.plugins ?? [],
+          skills: activeTab.skills ?? [],
         }),
       });
       const payload = await safeJson<{ error?: string; status?: { piSessionId?: string | null } }>(
