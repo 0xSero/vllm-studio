@@ -908,16 +908,11 @@ function ActiveSessionRow({
 
   const content = (
     <>
-      <FileIcon className="h-3 w-3 shrink-0 opacity-70" />
+      <FileIcon
+        className={`h-3 w-3 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
+        aria-label={isRunning ? `Session ${session.status}` : undefined}
+      />
       <span className="min-w-0 flex-1 truncate text-[11px] font-normal">{label}</span>
-      {isRunning ? (
-        <span
-          className="shrink-0 truncate text-[10px] text-(--dim) animate-pulse"
-          title={session.status}
-        >
-          {session.status}
-        </span>
-      ) : null}
     </>
   );
 
