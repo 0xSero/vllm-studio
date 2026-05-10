@@ -18,6 +18,7 @@ export type ComposerPluginRef = {
   appConfigPath?: string;
   appIds?: string[];
   appPath?: string;
+  instructions?: string;
 };
 
 export type ComposerSkillRef = {
@@ -81,6 +82,7 @@ export function sanitizeComposerPlugins(value: unknown): ComposerPluginRef[] {
         appConfigPath: stringField(record, "appConfigPath"),
         appIds: stringArrayField(record, "appIds"),
         appPath: stringField(record, "appPath"),
+        instructions: stringField(record, "instructions"),
       };
       return plugin.name || plugin.id || plugin.path ? [plugin] : [];
     }),
@@ -168,6 +170,7 @@ function selectedContextLines(
           `Plugin ${label} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`,
         );
       }
+      if (plugin.instructions) lines.push(`Plugin ${label} instructions:\n${plugin.instructions}`);
       const runtime = pluginRuntimeDetails(plugin);
       if (runtime.length) {
         lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);

@@ -922,13 +922,26 @@ export function ChatPane({
       const selectedMention = mention;
       const input = replaceComposerMention(activeTab.input, selectedMention, row.name);
       let selectedRow = row;
-      if (selectedMention.kind === "skill" && "path" in row && row.path) {
-        const loaded = await fetch(`/api/agent/skills/load?path=${encodeURIComponent(row.path)}`, {
-          cache: "no-store",
-        })
-          .then((res) => (res.ok ? (res.json() as Promise<{ skill?: ComposerSkillRef }>) : null))
+      if ("path" in row && row.path) {
+        const endpoint =
+          selectedMention.kind === "skill"
+            ? `/api/agent/skills/load?path=${encodeURIComponent(row.path)}`
+            : `/api/agent/plugins/load?path=${encodeURIComponent(row.path)}`;
+        const loaded = await fetch(endpoint, { cache: "no-store" })
+          .then((res) =>
+            res.ok
+              ? (res.json() as Promise<{
+                  skill?: ComposerSkillRef;
+                  plugin?: ComposerPluginRef;
+                }>)
+              : null,
+          )
           .catch(() => null);
-        selectedRow = loaded?.skill ? { ...row, ...loaded.skill, id: row.id } : row;
+        selectedRow = loaded?.skill
+          ? { ...row, ...loaded.skill, id: row.id }
+          : loaded?.plugin
+            ? { ...row, ...loaded.plugin, id: row.id }
+            : row;
       }
       updateTab(activeTab.id, (tab) => {
         if (selectedMention.kind === "plugin") {
@@ -2152,25 +2165,21 @@ export function ChatPane({
                       <span className="min-w-0">
                         <span className="block truncate text-[12px] text-(--fg)">
                           {mention.kind === "plugin" ? "@" : "$"}
-                          {"displayName" in row && row.displayName ? row.displayName : row.name}
-                          {"version" in row && row.version ? (
+                          {mentionRowTitle(row)}
+                          {mentionRowVersion(row) ? (
                             <span className="ml-1 font-mono text-[10px] text-(--dim)">
-                              {row.version}
+                              {mentionRowVersion(row)}
                             </span>
                           ) : null}
                         </span>
-                        {"shortDescription" in row && row.shortDescription ? (
+                        {mentionRowDescription(row) ? (
                           <span className="block truncate text-[10.5px] text-(--dim)">
-                            {row.shortDescription}
+                            {mentionRowDescription(row)}
                           </span>
                         ) : null}
                       </span>
                       <span className="truncate font-mono text-[10px] text-(--dim)">
-                        {"source" in row && row.source
-                          ? row.source
-                          : "source" in row
-                            ? row.source
-                            : ""}
+                        {row.source ?? ""}
                       </span>
                     </button>
                   ))}
@@ -2429,6 +2438,18 @@ export function ChatPane({
       </form>
     </section>
   );
+}
+
+function mentionRowTitle(row: ComposerPluginRef | ComposerSkillRef): string {
+  return ("displayName" in row && row.displayName) || row.name;
+}
+
+function mentionRowVersion(row: ComposerPluginRef | ComposerSkillRef): string | undefined {
+  return "version" in row ? row.version : undefined;
+}
+
+function mentionRowDescription(row: ComposerPluginRef | ComposerSkillRef): string | undefined {
+  return "shortDescription" in row ? row.shortDescription : undefined;
 }
 
 function LoadedContextTab({

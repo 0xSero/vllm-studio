@@ -3,7 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { codexAppPluginRoots, codexPluginCacheRoots, discoverPlugins } from "./plugin-discovery";
+import {
+  codexAppPluginRoots,
+  codexPluginCacheRoots,
+  discoverPlugins,
+  loadPluginInstructions,
+} from "./plugin-discovery";
 
 describe("Codex plugin roots", () => {
   it("includes bundled app and Codex cache plugin locations without requiring config.toml", () => {
@@ -163,6 +168,29 @@ describe("discoverPlugins", () => {
           appIds: ["connector_computer"],
         }),
       ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads selected plugin skill instructions from trusted plugin roots", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
+    try {
+      const plugin = path.join(root, "openai-bundled", "plugins", "browser-use");
+      const skill = path.join(plugin, "skills", "browser");
+      mkdirSync(path.join(plugin, ".codex-plugin"), { recursive: true });
+      mkdirSync(skill, { recursive: true });
+      writeFileSync(
+        path.join(plugin, ".codex-plugin", "plugin.json"),
+        '{"name":"browser-use","skills":"./skills"}',
+      );
+      writeFileSync(path.join(skill, "SKILL.md"), "# Browser\nUse the in-app browser.");
+
+      expect(loadPluginInstructions(plugin, [path.join(root, "openai-bundled")])).toMatchObject({
+        name: "browser-use",
+        instructions: "# Browser\nUse the in-app browser.",
+      });
+      expect(loadPluginInstructions(path.join(root, "outside"), [plugin])).toBeNull();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
