@@ -8,7 +8,7 @@ import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
 import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
 import { isAgentEndEvent } from "./pi-events";
-import { piPathEnv, resolvePiBinaryPath } from "./pi-binary";
+import { piPathEnv, resolvePiLaunchCommand } from "./pi-binary";
 import { listProjectsFromStore } from "./projects-store";
 
 const PROVIDER_ID = "vllm-studio";
@@ -391,7 +391,8 @@ class PiRpcSession extends EventEmitter {
     }
     launchComputerUseApp(plugins);
 
-    const child = spawn(resolvePiBinaryPath() ?? "pi", args, {
+    const launch = resolvePiLaunchCommand();
+    const child = spawn(launch.command, [...launch.argsPrefix, ...args], {
       cwd,
       env: {
         ...process.env,

@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolvePiBinaryPath } from "@/lib/agent/pi-binary";
+import { resolvePiBinaryPath, resolvePiCliPath } from "@/lib/agent/pi-binary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const piPath = resolvePiBinaryPath();
+  const piCliPath = resolvePiCliPath();
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
   return NextResponse.json({
@@ -16,10 +17,10 @@ export async function GET() {
       {
         id: "pi",
         label: "Pi agent binary",
-        ok: Boolean(piPath),
-        value: piPath ?? "missing",
+        ok: Boolean(piPath || piCliPath),
+        value: piPath ?? piCliPath ?? "missing",
         guidance:
-          "Install app dependencies or install @mariozechner/pi-coding-agent so `pi` is available.",
+          "The desktop app includes Pi; reinstall the app or run npm install if this is missing.",
       },
       {
         id: "pi-dir",

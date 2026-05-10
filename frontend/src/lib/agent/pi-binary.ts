@@ -1,4 +1,4 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -46,6 +46,52 @@ const localBinDirs = (): string[] =>
     path.join(homedir(), "bin"),
   ]);
 
+const localCliFiles = (): string[] =>
+  unique([
+    process.resourcesPath
+      ? path.join(
+          process.resourcesPath,
+          "app.asar",
+          "node_modules",
+          "@mariozechner",
+          "pi-coding-agent",
+          "dist",
+          "cli.js",
+        )
+      : null,
+    process.resourcesPath
+      ? path.join(
+          process.resourcesPath,
+          "app",
+          "node_modules",
+          "@mariozechner",
+          "pi-coding-agent",
+          "dist",
+          "cli.js",
+        )
+      : null,
+    path.join(process.cwd(), "node_modules", "@mariozechner", "pi-coding-agent", "dist", "cli.js"),
+    path.join(
+      process.cwd(),
+      "frontend",
+      "node_modules",
+      "@mariozechner",
+      "pi-coding-agent",
+      "dist",
+      "cli.js",
+    ),
+    path.join(
+      process.cwd(),
+      "..",
+      "frontend",
+      "node_modules",
+      "@mariozechner",
+      "pi-coding-agent",
+      "dist",
+      "cli.js",
+    ),
+  ]);
+
 export function piPathEnv(): string {
   return unique([...localBinDirs(), process.env.PATH]).join(path.delimiter);
 }
@@ -61,4 +107,16 @@ export function resolvePiBinaryPath(): string | null {
     if (isExecutable(candidate)) return candidate;
   }
   return null;
+}
+
+export function resolvePiCliPath(): string | null {
+  return localCliFiles().find((candidate) => existsSync(candidate)) ?? null;
+}
+
+export function resolvePiLaunchCommand(): { command: string; argsPrefix: string[] } {
+  const binary = resolvePiBinaryPath();
+  if (binary) return { command: binary, argsPrefix: [] };
+  const cli = resolvePiCliPath();
+  if (cli) return { command: process.execPath, argsPrefix: [cli] };
+  return { command: "pi", argsPrefix: [] };
 }

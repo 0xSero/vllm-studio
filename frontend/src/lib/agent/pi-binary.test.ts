@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { piPathEnv, resolvePiBinaryPath } from "./pi-binary";
+import { piPathEnv, resolvePiBinaryPath, resolvePiCliPath } from "./pi-binary";
 
 const originalEnv = { ...process.env };
 const originalCwd = process.cwd();
@@ -41,6 +41,26 @@ describe("pi binary resolution", () => {
     expect(resolvePiBinaryPath()).toBe(
       path.join(process.cwd(), "frontend", "node_modules", ".bin", "pi"),
     );
+  });
+
+  it("falls back to the packaged Pi CLI when no executable shim exists", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vllm-studio-pi-"));
+    roots.push(root);
+    const cli = path.join(
+      root,
+      "frontend",
+      "node_modules",
+      "@mariozechner",
+      "pi-coding-agent",
+      "dist",
+      "cli.js",
+    );
+    mkdirSync(path.dirname(cli), { recursive: true });
+    writeFileSync(cli, "console.log('pi')\n");
+    process.env.PATH = "";
+    process.chdir(root);
+
+    expect(resolvePiCliPath()?.endsWith(path.relative(root, cli))).toBe(true);
   });
 
   it("adds common macOS and local Pi locations to PATH for spawned Pi", () => {
