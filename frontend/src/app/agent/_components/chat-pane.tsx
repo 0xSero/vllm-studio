@@ -138,6 +138,17 @@ export function statusAfterControlPhase(
   return current;
 }
 
+export function replayCursorAfterRuntimeHydration(
+  runtimeActive: boolean,
+  runtimeEventSeq?: number,
+): number | undefined {
+  // loadAndReplay hydrates messages from canonical session events plus the
+  // runtime event log. Once those runtime events have been applied, reattach
+  // from the current runtime cursor; otherwise EventSource can replay already
+  // rendered deltas and duplicate visible assistant content after navigation.
+  return runtimeActive ? runtimeEventSeq : undefined;
+}
+
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
   next: QueuedMessage | null;
   remaining: QueuedMessage[];
@@ -1861,7 +1872,6 @@ export function ChatPane({
 
         const runtimeId =
           tabsRef.current.find((tab) => tab.id === tabId)?.runtimeSessionId || runtimeSessionId;
-        const previousTab = tabsRef.current.find((tab) => tab.id === tabId);
         const runtimeStatus = await loadRuntimeStatus(runtimeId);
         const runtimeActive =
           runtimeStatus?.active === true &&
@@ -1875,12 +1885,10 @@ export function ChatPane({
           .reverse()
           .map(usageFromEvent)
           .find((stats): stats is TokenStats => Boolean(stats));
-        const replaySeq =
-          runtimeActive && previousTab?.piSessionId === piSessionId
-            ? (previousTab.lastEventSeq ?? runtimeStatus?.eventSeq)
-            : runtimeActive
-              ? runtimeStatus?.eventSeq
-              : undefined;
+        const replaySeq = replayCursorAfterRuntimeHydration(
+          runtimeActive,
+          runtimeStatus?.eventSeq,
+        );
 
         updateTab(tabId, (tab) => ({
           ...tab,

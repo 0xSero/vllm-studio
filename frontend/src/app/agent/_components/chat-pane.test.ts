@@ -5,6 +5,7 @@ import {
   mergeCanonicalAndRuntimeEvents,
   parseAgentTurnSsePayload,
   reconcileQueueWithPiEvent,
+  replayCursorAfterRuntimeHydration,
   replaySessionEvents,
   statusAfterControlPhase,
   visibleQueuedMessages,
@@ -55,6 +56,14 @@ describe("statusAfterControlPhase", () => {
     expect(statusAfterControlPhase("running", "queued")).toBe("running");
     expect(statusAfterControlPhase("running", "done")).toBe("running");
     expect(statusAfterControlPhase("idle", "starting")).toBe("idle");
+  });
+});
+
+describe("replayCursorAfterRuntimeHydration", () => {
+  it("reattaches after the hydrated runtime event log", () => {
+    expect(replayCursorAfterRuntimeHydration(true, 42)).toBe(42);
+    expect(replayCursorAfterRuntimeHydration(true, undefined)).toBeUndefined();
+    expect(replayCursorAfterRuntimeHydration(false, 42)).toBeUndefined();
   });
 });
 
