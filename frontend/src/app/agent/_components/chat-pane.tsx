@@ -1448,9 +1448,9 @@ export function ChatPane({
   );
 
   // Tab-key behavior: when idle, submit immediately; while a turn is running,
-  // keep the follow-up visibly queued and replay it as a normal prompt after
-  // agent_end. This avoids the "message vanished" state where a chip was added
-  // but no prompt was ever sent.
+  // keep the follow-up local and replay it as a normal prompt after agent_end.
+  // Do not send Pi `follow_up` here: Pi may run it after the current SSE owner
+  // has detached, which made queued messages look lost in the UI.
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
@@ -1460,29 +1460,14 @@ export function ChatPane({
       await submitPromptRef.current(text, tabId);
       return;
     }
-    const queuedId = newId("queue");
     updateTab(tabId, (tab) => ({
       ...tab,
       cwd: tab.cwd || cwd,
       input: "",
       error: "",
-      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text, sent: true }],
+      queue: [...(tab.queue ?? []), { id: newId("queue"), mode: "follow_up", text }],
     }));
-    const result = await sendControlMessage(
-      "follow_up",
-      text,
-      activeTab.runtimeSessionId || runtimeSessionId,
-      activeTab.piSessionId,
-    );
-    if (!result.ok) {
-      updateTab(tabId, (tab) => ({
-        ...tab,
-        input: text,
-        error: result.error || "Message failed",
-        queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
-      }));
-    }
-  }, [activeTab, modelId, running, cwd, runtimeSessionId, sendControlMessage, updateTab]);
+  }, [activeTab, modelId, running, cwd, updateTab]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
