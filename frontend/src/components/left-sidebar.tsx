@@ -14,7 +14,6 @@ import {
   Menu,
   PanelLeftOpen,
   X,
-  Plus,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
@@ -172,7 +171,6 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
               expanded={isExpanded}
             />
           ))}
-          <NewChatNavItemDesktop expanded={isExpanded} pathname={pathname} />
           <ProjectsNavSection expanded={isExpanded} />
         </nav>
 
@@ -271,13 +269,6 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
             />
           ))}
           <NavItemMobile
-            href="/agent?new=1"
-            label="New Chat"
-            Icon={Plus}
-            active={false}
-            onClick={onClose}
-          />
-          <NavItemMobile
             href="/settings"
             label="Settings"
             Icon={Settings}
@@ -351,30 +342,6 @@ function NavItemDesktop({
         }`}
       >
         {label}
-      </span>
-    </Link>
-  );
-}
-
-function NewChatNavItemDesktop({ expanded, pathname }: { expanded: boolean; pathname: string }) {
-  return (
-    <Link
-      href="/agent?new=1"
-      title="New Chat"
-      onClick={(event) => {
-        if (pathname !== "/agent") return;
-        event.preventDefault();
-        window.dispatchEvent(new CustomEvent("vllm-studio.agent.newSession", { detail: {} }));
-      }}
-      className="h-7 flex items-center gap-2.5 px-2 rounded-md transition-colors shrink-0 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-    >
-      <Plus className="w-3.5 h-3.5 shrink-0" />
-      <span
-        className={`text-[12.5px] font-medium whitespace-nowrap transition-opacity duration-100 ${
-          expanded ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        New Chat
       </span>
     </Link>
   );

@@ -3,12 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import {
-  ChevronDownIcon,
-  ChevronRightIcon,
   CloseIcon,
   EyeOffIcon,
   Folder,
-  FolderOpen,
   MoreIcon,
   PinIcon,
   PinSlashIcon,
@@ -603,13 +600,13 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ))}
         </div>
       ) : null}
-      <div className="mt-3 flex h-5 items-center px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-(--dim)/80">
+      <div className="mt-3 flex h-5 items-center px-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-(--dim)/80">
         Projects
       </div>
       <button
         type="button"
         onClick={handleAddProject}
-        className="h-7 flex items-center gap-1.5 px-2 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
+        className="h-6 flex items-center gap-1 px-1.5 rounded-md text-(--dim) hover:text-(--fg) hover:bg-(--hover) transition-colors"
       >
         <PlusIcon className="w-3 h-3 shrink-0" />
         <span className="truncate text-[12.5px] font-medium">Add project</span>
@@ -658,8 +655,6 @@ function ProjectRow({
   activeSessions: ActiveAgentSession[];
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
-  const Icon = open ? FolderOpen : Folder;
-  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
   const handleToggle = () => {
     if (!project.exists) {
       setMissingErrorVisible(true);
@@ -671,16 +666,15 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group flex h-7 items-center text-(--dim) transition-colors hover:text-(--fg)">
+      <div className="group flex h-6 items-center text-(--dim) transition-colors hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-left"
         >
-          <Chevron className="w-3 h-3 shrink-0 opacity-70" />
-          <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
-          <span className="truncate text-[12.5px] font-medium text-(--fg)">{project.name}</span>
+          <Folder className="w-3.5 h-3.5 shrink-0 opacity-80" />
+          <span className="truncate text-[12px] font-semibold text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -689,6 +683,21 @@ function ProjectRow({
             />
           ) : null}
         </button>
+        <Link
+          href={`/agent?project=${encodeURIComponent(project.id)}&new=1`}
+          onClick={(event) => {
+            if (window.location.pathname !== "/agent") return;
+            event.preventDefault();
+            window.dispatchEvent(
+              new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
+            );
+          }}
+          className="mr-0.5 p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          title="New chat"
+          aria-label={`New chat in ${project.name}`}
+        >
+          <PlusIcon className="h-3 w-3" />
+        </Link>
         <button
           type="button"
           onClick={(event) => {
@@ -696,7 +705,7 @@ function ProjectRow({
             event.stopPropagation();
             onRemove();
           }}
-          className="mr-2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
+          className="mr-1 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
           title="Remove from list"
           aria-label="Remove project"
         >
@@ -704,7 +713,7 @@ function ProjectRow({
         </button>
       </div>
       {missingErrorVisible && !project.exists ? (
-        <div className="pl-9 pr-3 pb-1 text-[11px] text-red-400">
+        <div className="pl-5 pr-2 pb-1 text-[11px] text-red-400">
           <span>Folder not found at {project.path}</span>
           <button
             type="button"
@@ -798,22 +807,6 @@ function ProjectSessions({
 
   return (
     <div className="flex flex-col">
-      <Link
-        href={`/agent?project=${encodeURIComponent(project.id)}&new=1`}
-        onClick={(event) => {
-          if (window.location.pathname !== "/agent") return;
-          event.preventDefault();
-          window.dispatchEvent(
-            new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
-          );
-        }}
-        className="flex h-6 items-center gap-1.5 pl-[3.25rem] pr-2 text-(--dim) transition-colors hover:text-(--fg)"
-        title="Start a new chat in this project"
-      >
-        <PlusIcon className="w-3 h-3 shrink-0" />
-        <span className="truncate text-[11.5px]">New session</span>
-      </Link>
-
       {visibleActiveSessions.map((session) => (
         <ActiveSessionRow
           key={`${session.paneId}:${session.tabId}`}
@@ -824,9 +817,9 @@ function ProjectSessions({
       ))}
 
       {loading && !sessions ? (
-        <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">Loading…</div>
+        <div className="pl-5 pr-2 py-1 text-[11px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-9 pr-3 py-1 text-[11px] text-(--dim)">No recent sessions</div>
+        <div className="pl-5 pr-2 py-1 text-[11px] text-(--dim)">No recent sessions</div>
       ) : (
         <>
           {recent.map((session) => (
@@ -841,7 +834,7 @@ function ProjectSessions({
             <button
               type="button"
               onClick={toggleShowHidden}
-              className="h-7 flex items-center gap-2 pl-9 pr-3 text-[10px] text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
+              className="h-6 flex items-center gap-1 pl-5 pr-2 text-[10px] text-(--dim) hover:text-(--fg) hover:bg-(--surface)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
               <EyeOffIcon className="w-3 h-3 shrink-0" />
@@ -902,14 +895,13 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group flex h-7 items-center gap-1.5 pl-[3.25rem] pr-2 transition-colors ${
+  const rowClass = `group flex h-6 items-center gap-1 pl-5 pr-1.5 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
   if (renaming) {
     return (
       <div className={rowClass}>
-        <PinIcon className="w-3 h-3 shrink-0 text-(--accent)" />
         <input
           autoFocus
           value={draft}
@@ -944,13 +936,6 @@ function ActiveSessionRow({
 
   return (
     <div className={rowClass}>
-      <SessionPinButton
-        pinned={Boolean(pref.pinned)}
-        disabled={!session.piSessionId}
-        onToggle={() => {
-          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
-        }}
-      />
       {session.piSessionId ? (
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
@@ -962,7 +947,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-2"
+          className="flex min-w-0 flex-1 items-center gap-1.5"
         >
           {content}
         </Link>
@@ -982,15 +967,22 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
           {content}
         </button>
       )}
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        disabled={!session.piSessionId}
+        onToggle={() => {
+          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
+        }}
+      />
       {session.piSessionId ? (
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}&split=1`}
-          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className="px-0.5 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
@@ -1005,7 +997,7 @@ function ActiveSessionRow({
               }),
             );
           }}
-          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className="px-0.5 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
@@ -1095,8 +1087,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="h-8 flex items-center gap-2 pl-9 pr-3 bg-(--surface)/60">
-        <PinIcon className="w-3 h-3 shrink-0 text-(--dim)" />
+      <div className="h-6 flex items-center gap-1 pl-5 pr-2 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1117,16 +1108,12 @@ function SessionRow({
 
   return (
     <div
-      className="group flex h-6 items-center gap-1.5 pl-[3.25rem] pr-1.5 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group flex h-6 items-center gap-1 pl-5 pr-1.5 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
       }}
     >
-      <SessionPinButton
-        pinned={Boolean(pref.pinned)}
-        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
-      />
       <Link
         href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
         title={label}
@@ -1139,17 +1126,21 @@ function SessionRow({
             title: label,
           });
         }}
-        className="flex min-w-0 flex-1 items-center gap-2"
+        className="flex min-w-0 flex-1 items-center gap-1.5"
       >
-        <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px]">{label}</span>
         <span className="shrink-0 text-[10px] text-(--dim)">
           {formatRelative(session.updatedAt)}
         </span>
       </Link>
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
+      />
       <div ref={menuRef} className="relative shrink-0">
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&split=1`}
-          className="px-1 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className="px-0.5 text-[10px] text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
           title="Open beside focused session"
         >
           Split
