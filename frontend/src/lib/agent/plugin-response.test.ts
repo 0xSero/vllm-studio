@@ -73,4 +73,28 @@ describe("buildPluginsResponse", () => {
     });
     expect(response.validation.computerUseRuntime?.note).toContain("mcp_plugin_status");
   });
+
+  it("marks MCP runtime incomplete when any configured server executable is missing", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "plugin-response-"));
+    mkdirSync(path.join(root, "bin"));
+    writeFileSync(path.join(root, "bin", "server"), "#!/bin/sh\n");
+    writeFileSync(
+      path.join(root, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          ready: { command: "./bin/server", cwd: "." },
+          missing: { command: "./bin/missing", cwd: "." },
+        },
+      }),
+    );
+
+    const response = buildPluginsResponse([
+      plugin({ name: "computer-use", path: root, mcpConfigPath: path.join(root, ".mcp.json") }),
+    ]);
+
+    expect(response.validation.computerUseRuntime).toMatchObject({
+      mcpConfigured: true,
+      mcpExecutableExists: false,
+    });
+  });
 });

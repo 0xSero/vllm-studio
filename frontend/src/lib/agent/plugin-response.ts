@@ -47,7 +47,7 @@ export function buildPluginsResponse(
 
 function pluginRuntimeCheck(plugin: PluginRow): PluginRuntimeCheck {
   const mcpExecutable = plugin.mcpConfigPath
-    ? firstMcpExecutableExists(plugin.mcpConfigPath)
+    ? allMcpExecutablesExist(plugin.mcpConfigPath)
     : undefined;
   return {
     skillConfigured: Boolean(plugin.skillPath && existsSync(plugin.skillPath)),
@@ -69,21 +69,22 @@ function pluginMatches(plugin: PluginRow, needle: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function firstMcpExecutableExists(configPath: string): boolean | undefined {
+function allMcpExecutablesExist(configPath: string): boolean | undefined {
   try {
     const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
       mcpServers?: Record<string, { command?: unknown; cwd?: unknown }>;
     };
-    const server = Object.values(parsed.mcpServers ?? {}).find(
+    const servers = Object.values(parsed.mcpServers ?? {}).filter(
       (entry) => typeof entry.command === "string" && entry.command.trim(),
     );
-    if (!server || typeof server.command !== "string") return undefined;
-    const cwd = typeof server.cwd === "string" ? server.cwd : ".";
-    const base = path.resolve(path.dirname(configPath), cwd);
-    const command = server.command.startsWith(".")
-      ? path.resolve(base, server.command)
-      : server.command;
-    return path.isAbsolute(command) ? existsSync(command) : true;
+    if (!servers.length) return undefined;
+    return servers.every((server) => {
+      const command = String(server.command);
+      const cwd = typeof server.cwd === "string" ? server.cwd : ".";
+      const base = path.resolve(path.dirname(configPath), cwd);
+      const resolved = command.startsWith(".") ? path.resolve(base, command) : command;
+      return path.isAbsolute(resolved) ? existsSync(resolved) : true;
+    });
   } catch {
     return false;
   }
