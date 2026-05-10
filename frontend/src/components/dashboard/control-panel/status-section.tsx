@@ -73,16 +73,29 @@ export function StatusSection({
   const vramCapacity = firstPositive(metrics?.vram_capacity_gb, fallbackMemCapacity);
   const powerLimit = firstPositive(metrics?.power_limit_watts, fallbackPowerLimit);
 
-  const genTps = firstFinite(metrics?.generation_throughput, metrics?.session_avg_generation);
-  const prefillTps = firstFinite(metrics?.prompt_throughput, metrics?.session_avg_prefill);
-  const ttftMs = firstFinite(metrics?.avg_ttft_ms);
-  const sessions = metrics?.running_requests ?? 0;
   const peakGenTps = firstPositive(
     metrics?.session_peak_generation_throughput,
     metrics?.session_peak_generation,
     metrics?.peak_generation_tps,
   );
+  const peakPrefillTps = firstPositive(
+    metrics?.session_peak_prompt_throughput,
+    metrics?.session_peak_prefill,
+    metrics?.peak_prefill_tps,
+  );
   const peakTtftMs = firstPositive(metrics?.session_peak_ttft_ms, metrics?.peak_ttft_ms);
+  const genTps = firstPositive(
+    metrics?.generation_throughput,
+    metrics?.session_avg_generation,
+    peakGenTps,
+  );
+  const prefillTps = firstPositive(
+    metrics?.prompt_throughput,
+    metrics?.session_avg_prefill,
+    peakPrefillTps,
+  );
+  const ttftMs = firstPositive(metrics?.avg_ttft_ms, peakTtftMs);
+  const sessions = metrics?.running_requests ?? 0;
   const peakReq = metrics?.session_peak_running_requests ?? 0;
   const samples = useMetricSamples({
     key: modelSampleKey,
@@ -163,7 +176,12 @@ export function StatusSection({
           unit="ms"
           detail={peakTtftMs > 0 ? `peak ${peakTtftMs.toFixed(0)} ms` : undefined}
         />
-        <MetricColumn label="Prefill" value={metricValue(prefillTps, 1)} unit="t/s" />
+        <MetricColumn
+          label="Prefill"
+          value={metricValue(prefillTps, 1)}
+          unit="t/s"
+          detail={peakPrefillTps > 0 ? `peak ${peakPrefillTps.toFixed(1)}` : undefined}
+        />
         <CompactMetric label="Req" value={`${sessions}/${peakReq || sessions}`} />
         <CompactMetric
           label="VRAM"
@@ -623,13 +641,6 @@ function firstPositive(...values: Array<number | null | undefined>): number {
     if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
   }
   return 0;
-}
-
-function firstFinite(...values: Array<number | null | undefined>): number | null {
-  for (const v of values) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
 }
 
 /* Inline Models dropdown — auto-closes on outside click and selection. */
