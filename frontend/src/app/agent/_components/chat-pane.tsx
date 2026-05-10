@@ -1642,15 +1642,28 @@ export function ChatPane({
       if (payload.type === "pi") {
         const eventId = piSessionIdFromEvent(payload.event);
         const assistantId = ensureAssistantId();
+        const agentEnded = isAgentEndEvent(payload.event);
         updateTab(resumeRuntimeTabId, (tab) => ({
           ...tab,
           piSessionId: eventId || tab.piSessionId,
           lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
-          status: isAgentEndEvent(payload.event) ? "idle" : "running",
-          activeAssistantId: isAgentEndEvent(payload.event) ? undefined : assistantId,
+          status: agentEnded ? "idle" : "running",
+          activeAssistantId: agentEnded ? undefined : assistantId,
         }));
         if (eventId) onPiSessionIdChange?.(eventId);
         applyPiEvent(resumeRuntimeTabId, assistantId, payload.event);
+        if (agentEnded) {
+          const queued = (
+            tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId)?.queue ?? []
+          ).slice();
+          const { next, remaining } = drainQueueAfterAgentEnd(queued);
+          if (next) {
+            updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, queue: remaining }));
+            setTimeout(() => void submitPromptRef.current?.(next.text, resumeRuntimeTabId), 0);
+          } else if (queued.length > 0) {
+            updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, queue: remaining }));
+          }
+        }
       }
     };
     source.onerror = () => {
