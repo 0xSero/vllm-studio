@@ -540,9 +540,18 @@ function PluginsSettings() {
     description?: string;
     appIds?: string[];
   };
+  type PluginRuntimeCheck = {
+    skillConfigured?: boolean;
+    mcpConfigured?: boolean;
+    appConfigured?: boolean;
+    mcpExecutableExists?: boolean;
+    note?: string;
+  };
   type PluginValidation = {
     browserUseAvailable?: boolean;
+    browserUseRuntime?: PluginRuntimeCheck | null;
     computerUseAvailable?: boolean;
+    computerUseRuntime?: PluginRuntimeCheck | null;
   };
   type Marketplace = {
     name: string;
@@ -728,17 +737,32 @@ function PluginsSettings() {
         <SettingsRow
           label="Browser-use"
           description="Required composer plugin for browser control via @browser-use."
-          value={<SettingsValue>{pluginAvailabilityText(browserUse)}</SettingsValue>}
-          status={<PluginAvailabilityPill plugin={browserUse} available={validation?.browserUseAvailable} />}
+          value={
+            <SettingsValue>
+              {pluginAvailabilityText(browserUse, validation?.browserUseRuntime)}
+            </SettingsValue>
+          }
+          status={
+            <PluginAvailabilityPill
+              plugin={browserUse}
+              available={validation?.browserUseAvailable}
+              runtime={validation?.browserUseRuntime}
+            />
+          }
         />
         <SettingsRow
           label="Computer-use"
           description="Specific parity check requested for the Codex computer-use helper."
-          value={<SettingsValue>{pluginAvailabilityText(computerUse)}</SettingsValue>}
+          value={
+            <SettingsValue>
+              {pluginAvailabilityText(computerUse, validation?.computerUseRuntime)}
+            </SettingsValue>
+          }
           status={
             <PluginAvailabilityPill
               plugin={computerUse}
               available={validation?.computerUseAvailable}
+              runtime={validation?.computerUseRuntime}
             />
           }
         />
@@ -768,22 +792,33 @@ function PluginsSettings() {
   );
 }
 
-function pluginAvailabilityText(plugin: { enabled: boolean } | null) {
+function pluginAvailabilityText(
+  plugin: { enabled: boolean } | null,
+  runtime?: { mcpConfigured?: boolean; mcpExecutableExists?: boolean; note?: string } | null,
+) {
   if (!plugin) return "Not discovered";
-  return plugin.enabled
-    ? "Available and selectable in the composer"
-    : "Discovered but disabled in Codex plugin config";
+  if (!plugin.enabled) return "Discovered but disabled in Codex plugin config";
+  if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
+    return "Selectable, but its MCP command is missing";
+  }
+  return runtime?.note ?? "Available and selectable in the composer";
 }
 
 function PluginAvailabilityPill({
   plugin,
   available,
+  runtime,
 }: {
   plugin: { enabled: boolean } | null;
   available?: boolean;
+  runtime?: { mcpConfigured?: boolean; mcpExecutableExists?: boolean } | null;
 }) {
   if (!plugin) return <StatusPill tone="warning">missing</StatusPill>;
   if (!plugin.enabled || !available) return <StatusPill tone="default">disabled</StatusPill>;
+  if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
+    return <StatusPill tone="warning">mcp missing</StatusPill>;
+  }
+  if (runtime?.mcpConfigured) return <StatusPill tone="info">mcp wired</StatusPill>;
   return <StatusPill tone="good">selectable</StatusPill>;
 }
 
