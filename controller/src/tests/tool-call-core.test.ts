@@ -401,6 +401,39 @@ describe("tool-call-core", () => {
     expect(delta.content).toBe("Hello world!");
   });
 
+  it("does not duplicate visible content when reasoning_content streams alongside content", async () => {
+    const encoder = new TextEncoder();
+    const source = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"reasoning_content":"thinking","content":"Answer"}}]}\n\n'
+          )
+        );
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer"}}]}\n\n'
+          )
+        );
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer done"}}]}\n\n'
+          )
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const stream = createToolCallStream(source.getReader());
+    const output = await collectStream(stream);
+    const events = parseSseDataLines(output);
+    const delta = collectDeltaText(events);
+
+    expect(delta.content).toBe("Answer done");
+    expect(delta.reasoning).toBe("thinking harder");
+  });
+
   it("deduplicates tiny cumulative snapshots from the first token", async () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
