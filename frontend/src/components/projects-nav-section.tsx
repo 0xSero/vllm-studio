@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import {
   CloseIcon,
   EyeOffIcon,
-  FileIcon,
   Folder,
   FolderOpen,
   MoreIcon,
@@ -907,7 +906,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-8 items-center gap-1 pl-10 pr-2 transition-colors ${
+  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -934,17 +933,23 @@ function ActiveSessionRow({
 
   const content = (
     <>
-      <FileIcon
-        className={`h-3.5 w-3.5 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
-        aria-label={isRunning ? `Session ${session.status}` : undefined}
-      />
-      <span className="min-w-0 flex-1 truncate text-[13px] font-normal">{label}</span>
-      {age ? <span className="shrink-0 pl-2 font-mono text-[12px] text-(--dim)">{age}</span> : null}
+      <span className="min-w-0 flex-1 truncate text-[12px] font-normal leading-7">{label}</span>
+      {age ? (
+        <span className="shrink-0 pl-2 pr-1 font-mono text-[10px] text-(--dim)">{age}</span>
+      ) : null}
     </>
   );
 
   return (
     <div className={rowClass}>
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        disabled={!session.piSessionId}
+        running={isRunning}
+        onToggle={() => {
+          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
+        }}
+      />
       {session.piSessionId ? (
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
@@ -956,7 +961,7 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-3 pr-10"
+          className="flex min-w-0 flex-1 items-center gap-1 pr-5"
         >
           {content}
         </Link>
@@ -976,18 +981,11 @@ function ActiveSessionRow({
             setDraft(pref.title ?? session.title ?? "");
             setRenaming(true);
           }}
-          className="flex min-w-0 flex-1 items-center gap-3 pr-10 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 pr-5 text-left"
         >
           {content}
         </button>
       )}
-      <SessionPinButton
-        pinned={Boolean(pref.pinned)}
-        disabled={!session.piSessionId}
-        onToggle={() => {
-          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
-        }}
-      />
       <div ref={menuRef} className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
         <button
           type="button"
@@ -1073,7 +1071,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="flex h-8 items-center gap-1 pl-10 pr-2 bg-(--surface)/60">
+      <div className="flex h-7 items-center gap-1 bg-(--surface)/60 pl-4 pr-2">
         <input
           autoFocus
           value={draft}
@@ -1086,7 +1084,7 @@ function SessionRow({
               setRenaming(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--fg) outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-(--fg) outline-none"
         />
       </div>
     );
@@ -1094,12 +1092,16 @@ function SessionRow({
 
   return (
     <div
-      className="group relative flex h-8 items-center gap-1 pl-10 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group relative flex h-7 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
       }}
     >
+      <SessionPinButton
+        pinned={Boolean(pref.pinned)}
+        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
+      />
       <Link
         href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
         title={label}
@@ -1112,18 +1114,13 @@ function SessionRow({
             title: label,
           });
         }}
-        className="flex min-w-0 flex-1 items-center gap-3 pr-10"
+        className="flex min-w-0 flex-1 items-center gap-1 pr-5"
       >
-        <FileIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-normal">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-normal leading-7">{label}</span>
         {age ? (
-          <span className="shrink-0 pl-2 font-mono text-[12px] text-(--dim)">{age}</span>
+          <span className="shrink-0 pl-2 pr-1 font-mono text-[10px] text-(--dim)">{age}</span>
         ) : null}
       </Link>
-      <SessionPinButton
-        pinned={Boolean(pref.pinned)}
-        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
-      />
       <div ref={menuRef} className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
         <button
           type="button"
@@ -1202,10 +1199,12 @@ function SessionPinButton({
   pinned,
   onToggle,
   disabled = false,
+  running = false,
 }: {
   pinned: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  running?: boolean;
 }) {
   return (
     <button
@@ -1216,14 +1215,14 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`absolute right-7 top-1/2 -translate-y-1/2 shrink-0 p-0.5 transition-opacity hover:text-(--fg) disabled:opacity-20 ${
-        pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-0 group-hover:opacity-100"
+      className={`inline-flex h-6 w-4 shrink-0 items-center justify-center transition-opacity hover:text-(--fg) disabled:opacity-20 ${
+        pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-60 group-hover:opacity-100"
       }`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}
     >
-      <PinIcon className="h-4 w-4" />
+      <PinIcon className={`h-3.5 w-3.5 ${running ? "animate-pulse" : ""}`} />
     </button>
   );
 }

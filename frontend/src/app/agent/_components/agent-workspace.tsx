@@ -1557,6 +1557,13 @@ export function AgentWorkspace() {
                   const paneCwd = paneActiveTab?.cwd ?? paneProject?.path ?? agentCwd;
                   const paneModelId = paneActiveTab?.modelId ?? selectedModel;
                   const paneModel = models.find((model) => model.id === paneModelId) ?? null;
+                  const paneGitSummary = paneProject?.path
+                    ? (gitSummaries.get(paneProject.path) ?? null)
+                    : null;
+                  const paneGitBranch =
+                    paneGitSummary?.isRepo === false
+                      ? null
+                      : (paneGitSummary?.branch ?? paneProject?.branch ?? null);
                   const paneTabIsNew =
                     Boolean(paneActiveTab) &&
                     !paneActiveTab?.piSessionId &&
@@ -1597,7 +1604,10 @@ export function AgentWorkspace() {
                               });
                             }}
                             disabled={!paneTabIsNew}
-                            className="!h-7 !min-h-7 w-full min-w-0 truncate rounded-md border-0 bg-transparent px-2 py-0 font-mono !text-[11px] text-(--dim) outline-none hover:bg-(--surface) hover:text-(--fg) disabled:opacity-100"
+                            className="!h-7 !min-h-7 max-w-full min-w-0 truncate rounded-md border-0 bg-transparent px-2 py-0 font-mono !text-[11px] text-(--dim) outline-none hover:bg-(--surface) hover:text-(--fg) disabled:opacity-100"
+                            style={{
+                              width: `${Math.min(Math.max(paneProject.path.length + 3, 12), 54)}ch`,
+                            }}
                             title={
                               paneTabIsNew
                                 ? "Change directory for this new session"
@@ -1613,14 +1623,8 @@ export function AgentWorkspace() {
                           </select>
                         ) : null
                       }
-                      gitBranch={
-                        (paneProject?.path ? gitSummaries.get(paneProject.path)?.branch : null) ??
-                        paneProject?.branch ??
-                        null
-                      }
-                      gitSummary={
-                        paneProject?.path ? (gitSummaries.get(paneProject.path) ?? null) : null
-                      }
+                      gitBranch={paneGitBranch}
+                      gitSummary={paneGitSummary}
                       onInitGit={initGitForActiveProject}
                       modelSelector={
                         <ModelPicker
