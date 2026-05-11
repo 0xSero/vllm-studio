@@ -32,7 +32,7 @@
   --err: hsl(0, 84%, 60%);
 
   /* Density / dimensions */
-  --sidebar-w: 200px;
+  --sidebar-w: 250px;
   --sidebar-w-collapsed: 48px;
   --row-h: 28px;
   --row-h-sm: 24px;
@@ -43,9 +43,9 @@
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.08);
 
   /* Typography */
-  --text-nav: 12.5px;
-  --text-section: 10px;
-  --section-tracking: 0.14em;
+  --text-nav: 16px;
+  --text-section: 13px;
+  --section-tracking: 0.16em;
 
   --app-height: 100vh;
   --app-font-size: 16px;

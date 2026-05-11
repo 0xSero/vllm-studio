@@ -115,7 +115,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
           isExpanded ? "w-[var(--sidebar-w)]" : "w-[var(--sidebar-w-collapsed)]"
         }`}
       >
-        <div className="sticky top-0 z-50 flex h-11 shrink-0 items-center px-2 bg-(--rail)">
+        <div className="sticky top-0 z-50 flex h-14 shrink-0 items-center px-5 bg-(--rail)">
           <button
             onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
             className="flex h-8 w-8 items-center justify-center text-(--dim) transition-colors hover:text-(--fg)"
@@ -123,27 +123,25 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
             aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
           >
             {isExpanded ? (
-              <PanelLeftClose className="h-4 w-4" />
+              <PanelLeftClose className="h-5 w-5" />
             ) : (
-              <PanelLeftOpen className="h-4 w-4" />
+              <PanelLeftOpen className="h-5 w-5" />
             )}
           </button>
         </div>
 
         {/* Primary nav */}
-        <nav className="flex-1 min-h-0 flex flex-col px-1.5 py-1 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 min-h-0 flex flex-col px-3 py-2 overflow-y-auto overflow-x-hidden">
           {isExpanded ? (
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="mb-1 flex h-7 items-center gap-2 px-1 text-(--dim) transition-colors hover:text-(--fg)"
+              className="mb-5 flex h-9 items-center gap-3 px-2 text-(--dim) transition-colors hover:text-(--fg)"
               title="Search sessions (⌘K)"
             >
-              <SearchIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate text-left text-[12px]">Search sessions</span>
-              <kbd className="px-1 py-0.5 text-[9.5px] font-mono text-(--dim)">
-                ⌘K
-              </kbd>
+              <SearchIcon className="h-5 w-5 shrink-0" />
+              <span className="flex-1 truncate text-left text-[16px]">Search sessions</span>
+              <kbd className="px-1 py-0.5 text-[11px] font-mono text-(--dim)">⌘K</kbd>
             </button>
           ) : (
             <button
@@ -157,7 +155,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
             </button>
           )}
           {isExpanded ? (
-            <div className="px-2 pb-1 pt-2 text-[length:var(--text-section)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
+            <div className="px-3 pb-2 pt-0 text-[length:var(--text-section)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
               Workspace
             </div>
           ) : null}
@@ -174,7 +172,7 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
           <ProjectsNavSection expanded={isExpanded} />
         </nav>
 
-        <div className="shrink-0 p-1.5">
+        <div className="shrink-0 px-3 py-3">
           <NavItemDesktop
             href="/settings"
             label="Settings"
@@ -330,13 +328,15 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-7 flex items-center gap-2.5 border-l-2 px-1.5 transition-colors shrink-0 ${
-        active ? "border-(--accent) text-(--fg)" : "border-transparent text-(--dim) hover:text-(--fg)"
+      className={`h-9 flex items-center gap-4 border-l-[3px] px-3 transition-colors shrink-0 ${
+        active
+          ? "border-(--accent) text-(--fg)"
+          : "border-transparent text-(--dim) hover:text-(--fg)"
       }`}
     >
-      <Icon className="w-3.5 h-3.5 shrink-0" />
+      <Icon className="w-5 h-5 shrink-0" />
       <span
-        className={`text-[12.5px] font-medium whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[16px] font-semibold whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >
