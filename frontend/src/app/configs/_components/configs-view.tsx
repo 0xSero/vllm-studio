@@ -57,7 +57,7 @@ const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
 const SECTIONS: SettingsSectionDef[] = [
   ["connection", "Connection", "Controller URL, API key, voice defaults.", Cable],
-  ["engines", "Engines / Services / System", "Runtime targets, services, storage, hardware.", Cpu],
+  ["system", "System", "Runtime targets, services, storage, hardware.", Cpu],
   ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
   ["archive", "Archived chats", "Hidden Pi sessions tracked by stable ID.", Archive],
   ["plugins", "Plugins", "Codex plugin discovery and composer availability.", Plug],
@@ -77,6 +77,12 @@ const SECTIONS: SettingsSectionDef[] = [
 
 const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
+
+const normalizeSectionId = (value: string): SettingsSectionId | null => {
+  if (isSectionId(value)) return value;
+  if (value === "engines" || value === "services") return "system";
+  return null;
+};
 
 export function ConfigsView({
   data,
@@ -101,14 +107,15 @@ export function ConfigsView({
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() => {
     if (typeof window === "undefined") return "connection";
     const hash = window.location.hash.replace("#", "");
-    return isSectionId(hash) ? hash : "connection";
+    return normalizeSectionId(hash) ?? "connection";
   });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
-      if (isSectionId(hash)) setActiveSection(hash);
+      const normalized = normalizeSectionId(hash);
+      if (normalized) setActiveSection(normalized);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -155,7 +162,7 @@ export function ConfigsView({
         />
       ) : null}
 
-      {activeSection === "engines" ? (
+      {activeSection === "system" ? (
         <div className="space-y-5">
           <EnginesSection runtime={data?.runtime ?? null} />
           <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />

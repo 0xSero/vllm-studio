@@ -83,6 +83,28 @@ describe("session store", () => {
     await expect(listSessions(cwd)).resolves.toMatchObject([{ id: "newer" }, { id: "older" }]);
   });
 
+  it("can restrict summaries to requested ids without hydrating every session", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vllm-studio-sessions-"));
+    roots.push(root);
+    process.env.PI_CODING_AGENT_DIR = path.join(root, "pi-agent");
+
+    const cwd = path.join(root, "project");
+    const sessionDir = path.join(process.env.PI_CODING_AGENT_DIR, "sessions", encodeCwdForPi(cwd));
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(
+      path.join(sessionDir, "2026-05-10T00-00-00-000Z_session-a.jsonl"),
+      JSON.stringify({ type: "session", id: "session-a", cwd }),
+    );
+    writeFileSync(
+      path.join(sessionDir, "2026-05-10T00-01-00-000Z_session-b.jsonl"),
+      JSON.stringify({ type: "session", id: "session-b", cwd }),
+    );
+
+    await expect(listSessions(cwd, { ids: ["session-b"] })).resolves.toMatchObject([
+      { id: "session-b" },
+    ]);
+  });
+
   it("loads the newest matching session file when duplicate roots exist", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "vllm-studio-sessions-"));
     roots.push(root);

@@ -20,7 +20,14 @@ function parseSince(value: string | null): Date | null {
 export async function GET(request: NextRequest) {
   const cwdParam = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
   const sinceParam = request.nextUrl.searchParams.get("since");
+  const idsParam = request.nextUrl.searchParams.get("ids");
   const since = parseSince(sinceParam);
+  const ids = idsParam
+    ? idsParam
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    : undefined;
   if (!cwdParam) return Response.json({ error: "cwd is required" }, { status: 400 });
   if (sinceParam && !since) {
     return Response.json({ error: "since must use a relative value like 7d" }, { status: 400 });
@@ -31,7 +38,7 @@ export async function GET(request: NextRequest) {
   if (!existsSync(cwdParam) || !statSync(cwdParam).isDirectory()) {
     return Response.json({ sessions: [] });
   }
-  const sessions = await listSessions(cwdParam, since ? { since } : undefined);
+  const sessions = await listSessions(cwdParam, { ...(since ? { since } : {}), ids });
   return Response.json({ sessions });
 }
 

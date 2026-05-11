@@ -20,6 +20,7 @@ export type SessionEvent = Record<string, unknown> & { type?: string };
 
 type ListSessionsOptions = {
   since?: Date;
+  ids?: string[];
 };
 
 function summaryStartTime(session: Pick<SessionSummary, "startedAt" | "updatedAt">): number {
@@ -151,15 +152,24 @@ export async function listSessions(
   options: ListSessionsOptions = {},
 ): Promise<SessionSummary[]> {
   const summariesById = new Map<string, SessionSummary>();
+  const wantedIds = new Set((options.ids ?? []).map((id) => id.trim()).filter(Boolean));
+  const wantedIdList = [...wantedIds];
   for (const dir of sessionsDirsForCwd(cwd)) {
     if (!existsSync(dir)) continue;
     const entries = readdirSync(dir).filter((name) => name.endsWith(".jsonl"));
     for (const filename of entries) {
       try {
+        if (
+          wantedIds.size > 0 &&
+          !wantedIdList.some((id) => filename.includes(id) || filename.startsWith(id))
+        ) {
+          continue;
+        }
         const filepath = path.join(dir, filename);
         if (options.since && statSync(filepath).mtime < options.since) continue;
         const summary = await readSessionSummary(filepath, filename);
         if (!summary?.id) continue;
+        if (wantedIds.size > 0 && !wantedIds.has(summary.id)) continue;
         const existing = summariesById.get(summary.id);
         if (!existing || summary.updatedAt > existing.updatedAt) {
           summariesById.set(summary.id, summary);

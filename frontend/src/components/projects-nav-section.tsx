@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   CloseIcon,
   EyeOffIcon,
@@ -76,6 +76,8 @@ const SESSION_PREFS_KEY = "vllm-studio.agent.sessionPrefs";
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
 const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
 const ACTIVE_AGENT_SESSIONS_KEY = "vllm-studio.agent.activeSessions.snapshot";
+const SESSION_MENU_CLASS =
+  "absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-[#151515] p-1 text-xs text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]";
 
 function loadActiveAgentSessions(): ActiveAgentSession[] {
   if (typeof window === "undefined") return [];
@@ -154,6 +156,27 @@ function patchSessionPref(piSessionId: string, patch: SessionPref) {
     all[piSessionId] = next;
   }
   saveSessionPrefs(all);
+}
+
+function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
+  return [
+    session.piSessionId,
+    session.paneId && session.tabId ? `tab:${session.paneId}:${session.tabId}` : null,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function activeSessionPref(
+  session: ActiveAgentSession,
+  prefs: Record<string, SessionPref>,
+): SessionPref {
+  return activeSessionPrefKeys(session).reduce<SessionPref>(
+    (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
+    {},
+  );
+}
+
+function patchActiveSessionPref(session: ActiveAgentSession, patch: SessionPref) {
+  for (const key of activeSessionPrefKeys(session)) patchSessionPref(key, patch);
 }
 
 function relativeAge(value?: string | null): string {
@@ -384,12 +407,37 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>([]);
   const prefs = useSessionPrefs();
+  const pinnedPrefIds = useMemo(
+    () =>
+      Object.entries(prefs)
+        .filter(([, pref]) => pref.pinned && !pref.hidden)
+        .map(([id]) => id)
+        .sort(),
+    [prefs],
+  );
+  const hiddenPrefIds = useMemo(
+    () =>
+      Object.entries(prefs)
+        .filter(([, pref]) => pref.hidden)
+        .map(([id]) => id)
+        .sort(),
+    [prefs],
+  );
+  const activePiSessionIds = useMemo(
+    () =>
+      activeSessions
+        .map((session) => session.piSessionId)
+        .filter((id): id is string => Boolean(id))
+        .sort(),
+    [activeSessions],
+  );
+  const pinnedPrefIdsKey = pinnedPrefIds.join("\u0000");
+  const hiddenPrefIdsKey = hiddenPrefIds.join("\u0000");
+  const activePiSessionIdsKey = activePiSessionIds.join("\u0000");
   const pinnedActiveSessions = activeSessions
     .filter(
       (session) =>
-        session.piSessionId &&
-        prefs[session.piSessionId]?.pinned &&
-        !prefs[session.piSessionId]?.hidden,
+        activeSessionPref(session, prefs).pinned && !activeSessionPref(session, prefs).hidden,
     )
     .map((session) => ({
       session,
@@ -522,18 +570,27 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       queueMicrotask(() => setPinnedSessions([]));
       return;
     }
+    if (!pinnedPrefIdsKey) {
+      queueMicrotask(() => setPinnedSessions([]));
+      return;
+    }
     let cancelled = false;
+    const pinnedIdsList = pinnedPrefIdsKey.split("\u0000").filter(Boolean);
+    const pinnedIds = new Set(pinnedIdsList);
+    const hiddenIds = new Set(hiddenPrefIdsKey.split("\u0000").filter(Boolean));
+    const activeIds = new Set(activePiSessionIdsKey.split("\u0000").filter(Boolean));
+    const idsParam = encodeURIComponent(pinnedIdsList.join(","));
     (async () => {
       const rows = await Promise.all(
         projects.map(async (project) => {
           try {
             const response = await fetch(
-              `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=30d`,
+              `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=30d&ids=${idsParam}`,
               { cache: "no-store" },
             );
             const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
             return (payload.sessions ?? [])
-              .filter((session) => prefs[session.id]?.pinned && !prefs[session.id]?.hidden)
+              .filter((session) => pinnedIds.has(session.id) && !hiddenIds.has(session.id))
               .map((session) => ({ ...session, project }));
           } catch {
             return [];
@@ -541,15 +598,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         }),
       );
       if (!cancelled) {
-        const activePiSessionIds = new Set(
-          activeSessions
-            .map((session) => session.piSessionId)
-            .filter((id): id is string => Boolean(id)),
-        );
         setPinnedSessions(
           rows
             .flat()
-            .filter((session) => !activePiSessionIds.has(session.id))
+            .filter((session) => !activeIds.has(session.id))
             .sort(
               (a, b) =>
                 new Date(b.startedAt || b.updatedAt).getTime() -
@@ -561,7 +613,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [activeSessions, expanded, projects, prefs]);
+  }, [activePiSessionIdsKey, expanded, hiddenPrefIdsKey, pinnedPrefIdsKey, projects]);
 
   if (!expanded) {
     return null;
@@ -585,7 +637,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               key={`${session.paneId}:${session.tabId}`}
               project={project}
               session={session}
-              pref={session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {}}
+              pref={activeSessionPref(session, prefs)}
             />
           ))}
           {pinnedSessions.map((session) => (
@@ -798,8 +850,7 @@ function ProjectSessions({
     });
 
   const visibleActiveSessions = projectActiveSessions.filter((session) => {
-    if (!session.piSessionId) return true;
-    const pref = prefs[session.piSessionId];
+    const pref = activeSessionPref(session, prefs);
     if (pref?.pinned) return false;
     return showHidden || !pref?.hidden;
   });
@@ -822,7 +873,7 @@ function ProjectSessions({
           key={`${session.paneId}:${session.tabId}`}
           project={project}
           session={session}
-          pref={session.piSessionId ? (prefs[session.piSessionId] ?? {}) : {}}
+          pref={activeSessionPref(session, prefs)}
         />
       ))}
 
@@ -895,7 +946,7 @@ function ActiveSessionRow({
 
   const finishRename = () => {
     const trimmed = draft.trim();
-    if (session.piSessionId) patchSessionPref(session.piSessionId, { title: trimmed || undefined });
+    patchActiveSessionPref(session, { title: trimmed || undefined });
     window.dispatchEvent(
       new CustomEvent(ACTIVE_AGENT_SESSION_RENAME_EVENT, {
         detail: { paneId: session.paneId, tabId: session.tabId, title: trimmed || session.title },
@@ -944,10 +995,9 @@ function ActiveSessionRow({
     <div className={rowClass}>
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
-        disabled={!session.piSessionId}
         running={isRunning}
         onToggle={() => {
-          if (session.piSessionId) patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
+          patchActiveSessionPref(session, { pinned: !pref.pinned });
         }}
       />
       {session.piSessionId ? (
@@ -1001,7 +1051,7 @@ function ActiveSessionRow({
           <MoreIcon className="h-4 w-4" />
         </button>
         {menuOpen ? (
-          <div className="absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-(--bg) p-1 text-xs shadow-lg">
+          <div className={SESSION_MENU_CLASS}>
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
@@ -1014,8 +1064,7 @@ function ActiveSessionRow({
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
-                if (session.piSessionId)
-                  patchSessionPref(session.piSessionId, { pinned: !pref.pinned });
+                patchActiveSessionPref(session, { pinned: !pref.pinned });
               }}
             >
               {pref.pinned ? "Unpin" : "Pin"}
@@ -1023,8 +1072,7 @@ function ActiveSessionRow({
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
-                if (session.piSessionId)
-                  patchSessionPref(session.piSessionId, { hidden: !pref.hidden });
+                patchActiveSessionPref(session, { hidden: !pref.hidden });
               }}
             >
               {pref.hidden ? "Unarchive" : "Archive"}
@@ -1136,7 +1184,7 @@ function SessionRow({
           <MoreIcon className="h-3 w-3" />
         </button>
         {menuOpen ? (
-          <div className="absolute right-0 top-5 z-50 min-w-[140px] rounded-md border border-(--border) bg-(--bg) p-1 text-xs shadow-lg">
+          <div className={SESSION_MENU_CLASS}>
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
@@ -1238,7 +1286,7 @@ function SessionMenuItem({
     <button
       type="button"
       onClick={onClick}
-      className="block w-full px-2 py-1 text-left text-xs text-(--fg) hover:bg-(--surface)"
+      className="block w-full rounded-sm px-2 py-1 text-left text-xs text-(--fg) hover:bg-[#242424]"
     >
       {children}
     </button>
