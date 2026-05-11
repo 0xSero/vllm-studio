@@ -2125,8 +2125,8 @@ export function ChatPane({
           className={`mx-auto w-full max-w-[var(--thread-w)] ${showEmptyPrompt ? "flex flex-1" : ""}`}
         >
           {showEmptyPrompt ? (
-            <div className="flex flex-1 items-center justify-center pb-24 text-center text-[12px] text-(--dim)">
-              <p>
+            <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
+              <p className="max-w-[680px]">
                 A dream is something you build for yourself.
                 <br />
                 Just talk to it.
@@ -2426,40 +2426,6 @@ export function ChatPane({
                 {computerUseLoaded ? <ComputerUseActivityDot /> : null}
               </span>
             </button>
-            <div className="min-w-[7rem] max-w-[12rem] flex-[0_1_12rem]">
-              {projectSelector ? (
-                projectSelector
-              ) : cwd ? (
-                <span className="block min-w-0 truncate font-mono text-[11px] text-(--dim)">
-                  {cwd}
-                </span>
-              ) : null}
-            </div>
-            {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 px-1.5 py-0.5 font-mono text-[10px] text-(--dim)">
-                <GitBranchIcon className="h-3 w-3 shrink-0" />
-                <span className="truncate">{gitBranch}</span>
-              </span>
-            ) : gitSummary && !gitSummary.isRepo ? (
-              <button
-                type="button"
-                onClick={onInitGit}
-                className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg)"
-                aria-label="Initialize git repository"
-                title="Init git"
-              >
-                <GitBranchIcon className="h-3 w-3" />
-              </button>
-            ) : null}
-            {gitSummary?.isRepo ? (
-              <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px]">
-                <span className="text-emerald-400">+{gitSummary.additions}</span>
-                <span className="text-red-400">-{gitSummary.deletions}</span>
-                {gitSummary.statusCount > 0 ? (
-                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
-                ) : null}
-              </span>
-            ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-1">
               {modelSelector}
               {running ? (
@@ -2510,23 +2476,62 @@ export function ChatPane({
             </div>
           </div>
         </div>
-        <div className="mx-auto mt-0.5 flex max-w-3xl items-center justify-end gap-2 font-mono text-[10px] text-(--dim)">
-          <button
-            type="button"
-            onClick={() => void compactSession()}
-            disabled={running || compacting || !activeTab?.piSessionId || !modelId}
-            className="mr-auto inline-flex items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
-            title="Compact this Pi session context"
-          >
-            {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-            compact
-          </button>
-          <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
-          <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
-          <span>
-            {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
-            {formatTokenCount(contextWindow)}
-          </span>
+        <div className="mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-hidden font-mono text-[10px] text-(--dim)">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => void compactSession()}
+              disabled={running || compacting || !activeTab?.piSessionId || !modelId}
+              className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
+              title="Compact this Pi session context"
+            >
+              {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              compact
+            </button>
+            <span className="shrink-0 text-(--border)">·</span>
+            <div className="min-w-0 max-w-[42%] shrink">
+              {projectSelector ? (
+                projectSelector
+              ) : cwd ? (
+                <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
+                  {cwd}
+                </span>
+              ) : null}
+            </div>
+            {gitBranch ? (
+              <span className="inline-flex min-w-0 shrink items-center gap-1 text-(--dim)">
+                <GitBranchIcon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{gitBranch}</span>
+              </span>
+            ) : gitSummary && !gitSummary.isRepo ? (
+              <button
+                type="button"
+                onClick={onInitGit}
+                className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg)"
+                title="Init git"
+              >
+                <GitBranchIcon className="h-3 w-3" />
+                git
+              </button>
+            ) : null}
+            {gitSummary?.isRepo ? (
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <span className="text-emerald-400">+{gitSummary.additions}</span>
+                <span className="text-red-400">-{gitSummary.deletions}</span>
+                {gitSummary.statusCount > 0 ? (
+                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
+                ) : null}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
+            <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
+            <span>
+              {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
+              {formatTokenCount(contextWindow)}
+            </span>
+          </div>
         </div>
       </form>
     </section>
