@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useRef } from "react";
-import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { PROJECTS_CHANGED_EVENT, loadAgentProjects } from "@/components/projects-nav-section";
-import {
-  sanitizeLocalFileUrl,
-  sanitizePublicBrowserUrl,
-} from "@/lib/sanitize-embedded-browser-url";
 import { safeJson } from "@/lib/agent/safe-json";
 import { loadInitialFromStorage } from "@/lib/agent/workspace/persistence";
 import {
@@ -34,12 +30,9 @@ import type {
 } from "@/lib/agent/workspace/types";
 import { makeFreshTab, type ChatPaneHandle, type SessionTab } from "./chat-pane";
 import type { AgentBrowserHandle } from "./agent-browser";
+import { runBrowserPanelCommand, type BrowserCommandResult } from "./agent-browser-panel";
 import type { SessionDropPayload } from "./pane-grid";
 
-const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
-const DEFAULT_BROWSER_URL = "https://www.google.com";
-
-type BrowserCommandResult = { ok: boolean; data?: unknown; error?: string };
 type BrowserCommand = { id: string; verb: string; payload: Record<string, unknown> };
 
 export type WorkspaceHandles = {
@@ -81,7 +74,6 @@ export type WorkspaceHandles = {
   selectPaneProject: (paneId: PaneId, project: ProjectEntry) => void;
   selectPaneModel: (paneId: PaneId, modelId: string) => void;
   notifySessionsChanged: () => void;
-  submitBrowserUrl: (event: FormEvent) => void;
   startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => void;
   initGitForActiveProject: () => Promise<void>;
 };
@@ -91,61 +83,6 @@ export type UseWorkspaceResult = {
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
 };
-
-function withBrowserTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${BROWSER_COMMAND_TIMEOUT_MS / 1000}s`));
-    }, BROWSER_COMMAND_TIMEOUT_MS);
-  });
-  return Promise.race([operation, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
-function detectBotProtection(text: string): string | null {
-  const normalized = text.toLowerCase();
-  if (
-    normalized.includes("our systems have detected unusual traffic") ||
-    normalized.includes("/sorry/") ||
-    normalized.includes("captcha") ||
-    normalized.includes("not a robot")
-  ) {
-    return "Bot-protection page detected. Stop automated browser use for this page and ask the user to intervene or use a non-browser search source.";
-  }
-  return null;
-}
-
-function encodeFilePath(pathValue: string): string {
-  const normalized = pathValue.replace(/\\/g, "/");
-  const withLeadingSlash = normalized.startsWith("/") ? normalized : `/${normalized}`;
-  return `file://${withLeadingSlash.split("/").map(encodeURIComponent).join("/")}`;
-}
-
-function resolveRelativeFilePath(cwd: string, value: string): string {
-  const segments = `${cwd.replace(/\/+$/, "")}/${value}`.split("/");
-  const resolved: string[] = [];
-  for (const segment of segments) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") {
-      resolved.pop();
-      continue;
-    }
-    resolved.push(segment);
-  }
-  return `/${resolved.join("/")}`;
-}
-
-function expandHomeFilePath(cwd: string, value: string): string | null {
-  const homeMatch = cwd.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(?:\/|$)/);
-  if (!homeMatch) return null;
-  return `${homeMatch[1]}${value.slice(1)}`;
-}
-
-function isSafeBrowserSelector(selector: string): boolean {
-  return selector.length > 0 && selector.length <= 240 && !/[`;{}]/.test(selector);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -163,36 +100,6 @@ function parseBrowserCommand(raw: string): BrowserCommand | null {
   } catch {
     return null;
   }
-}
-
-function normalizeBrowserInput(raw: string, cwd: string): string {
-  const value = raw.trim();
-  if (!value) return DEFAULT_BROWSER_URL;
-  if (/^file:\/\//i.test(value)) {
-    return sanitizeLocalFileUrl(value) ?? "";
-  }
-  if (value.startsWith("~/") && cwd) {
-    const expanded = expandHomeFilePath(cwd, value);
-    if (expanded) return encodeFilePath(expanded);
-  }
-  if (value.startsWith("/")) return encodeFilePath(value);
-  if ((value.startsWith("./") || value.startsWith("../")) && cwd) {
-    return encodeFilePath(resolveRelativeFilePath(cwd, value));
-  }
-  if (/^https?:\/\//i.test(value)) return value;
-  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$/i.test(value)) {
-    return `http://${value}`;
-  }
-  if (/^[\w.-]+:\d+([/?#].*)?$/.test(value)) {
-    return `http://${value}`;
-  }
-  if (/^[\w-]+(\.[\w-]+)+([/:?#].*)?$/.test(value)) {
-    return `https://${value}`;
-  }
-  if (value.includes("/") && cwd) {
-    return encodeFilePath(resolveRelativeFilePath(cwd, value));
-  }
-  return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
 }
 
 function createWorkspaceWindow(source: Window): WorkspaceWindow {
@@ -362,132 +269,13 @@ export function useWorkspace(): UseWorkspaceResult {
     const runBrowserCommand = async (
       verb: string,
       payload: Record<string, unknown>,
-    ): Promise<BrowserCommandResult> => {
-      const webview = browserRef.current?.webview ?? null;
-      const browserWindow = typeof window !== "undefined" ? window : null;
-      const isElectron = Boolean(browserWindow?.navigator.userAgent.match(/electron/i));
-      if (isElectron && webview && typeof webview.executeJavaScript === "function") {
-        try {
-          switch (verb) {
-            case "navigate": {
-              const url = sanitizePublicBrowserUrl(String(payload.url || ""));
-              if (!url) return { ok: false, error: "valid public http(s) url required" };
-              await withBrowserTimeout(webview.loadURL(url), "Browser navigation");
-              workspaceDispatch({ type: "SET_BROWSER_URL", url, input: url });
-              return { ok: true, data: { url } };
-            }
-            case "get-url":
-              return { ok: true, data: { url: webview.getURL(), title: webview.getTitle() } };
-            case "get-text": {
-              const value = await withBrowserTimeout(
-                webview.executeJavaScript("document.body && document.body.innerText"),
-                "Browser text read",
-              );
-              const text = typeof value === "string" ? value : "";
-              const protectionError = detectBotProtection(text);
-              return protectionError
-                ? { ok: false, error: protectionError }
-                : { ok: true, data: { text } };
-            }
-            case "get-html": {
-              const value = await withBrowserTimeout(
-                webview.executeJavaScript(
-                  "document.documentElement && document.documentElement.outerHTML",
-                ),
-                "Browser HTML read",
-              );
-              const html = typeof value === "string" ? value : "";
-              const protectionError = detectBotProtection(html);
-              return protectionError
-                ? { ok: false, error: protectionError }
-                : { ok: true, data: { html } };
-            }
-            case "screenshot": {
-              const image = await withBrowserTimeout(webview.capturePage(), "Browser screenshot");
-              return { ok: true, data: { dataUri: image.toDataURL() } };
-            }
-            case "click": {
-              const selector = String(payload.selector || "");
-              if (!selector) return { ok: false, error: "selector required" };
-              if (!isSafeBrowserSelector(selector)) {
-                return { ok: false, error: "unsupported selector" };
-              }
-              const script = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found: false }; (el).click(); return { found: true }; })()`;
-              const value = await withBrowserTimeout(
-                webview.executeJavaScript(script, true),
-                "Browser click",
-              );
-              const found = isRecord(value) && value.found === true;
-              return {
-                ok: found,
-                data: { found },
-                error: found ? undefined : "selector not found",
-              };
-            }
-            case "scroll": {
-              const rawDeltaY = Number(payload.deltaY ?? 0);
-              const deltaY = Number.isFinite(rawDeltaY)
-                ? Math.max(-10_000, Math.min(10_000, Math.trunc(rawDeltaY)))
-                : 0;
-              await withBrowserTimeout(
-                webview.executeJavaScript(`window.scrollBy(0, ${deltaY})`),
-                "Browser scroll",
-              );
-              const scrollY = await withBrowserTimeout(
-                webview.executeJavaScript("window.scrollY"),
-                "Browser scroll position read",
-              );
-              return { ok: true, data: { deltaY, scrollY } };
-            }
-            case "fill": {
-              const selector = String(payload.selector || "");
-              const value = String(payload.value ?? "");
-              if (!selector) return { ok: false, error: "selector required" };
-              if (!isSafeBrowserSelector(selector)) {
-                return { ok: false, error: "unsupported selector" };
-              }
-              const script = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { found: false }; el.focus(); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { found: true }; })()`;
-              const result = await withBrowserTimeout(
-                webview.executeJavaScript(script, true),
-                "Browser fill",
-              );
-              const found = isRecord(result) && result.found === true;
-              return {
-                ok: found,
-                data: { found },
-                error: found ? undefined : "selector not found",
-              };
-            }
-            default:
-              return { ok: false, error: `Unsupported browser verb: ${verb}` };
-          }
-        } catch (error) {
-          return { ok: false, error: error instanceof Error ? error.message : String(error) };
-        }
-      }
-
-      const iframe = browserRef.current?.iframe ?? null;
-      if (!iframe && verb === "get-url") {
-        return { ok: true, data: { url: stateRef.current.browserUrl, title: "" } };
-      }
-      if (!iframe) return { ok: false, error: "Browser panel not mounted" };
-      switch (verb) {
-        case "navigate": {
-          const url = sanitizePublicBrowserUrl(String(payload.url || ""));
-          if (!url) return { ok: false, error: "valid public http(s) url required" };
-          iframe.src = url;
-          workspaceDispatch({ type: "SET_BROWSER_URL", url, input: url });
-          return { ok: true, data: { url } };
-        }
-        case "get-url":
-          return { ok: true, data: { url: iframe.src, title: "" } };
-        default:
-          return {
-            ok: false,
-            error: `Browser tool '${verb}' is only available in the desktop app (cross-origin iframe restriction in dev).`,
-          };
-      }
-    };
+    ): Promise<BrowserCommandResult> =>
+      runBrowserPanelCommand(verb, payload, {
+        browser: browserRef.current,
+        currentUrl: stateRef.current.browserUrl,
+        dispatch: workspaceDispatch,
+        isElectron: typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent),
+      });
     return { dispatch: workspaceDispatch, runBrowserCommand };
   }, [queueSessionReplay, reducerDispatch]);
 
@@ -574,15 +362,6 @@ export function useWorkspace(): UseWorkspaceResult {
       selectPaneModel: (paneId: PaneId, modelId: string) =>
         dispatch({ type: "PATCH_ACTIVE_TAB", paneId, patch: { modelId } }),
       notifySessionsChanged: () => dispatch({ type: "NOTIFY_SESSIONS_CHANGED" }),
-      submitBrowserUrl: (event: FormEvent) => {
-        event.preventDefault();
-        const next = normalizeBrowserInput(
-          stateRef.current.browserInput,
-          stateRef.current.agentCwd,
-        );
-        if (!next) return;
-        dispatch({ type: "SET_BROWSER_URL", url: next, input: next });
-      },
       startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => {
         if (typeof window === "undefined") return;
         event.preventDefault();
