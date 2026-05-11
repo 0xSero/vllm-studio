@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   Database,
   HardDrive,
   Search as SearchIcon,
@@ -13,6 +15,7 @@ import {
   PanelLeftClose,
   Menu,
   PanelLeftOpen,
+  Square,
   X,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -110,77 +113,92 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
+      {!isExpanded ? (
+        <button
+          onClick={() => setDesktopSidebarPinnedOpen(true)}
+          className="fixed left-3 top-3 z-50 hidden h-8 w-8 items-center justify-center rounded-md bg-(--bg)/70 text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg) md:flex"
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+        >
+          <PanelLeftOpen className="h-5 w-5" />
+        </button>
+      ) : null}
       <aside
         className={`hidden md:flex sticky top-0 h-[100dvh] transition-[width] duration-150 ease-out border-r border-(--border) bg-(--rail) flex-col shrink-0 z-40 overflow-hidden ${
-          isExpanded ? "w-[var(--sidebar-w)]" : "w-[var(--sidebar-w-collapsed)]"
+          isExpanded ? "w-[var(--sidebar-w)]" : "w-0 border-r-0"
         }`}
+        aria-hidden={!isExpanded}
       >
-        <div className="sticky top-0 z-50 flex h-14 shrink-0 items-center px-5 bg-(--rail)">
-          <button
-            onClick={() => setDesktopSidebarPinnedOpen(!desktopSidebarPinnedOpen)}
-            className="flex h-8 w-8 items-center justify-center text-(--dim) transition-colors hover:text-(--fg)"
-            title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
-            aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
-          >
-            {isExpanded ? (
-              <PanelLeftClose className="h-5 w-5" />
-            ) : (
-              <PanelLeftOpen className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-
-        {/* Primary nav */}
-        <nav className="flex-1 min-h-0 flex flex-col px-3 py-2 overflow-y-auto overflow-x-hidden">
-          {isExpanded ? (
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="mb-5 flex h-9 items-center gap-3 px-2 text-(--dim) transition-colors hover:text-(--fg)"
-              title="Search sessions (⌘K)"
-            >
-              <SearchIcon className="h-5 w-5 shrink-0" />
-              <span className="flex-1 truncate text-left text-[16px]">Search sessions</span>
-              <kbd className="px-1 py-0.5 text-[11px] font-mono text-(--dim)">⌘K</kbd>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="mb-1 flex h-7 items-center justify-center text-(--dim) transition-colors hover:text-(--fg)"
-              title="Search sessions (⌘K)"
-              aria-label="Search sessions"
-            >
-              <SearchIcon className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {isExpanded ? (
-            <div className="px-3 pb-2 pt-0 text-[length:var(--text-section)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
-              Workspace
+        {isExpanded ? (
+          <>
+            {/* Header with window controls + nav arrows */}
+            <div className="sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between px-4 bg-(--rail)">
+              <button
+                onClick={() => setDesktopSidebarPinnedOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+              >
+                <Square className="h-3.5 w-3.5" />
+              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => window.history.back()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  title="Go back"
+                  aria-label="Go back"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => window.history.forward()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  title="Go forward"
+                  aria-label="Go forward"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          ) : null}
-          {tabs.map((tab) => (
-            <NavItemDesktop
-              key={tab.href}
-              href={tab.href}
-              label={tab.label}
-              Icon={tab.icon}
-              active={isRouteActive(pathname, tab.href)}
-              expanded={isExpanded}
-            />
-          ))}
-          <ProjectsNavSection expanded={isExpanded} />
-        </nav>
 
-        <div className="shrink-0 px-3 py-3">
-          <NavItemDesktop
-            href="/settings"
-            label="Settings"
-            Icon={Settings}
-            active={isRouteActive(pathname, "/settings")}
-            expanded={isExpanded}
-          />
-        </div>
+            {/* Primary nav */}
+            <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="mb-1 flex h-8 items-center gap-3 rounded-md px-3 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                title="Search sessions (⌘K)"
+              >
+                <SearchIcon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate text-left text-[14px]">Search</span>
+                <kbd className="px-1 py-0.5 text-[11px] font-mono text-(--dim)">⌘K</kbd>
+              </button>
+
+              <div className="mb-1 mt-4 px-3 text-[12px] font-medium text-(--dim)">Workspace</div>
+              {tabs.map((tab) => (
+                <NavItemDesktop
+                  key={tab.href}
+                  href={tab.href}
+                  label={tab.label}
+                  Icon={tab.icon}
+                  active={isRouteActive(pathname, tab.href)}
+                  expanded={isExpanded}
+                />
+              ))}
+              <ProjectsNavSection expanded={isExpanded} />
+            </nav>
+
+            <div className="shrink-0 px-2 py-3">
+              <NavItemDesktop
+                href="/settings"
+                label="Settings"
+                Icon={Settings}
+                active={isRouteActive(pathname, "/settings")}
+                expanded={isExpanded}
+              />
+            </div>
+          </>
+        ) : null}
       </aside>
 
       {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
@@ -328,15 +346,13 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-9 flex items-center gap-4 border-l-[3px] px-3 transition-colors shrink-0 ${
-        active
-          ? "border-(--accent) text-(--fg)"
-          : "border-transparent text-(--dim) hover:text-(--fg)"
+      className={`h-8 flex items-center gap-3 rounded-md px-3 transition-colors shrink-0 ${
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
       }`}
     >
-      <Icon className="w-5 h-5 shrink-0" />
+      <Icon className="w-[18px] h-[18px] shrink-0" />
       <span
-        className={`text-[16px] font-semibold whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[14px] font-medium whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >

@@ -578,7 +578,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col pb-1">
-          <div className="mt-7 flex h-8 items-center px-5 text-[16px] font-medium text-(--dim)">
+          <div className="mt-5 flex h-7 items-center px-3 text-[12px] font-medium text-(--dim)">
             Pinned
           </div>
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -599,7 +599,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ))}
         </div>
       ) : null}
-      <div className="mt-7 flex h-8 items-center justify-between px-5 text-[16px] font-medium text-(--dim)">
+      <div className="mt-5 flex h-7 items-center justify-between px-3 text-[12px] font-medium text-(--dim)">
         <span>Projects</span>
         <button
           type="button"
@@ -608,14 +608,14 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           title="Add folder"
           aria-label="Add folder"
         >
-          <PlusIcon className="h-5 w-5" />
+          <PlusIcon className="h-4 w-4" />
         </button>
       </div>
       {projects.length === 0 ? (
         <button
           type="button"
           onClick={handleAddProject}
-          className="px-5 py-1 text-left text-[15px] text-(--dim) hover:text-(--fg)"
+          className="px-3 py-1 text-left text-[13px] text-(--dim) hover:text-(--fg)"
         >
           No projects yet — pick a folder to get started.
         </button>
@@ -666,26 +666,26 @@ function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-9 items-center rounded-md pl-5 pr-2 text-(--dim) transition-colors hover:bg-(--surface)/60 hover:text-(--fg)">
+      <div className="group relative flex h-8 items-center rounded-md pl-3 pr-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
           className="flex min-w-0 flex-1 items-center gap-3 px-0 pr-8 text-left"
         >
-          <span className="relative h-5 w-5 shrink-0 text-(--dim)">
+          <span className="relative h-4 w-4 shrink-0 text-(--dim)">
             <Folder
-              className={`absolute inset-0 h-5 w-5 transition-all duration-150 ${
+              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${
                 open ? "scale-90 opacity-0" : "scale-100 opacity-80"
               }`}
             />
             <FolderOpen
-              className={`absolute inset-0 h-5 w-5 transition-all duration-150 ${
+              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${
                 open ? "scale-100 opacity-80" : "scale-90 opacity-0"
               }`}
             />
           </span>
-          <span className="truncate text-[17px] font-bold text-(--fg)">{project.name}</span>
+          <span className="truncate text-[14px] font-medium text-(--fg)">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -828,9 +828,9 @@ function ProjectSessions({
       ))}
 
       {loading && !sessions ? (
-        <div className="pl-[4.75rem] pr-4 py-1 text-[16px] text-(--dim)">Loading…</div>
+        <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-[4.75rem] pr-4 py-1 text-[16px] text-(--dim)">No chats</div>
+        <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">No chats</div>
       ) : (
         <>
           {recent.map((session) => (
@@ -845,7 +845,7 @@ function ProjectSessions({
             <button
               type="button"
               onClick={toggleShowHidden}
-              className="flex h-7 items-center gap-1 pl-[4.75rem] pr-4 text-[15px] text-(--dim) hover:text-(--fg)"
+              className="flex h-6 items-center gap-1 pl-10 pr-4 text-[13px] text-(--dim) hover:text-(--fg)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
               <EyeOffIcon className="w-3 h-3 shrink-0" />
@@ -907,7 +907,7 @@ function ActiveSessionRow({
 
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-9 items-center gap-1 pl-[4.75rem] pr-2 transition-colors ${
+  const rowClass = `group relative flex h-8 items-center gap-1 pl-10 pr-2 transition-colors ${
     isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
   }`;
 
@@ -926,7 +926,7 @@ function ActiveSessionRow({
               setRenaming(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-[16px] text-(--fg) outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--fg) outline-none"
         />
       </div>
     );
@@ -935,11 +935,11 @@ function ActiveSessionRow({
   const content = (
     <>
       <FileIcon
-        className={`h-4 w-4 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
+        className={`h-3.5 w-3.5 shrink-0 opacity-70 ${isRunning ? "animate-pulse" : ""}`}
         aria-label={isRunning ? `Session ${session.status}` : undefined}
       />
-      <span className="min-w-0 flex-1 truncate text-[16px] font-normal">{label}</span>
-      {age ? <span className="shrink-0 pl-3 font-mono text-[15px] text-(--dim)">{age}</span> : null}
+      <span className="min-w-0 flex-1 truncate text-[13px] font-normal">{label}</span>
+      {age ? <span className="shrink-0 pl-2 font-mono text-[12px] text-(--dim)">{age}</span> : null}
     </>
   );
 
@@ -1073,7 +1073,7 @@ function SessionRow({
 
   if (renaming) {
     return (
-      <div className="flex h-9 items-center gap-1 pl-[4.75rem] pr-2 bg-(--surface)/60">
+      <div className="flex h-8 items-center gap-1 pl-10 pr-2 bg-(--surface)/60">
         <input
           autoFocus
           value={draft}
@@ -1086,7 +1086,7 @@ function SessionRow({
               setRenaming(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-[16px] text-(--fg) outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--fg) outline-none"
         />
       </div>
     );
@@ -1094,7 +1094,7 @@ function SessionRow({
 
   return (
     <div
-      className="group relative flex h-9 items-center gap-1 pl-[4.75rem] pr-2 text-(--dim) transition-colors hover:text-(--fg)"
+      className="group relative flex h-8 items-center gap-1 pl-10 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
@@ -1114,10 +1114,10 @@ function SessionRow({
         }}
         className="flex min-w-0 flex-1 items-center gap-3 pr-10"
       >
-        <FileIcon className="h-4 w-4 shrink-0 opacity-70" />
-        <span className="min-w-0 flex-1 truncate text-[16px] font-normal">{label}</span>
+        <FileIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-normal">{label}</span>
         {age ? (
-          <span className="shrink-0 pl-3 font-mono text-[15px] text-(--dim)">{age}</span>
+          <span className="shrink-0 pl-2 font-mono text-[12px] text-(--dim)">{age}</span>
         ) : null}
       </Link>
       <SessionPinButton
