@@ -97,6 +97,10 @@ function freshTab(tab?: SessionTab): SessionTab {
   return tab ? { ...tab } : makeFreshWorkspaceTab();
 }
 
+function replaySessionTitle(sessionTitle?: string, fallback = "Loading session"): string {
+  return sessionTitle?.trim() || fallback;
+}
+
 export function createInitialState(): WorkspaceState {
   const tab = makeFreshWorkspaceTab();
   return {
@@ -565,9 +569,13 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
         ? {
             ...targetTab,
             piSessionId: action.piSessionId,
-            title: targetTab.title || "Loading session",
+            title: replaySessionTitle(action.sessionTitle, targetTab.title || "Loading session"),
           }
-        : { ...freshTab(action.tab), piSessionId: action.piSessionId, title: "Loading session" };
+        : {
+            ...freshTab(action.tab),
+            piSessionId: action.piSessionId,
+            title: replaySessionTitle(action.sessionTitle),
+          };
       const nextTabs = targetTab
         ? pane.tabs.map((tab) => (tab.id === targetTab.id ? replayTab : tab))
         : [...pane.tabs, replayTab];
@@ -589,7 +597,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
         const tab = {
           ...freshTab(action.tab),
           piSessionId: action.piSessionId,
-          title: "Loading session",
+          title: replaySessionTitle(action.sessionTitle),
         };
         return addTabToPane(state, targetPaneId, tab);
       }
@@ -597,7 +605,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
       const tab = {
         ...freshTab(action.tab),
         piSessionId: action.piSessionId,
-        title: "Loading session",
+        title: replaySessionTitle(action.sessionTitle),
       };
       const nextPanes = new Map(state.panesById);
       nextPanes.set(paneId, {
@@ -810,10 +818,18 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
         return reducer(marked, { type: "OPEN_NEW_SESSION" });
       }
       if (action.sessionId && action.split) {
-        return reducer(marked, { type: "REPLAY_SESSION_IN_SPLIT", piSessionId: action.sessionId });
+        return reducer(marked, {
+          type: "REPLAY_SESSION_IN_SPLIT",
+          piSessionId: action.sessionId,
+          sessionTitle: action.sessionTitle,
+        });
       }
       if (action.sessionId) {
-        return reducer(marked, { type: "REPLAY_SESSION", piSessionId: action.sessionId });
+        return reducer(marked, {
+          type: "REPLAY_SESSION",
+          piSessionId: action.sessionId,
+          sessionTitle: action.sessionTitle,
+        });
       }
       return marked;
     }

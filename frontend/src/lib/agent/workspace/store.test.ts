@@ -113,6 +113,21 @@ describe("workspace reducer", () => {
     expect(next.focusedPaneId).toBe("p-init");
   });
 
+  it("uses a provided session title while replay loads", () => {
+    const state = createInitialState();
+
+    const next = reducer(state, {
+      type: "replaySession",
+      piSessionId: "pi-1",
+      sessionTitle: "Saved session",
+    });
+
+    expect(pane(next, "p-init").tabs[0]).toMatchObject({
+      piSessionId: "pi-1",
+      title: "Saved session",
+    });
+  });
+
   it("replays a session into a split pane", () => {
     const state = createInitialState();
 

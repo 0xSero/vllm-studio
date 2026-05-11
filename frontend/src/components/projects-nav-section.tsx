@@ -76,6 +76,7 @@ const SESSION_PREFS_KEY = "vllm-studio.agent.sessionPrefs";
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
 const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
 const ACTIVE_AGENT_SESSIONS_KEY = "vllm-studio.agent.activeSessions.snapshot";
+const SESSION_NAV_TITLE_PREFIX = "vllm-studio.agent.sessionNavTitle:";
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-[#151515] p-1 text-xs text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]";
 
@@ -209,6 +210,29 @@ function useSessionPrefs() {
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(ADD_PROJECT_EVENT));
+}
+
+export function rememberAgentSessionNavTitle(sessionId: string | null | undefined, title: string) {
+  if (typeof window === "undefined" || !sessionId) return;
+  const trimmed = title.trim();
+  if (!trimmed || trimmed === "Loading session") return;
+  try {
+    window.sessionStorage.setItem(`${SESSION_NAV_TITLE_PREFIX}${sessionId}`, trimmed);
+  } catch {
+    return;
+  }
+}
+
+export function consumeAgentSessionNavTitle(sessionId: string | null | undefined) {
+  if (typeof window === "undefined" || !sessionId) return undefined;
+  const key = `${SESSION_NAV_TITLE_PREFIX}${sessionId}`;
+  try {
+    const title = window.sessionStorage.getItem(key)?.trim() || undefined;
+    window.sessionStorage.removeItem(key);
+    return title;
+  } catch {
+    return undefined;
+  }
 }
 
 function notifyProjectsChanged() {
@@ -958,7 +982,9 @@ function ActiveSessionRow({
   const isRunning = session.status !== "idle" && session.status !== "done";
   const isActive = session.active === true;
   const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${
-    isActive ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+    isActive
+      ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']"
+      : "text-(--dim) hover:text-(--fg)"
   }`;
 
   if (renaming) {
@@ -1005,6 +1031,7 @@ function ActiveSessionRow({
           href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
           title={label}
           draggable
+          onClick={() => rememberAgentSessionNavTitle(session.piSessionId, label)}
           onDragStart={(event) => setAgentSessionDragData(event, session)}
           onDoubleClick={(event) => {
             event.preventDefault();
@@ -1154,6 +1181,7 @@ function SessionRow({
         href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
         title={label}
         draggable
+        onClick={() => rememberAgentSessionNavTitle(session.id, label)}
         onDragStart={(event) => {
           setAgentSessionDragData(event, {
             piSessionId: session.id,

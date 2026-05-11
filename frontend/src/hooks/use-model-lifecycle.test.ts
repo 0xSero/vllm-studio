@@ -75,6 +75,7 @@ function renderLifecycleHook() {
 
   const Probe = () => {
     const value = useModelLifecycle();
+    // eslint-disable-next-line no-restricted-syntax -- test harness mirrors hook output after React commits.
     useEffect(() => {
       result = value;
     }, [value]);

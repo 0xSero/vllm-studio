@@ -251,7 +251,8 @@ export function subscribeWorkspaceWindowEvents(
   const onSplitSession = (event: Event) => {
     const detail = eventDetail(event);
     const piSessionId = isRecord(detail) ? stringField(detail, "piSessionId") : undefined;
-    if (piSessionId) dispatch({ type: "REPLAY_SESSION_IN_SPLIT", piSessionId });
+    const sessionTitle = isRecord(detail) ? stringField(detail, "title") : undefined;
+    if (piSessionId) dispatch({ type: "REPLAY_SESSION_IN_SPLIT", piSessionId, sessionTitle });
   };
   const onProjectsChanged = () => {
     dispatch({ type: "PROJECTS_CHANGED" });

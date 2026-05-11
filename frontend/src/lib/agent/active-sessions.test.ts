@@ -104,4 +104,18 @@ describe("mergeActiveAgentSessions", () => {
       active: true,
     });
   });
+
+  it("accepts inactive updates for rows from a new broadcast", () => {
+    const merged = mergeActiveAgentSessions(
+      [session({ piSessionId: "pi-a", title: "active", active: true })],
+      [session({ piSessionId: "pi-a", title: "inactive", active: false })],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      piSessionId: "pi-a",
+      title: "inactive",
+      active: false,
+    });
+  });
 });

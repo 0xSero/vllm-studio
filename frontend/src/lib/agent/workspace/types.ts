@@ -101,14 +101,15 @@ export type WorkspaceAction =
     }
   | { type: "openNewSession"; project?: ProjectEntry; tab?: SessionTab }
   | { type: "OPEN_NEW_SESSION"; project?: ProjectEntry; projectId?: string; tab?: SessionTab }
-  | { type: "replaySession"; piSessionId: string; tab?: SessionTab }
-  | { type: "REPLAY_SESSION"; piSessionId: string; tab?: SessionTab }
+  | { type: "replaySession"; piSessionId: string; tab?: SessionTab; sessionTitle?: string }
+  | { type: "REPLAY_SESSION"; piSessionId: string; tab?: SessionTab; sessionTitle?: string }
   | {
       type: "replaySessionInSplit";
       piSessionId: string;
       paneId?: PaneId;
       runtimeSessionId?: string;
       tab?: SessionTab;
+      sessionTitle?: string;
     }
   | {
       type: "REPLAY_SESSION_IN_SPLIT";
@@ -116,6 +117,7 @@ export type WorkspaceAction =
       paneId?: PaneId;
       runtimeSessionId?: string;
       tab?: SessionTab;
+      sessionTitle?: string;
     }
   | {
       type: "openSessionPayloadInPane";
@@ -201,6 +203,7 @@ export type WorkspaceAction =
       key: string;
       projectId?: string | null;
       sessionId?: string | null;
+      sessionTitle?: string;
       newSession?: boolean;
       split?: boolean;
     }

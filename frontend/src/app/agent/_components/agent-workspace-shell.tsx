@@ -3,7 +3,10 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { triggerAddProjectFlow } from "@/components/projects-nav-section";
+import {
+  consumeAgentSessionNavTitle,
+  triggerAddProjectFlow,
+} from "@/components/projects-nav-section";
 import { ChevronDownIcon, CloseIcon, ComputerIcon, PlusIcon } from "@/components/icons";
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
 import type { AgentModel, PaneId, ProjectEntry, WorkspaceState } from "@/lib/agent/workspace/types";
@@ -49,11 +52,13 @@ export function requestWorkspaceUrlNavigation(
   const urlProjectReady =
     !projectParam || state.projects.some((project) => project.id === projectParam);
   if (!urlProjectReady) return;
+  const sessionTitle = sessionParam ? consumeAgentSessionNavTitle(sessionParam) : undefined;
   dispatch({
     type: "URL_NAV_REQUESTED",
     key: navKey,
     projectId: projectParam,
     sessionId: sessionParam,
+    ...(sessionTitle ? { sessionTitle } : {}),
     newSession: newParam === "1",
     split: splitParam === "1",
   });

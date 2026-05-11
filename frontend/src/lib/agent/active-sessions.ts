@@ -39,6 +39,7 @@ export function mergeActiveAgentSessions(
   prefs: ActiveSessionPrefs = {},
 ): ActiveAgentSessionSnapshot[] {
   const byKey = new Map<string, ActiveAgentSessionSnapshot>();
+  const incomingKeys = new Set<string>();
   for (const session of previous) {
     if (!isHidden(session, prefs)) byKey.set(sessionStorageKey(session), session);
   }
@@ -53,7 +54,11 @@ export function mergeActiveAgentSessions(
     if (session.piSessionId) byKey.delete(tabKey);
     const key = session.piSessionId ? `pi:${session.piSessionId}` : (existingPiKey ?? tabKey);
     const existing = byKey.get(key) ?? existingTab;
-    if (existing?.active && !session.active) {
+    const existingFromIncoming =
+      incomingKeys.has(key) ||
+      incomingKeys.has(tabKey) ||
+      Boolean(existingPiKey && incomingKeys.has(existingPiKey));
+    if (existing?.active && !session.active && existingFromIncoming) {
       byKey.set(key, {
         ...existing,
         title: session.title || existing.title,
@@ -74,6 +79,7 @@ export function mergeActiveAgentSessions(
         skills: session.skills ?? existing?.skills,
       });
     }
+    incomingKeys.add(key);
   }
   return [...byKey.values()].sort((a, b) => startTime(b) - startTime(a));
 }
