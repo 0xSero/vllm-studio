@@ -1,0 +1,221 @@
+import { useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  FileText,
+  Loader2,
+  PencilLine,
+  Search,
+  TerminalSquare,
+  Wrench,
+} from "lucide-react";
+import { ChevronDownIcon, GlobeIcon } from "@/components/icons";
+import type { ToolBlock } from "@/lib/agent/session";
+import {
+  FILE_WRITE_TOOL_NAMES,
+  classifyTool,
+  compactToolText,
+  detectLang,
+  extractFromArgs,
+  fileBasename,
+  humanizeToolName,
+  toolArg,
+  type ToolKind,
+} from "./tool-metadata";
+
+type ToolMeta = { icon: ReactNode; label: string; detail: string | null };
+
+function iconForKind(kind: ToolKind): ReactNode {
+  switch (kind) {
+    case "edit":
+      return <PencilLine className="h-4 w-4" />;
+    case "search":
+      return <Search className="h-4 w-4" />;
+    case "read":
+      return <FileText className="h-4 w-4" />;
+    case "exec":
+      return <TerminalSquare className="h-4 w-4" />;
+    case "browser":
+      return <GlobeIcon className="h-4 w-4" />;
+    default:
+      return <Wrench className="h-4 w-4" />;
+  }
+}
+
+function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
+  const path = toolArg(block, [
+    "path",
+    "file_path",
+    "filePath",
+    "file",
+    "filename",
+    "target_file",
+    "uri",
+    "ref_id",
+  ]);
+  const query = toolArg(block, ["query", "q", "pattern", "search", "search_query", "needle"]);
+  const command = toolArg(block, ["cmd", "command", "script", "shell", "input"]);
+  const url = toolArg(block, ["url", "href"]);
+  const resolvedPath = filePath ?? path;
+  const basename = fileBasename(resolvedPath);
+  const kind = classifyTool(block);
+  const icon = iconForKind(kind);
+
+  switch (kind) {
+    case "edit":
+      return {
+        icon,
+        label: basename ? `Edited ${basename}` : humanizeToolName(block.name),
+        detail: resolvedPath && basename !== resolvedPath ? resolvedPath : null,
+      };
+    case "search": {
+      const compact = compactToolText(query, 80);
+      return {
+        icon,
+        label: compact ? `Searched for ${compact}` : "Searched files",
+        detail: path && !query ? path : null,
+      };
+    }
+    case "read":
+      return {
+        icon,
+        label: basename ? `Read ${basename}` : humanizeToolName(block.name),
+        detail: resolvedPath && basename !== resolvedPath ? resolvedPath : null,
+      };
+    case "exec":
+      return { icon, label: "Ran command", detail: compactToolText(command, 110) };
+    case "browser":
+      return { icon, label: "Used browser", detail: compactToolText(url, 110) };
+    default:
+      return {
+        icon,
+        label: humanizeToolName(block.name),
+        detail: compactToolText(command ?? query ?? path ?? url, 110),
+      };
+  }
+}
+
+function ToolStatus({ status }: { status: ToolBlock["status"] }) {
+  if (status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-(--dim)">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        running
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-(--err)">
+        <AlertTriangle className="h-3 w-3" />
+        error
+      </span>
+    );
+  }
+  return null;
+}
+
+function ToolSummary({
+  block,
+  filePath,
+  children,
+  open = false,
+}: {
+  block: ToolBlock;
+  filePath?: string | null;
+  children?: ReactNode;
+  open?: boolean;
+}) {
+  const meta = toolMeta(block, filePath);
+  return (
+    <details className="group py-0.5" open={open}>
+      <summary className="flex cursor-pointer list-none items-start gap-2 rounded-md py-1 text-(--dim) hover:text-(--fg) [&::-webkit-details-marker]:hidden">
+        <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center opacity-80">
+          {meta.icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] leading-6">{meta.label}</span>
+          {meta.detail ? (
+            <span className="block truncate font-mono text-[11px] leading-4 opacity-70">
+              {meta.detail}
+            </span>
+          ) : null}
+        </span>
+        <ToolStatus status={block.status} />
+        {children ? (
+          <ChevronDownIcon className="mt-1 h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+        ) : null}
+      </summary>
+      {children ? <div className="ml-6 mt-1">{children}</div> : null}
+    </details>
+  );
+}
+
+function ToolOutput({ children }: { children: ReactNode }) {
+  return (
+    <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
+      {children}
+    </pre>
+  );
+}
+
+export function ToolBlockView({ block }: { block: ToolBlock }) {
+  const isFileWrite = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase());
+  const filePath = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["path", "file_path", "filePath", "file"])
+    : null;
+  const fileContent = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["content", "text", "newText", "new_content"])
+    : null;
+  const patchContent = isFileWrite
+    ? extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"])
+    : null;
+  const lang = detectLang(filePath);
+  const isHtml = lang === "html";
+  const [showPreview, setShowPreview] = useState(false);
+
+  if (isFileWrite && (fileContent !== null || patchContent !== null)) {
+    const body = fileContent ?? patchContent ?? "";
+    return (
+      <ToolSummary block={block} filePath={filePath} open={block.status === "running"}>
+        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+          <span>{lang || "source"}</span>
+          {isHtml ? (
+            <button
+              type="button"
+              onClick={() => setShowPreview((value) => !value)}
+              className="rounded-md px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+            >
+              {showPreview ? "Source" : "Preview"}
+            </button>
+          ) : null}
+        </div>
+        {isHtml && showPreview ? (
+          <iframe
+            sandbox=""
+            srcDoc={body}
+            className="h-72 w-full rounded-md border border-(--border) bg-white"
+            title={filePath ?? "preview"}
+          />
+        ) : (
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-(--border)/70 bg-(--surface)/35 p-2 font-mono text-[11px] leading-5 text-(--fg)">
+            {body}
+          </pre>
+        )}
+        {block.resultText ? (
+          <div className="mt-1 font-mono text-[10px] text-(--dim)">
+            <ToolOutput>{block.resultText}</ToolOutput>
+          </div>
+        ) : null}
+      </ToolSummary>
+    );
+  }
+
+  // Generic fallback (shells, reads, searches, browser tools, etc.).
+  const display =
+    block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
+  return (
+    <ToolSummary block={block} open={block.status === "running"}>
+      {display ? <ToolOutput>{display}</ToolOutput> : null}
+    </ToolSummary>
+  );
+}
