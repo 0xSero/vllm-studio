@@ -86,7 +86,9 @@ function loadActiveAgentSessions(): ActiveAgentSession[] {
     const raw = window.localStorage.getItem(ACTIVE_AGENT_SESSIONS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as ActiveAgentSession[]) : [];
+    return Array.isArray(parsed)
+      ? mergeActiveAgentSessions([], parsed as ActiveAgentSession[], loadSessionPrefs())
+      : [];
   } catch {
     return [];
   }

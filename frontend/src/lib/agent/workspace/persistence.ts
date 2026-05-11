@@ -2,6 +2,7 @@ import { collectLeaves } from "@/app/agent/_components/pane-layout";
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
 import type { SessionTab } from "@/app/agent/_components/chat-pane";
 import type { ComputerTab, PaneId, PaneState, WorkspaceLayout, WorkspaceState } from "./types";
+import { DEFAULT_COMPUTER_WIDTH, clampComputerWidth } from "./computer-controller";
 import {
   BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY,
   BROWSER_TOOL_KEY,
@@ -9,11 +10,9 @@ import {
   COMPUTER_DEFAULT_CLOSED_STORAGE_ID,
   COMPUTER_FILES_OPEN_KEY,
   COMPUTER_WIDTH_KEY,
-  DEFAULT_COMPUTER_WIDTH,
   PANE_LAYOUT_KEY,
   PANE_STATE_KEY,
   SELECTED_PROJECT_KEY,
-  clampComputerWidth,
   newRuntimeId,
   persistActiveAgentSessions,
   randomIdSegment,

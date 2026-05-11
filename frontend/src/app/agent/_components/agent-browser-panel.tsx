@@ -3,18 +3,15 @@
 import type { FormEvent, ReactNode } from "react";
 import { CloseIcon } from "@/components/icons";
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
+import { normalizeBrowserInput } from "@/lib/agent/workspace/computer-controller";
 import type { ProjectEntry, WorkspaceState } from "@/lib/agent/workspace/types";
-import {
-  sanitizeLocalFileUrl,
-  sanitizePublicBrowserUrl,
-} from "@/lib/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
 import type { WorkspaceHandles } from "./use-workspace";
 
 const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
-const DEFAULT_BROWSER_URL = "https://www.google.com";
 
 export type BrowserCommandResult = { ok: boolean; data?: unknown; error?: string };
 
@@ -69,68 +66,12 @@ function detectBotProtection(text: string): string | null {
   return null;
 }
 
-function encodeFilePath(pathValue: string): string {
-  const normalized = pathValue.replace(/\\/g, "/");
-  const withLeadingSlash = normalized.startsWith("/") ? normalized : `/${normalized}`;
-  return `file://${withLeadingSlash.split("/").map(encodeURIComponent).join("/")}`;
-}
-
-function resolveRelativeFilePath(cwd: string, value: string): string {
-  const segments = `${cwd.replace(/\/+$/, "")}/${value}`.split("/");
-  const resolved: string[] = [];
-  for (const segment of segments) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") {
-      resolved.pop();
-      continue;
-    }
-    resolved.push(segment);
-  }
-  return `/${resolved.join("/")}`;
-}
-
-function expandHomeFilePath(cwd: string, value: string): string | null {
-  const homeMatch = cwd.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(?:\/|$)/);
-  if (!homeMatch) return null;
-  return `${homeMatch[1]}${value.slice(1)}`;
-}
-
 function isSafeBrowserSelector(selector: string): boolean {
   return selector.length > 0 && selector.length <= 240 && !/[`;{}]/.test(selector);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-export function normalizeBrowserInput(raw: string, cwd: string): string {
-  const value = raw.trim();
-  if (!value) return DEFAULT_BROWSER_URL;
-  if (/^file:\/\//i.test(value)) {
-    return sanitizeLocalFileUrl(value) ?? "";
-  }
-  if (value.startsWith("~/") && cwd) {
-    const expanded = expandHomeFilePath(cwd, value);
-    if (expanded) return encodeFilePath(expanded);
-  }
-  if (value.startsWith("/")) return encodeFilePath(value);
-  if ((value.startsWith("./") || value.startsWith("../")) && cwd) {
-    return encodeFilePath(resolveRelativeFilePath(cwd, value));
-  }
-  if (/^https?:\/\//i.test(value)) return value;
-  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$/i.test(value)) {
-    return `http://${value}`;
-  }
-  if (/^[\w.-]+:\d+([/?#].*)?$/.test(value)) {
-    return `http://${value}`;
-  }
-  if (/^[\w-]+(\.[\w-]+)+([/:?#].*)?$/.test(value)) {
-    return `https://${value}`;
-  }
-  if (value.includes("/") && cwd) {
-    return encodeFilePath(resolveRelativeFilePath(cwd, value));
-  }
-  return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
 }
 
 export async function runBrowserPanelCommand(

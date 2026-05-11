@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInitialState } from "@/lib/agent/workspace/store";
-import { normalizeBrowserInput } from "./agent-browser-panel";
+import { normalizeBrowserInput } from "@/lib/agent/workspace/computer-controller";
 import {
   requestWorkspaceUrlNavigation,
   shouldShowProjectEmptyState,

@@ -33,6 +33,22 @@ function startTime(session: ActiveAgentSessionSnapshot): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function updateTime(session: ActiveAgentSessionSnapshot): number {
+  const value = Date.parse(session.updatedAt);
+  return Number.isFinite(value) ? value : startTime(session);
+}
+
+function normalizeSingleActive(
+  sessions: ActiveAgentSessionSnapshot[],
+): ActiveAgentSessionSnapshot[] {
+  const active = sessions.filter((session) => session.active);
+  if (active.length <= 1) return sessions;
+  const keep = active.reduce((latest, session) =>
+    updateTime(session) > updateTime(latest) ? session : latest,
+  );
+  return sessions.map((session) => (session === keep ? session : { ...session, active: false }));
+}
+
 export function mergeActiveAgentSessions(
   previous: ActiveAgentSessionSnapshot[],
   incoming: ActiveAgentSessionSnapshot[],
@@ -81,5 +97,5 @@ export function mergeActiveAgentSessions(
     }
     incomingKeys.add(key);
   }
-  return [...byKey.values()].sort((a, b) => startTime(b) - startTime(a));
+  return normalizeSingleActive([...byKey.values()].sort((a, b) => startTime(b) - startTime(a)));
 }

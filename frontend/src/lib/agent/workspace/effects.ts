@@ -7,9 +7,9 @@ import type {
   WorkspaceAction,
   WorkspaceState,
 } from "./types";
+import { findPaneTabByPiSessionId } from "./pane-controller";
 import {
   SELECTED_PROJECT_KEY,
-  findPaneTabByPiSessionId,
   loadPersistedActiveAgentSessions,
   setupWarningFromPiCheck,
   type WorkspaceStorage,

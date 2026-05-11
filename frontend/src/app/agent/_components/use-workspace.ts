@@ -4,14 +4,9 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { PROJECTS_CHANGED_EVENT, loadAgentProjects } from "@/components/projects-nav-section";
 import { safeJson } from "@/lib/agent/safe-json";
+import { clampComputerWidth } from "@/lib/agent/workspace/computer-controller";
 import { loadInitialFromStorage } from "@/lib/agent/workspace/persistence";
-import {
-  clampComputerWidth,
-  createInitialState,
-  newPaneId,
-  newRuntimeId,
-  reducer,
-} from "@/lib/agent/workspace/store";
+import { createInitialState, newPaneId, newRuntimeId, reducer } from "@/lib/agent/workspace/store";
 import {
   runWorkspaceEffect,
   subscribeWorkspaceWindowEvents,
