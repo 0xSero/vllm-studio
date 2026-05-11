@@ -2077,7 +2077,7 @@ export function ChatPane({
           className={`mx-auto w-full max-w-[var(--thread-w)] ${showEmptyPrompt ? "flex flex-1" : ""}`}
         >
           {showEmptyPrompt ? (
-            <div className="flex flex-1 items-end pb-4 text-[12px] text-(--dim)">
+            <div className="flex flex-1 items-center justify-center pb-24 text-center text-[12px] text-(--dim)">
               <p>New session. Enter sends, Tab queues, @ loads plugins, $ loads skills.</p>
             </div>
           ) : (

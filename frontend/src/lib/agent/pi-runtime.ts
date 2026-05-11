@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -234,6 +234,28 @@ function uniqueExistingPaths(values: Array<string | null | undefined>): string[]
   });
 }
 
+function isLaunchConstrainedComputerUseMcp(configPath: string): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
+      mcpServers?: Record<string, { command?: unknown; args?: unknown }>;
+    };
+    return Object.entries(parsed.mcpServers ?? {}).some(([name, server]) => {
+      const marker =
+        `${name} ${String(server.command ?? "")} ${Array.isArray(server.args) ? server.args.join(" ") : ""}`.toLowerCase();
+      return marker.includes("computer-use") || marker.includes("skycomputeruseclient");
+    });
+  } catch {
+    return false;
+  }
+}
+
+function shouldLoadMcpConfig(plugin: RuntimePluginRef, configPath: string): boolean {
+  if (process.env.VLLM_STUDIO_ENABLE_CODEX_COMPUTER_USE_MCP === "1") return true;
+  return !(
+    pluginNameMatches(plugin, "computer-use") && isLaunchConstrainedComputerUseMcp(configPath)
+  );
+}
+
 function pluginMcpConfigs(
   plugins: RuntimePluginRef[],
 ): Array<{ pluginName: string; configPath: string }> {
@@ -244,6 +266,7 @@ function pluginMcpConfigs(
       (plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, ".mcp.json") : null);
     if (!configPath || !existsSync(configPath)) return [];
     const resolved = path.resolve(configPath);
+    if (!shouldLoadMcpConfig(plugin, resolved)) return [];
     if (seen.has(resolved)) return [];
     seen.add(resolved);
     return [
@@ -381,7 +404,10 @@ class PiRpcSession extends EventEmitter {
     const skills = options.skills ?? [];
     const shouldLoadBrowserTool =
       options.browserToolEnabled === true ||
-      plugins.some((plugin) => pluginNameMatches(plugin, "browser-use"));
+      plugins.some(
+        (plugin) =>
+          pluginNameMatches(plugin, "browser-use") || pluginNameMatches(plugin, "computer-use"),
+      );
 
     const args = [
       "--mode",

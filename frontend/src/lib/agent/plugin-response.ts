@@ -63,7 +63,7 @@ function pluginRuntimeCheck(plugin: PluginRow): PluginRuntimeCheck {
       ? {
           runtimeCheckRequired: true,
           note: launchConstrained
-            ? "Computer-use is discovered and selectable, but its SkyComputerUseClient MCP binary is launch-constrained by macOS to the Codex-signed host; vLLM Studio can load its skill context, while desktop-control tools will report failed until a signed/brokered runtime is available."
+            ? "Computer-use is discovered and selectable. vLLM Studio skips its launch-constrained SkyComputerUseClient MCP by default outside the Codex-signed host, while still loading skill context and browser-tool fallback for browser tasks."
             : "Computer-use is wired through MCP; verify helper launch from an active session with mcp_plugin_status before desktop control.",
         }
       : {}),

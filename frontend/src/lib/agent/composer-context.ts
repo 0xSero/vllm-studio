@@ -192,7 +192,7 @@ function selectedContextLines(
     }
     if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "computer-use"))) {
       lines.push(
-        "Computer-use is selected; call mcp_plugin_status before desktop control and use computer-use tools only if the MCP status is ready. On macOS, SkyComputerUseClient may be blocked outside the Codex-signed host, so report that MCP status failure plainly instead of retrying forever.",
+        "Computer-use is selected; use the vLLM Studio browser tools for browser/webview tasks. Full desktop-control MCP may be unavailable outside a Codex-signed/brokered runtime; do not retry launch-constrained desktop MCP failures forever.",
       );
     }
   }

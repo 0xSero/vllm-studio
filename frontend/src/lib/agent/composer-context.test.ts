@@ -47,9 +47,9 @@ describe("composer context helpers", () => {
 
   it("consumes selected mentions so composer tabs become the source of truth", () => {
     expect(consumeComposerMention("use @bro", detectComposerMention("use @bro")!)).toBe("use");
-    expect(consumeComposerMention("@browser inspect page", detectComposerMention("@browser")!)).toBe(
-      "inspect page",
-    );
+    expect(
+      consumeComposerMention("@browser inspect page", detectComposerMention("@browser")!),
+    ).toBe("inspect page");
     expect(consumeComposerMention("load $agent now", detectComposerMention("load $agent")!)).toBe(
       "load now",
     );
@@ -61,13 +61,13 @@ describe("composer context helpers", () => {
       selectedContextPrompt(
         "inspect localhost",
         [
-        {
-          id: "browser",
-          name: "browser-use",
-          description: "Control the in-app browser.",
-          instructions: "# Browser\nUse the in-app browser runtime.",
-          defaultPrompts: ["Inspect the current page"],
-        },
+          {
+            id: "browser",
+            name: "browser-use",
+            description: "Control the in-app browser.",
+            instructions: "# Browser\nUse the in-app browser runtime.",
+            defaultPrompts: ["Inspect the current page"],
+          },
         ],
         [
           {
@@ -190,12 +190,12 @@ describe("composer context helpers", () => {
     expect(prompt).toContain("@browser-use (local-market)");
   });
 
-  it("tells computer-use sessions to inspect MCP status before desktop control", () => {
+  it("tells computer-use sessions to prefer browser tools and avoid MCP retry loops", () => {
     expect(
       selectedContextPrompt("control the desktop", [
         { id: "computer", name: "computer-use", displayName: "Computer Use" },
       ]),
-    ).toContain("call mcp_plugin_status before desktop control");
+    ).toContain("use the vLLM Studio browser tools");
   });
 
   it("recognizes core plugins case-insensitively from display metadata", () => {
@@ -208,7 +208,7 @@ describe("composer context helpers", () => {
       selectedContextPrompt("control", [
         { id: "computer", name: "ComputerUse", displayName: "Computer-Use" },
       ]),
-    ).toContain("call mcp_plugin_status");
+    ).toContain("browser tools");
   });
 
   it("builds reusable compaction instructions for selected plugins and skills", () => {
