@@ -692,9 +692,31 @@ class PiRpcSession extends EventEmitter {
   }
 
   get status() {
+    const running = Boolean(this.process && !this.process.killed);
+    const lastTurnEvent = [...this.eventLog].reverse().find((entry) => {
+      const type = String(entry.event.type ?? "");
+      return (
+        type === "agent_start" ||
+        type === "turn_start" ||
+        type === "message_start" ||
+        type === "message_update" ||
+        type === "message_end" ||
+        type === "tool_execution_start" ||
+        type === "tool_execution_update" ||
+        type === "tool_execution_end" ||
+        type === "turn_end" ||
+        type === "agent_end" ||
+        type === "process_exit"
+      );
+    });
+    const eventLooksActive =
+      running &&
+      lastTurnEvent &&
+      !isAgentEndEvent(lastTurnEvent.event) &&
+      lastTurnEvent.event.type !== "process_exit";
     return {
-      running: Boolean(this.process && !this.process.killed),
-      active: this.activePromptCount > 0,
+      running,
+      active: this.activePromptCount > 0 || Boolean(eventLooksActive),
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,

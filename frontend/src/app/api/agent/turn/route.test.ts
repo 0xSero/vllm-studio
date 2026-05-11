@@ -181,4 +181,38 @@ describe("POST /api/agent/turn", () => {
       expect(body).toContain('"phase":"queued"');
     },
   );
+
+  it("defaults stale prompt submits to steer while Pi is already active", async () => {
+    const session = {
+      ensureStarted: vi.fn().mockResolvedValue(undefined),
+      prompt: vi.fn().mockImplementation(async (_message, _onEvent) => undefined),
+      steer: vi.fn(),
+      followUp: vi.fn(),
+      status: { piSessionId: "pi-1", cwd: "/repo", active: true, running: true },
+      adoptPiSessionId: vi.fn(),
+    };
+    getSession.mockReturnValue(session as never);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/agent/turn", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "tab-1",
+          modelId: "hy3-preview",
+          message: "enter while the UI is stale",
+          cwd: "/repo",
+          piSessionId: "pi-1",
+        }),
+      }),
+    );
+
+    await response.text();
+    expect(session.prompt).toHaveBeenCalledWith(
+      "enter while the UI is stale",
+      expect.any(Function),
+      {
+        streamingBehavior: "steer",
+      },
+    );
+  });
 });

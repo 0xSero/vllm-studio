@@ -1635,6 +1635,31 @@ export function ChatPane({
         }));
         return;
       }
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      const status = await loadRuntimeStatus(runtime);
+      if (status && runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
+        const queuedId = newId("queue");
+        updateTab(activeTab.id, (tab) => ({
+          ...tab,
+          input: "",
+          error: "",
+          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text, sent: true }],
+        }));
+        const result = await sendControlMessage(
+          "steer",
+          text,
+          runtime,
+          activeTab.id,
+          activeTab.piSessionId,
+        );
+        updateTab(activeTab.id, (tab) => ({
+          ...tab,
+          queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
+          ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
+        }));
+        return;
+      }
+
       await submitPrompt(text, activeTab.id);
     },
     [
@@ -1652,9 +1677,8 @@ export function ChatPane({
   );
 
   // Tab-key behavior: when idle, submit immediately; while a turn is running,
-  // keep the follow-up local and replay it as a normal prompt after agent_end.
-  // Do not send Pi `follow_up` here: Pi may run it after the current SSE owner
-  // has detached, which made queued messages look lost in the UI.
+  // send an actual Pi follow-up so Pi owns queue ordering and the original
+  // runtime stream continues into the queued turn.
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
@@ -1671,14 +1695,38 @@ export function ChatPane({
       await submitPromptRef.current(text, tabId);
       return;
     }
+    const queuedId = newId("queue");
     updateTab(tabId, (tab) => ({
       ...tab,
       cwd: tab.cwd || cwd,
       input: "",
       error: "",
-      queue: [...(tab.queue ?? []), { id: newId("queue"), mode: "follow_up", text }],
+      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text }],
     }));
-  }, [activeTab, modelId, running, cwd, loadRuntimeStatus, runtimeSessionId, updateTab]);
+    const result = await sendControlMessage(
+      "follow_up",
+      text,
+      runtime,
+      tabId,
+      activeTab.piSessionId,
+    );
+    updateTab(tabId, (tab) => ({
+      ...tab,
+      queue: (tab.queue ?? []).map((item) =>
+        item.id === queuedId ? { ...item, sent: result.ok } : item,
+      ),
+      ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
+    }));
+  }, [
+    activeTab,
+    modelId,
+    running,
+    cwd,
+    loadRuntimeStatus,
+    runtimeSessionId,
+    sendControlMessage,
+    updateTab,
+  ]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -2078,7 +2126,11 @@ export function ChatPane({
         >
           {showEmptyPrompt ? (
             <div className="flex flex-1 items-center justify-center pb-24 text-center text-[12px] text-(--dim)">
-              <p>New session. Enter sends, Tab queues, @ loads plugins, $ loads skills.</p>
+              <p>
+                A dream is something you build for yourself.
+                <br />
+                Just talk to it.
+              </p>
             </div>
           ) : (
             <div className="flex flex-col gap-5">
