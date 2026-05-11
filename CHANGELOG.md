@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Refactored the agent workspace into typed store, controller, persistence, effect, hook, and panel boundaries with useEffect budget guards.
 - performance-simplifications: enable SGLang metrics by default for controller launches and command previews.
 - performance-simplifications: expose live metrics snapshots through the controller polling endpoint.
 - performance-simplifications: render dashboard logs verbatim and support container-backed log sessions.

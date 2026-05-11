@@ -17,9 +17,10 @@
  * bridge needs (executeJavaScript / loadURL / capturePage) so the agent can
  * still drive the browser when the user opts in.
  */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/components/icons";
+import { useAgentBrowserEffects } from "@/hooks/agent/use-agent-browser-effects";
 
 export type WebviewElement = HTMLElement & {
   goBack: () => void;
@@ -101,51 +102,14 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     }
   }, []);
 
-  // Refresh the readable view whenever the URL changes (or on first mount).
-  useEffect(() => {
-    if (!url) return;
-    if (readingMode) void fetchReadable(url);
-  }, [url, readingMode, fetchReadable]);
-
-  // Auto-detect blank webview after navigation. The webview API doesn't have
-  // a synchronous "is empty" flag, so we sample document.body innerText after
-  // a short delay and flip on Reading mode if it's empty.
-  useEffect(() => {
-    if (!isElectron) return;
-    if (readingMode) return;
-    const wv = webviewRef.current;
-    if (!wv) return;
-    let cancelled = false;
-    const checkBlank = () => {
-      if (cancelled || !wv) return;
-      void wv
-        .executeJavaScript(
-          "document.body && document.body.innerText && document.body.innerText.length",
-        )
-        .then((value) => {
-          if (cancelled) return;
-          const length = typeof value === "number" ? value : Number(value) || 0;
-          if (length === 0) {
-            setLiveBlank(true);
-          } else {
-            setLiveBlank(false);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setLiveBlank(true);
-        });
-    };
-    const onLoaded = () => {
-      // Wait for any post-load JS to render text before sampling.
-      window.setTimeout(checkBlank, 800);
-    };
-    wv.addEventListener("did-finish-load", onLoaded as EventListener);
-    wv.addEventListener("did-fail-load", () => setLiveBlank(true));
-    return () => {
-      cancelled = true;
-      wv.removeEventListener("did-finish-load", onLoaded as EventListener);
-    };
-  }, [readingMode, isElectron, url]);
+  useAgentBrowserEffects({
+    url,
+    readingMode,
+    isElectron,
+    webviewRef,
+    fetchReadable,
+    setLiveBlank,
+  });
 
   const handleBack = () => {
     if (readingMode) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import {
   ChevronRight,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import hljs from "highlight.js";
 import { useAppStore } from "@/store";
+import { useFilesystemPanelEffects } from "@/hooks/agent/use-filesystem-panel-effects";
 import { AssistantMarkdown } from "./assistant-markdown";
 
 type FsEntry = {
@@ -266,98 +267,25 @@ export function FilesystemPanel({ cwd }: Props) {
   const setLastOpenFileByProject = useAppStore((s) => s.setLastOpenFileByProject);
   const cwdRef = useRef(cwd);
 
-  useEffect(() => {
-    cwdRef.current = cwd;
-  }, [cwd]);
-
-  useEffect(() => {
-    setRelPath("");
-    setOpenFile(null);
-    setSearchQuery("");
-    setExpandedDirs(new Set());
-    setDirChildren(new Map());
-    setDirLoading(new Set());
-  }, [cwd]);
-
-  // Load directory whenever the cwd or relPath changes.
-  useEffect(() => {
-    if (!cwd) {
-      setEntries([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(
-          `/api/agent/fs?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(relPath)}`,
-          { cache: "no-store" },
-        );
-        const payload = (await response.json()) as { entries?: FsEntry[]; error?: string };
-        if (!cancelled) setEntries(payload.entries ?? []);
-      } catch {
-        if (!cancelled) setEntries([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, relPath]);
-
-  // Restore the last-opened file for this project.
-  useEffect(() => {
-    if (!cwd) return;
-    const remembered = lastOpenFileByProject[cwd];
-    if (remembered) setOpenFile(remembered);
-  }, [cwd, lastOpenFileByProject]);
-
-  // Load file contents + comments whenever an open file is selected.
-  useEffect(() => {
-    if (!cwd || !openFile) {
-      setFileContent("");
-      setFileTruncated(false);
-      setFileSize(0);
-      setComments([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingFile(true);
-    (async () => {
-      try {
-        const [fileResponse, commentsResponse] = await Promise.all([
-          fetch(
-            `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}`,
-            { cache: "no-store" },
-          ),
-          fetch(
-            `/api/agent/comments?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}`,
-            { cache: "no-store" },
-          ),
-        ]);
-        const fileBody = (await fileResponse.json()) as {
-          content?: string;
-          truncated?: boolean;
-          size?: number;
-          error?: string;
-        };
-        const commentsBody = (await commentsResponse.json()) as { comments?: Comment[] };
-        if (cancelled) return;
-        setFileContent(fileBody.content ?? "");
-        setFileTruncated(fileBody.truncated ?? false);
-        setFileSize(fileBody.size ?? 0);
-        setComments(commentsBody.comments ?? []);
-      } catch {
-        if (!cancelled) {
-          setFileContent("");
-          setComments([]);
-        }
-      } finally {
-        if (!cancelled) setLoadingFile(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, openFile]);
+  useFilesystemPanelEffects({
+    cwd,
+    relPath,
+    openFile,
+    lastOpenFileByProject,
+    cwdRef,
+    setRelPath,
+    setEntries,
+    setOpenFile,
+    setFileContent,
+    setFileTruncated,
+    setFileSize,
+    setLoadingFile,
+    setComments,
+    setSearchQuery,
+    setExpandedDirs,
+    setDirChildren,
+    setDirLoading,
+  });
 
   // Fetch children of a directory on demand.
   const fetchDirChildren = useCallback(

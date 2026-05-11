@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/components/icons";
+import { useGitDiffPanelEffects } from "@/hooks/agent/use-git-diff-panel-effects";
 
 type GitDiffPayload = {
   isRepo?: boolean;
@@ -123,9 +124,7 @@ export function GitDiffPanel({ cwd }: { cwd: string | null }) {
     }
   }, [cwd, load]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useGitDiffPanelEffects(load);
 
   const files = useMemo(() => parseUnifiedDiff(payload?.diff ?? ""), [payload?.diff]);
 
