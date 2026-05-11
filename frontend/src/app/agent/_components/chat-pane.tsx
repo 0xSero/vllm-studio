@@ -70,7 +70,6 @@ import type {
   TokenStats,
   ToolBlock,
 } from "@/lib/agent/session";
-import { AssistantMarkdown } from "./assistant-markdown";
 import {
   attachmentDedupKey,
   attachmentPrompt,
@@ -81,7 +80,7 @@ import {
   isImageAttachment,
   type ChatAttachment,
 } from "./chat-attachments";
-import { ToolBlockView } from "./timeline/tool-block-view";
+import { Timeline } from "./timeline/timeline";
 
 // Re-export the session module's public surface so existing imports from
 // "./chat-pane" keep working during the incremental migration.
@@ -1425,44 +1424,19 @@ export function ChatPane({
         </div>
       ) : null}
 
-      <div
-        ref={scrollRef}
+      <Timeline
+        scrollRef={scrollRef}
         onScroll={(event) => {
           const element = event.currentTarget;
           const distanceFromBottom =
             element.scrollHeight - element.scrollTop - element.clientHeight;
           stickToBottomRef.current = distanceFromBottom <= 80;
         }}
-        className={`min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2 ${showEmptyPrompt ? "flex" : ""}`}
-      >
-        <div
-          className={`mx-auto w-full max-w-[var(--thread-w)] ${showEmptyPrompt ? "flex flex-1" : ""}`}
-        >
-          {showEmptyPrompt ? (
-            <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
-              <p className="max-w-[680px]">
-                A dream is something you build for yourself.
-                <br />
-                Just talk to it.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {(activeTab?.messages ?? [])
-                .filter((m) => m.role !== "system")
-                .map((message) => (
-                  <TimelineMessage key={message.id} message={message} />
-                ))}
-              {running ? (
-                <div className="flex items-center gap-2 py-4 text-xs text-(--dim)">
-                  <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
-                  <span className="animate-pulse">Pi is {activeTab?.status}…</span>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </div>
+        messages={activeTab?.messages ?? []}
+        running={Boolean(running)}
+        statusLabel={activeTab?.status}
+        emptyPrompt={Boolean(showEmptyPrompt)}
+      />
 
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
         {visibleQueueItems.length > 0 ? (
@@ -1911,59 +1885,5 @@ function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {
       <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-(--accent)/35" />
       <span className="relative h-1.5 w-1.5 rounded-full bg-(--accent)" />
     </span>
-  );
-}
-
-function TimelineMessage({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user";
-  if (isUser) {
-    return (
-      <article className="flex justify-end">
-        <div className="max-w-[72%] rounded-xl bg-(--surface) px-3.5 py-2 text-sm leading-6 text-(--fg)">
-          <div className="whitespace-pre-wrap break-words">{message.text}</div>
-        </div>
-      </article>
-    );
-  }
-  const blocks = message.blocks ?? [];
-  return (
-    <article className="min-w-0">
-      {blocks.length === 0 ? (
-        <div className="text-sm leading-6 text-(--dim)">…</div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {blocks.map((block) => {
-            if (block.kind === "thinking") {
-              return (
-                <details key={block.id} className="text-xs" open>
-                  <summary className="cursor-pointer list-none text-[11px] italic text-(--dim) hover:text-(--fg)">
-                    Thinking
-                  </summary>
-                  <pre className="mt-2 max-w-full whitespace-pre-wrap break-words border-l-2 border-(--border) pl-3 font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
-                    {block.text}
-                  </pre>
-                </details>
-              );
-            }
-            if (block.kind === "text") {
-              return <AssistantMarkdown key={block.id} text={block.text} />;
-            }
-            if (block.kind === "event") {
-              return (
-                <div
-                  key={block.id}
-                  className="flex items-center gap-3 py-1 text-[11px] text-(--dim)"
-                >
-                  <span className="h-px flex-1 bg-(--border)" />
-                  <span>{block.text}</span>
-                  <span className="h-px flex-1 bg-(--border)" />
-                </div>
-              );
-            }
-            return <ToolBlockView key={block.id} block={block} />;
-          })}
-        </div>
-      )}
-    </article>
   );
 }
