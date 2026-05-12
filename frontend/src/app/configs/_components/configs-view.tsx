@@ -31,6 +31,8 @@ import {
   type SettingsSectionId,
   type StatusTone,
 } from "@/components/settings-primitives";
+import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
+import { SESSION_PREFS_KEY } from "@/lib/agent/workspace/store";
 
 interface ConfigsViewProps {
   data: ConfigData | null;
@@ -467,7 +469,7 @@ function ArchivedChatsSettings() {
   const [prefs, setPrefs] = useState<Record<string, Pref>>(() => {
     if (typeof window === "undefined") return {};
     try {
-      const raw = localStorage.getItem("vllm-studio.agent.sessionPrefs");
+      const raw = localStorage.getItem(SESSION_PREFS_KEY);
       return raw ? (JSON.parse(raw) as Record<string, Pref>) : {};
     } catch {
       return {};
@@ -490,8 +492,8 @@ function ArchivedChatsSettings() {
   const unarchive = (id: string) => {
     const next = { ...prefs, [id]: { ...prefs[id], hidden: undefined } };
     if (!next[id].title && !next[id].pinned && !next[id].hidden) delete next[id];
-    localStorage.setItem("vllm-studio.agent.sessionPrefs", JSON.stringify(next));
-    window.dispatchEvent(new Event("vllm-studio.agent.sessionPrefs.changed"));
+    localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
     setPrefs(next);
   };
 

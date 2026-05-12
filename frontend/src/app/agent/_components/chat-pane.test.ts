@@ -12,7 +12,7 @@ import {
   statusAfterControlPhase,
   visibleQueuedMessages,
   visibleUserTextFromPi,
-} from "./chat-pane";
+} from "@/lib/agent/session";
 
 describe("isAgentEndEvent", () => {
   it("does not treat per-tool turn_end as full agent completion", () => {

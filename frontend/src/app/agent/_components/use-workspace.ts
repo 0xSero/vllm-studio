@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { PROJECTS_CHANGED_EVENT, loadAgentProjects } from "@/components/projects-nav-section";
 import { safeJson } from "@/lib/agent/safe-json";
-import { clampComputerWidth } from "@/lib/agent/workspace/computer-controller";
+import { clampComputerWidth } from "@/lib/agent/tools/persistence";
 import { loadInitialFromStorage } from "@/lib/agent/workspace/persistence";
-import { createInitialState, newPaneId, newRuntimeId, reducer } from "@/lib/agent/workspace/store";
+import { createInitialState, reducer } from "@/lib/agent/workspace/store";
+import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
 import {
   runWorkspaceEffect,
   subscribeWorkspaceWindowEvents,
@@ -17,13 +17,15 @@ import {
 } from "@/lib/agent/workspace/effects";
 import type {
   AgentModel,
-  GitSummary,
   PaneId,
-  ProjectEntry,
   WorkspaceAction,
   WorkspaceState,
 } from "@/lib/agent/workspace/types";
-import { makeFreshTab, type ChatPaneHandle, type SessionTab } from "./chat-pane";
+import { useProjects } from "@/lib/agent/projects/context";
+import { useTools } from "@/lib/agent/tools/context";
+import type { Project } from "@/lib/agent/projects/types";
+import { paneSessions } from "@/lib/agent/sessions/selectors";
+import type { ChatPaneHandle, SessionTab } from "./chat-pane";
 import type { AgentBrowserHandle } from "./agent-browser";
 import { runBrowserPanelCommand, type BrowserCommandResult } from "./agent-browser-panel";
 import type { SessionDropPayload } from "./pane-grid";
@@ -33,26 +35,19 @@ type BrowserCommand = { id: string; verb: string; payload: Record<string, unknow
 export type WorkspaceHandles = {
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
   registerComputerAside: (element: HTMLElement | null) => void;
-  openNewSessionInFocusedPane: (project?: ProjectEntry) => void;
+  openNewSessionInFocusedPane: (project?: Project) => void;
   replaySessionInFocusedPane: (piSessionId: string) => void;
   replaySessionInSplitPane: (piSessionId: string) => void;
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   focusTab: (paneId: PaneId, tabId: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
-  selectProject: (project: ProjectEntry | null) => void;
-  setBrowserUrl: (url: string, input?: string) => void;
-  setBrowserInput: (input: string) => void;
-  setComputerTab: (tab: WorkspaceState["computer"]["tab"]) => void;
-  toggleBrowserTool: () => void;
-  setComputerWidth: (width: number) => void;
+  selectProject: (project: Project | null) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
   runBrowserCommand: (
     verb: string,
     payload: Record<string, unknown>,
   ) => Promise<BrowserCommandResult>;
-  setComputerOpen: (open: boolean) => void;
-  toggleComputerOpen: () => void;
   setSplitRatio: (path: number[], ratio: number) => void;
   setPaneTabs: (
     paneId: PaneId,
@@ -66,7 +61,7 @@ export type WorkspaceHandles = {
     side: "a" | "b",
     payload: SessionDropPayload,
   ) => void;
-  selectPaneProject: (paneId: PaneId, project: ProjectEntry) => void;
+  selectPaneProject: (paneId: PaneId, project: Project) => void;
   selectPaneModel: (paneId: PaneId, modelId: string) => void;
   notifySessionsChanged: () => void;
   startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -153,24 +148,6 @@ function createBrowserEvents(
   };
 }
 
-function focusedProjectPath(state: WorkspaceState): string | null {
-  const focusedPane = state.panesById.get(state.focusedPaneId);
-  const focusedTab = focusedPane?.tabs.find((tab) => tab.id === focusedPane.activeTabId) ?? null;
-  const activeProject =
-    state.projects.find((entry) => entry.id === state.selectedProjectId) ?? null;
-  const focusedProject =
-    state.projects.find((entry) => entry.id === focusedTab?.projectId) ??
-    state.projects.find((entry) => entry.path === focusedTab?.cwd) ??
-    activeProject;
-  return focusedProject?.path ?? null;
-}
-
-function hasExplicitSessionNav(): boolean {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  return Boolean(params.get("session") || params.get("new"));
-}
-
 function api(): WorkspaceEffectDeps["api"] {
   return {
     loadSetupChecks: async () => {
@@ -183,31 +160,17 @@ function api(): WorkspaceEffectDeps["api"] {
       if (!response.ok) throw new Error(payload.error || "Failed to load models");
       return payload;
     },
-    loadProjects: loadAgentProjects,
-    loadGitSummary: async (cwd: string): Promise<GitSummary | null> => {
-      const response = await fetch(`/api/agent/git-diff?cwd=${encodeURIComponent(cwd)}`, {
-        cache: "no-store",
-      });
-      const payload = await safeJson<{
-        isRepo?: boolean;
-        branch?: string | null;
-        additions?: number;
-        deletions?: number;
-        status?: string[];
-      }>(response);
-      return {
-        isRepo: payload.isRepo === true,
-        branch: payload.branch ?? null,
-        additions: payload.additions ?? 0,
-        deletions: payload.deletions ?? 0,
-        statusCount: payload.status?.length ?? 0,
-      };
-    },
   };
 }
 
 export function useWorkspace(): UseWorkspaceResult {
-  const [state, reducerDispatch] = useReducer(reducer, undefined, createInitialState);
+  const projects = useProjects();
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const tools = useTools();
+  const toolsRef = useRef(tools);
+  toolsRef.current = tools;
+  const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const pendingSessionReplaysRef = useRef<Map<PaneId, string>>(new Map());
@@ -241,22 +204,23 @@ export function useWorkspace(): UseWorkspaceResult {
         window: createWorkspaceWindow(window),
         api: api(),
         dispatch: workspaceDispatch,
-        hasExplicitSessionNav,
         queueReplay: queueSessionReplay,
         browserEvents: getBrowserEvents(),
+        findProjectById: (id) => projectsRef.current.findById(id),
+        selectionFor: (id) => toolsRef.current.selectionFor(id),
       };
     };
 
     const workspaceDispatch: WorkspaceDispatch = (action: WorkspaceAction) => {
       const prev = stateRef.current;
       const next = reducer(prev, action);
-      if (action.type === "WORKSPACE_UNMOUNTED") {
+      if (action.type === "workspaceUnmounted") {
         const deps = makeDeps(workspaceDispatch);
         if (deps) runWorkspaceEffect(action, prev, next, deps);
         return;
       }
       stateRef.current = next;
-      reducerDispatch(action);
+      setState(next);
       const deps = makeDeps(workspaceDispatch);
       if (deps) runWorkspaceEffect(action, prev, next, deps);
     };
@@ -267,12 +231,12 @@ export function useWorkspace(): UseWorkspaceResult {
     ): Promise<BrowserCommandResult> =>
       runBrowserPanelCommand(verb, payload, {
         browser: browserRef.current,
-        currentUrl: stateRef.current.browserUrl,
-        dispatch: workspaceDispatch,
+        currentUrl: toolsRef.current.browser.url,
+        setBrowserUrl: toolsRef.current.setBrowserUrl,
         isElectron: typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent),
       });
     return { dispatch: workspaceDispatch, runBrowserCommand };
-  }, [queueSessionReplay, reducerDispatch]);
+  }, [queueSessionReplay]);
 
   const { dispatch, runBrowserCommand } = controller;
 
@@ -284,28 +248,35 @@ export function useWorkspace(): UseWorkspaceResult {
       registerComputerAside: (element: HTMLElement | null) => {
         computerAsideRef.current = element;
       },
-      openNewSessionInFocusedPane: (project?: ProjectEntry) =>
-        dispatch({ type: "OPEN_NEW_SESSION", project }),
+      openNewSessionInFocusedPane: (project?: Project) => {
+        if (project) projectsRef.current.selectProject(project);
+        dispatch({ type: "openNewSession", project, tab: makeFreshTab() });
+      },
       replaySessionInFocusedPane: (piSessionId: string) =>
-        dispatch({ type: "REPLAY_SESSION", piSessionId }),
+        dispatch({ type: "replaySession", piSessionId, tab: makeFreshTab() }),
       replaySessionInSplitPane: (piSessionId: string) =>
-        dispatch({ type: "REPLAY_SESSION_IN_SPLIT", piSessionId }),
+        dispatch({
+          type: "replaySessionInSplit",
+          piSessionId,
+          paneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+          tab: makeFreshTab(),
+        }),
       openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) =>
-        dispatch({ type: "OPEN_SESSION_PAYLOAD_IN_PANE", paneId, payload }),
+        dispatch({ type: "openSessionPayloadInPane", paneId, payload, tab: makeFreshTab() }),
       renameTab: (paneId: PaneId, tabId: string, title: string) =>
-        dispatch({ type: "RENAME_TAB", paneId, tabId, title }),
-      focusTab: (paneId: PaneId, tabId: string) => dispatch({ type: "FOCUS_TAB", paneId, tabId }),
+        dispatch({ type: "renameTab", paneId, tabId, title }),
+      focusTab: (paneId: PaneId, tabId: string) => dispatch({ type: "focusTab", paneId, tabId }),
       splitTabIntoNewPane: (paneId: PaneId, tabId: string) =>
-        dispatch({ type: "SPLIT_TAB", sourcePaneId: paneId, sourceTabId: tabId }),
-      selectProject: (project: ProjectEntry | null) =>
-        dispatch({ type: "SELECT_PROJECT", project }),
-      setBrowserUrl: (url: string, input?: string) =>
-        dispatch({ type: "SET_BROWSER_URL", url, input }),
-      setBrowserInput: (input: string) => dispatch({ type: "SET_BROWSER_INPUT", input }),
-      setComputerTab: (tab: WorkspaceState["computer"]["tab"]) =>
-        dispatch({ type: "SET_COMPUTER_TAB", tab }),
-      toggleBrowserTool: () => dispatch({ type: "TOGGLE_BROWSER_TOOL" }),
-      setComputerWidth: (width: number) => dispatch({ type: "SET_COMPUTER_WIDTH", width }),
+        dispatch({
+          type: "splitTab",
+          sourcePaneId: paneId,
+          sourceTabId: tabId,
+          newPaneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+          tab: makeFreshTab(),
+        }),
+      selectProject: (project: Project | null) => projectsRef.current.selectProject(project),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
@@ -313,25 +284,24 @@ export function useWorkspace(): UseWorkspaceResult {
         if (handle && pendingSessionId) queueSessionReplay(paneId, pendingSessionId);
       },
       runBrowserCommand,
-      setComputerOpen: (open: boolean) => dispatch({ type: "SET_COMPUTER_OPEN", open }),
-      toggleComputerOpen: () => dispatch({ type: "TOGGLE_COMPUTER_OPEN" }),
       setSplitRatio: (path: number[], ratio: number) =>
-        dispatch({ type: "SET_SPLIT_RATIO", path, ratio }),
+        dispatch({ type: "setSplitRatio", path, ratio }),
       setPaneTabs: (
         paneId: PaneId,
         tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[]),
       ) => {
         const pane = stateRef.current.panesById.get(paneId);
         if (!pane) return;
+        const current = paneSessions(stateRef.current, paneId);
         dispatch({
-          type: "SET_PANE_TABS",
+          type: "setPaneTabs",
           paneId,
-          tabs: typeof tabs === "function" ? tabs(pane.tabs) : tabs,
+          tabs: typeof tabs === "function" ? tabs(current) : tabs,
         });
       },
       patchActiveTab: (paneId: PaneId, patch: Partial<SessionTab>) =>
-        dispatch({ type: "PATCH_ACTIVE_TAB", paneId, patch }),
-      closePane: (paneId: PaneId) => dispatch({ type: "CLOSE_PANE", paneId }),
+        dispatch({ type: "patchActiveTab", paneId, patch }),
+      closePane: (paneId: PaneId) => dispatch({ type: "closePane", paneId }),
       splitPaneWithPayload: (
         paneId: PaneId,
         direction: "vertical" | "horizontal",
@@ -339,7 +309,7 @@ export function useWorkspace(): UseWorkspaceResult {
         payload: SessionDropPayload,
       ) =>
         dispatch({
-          type: "SPLIT_PANE_WITH_PAYLOAD",
+          type: "splitPaneWithPayload",
           paneId,
           direction,
           side,
@@ -348,20 +318,20 @@ export function useWorkspace(): UseWorkspaceResult {
           runtimeSessionId: newRuntimeId(),
           tab: makeFreshTab(),
         }),
-      selectPaneProject: (paneId: PaneId, project: ProjectEntry) =>
+      selectPaneProject: (paneId: PaneId, project: Project) =>
         dispatch({
-          type: "PATCH_ACTIVE_TAB",
+          type: "patchActiveTab",
           paneId,
           patch: { projectId: project.id, cwd: project.path },
         }),
       selectPaneModel: (paneId: PaneId, modelId: string) =>
-        dispatch({ type: "PATCH_ACTIVE_TAB", paneId, patch: { modelId } }),
-      notifySessionsChanged: () => dispatch({ type: "NOTIFY_SESSIONS_CHANGED" }),
+        dispatch({ type: "patchActiveTab", paneId, patch: { modelId } }),
+      notifySessionsChanged: () => dispatch({ type: "notifySessionsChanged" }),
       startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => {
         if (typeof window === "undefined") return;
         event.preventDefault();
         const startX = event.clientX;
-        const startWidth = stateRef.current.computer.width;
+        const startWidth = toolsRef.current.computer.width;
         let frame = 0;
         const onMove = (moveEvent: MouseEvent) => {
           const next = clampComputerWidth(startWidth + startX - moveEvent.clientX);
@@ -374,7 +344,7 @@ export function useWorkspace(): UseWorkspaceResult {
           if (frame) cancelAnimationFrame(frame);
           const next = clampComputerWidth(startWidth + startX - upEvent.clientX);
           if (computerAsideRef.current) computerAsideRef.current.style.width = `${next}px`;
-          dispatch({ type: "SET_COMPUTER_WIDTH", width: next });
+          toolsRef.current.setComputerWidth(next);
           window.removeEventListener("mousemove", onMove);
           window.removeEventListener("mouseup", onUp);
         };
@@ -382,33 +352,28 @@ export function useWorkspace(): UseWorkspaceResult {
         window.addEventListener("mouseup", onUp);
       },
       initGitForActiveProject: async () => {
-        const cwd = focusedProjectPath(stateRef.current);
-        if (!cwd) return;
-        const response = await fetch(`/api/agent/git-diff?cwd=${encodeURIComponent(cwd)}`, {
-          method: "POST",
-        });
-        if (!response.ok) {
-          const payload = await safeJson<{ error?: string }>(response);
+        try {
+          await projectsRef.current.initGitForActiveProject();
+        } catch (error) {
           dispatch({
             type: "setError",
-            error: payload.error || "Failed to initialize git repository",
+            error: error instanceof Error ? error.message : "Failed to initialize git repository",
           });
-          return;
         }
-        const summary = await api().loadGitSummary?.(cwd);
-        dispatch({ type: "setGitSummary", cwd, summary: summary ?? null });
-        window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
       },
     }),
     [dispatch, queueSessionReplay, runBrowserCommand],
   );
 
   useEffect(() => {
-    const hydrated = loadInitialFromStorage(window.localStorage);
-    dispatch({ type: "HYDRATE", payload: hydrated });
-    const unsub = subscribeWorkspaceWindowEvents(window, dispatch);
+    const { workspace, selections } = loadInitialFromStorage(window.localStorage);
+    dispatch({ type: "hydrate", state: workspace });
+    if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
+    const unsub = subscribeWorkspaceWindowEvents(window, dispatch, (id) =>
+      projectsRef.current.findById(id),
+    );
     return unsub;
-  }, []);
+  }, [dispatch]);
 
   return { state, dispatch, handles };
 }

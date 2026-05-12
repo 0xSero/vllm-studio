@@ -18,16 +18,29 @@ import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
 } from "@/lib/agent/active-sessions";
-
-type ProjectEntry = {
-  id: string;
-  name: string;
-  path: string;
-  addedAt: string;
-  exists: boolean;
-  hasGit: boolean;
-  branch: string | null;
-};
+import {
+  ACTIVE_AGENT_SESSION_OPEN_EVENT,
+  ACTIVE_AGENT_SESSION_RENAME_EVENT,
+  ACTIVE_AGENT_SESSIONS_EVENT,
+  ADD_PROJECT_EVENT,
+  NEW_AGENT_SESSION_EVENT,
+  PROJECTS_CHANGED_EVENT,
+  SESSION_PREFS_CHANGED_EVENT,
+  SESSIONS_CHANGED_EVENT,
+} from "@/lib/agent/workspace/events";
+import {
+  loadPersistedActiveAgentSessions,
+  persistActiveAgentSessions,
+} from "@/lib/agent/workspace/store";
+import { useProjects } from "@/lib/agent/projects/context";
+import { addProjectFromPath, openProjectDirectory } from "@/lib/agent/projects/api";
+import {
+  loadSessionPrefs,
+  patchSessionPref,
+  type SessionPref,
+  type SessionPrefs,
+} from "@/lib/agent/session/prefs";
+import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
 
 type SessionSummary = {
   id: string;
@@ -56,54 +69,12 @@ type DirectoryBrowserPayload = {
   error?: string;
 };
 
-const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";
-export const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
-export const PROJECTS_CHANGED_EVENT = "vllm-studio.agent.projectsChanged";
-export const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
-export const NEW_AGENT_SESSION_EVENT = "vllm-studio.agent.newSession";
-export const ACTIVE_AGENT_SESSION_RENAME_EVENT = "vllm-studio.agent.activeSessionRename";
-export const ACTIVE_AGENT_SESSION_OPEN_EVENT = "vllm-studio.agent.activeSessionOpen";
-
 type ActiveAgentSession = ActiveAgentSessionSnapshot;
 
-type SessionPref = {
-  title?: string;
-  pinned?: boolean;
-  hidden?: boolean;
-};
-
-const SESSION_PREFS_KEY = "vllm-studio.agent.sessionPrefs";
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
-const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
-const ACTIVE_AGENT_SESSIONS_KEY = "vllm-studio.agent.activeSessions.snapshot";
 const SESSION_NAV_TITLE_PREFIX = "vllm-studio.agent.sessionNavTitle:";
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-[#151515] p-1 text-xs text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]";
-
-function loadActiveAgentSessions(): ActiveAgentSession[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(ACTIVE_AGENT_SESSIONS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? mergeActiveAgentSessions([], parsed as ActiveAgentSession[], loadSessionPrefs())
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveActiveAgentSessions(sessions: ActiveAgentSession[]) {
-  if (typeof window === "undefined") return;
-  const prefs = loadSessionPrefs();
-  const merged = mergeActiveAgentSessions(loadActiveAgentSessions(), sessions, prefs);
-  if (merged.length > 0) {
-    window.localStorage.setItem(ACTIVE_AGENT_SESSIONS_KEY, JSON.stringify(merged));
-  } else {
-    window.localStorage.removeItem(ACTIVE_AGENT_SESSIONS_KEY);
-  }
-}
 
 function setAgentSessionDragData(
   event: DragEvent,
@@ -123,44 +94,6 @@ function setAgentSessionDragData(
   event.dataTransfer.effectAllowed = "copy";
 }
 
-function loadSessionPrefs(): Record<string, SessionPref> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(SESSION_PREFS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, SessionPref>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveSessionPrefs(prefs: Record<string, SessionPref>) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
-  window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
-}
-
-function removeSessionPref(piSessionId: string) {
-  const all = loadSessionPrefs();
-  delete all[piSessionId];
-  saveSessionPrefs(all);
-}
-
-function patchSessionPref(piSessionId: string, patch: SessionPref) {
-  const all = loadSessionPrefs();
-  const current = all[piSessionId] ?? {};
-  const next: SessionPref = { ...current, ...patch };
-  // Normalize: drop the entry entirely if all flags are cleared so we don't
-  // grow localStorage forever.
-  if (!next.title && !next.pinned && !next.hidden) {
-    delete all[piSessionId];
-  } else {
-    all[piSessionId] = next;
-  }
-  saveSessionPrefs(all);
-}
-
 function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
   return [
     session.piSessionId,
@@ -170,7 +103,7 @@ function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
 
 function activeSessionPref(
   session: ActiveAgentSession,
-  prefs: Record<string, SessionPref>,
+  prefs: SessionPrefs,
 ): SessionPref {
   return activeSessionPrefKeys(session).reduce<SessionPref>(
     (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
@@ -195,7 +128,7 @@ function relativeAge(value?: string | null): string {
 }
 
 function useSessionPrefs() {
-  const [prefs, setPrefs] = useState<Record<string, SessionPref>>(() => loadSessionPrefs());
+  const [prefs, setPrefs] = useState<SessionPrefs>(() => loadSessionPrefs());
   useEffect(() => {
     const refresh = () => setPrefs(loadSessionPrefs());
     refresh();
@@ -235,41 +168,6 @@ export function consumeAgentSessionNavTitle(sessionId: string | null | undefined
   } catch {
     return undefined;
   }
-}
-
-function notifyProjectsChanged() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
-}
-
-type DesktopBridge = {
-  openDirectory?: () => Promise<ProjectEntry | null>;
-  listProjects?: () => Promise<ProjectEntry[]>;
-  removeProject?: (id: string) => Promise<{ ok: true }>;
-};
-
-function getDesktopBridge(): DesktopBridge | null {
-  if (typeof window === "undefined") return null;
-  const candidate = (window as unknown as { vllmStudioDesktop?: Partial<DesktopBridge> })
-    .vllmStudioDesktop;
-  if (!candidate) return null;
-  const hasBridgeMethod =
-    typeof candidate.openDirectory === "function" ||
-    typeof candidate.listProjects === "function" ||
-    typeof candidate.removeProject === "function";
-  if (!hasBridgeMethod) return null;
-  return candidate as DesktopBridge;
-}
-
-export async function loadAgentProjects(): Promise<ProjectEntry[]> {
-  const desktopBridge = getDesktopBridge();
-  if (desktopBridge?.listProjects) {
-    return desktopBridge.listProjects();
-  }
-  const response = await fetch("/api/agent/projects", { cache: "no-store" });
-  const payload = (await response.json()) as { projects?: ProjectEntry[]; error?: string };
-  if (!response.ok) throw new Error(payload.error || "Failed to load projects");
-  return payload.projects ?? [];
 }
 
 function ProjectDirectoryPickerModal({
@@ -424,10 +322,14 @@ function ProjectDirectoryPickerModal({
  * `expanded`).
  */
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
-  const [projects, setProjects] = useState<ProjectEntry[]>([]);
+  const projectsContext = useProjects();
+  const projects = projectsContext.projects;
+  const upsertProject = projectsContext.upsertProject;
+  const removeProject = projectsContext.removeProject;
+  const refreshProjects = projectsContext.refresh;
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [activeSessions, setActiveSessions] = useState<ActiveAgentSession[]>(() =>
-    loadActiveAgentSessions(),
+    loadPersistedActiveAgentSessions(),
   );
   const [addError, setAddError] = useState("");
   const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
@@ -473,81 +375,29 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       Boolean(entry.project),
     );
 
-  const loadProjects = useCallback(async () => {
-    try {
-      setProjects(await loadAgentProjects());
-    } catch {
-      setProjects([]);
-    }
-  }, []);
-
-  const upsertProject = useCallback((project: ProjectEntry) => {
-    setProjects((current) => [project, ...current.filter((entry) => entry.id !== project.id)]);
-    notifyProjectsChanged();
-  }, []);
-
-  const removeProject = useCallback(async (id: string) => {
-    const desktopBridge = getDesktopBridge();
-    if (desktopBridge?.removeProject) {
-      await desktopBridge.removeProject(id);
-    } else {
-      const response = await fetch(`/api/agent/projects?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
+  const removeProjectAndCloseRow = useCallback(
+    async (id: string) => {
+      await removeProject(id);
+      setOpenIds((current) => {
+        if (!current.has(id)) return current;
+        const next = new Set(current);
+        next.delete(id);
+        return next;
       });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || "Failed to remove project");
-      }
-    }
-    setProjects((current) => current.filter((entry) => entry.id !== id));
-    notifyProjectsChanged();
-    setOpenIds((current) => {
-      if (!current.has(id)) return current;
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!expanded) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await loadAgentProjects();
-        if (!cancelled) setProjects(list);
-      } catch {
-        if (!cancelled) setProjects([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded]);
-
-  const addProjectFromPath = async (directoryPath: string): Promise<ProjectEntry> => {
-    const response = await fetch("/api/agent/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: directoryPath }),
-    });
-    const payload = (await response.json()) as { project?: ProjectEntry; error?: string };
-    if (!response.ok || !payload.project) {
-      throw new Error(payload.error || "Failed to add project");
-    }
-    return payload.project;
-  };
+    },
+    [removeProject],
+  );
 
   const handleAddProject = async () => {
     setAddError("");
-    const desktopBridge = getDesktopBridge();
-    if (desktopBridge?.openDirectory) {
-      try {
-        const project = await desktopBridge.openDirectory();
-        if (project) upsertProject(project);
-      } catch (error) {
-        setAddError(error instanceof Error ? error.message : "Failed to add project");
+    try {
+      const desktopProject = await openProjectDirectory();
+      if (desktopProject) {
+        upsertProject(desktopProject);
+        return;
       }
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Failed to add project");
       return;
     }
     setDirectoryModalOpen(true);
@@ -559,7 +409,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       const project = await addProjectFromPath(directoryPath);
       upsertProject(project);
       setDirectoryModalOpen(false);
-      void loadProjects();
+      void refreshProjects();
     } catch (error) {
       setAddError(error instanceof Error ? error.message : "Failed to add project");
     }
@@ -585,7 +435,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       setActiveSessions((current) =>
         mergeActiveAgentSessions(current, sessions, loadSessionPrefs()),
       );
-      saveActiveAgentSessions(sessions);
+      persistActiveAgentSessions(sessions);
     };
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
@@ -706,7 +556,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             onToggle={() => toggle(project.id)}
             onRemove={() => {
               setAddError("");
-              void removeProject(project.id).catch((error) => {
+              void removeProjectAndCloseRow(project.id).catch((error) => {
                 setAddError(error instanceof Error ? error.message : "Failed to remove project");
               });
             }}

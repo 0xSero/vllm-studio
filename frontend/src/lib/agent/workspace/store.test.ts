@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { collectLeaves } from "@/app/agent/_components/pane-layout";
 import type { SessionTab } from "@/app/agent/_components/chat-pane";
+import { makeFreshTab } from "@/lib/agent/session/helpers";
 import type { ProjectEntry, WorkspaceState } from "./types";
 import {
   createInitialState,
@@ -82,34 +83,38 @@ describe("setupWarningFromPiCheck", () => {
   });
 });
 
+function paneSessionList(state: WorkspaceState, paneId = state.focusedPaneId) {
+  const p = pane(state, paneId);
+  return p.sessionIds.map((id) => state.sessions.get(id)!);
+}
+
 describe("workspace reducer", () => {
   it("opens a new session by reusing the empty starter pane", () => {
     const state = createInitialState();
-    const starterTabId = pane(state).activeTabId;
+    const starterTabId = pane(state).activeSessionId;
     const selected = project();
 
-    const next = reducer(state, { type: "openNewSession", project: selected });
+    const next = reducer(state, { type: "openNewSession", project: selected, tab: makeFreshTab() });
     const nextPane = pane(next, "p-init");
 
-    expect(nextPane.tabs).toHaveLength(1);
-    expect(nextPane.activeTabId).toBe(starterTabId);
-    expect(nextPane.tabs[0]).toMatchObject({
+    expect(nextPane.sessionIds).toHaveLength(1);
+    expect(nextPane.activeSessionId).toBe(starterTabId);
+    expect(paneSessionList(next, "p-init")[0]).toMatchObject({
       projectId: selected.id,
       cwd: selected.path,
     });
-    expect(next.selectedProjectId).toBe(selected.id);
-    expect(next.agentCwd).toBe(selected.path);
   });
 
   it("replays a session into the focused empty starter pane", () => {
     const state = createInitialState();
 
-    const next = reducer(state, { type: "replaySession", piSessionId: "pi-1" });
+    const next = reducer(state, { type: "replaySession", piSessionId: "pi-1", tab: makeFreshTab() });
     const nextPane = pane(next, "p-init");
+    const sessions = paneSessionList(next, "p-init");
 
-    expect(nextPane.tabs).toHaveLength(1);
-    expect(nextPane.activeTabId).toBe(nextPane.tabs[0].id);
-    expect(nextPane.tabs[0].piSessionId).toBe("pi-1");
+    expect(nextPane.sessionIds).toHaveLength(1);
+    expect(nextPane.activeSessionId).toBe(sessions[0].id);
+    expect(sessions[0].piSessionId).toBe("pi-1");
     expect(next.focusedPaneId).toBe("p-init");
   });
 
@@ -120,9 +125,10 @@ describe("workspace reducer", () => {
       type: "replaySession",
       piSessionId: "pi-1",
       sessionTitle: "Saved session",
+      tab: makeFreshTab(),
     });
 
-    expect(pane(next, "p-init").tabs[0]).toMatchObject({
+    expect(paneSessionList(next, "p-init")[0]).toMatchObject({
       piSessionId: "pi-1",
       title: "Saved session",
     });
@@ -142,10 +148,10 @@ describe("workspace reducer", () => {
     expect(collectLeaves(next.layout)).toEqual(["p-init", "p-sibling"]);
     expect(next.focusedPaneId).toBe("p-sibling");
     expect(pane(next, "p-sibling")).toMatchObject({
-      activeTabId: "tab-sibling",
+      activeSessionId: "tab-sibling",
       runtimeSessionId: "rt-sibling",
     });
-    expect(pane(next, "p-sibling").tabs[0]).toMatchObject({
+    expect(paneSessionList(next, "p-sibling")[0]).toMatchObject({
       id: "tab-sibling",
       piSessionId: "pi-2",
       title: "Loading session",
@@ -154,7 +160,7 @@ describe("workspace reducer", () => {
 
   it("renames a tab", () => {
     const state = createInitialState();
-    const tabId = pane(state).activeTabId;
+    const tabId = pane(state).activeSessionId;
 
     const next = reducer(state, {
       type: "renameTab",
@@ -163,7 +169,7 @@ describe("workspace reducer", () => {
       title: "Renamed session",
     });
 
-    expect(pane(next, "p-init").tabs[0].title).toBe("Renamed session");
+    expect(paneSessionList(next, "p-init")[0].title).toBe("Renamed session");
   });
 
   it("focuses a tab and its pane", () => {
@@ -174,7 +180,7 @@ describe("workspace reducer", () => {
       runtimeSessionId: "rt-sibling",
       tab: tab({ id: "tab-sibling", runtimeSessionId: "rt-tab-sibling" }),
     });
-    const starterTabId = pane(split, "p-init").activeTabId;
+    const starterTabId = pane(split, "p-init").activeSessionId;
 
     const next = reducer(split, {
       type: "focusTab",
@@ -183,7 +189,7 @@ describe("workspace reducer", () => {
     });
 
     expect(next.focusedPaneId).toBe("p-init");
-    expect(pane(next, "p-init").activeTabId).toBe(starterTabId);
+    expect(pane(next, "p-init").activeSessionId).toBe(starterTabId);
   });
 
   it("focuses the sibling when closing the focused pane", () => {
@@ -200,5 +206,7 @@ describe("workspace reducer", () => {
     expect(collectLeaves(next.layout)).toEqual(["p-init"]);
     expect(next.panesById.has("p-sibling")).toBe(false);
     expect(next.focusedPaneId).toBe("p-init");
+    // Closing the sibling pane prunes its sessions from the flat map too.
+    expect(next.sessions.has("tab-sibling")).toBe(false);
   });
 });

@@ -1,25 +1,22 @@
 import { collectLeaves } from "@/app/agent/_components/pane-layout";
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
-import type { SessionTab } from "@/app/agent/_components/chat-pane";
-import type { ComputerTab, PaneId, PaneState, WorkspaceLayout, WorkspaceState } from "./types";
-import { DEFAULT_COMPUTER_WIDTH, clampComputerWidth } from "./computer-controller";
+import type { Session, SessionId, SessionsMap } from "@/lib/agent/sessions/types";
+import type { ToolSelection } from "@/lib/agent/tools/types";
+import type { PaneId, PaneState, WorkspaceLayout, WorkspaceState } from "./types";
+
+// `SessionTab` was the old name for the per-pane session record. Now sessions
+// live in a flat map and panes hold ids; this alias keeps the persisted shape
+// declaration readable for future-archaeologists.
+type SessionTab = Session;
 import {
-  BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY,
-  BROWSER_TOOL_KEY,
-  COMPUTER_BROWSER_OPEN_KEY,
-  COMPUTER_DEFAULT_CLOSED_STORAGE_ID,
-  COMPUTER_FILES_OPEN_KEY,
-  COMPUTER_WIDTH_KEY,
   PANE_LAYOUT_KEY,
   PANE_STATE_KEY,
-  SELECTED_PROJECT_KEY,
-  newRuntimeId,
   persistActiveAgentSessions,
-  randomIdSegment,
   restorePersistedPaneState,
   tabForPersistence,
   type WorkspaceStorage,
 } from "./store";
+import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
 
 const SESSIONS_COLLAPSED_KEY = "vllm-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "vllm-studio.agent.sessionsCollapsedCleaned";
@@ -48,26 +45,10 @@ function removeStorage(storage: WorkspaceStorage, key: string): void {
   }
 }
 
-function newTabId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${randomIdSegment(8)}`;
-}
-
-function makeFreshPersistedTab(): SessionTab {
-  return {
-    id: newTabId("tab"),
-    runtimeSessionId: newTabId("rt"),
-    piSessionId: null,
-    title: "New session",
-    messages: [],
-    status: "idle",
-    error: "",
-    input: "",
-  };
-}
-
 function restoreLegacyLayout(rawLayout: string): {
   layout: WorkspaceLayout;
   panesById: Map<PaneId, PaneState>;
+  sessions: SessionsMap;
   focusedPaneId: PaneId;
 } | null {
   try {
@@ -76,15 +57,17 @@ function restoreLegacyLayout(rawLayout: string): {
     const leaves = collectLeaves(layout);
     if (leaves.length === 0) return null;
     const panesById = new Map<PaneId, PaneState>();
+    const sessions = new Map<SessionId, Session>();
     for (const paneId of leaves) {
-      const tab = makeFreshPersistedTab();
+      const session = makeFreshTab();
+      sessions.set(session.id, session);
       panesById.set(paneId, {
-        tabs: [tab],
-        activeTabId: tab.id,
+        sessionIds: [session.id],
+        activeSessionId: session.id,
         runtimeSessionId: newRuntimeId(),
       });
     }
-    return { layout, panesById, focusedPaneId: leaves[0] };
+    return { layout, panesById, sessions, focusedPaneId: leaves[0] };
   } catch {
     return null;
   }
@@ -95,62 +78,58 @@ function migrateStorage(storage: WorkspaceStorage): void {
     removeStorage(storage, SESSIONS_COLLAPSED_KEY);
     setStorage(storage, SESSIONS_COLLAPSED_CLEANED_KEY, "1");
   }
-
-  if (!readStorage(storage, BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY)) {
-    setStorage(storage, BROWSER_TOOL_KEY, "0");
-    setStorage(storage, BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY, "1");
-  }
-
-  if (!readStorage(storage, COMPUTER_DEFAULT_CLOSED_STORAGE_ID)) {
-    setStorage(storage, COMPUTER_BROWSER_OPEN_KEY, "0");
-    setStorage(storage, COMPUTER_FILES_OPEN_KEY, "0");
-    setStorage(storage, COMPUTER_DEFAULT_CLOSED_STORAGE_ID, "1");
-  }
-  setStorage(storage, COMPUTER_BROWSER_OPEN_KEY, "0");
+  // Tool storage migrations are owned by lib/agent/tools/persistence.ts
+  // (`migrateToolStorage`) — ToolsProvider runs them on mount.
 }
 
-export function loadInitialFromStorage(storage: WorkspaceStorage): Partial<WorkspaceState> {
-  migrateStorage(storage);
+export type LoadedFromStorage = {
+  workspace: Partial<WorkspaceState>;
+  /** Per-session tool selections recovered from the persisted shape. */
+  selections: Map<SessionId, ToolSelection>;
+};
 
-  const storedComputerWidth = Number(readStorage(storage, COMPUTER_WIDTH_KEY));
-  const computerTab: ComputerTab =
-    readStorage(storage, COMPUTER_FILES_OPEN_KEY) === "1" ? "files" : "browser";
-  const initial: Partial<WorkspaceState> = {
-    browserToolEnabled: readStorage(storage, BROWSER_TOOL_KEY) === "1",
-    computer: {
-      open: false,
-      tab: computerTab,
-      width: Number.isFinite(storedComputerWidth)
-        ? clampComputerWidth(storedComputerWidth)
-        : DEFAULT_COMPUTER_WIDTH,
-    },
-  };
+export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromStorage {
+  migrateStorage(storage);
 
   const rawState = readStorage(storage, PANE_STATE_KEY);
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
-    return { ...initial, ...restoredState };
+    const { selections, ...workspace } = restoredState;
+    return { workspace, selections };
   }
 
   const rawLayout = readStorage(storage, PANE_LAYOUT_KEY);
   const restoredLayout = rawLayout ? restoreLegacyLayout(rawLayout) : null;
-  return restoredLayout ? { ...initial, ...restoredLayout } : initial;
+  return { workspace: restoredLayout ?? {}, selections: new Map() };
 }
 
-export function writePaneState(storage: WorkspaceStorage, state: WorkspaceState): void {
+export function writePaneState(
+  storage: WorkspaceStorage,
+  state: WorkspaceState,
+  selectionFor: (sessionId: SessionId) => ToolSelection | null = () => null,
+): void {
+  // Denormalize on write — the persisted shape embeds session content (and
+  // tool selection) inside each pane (back-compat with the old PaneState.tabs
+  // format). The runtime model keeps sessions in a flat map and selections in
+  // the tools subsystem.
   const panes: Record<
     string,
     {
       activeTabId: string;
       runtimeSessionId: string;
-      tabs: SessionTab[];
+      tabs: ReturnType<typeof tabForPersistence>[];
     }
   > = {};
   for (const [paneId, pane] of state.panesById.entries()) {
+    const tabs: ReturnType<typeof tabForPersistence>[] = [];
+    for (const id of pane.sessionIds) {
+      const session = state.sessions.get(id);
+      if (session) tabs.push(tabForPersistence(session, selectionFor(id) ?? undefined));
+    }
     panes[paneId] = {
-      activeTabId: pane.activeTabId,
+      activeTabId: pane.activeSessionId,
       runtimeSessionId: pane.runtimeSessionId,
-      tabs: pane.tabs.map(tabForPersistence),
+      tabs,
     };
   }
   setStorage(
@@ -159,29 +138,6 @@ export function writePaneState(storage: WorkspaceStorage, state: WorkspaceState)
     JSON.stringify({ version: 1, layout: state.layout, focusedPaneId: state.focusedPaneId, panes }),
   );
   setStorage(storage, PANE_LAYOUT_KEY, JSON.stringify(state.layout));
-}
-
-export function writeSelectedProject(
-  storage: WorkspaceStorage,
-  selectedProjectId: string | null,
-): void {
-  if (selectedProjectId) {
-    setStorage(storage, SELECTED_PROJECT_KEY, selectedProjectId);
-  } else {
-    removeStorage(storage, SELECTED_PROJECT_KEY);
-  }
-}
-
-export function writeComputerTab(storage: WorkspaceStorage, tab: ComputerTab): void {
-  setStorage(storage, COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
-}
-
-export function writeComputerWidth(storage: WorkspaceStorage, width: number): void {
-  setStorage(storage, COMPUTER_WIDTH_KEY, String(clampComputerWidth(width)));
-}
-
-export function writeBrowserTool(storage: WorkspaceStorage, enabled: boolean): void {
-  setStorage(storage, BROWSER_TOOL_KEY, enabled ? "1" : "0");
 }
 
 export function writeActiveSessions(

@@ -22,11 +22,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { ProjectsNavSection } from "@/components/projects-nav-section";
 import { SessionsCommand } from "@/components/sessions-command";
-
-// Custom event used by ProjectsNavSection to broadcast the set of currently
-// running agent panes/tabs. We listen for it here so the search palette can
-// surface "Running now" entries even when the project tree is collapsed.
-const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
+import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
 
 type ActiveSessionDetail = {
   projectId: string;

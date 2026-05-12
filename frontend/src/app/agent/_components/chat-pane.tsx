@@ -13,8 +13,6 @@ import {
   SendIcon,
   StopIcon,
 } from "@/components/icons";
-import { safeJson } from "@/lib/agent/safe-json";
-import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
   activateComposerPlugin,
   activeComposerPlugins,
@@ -27,35 +25,13 @@ import {
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
 import {
-  appendDelta,
-  appendEventBlock,
   asRecord,
-  compactionTextFromEvent,
-  drainQueueAfterAgentEnd,
-  extractToolText,
-  makeFreshTab as makeFreshTabImpl,
-  mergeCanonicalAndRuntimeEvents,
-  messageText,
   newId,
-  nowLabel,
-  parseAgentTurnSsePayload,
-  piSessionIdFromEvent,
-  reconcileQueueWithPiEvent,
-  replayCursorAfterRuntimeHydration,
-  replaySessionEvents,
-  runtimeStatusAcceptsControl,
-  runtimeStatusLooksActive,
-  sessionTitleFromPrompt,
-  statusAfterControlPhase,
-  stringifyToolArgs,
-  toolCallDeltaFromUpdate,
-  toolCallSnapshotFromUpdate,
-  upsertTool,
-  usageFromEvent,
   visibleQueuedMessages,
-  visibleUserTextFromPi,
   formatTokenCount,
 } from "@/lib/agent/session";
+import { useSessionEngine } from "@/lib/agent/sessions/engine";
+import { useTools } from "@/lib/agent/tools/context";
 import type {
   AgentTurnSsePayload,
   AssistantBlock,
@@ -63,7 +39,6 @@ import type {
   ChatPaneHandle,
   EventBlock,
   QueuedMessage,
-  RuntimeLoggedEvent,
   SessionTab,
   TextBlock,
   ThinkingBlock,
@@ -97,21 +72,7 @@ export type {
   TokenStats,
   ToolBlock,
 };
-export {
-  drainQueueAfterAgentEnd,
-  mergeCanonicalAndRuntimeEvents,
-  parseAgentTurnSsePayload,
-  reconcileQueueWithPiEvent,
-  replayCursorAfterRuntimeHydration,
-  replaySessionEvents,
-  runtimeStatusAcceptsControl,
-  runtimeStatusLooksActive,
-  sessionTitleFromPrompt,
-  statusAfterControlPhase,
-  visibleQueuedMessages,
-  visibleUserTextFromPi,
-};
-export const makeFreshTab = makeFreshTabImpl;
+export { visibleQueuedMessages };
 
 type Props = {
   paneId: string;
@@ -192,19 +153,20 @@ export function ChatPane({
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [compacting, setCompacting] = useState(false);
   const tabsRef = useRef(tabs);
-  const localStreamTabsRef = useRef<Set<string>>(new Set());
-  const liveAssistantIdsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
 
+  const tools = useTools();
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [tabs, activeTabId],
   );
   const running = activeTab?.status === "running" || activeTab?.status === "starting";
-  const selectedPlugins = activeTab?.plugins ?? [];
+  const activeSelection = tools.selectionFor(activeTab?.id);
+  const selectedPlugins = activeSelection.plugins;
+  const selectedSkills = activeSelection.skills;
   const computerUseLoaded = selectedPlugins.some((plugin) =>
     [plugin.id, plugin.name, plugin.path].some((value) =>
       value?.toLowerCase().includes("computer-use"),
@@ -275,19 +237,23 @@ export function ChatPane({
             ? { ...row, ...loaded.plugin, id: row.id }
             : row;
       }
-      updateTab(activeTab.id, (tab) => {
-        if (selectedMention.kind === "plugin") {
-          const plugins = tab.plugins ?? [];
-          const plugin = activateComposerPlugin(selectedRow as ComposerPluginRef);
-          return plugins.some((plugin) => plugin.id === selectedRow.id)
-            ? { ...tab, input }
-            : { ...tab, input, plugins: [...plugins, plugin] };
+      // Stash the new input on the session, then mutate the per-session tool
+      // selection through the tools subsystem (single owner of plugins/skills).
+      updateTab(activeTab.id, (tab) => ({ ...tab, input }));
+      const current = tools.selectionFor(activeTab.id);
+      if (selectedMention.kind === "plugin") {
+        if (!current.plugins.some((plugin) => plugin.id === selectedRow.id)) {
+          tools.setSelection(activeTab.id, {
+            plugins: [...current.plugins, activateComposerPlugin(selectedRow as ComposerPluginRef)],
+            skills: current.skills,
+          });
         }
-        const skills = tab.skills ?? [];
-        return skills.some((skill) => skill.id === selectedRow.id)
-          ? { ...tab, input }
-          : { ...tab, input, skills: [...skills, selectedRow as ComposerSkillRef] };
-      });
+      } else if (!current.skills.some((skill) => skill.id === selectedRow.id)) {
+        tools.setSelection(activeTab.id, {
+          plugins: current.plugins,
+          skills: [...current.skills, selectedRow as ComposerSkillRef],
+        });
+      }
       if (
         selectedMention.kind === "plugin" &&
         row.name.toLowerCase().includes("browser-use") &&
@@ -298,23 +264,21 @@ export function ChatPane({
       setMention(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [activeTab, browserToolEnabled, mention, onToggleBrowserTool, updateTab],
+    [activeTab, browserToolEnabled, mention, onToggleBrowserTool, tools, updateTab],
   );
 
   const removeLoadedContext = useCallback(
     (kind: "plugin" | "skill", id: string) => {
       if (!activeTab) return;
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
+      const current = tools.selectionFor(activeTab.id);
+      tools.setSelection(activeTab.id, {
         plugins:
-          kind === "plugin"
-            ? (tab.plugins ?? []).filter((plugin) => plugin.id !== id)
-            : tab.plugins,
+          kind === "plugin" ? current.plugins.filter((plugin) => plugin.id !== id) : current.plugins,
         skills:
-          kind === "skill" ? (tab.skills ?? []).filter((skill) => skill.id !== id) : tab.skills,
-      }));
+          kind === "skill" ? current.skills.filter((skill) => skill.id !== id) : current.skills,
+      });
     },
-    [activeTab, updateTab],
+    [activeTab, tools],
   );
 
   useEffect(() => {
@@ -325,397 +289,25 @@ export function ChatPane({
     }
   }, [activeTab?.messages, activeTab?.status]);
 
-  const patchAssistant = useCallback(
-    (tabId: string, assistantId: string, patch: (msg: ChatMessage) => ChatMessage) => {
-      updateTab(tabId, (tab) => ({
-        ...tab,
-        messages: tab.messages.map((m) => (m.id === assistantId ? patch(m) : m)),
-      }));
-    },
+  const updateSession = useCallback(
+    (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
   );
+  const engine = useSessionEngine({
+    tabs,
+    activeTabId,
+    runtimeSessionId,
+    modelId,
+    cwd,
+    browserToolEnabled,
+    onPiSessionIdChange,
+    updateSession,
+    selectionFor: tools.selectionFor,
+  });
 
-  const applyPiEvent = useCallback(
-    (tabId: string, assistantId: string, event: Record<string, unknown>) => {
-      const eventType = event.type;
-      const currentAssistantId = () => liveAssistantIdsRef.current.get(tabId) ?? assistantId;
-      const ensureNextAssistant = () => {
-        const id = newId("assistant");
-        liveAssistantIdsRef.current.set(tabId, id);
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          activeAssistantId: id,
-          messages: [
-            ...tab.messages,
-            { id, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-          ],
-        }));
-        return id;
-      };
-      const patchCurrentAssistant = (patch: (msg: ChatMessage) => ChatMessage) => {
-        patchAssistant(tabId, currentAssistantId(), patch);
-      };
-
-      if (eventType === "queue_update") {
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          queue: reconcileQueueWithPiEvent(tab.queue ?? [], event),
-        }));
-        return;
-      }
-      if (eventType === "message_start" || eventType === "message_end") {
-        const msg = event.message as
-          | { role?: string; content?: string | Record<string, unknown>[] }
-          | undefined;
-        if (msg?.role === "user") {
-          const text = visibleUserTextFromPi(messageText(msg.content));
-          if (!text) return;
-          const current = tabsRef.current.find((tab) => tab.id === tabId);
-          const lastUser = [...(current?.messages ?? [])]
-            .reverse()
-            .find((entry) => entry.role === "user");
-          if (lastUser && (lastUser.text === text || text.includes(lastUser.text))) return;
-          updateTab(tabId, (tab) => {
-            return {
-              ...tab,
-              messages: [
-                ...tab.messages,
-                { id: newId("user"), role: "user", text, timestamp: nowLabel() },
-              ],
-            };
-          });
-          ensureNextAssistant();
-          return;
-        }
-      }
-      const usage = usageFromEvent(event);
-      if (usage) {
-        updateTab(tabId, (tab) => ({ ...tab, tokenStats: usage }));
-      }
-
-      const compactionText = compactionTextFromEvent(event);
-      if (compactionText) {
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: appendEventBlock(msg.blocks ?? [], compactionText),
-        }));
-        return;
-      }
-
-      if (eventType === "message_update") {
-        const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
-        const updateType = ame?.type;
-        if (updateType === "text_delta" && typeof ame?.delta === "string") {
-          const delta = ame.delta;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: appendDelta(msg.blocks ?? [], "text", delta),
-          }));
-          return;
-        }
-        if (updateType === "thinking_delta" && typeof ame?.delta === "string") {
-          const delta = ame.delta;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: appendDelta(msg.blocks ?? [], "thinking", delta),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_start") {
-          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
-          if (!snapshot) return;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              snapshot.id,
-              (existing) => ({
-                ...existing,
-                name: snapshot.name,
-                args: snapshot.args ?? existing.args,
-              }),
-              () => ({
-                kind: "tool",
-                id: snapshot.id,
-                name: snapshot.name,
-                status: "running",
-                text: "",
-                argsText: stringifyToolArgs(snapshot.args) ?? "",
-                args: snapshot.args,
-              }),
-            ),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_delta") {
-          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
-          const delta = toolCallDeltaFromUpdate(ame);
-          if (!snapshot || (!delta && !snapshot.args)) return;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              snapshot.id,
-              (existing) => ({
-                ...existing,
-                name: snapshot.name || existing.name,
-                args: snapshot.args ?? existing.args,
-                argsText: delta
-                  ? (existing.argsText ?? "") + delta
-                  : existing.argsText || stringifyToolArgs(snapshot.args),
-              }),
-              () => ({
-                kind: "tool",
-                id: snapshot.id,
-                name: snapshot.name,
-                status: "running",
-                text: "",
-                argsText: delta || stringifyToolArgs(snapshot.args) || "",
-                args: snapshot.args,
-              }),
-            ),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_end") {
-          const toolCall = ame?.toolCall as
-            | { id?: string; name?: string; arguments?: unknown }
-            | undefined;
-          if (!toolCall) return;
-          const id = toolCall.id || newId("tool");
-          const name = toolCall.name || "tool";
-          const argsText = JSON.stringify(toolCall.arguments ?? {}, null, 2);
-          const argsObj =
-            toolCall.arguments && typeof toolCall.arguments === "object"
-              ? (toolCall.arguments as Record<string, unknown>)
-              : undefined;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              id,
-              (existing) => ({
-                ...existing,
-                name,
-                argsText,
-                args: argsObj ?? existing.args,
-                text: existing.text || argsText,
-              }),
-              () => ({
-                kind: "tool",
-                id,
-                name,
-                status: "running",
-                argsText,
-                args: argsObj,
-                text: argsText,
-              }),
-            ),
-          }));
-          return;
-        }
-      }
-
-      if (eventType === "tool_execution_start") {
-        const id = String(event.toolCallId || newId("tool"));
-        const name = String(event.toolName || "tool");
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: upsertTool(
-            msg.blocks ?? [],
-            id,
-            (existing) => existing,
-            () => ({ kind: "tool", id, name, status: "running", text: "" }),
-          ),
-        }));
-        return;
-      }
-
-      if (eventType === "tool_execution_update" || eventType === "tool_execution_end") {
-        const id = String(event.toolCallId || "");
-        if (!id) return;
-        const resultText = extractToolText(event.partialResult || event.result);
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: upsertTool(
-            msg.blocks ?? [],
-            id,
-            (existing) => ({
-              ...existing,
-              status:
-                eventType === "tool_execution_end"
-                  ? ((event.isError ? "error" : "done") as ToolBlock["status"])
-                  : existing.status,
-              resultText: resultText || existing.resultText,
-              // Keep `text` for legacy callers; prefer args text if present so
-              // we don't blow away the file content with the tool's stdout.
-              text: existing.argsText || existing.text || resultText,
-            }),
-            () => ({
-              kind: "tool",
-              id,
-              name: "tool",
-              status:
-                eventType === "tool_execution_end"
-                  ? ((event.isError ? "error" : "done") as ToolBlock["status"])
-                  : "running",
-              resultText,
-              text: resultText,
-            }),
-          ),
-        }));
-      }
-    },
-    [patchAssistant, updateTab],
-  );
-
-  const loadRuntimeStatus = useCallback(
-    async (
-      sessionId: string,
-    ): Promise<{
-      active?: boolean;
-      running?: boolean;
-      piSessionId?: string | null;
-      eventSeq?: number;
-      events?: RuntimeLoggedEvent[];
-    } | null> => {
-      try {
-        const payload = await fetch(
-          `/api/agent/runtime/status?sessionId=${encodeURIComponent(sessionId)}`,
-          { cache: "no-store" },
-        ).then((res) =>
-          safeJson<{
-            status?: {
-              active?: boolean;
-              running?: boolean;
-              piSessionId?: string | null;
-              eventSeq?: number;
-            };
-            events?: RuntimeLoggedEvent[];
-          }>(res),
-        );
-        return payload.status ? { ...payload.status, events: payload.events ?? [] } : null;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
-
-  // Send a control-mode message (steer / follow_up) without taking ownership of
-  // the long-running prompt stream.
-  const sendControlMessage = useCallback(
-    async (
-      mode: "steer" | "follow_up",
-      text: string,
-      runtime: string,
-      tabId: string,
-      piSessionId?: string | null,
-    ): Promise<{ ok: boolean; error?: string }> => {
-      if (!text.trim() || !modelId) return { ok: false };
-      const selectedTab = tabsRef.current.find((tab) => tab.id === tabId);
-      const plugins = activeComposerPlugins(selectedTab?.plugins ?? []);
-      const skills = selectedTab?.skills ?? [];
-      const message = selectedContextPrompt(text, plugins, skills);
-      const ensureAssistantId = () => {
-        const current = tabsRef.current.find((tab) => tab.id === tabId);
-        const existing =
-          (current?.activeAssistantId &&
-            current.messages.some((entry) => entry.id === current.activeAssistantId) &&
-            current.activeAssistantId) ||
-          [...(current?.messages ?? [])].reverse().find((entry) => entry.role === "assistant")?.id;
-        if (existing) return existing;
-        const assistantId = newId("assistant");
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          activeAssistantId: assistantId,
-          messages: [
-            ...tab.messages,
-            { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-          ],
-        }));
-        return assistantId;
-      };
-      try {
-        const response = await fetch("/api/agent/turn", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: runtime,
-            modelId,
-            message,
-            cwd: cwd.trim() || undefined,
-            piSessionId,
-            mode,
-            browserToolEnabled,
-            plugins,
-            skills,
-          }),
-        });
-        if (!response.ok || !response.body) {
-          const payload = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(payload.error || `Agent request failed: ${response.status}`);
-        }
-        // Drain the short SSE stream so the connection closes cleanly.
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let controlError = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split("\n\n");
-          buffer = chunks.pop() || "";
-          for (const chunk of chunks) {
-            const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
-            if (!line) continue;
-            const payload = parseAgentTurnSsePayload(line);
-            if (payload?.type === "error") controlError = payload.error;
-            if (payload?.type === "status") {
-              updateTab(tabId, (tab) => ({
-                ...tab,
-                piSessionId: payload.piSessionId || tab.piSessionId,
-                status: statusAfterControlPhase(tab.status, payload.phase),
-              }));
-            }
-            if (payload?.type === "pi") {
-              const eventId = piSessionIdFromEvent(payload.event);
-              const assistantId = ensureAssistantId();
-              const agentEnded = isAgentEndEvent(payload.event);
-              updateTab(tabId, (tab) => ({
-                ...tab,
-                piSessionId: eventId || tab.piSessionId,
-                lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
-                status: agentEnded ? "idle" : tab.status,
-                activeAssistantId: agentEnded ? undefined : assistantId,
-              }));
-              if (eventId) onPiSessionIdChange?.(eventId);
-              applyPiEvent(tabId, assistantId, payload.event);
-            }
-          }
-        }
-        if (controlError) throw new Error(controlError);
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
-      }
-    },
-    [applyPiEvent, browserToolEnabled, cwd, modelId, onPiSessionIdChange, updateTab],
-  );
-
-  const submitPrompt = useCallback(
-    async (rawText: string, targetTabId?: string) => {
-      const selectedTab =
-        (targetTabId ? tabsRef.current.find((tab) => tab.id === targetTabId) : null) ?? activeTab;
-      if (!selectedTab) return;
+  const buildPromptArgs = useCallback(
+    (tab: SessionTab, rawText: string) => {
       const text = rawText.trim();
-      if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
-
-      const tabId = selectedTab.id;
-      const userId = newId("user");
-      const assistantId = newId("assistant");
-      const runtime = selectedTab.runtimeSessionId || runtimeSessionId;
       const attachedText = attachmentPrompt(attachments);
       const attachmentSummary =
         attachments.length > 0
@@ -723,185 +315,72 @@ export function ChatPane({
           : "";
       const userText = text || attachmentSummary;
       const displayText = [text, attachmentSummary].filter(Boolean).join("\n\n");
+      const selection = tools.selectionFor(tab.id);
       const contextText = selectedContextPrompt(
         text,
-        activeComposerPlugins(selectedTab.plugins ?? []),
-        selectedTab.skills ?? [],
+        activeComposerPlugins(selection.plugins),
+        selection.skills,
       );
-      const promptText = [contextText, attachedText].filter(Boolean).join("\n\n");
+      const prompt = [contextText, attachedText].filter(Boolean).join("\n\n");
+      return { text, prompt, displayText, userText };
+    },
+    [attachments, tools],
+  );
 
-      // Optimistic update: show the user's turn + a blank assistant message.
-      updateTab(tabId, (tab) => ({
-        ...tab,
-        cwd: tab.cwd || cwd,
-        modelId: tab.modelId || modelId,
-        startedAt: tab.startedAt ?? new Date().toISOString(),
-        input: "",
-        error: "",
-        status: "starting",
-        activeAssistantId: assistantId,
-        title:
-          tab.messages.filter((m) => m.role === "user").length === 0
-            ? sessionTitleFromPrompt(userText)
-            : tab.title,
-        messages: [
-          ...tab.messages,
-          { id: userId, role: "user", text: displayText, timestamp: nowLabel() },
-          {
-            id: assistantId,
-            role: "assistant",
-            text: "",
-            blocks: [],
-            timestamp: nowLabel(),
-          },
-        ],
-      }));
+  const submitPrompt = useCallback(
+    async (rawText: string, targetTabId?: string) => {
+      const tab =
+        (targetTabId ? tabsRef.current.find((t) => t.id === targetTabId) : null) ?? activeTab;
+      if (!tab) return;
+      if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
+      const args = buildPromptArgs(tab, rawText);
       stickToBottomRef.current = true;
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
       if (fileInputRef.current) fileInputRef.current.value = "";
-
-      let agentEnded = false;
-      let streamError = "";
-      liveAssistantIdsRef.current.set(tabId, assistantId);
-      localStreamTabsRef.current.add(tabId);
-      try {
-        const response = await fetch("/api/agent/turn", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: runtime,
-            modelId,
-            message: promptText,
-            cwd: cwd.trim() || undefined,
-            piSessionId:
-              tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
-              selectedTab.piSessionId,
-            browserToolEnabled,
-            plugins: activeComposerPlugins(selectedTab.plugins ?? []),
-            skills: selectedTab.skills ?? [],
-          }),
-        });
-        if (!response.ok || !response.body) {
-          const payload = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(payload.error || `Agent request failed: ${response.status}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split("\n\n");
-          buffer = chunks.pop() || "";
-          for (const chunk of chunks) {
-            const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
-            if (!line) continue;
-            const payload = parseAgentTurnSsePayload(line);
-            if (!payload) continue;
-            if (payload.type === "status") {
-              const phase = payload.phase;
-              updateTab(tabId, (tab) => ({
-                ...tab,
-                piSessionId: payload.piSessionId || tab.piSessionId,
-                status: phase === "done" ? "idle" : phase,
-                activeAssistantId: phase === "done" ? undefined : tab.activeAssistantId,
-              }));
-              if (payload.piSessionId) onPiSessionIdChange?.(payload.piSessionId);
-            } else if (payload.type === "error") {
-              streamError = payload.error;
-              updateTab(tabId, (tab) => ({ ...tab, error: payload.error, status: "idle" }));
-            } else if (payload.type === "pi") {
-              const piEvent = payload.event;
-              const eventId = piSessionIdFromEvent(piEvent);
-              if (eventId) {
-                updateTab(tabId, (tab) => ({ ...tab, piSessionId: eventId }));
-                onPiSessionIdChange?.(eventId);
-              }
-              if (typeof payload.seq === "number") {
-                updateTab(tabId, (tab) => ({ ...tab, lastEventSeq: payload.seq }));
-              }
-              if (isAgentEndEvent(piEvent)) {
-                agentEnded = true;
-                const latestPiSessionId =
-                  eventId ??
-                  tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
-                  selectedTab.piSessionId ??
-                  "";
-                onPiSessionIdChange?.(latestPiSessionId);
-              }
-              applyPiEvent(tabId, assistantId, piEvent);
-            }
-          }
-        }
-      } catch (err) {
-        streamError = err instanceof Error ? err.message : "Agent request failed";
-      } finally {
-        localStreamTabsRef.current.delete(tabId);
-        liveAssistantIdsRef.current.delete(tabId);
-        const runtimeStatus = agentEnded ? null : await loadRuntimeStatus(runtime);
-        const currentPiSessionId =
-          tabsRef.current.find((tab) => tab.id === tabId)?.piSessionId ??
-          selectedTab.piSessionId ??
-          null;
-        const runtimeStillActive = runtimeStatus
-          ? runtimeStatusLooksActive(runtimeStatus) &&
-            (!runtimeStatus.piSessionId ||
-              !currentPiSessionId ||
-              runtimeStatus.piSessionId === currentPiSessionId)
-          : false;
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          status: runtimeStillActive ? "running" : "idle",
-          activeAssistantId: runtimeStillActive ? assistantId : undefined,
-          error: streamError
-            ? runtimeStillActive
-              ? `${streamError}; reattaching to the running session.`
-              : streamError
-            : tab.error,
-        }));
-      }
-
-      // Drain queued messages once the agent finished its run.
-      if (agentEnded) {
-        const queued = (tabsRef.current.find((tab) => tab.id === tabId)?.queue ?? []).slice();
-        const { next, remaining } = drainQueueAfterAgentEnd(queued);
-        if (next) {
-          updateTab(tabId, (tab) => ({ ...tab, queue: remaining }));
-          // Schedule on the next tick so React commits the optimistic
-          // update before we kick off the next prompt.
-          setTimeout(() => void submitPromptRef.current?.(next.text, tabId), 0);
-        } else if (queued.length > 0) {
-          updateTab(tabId, (tab) => ({ ...tab, queue: remaining }));
-        }
-      }
+      await engine.submitPrompt({ ...args, targetSessionId: tab.id });
     },
-    [
-      activeTab,
-      attachments,
-      modelId,
-      readingAttachments,
-      runtimeSessionId,
-      cwd,
-      browserToolEnabled,
-      onPiSessionIdChange,
-      applyPiEvent,
-      loadRuntimeStatus,
-      updateTab,
-    ],
+    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
   );
 
-  // Stable ref so the queue-drain inside submitPrompt can re-enter without
-  // forming a useCallback cycle.
-  const submitPromptRef = useRef<(text: string, targetTabId?: string) => Promise<void>>(() =>
-    Promise.resolve(),
+  // Compose-then-send orchestration. Steer/follow-up paths route through
+  // engine.sendControl when the runtime accepts in-flight messages; otherwise
+  // we submit a fresh turn via engine.submitPrompt (which our local wrapper
+  // builds args for).
+  const queueAndSendControl = useCallback(
+    async (
+      mode: "steer" | "follow_up",
+      text: string,
+      tab: SessionTab,
+      runtime: string,
+      cwdHint?: string,
+    ) => {
+      const queuedId = newId("queue");
+      updateTab(tab.id, (t) => ({
+        ...t,
+        ...(cwdHint ? { cwd: t.cwd || cwdHint } : {}),
+        input: "",
+        error: "",
+        queue: [
+          ...(t.queue ?? []),
+          { id: queuedId, mode, text, ...(mode === "steer" ? { sent: true } : {}) },
+        ],
+      }));
+      const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
+      updateTab(tab.id, (t) => ({
+        ...t,
+        queue:
+          mode === "steer"
+            ? (t.queue ?? []).filter((item) => item.id !== queuedId)
+            : (t.queue ?? []).map((item) =>
+                item.id === queuedId ? { ...item, sent: result.ok } : item,
+              ),
+        ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
+      }));
+    },
+    [engine, updateTab],
   );
-  useEffect(() => {
-    submitPromptRef.current = submitPrompt;
-  }, [submitPrompt]);
 
   const sendMessage = useCallback(
     async (event: FormEvent) => {
@@ -910,135 +389,60 @@ export function ChatPane({
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
 
-      // While running, Enter sends a steering message. If the UI is stale
-      // (Pi has already ended but the composer still says running), fall back
-      // to a normal prompt so the model actually sees the message.
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      const status = await engine.loadRuntimeStatus(runtime);
+      const accepts = engine.acceptsControl(status, activeTab.piSessionId);
       if (running) {
         if (!text) return;
-        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-        const status = await loadRuntimeStatus(runtime);
-        if (!runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
-          updateTab(activeTab.id, (tab) => ({
-            ...tab,
-            status: "idle",
-            activeAssistantId: undefined,
-          }));
+        if (!accepts) {
+          // Stale UI: pi already ended. Drop to idle and submit a normal turn
+          // so the model actually sees the message.
+          updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
           await submitPrompt(text, activeTab.id);
           return;
         }
-        const queuedId = newId("queue");
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          input: "",
-          error: "",
-          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text, sent: true }],
-        }));
-        const result = await sendControlMessage(
-          "steer",
-          text,
-          runtime,
-          activeTab.id,
-          activeTab.piSessionId,
-        );
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
-          ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
-        }));
+        await queueAndSendControl("steer", text, activeTab, runtime);
         return;
       }
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      const status = await loadRuntimeStatus(runtime);
-      if (status && runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
-        const queuedId = newId("queue");
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          input: "",
-          error: "",
-          queue: [...(tab.queue ?? []), { id: queuedId, mode: "steer", text, sent: true }],
-        }));
-        const result = await sendControlMessage(
-          "steer",
-          text,
-          runtime,
-          activeTab.id,
-          activeTab.piSessionId,
-        );
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          queue: (tab.queue ?? []).filter((item) => item.id !== queuedId),
-          ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
-        }));
+      if (accepts) {
+        await queueAndSendControl("steer", text, activeTab, runtime);
         return;
       }
-
       await submitPrompt(text, activeTab.id);
     },
     [
       activeTab,
       attachments.length,
+      engine,
       modelId,
+      queueAndSendControl,
       readingAttachments,
       running,
       runtimeSessionId,
-      loadRuntimeStatus,
-      sendControlMessage,
       submitPrompt,
       updateTab,
     ],
   );
 
-  // Tab-key behavior: when idle, submit immediately; while a turn is running,
-  // send an actual Pi follow-up so Pi owns queue ordering and the original
-  // runtime stream continues into the queued turn.
+  // Tab-key: while idle, submit immediately; while running, pi-follow-up so
+  // pi owns queue ordering and the original runtime stream continues.
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
-    const tabId = activeTab.id;
     if (!running) {
-      await submitPromptRef.current(text, tabId);
+      await submitPrompt(text, activeTab.id);
       return;
     }
     const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-    const status = await loadRuntimeStatus(runtime);
-    if (!runtimeStatusAcceptsControl(status, activeTab.piSessionId)) {
-      updateTab(tabId, (tab) => ({ ...tab, status: "idle", activeAssistantId: undefined }));
-      await submitPromptRef.current(text, tabId);
+    const status = await engine.loadRuntimeStatus(runtime);
+    if (!engine.acceptsControl(status, activeTab.piSessionId)) {
+      updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
+      await submitPrompt(text, activeTab.id);
       return;
     }
-    const queuedId = newId("queue");
-    updateTab(tabId, (tab) => ({
-      ...tab,
-      cwd: tab.cwd || cwd,
-      input: "",
-      error: "",
-      queue: [...(tab.queue ?? []), { id: queuedId, mode: "follow_up", text }],
-    }));
-    const result = await sendControlMessage(
-      "follow_up",
-      text,
-      runtime,
-      tabId,
-      activeTab.piSessionId,
-    );
-    updateTab(tabId, (tab) => ({
-      ...tab,
-      queue: (tab.queue ?? []).map((item) =>
-        item.id === queuedId ? { ...item, sent: result.ok } : item,
-      ),
-      ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
-    }));
-  }, [
-    activeTab,
-    modelId,
-    running,
-    cwd,
-    loadRuntimeStatus,
-    runtimeSessionId,
-    sendControlMessage,
-    updateTab,
-  ]);
+    await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
+  }, [activeTab, cwd, engine, modelId, queueAndSendControl, running, runtimeSessionId, submitPrompt, updateTab]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -1126,217 +530,24 @@ export function ChatPane({
     [attachFiles],
   );
 
+
   const abortTurn = useCallback(async () => {
     if (!activeTab) return;
-    const tabId = activeTab.id;
-    await fetch("/api/agent/abort", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: activeTab.runtimeSessionId || runtimeSessionId }),
-    }).catch(() => undefined);
-    updateTab(tabId, (tab) => ({ ...tab, status: "idle" }));
-  }, [activeTab, runtimeSessionId, updateTab]);
+    await engine.abortTurn(activeTab.id);
+  }, [activeTab, engine]);
 
-  const resumeRuntimeTabId =
-    activeTab && (activeTab.status === "running" || activeTab.status === "starting")
-      ? activeTab.id
-      : null;
-  const resumeRuntimeSessionId = resumeRuntimeTabId
-    ? activeTab?.runtimeSessionId || runtimeSessionId
-    : null;
-
-  useEffect(() => {
-    if (!resumeRuntimeTabId || !resumeRuntimeSessionId) return;
-    if (localStreamTabsRef.current.has(resumeRuntimeTabId)) return;
-    let closed = false;
-    const current = tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId);
-    const params = new URLSearchParams({
-      sessionId: resumeRuntimeSessionId,
-      after: String(current?.lastEventSeq ?? 0),
-    });
-    const source = new EventSource(`/api/agent/runtime/events?${params.toString()}`);
-
-    const ensureAssistantId = (): string => {
-      const current = tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId);
-      const existing =
-        (current?.activeAssistantId &&
-          current.messages.some((message) => message.id === current.activeAssistantId) &&
-          current.activeAssistantId) ||
-        [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")
-          ?.id;
-      if (existing) {
-        updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, activeAssistantId: existing }));
-        return existing;
-      }
-      const assistantId = newId("assistant");
-      updateTab(resumeRuntimeTabId, (tab) => ({
-        ...tab,
-        activeAssistantId: assistantId,
-        messages: [
-          ...tab.messages,
-          { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-        ],
-      }));
-      return assistantId;
-    };
-
-    source.onmessage = (event) => {
-      if (closed) return;
-      let payload:
-        | { type: "status"; phase: string; session?: { piSessionId?: string | null } }
-        | { type: "pi"; seq?: number; event: Record<string, unknown> };
-      try {
-        payload = JSON.parse(event.data) as typeof payload;
-      } catch {
-        return;
-      }
-      if (payload.type === "status") {
-        updateTab(resumeRuntimeTabId, (tab) => ({
-          ...tab,
-          piSessionId: payload.session?.piSessionId || tab.piSessionId,
-          status: payload.phase === "done" || payload.phase === "idle" ? "idle" : "running",
-          activeAssistantId:
-            payload.phase === "done" || payload.phase === "idle"
-              ? undefined
-              : tab.activeAssistantId,
-        }));
-        return;
-      }
-      if (payload.type === "pi") {
-        const eventId = piSessionIdFromEvent(payload.event);
-        const assistantId = ensureAssistantId();
-        const agentEnded = isAgentEndEvent(payload.event);
-        updateTab(resumeRuntimeTabId, (tab) => ({
-          ...tab,
-          piSessionId: eventId || tab.piSessionId,
-          lastEventSeq: typeof payload.seq === "number" ? payload.seq : tab.lastEventSeq,
-          status: agentEnded ? "idle" : "running",
-          activeAssistantId: agentEnded ? undefined : assistantId,
-        }));
-        if (eventId) onPiSessionIdChange?.(eventId);
-        applyPiEvent(resumeRuntimeTabId, assistantId, payload.event);
-        if (agentEnded) {
-          const queued = (
-            tabsRef.current.find((tab) => tab.id === resumeRuntimeTabId)?.queue ?? []
-          ).slice();
-          const { next, remaining } = drainQueueAfterAgentEnd(queued);
-          if (next) {
-            updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, queue: remaining }));
-            setTimeout(() => void submitPromptRef.current?.(next.text, resumeRuntimeTabId), 0);
-          } else if (queued.length > 0) {
-            updateTab(resumeRuntimeTabId, (tab) => ({ ...tab, queue: remaining }));
-          }
-        }
-      }
-    };
-    source.onerror = () => {
-      if (closed) return;
-      void fetch(
-        `/api/agent/runtime/status?sessionId=${encodeURIComponent(resumeRuntimeSessionId)}`,
-        { cache: "no-store" },
-      )
-        .then((res) =>
-          safeJson<{ status?: { active?: boolean; piSessionId?: string | null } }>(res),
-        )
-        .then((payload) => {
-          if (closed) return;
-          if (payload.status?.active) {
-            updateTab(resumeRuntimeTabId, (tab) => ({
-              ...tab,
-              piSessionId: payload.status?.piSessionId || tab.piSessionId,
-              status: "running",
-            }));
-            return;
-          }
-          source.close();
-          updateTab(resumeRuntimeTabId, (tab) =>
-            tab.status === "running" || tab.status === "starting"
-              ? { ...tab, status: "idle", activeAssistantId: undefined }
-              : tab,
-          );
-        })
-        .catch(() => {
-          // Keep EventSource's built-in retry path alive for transient drops.
-        });
-    };
-    return () => {
-      closed = true;
-      source.close();
-    };
-  }, [
-    applyPiEvent,
-    onPiSessionIdChange,
-    resumeRuntimeSessionId,
-    resumeRuntimeTabId,
-    runtimeSessionId,
-    updateTab,
-  ]);
-
-  // Replay a past pi session into the currently active tab. Looks up the
-  // active tab by id at call time so concurrent updates don't race.
+  // Workspace calls this through the imperative handle when the user clicks a
+  // saved session in the sidebar.
   const loadAndReplay = useCallback(
     async (piSessionId: string) => {
-      if (!cwd) return;
-      const tabId = activeTabId;
-      if (!tabId) return;
-      updateTab(tabId, (tab) => ({ ...tab, status: "loading", error: "" }));
-      try {
-        const response = await fetch(
-          `/api/agent/sessions/${encodeURIComponent(piSessionId)}?cwd=${encodeURIComponent(cwd)}`,
-          { cache: "no-store" },
-        );
-        const payload = await safeJson<{
-          events?: Record<string, unknown>[];
-          error?: string;
-        }>(response);
-        if (!response.ok) throw new Error(payload.error || "Failed to load session");
-
-        const runtimeId =
-          tabsRef.current.find((tab) => tab.id === tabId)?.runtimeSessionId || runtimeSessionId;
-        const runtimeStatus = await loadRuntimeStatus(runtimeId);
-        const runtimeActive =
-          runtimeStatus?.active === true &&
-          (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId);
-        const replayEvents = mergeCanonicalAndRuntimeEvents(
-          payload.events ?? [],
-          runtimeActive ? runtimeStatus?.events : [],
-        );
-        const { messages, title, startedAt } = replaySessionEvents(replayEvents);
-        const tokenStats = [...replayEvents]
-          .reverse()
-          .map(usageFromEvent)
-          .find((stats): stats is TokenStats => Boolean(stats));
-        const replaySeq = replayCursorAfterRuntimeHydration(runtimeActive, runtimeStatus?.eventSeq);
-
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          messages,
-          piSessionId,
-          cwd: tab.cwd || cwd,
-          modelId: tab.modelId || modelId,
-          title: title ?? tab.title,
-          startedAt: startedAt ?? tab.startedAt,
-          tokenStats: tokenStats ?? tab.tokenStats,
-          status: runtimeActive ? "running" : "idle",
-          activeAssistantId: undefined,
-          lastEventSeq: replaySeq,
-          error: "",
-        }));
-      } catch (err) {
-        updateTab(tabId, (tab) => ({
-          ...tab,
-          error: err instanceof Error ? err.message : "Failed to load session",
-          status: "idle",
-        }));
-      }
+      if (!activeTabId) return;
+      await engine.loadAndReplay(piSessionId, activeTabId);
     },
-    [cwd, modelId, activeTabId, runtimeSessionId, loadRuntimeStatus, updateTab],
+    [activeTabId, engine],
   );
 
-  // Register a stable imperative handle so the workspace can call
-  // loadAndReplay directly from event handlers. This replaces the previous
-  // useEffect that watched an `initialSessionId` prop and chained side
-  // effects on every re-render.
+  // Stable imperative handle so the workspace can drive replay without going
+  // through a useEffect-driven `initialSessionId` prop.
   const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
   handleRef.current = { loadAndReplay };
   useEffect(() => {
@@ -1352,49 +563,18 @@ export function ChatPane({
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
   const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
+
+  // Compaction is the engine's job; the local `compacting` flag just disables
+  // the button while the request is in flight.
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
-    updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
     try {
-      const response = await fetch("/api/agent/compact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: activeTab.runtimeSessionId || runtimeSessionId,
-          modelId,
-          cwd: cwd.trim() || undefined,
-          piSessionId: activeTab.piSessionId,
-          browserToolEnabled,
-          plugins: activeComposerPlugins(activeTab.plugins ?? []),
-          skills: activeTab.skills ?? [],
-        }),
-      });
-      const payload = await safeJson<{ error?: string; status?: { piSessionId?: string | null } }>(
-        response,
-      );
-      if (!response.ok) throw new Error(payload.error || "Compaction failed");
-      const nextSessionId = payload.status?.piSessionId || activeTab.piSessionId;
-      if (nextSessionId) await loadAndReplay(nextSessionId);
-    } catch (error) {
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
-        error: error instanceof Error ? error.message : "Compaction failed",
-      }));
+      await engine.compact(activeTab.id);
     } finally {
       setCompacting(false);
     }
-  }, [
-    activeTab,
-    browserToolEnabled,
-    compacting,
-    cwd,
-    loadAndReplay,
-    modelId,
-    running,
-    runtimeSessionId,
-    updateTab,
-  ]);
+  }, [activeTab, compacting, engine, modelId, running]);
 
   return (
     <section
@@ -1504,9 +684,9 @@ export function ChatPane({
               Drop files to attach to the next message.
             </div>
           ) : null}
-          {(activeTab?.plugins?.length ?? 0) + (activeTab?.skills?.length ?? 0) > 0 ? (
+          {selectedPlugins.length + selectedSkills.length > 0 ? (
             <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[11px]">
-              {(activeTab?.plugins ?? []).map((plugin) => (
+              {selectedPlugins.map((plugin) => (
                 <LoadedContextTab
                   key={`plugin-${plugin.id}`}
                   prefix="@"
@@ -1516,7 +696,7 @@ export function ChatPane({
                   onRemove={() => removeLoadedContext("plugin", plugin.id)}
                 />
               ))}
-              {(activeTab?.skills ?? []).map((skill) => (
+              {selectedSkills.map((skill) => (
                 <LoadedContextTab
                   key={`skill-${skill.id}`}
                   prefix="$"
@@ -1678,7 +858,7 @@ export function ChatPane({
             }
             className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex min-h-10 items-center gap-1.5 overflow-hidden bg-transparent px-3 pb-2 pt-1 text-xs">
+          <div className="flex min-h-10 items-center gap-1.5 bg-transparent px-3 pb-2 pt-1 text-xs">
             <input
               ref={fileInputRef}
               type="file"

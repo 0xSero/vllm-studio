@@ -1,8 +1,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { COMPUTER_WIDTH_KEY, PANE_STATE_KEY } from "@/lib/agent/workspace/store";
-import type { ProjectEntry } from "@/lib/agent/workspace/types";
+import { PANE_STATE_KEY } from "@/lib/agent/workspace/store";
+import { COMPUTER_WIDTH_KEY } from "@/lib/agent/tools/persistence";
+import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
+import { ProjectsProvider } from "@/lib/agent/projects/context";
+import { ToolsProvider } from "@/lib/agent/tools/context";
+import { makeFreshTab } from "@/lib/agent/session/helpers";
 import { useWorkspace } from "./use-workspace";
 
 declare global {
@@ -62,12 +66,12 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function mockWorkspaceFetch() {
+function mockWorkspaceFetch(projects: ProjectEntry[] = []) {
   return vi.fn<typeof fetch>(async (input) => {
     const url = String(input);
     if (url.includes("/api/agent/setup-checks")) return jsonResponse({ checks: [] });
     if (url.includes("/api/agent/models")) return jsonResponse({ models: [] });
-    if (url.includes("/api/agent/projects")) return jsonResponse({ projects: [] });
+    if (url.includes("/api/agent/projects")) return jsonResponse({ projects });
     if (url.includes("/api/agent/git-diff")) {
       return jsonResponse({ isRepo: false, status: [] });
     }
@@ -87,7 +91,13 @@ function renderHook<T>(hook: () => T) {
 
   act(() => {
     root = createRoot(host);
-    root.render(<TestHook />);
+    root.render(
+      <ProjectsProvider>
+        <ToolsProvider>
+          <TestHook />
+        </ToolsProvider>
+      </ProjectsProvider>,
+    );
   });
 
   return {
@@ -99,7 +109,13 @@ function renderHook<T>(hook: () => T) {
     },
     rerender() {
       act(() => {
-        root?.render(<TestHook />);
+        root?.render(
+          <ProjectsProvider>
+            <ToolsProvider>
+              <TestHook />
+            </ToolsProvider>
+          </ProjectsProvider>,
+        );
       });
     },
     unmount() {
@@ -148,37 +164,104 @@ describe("useWorkspace", () => {
     hook.unmount();
   });
 
-  it("dispatching OPEN_NEW_SESSION mutates state and writes localStorage", async () => {
+  it("dispatching openNewSession stamps the new tab with the project and persists pane state", async () => {
     const selected = project();
+    vi.stubGlobal("fetch", mockWorkspaceFetch([selected]));
     const hook = renderHook(() => useWorkspace());
     await flushAsyncEffects();
 
     act(() => {
-      hook.result.current.dispatch({ type: "OPEN_NEW_SESSION", project: selected });
+      hook.result.current.dispatch({ type: "openNewSession", project: selected, tab: makeFreshTab() });
     });
 
-    expect(hook.result.current.state.selectedProjectId).toBe(selected.id);
-    expect(hook.result.current.state.agentCwd).toBe(selected.path);
+    const state = hook.result.current.state;
+    const pane = state.panesById.get(state.focusedPaneId);
+    expect(state.sessions.get(pane!.activeSessionId)?.projectId).toBe(selected.id);
     expect(window.localStorage.getItem(PANE_STATE_KEY)).toBeTruthy();
     hook.unmount();
   });
 
-  it("window new-session event triggers the reducer", async () => {
+  it("window new-session event creates a new tab in the focused pane", async () => {
     const selected = project();
+    vi.stubGlobal("fetch", mockWorkspaceFetch([selected]));
     const hook = renderHook(() => useWorkspace());
     await flushAsyncEffects();
 
-    act(() => {
-      hook.result.current.dispatch({ type: "setProjects", projects: [selected] });
-    });
     act(() => {
       window.dispatchEvent(
         new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: selected.id } }),
       );
     });
 
-    expect(hook.result.current.state.selectedProjectId).toBe(selected.id);
-    expect(hook.result.current.state.agentCwd).toBe(selected.path);
+    const state = hook.result.current.state;
+    const pane = state.panesById.get(state.focusedPaneId);
+    const activeTab = state.sessions.get(pane!.activeSessionId);
+    expect(activeTab?.projectId).toBe(selected.id);
+    expect(activeTab?.cwd).toBe(selected.path);
+    hook.unmount();
+  });
+
+  it("keeps the new tab focused when typing immediately after clicking +", async () => {
+    // Regression: workspaceDispatch used to run the reducer twice (once locally
+    // for stateRef, once via React's useReducer). Actions like openNewSession
+    // generate fresh tab IDs in the reducer, so the two calls produced
+    // *different* new tabs — leaving stateRef and React state out of sync.
+    // Typing then dispatched setPaneTabs with the stateRef tab, which the
+    // React-state reducer didn't recognize, so activeTabId fell back to the
+    // OLD session tab.
+    const selected = project();
+    vi.stubGlobal("fetch", mockWorkspaceFetch([selected]));
+    const hook = renderHook(() => useWorkspace());
+    await flushAsyncEffects();
+
+    act(() => {
+      hook.result.current.dispatch({
+        type: "replaySession",
+        piSessionId: "pi-OLD",
+        sessionTitle: "Old session",
+        tab: makeFreshTab(),
+      });
+    });
+    const paneId = hook.result.current.state.focusedPaneId;
+    const oldTabId = hook.result.current.state.panesById.get(paneId)!.activeSessionId;
+    act(() => {
+      const state = hook.result.current.state;
+      const oldPane = state.panesById.get(paneId)!;
+      const oldSessions = oldPane.sessionIds.map((id) => state.sessions.get(id)!);
+      hook.result.current.dispatch({
+        type: "setPaneTabs",
+        paneId,
+        tabs: oldSessions.map((tab) =>
+          tab.id === oldTabId
+            ? {
+                ...tab,
+                messages: [{ id: "m-1", role: "user", text: "hello", timestamp: "now" }],
+              }
+            : tab,
+        ),
+      });
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: selected.id } }),
+      );
+    });
+    const newTabId = hook.result.current.state.panesById.get(paneId)!.activeSessionId;
+    expect(newTabId).not.toBe(oldTabId);
+
+    act(() => {
+      hook.result.current.handles.setPaneTabs(paneId, (currentTabs) =>
+        currentTabs.map((tab) =>
+          tab.id === newTabId ? { ...tab, input: "h" } : tab,
+        ),
+      );
+    });
+
+    const finalState = hook.result.current.state;
+    const finalPane = finalState.panesById.get(paneId)!;
+    expect(finalPane.activeSessionId).toBe(newTabId);
+    expect(finalState.sessions.get(newTabId)?.input).toBe("h");
     hook.unmount();
   });
 });

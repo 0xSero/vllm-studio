@@ -2,9 +2,9 @@
 
 import type { FormEvent, ReactNode } from "react";
 import { CloseIcon } from "@/components/icons";
-import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
-import { normalizeBrowserInput } from "@/lib/agent/workspace/computer-controller";
-import type { ProjectEntry, WorkspaceState } from "@/lib/agent/workspace/types";
+import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
+import { useTools, type ToolsContextValue } from "@/lib/agent/tools/context";
+import type { Project } from "@/lib/agent/projects/types";
 import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { FilesystemPanel } from "./filesystem-panel";
@@ -18,7 +18,7 @@ export type BrowserCommandResult = { ok: boolean; data?: unknown; error?: string
 type BrowserCommandDeps = {
   browser: AgentBrowserHandle | null;
   currentUrl: string;
-  dispatch: WorkspaceDispatch;
+  setBrowserUrl: (url: string, input?: string) => void;
   isElectron: boolean;
 };
 
@@ -27,17 +27,12 @@ type AgentBrowserPanelHandles = Pick<
   | "registerComputerAside"
   | "startComputerResize"
   | "registerBrowserHandle"
-  | "setBrowserInput"
-  | "setComputerTab"
-  | "setComputerOpen"
   | "runBrowserCommand"
 >;
 
 type AgentBrowserPanelProps = {
-  state: WorkspaceState;
-  dispatch: WorkspaceDispatch;
   handles: AgentBrowserPanelHandles;
-  activeProject: ProjectEntry | null;
+  activeProject: Project | null;
   focusedTitle: string;
 };
 
@@ -87,7 +82,7 @@ export async function runBrowserPanelCommand(
           const url = sanitizePublicBrowserUrl(String(payload.url || ""));
           if (!url) return { ok: false, error: "valid public http(s) url required" };
           await withBrowserTimeout(webview.loadURL(url), "Browser navigation");
-          deps.dispatch({ type: "SET_BROWSER_URL", url, input: url });
+          deps.setBrowserUrl(url, url);
           return { ok: true, data: { url } };
         }
         case "get-url":
@@ -176,7 +171,7 @@ export async function runBrowserPanelCommand(
       const url = sanitizePublicBrowserUrl(String(payload.url || ""));
       if (!url) return { ok: false, error: "valid public http(s) url required" };
       iframe.src = url;
-      deps.dispatch({ type: "SET_BROWSER_URL", url, input: url });
+      deps.setBrowserUrl(url, url);
       return { ok: true, data: { url } };
     }
     case "get-url":
@@ -190,29 +185,21 @@ export async function runBrowserPanelCommand(
 }
 
 export function AgentBrowserPanel({
-  state,
-  dispatch,
   handles,
   activeProject,
   focusedTitle,
 }: AgentBrowserPanelProps) {
-  if (!state.computer.open) return null;
+  const tools = useTools();
+  if (!tools.computer.open) return null;
 
-  const {
-    registerComputerAside,
-    startComputerResize,
-    registerBrowserHandle,
-    setBrowserInput,
-    setComputerOpen,
-    setComputerTab,
-    runBrowserCommand,
-  } = handles;
+  const { registerComputerAside, startComputerResize, registerBrowserHandle, runBrowserCommand } =
+    handles;
   const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
   const submitBrowserUrl = (event: FormEvent) => {
     event.preventDefault();
-    const next = normalizeBrowserInput(state.browserInput, state.agentCwd);
+    const next = normalizeBrowserInput(tools.browser.input, activeProject?.path ?? "");
     if (!next) return;
-    dispatch({ type: "SET_BROWSER_URL", url: next, input: next });
+    tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
   };
 
@@ -220,7 +207,7 @@ export function AgentBrowserPanel({
     <aside
       className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--bg)"
       ref={registerComputerAside}
-      style={{ width: `min(${state.computer.width}px, 48vw)` }}
+      style={{ width: `min(${tools.computer.width}px, 48vw)` }}
     >
       <div
         role="separator"
@@ -237,20 +224,20 @@ export function AgentBrowserPanel({
           {focusedTitle}
         </span>
         <ComputerTabButton
-          active={state.computer.tab === "browser"}
-          onClick={() => setComputerTab("browser")}
+          active={tools.computer.tab === "browser"}
+          onClick={() => tools.setComputerTab("browser")}
         >
           Browser
         </ComputerTabButton>
         <ComputerTabButton
-          active={state.computer.tab === "files"}
-          onClick={() => setComputerTab("files")}
+          active={tools.computer.tab === "files"}
+          onClick={() => tools.setComputerTab("files")}
         >
           Files
         </ComputerTabButton>
         <ComputerTabButton
-          active={state.computer.tab === "diff"}
-          onClick={() => setComputerTab("diff")}
+          active={tools.computer.tab === "diff"}
+          onClick={() => tools.setComputerTab("diff")}
         >
           Diff
         </ComputerTabButton>
@@ -258,7 +245,7 @@ export function AgentBrowserPanel({
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => setComputerOpen(false)}
+          onClick={() => tools.setComputerOpen(false)}
           className="ml-1 inline-flex h-7 w-7 items-center justify-center hover:text-(--fg)"
           title="Close"
           aria-label="Close computer"
@@ -267,17 +254,17 @@ export function AgentBrowserPanel({
         </button>
       </div>
 
-      {state.computer.tab === "browser" ? (
+      {tools.computer.tab === "browser" ? (
         <AgentBrowser
           ref={registerBrowserHandle}
-          url={state.browserUrl}
-          inputValue={state.browserInput}
-          onInputChange={setBrowserInput}
+          url={tools.browser.url}
+          inputValue={tools.browser.input}
+          onInputChange={tools.setBrowserInput}
           onSubmit={submitBrowserUrl}
-          onClose={() => setComputerOpen(false)}
+          onClose={() => tools.setComputerOpen(false)}
           isElectron={isElectron}
         />
-      ) : state.computer.tab === "files" ? (
+      ) : tools.computer.tab === "files" ? (
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1">
             <FilesystemPanel cwd={activeProject?.path ?? null} />

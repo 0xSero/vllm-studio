@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "lucide-react";
 import { safeJson } from "@/lib/agent/safe-json";
+import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
 
 // Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
 // page doesn't import server-only modules into the client bundle.
@@ -34,8 +35,6 @@ type ActiveSession = {
 
 type StatusFilter = "all" | "running" | "idle";
 type SortField = "updatedAt" | "turnCount" | "projectName";
-
-const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
 
 function isRunning(status: string): boolean {
   return Boolean(status) && status !== "idle" && status !== "done";

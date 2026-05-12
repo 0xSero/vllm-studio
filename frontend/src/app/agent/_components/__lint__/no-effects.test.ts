@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 
 const COMPONENTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EFFECT_CALL = "use" + "Effect(";
-const EFFECT_BUDGETS = new Map<string, number>([["use-workspace.ts", 1]]);
+const EFFECT_BUDGETS = new Map<string, number>([
+  ["use-workspace.ts", 1],
+  // Single effect: dispatch URL navigation in response to query-param changes.
+  // Lifted out of render to avoid the dispatch-during-render anti-pattern.
+  ["agent-workspace-shell.tsx", 1],
+]);
 const EXCLUDED_FILES = new Set(["chat-pane.tsx"]);
 
 function sourceFiles(dir: string): string[] {

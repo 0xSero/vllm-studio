@@ -9,7 +9,7 @@ import type {
 
 // ----- id / time -----
 
-function randomIdSegment(length: number): string {
+export function randomIdSegment(length: number): string {
   const cryptoApi = globalThis.crypto;
   if (cryptoApi?.randomUUID) {
     return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
@@ -25,6 +25,14 @@ function randomIdSegment(length: number): string {
 
 export function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${randomIdSegment(8)}`;
+}
+
+export function newPaneId(): string {
+  return `p-${Date.now().toString(36)}-${randomIdSegment(6)}`;
+}
+
+export function newRuntimeId(): string {
+  return `rt-${Date.now().toString(36)}-${randomIdSegment(6)}`;
 }
 
 export function nowLabel(): string {

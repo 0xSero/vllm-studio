@@ -1,5 +1,7 @@
 "use client";
 
+import { newId, randomIdSegment } from "@/lib/agent/session/helpers";
+
 export type ChatAttachment = {
   id: string;
   name: string;
@@ -22,22 +24,8 @@ export function isImageAttachment(file: Pick<ChatAttachment, "type" | "mode" | "
   );
 }
 
-function randomIdSegment(length: number): string {
-  const cryptoApi = globalThis.crypto;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
-  }
-  const bytes = new Uint8Array(Math.ceil(length / 2));
-  if (cryptoApi?.getRandomValues) {
-    cryptoApi.getRandomValues(bytes);
-  }
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, length);
-}
-
 function newAttachmentId() {
-  return `file-${Date.now().toString(36)}-${randomIdSegment(8)}`;
+  return newId("file");
 }
 
 export function formatFileSize(bytes: number) {

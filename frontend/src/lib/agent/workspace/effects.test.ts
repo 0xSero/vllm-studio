@@ -9,9 +9,10 @@ import {
   type WorkspaceStorage,
 } from "./store";
 import { runWorkspaceEffect } from "./effects";
-
-const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
-const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
+import {
+  ACTIVE_AGENT_SESSIONS_EVENT,
+  SESSIONS_CHANGED_EVENT,
+} from "./events";
 
 function project(overrides: Partial<ProjectEntry> = {}): ProjectEntry {
   return {
@@ -77,25 +78,21 @@ function makeDeps(storage = memoryStorage()) {
   return { deps, events, queueReplay, storage };
 }
 
-function hydratedProjectState(state: WorkspaceState, selected: ProjectEntry): WorkspaceState {
+function hydratedProjectState(state: WorkspaceState, _selected: ProjectEntry): WorkspaceState {
   return {
     ...state,
-    projects: [selected],
-    projectsLoaded: true,
-    selectedProjectId: selected.id,
-    agentCwd: selected.path,
     selectedModel: "model-1",
     hydrated: true,
   };
 }
 
 describe("runWorkspaceEffect", () => {
-  it("writes pane state and dispatches session changes when opening a new session", () => {
+  it("writes pane state when opening a new session but skips sessions refresh until a real session exists", () => {
     const storage = memoryStorage();
     const { deps, events } = makeDeps(storage);
     const state = createInitialState();
     const selected = project();
-    const action: WorkspaceAction = { type: "openNewSession", project: selected };
+    const action: WorkspaceAction = { type: "openNewSession", project: selected, tab: tab() };
     const next = reducer(state, action);
 
     runWorkspaceEffect(action, state, next, deps);
@@ -106,13 +103,34 @@ describe("runWorkspaceEffect", () => {
       focusedPaneId: next.focusedPaneId,
     });
     expect(storage.value(PANE_LAYOUT_KEY)).toBe(JSON.stringify(next.layout));
+    expect(events.map((event) => event.type)).not.toContain(SESSIONS_CHANGED_EVENT);
+  });
+
+  it("dispatches a sessions refresh when a tab gains a pi session id", () => {
+    const { deps, events } = makeDeps();
+    const selected = project();
+    const state = hydratedProjectState(createInitialState(), selected);
+    const replayAction: WorkspaceAction = {
+      type: "replaySession",
+      piSessionId: "pi-1",
+      tab: tab({
+        id: "tab-pi-1",
+        runtimeSessionId: "rt-tab-pi-1",
+        piSessionId: "pi-1",
+        startedAt: "2026-05-11T00:00:00.000Z",
+      }),
+    };
+    const next = reducer(state, replayAction);
+
+    runWorkspaceEffect(replayAction, state, next, deps);
+
     expect(events.map((event) => event.type)).toContain(SESSIONS_CHANGED_EVENT);
   });
 
   it("queues a replay when replaying a session", () => {
     const { deps, queueReplay } = makeDeps();
     const state = createInitialState();
-    const action: WorkspaceAction = { type: "replaySession", piSessionId: "pi-1" };
+    const action: WorkspaceAction = { type: "replaySession", piSessionId: "pi-1", tab: tab() };
     const next = reducer(state, action);
 
     runWorkspaceEffect(action, state, next, deps);
@@ -132,6 +150,8 @@ describe("runWorkspaceEffect", () => {
         id: "tab-pi-1",
         runtimeSessionId: "rt-tab-pi-1",
         piSessionId: "pi-1",
+        projectId: selected.id,
+        cwd: selected.path,
         startedAt: "2026-05-11T00:00:00.000Z",
       }),
     };
@@ -139,7 +159,9 @@ describe("runWorkspaceEffect", () => {
 
     runWorkspaceEffect(replayAction, state, withSession, deps);
 
-    const unrelatedAction: WorkspaceAction = { type: "setBrowserInput", input: "hello" };
+    // notifySessionsChanged is a no-op for the broadcast path — we use it as
+    // an "unrelated" action that doesn't mutate the sessions broadcast key.
+    const unrelatedAction: WorkspaceAction = { type: "notifySessionsChanged" };
     const unchangedBroadcast = reducer(withSession, unrelatedAction);
     runWorkspaceEffect(unrelatedAction, withSession, unchangedBroadcast, deps);
 
