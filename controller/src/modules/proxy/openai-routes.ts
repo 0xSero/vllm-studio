@@ -6,16 +6,14 @@ import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { buildSseHeaders } from "../../http/sse";
 import type { AppContext } from "../../types/context";
 import type { ProcessInfo, Recipe } from "../models/types";
+import type { LaunchState } from "../engines/process/launch-state";
 import { buildInferenceUrl } from "../../services/inference/inference-client";
 import {
   DEFAULT_CHAT_PROVIDER,
   parseProviderModel,
   resolveProviderConfig,
 } from "../../services/provider-routing";
-import {
-  normalizeChatMessageContentParts,
-  normalizeToolRequest,
-} from "./content-normalizer";
+import { normalizeChatMessageContentParts, normalizeToolRequest } from "./content-normalizer";
 import {
   normalizeReasoningAndContentInMessage,
   normalizeToolCallsInMessage,
@@ -37,6 +35,44 @@ export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): 
     ...existingStreamOptions,
     include_usage: true,
   };
+  return true;
+};
+
+export const getLaunchInProgressMessage = (
+  launchState: LaunchState,
+  requestedRecipeId: string
+): string | null => {
+  const snapshot = launchState.getState();
+  if (snapshot.phase === "idle") return null;
+  const activeRecipeId = snapshot.recipeId ?? "unknown";
+  if (activeRecipeId === requestedRecipeId) {
+    return `Model ${requestedRecipeId} is still launching; refusing to start a duplicate activation`;
+  }
+  return `Model ${activeRecipeId} is still launching; refusing to auto-launch ${requestedRecipeId}`;
+};
+
+const exposeReasoningAsContentWhenEmpty = (
+  message: Record<string, unknown>,
+  model: string
+): boolean => {
+  const modelLower = model.toLowerCase();
+  if (!modelLower.includes("trinity-large-thinking")) return false;
+
+  const content = typeof message["content"] === "string" ? message["content"].trim() : "";
+  if (content) return false;
+
+  const reasoning =
+    typeof message["reasoning"] === "string"
+      ? message["reasoning"].trim()
+      : typeof message["reasoning_content"] === "string"
+        ? message["reasoning_content"].trim()
+        : "";
+  if (!reasoning) return false;
+
+  message["content"] = reasoning;
+  if (!message["reasoning_content"]) {
+    message["reasoning_content"] = reasoning;
+  }
   return true;
 };
 
@@ -102,20 +138,16 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
     return null;
   };
 
-  const findRecipeForProcess = (current: ProcessInfo): Recipe | null => {
-    for (const recipe of context.stores.recipeStore.list()) {
-      if (isRecipeRunning(recipe, current, { allowEitherPathContains: true })) {
-        return recipe;
-      }
-    }
-    return null;
-  };
-
   const ensureRecipeIsActive = async (
     recipe: Recipe,
     current: ProcessInfo | null,
     policy: "load_if_idle" | "switch_on_request"
   ): Promise<void> => {
+    const launchInProgress = getLaunchInProgressMessage(context.launchState, recipe.id);
+    if (launchInProgress) {
+      throw serviceUnavailable(launchInProgress);
+    }
+
     if (current && !isRecipeRunning(recipe, current, { allowEitherPathContains: true })) {
       if (policy === "switch_on_request") {
         const switchResult = await context.engineService.ensureActive(recipe, {
@@ -128,34 +160,20 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       return;
     }
 
-    const switchResult = await context.engineService.ensureActive(recipe, {
-      force_evict: false,
-    });
-    if (switchResult.error) {
-      throw serviceUnavailable(switchResult.error);
+    const shouldTrackAutoLaunch = !current && context.launchState.getState().phase === "idle";
+    if (shouldTrackAutoLaunch) context.launchState.markLaunching(recipe.id);
+    try {
+      const switchResult = await context.engineService.ensureActive(recipe, {
+        force_evict: false,
+      });
+      if (switchResult.error) {
+        throw serviceUnavailable(switchResult.error);
+      }
+    } finally {
+      if (shouldTrackAutoLaunch && context.launchState.getLaunchingRecipeId() === recipe.id) {
+        context.launchState.markIdle();
+      }
     }
-  };
-
-  const applyLoadIfIdleModelRewrite = (
-    parsedBody: Record<string, unknown>,
-    current: ProcessInfo | null
-  ): boolean => {
-    if (!current) {
-      return false;
-    }
-
-    const runningRecipe = findRecipeForProcess(current);
-    if (!runningRecipe) {
-      return false;
-    }
-
-    const activeModel = runningRecipe.served_model_name ?? runningRecipe.id;
-    if (!activeModel) {
-      return false;
-    }
-
-    parsedBody["model"] = activeModel;
-    return true;
   };
 
   app.post("/v1/chat/completions", async (ctx) => {
@@ -221,6 +239,11 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
             providers: context.config.providers,
           })
         : null;
+    const sourceHeader =
+      ctx.req.header("x-vllm-source") ??
+      ctx.req.header("x-source") ??
+      ctx.req.header("user-agent") ??
+      null;
 
     if (providerRouting && requestedModel) {
       parsed["model"] = providerModel.modelId;
@@ -241,15 +264,28 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
         context.config.inference_port
       );
       const policy = context.config.openai_model_activation_policy ?? "load_if_idle";
+      context.logger.info("OpenAI model activation check", {
+        requested_model: requestedModel,
+        recipe_id: matchedRecipe.id,
+        policy,
+        current_model: current?.served_model_name ?? current?.model_path ?? null,
+        source: sourceHeader,
+      });
       const isMismatchedActive = Boolean(
         current && !isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true })
       );
 
       if (isMismatchedActive && policy === "load_if_idle") {
-        if (applyLoadIfIdleModelRewrite(parsed, current)) {
-          bodyChanged = true;
-          requestedModel = typeof parsed["model"] === "string" ? parsed["model"] : requestedModel;
-        }
+        const activeModel = current?.served_model_name ?? current?.model_path ?? "unknown";
+        context.logger.warn("Rejected mismatched OpenAI model request", {
+          requested_model: requestedModel,
+          requested_recipe_id: matchedRecipe.id,
+          active_model: activeModel,
+          source: sourceHeader,
+        });
+        throw serviceUnavailable(
+          `Model ${activeModel} is already running; refusing request for ${requestedModel}`
+        );
       } else {
         await ensureRecipeIsActive(matchedRecipe, current, policy);
       }
@@ -276,11 +312,6 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
     const requestStart = performance.now();
     const recordedModel =
       matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown";
-    const sourceHeader =
-      ctx.req.header("x-vllm-source") ??
-      ctx.req.header("x-source") ??
-      ctx.req.header("user-agent") ??
-      null;
     const recordedProvider = providerRouting ? requestProvider : "local";
 
     if (!isStreaming) {
@@ -368,6 +399,15 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
           if (normalizeToolCallsInMessage(message)) choiceRecord["finish_reason"] = "tool_calls";
           // 2) Move <think>...</think> to `reasoning_content` and strip tool-call XML wrappers from visible content.
           normalizeReasoningAndContentInMessage(message);
+          if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
+            context.logger.warn(
+              "Exposed Trinity reasoning as content because visible content was empty",
+              {
+                model: recordedModel,
+                source: sourceHeader,
+              }
+            );
+          }
         }
       }
 
@@ -406,42 +446,46 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
     }
 
     let ttftMs: number | null = null;
-    const stream = createToolCallStream(reader, (usage) => {
-      if (usage.prompt_tokens > 0) {
-        context.stores.lifetimeMetricsStore.addPromptTokens(usage.prompt_tokens);
-        context.stores.lifetimeMetricsStore.addTokens(usage.prompt_tokens);
-      }
-      if (usage.completion_tokens > 0) {
-        context.stores.lifetimeMetricsStore.addCompletionTokens(usage.completion_tokens);
-        context.stores.lifetimeMetricsStore.addTokens(usage.completion_tokens);
-      }
-      if (usage.prompt_tokens > 0 || usage.completion_tokens > 0) {
-        context.stores.lifetimeMetricsStore.addRequests(1);
-        try {
-          context.stores.inferenceRequestStore.record({
-            model: recordedModel,
-            source: sourceHeader,
-            session_id: sessionId,
-            provider: recordedProvider,
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            reasoning_tokens: usage.reasoning_tokens ?? 0,
-            cache_read_tokens: usage.cache_read_tokens ?? 0,
-            cache_write_tokens: usage.cache_write_tokens ?? 0,
-            ttft_ms: ttftMs,
-            duration_ms: Math.round(performance.now() - requestStart),
-            status: upstreamResponse.status,
-            streamed: true,
-          });
-        } catch (recordError) {
-          context.logger.warn(
-            `Failed to record inference request: ${(recordError as Error).message}`
-          );
+    const stream = createToolCallStream(
+      reader,
+      (usage) => {
+        if (usage.prompt_tokens > 0) {
+          context.stores.lifetimeMetricsStore.addPromptTokens(usage.prompt_tokens);
+          context.stores.lifetimeMetricsStore.addTokens(usage.prompt_tokens);
         }
+        if (usage.completion_tokens > 0) {
+          context.stores.lifetimeMetricsStore.addCompletionTokens(usage.completion_tokens);
+          context.stores.lifetimeMetricsStore.addTokens(usage.completion_tokens);
+        }
+        if (usage.prompt_tokens > 0 || usage.completion_tokens > 0) {
+          context.stores.lifetimeMetricsStore.addRequests(1);
+          try {
+            context.stores.inferenceRequestStore.record({
+              model: recordedModel,
+              source: sourceHeader,
+              session_id: sessionId,
+              provider: recordedProvider,
+              prompt_tokens: usage.prompt_tokens,
+              completion_tokens: usage.completion_tokens,
+              reasoning_tokens: usage.reasoning_tokens ?? 0,
+              cache_read_tokens: usage.cache_read_tokens ?? 0,
+              cache_write_tokens: usage.cache_write_tokens ?? 0,
+              ttft_ms: ttftMs,
+              duration_ms: Math.round(performance.now() - requestStart),
+              status: upstreamResponse.status,
+              streamed: true,
+            });
+          } catch (recordError) {
+            context.logger.warn(
+              `Failed to record inference request: ${(recordError as Error).message}`
+            );
+          }
+        }
+      },
+      () => {
+        ttftMs ??= Math.max(0, Math.round(performance.now() - requestStart));
       }
-    }, () => {
-      ttftMs ??= Math.max(0, Math.round(performance.now() - requestStart));
-    });
+    );
 
     return new Response(stream, { headers: buildSseHeaders() });
   });

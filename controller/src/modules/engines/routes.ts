@@ -2,7 +2,7 @@
 import type { Hono } from "hono";
 import type { AppContext } from "../../types/context";
 import { delay } from "../../core/async";
-import { badRequest, notFound, serviceUnavailable } from "../../core/errors";
+import { HttpStatus, badRequest, notFound, serviceUnavailable } from "../../core/errors";
 import { parseRecipe } from "../models/recipes/recipe-serializer";
 import { Event } from "../system/event-manager";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
@@ -148,8 +148,45 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     const recipeId = ctx.req.param("recipeId");
     const recipe = context.stores.recipeStore.get(recipeId);
     if (!recipe) throw notFound("Recipe not found");
+    const source =
+      ctx.req.header("x-vllm-source") ??
+      ctx.req.header("x-source") ??
+      ctx.req.header("user-agent") ??
+      null;
+    const launchState = context.launchState.getState();
+    if (launchState.phase !== "idle") {
+      const activeRecipeId = launchState.recipeId ?? "unknown";
+      context.logger.warn("Rejected queued launch request", {
+        active_recipe_id: activeRecipeId,
+        requested_recipe_id: recipeId,
+        source,
+      });
+      throw new HttpStatus(
+        409,
+        activeRecipeId === recipeId
+          ? `Launch already in progress for ${recipeId}`
+          : `Launch already in progress for ${activeRecipeId}; refusing to queue ${recipeId}`
+      );
+    }
+    const current = await context.processManager.findInferenceProcess(
+      context.config.inference_port
+    );
+    if (current && !isRecipeRunning(recipe, current, { allowEitherPathContains: true })) {
+      context.logger.warn("Rejected launch request while another model is running", {
+        running_model: current.served_model_name ?? current.model_path,
+        running_backend: current.backend,
+        requested_recipe_id: recipeId,
+        source,
+      });
+      throw new HttpStatus(
+        409,
+        `Model ${current.served_model_name ?? current.model_path} is already running; evict it before launching ${recipeId}`
+      );
+    }
+    context.logger.info("Accepted launch request", { recipe_id: recipeId, source });
     const controller = new AbortController();
     launchAbortControllers.set(recipeId, controller);
+    context.launchState.markLaunching(recipeId);
     try {
       const result = await context.engineService.setActiveRecipe(recipe, {
         signal: controller.signal,
@@ -162,6 +199,9 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     } finally {
       if (launchAbortControllers.get(recipeId) === controller) {
         launchAbortControllers.delete(recipeId);
+      }
+      if (context.launchState.getLaunchingRecipeId() === recipeId) {
+        context.launchState.markIdle();
       }
     }
   });

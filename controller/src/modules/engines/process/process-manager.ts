@@ -68,7 +68,9 @@ export const createProcessManager = (
         if (port !== 8000) {
           continue;
         }
-      } else if (!flagPort || Number(flagPort) !== port) {
+      } else if (flagPort && Number(flagPort) !== port) {
+        continue;
+      } else if (!flagPort && !(backend === "vllm" && port === 8000)) {
         continue;
       }
       let modelPath = extractFlag(proc.args, "--model") || extractFlag(proc.args, "--model-path");

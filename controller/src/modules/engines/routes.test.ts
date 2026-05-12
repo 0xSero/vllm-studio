@@ -12,6 +12,7 @@ import type { ProcessInfo, Recipe, LaunchResult } from "../models/types";
 import { EngineCoordinator } from "./engine-coordinator";
 import { clearEngineJobsForTests } from "./runtimes/engine-jobs";
 import type { ProcessManager } from "./process/process-manager";
+import { createLaunchState } from "./process/launch-state";
 import { registerEngineRoutes } from "./routes";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -54,6 +55,7 @@ const createEngineRoutesHarness = (): {
   recipes: [Recipe, Recipe];
   killed: number[];
   launched: Recipe[];
+  launchState: ReturnType<typeof createLaunchState>;
 } => {
   const server = Bun.serve({
     port: 0,
@@ -122,13 +124,20 @@ const createEngineRoutesHarness = (): {
     abortRunsForModel: (): number => 0,
   });
 
+  const launchState = createLaunchState();
+  const logger = {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+  } as Logger;
   const app = new Hono();
   withHttpStatusErrorHandler(app);
   registerEngineRoutes(app, {
     config: { inference_port: port } as Config,
-    logger: {} as Logger,
+    logger,
     eventManager: {} as never,
-    launchState: {} as never,
+    launchState,
     metrics: {} as never,
     metricsRegistry: {} as never,
     processManager,
@@ -146,16 +155,15 @@ const createEngineRoutesHarness = (): {
     },
   } as AppContext);
 
-  return { app, recipes, killed, launched };
+  return { app, recipes, killed, launched, launchState };
 };
 
 describe("engine routes", () => {
-  it("does not double-evict when evict is immediately followed by launch", async () => {
+  it("launches after an explicit evict completes", async () => {
     const { app, recipes, killed, launched } = createEngineRoutesHarness();
 
-    const evict = app.request("/evict", { method: "POST" });
-    const launch = app.request(`/launch/${recipes[1].id}`, { method: "POST" });
-    const [evictResponse, launchResponse] = await Promise.all([evict, launch]);
+    const evictResponse = await app.request("/evict", { method: "POST" });
+    const launchResponse = await app.request(`/launch/${recipes[1].id}`, { method: "POST" });
 
     expect(evictResponse.status).toBe(200);
     expect(await evictResponse.json()).toEqual({ success: true, evicted_pid: null });
@@ -163,6 +171,32 @@ describe("engine routes", () => {
     expect(await launchResponse.json()).toEqual({ success: true, message: "Launch started" });
     expect(killed).toEqual([process.pid]);
     expect(launched).toEqual([recipes[1]]);
+  });
+
+  it("rejects launching a different recipe while a launch is already in progress", async () => {
+    const { app, recipes, launched, launchState } = createEngineRoutesHarness();
+    launchState.markLaunching(recipes[0].id);
+
+    const response = await app.request(`/launch/${recipes[1].id}`, { method: "POST" });
+
+    expect(response.status).toBe(409);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toContain(`refusing to queue ${recipes[1].id}`);
+    expect(launched).toEqual([]);
+    expect(launchState.getLaunchingRecipeId()).toBe(recipes[0].id);
+  });
+
+  it("rejects launching a different recipe while another model is already running", async () => {
+    const { app, recipes, launched, killed } = createEngineRoutesHarness();
+
+    const response = await app.request(`/launch/${recipes[1].id}`, { method: "POST" });
+
+    expect(response.status).toBe(409);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toContain("is already running");
+    expect(payload.error).toContain(`before launching ${recipes[1].id}`);
+    expect(launched).toEqual([]);
+    expect(killed).toEqual([]);
   });
 
   it("creates and exposes runtime jobs from upgrade wrappers", async () => {
