@@ -862,46 +862,70 @@ function ProjectSessions({
   );
 }
 
-function ActiveSessionRow({
-  project,
-  session,
-  pref,
-}: {
-  project: ProjectEntry;
-  session: ActiveAgentSession;
+type SessionNavRowProps = {
   pref: SessionPref;
-}) {
+  label: string;
+  initialDraft: string;
+  age: string;
+  rowClass: string;
+  renameRowClass?: string;
+  href?: string;
+  onOpen?: () => void;
+  onPatchPref: (patch: SessionPref) => void;
+  onRenameCommit?: (title: string) => void;
+  onRememberTitle?: () => void;
+  onDragStart: (event: DragEvent) => void;
+  onContextMenu?: boolean;
+  isRunning?: boolean;
+  canDoubleClickRename?: boolean;
+  showClearAction?: boolean;
+  menuIconClass?: string;
+  renameInputClass?: string;
+  menuItemsWithIcons?: boolean;
+};
+
+function SessionNavRow({
+  pref,
+  label,
+  initialDraft,
+  age,
+  rowClass,
+  renameRowClass = rowClass,
+  href,
+  onOpen,
+  onPatchPref,
+  onRenameCommit,
+  onRememberTitle,
+  onDragStart,
+  onContextMenu = false,
+  isRunning = false,
+  canDoubleClickRename = false,
+  showClearAction = false,
+  menuIconClass = "h-3 w-3",
+  renameInputClass = "text-[12px]",
+  menuItemsWithIcons = false,
+}: SessionNavRowProps) {
   const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState(pref.title ?? session.title ?? "");
+  const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const label = pref.title || session.title || "Current session";
-  const age = relativeAge(session.startedAt ?? session.updatedAt);
 
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
 
+  const startRename = () => {
+    setDraft(initialDraft);
+    setRenaming(true);
+  };
   const finishRename = () => {
     const trimmed = draft.trim();
-    patchActiveSessionPref(session, { title: trimmed || undefined });
-    window.dispatchEvent(
-      new CustomEvent(ACTIVE_AGENT_SESSION_RENAME_EVENT, {
-        detail: { paneId: session.paneId, tabId: session.tabId, title: trimmed || session.title },
-      }),
-    );
+    onPatchPref({ title: trimmed || undefined });
+    onRenameCommit?.(trimmed);
     setRenaming(false);
   };
 
-  const isRunning = session.status !== "idle" && session.status !== "done";
-  const isActive = session.active === true;
-  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${
-    isActive
-      ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']"
-      : "text-(--dim) hover:text-(--fg)"
-  }`;
-
   if (renaming) {
     return (
-      <div className={rowClass}>
+      <div className={renameRowClass}>
         <input
           autoFocus
           value={draft}
@@ -910,11 +934,11 @@ function ActiveSessionRow({
           onKeyDown={(event) => {
             if (event.key === "Enter") finishRename();
             if (event.key === "Escape") {
-              setDraft(pref.title ?? session.title ?? "");
+              setDraft(initialDraft);
               setRenaming(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--fg) outline-none"
+          className={`min-w-0 flex-1 bg-transparent ${renameInputClass} text-(--fg) outline-none`}
         />
       </div>
     );
@@ -928,29 +952,41 @@ function ActiveSessionRow({
       ) : null}
     </>
   );
+  const openProps = canDoubleClickRename
+    ? {
+        onDoubleClick: (event: React.MouseEvent) => {
+          event.preventDefault();
+          startRename();
+        },
+      }
+    : {};
 
   return (
-    <div className={rowClass}>
+    <div
+      className={rowClass}
+      onContextMenu={
+        onContextMenu
+          ? (event) => {
+              event.preventDefault();
+              setMenuOpen(true);
+            }
+          : undefined
+      }
+    >
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
         running={isRunning}
-        onToggle={() => {
-          patchActiveSessionPref(session, { pinned: !pref.pinned });
-        }}
+        onToggle={() => onPatchPref({ pinned: !pref.pinned })}
       />
-      {session.piSessionId ? (
+      {href ? (
         <Link
-          href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`}
+          href={href}
           title={label}
           draggable
-          onClick={() => rememberAgentSessionNavTitle(session.piSessionId, label)}
-          onDragStart={(event) => setAgentSessionDragData(event, session)}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            setDraft(pref.title ?? session.title ?? "");
-            setRenaming(true);
-          }}
+          onClick={onRememberTitle}
+          onDragStart={onDragStart}
           className="flex min-w-0 flex-1 items-center gap-1 pr-5"
+          {...openProps}
         >
           {content}
         </Link>
@@ -958,19 +994,10 @@ function ActiveSessionRow({
         <button
           type="button"
           draggable
-          onDragStart={(event) => setAgentSessionDragData(event, session)}
-          onClick={() => {
-            window.dispatchEvent(
-              new CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
-                detail: { paneId: session.paneId, tabId: session.tabId, mode: "focus" },
-              }),
-            );
-          }}
-          onDoubleClick={() => {
-            setDraft(pref.title ?? session.title ?? "");
-            setRenaming(true);
-          }}
+          onDragStart={onDragStart}
+          onClick={onOpen}
           className="flex min-w-0 flex-1 items-center gap-1 pr-5 text-left"
+          {...openProps}
         >
           {content}
         </button>
@@ -987,15 +1014,14 @@ function ActiveSessionRow({
           aria-label="Session options"
           title="Session options"
         >
-          <MoreIcon className="h-4 w-4" />
+          <MoreIcon className={menuIconClass} />
         </button>
         {menuOpen ? (
           <div className={SESSION_MENU_CLASS}>
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
-                setDraft(pref.title ?? session.title ?? "");
-                setRenaming(true);
+                startRename();
               }}
             >
               Rename
@@ -1003,23 +1029,109 @@ function ActiveSessionRow({
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
-                patchActiveSessionPref(session, { pinned: !pref.pinned });
+                onPatchPref({ pinned: !pref.pinned });
               }}
             >
-              {pref.pinned ? "Unpin" : "Pin"}
+              {menuItemsWithIcons ? (
+                <span className="inline-flex items-center gap-2">
+                  <PinIcon className="h-4 w-4" /> {pref.pinned ? "Unpin" : "Pin"}
+                </span>
+              ) : pref.pinned ? (
+                "Unpin"
+              ) : (
+                "Pin"
+              )}
             </SessionMenuItem>
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
-                patchActiveSessionPref(session, { hidden: !pref.hidden });
+                onPatchPref({ hidden: !pref.hidden });
               }}
             >
-              {pref.hidden ? "Unarchive" : "Archive"}
+              {menuItemsWithIcons ? (
+                <span className="inline-flex items-center gap-2">
+                  <EyeOffIcon className="h-4 w-4" /> {pref.hidden ? "Unarchive" : "Archive"}
+                </span>
+              ) : pref.hidden ? (
+                "Unarchive"
+              ) : (
+                "Archive"
+              )}
             </SessionMenuItem>
+            {showClearAction && (pref.title || pref.pinned || pref.hidden) ? (
+              <SessionMenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  onPatchPref({ title: undefined, pinned: undefined, hidden: undefined });
+                }}
+              >
+                <span className="inline-flex items-center gap-2 text-(--err)">
+                  <CloseIcon className="h-4 w-4" /> Clear
+                </span>
+              </SessionMenuItem>
+            ) : null}
           </div>
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ActiveSessionRow({
+  project,
+  session,
+  pref,
+}: {
+  project: ProjectEntry;
+  session: ActiveAgentSession;
+  pref: SessionPref;
+}) {
+  const label = pref.title || session.title || "Current session";
+  const isActive = session.active === true;
+  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${
+    isActive
+      ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']"
+      : "text-(--dim) hover:text-(--fg)"
+  }`;
+
+  return (
+    <SessionNavRow
+      pref={pref}
+      label={label}
+      initialDraft={pref.title ?? session.title ?? ""}
+      age={relativeAge(session.startedAt ?? session.updatedAt)}
+      rowClass={rowClass}
+      href={
+        session.piSessionId
+          ? `/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`
+          : undefined
+      }
+      onOpen={() => {
+        window.dispatchEvent(
+          new CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
+            detail: { paneId: session.paneId, tabId: session.tabId, mode: "focus" },
+          }),
+        );
+      }}
+      onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
+      onRenameCommit={(trimmed) => {
+        window.dispatchEvent(
+          new CustomEvent(ACTIVE_AGENT_SESSION_RENAME_EVENT, {
+            detail: {
+              paneId: session.paneId,
+              tabId: session.tabId,
+              title: trimmed || session.title,
+            },
+          }),
+        );
+      }}
+      onRememberTitle={() => rememberAgentSessionNavTitle(session.piSessionId, label)}
+      onDragStart={(event) => setAgentSessionDragData(event, session)}
+      isRunning={session.status !== "idle" && session.status !== "done"}
+      canDoubleClickRename
+      menuIconClass="h-4 w-4"
+      renameInputClass="text-[13px]"
+    />
   );
 }
 
@@ -1032,146 +1144,30 @@ function SessionRow({
   session: SessionSummary;
   pref: SessionPref;
 }) {
-  const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState(pref.title ?? session.firstUserMessage ?? "");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
-
   const label = pref.title || session.firstUserMessage || "Untitled session";
-  const age = relativeAge(session.startedAt);
-
-  const finishRename = () => {
-    const trimmed = draft.trim();
-    patchSessionPref(session.id, { title: trimmed || undefined });
-    setRenaming(false);
-  };
-
-  if (renaming) {
-    return (
-      <div className="flex h-7 items-center gap-1 bg-(--surface)/60 pl-4 pr-2">
-        <input
-          autoFocus
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={finishRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") finishRename();
-            if (event.key === "Escape") {
-              setDraft(pref.title ?? session.firstUserMessage ?? "");
-              setRenaming(false);
-            }
-          }}
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-(--fg) outline-none"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div
-      className="group relative flex h-7 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setMenuOpen(true);
+    <SessionNavRow
+      pref={pref}
+      label={label}
+      initialDraft={pref.title ?? session.firstUserMessage ?? ""}
+      age={relativeAge(session.startedAt)}
+      rowClass="group relative flex h-7 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
+      renameRowClass="flex h-7 items-center gap-1 bg-(--surface)/60 pl-4 pr-2"
+      href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
+      onPatchPref={(patch) => patchSessionPref(session.id, patch)}
+      onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
+      onDragStart={(event) => {
+        setAgentSessionDragData(event, {
+          piSessionId: session.id,
+          projectId: project.id,
+          cwd: project.path,
+          title: label,
+        });
       }}
-    >
-      <SessionPinButton
-        pinned={Boolean(pref.pinned)}
-        onToggle={() => patchSessionPref(session.id, { pinned: !pref.pinned })}
-      />
-      <Link
-        href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
-        title={label}
-        draggable
-        onClick={() => rememberAgentSessionNavTitle(session.id, label)}
-        onDragStart={(event) => {
-          setAgentSessionDragData(event, {
-            piSessionId: session.id,
-            projectId: project.id,
-            cwd: project.path,
-            title: label,
-          });
-        }}
-        className="flex min-w-0 flex-1 items-center gap-1 pr-5"
-      >
-        <span className="min-w-0 flex-1 truncate text-[12px] font-normal leading-7">{label}</span>
-        {age ? (
-          <span className="shrink-0 pl-2 pr-1 font-mono text-[10px] text-(--dim)">{age}</span>
-        ) : null}
-      </Link>
-      <div ref={menuRef} className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setMenuOpen((value) => !value);
-          }}
-          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
-          aria-label="Session options"
-          title="Session options"
-        >
-          <MoreIcon className="h-3 w-3" />
-        </button>
-        {menuOpen ? (
-          <div className={SESSION_MENU_CLASS}>
-            <SessionMenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                setDraft(pref.title ?? session.firstUserMessage ?? "");
-                setRenaming(true);
-              }}
-            >
-              Rename
-            </SessionMenuItem>
-            <SessionMenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                patchSessionPref(session.id, { pinned: !pref.pinned });
-              }}
-            >
-              {pref.pinned ? (
-                <span className="inline-flex items-center gap-2">
-                  <PinIcon className="h-4 w-4" /> Unpin
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <PinIcon className="h-4 w-4" /> Pin
-                </span>
-              )}
-            </SessionMenuItem>
-            <SessionMenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                patchSessionPref(session.id, { hidden: !pref.hidden });
-              }}
-            >
-              <span className="inline-flex items-center gap-2">
-                <EyeOffIcon className="h-4 w-4" /> {pref.hidden ? "Unarchive" : "Archive"}
-              </span>
-            </SessionMenuItem>
-            {pref.title || pref.pinned || pref.hidden ? (
-              <SessionMenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  patchSessionPref(session.id, {
-                    title: undefined,
-                    pinned: undefined,
-                    hidden: undefined,
-                  });
-                }}
-              >
-                <span className="inline-flex items-center gap-2 text-(--err)">
-                  <CloseIcon className="h-4 w-4" /> Clear
-                </span>
-              </SessionMenuItem>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
+      onContextMenu
+      showClearAction
+      menuItemsWithIcons
+    />
   );
 }
 
