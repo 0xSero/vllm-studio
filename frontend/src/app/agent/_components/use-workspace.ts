@@ -250,7 +250,13 @@ export function useWorkspace(): UseWorkspaceResult {
       },
       openNewSessionInFocusedPane: (project?: Project) => {
         if (project) projectsRef.current.selectProject(project);
-        dispatch({ type: "openNewSession", project, tab: makeFreshTab() });
+        dispatch({
+          type: "openNewSession",
+          project,
+          tab: makeFreshTab(),
+          paneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+        });
       },
       replaySessionInFocusedPane: (piSessionId: string) =>
         dispatch({ type: "replaySession", piSessionId, tab: makeFreshTab() }),

@@ -8,10 +8,7 @@ import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session, SessionId, SessionsMap } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
-import type {
-  ComposerPluginRef,
-  ComposerSkillRef,
-} from "@/lib/agent/composer-context";
+import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 import type {
   AgentModel,
   PaneId,
@@ -191,7 +188,13 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
       typeof parsed.focusedPaneId === "string" && leaves.includes(parsed.focusedPaneId)
         ? parsed.focusedPaneId
         : leaves[0];
-    return { layout: parsed.layout as WorkspaceLayout, panesById, sessions, selections, focusedPaneId };
+    return {
+      layout: parsed.layout as WorkspaceLayout,
+      panesById,
+      sessions,
+      selections,
+      focusedPaneId,
+    };
   } catch {
     return null;
   }
@@ -202,7 +205,10 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
  * embedded back into the persisted tab so older clients keep loading; the
  * runtime model keeps them in the tools subsystem.
  */
-export function tabForPersistence(tab: Session, selection?: ToolSelection): Session & {
+export function tabForPersistence(
+  tab: Session,
+  selection?: ToolSelection,
+): Session & {
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
 } {
@@ -269,9 +275,7 @@ export function loadPersistedActiveAgentSessions(
           plugins: Array.isArray(entry.plugins)
             ? (entry.plugins as ComposerPluginRef[])
             : undefined,
-          skills: Array.isArray(entry.skills)
-            ? (entry.skills as ComposerSkillRef[])
-            : undefined,
+          skills: Array.isArray(entry.skills) ? (entry.skills as ComposerSkillRef[]) : undefined,
         };
       })
       .filter(
@@ -332,7 +336,6 @@ export function tabFromSnapshot(session: ActiveAgentSessionSnapshot): Session {
   };
 }
 
-
 function chooseModelId(
   models: AgentModel[],
   currentModelId: string,
@@ -358,9 +361,7 @@ function hydrateSessionSnapshots(
   if (paneStateAlreadyRestored) return { ...state, hydrated: true };
 
   const restorable = snapshots.filter((session) =>
-    projects.some(
-      (project) => project.id === session.projectId || project.path === session.cwd,
-    ),
+    projects.some((project) => project.id === session.projectId || project.path === session.cwd),
   );
   if (restorable.length === 0) return { ...state, hydrated: true };
 
@@ -379,8 +380,7 @@ function hydrateSessionSnapshots(
     const restored = group.map(tabFromSnapshot);
     const tabs = restored.length > 0 ? restored : [makeFreshTab()];
     for (const session of tabs) sessions.set(session.id, session);
-    const activeSessionId =
-      group.find((session) => session.active)?.tabId || tabs[0]?.id;
+    const activeSessionId = group.find((session) => session.active)?.tabId || tabs[0]?.id;
     panesById.set(paneId, {
       sessionIds: tabs.map((tab) => tab.id),
       activeSessionId,
@@ -431,7 +431,12 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
     case "restorePaneState":
       return restorePaneWorkspaceState(state, action);
     case "openNewSession":
-      return openNewSessionInFocusedPane(state, { project: action.project, tab: action.tab });
+      return openNewSessionInFocusedPane(state, {
+        project: action.project,
+        tab: action.tab,
+        paneId: action.paneId,
+        runtimeSessionId: action.runtimeSessionId,
+      });
     case "replaySession":
       return replaySessionInFocusedPane(state, {
         piSessionId: action.piSessionId,

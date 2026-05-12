@@ -75,7 +75,14 @@ export type WorkspaceAction =
       sessions: SessionsMap;
       focusedPaneId: PaneId;
     }
-  | { type: "openNewSession"; project?: Project; tab: Session }
+  | {
+      type: "openNewSession";
+      project?: Project;
+      tab: Session;
+      /** Pre-allocated pane id used when the focused pane is busy and we split right. */
+      paneId?: PaneId;
+      runtimeSessionId?: string;
+    }
   | { type: "replaySession"; piSessionId: string; tab: Session; sessionTitle?: string }
   | {
       type: "replaySessionInSplit";

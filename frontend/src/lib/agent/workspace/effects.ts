@@ -4,21 +4,10 @@ import type { SessionId } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
 
 const EMPTY_SELECTION: ToolSelection = { plugins: [], skills: [] };
-import type {
-  AgentModel,
-  PaneId,
-  WorkspaceAction,
-  WorkspaceState,
-} from "./types";
+import type { AgentModel, PaneId, WorkspaceAction, WorkspaceState } from "./types";
 import { findPaneByPiSessionId } from "@/lib/agent/sessions/selectors";
-import {
-  setupWarningFromPiCheck,
-  type WorkspaceStorage,
-} from "./store";
-import {
-  writeActiveSessions,
-  writePaneState,
-} from "./persistence";
+import { setupWarningFromPiCheck, type WorkspaceStorage } from "./store";
+import { writeActiveSessions, writePaneState } from "./persistence";
 import {
   ACTIVE_AGENT_SESSION_OPEN_EVENT,
   ACTIVE_AGENT_SESSION_RENAME_EVENT,
@@ -133,7 +122,13 @@ export function subscribeWorkspaceWindowEvents(
     const detail = eventDetail(event);
     const projectId = isRecord(detail) ? stringField(detail, "projectId") : undefined;
     const project = projectId ? (findProjectById(projectId) ?? undefined) : undefined;
-    dispatch({ type: "openNewSession", project, tab: makeFreshTab() });
+    dispatch({
+      type: "openNewSession",
+      project,
+      tab: makeFreshTab(),
+      paneId: newPaneId(),
+      runtimeSessionId: newRuntimeId(),
+    });
   };
   const onRename = (event: Event) => {
     const detail = eventDetail(event);
@@ -185,8 +180,10 @@ export function subscribeWorkspaceWindowEvents(
   // whose project is no longer installed.
   const onProjectsLoaded = (event: Event) => {
     const detail = eventDetail(event);
-    const projects = isRecord(detail) && Array.isArray(detail.projects) ? (detail.projects as Project[]) : [];
-    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const projects =
+      isRecord(detail) && Array.isArray(detail.projects) ? (detail.projects as Project[]) : [];
+    const params =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     dispatch({
       type: "hydrateActiveSessions",
       snapshots: loadPersistedActiveAgentSessions(),
@@ -264,7 +261,6 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
       });
     });
   }
-
 }
 
 function computeActiveSessionBroadcast(
@@ -277,7 +273,8 @@ function computeActiveSessionBroadcast(
     for (const id of pane.sessionIds) {
       const tab = state.sessions.get(id);
       if (!tab) continue;
-      if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading") continue;
+      if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
+        continue;
       const selection = selectionFor(id);
       out.push({
         projectId: tab.projectId ?? "",

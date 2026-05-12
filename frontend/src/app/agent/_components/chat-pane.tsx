@@ -24,12 +24,7 @@ import {
   type ComposerPluginRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
-import {
-  asRecord,
-  newId,
-  visibleQueuedMessages,
-  formatTokenCount,
-} from "@/lib/agent/session";
+import { asRecord, newId, visibleQueuedMessages, formatTokenCount } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
 import { useTools } from "@/lib/agent/tools/context";
 import type {
@@ -247,7 +242,9 @@ export function ChatPane({
       const current = tools.selectionFor(activeTab.id);
       tools.setSelection(activeTab.id, {
         plugins:
-          kind === "plugin" ? current.plugins.filter((plugin) => plugin.id !== id) : current.plugins,
+          kind === "plugin"
+            ? current.plugins.filter((plugin) => plugin.id !== id)
+            : current.plugins,
         skills:
           kind === "skill" ? current.skills.filter((skill) => skill.id !== id) : current.skills,
       });
@@ -362,6 +359,9 @@ export function ChatPane({
     async (event: FormEvent) => {
       event.preventDefault();
       if (!activeTab) return;
+      // Block double-sends while the previous turn is still spinning up.
+      // Once pi flips to "running" the user can steer; until then, ignore.
+      if (activeTab.status === "starting" || activeTab.status === "loading") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
 
@@ -418,7 +418,17 @@ export function ChatPane({
       return;
     }
     await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
-  }, [activeTab, cwd, engine, modelId, queueAndSendControl, running, runtimeSessionId, submitPrompt, updateTab]);
+  }, [
+    activeTab,
+    cwd,
+    engine,
+    modelId,
+    queueAndSendControl,
+    running,
+    runtimeSessionId,
+    submitPrompt,
+    updateTab,
+  ]);
 
   const removeQueued = useCallback(
     (queueId: string) => {
@@ -505,7 +515,6 @@ export function ChatPane({
     },
     [attachFiles],
   );
-
 
   const abortTurn = useCallback(async () => {
     if (!activeTab) return;
@@ -874,7 +883,15 @@ export function ChatPane({
               {modelSelector}
               {running ? (
                 <>
-                  {activeTab?.input.trim() ? (
+                  {activeTab?.status === "starting" ? (
+                    <span
+                      className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[11px] text-(--dim)"
+                      title="Waiting for the model to start"
+                    >
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Starting…
+                    </span>
+                  ) : activeTab?.input.trim() ? (
                     <>
                       <button
                         type="button"
@@ -896,7 +913,8 @@ export function ChatPane({
                   <button
                     type="button"
                     onClick={() => void abortTurn()}
-                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 px-2 text-xs text-(--dim) hover:text-(--fg)"
+                    disabled={activeTab?.status === "starting"}
+                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 px-2 text-xs text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
                     title="Pause (Esc)"
                   >
                     <StopIcon className="h-3 w-3" /> Pause
@@ -908,13 +926,19 @@ export function ChatPane({
                   disabled={
                     (!activeTab?.input.trim() && attachments.length === 0) ||
                     !modelId ||
-                    readingAttachments
+                    readingAttachments ||
+                    activeTab?.status === "starting" ||
+                    activeTab?.status === "loading"
                   }
                   className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--fg) hover:text-(--accent) disabled:opacity-30"
                   aria-label="Send"
                   title="Send (Enter) · Queue (Tab)"
                 >
-                  <SendIcon className="h-3.5 w-3.5" />
+                  {activeTab?.status === "starting" || activeTab?.status === "loading" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <SendIcon className="h-3.5 w-3.5" />
+                  )}
                 </button>
               )}
             </div>

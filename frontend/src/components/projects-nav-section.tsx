@@ -102,10 +102,7 @@ function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
   ].filter((value): value is string => Boolean(value));
 }
 
-function activeSessionPref(
-  session: ActiveAgentSession,
-  prefs: SessionPrefs,
-): SessionPref {
+function activeSessionPref(session: ActiveAgentSession, prefs: SessionPrefs): SessionPref {
   return activeSessionPrefKeys(session).reduce<SessionPref>(
     (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
     {},
@@ -128,11 +125,29 @@ function relativeAge(value?: string | null): string {
   return days === 1 ? "1 day" : `${days} days`;
 }
 
+function sessionDedupeKey(session: SessionSummary): string {
+  const label = (session.firstUserMessage || "Untitled session")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return `${label}:${relativeAge(session.startedAt)}`;
+}
+
 function useSessionPrefs() {
   const [prefs, setPrefs] = useState<SessionPrefs>(() => loadSessionPrefs());
   useEffect(() => {
-    const refresh = () => setPrefs(loadSessionPrefs());
-    refresh();
+    const refresh = () =>
+      setPrefs((current) => {
+        const next = loadSessionPrefs();
+        // Avoid rerenders when nothing actually changed — `storage` events fire
+        // for every key write on this domain.
+        try {
+          if (JSON.stringify(current) === JSON.stringify(next)) return current;
+        } catch {
+          // fall through — return next
+        }
+        return next;
+      });
     window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
     window.addEventListener("storage", refresh);
     return () => {
@@ -363,18 +378,36 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const pinnedPrefIdsKey = pinnedPrefIds.join("\u0000");
   const hiddenPrefIdsKey = hiddenPrefIds.join("\u0000");
   const activePiSessionIdsKey = activePiSessionIds.join("\u0000");
-  const pinnedActiveSessions = activeSessions
-    .filter(
-      (session) =>
-        activeSessionPref(session, prefs).pinned && !activeSessionPref(session, prefs).hidden,
-    )
-    .map((session) => ({
-      session,
-      project: projects.find((project) => project.id === session.projectId),
-    }))
-    .filter((entry): entry is { session: ActiveAgentSession; project: ProjectEntry } =>
-      Boolean(entry.project),
-    );
+  const projectsById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project] as const)),
+    [projects],
+  );
+  const pinnedActiveSessions = useMemo(
+    () =>
+      activeSessions
+        .filter((session) => {
+          const pref = activeSessionPref(session, prefs);
+          return pref.pinned && !pref.hidden;
+        })
+        .map((session) => ({
+          session,
+          project: projectsById.get(session.projectId),
+        }))
+        .filter((entry): entry is { session: ActiveAgentSession; project: ProjectEntry } =>
+          Boolean(entry.project),
+        ),
+    [activeSessions, prefs, projectsById],
+  );
+  // Track every piSessionId already rendered in a pinned row so per-project
+  // recent/active lists can skip duplicates further down the tree.
+  const pinnedRenderedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const { session } of pinnedActiveSessions) {
+      if (session.piSessionId) ids.add(session.piSessionId);
+    }
+    for (const session of pinnedSessions) ids.add(session.id);
+    return ids;
+  }, [pinnedActiveSessions, pinnedSessions]);
 
   const removeProjectAndCloseRow = useCallback(
     async (id: string) => {
@@ -554,6 +587,8 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             project={project}
             open={openIds.has(project.id)}
             activeSessions={activeSessions.filter((session) => session.projectId === project.id)}
+            prefs={prefs}
+            excludedIds={pinnedRenderedIds}
             onToggle={() => toggle(project.id)}
             onRemove={() => {
               setAddError("");
@@ -575,12 +610,16 @@ function ProjectRow({
   onToggle,
   onRemove,
   activeSessions,
+  prefs,
+  excludedIds,
 }: {
   project: ProjectEntry;
   open: boolean;
   onToggle: () => void;
   onRemove: () => void;
   activeSessions: ActiveAgentSession[];
+  prefs: SessionPrefs;
+  excludedIds: ReadonlySet<string>;
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const handleToggle = () => {
@@ -663,8 +702,13 @@ function ProjectRow({
           </button>
         </div>
       ) : null}
-      {(open || activeSessions.length > 0) && project.exists ? (
-        <ProjectSessions project={project} activeSessions={activeSessions} />
+      {open && project.exists ? (
+        <ProjectSessions
+          project={project}
+          activeSessions={activeSessions}
+          prefs={prefs}
+          excludedIds={excludedIds}
+        />
       ) : null}
     </div>
   );
@@ -673,19 +717,29 @@ function ProjectRow({
 function ProjectSessions({
   project,
   activeSessions,
+  prefs,
+  excludedIds,
 }: {
   project: ProjectEntry;
   activeSessions: ActiveAgentSession[];
+  prefs: SessionPrefs;
+  /** Session ids already rendered elsewhere in the sidebar (e.g. Pinned). */
+  excludedIds: ReadonlySet<string>;
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const projectActiveSessions = activeSessions.filter(
-    (session) => session.projectId === project.id,
+  const projectActiveSessions = useMemo(
+    () => activeSessions.filter((session) => session.projectId === project.id),
+    [activeSessions, project.id],
   );
-  const activePiSessionIds = new Set(
-    projectActiveSessions
-      .map((session) => session.piSessionId)
-      .filter((id): id is string => Boolean(id)),
+  const activePiSessionIds = useMemo(
+    () =>
+      new Set(
+        projectActiveSessions
+          .map((session) => session.piSessionId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [projectActiveSessions],
   );
 
   const reload = useCallback(async () => {
@@ -712,7 +766,6 @@ function ProjectSessions({
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
   }, [reload]);
 
-  const prefs = useSessionPrefs();
   const [showHidden, setShowHidden] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SHOW_HIDDEN_KEY) === "1";
@@ -726,22 +779,36 @@ function ProjectSessions({
       return next;
     });
 
-  const visibleActiveSessions = projectActiveSessions.filter((session) => {
-    const pref = activeSessionPref(session, prefs);
-    if (pref?.pinned) return false;
-    return showHidden || !pref?.hidden;
-  });
-
-  const allRecent = (sessions ?? []).filter(
-    (session) => !activePiSessionIds.has(session.id) && !prefs[session.id]?.pinned,
+  const visibleActiveSessions = useMemo(
+    () =>
+      projectActiveSessions.filter((session) => {
+        const pref = activeSessionPref(session, prefs);
+        if (pref?.pinned) return false;
+        if (session.piSessionId && excludedIds.has(session.piSessionId)) return false;
+        return showHidden || !pref?.hidden;
+      }),
+    [projectActiveSessions, prefs, excludedIds, showHidden],
   );
-  const recent: SessionSummary[] = [];
-  const hidden: SessionSummary[] = [];
-  for (const session of allRecent) {
-    const pref = prefs[session.id] ?? {};
-    if (pref.hidden) hidden.push(session);
-    else recent.push(session);
-  }
+
+  const { recent, hidden, allRecent } = useMemo(() => {
+    const seen = new Set<string>();
+    const recent: SessionSummary[] = [];
+    const hidden: SessionSummary[] = [];
+    const allRecent: SessionSummary[] = [];
+    for (const session of sessions ?? []) {
+      if (activePiSessionIds.has(session.id)) continue;
+      if (excludedIds.has(session.id)) continue;
+      if (prefs[session.id]?.pinned) continue;
+      const key = sessionDedupeKey(session);
+      if (seen.has(session.id) || seen.has(key)) continue;
+      seen.add(session.id);
+      seen.add(key);
+      allRecent.push(session);
+      if (prefs[session.id]?.hidden) hidden.push(session);
+      else recent.push(session);
+    }
+    return { recent, hidden, allRecent };
+  }, [sessions, activePiSessionIds, excludedIds, prefs]);
 
   return (
     <div className="flex flex-col">
