@@ -148,17 +148,12 @@ export function ChatPane({
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(false);
-  const [pluginRows, setPluginRows] = useState<ComposerPluginRef[]>([]);
-  const [skillRows, setSkillRows] = useState<ComposerSkillRef[]>([]);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [compacting, setCompacting] = useState(false);
-  const tabsRef = useRef(tabs);
-
-  useEffect(() => {
-    tabsRef.current = tabs;
-  }, [tabs]);
 
   const tools = useTools();
+  const pluginRows = tools.pluginCatalogue;
+  const skillRows = tools.skillCatalogue;
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [tabs, activeTabId],
@@ -179,27 +174,6 @@ export function ChatPane({
       ? byQuery(pluginRows, mention.query, 8)
       : byQuery(skillRows, mention.query, 8);
   }, [mention, pluginRows, skillRows]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all([
-      fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
-        .then((res) => res.json() as Promise<{ plugins?: ComposerPluginRef[] }>)
-        .then((payload) => payload.plugins ?? [])
-        .catch(() => [] as ComposerPluginRef[]),
-      fetch("/api/agent/skills", { cache: "no-store" })
-        .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
-        .then((payload) => payload.skills ?? [])
-        .catch(() => [] as ComposerSkillRef[]),
-    ]).then(([plugins, skills]) => {
-      if (cancelled) return;
-      setPluginRows(plugins);
-      setSkillRows(skills);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
@@ -306,7 +280,7 @@ export function ChatPane({
   });
 
   const buildPromptArgs = useCallback(
-    (tab: SessionTab, rawText: string) => {
+    (sessionId: string, rawText: string) => {
       const text = rawText.trim();
       const attachedText = attachmentPrompt(attachments);
       const attachmentSummary =
@@ -315,7 +289,7 @@ export function ChatPane({
           : "";
       const userText = text || attachmentSummary;
       const displayText = [text, attachmentSummary].filter(Boolean).join("\n\n");
-      const selection = tools.selectionFor(tab.id);
+      const selection = tools.selectionFor(sessionId);
       const contextText = selectedContextPrompt(
         text,
         activeComposerPlugins(selection.plugins),
@@ -329,17 +303,19 @@ export function ChatPane({
 
   const submitPrompt = useCallback(
     async (rawText: string, targetTabId?: string) => {
-      const tab =
-        (targetTabId ? tabsRef.current.find((t) => t.id === targetTabId) : null) ?? activeTab;
-      if (!tab) return;
+      // Composer state (attachments / textarea) is single-instance — gate on
+      // whether *anything* is composable. The engine looks up the target
+      // session itself from its internal snapshot.
+      const targetId = targetTabId ?? activeTab?.id;
+      if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
-      const args = buildPromptArgs(tab, rawText);
+      const args = buildPromptArgs(targetId, rawText);
       stickToBottomRef.current = true;
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await engine.submitPrompt({ ...args, targetSessionId: tab.id });
+      await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
     [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
   );

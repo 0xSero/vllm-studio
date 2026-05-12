@@ -56,11 +56,24 @@ function notifySessionsChanged() {
 export function ProjectsProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [selectedId, setSelectedId] = useState<ProjectId | null>(() => readSelectedProjectId());
+  const [selectedId, setSelectedIdState] = useState<ProjectId | null>(() => readSelectedProjectId());
   const [gitSummaries, setGitSummaries] = useState<ReadonlyMap<string, GitSummary>>(new Map());
   const lastGitFetchRef = useRef<string | null>(null);
 
   const firstLoadRef = useRef(false);
+
+  // Persist on every write, including the auto-select that runs when the
+  // current selection vanishes (project deleted) or on first load.
+  const setSelectedId = useCallback(
+    (next: ProjectId | null | ((current: ProjectId | null) => ProjectId | null)) => {
+      setSelectedIdState((current) => {
+        const resolved = typeof next === "function" ? next(current) : next;
+        if (resolved !== current) writeSelectedProjectId(resolved);
+        return resolved;
+      });
+    },
+    [],
+  );
 
   const refresh = useCallback(async () => {
     let next: Project[] = [];
@@ -80,7 +93,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         new CustomEvent<{ projects: Project[] }>(PROJECTS_LOADED_EVENT, { detail: { projects: next } }),
       );
     }
-  }, []);
+  }, [setSelectedId]);
 
   useEffect(() => {
     void refresh();
@@ -89,14 +102,10 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged);
   }, [refresh]);
 
-  // Persist selection.
-  useEffect(() => {
-    writeSelectedProjectId(selectedId);
-  }, [selectedId]);
-
-  const selectProject = useCallback((project: Project | null) => {
-    setSelectedId(project?.id ?? null);
-  }, []);
+  const selectProject = useCallback(
+    (project: Project | null) => setSelectedId(project?.id ?? null),
+    [setSelectedId],
+  );
 
   const upsertProject = useCallback((project: Project) => {
     setProjects((current) => [project, ...current.filter((entry) => entry.id !== project.id)]);

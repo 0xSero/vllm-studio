@@ -34,6 +34,7 @@ import {
 } from "@/lib/agent/workspace/store";
 import { useProjects } from "@/lib/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/lib/agent/projects/api";
+import { useClickOutside } from "@/hooks/use-click-outside";
 import {
   loadSessionPrefs,
   patchSessionPref,
@@ -388,7 +389,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     [removeProject],
   );
 
-  const handleAddProject = async () => {
+  const handleAddProject = useCallback(async () => {
     setAddError("");
     try {
       const desktopProject = await openProjectDirectory();
@@ -401,7 +402,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       return;
     }
     setDirectoryModalOpen(true);
-  };
+  }, [upsertProject]);
 
   const handleDirectoryPicked = async (directoryPath: string) => {
     setAddError("");
@@ -426,7 +427,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   useEffect(() => {
     window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
-  });
+  }, [handleAddProject]);
 
   useEffect(() => {
     const onActiveSessions = (event: Event) => {
@@ -810,15 +811,7 @@ function ActiveSessionRow({
   const label = pref.title || session.title || "Current session";
   const age = relativeAge(session.startedAt ?? session.updatedAt);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (event: MouseEvent) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(event.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [menuOpen]);
+  useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
 
   const finishRename = () => {
     const trimmed = draft.trim();
@@ -977,15 +970,7 @@ function SessionRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (event: MouseEvent) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(event.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [menuOpen]);
+  useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
 
   const label = pref.title || session.firstUserMessage || "Untitled session";
   const age = relativeAge(session.startedAt);

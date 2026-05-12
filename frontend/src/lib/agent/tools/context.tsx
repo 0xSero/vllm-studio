@@ -4,11 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import type {
+  ComposerPluginRef,
+  ComposerSkillRef,
+} from "@/lib/agent/composer-context";
 import type { SessionId } from "@/lib/agent/sessions/types";
 import {
   EMPTY_SELECTION,
@@ -31,6 +36,10 @@ import {
 export type ToolsContextValue = {
   browser: BrowserState;
   computer: ComputerState;
+  /** Workspace-global plugin catalogue (loaded once on mount). */
+  pluginCatalogue: ComposerPluginRef[];
+  /** Workspace-global skill catalogue (loaded once on mount). */
+  skillCatalogue: ComposerSkillRef[];
   /** Per-session selection — empty for sessions that haven't picked tools yet. */
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
   setBrowserEnabled: (enabled: boolean) => void;
@@ -70,9 +79,35 @@ function buildInitialComputer(): ComputerState {
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
+  const [pluginCatalogue, setPluginCatalogue] = useState<ComposerPluginRef[]>([]);
+  const [skillCatalogue, setSkillCatalogue] = useState<ComposerSkillRef[]>([]);
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   // Bump on every selection mutation so consumers re-render.
   const [selectionVersion, setSelectionVersion] = useState(0);
+
+  // Discover the workspace-global plugin / skill catalogue once on mount.
+  // Previously each ChatPane fetched these independently; now multiple panes
+  // share a single fetch.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
+        .then((res) => res.json() as Promise<{ plugins?: ComposerPluginRef[] }>)
+        .then((payload) => payload.plugins ?? [])
+        .catch(() => [] as ComposerPluginRef[]),
+      fetch("/api/agent/skills", { cache: "no-store" })
+        .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
+        .then((payload) => payload.skills ?? [])
+        .catch(() => [] as ComposerSkillRef[]),
+    ]).then(([plugins, skills]) => {
+      if (cancelled) return;
+      setPluginCatalogue(plugins);
+      setSkillCatalogue(skills);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setBrowserEnabled = useCallback((enabled: boolean) => {
     setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
@@ -179,6 +214,8 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     () => ({
       browser,
       computer,
+      pluginCatalogue,
+      skillCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
@@ -194,6 +231,8 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     [
       browser,
       computer,
+      pluginCatalogue,
+      skillCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
