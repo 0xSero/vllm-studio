@@ -248,10 +248,11 @@ function knownLocalPluginRows(): PluginRow[] {
     const computerUseMcp = path.join(computerUseRoot, ".mcp.json");
     const computerUseSkills = path.join(computerUseRoot, "skills");
     if (!existsSync(computerUseApp)) continue;
+    const isSybil = localComputerUseMcpServerNames(computerUseMcp).includes("sybil");
     rows.push({
       id: `builtin:computer-use:${computerUseRoot}`,
-      name: "computer-use",
-      displayName: "Computer Use",
+      name: isSybil ? "sybil" : "computer-use",
+      displayName: isSybil ? "Sybil" : "Computer Use",
       path: computerUseRoot,
       installed: true,
       enabled: true,
@@ -261,10 +262,25 @@ function knownLocalPluginRows(): PluginRow[] {
       appPath: computerUseApp,
       ...(existsSync(computerUseMcp) ? { mcpConfigPath: computerUseMcp } : {}),
       ...(existsSync(computerUseSkills) ? { skillPath: computerUseSkills } : {}),
-      description: "Local Codex Computer Use helper app.",
+      description: isSybil
+        ? "Local Sybil desktop-control MCP backed by the clean-room Computer Use implementation."
+        : "Local Codex Computer Use helper app.",
+      shortDescription: isSybil ? "Desktop UI through Sybil" : undefined,
     });
   }
   return rows;
+}
+
+function localComputerUseMcpServerNames(configPath: string): string[] {
+  if (!existsSync(configPath)) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    return Object.keys(parsed.mcpServers ?? {}).map((name) => name.toLowerCase());
+  } catch {
+    return [];
+  }
 }
 
 function localComputerUseRoots(): string[] {
@@ -409,10 +425,11 @@ function preferredPluginRow(current: PluginRow, candidate: PluginRow): PluginRow
 }
 
 function isLocalComputerUseHelper(row: PluginRow): boolean {
-  return (
-    row.name.toLowerCase().includes("computer-use") &&
-    localComputerUseRoots().some((root) => isPathInside(row.path, root))
-  );
+  const name = row.name.toLowerCase();
+  const displayName = row.displayName?.toLowerCase() ?? "";
+  const localHelperName =
+    name.includes("computer-use") || name === "sybil" || displayName.includes("sybil");
+  return localHelperName && localComputerUseRoots().some((root) => isPathInside(row.path, root));
 }
 
 function isPathInside(candidate: string, root: string): boolean {

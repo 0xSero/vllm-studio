@@ -260,4 +260,35 @@ describe("discoverPlugins", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("tags the local Computer Use helper as Sybil when its MCP server is sybil", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vllm-plugin-discovery-"));
+    const previousDataDir = process.env.VLLM_STUDIO_DATA_DIR;
+    try {
+      const dataDir = path.join(root, "data");
+      process.env.VLLM_STUDIO_DATA_DIR = dataDir;
+      __resetDataDirCacheForTests();
+
+      const localHelper = path.join(dataDir, "computer-use");
+      mkdirSync(path.join(localHelper, "Codex Computer Use.app"), { recursive: true });
+      writeFileSync(path.join(localHelper, ".mcp.json"), '{"mcpServers":{"sybil":{}}}');
+
+      const rows = discoverPlugins([path.join(homedir(), ".codex", "plugins")], {
+        maxDepth: 0,
+      });
+
+      expect(rows.find((row) => row.name === "sybil")).toMatchObject({
+        displayName: "Sybil",
+        path: localHelper,
+        appPath: path.join(localHelper, "Codex Computer Use.app"),
+        mcpConfigPath: path.join(localHelper, ".mcp.json"),
+        shortDescription: "Desktop UI through Sybil",
+      });
+    } finally {
+      if (previousDataDir === undefined) delete process.env.VLLM_STUDIO_DATA_DIR;
+      else process.env.VLLM_STUDIO_DATA_DIR = previousDataDir;
+      __resetDataDirCacheForTests();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -174,9 +174,13 @@ function selectedPluginContextLines(plugins: ComposerPluginRef[] = []): string[]
   if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "browser-use"))) {
     lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
   }
-  if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "computer-use"))) {
+  if (
+    enabledPlugins.some(
+      (plugin) => pluginNameIncludes(plugin, "computer-use") || pluginNameIncludes(plugin, "sybil"),
+    )
+  ) {
     lines.push(
-      "Computer-use is selected; use the vLLM Studio browser tools for browser/webview tasks. Full desktop-control MCP may be unavailable outside a Codex-signed/brokered runtime; do not retry launch-constrained desktop MCP failures forever.",
+      "Sybil/computer-use is selected; call mcp_plugin_status first, then use sybil_* MCP tools for desktop UI tasks. Browser/webview tasks should still use the vLLM Studio browser tools.",
     );
   }
   return lines;
