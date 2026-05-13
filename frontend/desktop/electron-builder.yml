@@ -35,6 +35,11 @@ directories:
 mac:
   icon: desktop/resources/icon.icns
   category: public.app-category.developer-tools
+  # Keep macOS TCC permissions (Accessibility / Screen Recording) stable
+  # across local rebuilds. This identity is a self-signed Code Signing cert in
+  # the login keychain when no Apple Developer ID identity is available.
+  identity: vLLM Studio Local Dev
+  timestamp: none
   target:
     - target: dmg
       arch:
