@@ -2,8 +2,11 @@
 // component coupling — engine code calls into these and reacts to the results.
 
 import { safeJson } from "@/lib/agent/safe-json";
-import { parseAgentTurnSsePayload } from "@/lib/agent/session";
-import type { AgentTurnSsePayload, RuntimeLoggedEvent } from "@/lib/agent/session";
+import {
+  parseAgentTurnSsePayload,
+  type AgentTurnSsePayload,
+  type RuntimeLoggedEvent,
+} from "@/lib/agent/session";
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 
 export type RuntimeStatus = {

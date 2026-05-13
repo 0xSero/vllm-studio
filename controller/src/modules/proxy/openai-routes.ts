@@ -19,8 +19,15 @@ import {
   normalizeToolCallsInMessage,
 } from "./reasoning-extractor";
 import { createToolCallStream } from "./tool-call-stream";
-
-type OpenAIUsage = Record<string, number>;
+import {
+  recordNonStreamingInferenceUsage,
+  recordStreamingInferenceUsage,
+} from "./inference-accounting";
+import {
+  DEFAULT_OPENAI_MODEL_ACTIVATION_POLICY,
+  PROXY_SESSION_HEADER_NAMES,
+} from "./configs";
+import type { OpenAIModelActivationPolicy, OpenAIUsage } from "./types";
 
 export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {
   if (!Boolean(payload["stream"])) return false;
@@ -81,11 +88,7 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
     parsedBody: Record<string, unknown>,
     header: (name: string) => string | undefined
   ): string | null => {
-    const fromHeader =
-      header("x-vllm-session-id") ??
-      header("x-session-id") ??
-      header("x-chat-session-id") ??
-      header("openai-conversation-id");
+    const fromHeader = PROXY_SESSION_HEADER_NAMES.map((name) => header(name)).find(Boolean);
     if (fromHeader?.trim()) return fromHeader.trim();
 
     const direct = parsedBody["session_id"] ?? parsedBody["sessionId"] ?? parsedBody["chat_id"];
@@ -141,7 +144,7 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
   const ensureRecipeIsActive = async (
     recipe: Recipe,
     current: ProcessInfo | null,
-    policy: "load_if_idle" | "switch_on_request"
+    policy: OpenAIModelActivationPolicy
   ): Promise<void> => {
     const launchInProgress = getLaunchInProgressMessage(context.launchState, recipe.id);
     if (launchInProgress) {
@@ -263,7 +266,8 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       const current = await context.processManager.findInferenceProcess(
         context.config.inference_port
       );
-      const policy = context.config.openai_model_activation_policy ?? "load_if_idle";
+      const policy =
+        context.config.openai_model_activation_policy ?? DEFAULT_OPENAI_MODEL_ACTIVATION_POLICY;
       context.logger.info("OpenAI model activation check", {
         requested_model: requestedModel,
         recipe_id: matchedRecipe.id,
@@ -342,50 +346,20 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
       }
 
       const usage = result["usage"] as OpenAIUsage | undefined;
-      if (usage) {
-        const promptTokens = usage["prompt_tokens"] ?? 0;
-        const completionTokens = usage["completion_tokens"] ?? 0;
-        if (promptTokens > 0) {
-          context.stores.lifetimeMetricsStore.addPromptTokens(promptTokens);
-          context.stores.lifetimeMetricsStore.addTokens(promptTokens);
-        }
-        if (completionTokens > 0) {
-          context.stores.lifetimeMetricsStore.addCompletionTokens(completionTokens);
-          context.stores.lifetimeMetricsStore.addTokens(completionTokens);
-        }
-        if (promptTokens > 0 || completionTokens > 0) {
-          context.stores.lifetimeMetricsStore.addRequests(1);
-        }
-        try {
-          const promptDetails = usage["prompt_tokens_details"] as
-            | Record<string, number>
-            | undefined;
-          const completionDetails = usage["completion_tokens_details"] as
-            | Record<string, number>
-            | undefined;
-          context.stores.inferenceRequestStore.record({
+      recordNonStreamingInferenceUsage(
+        { logger: context.logger, stores: context.stores },
+        {
+          usage,
+          record: {
             model: recordedModel,
             source: sourceHeader,
             session_id: sessionId,
             provider: recordedProvider,
-            prompt_tokens: promptTokens,
-            completion_tokens: completionTokens,
-            reasoning_tokens:
-              (usage["reasoning_tokens"] as number | undefined) ??
-              completionDetails?.["reasoning_tokens"] ??
-              0,
-            cache_read_tokens: promptDetails?.["cached_tokens"] ?? 0,
-            cache_write_tokens: 0,
             duration_ms: Math.round(performance.now() - requestStart),
             status: response.status,
-            streamed: false,
-          });
-        } catch (recordError) {
-          context.logger.warn(
-            `Failed to record inference request: ${(recordError as Error).message}`
-          );
+          },
         }
-      }
+      );
 
       attachSessionUsage(result, sessionId, usage);
 
@@ -449,38 +423,21 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
     const stream = createToolCallStream(
       reader,
       (usage) => {
-        if (usage.prompt_tokens > 0) {
-          context.stores.lifetimeMetricsStore.addPromptTokens(usage.prompt_tokens);
-          context.stores.lifetimeMetricsStore.addTokens(usage.prompt_tokens);
-        }
-        if (usage.completion_tokens > 0) {
-          context.stores.lifetimeMetricsStore.addCompletionTokens(usage.completion_tokens);
-          context.stores.lifetimeMetricsStore.addTokens(usage.completion_tokens);
-        }
-        if (usage.prompt_tokens > 0 || usage.completion_tokens > 0) {
-          context.stores.lifetimeMetricsStore.addRequests(1);
-          try {
-            context.stores.inferenceRequestStore.record({
+        recordStreamingInferenceUsage(
+          { logger: context.logger, stores: context.stores },
+          {
+            usage,
+            record: {
               model: recordedModel,
               source: sourceHeader,
               session_id: sessionId,
               provider: recordedProvider,
-              prompt_tokens: usage.prompt_tokens,
-              completion_tokens: usage.completion_tokens,
-              reasoning_tokens: usage.reasoning_tokens ?? 0,
-              cache_read_tokens: usage.cache_read_tokens ?? 0,
-              cache_write_tokens: usage.cache_write_tokens ?? 0,
               ttft_ms: ttftMs,
               duration_ms: Math.round(performance.now() - requestStart),
               status: upstreamResponse.status,
-              streamed: true,
-            });
-          } catch (recordError) {
-            context.logger.warn(
-              `Failed to record inference request: ${(recordError as Error).message}`
-            );
+            },
           }
-        }
+        );
       },
       () => {
         ttftMs ??= Math.max(0, Math.round(performance.now() - requestStart));

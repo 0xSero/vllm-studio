@@ -17,8 +17,14 @@
  * bridge needs (executeJavaScript / loadURL / capturePage) so the agent can
  * still drive the browser when the user opts in.
  */
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/components/icons";
 import { useAgentBrowserEffects } from "@/hooks/agent/use-agent-browser-effects";
 

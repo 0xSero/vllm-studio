@@ -3,7 +3,7 @@
 
 import { ChevronRight, Cpu, DownloadCloud, HardDrive, Loader2 } from "lucide-react";
 import type { StudioDiagnostics, VllmUpgradeResult } from "@/lib/types";
-import { formatBytes } from "./utils";
+import { buildHardwareSummary, buildUpgradeMessage } from "./step-hardware-model";
 
 export function StepHardware({
   diagnostics,
@@ -22,6 +22,9 @@ export function StepHardware({
   setHardwareConfirmed: (value: boolean) => void;
   continueFromHardware: () => void;
 }) {
+  const hardware = buildHardwareSummary(diagnostics);
+  const upgradeMessage = buildUpgradeMessage(upgradeResult);
+
   return (
     <div className="grid gap-6">
       <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 space-y-4">
@@ -32,29 +35,19 @@ export function StepHardware({
         <div className="grid md:grid-cols-2 gap-4 text-sm text-(--dim)">
           <div>
             <div className="text-xs text-(--dim) mb-1">CPU</div>
-            <div>
-              {diagnostics?.cpu_model ?? "Unknown"} · {diagnostics?.cpu_cores ?? 0} cores
-            </div>
+            <div>{hardware.cpu}</div>
           </div>
           <div>
             <div className="text-xs text-(--dim) mb-1">Memory</div>
-            <div>{formatBytes(diagnostics?.memory_total ?? null)} total</div>
+            <div>{hardware.memory}</div>
           </div>
           <div>
             <div className="text-xs text-(--dim) mb-1">GPU</div>
-            <div>
-              {diagnostics?.gpus?.length
-                ? diagnostics.gpus.map((gpu) => gpu.name).join(", ")
-                : "No CUDA GPU detected"}
-            </div>
+            <div>{hardware.gpu}</div>
           </div>
           <div>
             <div className="text-xs text-(--dim) mb-1">VRAM</div>
-            <div>
-              {diagnostics?.gpus?.[0]?.memory_total_mb
-                ? `${Math.round(diagnostics.gpus[0].memory_total_mb / 1024)} GB`
-                : "CPU only"}
-            </div>
+            <div>{hardware.vram}</div>
           </div>
         </div>
       </div>
@@ -64,17 +57,9 @@ export function StepHardware({
           <HardDrive className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Runtime</h2>
         </div>
-        <div className="text-sm text-(--dim)">
-          {diagnostics?.runtime.vllm_installed
-            ? `vLLM ${diagnostics.runtime.vllm_version ?? ""} detected.`
-            : "vLLM runtime not detected. Install to continue."}
-        </div>
-        {upgradeResult && (
-          <div className={`text-xs ${upgradeResult.success ? "text-(--hl2)" : "text-(--err)"}`}>
-            {upgradeResult.success
-              ? `Updated to vLLM ${upgradeResult.version}`
-              : upgradeResult.error}
-          </div>
+        <div className="text-sm text-(--dim)">{hardware.runtime}</div>
+        {upgradeMessage && (
+          <div className={`text-xs ${upgradeMessage.toneClassName}`}>{upgradeMessage.text}</div>
         )}
         <label className="flex items-start gap-3 rounded-lg border border-(--surface) bg-(--surface)/40 px-4 py-3 text-sm text-(--dim)">
           <input

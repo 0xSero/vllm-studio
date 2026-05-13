@@ -10,8 +10,12 @@ import type {
   RuntimeBackendInfo,
 } from "@/lib/types";
 import api from "@/lib/api";
-import type { RealtimeStatusSnapshot } from "./realtime-status-store/types";
-import type { LeaseInfo, RuntimeSummaryData, ServiceEntry } from "./realtime-status-store/types";
+import type {
+  LeaseInfo,
+  RealtimeStatusSnapshot,
+  RuntimeSummaryData,
+  ServiceEntry,
+} from "./realtime-status-store/types";
 import {
   areGpusEqual,
   areLaunchProgressEqual,

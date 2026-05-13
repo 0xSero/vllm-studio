@@ -1,6 +1,11 @@
 import type { StateCreator } from "zustand";
-import { DEFAULT_FONT_FAMILY_ID, DEFAULT_FONT_SIZE_ID } from "@/lib/themes";
-import type { FontFamilyId, FontSizeId, ThemeId } from "@/lib/themes";
+import {
+  DEFAULT_FONT_FAMILY_ID,
+  DEFAULT_FONT_SIZE_ID,
+  type FontFamilyId,
+  type FontSizeId,
+  type ThemeId,
+} from "@/lib/themes";
 import {
   applyFontFamilyToDocument,
   applyFontSizeToDocument,

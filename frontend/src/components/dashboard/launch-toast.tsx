@@ -1,4 +1,5 @@
 import type { LaunchProgress } from "@/lib/types";
+import { resolveLaunchToastView, type LaunchToastView } from "./launch-toast-model";
 
 interface LaunchToastProps {
   launching: boolean;
@@ -6,14 +7,8 @@ interface LaunchToastProps {
 }
 
 export function LaunchToast({ launching, launchProgress }: LaunchToastProps) {
-  if (!launching && !launchProgress) return null;
-  if (
-    !launching &&
-    (launchProgress?.stage === "preempting" ||
-      launchProgress?.stage === "evicting" ||
-      launchProgress?.stage === "launching" ||
-      launchProgress?.stage === "waiting")
-  ) {
+  const toast = resolveLaunchToastView(launching, launchProgress);
+  if (!toast.visible) {
     return null;
   }
 
@@ -23,30 +18,31 @@ export function LaunchToast({ launching, launchProgress }: LaunchToastProps) {
       style={{ marginBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="space-y-1.5">
-        <div className="text-xs font-medium text-(--fg) capitalize">
-          {launchProgress?.stage === "error" || launchProgress?.stage === "cancelled" ? (
-            <span className="text-(--err)">{launchProgress.stage}</span>
-          ) : launchProgress?.stage === "ready" ? (
-            <span className="text-(--hl2)">{launchProgress.stage}</span>
-          ) : (
-            launchProgress?.stage || "Starting..."
-          )}
-        </div>
-        <div className="text-xs text-(--dim)">
-          {launchProgress?.message || "Preparing model launch..."}
-        </div>
+        <div className="text-xs font-medium text-(--fg) capitalize">{renderStage(toast)}</div>
+        <div className="text-xs text-(--dim)">{toast.message}</div>
       </div>
-      {launchProgress?.progress != null &&
-        launchProgress.stage !== "ready" &&
-        launchProgress.stage !== "error" &&
-        launchProgress.stage !== "cancelled" && (
-          <div className="mt-3 h-0.5 bg-(--dim)/30 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-(--fg)/40 rounded-full transition-all duration-300"
-              style={{ width: `${Math.round(launchProgress.progress * 100)}%` }}
-            />
-          </div>
-        )}
+      {toast.progressPercent != null && <ProgressBar progressPercent={toast.progressPercent} />}
+    </div>
+  );
+}
+
+function renderStage(toast: LaunchToastView) {
+  if (toast.stageTone === "error") {
+    return <span className="text-(--err)">{toast.stageText}</span>;
+  }
+  if (toast.stageTone === "ready") {
+    return <span className="text-(--hl2)">{toast.stageText}</span>;
+  }
+  return toast.stageText;
+}
+
+function ProgressBar({ progressPercent }: { progressPercent: number }) {
+  return (
+    <div className="mt-3 h-0.5 bg-(--dim)/30 rounded-full overflow-hidden">
+      <div
+        className="h-full bg-(--fg)/40 rounded-full transition-all duration-300"
+        style={{ width: `${progressPercent}%` }}
+      />
     </div>
   );
 }

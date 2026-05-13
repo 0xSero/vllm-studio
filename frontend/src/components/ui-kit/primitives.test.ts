@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createElement } from "react";
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import { UiInsetSurface, UiModal, UiModalHeader, UiPanelSurface } from "./index";
 
 describe("ui-kit primitives", () => {

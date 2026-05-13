@@ -1,12 +1,15 @@
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
+import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
+import { findPaneByPiSessionId } from "@/lib/agent/sessions/selectors";
 import type { Project } from "@/lib/agent/projects/types";
 import type { SessionId } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
-
-const EMPTY_SELECTION: ToolSelection = { plugins: [], skills: [] };
 import type { AgentModel, PaneId, WorkspaceAction, WorkspaceState } from "./types";
-import { findPaneByPiSessionId } from "@/lib/agent/sessions/selectors";
-import { setupWarningFromPiCheck, type WorkspaceStorage } from "./store";
+import {
+  loadPersistedActiveAgentSessions,
+  setupWarningFromPiCheck,
+  type WorkspaceStorage,
+} from "./store";
 import { writeActiveSessions, writePaneState } from "./persistence";
 import {
   ACTIVE_AGENT_SESSION_OPEN_EVENT,
@@ -17,8 +20,8 @@ import {
   PROJECTS_LOADED_EVENT,
   SESSIONS_CHANGED_EVENT,
 } from "./events";
-import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
-import { loadPersistedActiveAgentSessions } from "./store";
+
+const EMPTY_SELECTION: ToolSelection = { plugins: [], skills: [] };
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
 

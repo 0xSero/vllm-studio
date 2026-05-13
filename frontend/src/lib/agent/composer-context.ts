@@ -162,48 +162,54 @@ function selectedContextLines(
   plugins: ComposerPluginRef[] = [],
   skills: ComposerSkillRef[] = [],
 ): string[] {
+  return [...selectedPluginContextLines(plugins), ...selectedSkillContextLines(skills)];
+}
+
+function selectedPluginContextLines(plugins: ComposerPluginRef[] = []): string[] {
   const lines: string[] = [];
   const enabledPlugins = activeComposerPlugins(plugins);
-  if (enabledPlugins.length) {
-    lines.push(`Enabled plugins: ${enabledPlugins.map(pluginRefLabel).join(", ")}.`);
-    for (const plugin of enabledPlugins) {
-      const label = pluginRefLabel(plugin);
-      const summary = plugin.shortDescription ?? plugin.description;
-      if (summary) lines.push(`Plugin ${label}: ${summary}`);
-      if (plugin.capabilities?.length) {
-        lines.push(`Plugin ${label} capabilities: ${plugin.capabilities.join(", ")}`);
-      }
-      if (plugin.defaultPrompts?.length) {
-        lines.push(
-          `Plugin ${label} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`,
-        );
-      }
-      if (plugin.instructions) lines.push(`Plugin ${label} instructions:\n${plugin.instructions}`);
-      const runtime = pluginRuntimeDetails(plugin);
-      if (runtime.length) {
-        lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);
-      }
-      if (plugin.appIds?.length) {
-        lines.push(`Plugin ${label} declares app connectors: ${plugin.appIds.join(", ")}`);
-      }
-    }
-    if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "browser-use"))) {
-      lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
-    }
-    if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "computer-use"))) {
-      lines.push(
-        "Computer-use is selected; use the vLLM Studio browser tools for browser/webview tasks. Full desktop-control MCP may be unavailable outside a Codex-signed/brokered runtime; do not retry launch-constrained desktop MCP failures forever.",
-      );
-    }
+  if (!enabledPlugins.length) return lines;
+  lines.push(`Enabled plugins: ${enabledPlugins.map(pluginRefLabel).join(", ")}.`);
+  for (const plugin of enabledPlugins) lines.push(...pluginContextLines(plugin));
+  if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "browser-use"))) {
+    lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
   }
-  if (skills.length) {
-    lines.push("Loaded skills:");
-    for (const skill of skills) {
-      const label = `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`;
-      lines.push(skill.instructions ? `${label}\n${skill.instructions}` : label);
-    }
+  if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "computer-use"))) {
+    lines.push(
+      "Computer-use is selected; use the vLLM Studio browser tools for browser/webview tasks. Full desktop-control MCP may be unavailable outside a Codex-signed/brokered runtime; do not retry launch-constrained desktop MCP failures forever.",
+    );
   }
   return lines;
+}
+
+function pluginContextLines(plugin: ComposerPluginRef): string[] {
+  const label = pluginRefLabel(plugin);
+  const lines: string[] = [];
+  const summary = plugin.shortDescription ?? plugin.description;
+  if (summary) lines.push(`Plugin ${label}: ${summary}`);
+  if (plugin.capabilities?.length) {
+    lines.push(`Plugin ${label} capabilities: ${plugin.capabilities.join(", ")}`);
+  }
+  if (plugin.defaultPrompts?.length) {
+    lines.push(`Plugin ${label} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`);
+  }
+  if (plugin.instructions) lines.push(`Plugin ${label} instructions:\n${plugin.instructions}`);
+  const runtime = pluginRuntimeDetails(plugin);
+  if (runtime.length) lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);
+  if (plugin.appIds?.length) {
+    lines.push(`Plugin ${label} declares app connectors: ${plugin.appIds.join(", ")}`);
+  }
+  return lines;
+}
+
+function selectedSkillContextLines(skills: ComposerSkillRef[] = []): string[] {
+  if (!skills.length) return [];
+  return ["Loaded skills:", ...skills.map(skillContextLine)];
+}
+
+function skillContextLine(skill: ComposerSkillRef): string {
+  const label = `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`;
+  return skill.instructions ? `${label}\n${skill.instructions}` : label;
 }
 
 function pluginRuntimeDetails(plugin: ComposerPluginRef): string[] {

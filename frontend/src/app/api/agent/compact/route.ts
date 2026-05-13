@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import {
+  type ComposerPluginRef,
+  type ComposerSkillRef,
   sanitizeComposerPlugins,
   sanitizeComposerSkills,
   selectedContextInstructions,
 } from "@/lib/agent/composer-context";
-import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
 
 export const runtime = "nodejs";

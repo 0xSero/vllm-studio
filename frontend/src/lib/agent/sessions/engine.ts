@@ -1,38 +1,18 @@
-// useSessionEngine — owns the network/state side of running an agent session.
-// ChatPane only handles composer UX (input, attachments, focus); everything
-// from "send a turn" downward — SSE plumbing, pi-event accumulation, queue
-// drain, runtime status polling, replay — lives here.
-//
-// The hook deliberately mirrors the chat-pane internals it replaces. Callers
-// pass session state (`tabs`, `activeTabId`) and a write callback (`updateTab`);
-// the hook returns the action functions.
-
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
-  appendDelta,
-  appendEventBlock,
-  compactionTextFromEvent,
-  drainQueueAfterAgentEnd,
-  extractToolText,
+  type ChatMessage,
   mergeCanonicalAndRuntimeEvents,
-  messageText,
   newId,
   nowLabel,
   piSessionIdFromEvent,
-  reconcileQueueWithPiEvent,
   replayCursorAfterRuntimeHydration,
   replaySessionEvents,
   runtimeStatusAcceptsControl,
-  runtimeStatusLooksActive,
   sessionTitleFromPrompt,
   statusAfterControlPhase,
-  stringifyToolArgs,
-  toolCallDeltaFromUpdate,
-  toolCallSnapshotFromUpdate,
-  upsertTool,
+  type TokenStats,
   usageFromEvent,
-  visibleUserTextFromPi,
 } from "@/lib/agent/session";
 import {
   activeComposerPlugins,
@@ -40,10 +20,18 @@ import {
   type ComposerPluginRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
-import type { ChatMessage, TokenStats, ToolBlock } from "@/lib/agent/session";
 import type { Session, SessionId, SessionStatus } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
 import * as api from "./api";
+import {
+  resolveResumeRuntimeTarget,
+  resolveRuntimeSessionId,
+  runtimeCanHydrateCanonicalSession,
+  runtimeIsActiveForPiSession,
+} from "./engine-helpers";
+import { applyPiEventToSession } from "./pi-event-applier";
+import { drainQueuedTurnAfterAgentEnd } from "./queue-drain";
+import { subscribeResumeRuntimeSession } from "./runtime-resume";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -108,9 +96,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   } = deps;
 
   const tabsRef = useRef(tabs);
-  useEffect(() => {
-    tabsRef.current = tabs;
-  }, [tabs]);
+  tabsRef.current = tabs;
   const selectionForRef = useRef(selectionFor);
   selectionForRef.current = selectionFor;
 
@@ -132,234 +118,16 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [updateSession],
   );
 
-  // Apply a single pi event to a session — the meaty accumulator: routes the
-  // event by type into delta-merge / tool-block / queue updates.
+  // Apply a single pi event to a session through a deep Module that owns Pi
+  // event routing while the hook owns React lifecycle and runtime streams.
   const applyPiEvent = useCallback(
     (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => {
-      const eventType = event.type;
-      const currentAssistantId = () => liveAssistantIdsRef.current.get(sessionId) ?? assistantId;
-      const ensureNextAssistant = () => {
-        const id = newId("assistant");
-        liveAssistantIdsRef.current.set(sessionId, id);
-        updateSession(sessionId, (session) => ({
-          ...session,
-          activeAssistantId: id,
-          messages: [
-            ...session.messages,
-            { id, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-          ],
-        }));
-        return id;
-      };
-      const patchCurrentAssistant = (patch: (msg: ChatMessage) => ChatMessage) => {
-        patchAssistant(sessionId, currentAssistantId(), patch);
-      };
-
-      if (eventType === "queue_update") {
-        updateSession(sessionId, (session) => ({
-          ...session,
-          queue: reconcileQueueWithPiEvent(session.queue ?? [], event),
-        }));
-        return;
-      }
-      if (eventType === "message_start" || eventType === "message_end") {
-        const msg = event.message as
-          | { role?: string; content?: string | Record<string, unknown>[] }
-          | undefined;
-        if (msg?.role === "user") {
-          const text = visibleUserTextFromPi(messageText(msg.content));
-          if (!text) return;
-          const current = tabsRef.current.find((tab) => tab.id === sessionId);
-          const lastUser = [...(current?.messages ?? [])]
-            .reverse()
-            .find((entry) => entry.role === "user");
-          if (lastUser && (lastUser.text === text || text.includes(lastUser.text))) return;
-          updateSession(sessionId, (session) => ({
-            ...session,
-            messages: [
-              ...session.messages,
-              { id: newId("user"), role: "user", text, timestamp: nowLabel() },
-            ],
-          }));
-          ensureNextAssistant();
-          return;
-        }
-      }
-      const usage = usageFromEvent(event);
-      if (usage) {
-        updateSession(sessionId, (session) => ({ ...session, tokenStats: usage }));
-      }
-
-      const compactionText = compactionTextFromEvent(event);
-      if (compactionText) {
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: appendEventBlock(msg.blocks ?? [], compactionText),
-        }));
-        return;
-      }
-
-      if (eventType === "message_update") {
-        const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
-        const updateType = ame?.type;
-        if (updateType === "text_delta" && typeof ame?.delta === "string") {
-          const delta = ame.delta;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: appendDelta(msg.blocks ?? [], "text", delta),
-          }));
-          return;
-        }
-        if (updateType === "thinking_delta" && typeof ame?.delta === "string") {
-          const delta = ame.delta;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: appendDelta(msg.blocks ?? [], "thinking", delta),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_start") {
-          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
-          if (!snapshot) return;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              snapshot.id,
-              (existing) => ({
-                ...existing,
-                name: snapshot.name,
-                args: snapshot.args ?? existing.args,
-              }),
-              () => ({
-                kind: "tool",
-                id: snapshot.id,
-                name: snapshot.name,
-                status: "running",
-                text: "",
-                argsText: stringifyToolArgs(snapshot.args) ?? "",
-                args: snapshot.args,
-              }),
-            ),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_delta") {
-          const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
-          const delta = toolCallDeltaFromUpdate(ame);
-          if (!snapshot || (!delta && !snapshot.args)) return;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              snapshot.id,
-              (existing) => ({
-                ...existing,
-                name: snapshot.name || existing.name,
-                args: snapshot.args ?? existing.args,
-                argsText: delta
-                  ? (existing.argsText ?? "") + delta
-                  : existing.argsText || stringifyToolArgs(snapshot.args),
-              }),
-              () => ({
-                kind: "tool",
-                id: snapshot.id,
-                name: snapshot.name,
-                status: "running",
-                text: "",
-                argsText: delta || stringifyToolArgs(snapshot.args) || "",
-                args: snapshot.args,
-              }),
-            ),
-          }));
-          return;
-        }
-        if (updateType === "toolcall_end") {
-          const toolCall = ame?.toolCall as
-            | { id?: string; name?: string; arguments?: unknown }
-            | undefined;
-          if (!toolCall) return;
-          const id = toolCall.id || newId("tool");
-          const name = toolCall.name || "tool";
-          const argsText = JSON.stringify(toolCall.arguments ?? {}, null, 2);
-          const argsObj =
-            toolCall.arguments && typeof toolCall.arguments === "object"
-              ? (toolCall.arguments as Record<string, unknown>)
-              : undefined;
-          patchCurrentAssistant((msg) => ({
-            ...msg,
-            blocks: upsertTool(
-              msg.blocks ?? [],
-              id,
-              (existing) => ({
-                ...existing,
-                name,
-                argsText,
-                args: argsObj ?? existing.args,
-                text: existing.text || argsText,
-              }),
-              () => ({
-                kind: "tool",
-                id,
-                name,
-                status: "running",
-                argsText,
-                args: argsObj,
-                text: argsText,
-              }),
-            ),
-          }));
-          return;
-        }
-      }
-
-      if (eventType === "tool_execution_start") {
-        const id = String(event.toolCallId || newId("tool"));
-        const name = String(event.toolName || "tool");
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: upsertTool(
-            msg.blocks ?? [],
-            id,
-            (existing) => existing,
-            () => ({ kind: "tool", id, name, status: "running", text: "" }),
-          ),
-        }));
-        return;
-      }
-
-      if (eventType === "tool_execution_update" || eventType === "tool_execution_end") {
-        const id = String(event.toolCallId || "");
-        if (!id) return;
-        const resultText = extractToolText(event.partialResult || event.result);
-        patchCurrentAssistant((msg) => ({
-          ...msg,
-          blocks: upsertTool(
-            msg.blocks ?? [],
-            id,
-            (existing) => ({
-              ...existing,
-              status:
-                eventType === "tool_execution_end"
-                  ? ((event.isError ? "error" : "done") as ToolBlock["status"])
-                  : existing.status,
-              resultText: resultText || existing.resultText,
-              text: existing.argsText || existing.text || resultText,
-            }),
-            () => ({
-              kind: "tool",
-              id,
-              name: "tool",
-              status:
-                eventType === "tool_execution_end"
-                  ? ((event.isError ? "error" : "done") as ToolBlock["status"])
-                  : "running",
-              resultText,
-              text: resultText,
-            }),
-          ),
-        }));
-      }
+      applyPiEventToSession(
+        { liveAssistantIdsRef, patchAssistant, tabsRef, updateSession },
+        sessionId,
+        assistantId,
+        event,
+      );
     },
     [patchAssistant, updateSession],
   );
@@ -428,8 +196,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               updateSession(sessionId, (session) => ({
                 ...session,
                 piSessionId: eventId || session.piSessionId,
-                lastEventSeq:
-                  typeof payload.seq === "number" ? payload.seq : session.lastEventSeq,
+                lastEventSeq: typeof payload.seq === "number" ? payload.seq : session.lastEventSeq,
                 status: agentEnded ? "idle" : session.status,
                 activeAssistantId: agentEnded ? undefined : assistantId,
               }));
@@ -556,12 +323,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
           selected.piSessionId ??
           null;
-        const runtimeStillActive = runtimeStatus
-          ? runtimeStatusLooksActive(runtimeStatus) &&
-            (!runtimeStatus.piSessionId ||
-              !currentPiSessionId ||
-              runtimeStatus.piSessionId === currentPiSessionId)
-          : false;
+        const runtimeStillActive = runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
         updateSession(sessionId, (session) => ({
           ...session,
           status: runtimeStillActive ? "running" : "idle",
@@ -576,24 +338,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
 
       // Drain the per-session queue once the agent finished its turn.
       if (agentEnded) {
-        const queued = (tabsRef.current.find((tab) => tab.id === sessionId)?.queue ?? []).slice();
-        const { next, remaining } = drainQueueAfterAgentEnd(queued);
-        if (next) {
-          updateSession(sessionId, (session) => ({ ...session, queue: remaining }));
-          setTimeout(
-            () =>
-              void submitPromptRef.current({
-                text: next.text,
-                prompt: next.text,
-                displayText: next.text,
-                userText: next.text,
-                targetSessionId: sessionId,
-              }),
-            0,
-          );
-        } else if (queued.length > 0) {
-          updateSession(sessionId, (session) => ({ ...session, queue: remaining }));
-        }
+        drainQueuedTurnAfterAgentEnd({ submitPromptRef, tabsRef, updateSession }, sessionId);
       }
     },
     [
@@ -608,14 +353,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     ],
   );
 
-  useEffect(() => {
-    submitPromptRef.current = submitPrompt;
-  }, [submitPrompt]);
+  submitPromptRef.current = submitPrompt;
 
   const abortTurn = useCallback(
     async (sessionId: SessionId) => {
       const session = tabsRef.current.find((tab) => tab.id === sessionId);
-      const runtime = session?.runtimeSessionId || runtimeSessionId;
+      const runtime = resolveRuntimeSessionId(session, runtimeSessionId);
       await api.abortSession(runtime);
       updateSession(sessionId, (s) => ({ ...s, status: "idle" }));
     },
@@ -628,13 +371,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       updateSession(sessionId, (session) => ({ ...session, status: "loading", error: "" }));
       try {
         const { events } = await api.loadCanonicalSession(piSessionId, cwd);
-        const runtimeId =
-          tabsRef.current.find((tab) => tab.id === sessionId)?.runtimeSessionId ||
-          runtimeSessionId;
+        const runtimeId = resolveRuntimeSessionId(
+          tabsRef.current.find((tab) => tab.id === sessionId),
+          runtimeSessionId,
+        );
         const runtimeStatus = await api.loadRuntimeStatus(runtimeId);
-        const runtimeActive =
-          runtimeStatus?.active === true &&
-          (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId);
+        const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
         const replayEvents = mergeCanonicalAndRuntimeEvents(
           events,
           runtimeActive ? runtimeStatus?.events : [],
@@ -703,129 +445,39 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   // session's status flips to running/starting and we *don't* own the local
   // stream (e.g. after a refresh, or when a different pane joins a running
   // session).
-  const resumeRuntimeId =
-    tabsRef.current.find((tab) => tab.id === activeTabId)?.status === "running" ||
-    tabsRef.current.find((tab) => tab.id === activeTabId)?.status === "starting"
-      ? activeTabId
-      : null;
-  const resumeRuntimeSessionId = resumeRuntimeId
-    ? tabsRef.current.find((tab) => tab.id === resumeRuntimeId)?.runtimeSessionId ||
-      runtimeSessionId
-    : null;
+  const resumeRuntimeTarget = resolveResumeRuntimeTarget(
+    tabsRef.current,
+    activeTabId,
+    runtimeSessionId,
+  );
+  const resumeRuntimeId = resumeRuntimeTarget?.sessionId ?? null;
+  const resumeRuntimeSessionId = resumeRuntimeTarget?.runtimeSessionId ?? null;
+  const resumeAfter = resumeRuntimeTarget?.after ?? 0;
 
   useEffect(() => {
     if (!resumeRuntimeId || !resumeRuntimeSessionId) return;
     if (localStreamRef.current.has(resumeRuntimeId)) return;
-    const sessionId = resumeRuntimeId;
-    const runtime = resumeRuntimeSessionId;
-    const after = tabsRef.current.find((tab) => tab.id === sessionId)?.lastEventSeq ?? 0;
 
-    let closed = false;
-    const ensureAssistantId = (): string => {
-      const current = tabsRef.current.find((tab) => tab.id === sessionId);
-      const existing =
-        (current?.activeAssistantId &&
-          current.messages.some((message) => message.id === current.activeAssistantId) &&
-          current.activeAssistantId) ||
-        [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")
-          ?.id;
-      if (existing) {
-        updateSession(sessionId, (session) => ({ ...session, activeAssistantId: existing }));
-        return existing;
-      }
-      const assistantId = newId("assistant");
-      updateSession(sessionId, (session) => ({
-        ...session,
-        activeAssistantId: assistantId,
-        messages: [
-          ...session.messages,
-          { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-        ],
-      }));
-      return assistantId;
-    };
-
-    const sub = api.subscribeRuntimeEvents(runtime, after, {
-      onPayload: (payload) => {
-        if (closed) return;
-        if (payload.type === "status") {
-          updateSession(sessionId, (session) => ({
-            ...session,
-            piSessionId: payload.session?.piSessionId || session.piSessionId,
-            status: payload.phase === "done" || payload.phase === "idle" ? "idle" : "running",
-            activeAssistantId:
-              payload.phase === "done" || payload.phase === "idle"
-                ? undefined
-                : session.activeAssistantId,
-          }));
-          return;
-        }
-        if (payload.type === "pi") {
-          const eventId = piSessionIdFromEvent(payload.event);
-          const assistantId = ensureAssistantId();
-          const agentEnded = isAgentEndEvent(payload.event);
-          updateSession(sessionId, (session) => ({
-            ...session,
-            piSessionId: eventId || session.piSessionId,
-            lastEventSeq:
-              typeof payload.seq === "number" ? payload.seq : session.lastEventSeq,
-            status: agentEnded ? "idle" : "running",
-            activeAssistantId: agentEnded ? undefined : assistantId,
-          }));
-          if (eventId) onPiSessionIdChange?.(eventId);
-          applyPiEvent(sessionId, assistantId, payload.event);
-          if (agentEnded) {
-            const queued = (
-              tabsRef.current.find((tab) => tab.id === sessionId)?.queue ?? []
-            ).slice();
-            const { next, remaining } = drainQueueAfterAgentEnd(queued);
-            if (next) {
-              updateSession(sessionId, (session) => ({ ...session, queue: remaining }));
-              setTimeout(
-                () =>
-                  void submitPromptRef.current({
-                    text: next.text,
-                    prompt: next.text,
-                    displayText: next.text,
-                    userText: next.text,
-                    targetSessionId: sessionId,
-                  }),
-                0,
-              );
-            } else if (queued.length > 0) {
-              updateSession(sessionId, (session) => ({ ...session, queue: remaining }));
-            }
-          }
-        }
-      },
-      onError: () => {
-        if (closed) return;
-        // Probe runtime status — if the session genuinely went away, downgrade
-        // to idle. Transient drops fall through to EventSource's auto-retry.
-        void api.loadRuntimeStatus(runtime).then((status) => {
-          if (closed) return;
-          if (status?.active) {
-            updateSession(sessionId, (session) => ({
-              ...session,
-              piSessionId: status.piSessionId || session.piSessionId,
-              status: "running",
-            }));
-            return;
-          }
-          sub.close();
-          updateSession(sessionId, (session) =>
-            session.status === "running" || session.status === "starting"
-              ? { ...session, status: "idle", activeAssistantId: undefined }
-              : session,
-          );
-        });
-      },
+    const sub = subscribeResumeRuntimeSession({
+      after: resumeAfter,
+      api,
+      applyPiEvent,
+      onPiSessionIdChange,
+      runtime: resumeRuntimeSessionId,
+      sessionId: resumeRuntimeId,
+      submitPromptRef,
+      tabsRef,
+      updateSession,
     });
-    return () => {
-      closed = true;
-      sub.close();
-    };
-  }, [applyPiEvent, onPiSessionIdChange, resumeRuntimeId, resumeRuntimeSessionId, updateSession]);
+    return sub.close;
+  }, [
+    applyPiEvent,
+    onPiSessionIdChange,
+    resumeAfter,
+    resumeRuntimeId,
+    resumeRuntimeSessionId,
+    updateSession,
+  ]);
 
   return useMemo<SessionEngine>(
     () => ({

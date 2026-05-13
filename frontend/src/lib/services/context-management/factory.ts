@@ -3,8 +3,11 @@
  */
 
 import { ContextManagementService } from "./service";
-import { DEFAULT_CONTEXT_CONFIG } from "./types";
-import type { IContextManagementService, ContextConfig } from "./types";
+import {
+  DEFAULT_CONTEXT_CONFIG,
+  type ContextConfig,
+  type IContextManagementService,
+} from "./types";
 
 let defaultInstance: IContextManagementService | null = null;
 

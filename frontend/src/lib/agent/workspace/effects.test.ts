@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SessionTab } from "@/app/agent/_components/chat-pane";
+import type { SessionTab } from "@/lib/agent/session/types";
 import type { ProjectEntry, WorkspaceAction, WorkspaceState } from "./types";
 import {
   PANE_LAYOUT_KEY,
@@ -9,10 +9,7 @@ import {
   type WorkspaceStorage,
 } from "./store";
 import { runWorkspaceEffect } from "./effects";
-import {
-  ACTIVE_AGENT_SESSIONS_EVENT,
-  SESSIONS_CHANGED_EVENT,
-} from "./events";
+import { ACTIVE_AGENT_SESSIONS_EVENT, SESSIONS_CHANGED_EVENT } from "./events";
 
 function project(overrides: Partial<ProjectEntry> = {}): ProjectEntry {
   return {
@@ -78,7 +75,7 @@ function makeDeps(storage = memoryStorage()) {
   return { deps, events, queueReplay, storage };
 }
 
-function hydratedProjectState(state: WorkspaceState, _selected: ProjectEntry): WorkspaceState {
+function hydratedProjectState(state: WorkspaceState): WorkspaceState {
   return {
     ...state,
     selectedModel: "model-1",
@@ -108,8 +105,7 @@ describe("runWorkspaceEffect", () => {
 
   it("dispatches a sessions refresh when a tab gains a pi session id", () => {
     const { deps, events } = makeDeps();
-    const selected = project();
-    const state = hydratedProjectState(createInitialState(), selected);
+    const state = hydratedProjectState(createInitialState());
     const replayAction: WorkspaceAction = {
       type: "replaySession",
       piSessionId: "pi-1",
@@ -142,7 +138,7 @@ describe("runWorkspaceEffect", () => {
   it("broadcasts active sessions only when the computed payload changes", () => {
     const { deps, events } = makeDeps();
     const selected = project();
-    const state = hydratedProjectState(createInitialState(), selected);
+    const state = hydratedProjectState(createInitialState());
     const replayAction: WorkspaceAction = {
       type: "replaySession",
       piSessionId: "pi-1",

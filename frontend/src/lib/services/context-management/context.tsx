@@ -8,12 +8,12 @@
 
 import { createContext, useMemo, type ReactNode } from "react";
 import { contextManagementServiceFactory } from "./factory";
-import type {
-  IContextManagementService,
-  ContextConfig,
-  ContextManagementContextValue,
+import {
+  DEFAULT_CONTEXT_CONFIG,
+  type ContextConfig,
+  type ContextManagementContextValue,
+  type IContextManagementService,
 } from "./types";
-import { DEFAULT_CONTEXT_CONFIG } from "./types";
 
 export const ContextManagementContext = createContext<ContextManagementContextValue | null>(null);
 

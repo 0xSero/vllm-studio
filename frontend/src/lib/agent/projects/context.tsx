@@ -4,19 +4,11 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import {
-  PROJECTS_CHANGED_EVENT,
-  PROJECTS_LOADED_EVENT,
-  SESSIONS_CHANGED_EVENT,
-} from "@/lib/agent/workspace/events";
-import * as api from "./api";
-import { readSelectedProjectId, writeSelectedProjectId } from "./persistence";
+import { createProjectsStore } from "./store";
 import type { GitSummary, Project, ProjectId } from "./types";
 
 export type ProjectsContextValue = {
@@ -43,81 +35,13 @@ export type ProjectsContextValue = {
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 
-function notifyProjectsChanged() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
-}
-
-function notifySessionsChanged() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
-}
-
 export function ProjectsProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [selectedId, setSelectedIdState] = useState<ProjectId | null>(() => readSelectedProjectId());
-  const [gitSummaries, setGitSummaries] = useState<ReadonlyMap<string, GitSummary>>(new Map());
-  const lastGitFetchRef = useRef<string | null>(null);
-
-  const firstLoadRef = useRef(false);
-
-  // Persist on every write, including the auto-select that runs when the
-  // current selection vanishes (project deleted) or on first load.
-  const setSelectedId = useCallback(
-    (next: ProjectId | null | ((current: ProjectId | null) => ProjectId | null)) => {
-      setSelectedIdState((current) => {
-        const resolved = typeof next === "function" ? next(current) : next;
-        if (resolved !== current) writeSelectedProjectId(resolved);
-        return resolved;
-      });
-    },
-    [],
+  const store = useMemo(() => createProjectsStore(), []);
+  const { projects, loaded, selectedId, gitSummaries } = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
   );
-
-  const refresh = useCallback(async () => {
-    let next: Project[] = [];
-    try {
-      next = await api.loadProjects();
-      setProjects(next);
-    } catch {
-      // Swallow — we still mark loaded so consumers don't wait forever.
-    }
-    setLoaded(true);
-    setSelectedId((current) => (current && next.some((p) => p.id === current) ? current : (next[0]?.id ?? null)));
-    if (!firstLoadRef.current) {
-      firstLoadRef.current = true;
-      // Notify the workspace (and any other subscribers) that the project
-      // list is now authoritative — they can hydrate session snapshots etc.
-      window.dispatchEvent(
-        new CustomEvent<{ projects: Project[] }>(PROJECTS_LOADED_EVENT, { detail: { projects: next } }),
-      );
-    }
-  }, [setSelectedId]);
-
-  useEffect(() => {
-    void refresh();
-    const onProjectsChanged = () => void refresh();
-    window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged);
-    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged);
-  }, [refresh]);
-
-  const selectProject = useCallback(
-    (project: Project | null) => setSelectedId(project?.id ?? null),
-    [setSelectedId],
-  );
-
-  const upsertProject = useCallback((project: Project) => {
-    setProjects((current) => [project, ...current.filter((entry) => entry.id !== project.id)]);
-    notifyProjectsChanged();
-  }, []);
-
-  const removeProject = useCallback(async (id: string) => {
-    await api.removeProject(id);
-    setProjects((current) => current.filter((entry) => entry.id !== id));
-    setSelectedId((current) => (current === id ? null : current));
-    notifyProjectsChanged();
-  }, []);
 
   const findById = useCallback(
     (id: string | null | undefined): Project | null =>
@@ -140,48 +64,13 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   );
 
   const gitSummary = useCallback(
-    (cwd: string | null | undefined): GitSummary | null => (cwd ? gitSummaries.get(cwd) ?? null : null),
+    (cwd: string | null | undefined): GitSummary | null =>
+      cwd ? (gitSummaries.get(cwd) ?? null) : null,
     [gitSummaries],
   );
 
-  const loadGitSummary = useCallback(async (cwd: string) => {
-    try {
-      const summary = await api.loadGitSummary(cwd);
-      setGitSummaries((current) => {
-        const next = new Map(current);
-        if (summary) next.set(cwd, summary);
-        else next.delete(cwd);
-        return next;
-      });
-      return summary;
-    } catch {
-      setGitSummaries((current) => {
-        if (!current.has(cwd)) return current;
-        const next = new Map(current);
-        next.delete(cwd);
-        return next;
-      });
-      return null;
-    }
-  }, []);
-
   const selectedProject = useMemo(() => findById(selectedId), [findById, selectedId]);
   const agentCwd = selectedProject?.path ?? "";
-
-  // Auto-fetch git summary for the selected project's path (once per path).
-  useEffect(() => {
-    if (!agentCwd || lastGitFetchRef.current === agentCwd) return;
-    lastGitFetchRef.current = agentCwd;
-    void loadGitSummary(agentCwd);
-  }, [agentCwd, loadGitSummary]);
-
-  const initGitForActiveProject = useCallback(async () => {
-    if (!agentCwd) return;
-    await api.initGit(agentCwd);
-    await loadGitSummary(agentCwd);
-    notifyProjectsChanged();
-    notifySessionsChanged();
-  }, [agentCwd, loadGitSummary]);
 
   const value = useMemo<ProjectsContextValue>(
     () => ({
@@ -194,12 +83,12 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       findById,
       findByPath,
       resolveProject,
-      selectProject,
-      upsertProject,
-      removeProject,
-      refresh,
-      loadGitSummary,
-      initGitForActiveProject,
+      selectProject: store.selectProject,
+      upsertProject: store.upsertProject,
+      removeProject: store.removeProject,
+      refresh: store.refresh,
+      loadGitSummary: store.loadGitSummary,
+      initGitForActiveProject: store.initGitForActiveProject,
     }),
     [
       projects,
@@ -211,12 +100,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       findById,
       findByPath,
       resolveProject,
-      selectProject,
-      upsertProject,
-      removeProject,
-      refresh,
-      loadGitSummary,
-      initGitForActiveProject,
+      store,
     ],
   );
 

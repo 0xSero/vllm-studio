@@ -2,8 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import { PageState } from "../../ui/page-state";
-import { RefreshButton } from "../../ui/refresh-button";
+import { PageState } from "@/components/ui-kit/page-state";
+import { RefreshButton } from "@/components/ui-kit/refresh-button";
 import { DailyUsageChart } from "./_components/daily-usage-chart";
 import { ModelPerformanceTable } from "./_components/model-performance-table";
 import { PerformanceDetails } from "./_components/performance-details";
@@ -125,15 +125,15 @@ export default function UsagePage() {
         {DailyUsageChart(safeStats, dailyByModel, modelsForChart)}
 
         {/* Model Performance Table */}
-        {ModelPerformanceTable(
-          sortedModels,
-          peakMetrics,
-          expandedRows,
-          sortField,
-          sortDirection,
-          handleSort,
-          toggleRow,
-        )}
+        <ModelPerformanceTable
+          expandedRows={expandedRows}
+          handleSort={handleSort}
+          peakMetrics={peakMetrics}
+          sortDirection={sortDirection}
+          sortField={sortField}
+          sortedModels={sortedModels}
+          toggleRow={toggleRow}
+        />
 
         {/* Performance Details & Secondary Metrics */}
         <div className="grid lg:grid-cols-2 gap-6">

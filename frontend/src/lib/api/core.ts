@@ -121,28 +121,37 @@ export function scrubTransportFetchErrorMessage(message: string): string {
     .trimEnd();
 }
 
+const BENIGN_SSE_MESSAGE_PARTS = [
+  "abort",
+  "failed to fetch",
+  "networkerror",
+  "network error",
+  "load failed",
+  "terminated",
+  "connection reset",
+  "econnreset",
+  "broken pipe",
+];
+
+function isAbortOrNetworkDomException(error: DOMException): boolean {
+  return error.name === "AbortError" || error.name === "NetworkError";
+}
+
+function hasBenignSseErrorMessage(error: Error): boolean {
+  const msg = error.message.toLowerCase();
+  return (
+    BENIGN_SSE_MESSAGE_PARTS.some((part) => msg.includes(part)) ||
+    (msg.includes("socket") && msg.includes("closed"))
+  );
+}
+
 /** Mid-stream TCP/TLS drops often surface as TypeError or runtime-specific messages (e.g. Bun). Treat as EOF for SSE. */
 function isBenignSseTransportFailure(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
   if (!error) return false;
-  if (error instanceof DOMException) {
-    if (error.name === "AbortError") return true;
-    if (error.name === "NetworkError") return true;
-  }
-  if (error instanceof Error) {
-    if (error.name === "AbortError") return true;
-    const msg = error.message.toLowerCase();
-    if (msg.includes("abort")) return true;
-    if (msg.includes("failed to fetch")) return true;
-    if (msg.includes("networkerror") || msg.includes("network error")) return true;
-    if (msg.includes("load failed")) return true;
-    if (msg.includes("terminated")) return true;
-    if (msg.includes("socket") && msg.includes("closed")) return true;
-    if (msg.includes("connection reset")) return true;
-    if (msg.includes("econnreset")) return true;
-    if (msg.includes("broken pipe")) return true;
-  }
+  if (error instanceof DOMException) return isAbortOrNetworkDomException(error);
   if (error instanceof TypeError) return true;
+  if (error instanceof Error) return error.name === "AbortError" || hasBenignSseErrorMessage(error);
   return false;
 }
 
@@ -192,6 +201,50 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
     if (!useProxy) return;
     if (response.headers.get("x-backend-override-invalid") !== "1") return;
     clearStoredBackendUrl();
+  };
+
+  const shouldRetryWithoutBackendOverride = (
+    response: Response,
+    headers: Record<string, string>,
+    retriedWithoutBackendOverride: boolean,
+  ): boolean =>
+    useProxy &&
+    response.headers.get("x-backend-override-invalid") === "1" &&
+    Boolean(headers["X-Backend-Url"]) &&
+    !retriedWithoutBackendOverride;
+
+  const responseError = async (response: Response): Promise<Error> => {
+    const errorBody: unknown = await response.json().catch(() => ({ detail: "Request failed" }));
+    return new Error(formatHttpErrorMessage(response.status, errorBody));
+  };
+
+  const normalizeRequestError = (error: unknown, timeout: number): Error => {
+    if (error instanceof Error && error.name === "AbortError") {
+      return new Error(`Request timeout after ${timeout}ms`);
+    }
+    if (error instanceof Error) return error;
+    return new Error(String(error));
+  };
+
+  const shouldRetryAttempt = (
+    error: unknown,
+    status: number | undefined,
+    attempt: number,
+    retries: number,
+  ): boolean => attempt < retries && isRetryableError(error, status);
+
+  const waitBeforeRetry = async (
+    endpoint: string,
+    attempt: number,
+    retries: number,
+    retryDelay: number,
+    cause: string,
+  ) => {
+    const backoffMs = retryDelay * Math.pow(2, attempt);
+    console.warn(
+      `[API] Retry ${attempt + 1}/${retries} for ${endpoint} after ${backoffMs}ms ${cause}`,
+    );
+    await delay(backoffMs);
   };
 
   const buildUrl = (endpoint: string): string => {
@@ -255,29 +308,21 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
         maybeClearInvalidBackendOverride(response);
 
         if (!response.ok) {
-          if (
-            useProxy &&
-            response.headers.get("x-backend-override-invalid") === "1" &&
-            headers["X-Backend-Url"] &&
-            !retriedWithoutBackendOverride
-          ) {
+          if (shouldRetryWithoutBackendOverride(response, headers, retriedWithoutBackendOverride)) {
             retriedWithoutBackendOverride = true;
             delete headers["X-Backend-Url"];
             continue;
           }
 
-          const errorBody: unknown = await response
-            .json()
-            .catch(() => ({ detail: "Request failed" }));
-          const errorMessage = formatHttpErrorMessage(response.status, errorBody);
-          lastError = new Error(errorMessage);
-
-          if (isRetryableError(lastError, response.status) && attempt < retries) {
-            const backoffMs = retryDelay * Math.pow(2, attempt);
-            console.warn(
-              `[API] Retry ${attempt + 1}/${retries} for ${endpoint} after ${backoffMs}ms (status: ${response.status})`,
+          lastError = await responseError(response);
+          if (shouldRetryAttempt(lastError, response.status, attempt, retries)) {
+            await waitBeforeRetry(
+              endpoint,
+              attempt,
+              retries,
+              retryDelay,
+              `(status: ${response.status})`,
             );
-            await delay(backoffMs);
             continue;
           }
 
@@ -288,21 +333,10 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
         return text ? (JSON.parse(text) as T) : (null as unknown as T);
       } catch (error) {
         clearTimeout(timeoutId);
+        lastError = normalizeRequestError(error, timeout);
 
-        if (error instanceof Error && error.name === "AbortError") {
-          lastError = new Error(`Request timeout after ${timeout}ms`);
-        } else if (error instanceof Error) {
-          lastError = error;
-        } else {
-          lastError = new Error(String(error));
-        }
-
-        if (isRetryableError(error, lastStatus) && attempt < retries) {
-          const backoffMs = retryDelay * Math.pow(2, attempt);
-          console.warn(
-            `[API] Retry ${attempt + 1}/${retries} for ${endpoint} after ${backoffMs}ms (${lastError.message})`,
-          );
-          await delay(backoffMs);
+        if (shouldRetryAttempt(error, lastStatus, attempt, retries)) {
+          await waitBeforeRetry(endpoint, attempt, retries, retryDelay, `(${lastError.message})`);
           continue;
         }
 

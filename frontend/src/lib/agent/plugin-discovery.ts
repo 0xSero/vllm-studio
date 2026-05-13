@@ -278,79 +278,112 @@ export function discoverPlugins(
   roots: string[] = defaultPluginRoots(),
   options: { configPath?: string; maxDepth?: number } = {},
 ): PluginRow[] {
-  const maxDepth = options.maxDepth ?? 8;
   const codexConfig = readCodexConfig(options.configPath ?? defaultCodexConfigPath());
+  const rows = discoverPluginRows(roots, codexConfig, options.maxDepth ?? 8);
+  return sortPluginRows(dedupePluginRows(rows));
+}
+
+function discoverPluginRows(
+  roots: string[],
+  codexConfig: CodexConfig,
+  maxDepth: number,
+): PluginRow[] {
   const rows: PluginRow[] = [];
   const seen = new Set<string>();
+  for (const root of roots) collectPluginRows(root, 0, { codexConfig, maxDepth, rows, seen });
+  if (includesDefaultPluginRoot(roots)) rows.push(...knownLocalPluginRows());
+  return rows;
+}
 
-  const visit = (dir: string, depth: number) => {
-    if (depth > maxDepth || seen.has(dir)) return;
-    seen.add(dir);
-    let stat;
-    try {
-      stat = statSync(dir);
-    } catch {
-      return;
-    }
-    if (!stat.isDirectory()) return;
+type PluginDiscoveryState = {
+  codexConfig: CodexConfig;
+  maxDepth: number;
+  rows: PluginRow[];
+  seen: Set<string>;
+};
 
-    if (hasPluginMarker(dir)) {
-      const manifest = pluginManifest(dir);
-      const name = manifest.name ?? pluginNameFromPath(dir);
-      const source = marketplaceFromPath(dir);
-      const enabled =
-        (source ? codexConfig.pluginEnabled.get(pluginConfigKey(name, source)) : undefined) ?? true;
-      rows.push({
-        id: dir,
-        name,
-        ...(manifest.displayName ? { displayName: manifest.displayName } : {}),
-        ...(manifest.version ? { version: manifest.version } : {}),
-        path: dir,
-        installed: true,
-        enabled,
-        ...(source ? { source } : {}),
-        ...(manifest.description ? { description: manifest.description } : {}),
-        ...(manifest.shortDescription ? { shortDescription: manifest.shortDescription } : {}),
-        ...(manifest.category ? { category: manifest.category } : {}),
-        ...(manifest.capabilities ? { capabilities: manifest.capabilities } : {}),
-        ...(manifest.defaultPrompts ? { defaultPrompts: manifest.defaultPrompts } : {}),
-        ...(manifest.brandColor ? { brandColor: manifest.brandColor } : {}),
-        ...(manifest.iconPath && existsSync(manifest.iconPath)
-          ? { iconPath: manifest.iconPath }
-          : {}),
-        ...pluginResourcePaths(dir, manifest),
-      });
-      return;
-    }
+function collectPluginRows(dir: string, depth: number, state: PluginDiscoveryState): void {
+  if (depth > state.maxDepth || state.seen.has(dir)) return;
+  state.seen.add(dir);
+  if (!isDirectory(dir)) return;
 
-    let entries: string[] = [];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.startsWith(".") && depth > 0) continue;
-      visit(path.join(dir, entry), depth + 1);
-    }
-  };
-
-  for (const root of roots) visit(root, 0);
-  const includesDefaultRoot = roots.some(
-    (root) => path.resolve(root) === path.resolve(path.join(homedir(), ".codex", "plugins")),
-  );
-  if (includesDefaultRoot) {
-    for (const row of knownLocalPluginRows()) {
-      rows.push(row);
-    }
+  if (hasPluginMarker(dir)) {
+    state.rows.push(pluginRowFromDirectory(dir, state.codexConfig));
+    return;
   }
+
+  for (const entry of readableDirectoryEntries(dir)) {
+    if (entry.startsWith(".") && depth > 0) continue;
+    collectPluginRows(path.join(dir, entry), depth + 1, state);
+  }
+}
+
+function pluginRowFromDirectory(dir: string, codexConfig: CodexConfig): PluginRow {
+  const manifest = pluginManifest(dir);
+  const name = manifest.name ?? pluginNameFromPath(dir);
+  const source = marketplaceFromPath(dir);
+  const enabled =
+    (source ? codexConfig.pluginEnabled.get(pluginConfigKey(name, source)) : undefined) ?? true;
+
+  return {
+    id: dir,
+    name,
+    ...(manifest.displayName ? { displayName: manifest.displayName } : {}),
+    ...(manifest.version ? { version: manifest.version } : {}),
+    path: dir,
+    installed: true,
+    enabled,
+    ...(source ? { source } : {}),
+    ...pluginManifestRowFields(manifest),
+    ...pluginResourcePaths(dir, manifest),
+  };
+}
+
+function pluginManifestRowFields(manifest: PluginManifest): Partial<PluginRow> {
+  return {
+    ...(manifest.description ? { description: manifest.description } : {}),
+    ...(manifest.shortDescription ? { shortDescription: manifest.shortDescription } : {}),
+    ...(manifest.category ? { category: manifest.category } : {}),
+    ...(manifest.capabilities ? { capabilities: manifest.capabilities } : {}),
+    ...(manifest.defaultPrompts ? { defaultPrompts: manifest.defaultPrompts } : {}),
+    ...(manifest.brandColor ? { brandColor: manifest.brandColor } : {}),
+    ...(manifest.iconPath && existsSync(manifest.iconPath) ? { iconPath: manifest.iconPath } : {}),
+  };
+}
+
+function isDirectory(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function readableDirectoryEntries(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+function includesDefaultPluginRoot(roots: string[]): boolean {
+  const defaultRoot = path.resolve(path.join(homedir(), ".codex", "plugins"));
+  return roots.some((root) => path.resolve(root) === defaultRoot);
+}
+
+function dedupePluginRows(rows: PluginRow[]): PluginRow[] {
   const deduped = new Map<string, PluginRow>();
   for (const row of rows) {
     const key = pluginConfigKey(row.name.toLowerCase(), row.source);
     const current = deduped.get(key);
     deduped.set(key, current ? preferredPluginRow(current, row) : row);
   }
-  return [...deduped.values()]
+  return [...deduped.values()];
+}
+
+function sortPluginRows(rows: PluginRow[]): PluginRow[] {
+  return [...rows]
     .sort((a, b) => a.name.localeCompare(b.name))
     .sort((a, b) => Number(b.enabled) - Number(a.enabled));
 }

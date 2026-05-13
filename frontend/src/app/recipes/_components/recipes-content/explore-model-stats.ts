@@ -1,6 +1,5 @@
 import type { HuggingFaceModel, ModelRecommendation } from "@/lib/types";
-import type { QuantFormat } from "@/lib/vram-estimator";
-import { estimateModelSizeMb } from "@/lib/vram-estimator";
+import { estimateModelSizeMb, type QuantFormat } from "@/lib/vram-estimator";
 
 export function modelRecencyMs(model: HuggingFaceModel): number {
   const raw = model.lastModified ?? model.createdAt;
@@ -9,22 +8,32 @@ export function modelRecencyMs(model: HuggingFaceModel): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+const QUANT_TAG_MATCHERS: Array<{ quant: QuantFormat; tags: string[] }> = [
+  { quant: "q4_k_m", tags: ["q4_k_m", "q4-k-m"] },
+  { quant: "q5_k_m", tags: ["q5_k_m"] },
+  { quant: "q8_0", tags: ["q8_0", "q8-0"] },
+  { quant: "q4_0", tags: ["q4_0", "q4-0"] },
+  { quant: "q3_k_m", tags: ["q3_k_m"] },
+  { quant: "q2_k", tags: ["q2_k", "q2-k"] },
+  { quant: "iq3_m", tags: ["iq3_m"] },
+  { quant: "iq2", tags: ["iq2"] },
+  { quant: "fp8", tags: ["fp8"] },
+  { quant: "int8", tags: ["int8"] },
+  { quant: "int4", tags: ["int4", "awq", "gptq", "w4a16"] },
+  { quant: "q4_k_m", tags: ["gguf"] },
+  { quant: "bf16", tags: ["bf16"] },
+];
+
+function joinedQuantTags(tags: string[]): string {
+  return tags.map((tag) => tag.toLowerCase()).join("|");
+}
+
 export function quantFromTags(tags: string[]): QuantFormat {
-  const t = tags.map((x) => x.toLowerCase()).join("|");
-  if (t.includes("q4_k_m") || t.includes("q4-k-m")) return "q4_k_m";
-  if (t.includes("q5_k_m")) return "q5_k_m";
-  if (t.includes("q8_0") || t.includes("q8-0")) return "q8_0";
-  if (t.includes("q4_0") || t.includes("q4-0")) return "q4_0";
-  if (t.includes("q3_k_m")) return "q3_k_m";
-  if (t.includes("q2_k") || t.includes("q2-k")) return "q2_k";
-  if (t.includes("iq3_m")) return "iq3_m";
-  if (t.includes("iq2")) return "iq2";
-  if (t.includes("fp8")) return "fp8";
-  if (t.includes("int8")) return "int8";
-  if (t.includes("int4") || t.includes("awq") || t.includes("gptq") || t.includes("w4a16")) return "int4";
-  if (t.includes("gguf")) return "q4_k_m";
-  if (t.includes("bf16")) return "bf16";
-  return "bf16";
+  const joined = joinedQuantTags(tags);
+  return (
+    QUANT_TAG_MATCHERS.find((matcher) => matcher.tags.some((tag) => joined.includes(tag)))?.quant ??
+    "bf16"
+  );
 }
 
 /**

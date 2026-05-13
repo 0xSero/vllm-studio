@@ -1,7 +1,16 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent, DragEvent, ReactNode } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { Loader2 } from "lucide-react";
 import {
   AttachIcon,
@@ -24,22 +33,25 @@ import {
   type ComposerPluginRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
-import { asRecord, newId, visibleQueuedMessages, formatTokenCount } from "@/lib/agent/session";
-import { useSessionEngine } from "@/lib/agent/sessions/engine";
-import { useTools } from "@/lib/agent/tools/context";
-import type {
+import {
   AgentTurnSsePayload,
   AssistantBlock,
+  asRecord,
   ChatMessage,
   ChatPaneHandle,
   EventBlock,
+  formatTokenCount,
+  newId,
   QueuedMessage,
   SessionTab,
   TextBlock,
   ThinkingBlock,
   TokenStats,
   ToolBlock,
+  visibleQueuedMessages,
 } from "@/lib/agent/session";
+import { useSessionEngine } from "@/lib/agent/sessions/engine";
+import { useTools } from "@/lib/agent/tools/context";
 import {
   attachmentDedupKey,
   attachmentPrompt,

@@ -23,6 +23,7 @@ interface ProjectsDocument {
 }
 
 function projectsFilePath(): string {
+  if (process.env.VLLM_STUDIO_PROJECTS_FILE) return process.env.VLLM_STUDIO_PROJECTS_FILE;
   // Anchor at <repo>/data/agentfs/projects.json (mirror existing agentfs pattern).
   return path.resolve(process.cwd(), "..", "data", "agentfs", "projects.json");
 }

@@ -17,8 +17,7 @@ import type {
   VllmRuntimeConfig,
   VllmRuntimeInfo,
 } from "../types";
-import type { ApiCore } from "./core";
-import { encodePathSegments } from "./core";
+import { encodePathSegments, type ApiCore } from "./core";
 
 export function createStudioApi(core: ApiCore) {
   return {
