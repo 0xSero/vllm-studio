@@ -42,13 +42,13 @@ jobs:
 
       - uses: github/codeql-action/init@v3
         with:
-          languages: javascript, typescript, python
+          languages: javascript, typescript
 
       - uses: github/codeql-action/autobuild@v3
 
       - uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:javascript-typescript-python"
+          category: "/language:javascript-typescript"
 
   # Dependency review
   dependency-review:
