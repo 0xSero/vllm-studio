@@ -1,5 +1,7 @@
 # CRITICAL
-name: Build & Deploy Frontend
+# Builds the frontend Docker image and pushes to GHCR.
+# Deployment to the remote GPU host is done manually via ./scripts/deploy-remote.sh.
+name: Build Frontend Image
 
 on:
   push:
@@ -54,20 +56,3 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             NEXT_PUBLIC_API_URL=
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH || '~/vllmstudio' }}
-            docker compose pull frontend
-            docker compose up -d frontend
