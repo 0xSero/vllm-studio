@@ -12,7 +12,6 @@ FROM base AS builder
 WORKDIR /app/frontend
 COPY --from=deps /app/frontend/node_modules ./node_modules
 COPY frontend/ .
-COPY shared/ /app/shared/
 
 # Build arguments for environment variables
 ARG NEXT_PUBLIC_API_URL
