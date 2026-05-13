@@ -6,7 +6,7 @@ Unified local AI workstation for model lifecycle, chat/agent workflows, orchestr
 
 This release consolidates major repo changes currently in the tree, including:
 
-- OpenAI proxy activation policy controls for `load_if_idle` and `switch_on_request`
+- OpenAI chat proxy is fully passive — frontend-only model launches; chat requests for a non-running model now return 503 instead of triggering an auto-launch
 - lifecycle-aware run aborts when model eviction happens
 - SSE run stream termination fixes across backend and frontend
 - local-only chat/runtime cleanup and controller simplification
