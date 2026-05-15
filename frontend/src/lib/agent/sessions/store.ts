@@ -10,12 +10,6 @@ export function setSession(sessions: SessionsMap, session: Session): SessionsMap
   return next;
 }
 
-export function setSessions(sessions: SessionsMap, updates: Iterable<Session>): SessionsMap {
-  const next = new Map(sessions);
-  for (const session of updates) next.set(session.id, session);
-  return next;
-}
-
 export function patchSession(
   sessions: SessionsMap,
   id: SessionId,
