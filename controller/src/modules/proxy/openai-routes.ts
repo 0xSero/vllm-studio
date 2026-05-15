@@ -25,6 +25,13 @@ import {
 import { PROXY_SESSION_HEADER_NAMES } from "./configs";
 import type { OpenAIUsage } from "./types";
 
+const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
+
+interface NonRunningModelWarningState {
+  lastWarnAt: number;
+  suppressed: number;
+}
+
 export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {
   if (!Boolean(payload["stream"])) return false;
   const existingStreamOptions =
@@ -67,6 +74,39 @@ const exposeReasoningAsContentWhenEmpty = (
 };
 
 export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
+  const nonRunningModelWarnings = new Map<string, NonRunningModelWarningState>();
+
+  const warnNonRunningModel = (details: {
+    requestedModel: string | null;
+    requestedRecipeId: string;
+    activeModel: string | null;
+    source: string | null;
+  }): void => {
+    const key = [
+      details.requestedRecipeId,
+      details.requestedModel ?? "",
+      details.activeModel ?? "",
+      details.source ?? "",
+    ].join("\u0000");
+    const now = Date.now();
+    const state = nonRunningModelWarnings.get(key) ?? { lastWarnAt: 0, suppressed: 0 };
+    if (now - state.lastWarnAt < NON_RUNNING_MODEL_WARN_INTERVAL_MS) {
+      state.suppressed += 1;
+      nonRunningModelWarnings.set(key, state);
+      return;
+    }
+
+    const suppressed = state.suppressed;
+    nonRunningModelWarnings.set(key, { lastWarnAt: now, suppressed: 0 });
+    context.logger.warn("Rejected chat request for non-running model", {
+      requested_model: details.requestedModel,
+      requested_recipe_id: details.requestedRecipeId,
+      active_model: details.activeModel,
+      source: details.source,
+      ...(suppressed > 0 ? { suppressed_requests: suppressed } : {}),
+    });
+  };
+
   const extractSessionId = (
     parsedBody: Record<string, unknown>,
     header: (name: string) => string | undefined
@@ -221,10 +261,10 @@ export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
         isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
       if (!matches) {
         const activeModel = current?.served_model_name ?? current?.model_path ?? null;
-        context.logger.warn("Rejected chat request for non-running model", {
-          requested_model: requestedModel,
-          requested_recipe_id: matchedRecipe.id,
-          active_model: activeModel,
+        warnNonRunningModel({
+          requestedModel,
+          requestedRecipeId: matchedRecipe.id,
+          activeModel,
           source: sourceHeader,
         });
         throw serviceUnavailable(
