@@ -13,20 +13,17 @@ import {
   visibleQueuedMessages,
   visibleUserTextFromPi,
 } from "@/lib/agent/session";
-
 describe("isAgentEndEvent", () => {
   it("does not treat per-tool turn_end as full agent completion", () => {
     expect(isAgentEndEvent({ type: "turn_end" })).toBe(false);
     expect(isAgentEndEvent({ type: "agent_end" })).toBe(true);
   });
 });
-
 describe("parseAgentTurnSsePayload", () => {
   it("ignores malformed SSE data instead of throwing", () => {
     expect(parseAgentTurnSsePayload("data: {not json")).toBeNull();
     expect(parseAgentTurnSsePayload(": keep-alive")).toBeNull();
   });
-
   it("accepts status, error, and Pi event payloads", () => {
     expect(parseAgentTurnSsePayload('data: {"type":"status","phase":"running"}')).toEqual({
       type: "status",
@@ -41,7 +38,6 @@ describe("parseAgentTurnSsePayload", () => {
     ).toEqual({ type: "pi", seq: 2, event: { type: "agent_end" } });
   });
 });
-
 describe("visibleQueuedMessages", () => {
   it("shows only follow-up queue items, not transient steers", () => {
     expect(
@@ -52,7 +48,6 @@ describe("visibleQueuedMessages", () => {
     ).toEqual([{ id: "follow", mode: "follow_up", text: "next" }]);
   });
 });
-
 describe("statusAfterControlPhase", () => {
   it("keeps the composer running when a steer/follow-up SSE finishes", () => {
     expect(statusAfterControlPhase("running", "queued")).toBe("running");
@@ -60,7 +55,6 @@ describe("statusAfterControlPhase", () => {
     expect(statusAfterControlPhase("idle", "starting")).toBe("idle");
   });
 });
-
 describe("replayCursorAfterRuntimeHydration", () => {
   it("reattaches after the hydrated runtime event log", () => {
     expect(replayCursorAfterRuntimeHydration(true, 42)).toBe(42);
@@ -68,7 +62,6 @@ describe("replayCursorAfterRuntimeHydration", () => {
     expect(replayCursorAfterRuntimeHydration(false, 42)).toBeUndefined();
   });
 });
-
 describe("runtimeStatusAcceptsControl", () => {
   it("rejects stale running UI when Pi has no active turn", () => {
     expect(runtimeStatusAcceptsControl(null, "s1")).toBe(true);
@@ -77,7 +70,6 @@ describe("runtimeStatusAcceptsControl", () => {
     expect(runtimeStatusAcceptsControl({ active: true, piSessionId: "s2" }, "s1")).toBe(false);
   });
 });
-
 describe("runtimeStatusLooksActive", () => {
   it("keeps detached-but-running runtime sessions alive until a terminal event arrives", () => {
     expect(
@@ -95,7 +87,6 @@ describe("runtimeStatusLooksActive", () => {
         ],
       }),
     ).toBe(true);
-
     expect(
       runtimeStatusLooksActive({
         active: false,
@@ -105,7 +96,6 @@ describe("runtimeStatusLooksActive", () => {
     ).toBe(false);
   });
 });
-
 describe("drainQueueAfterAgentEnd", () => {
   it("drops transient steers and returns the next follow-up", () => {
     const result = drainQueueAfterAgentEnd([
@@ -113,11 +103,9 @@ describe("drainQueueAfterAgentEnd", () => {
       { id: "follow-1", mode: "follow_up", text: "next prompt" },
       { id: "follow-2", mode: "follow_up", text: "third prompt" },
     ]);
-
     expect(result.next).toEqual({ id: "follow-1", mode: "follow_up", text: "next prompt" });
     expect(result.remaining).toEqual([{ id: "follow-2", mode: "follow_up", text: "third prompt" }]);
   });
-
   it("does not resubmit follow-ups already queued inside Pi", () => {
     expect(
       drainQueueAfterAgentEnd([
@@ -129,7 +117,6 @@ describe("drainQueueAfterAgentEnd", () => {
       remaining: [],
     });
   });
-
   it("returns an empty drain result when no follow-ups are pending", () => {
     expect(
       drainQueueAfterAgentEnd([{ id: "steer-1", mode: "steer", text: "visible steer" }]),
@@ -139,7 +126,6 @@ describe("drainQueueAfterAgentEnd", () => {
     });
   });
 });
-
 describe("reconcileQueueWithPiEvent", () => {
   it("mirrors Pi queue updates without dropping local unsent follow-ups", () => {
     const result = reconcileQueueWithPiEvent(
@@ -150,7 +136,6 @@ describe("reconcileQueueWithPiEvent", () => {
       ],
       { type: "queue_update", steering: ["new steer"], followUp: ["kept"] },
     );
-
     expect(result).toEqual([
       { id: "local", mode: "follow_up", text: "local only" },
       { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
@@ -158,14 +143,12 @@ describe("reconcileQueueWithPiEvent", () => {
     ]);
   });
 });
-
 describe("mergeCanonicalAndRuntimeEvents", () => {
   it("dedupes stored events and appends live runtime events in seq order", () => {
     const stored = [
       { type: "session", id: "s1" },
       { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hel" } },
     ];
-
     expect(
       mergeCanonicalAndRuntimeEvents(stored, [
         {
@@ -184,7 +167,6 @@ describe("mergeCanonicalAndRuntimeEvents", () => {
     ]);
   });
 });
-
 describe("visibleUserTextFromPi", () => {
   it("hides composer context wrappers from displayed Pi user messages", () => {
     expect(
@@ -194,15 +176,10 @@ describe("visibleUserTextFromPi", () => {
     ).toBe("inspect localhost");
   });
 });
-
 describe("replaySessionEvents", () => {
   it("hydrates current Pi message events from stored sessions", () => {
     const result = replaySessionEvents([
-      {
-        type: "session",
-        id: "session-1",
-        cwd: "/tmp/project",
-      },
+      { type: "session", id: "session-1", cwd: "/tmp/project" },
       {
         type: "message",
         message: {
@@ -216,12 +193,7 @@ describe("replaySessionEvents", () => {
           role: "assistant",
           content: [
             { type: "thinking", thinking: "I need to inspect the app." },
-            {
-              type: "toolCall",
-              id: "call-1",
-              name: "read",
-              arguments: { path: "package.json" },
-            },
+            { type: "toolCall", id: "call-1", name: "read", arguments: { path: "package.json" } },
           ],
         },
       },
@@ -243,13 +215,9 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.title).toBe("Build the landing page");
     expect(result.messages).toHaveLength(3);
-    expect(result.messages[0]).toMatchObject({
-      role: "user",
-      text: "Build the landing page",
-    });
+    expect(result.messages[0]).toMatchObject({ role: "user", text: "Build the landing page" });
     expect(result.messages[1].blocks).toEqual([
       { kind: "thinking", id: expect.any(String), text: "I need to inspect the app." },
       {
@@ -267,7 +235,6 @@ describe("replaySessionEvents", () => {
       text: "Done. I found the Next dev script.",
     });
   });
-
   it("replays selected-context user messages using only the visible prompt", () => {
     const result = replaySessionEvents([
       {
@@ -279,11 +246,9 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.title).toBe("move the window");
     expect(result.messages[0]).toMatchObject({ role: "user", text: "move the window" });
   });
-
   it("replays streamed tool-call argument deltas from Pi", () => {
     const result = replaySessionEvents([
       {
@@ -333,7 +298,6 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].blocks).toEqual([
       {
@@ -347,28 +311,22 @@ describe("replaySessionEvents", () => {
       },
     ]);
   });
-
   it("deduplicates cumulative Pi text snapshots during replay", () => {
     const result = replaySessionEvents([
       { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "H" } },
       { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "He" } },
       { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Hello" } },
-      {
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_delta", delta: "I" },
-      },
+      { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "I" } },
       {
         type: "message_update",
         assistantMessageEvent: { type: "thinking_delta", delta: "I know" },
       },
     ]);
-
     expect(result.messages[0].blocks).toMatchObject([
       { kind: "text", text: "Hello" },
       { kind: "thinking", text: "I know" },
     ]);
   });
-
   it("does not duplicate replayed prefix deltas over a hydrated assistant message", () => {
     const result = replaySessionEvents([
       {
@@ -382,10 +340,8 @@ describe("replaySessionEvents", () => {
         assistantMessageEvent: { type: "text_delta", delta: "Hello world!" },
       },
     ]);
-
     expect(result.messages[0].blocks).toMatchObject([{ kind: "text", text: "Hello world!" }]);
   });
-
   it("merges final assistant message snapshots into streamed text during replay", () => {
     const result = replaySessionEvents([
       {
@@ -395,39 +351,19 @@ describe("replaySessionEvents", () => {
           content: [{ type: "text", text: "Say done" }],
         },
       },
-      {
-        type: "message_update",
-        assistantMessageEvent: { type: "text_delta", delta: "DO" },
-      },
-      {
-        type: "message_update",
-        assistantMessageEvent: { type: "text_delta", delta: "DONE" },
-      },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "DO" } },
+      { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "DONE" } },
       {
         type: "message",
-        message: {
-          role: "assistant",
-          content: [{ type: "text", text: "DONE" }],
-        },
+        message: { role: "assistant", content: [{ type: "text", text: "DONE" }] },
       },
     ]);
-
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[1]).toMatchObject({
-      role: "assistant",
-      text: "DONE",
-    });
+    expect(result.messages[1]).toMatchObject({ role: "assistant", text: "DONE" });
   });
-
   it("merges final assistant message_end into the streamed assistant during replay", () => {
     const result = replaySessionEvents([
-      {
-        type: "message",
-        message: {
-          role: "user",
-          content: [{ type: "text", text: "Say done" }],
-        },
-      },
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "Say done" }] } },
       {
         type: "message_update",
         assistantMessageEvent: { type: "text_delta", delta: "DONE" },
@@ -440,14 +376,12 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.messages).toHaveLength(2);
     expect(result.messages[1]).toMatchObject({
       role: "assistant",
       text: "DONE",
     });
   });
-
   it("keeps failed tool calls as failed blocks instead of dropping the session", () => {
     const result = replaySessionEvents([
       {
@@ -481,7 +415,6 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.messages).toHaveLength(2);
     expect(result.messages[1].blocks?.[0]).toMatchObject({
       kind: "tool",
@@ -495,7 +428,6 @@ describe("replaySessionEvents", () => {
       text: "I can continue after that failed tool.",
     });
   });
-
   it("renders compaction events as timeline event blocks during replay", () => {
     const result = replaySessionEvents([
       {
@@ -503,19 +435,14 @@ describe("replaySessionEvents", () => {
       },
       {
         type: "message_update",
-        assistantMessageEvent: {
-          type: "text_delta",
-          delta: "Continuing after compaction.",
-        },
+        assistantMessageEvent: { type: "text_delta", delta: "Continuing after compaction." },
       },
     ]);
-
     expect(result.messages[0].blocks).toMatchObject([
       { kind: "event", text: "Context automatically compacted" },
       { kind: "text", text: "Continuing after compaction." },
     ]);
   });
-
   it("preserves multiple successful and failed tool calls in one assistant turn", () => {
     const result = replaySessionEvents([
       {
@@ -557,7 +484,6 @@ describe("replaySessionEvents", () => {
         },
       },
     ]);
-
     expect(result.messages).toHaveLength(2);
     expect(result.messages[1].blocks).toMatchObject([
       { kind: "tool", id: "call-read", name: "read", status: "done", resultText: "read ok" },

@@ -566,9 +566,7 @@ function HeroStat({
       </div>
       <div className="mt-1.5 flex items-baseline gap-2">
         <span
-          className={`font-mono text-[34px] font-medium leading-none tabular-nums ${
-            idle ? "text-(--dim)/60" : "text-(--fg)"
-          }`}
+          className={`font-mono text-[34px] font-medium leading-none tabular-nums ${idle ? "text-(--dim)/60" : "text-(--fg)"}`}
         >
           {idle ? "0" : value}
         </span>
@@ -636,11 +634,7 @@ function ActionBtn({
     <button
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className={`h-7 rounded-[3px] border px-2.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
-        danger
-          ? "border-(--err)/40 text-(--err) hover:bg-(--err)/10"
-          : "border-(--border)/70 text-(--dim) hover:border-(--border) hover:bg-(--fg)/5 hover:text-(--fg)"
-      }`}
+      className={`h-7 rounded-[3px] border px-2.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${danger ? "border-(--err)/40 text-(--err) hover:bg-(--err)/10" : "border-(--border)/70 text-(--dim) hover:border-(--border) hover:bg-(--fg)/5 hover:text-(--fg)"}`}
     >
       {label}
     </button>
@@ -738,14 +732,10 @@ function ModelsDropdown({
                     setOpen(false);
                     await onLaunch(r.id);
                   }}
-                  className={`flex w-full items-center gap-2 border-b border-(--border)/60 px-2.5 py-1.5 text-left last:border-b-0 ${
-                    row.isCurrent ? "bg-(--fg)/8" : "hover:bg-(--fg)/5"
-                  } ${disabled && !row.isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
+                  className={`flex w-full items-center gap-2 border-b border-(--border)/60 px-2.5 py-1.5 text-left last:border-b-0 ${row.isCurrent ? "bg-(--fg)/8" : "hover:bg-(--fg)/5"} ${disabled && !row.isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
                 >
                   <span
-                    className={`h-3 w-0.5 shrink-0 ${
-                      row.isCurrent ? "bg-(--fg)" : running ? "bg-(--fg)/60" : "bg-(--dim)/40"
-                    }`}
+                    className={`h-3 w-0.5 shrink-0 ${row.isCurrent ? "bg-(--fg)" : running ? "bg-(--fg)/60" : "bg-(--dim)/40"}`}
                   />
                   <span className="flex-1 truncate font-mono text-xs text-(--fg)" title={r.name}>
                     {r.name}

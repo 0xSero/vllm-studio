@@ -8,6 +8,7 @@ import type { Project } from "@/lib/agent/projects/types";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
+import { TerminalPanel } from "./terminal-panel";
 import type { WorkspaceHandles } from "./use-workspace";
 
 type AgentBrowserPanelHandles = Pick<
@@ -78,6 +79,12 @@ export function AgentBrowserPanel({
         >
           Diff
         </ComputerTabButton>
+        <ComputerTabButton
+          active={tools.computer.tab === "terminal"}
+          onClick={() => tools.setComputerTab("terminal")}
+        >
+          Term
+        </ComputerTabButton>
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
@@ -107,8 +114,10 @@ export function AgentBrowserPanel({
             <FilesystemPanel cwd={activeProject?.path ?? null} />
           </div>
         </section>
-      ) : (
+      ) : tools.computer.tab === "diff" ? (
         <GitDiffPanel cwd={activeProject?.path ?? null} />
+      ) : (
+        <TerminalPanel cwd={activeProject?.path ?? null} />
       )}
     </aside>
   );

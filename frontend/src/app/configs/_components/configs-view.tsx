@@ -1,6 +1,4 @@
-// CRITICAL
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
@@ -33,7 +31,6 @@ import {
 } from "@/components/settings-primitives";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
 import { SESSION_PREFS_KEY } from "@/lib/agent/workspace/store";
-
 interface ConfigsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -54,9 +51,7 @@ interface ConfigsViewProps {
   onTestConnection: () => void;
   onSaveSettings: () => void;
 }
-
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
-
 const SECTIONS: SettingsSectionDef[] = [
   ["connection", "Connection", "Controller URL, API key, voice defaults.", Cable],
   ["system", "System", "Runtime targets, services, storage, hardware.", Cpu],
@@ -76,16 +71,13 @@ const SECTIONS: SettingsSectionDef[] = [
   description: description as string,
   icon: sectionIcon(Icon as LucideIcon),
 }));
-
 const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
-
 const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (isSectionId(value)) return value;
   if (value === "engines" || value === "services") return "system";
   return null;
 };
-
 export function ConfigsView({
   data,
   compatibilityReport,
@@ -111,7 +103,6 @@ export function ConfigsView({
     const hash = window.location.hash.replace("#", "");
     return normalizeSectionId(hash) ?? "connection";
   });
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onHashChange = () => {
@@ -122,14 +113,12 @@ export function ConfigsView({
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `#${section}`);
     }
   };
-
   const layoutStatus = useMemo(() => {
     if (isInitialLoading) return "checking controller";
     if (loading) return "refreshing";
@@ -137,7 +126,6 @@ export function ConfigsView({
     if (error) return "local fallbacks";
     return "ready";
   }, [error, hasConfigData, isInitialLoading, loading]);
-
   return (
     <SettingsLayout
       sections={SECTIONS}
@@ -148,6 +136,7 @@ export function ConfigsView({
       onReload={onReload}
       onSelectSection={selectSection}
     >
+      {" "}
       {activeSection === "connection" ? (
         <ApiConnectionSection
           apiSettingsLoading={apiSettingsLoading}
@@ -163,11 +152,16 @@ export function ConfigsView({
           onSave={onSaveSettings}
         />
       ) : null}
-
       {activeSection === "system" ? (
         <div className="space-y-5">
+          {" "}
           <EnginesSection runtime={data?.runtime ?? null} />
-          <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
+          <ServicesSettings
+            data={data}
+            apiSettings={apiSettings}
+            loading={loading}
+            error={error}
+          />{" "}
           <SystemSettings
             data={data}
             compatibilityReport={compatibilityReport}
@@ -176,15 +170,14 @@ export function ConfigsView({
           />
         </div>
       ) : null}
-      {activeSection === "appearance" ? <AppearanceSettings /> : null}
+      {activeSection === "appearance" ? <AppearanceSettings /> : null}{" "}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
-      {activeSection === "plugins" ? <PluginsSettings /> : null}
+      {activeSection === "plugins" ? <PluginsSettings /> : null}{" "}
       {activeSection === "skills" ? <SkillsSettings /> : null}
-      {activeSection === "setup" ? <SetupChecksSettings /> : null}
+      {activeSection === "setup" ? <SetupChecksSettings /> : null}{" "}
     </SettingsLayout>
   );
 }
-
 function ServicesSettings({
   data,
   apiSettings,
@@ -224,9 +217,9 @@ function ServicesSettings({
     },
   ];
   const rows = services.length ? services : fallbackServices;
-
   return (
     <div className="space-y-5">
+      {" "}
       <SettingsGroup
         title="Service topology"
         description="Live service rows when the controller answers; stable fallback rows when it does not."
@@ -243,19 +236,20 @@ function ServicesSettings({
             description={service.description ?? "No description reported"}
             value={
               <SettingsValue mono>
+                {" "}
                 {service.protocol.toUpperCase()} :{service.port}
-                {service.port !== service.internal_port ? ` → :${service.internal_port}` : ""}
+                {service.port !== service.internal_port ? ` → :${service.internal_port}` : ""}{" "}
               </SettingsValue>
             }
             status={<StatusPill tone={toneForStatus(service.status)}>{service.status}</StatusPill>}
           />
         ))}
       </SettingsGroup>
-
       <SettingsGroup
         title="Environment URLs"
         description="Endpoints used by the desktop app and browser proxy."
       >
+        {" "}
         <SettingsRow
           label="Controller"
           description="API control plane and runtime status source."
@@ -275,7 +269,7 @@ function ServicesSettings({
             </SettingsValue>
           }
           status={<StatusPill>{data ? "reported" : "default"}</StatusPill>}
-        />
+        />{" "}
         <SettingsRow
           label="Frontend"
           description="Next.js route that Electron loads in development and production."
@@ -286,11 +280,10 @@ function ServicesSettings({
           }
           status={<StatusPill>{data ? "reported" : "local"}</StatusPill>}
         />
-      </SettingsGroup>
+      </SettingsGroup>{" "}
     </div>
   );
 }
-
 function SystemSettings({
   data,
   compatibilityReport,
@@ -318,9 +311,9 @@ function SystemSettings({
     ["CUDA runtime", runtime?.cuda.cuda_version ?? "Unknown", true],
     ["ROCm version", runtime?.platform.rocm?.rocm_version ?? "Unknown", true],
   ] as const;
-
   return (
     <div className="space-y-5">
+      {" "}
       <SettingsGroup
         title="Controller state"
         description="System details hydrate independently so settings never collapse into a blank page."
@@ -343,9 +336,8 @@ function SystemSettings({
               {data ? "loaded" : "fallback"}
             </StatusPill>
           }
-        />
+        />{" "}
       </SettingsGroup>
-
       <SettingsGroup title="Network" description="Controller and inference ports from config.">
         {networkRows.map(([label, value]) => (
           <SettingsRow
@@ -353,7 +345,7 @@ function SystemSettings({
             label={label}
             value={<SettingsValue mono>{value}</SettingsValue>}
           />
-        ))}
+        ))}{" "}
         <SettingsRow
           label="API key"
           value={
@@ -368,20 +360,20 @@ function SystemSettings({
           }
         />
       </SettingsGroup>
-
       <SettingsGroup
         title="Storage"
         description="File paths remain explicit instead of being hidden in cards."
       >
+        {" "}
         <PathRow label="Models" value={config?.models_dir} fallback="~/models" />
-        <PathRow label="Data" value={config?.data_dir} fallback="data/" />
+        <PathRow label="Data" value={config?.data_dir} fallback="data/" />{" "}
         <PathRow label="Database" value={config?.db_path} fallback="data/studio.db" />
       </SettingsGroup>
-
       <SettingsGroup
         title="Hardware"
         description="Runtime platform and GPU inventory from compatibility/config probes."
       >
+        {" "}
         {hardwareRows.map(([label, value, mono]) => (
           <SettingsRow
             key={label}
@@ -397,14 +389,12 @@ function SystemSettings({
               {gpuCount ? "detected" : "not detected"}
             </StatusPill>
           }
-        />
+        />{" "}
       </SettingsGroup>
-
       <CompatibilitySettings checks={checks} report={compatibilityReport} />
     </div>
   );
 }
-
 function CompatibilitySettings({
   checks,
   report,
@@ -413,7 +403,6 @@ function CompatibilitySettings({
   report: CompatibilityReport | null;
 }) {
   const ordered = [...checks].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
-
   return (
     <SettingsGroup
       title="Compatibility"
@@ -424,6 +413,7 @@ function CompatibilitySettings({
         </StatusPill>
       }
     >
+      {" "}
       {!report ? (
         <SettingsRow
           label="Report"
@@ -456,7 +446,6 @@ function CompatibilitySettings({
     </SettingsGroup>
   );
 }
-
 function ArchivedChatsSettings() {
   type Pref = { title?: string; pinned?: boolean; hidden?: boolean };
   type Session = {
@@ -476,19 +465,16 @@ function ArchivedChatsSettings() {
     }
   });
   const [sessions, setSessions] = useState<Session[]>([]);
-
   useEffect(() => {
     void fetch("/api/agent/sessions/all?since=365d", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ sessions?: Session[] }>)
       .then((payload) => setSessions(payload.sessions ?? []))
       .catch(() => setSessions([]));
   }, []);
-
   const archivedIds = Object.entries(prefs)
     .filter(([, pref]) => pref.hidden)
     .map(([id]) => id);
   const byId = new Map(sessions.map((session) => [session.id, session]));
-
   const unarchive = (id: string) => {
     const next = { ...prefs, [id]: { ...prefs[id], hidden: undefined } };
     if (!next[id].title && !next[id].pinned && !next[id].hidden) delete next[id];
@@ -496,7 +482,6 @@ function ArchivedChatsSettings() {
     window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
     setPrefs(next);
   };
-
   return (
     <SettingsGroup
       title="Archived chats"
@@ -527,8 +512,9 @@ function ArchivedChatsSettings() {
               actions={<SettingsButton onClick={() => unarchive(id)}>Restore</SettingsButton>}
             >
               <div className="text-[11px] text-(--dim)">
+                {" "}
                 {session?.projectName ? `${session.projectName} · ` : ""}
-                {session?.updatedAt ?? "no timestamp"}
+                {session?.updatedAt ?? "no timestamp"}{" "}
               </div>
             </SettingsRow>
           );
@@ -537,7 +523,6 @@ function ArchivedChatsSettings() {
     </SettingsGroup>
   );
 }
-
 function PluginsSettings() {
   type Plugin = {
     id: string;
@@ -564,12 +549,7 @@ function PluginsSettings() {
     computerUseAvailable?: boolean;
     computerUseRuntime?: PluginRuntimeCheck | null;
   };
-  type Marketplace = {
-    name: string;
-    source?: string;
-    sourceType?: string;
-    lastUpdated?: string;
-  };
+  type Marketplace = { name: string; source?: string; sourceType?: string; lastUpdated?: string };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [marketplaceSource, setMarketplaceSource] = useState("");
@@ -580,7 +560,6 @@ function PluginsSettings() {
     plugins.find((plugin) => plugin.name.toLowerCase().includes("browser-use")) ?? null;
   const computerUse =
     plugins.find((plugin) => plugin.name.toLowerCase().includes("computer-use")) ?? null;
-
   const loadPlugins = () =>
     fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
       .then(
@@ -601,11 +580,9 @@ function PluginsSettings() {
         setMarketplaces([]);
         setValidation({ browserUseAvailable: false, computerUseAvailable: false });
       });
-
   useEffect(() => {
     void loadPlugins();
   }, []);
-
   const setPluginEnabled = (plugin: Plugin, enabled: boolean) => {
     setSavingPlugin(plugin.id);
     void fetch("/api/agent/plugins", {
@@ -629,7 +606,6 @@ function PluginsSettings() {
       .catch(() => void loadPlugins())
       .finally(() => setSavingPlugin(null));
   };
-
   const upgradeMarketplace = (marketplace?: Marketplace) => {
     const key = marketplace?.name ?? "all";
     setUpgradingMarketplace(key);
@@ -654,7 +630,6 @@ function PluginsSettings() {
       .catch(() => void loadPlugins())
       .finally(() => setUpgradingMarketplace(null));
   };
-
   const addMarketplace = () => {
     const source = marketplaceSource.trim();
     if (!source) return;
@@ -681,7 +656,6 @@ function PluginsSettings() {
       .catch(() => void loadPlugins())
       .finally(() => setUpgradingMarketplace(null));
   };
-
   return (
     <div className="space-y-5">
       <SettingsGroup
@@ -692,10 +666,12 @@ function PluginsSettings() {
             onClick={() => upgradeMarketplace()}
             disabled={upgradingMarketplace === "all"}
           >
+            {" "}
             Upgrade all
           </SettingsButton>
         }
       >
+        {" "}
         {marketplaces.length ? (
           marketplaces.map((marketplace) => (
             <SettingsRow
@@ -704,6 +680,7 @@ function PluginsSettings() {
               description={marketplace.source ?? "No source reported"}
               value={
                 <SettingsValue>
+                  {" "}
                   {marketplace.sourceType ?? "source"} · {marketplace.lastUpdated ?? "never"}
                 </SettingsValue>
               }
@@ -712,7 +689,7 @@ function PluginsSettings() {
                   onClick={() => upgradeMarketplace(marketplace)}
                   disabled={upgradingMarketplace === marketplace.name}
                 >
-                  Upgrade
+                  Upgrade{" "}
                 </SettingsButton>
               }
             />
@@ -735,11 +712,11 @@ function PluginsSettings() {
               onClick={addMarketplace}
               disabled={!marketplaceSource.trim() || upgradingMarketplace === "add"}
             >
-              Add
+              Add{" "}
             </SettingsButton>
           }
         />
-      </SettingsGroup>
+      </SettingsGroup>{" "}
       <SettingsGroup
         title="Plugin registry"
         description="Discovers Codex plugin bundles from the local Codex plugin cache. Composer/runtime wiring stays modular."
@@ -762,7 +739,7 @@ function PluginsSettings() {
               runtime={validation?.browserUseRuntime}
             />
           }
-        />
+        />{" "}
         <SettingsRow
           label="Computer-use"
           description="Specific parity check requested for the Codex computer-use helper."
@@ -802,16 +779,15 @@ function PluginsSettings() {
                   onClick={() => setPluginEnabled(plugin, !plugin.enabled)}
                   disabled={savingPlugin === plugin.id}
                 >
-                  {plugin.enabled ? "Disable" : "Enable"}
+                  {plugin.enabled ? "Disable" : "Enable"}{" "}
                 </SettingsButton>
               }
             />
-          ))}
+          ))}{" "}
       </SettingsGroup>
     </div>
   );
 }
-
 function pluginAvailabilityText(
   plugin: { enabled: boolean } | null,
   runtime?: {
@@ -830,7 +806,6 @@ function pluginAvailabilityText(
   if (runtime?.runtimeBlockedOutsideCodex) return runtime.note ?? "Runtime blocked outside Codex";
   return runtime?.note ?? "Available and selectable in the composer";
 }
-
 function PluginAvailabilityPill({
   plugin,
   available,
@@ -855,29 +830,24 @@ function PluginAvailabilityPill({
   if (runtime?.mcpConfigured) return <StatusPill tone="info">mcp wired</StatusPill>;
   return <StatusPill tone="good">selectable</StatusPill>;
 }
-
 function pluginDescription(plugin: { appIds?: string[]; description?: string; path: string }) {
   const summary = plugin.description?.replace(/\s+/g, " ").trim();
   const short = summary && summary.length > 150 ? `${summary.slice(0, 147)}…` : summary;
   const connectors = plugin.appIds?.length ? `Connectors: ${plugin.appIds.join(", ")}` : "";
   return [short, connectors].filter(Boolean).join(" · ") || "Codex plugin bundle";
 }
-
 function pluginLocation(plugin: { enabled: boolean; source?: string; path: string }) {
   return `${plugin.enabled ? "enabled" : "disabled"} · ${plugin.source ?? "local"} · ${plugin.path}`;
 }
-
 function SkillsSettings() {
   type Skill = { id: string; name: string; source: string; path: string };
   const [skills, setSkills] = useState<Skill[]>([]);
-
   useEffect(() => {
     void fetch("/api/agent/skills", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ skills?: Skill[] }>)
       .then((payload) => setSkills(payload.skills ?? []))
       .catch(() => setSkills([]));
   }, []);
-
   return (
     <SettingsGroup
       title="Skills"
@@ -905,23 +875,20 @@ function SkillsSettings() {
               status={<StatusPill tone="info">discovered</StatusPill>}
             />
           ))
-      )}
+      )}{" "}
     </SettingsGroup>
   );
 }
-
 function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
   const [checks, setChecks] = useState<Check[]>([]);
   const controllerStatus = useSidebarStatus();
-
   useEffect(() => {
     void fetch("/api/agent/setup-checks", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ checks?: Check[] }>)
       .then((payload) => setChecks(payload.checks ?? []))
       .catch(() => setChecks([]));
   }, []);
-
   const controllerCheck: Check = {
     id: "controller",
     label: "Controller connection",
@@ -953,11 +920,10 @@ function SetupChecksSettings() {
             </StatusPill>
           }
         />
-      ))}
+      ))}{" "}
     </SettingsGroup>
   );
 }
-
 function PathRow({
   label,
   value,
@@ -978,7 +944,6 @@ function PathRow({
     />
   );
 }
-
 function portFromUrl(value: string) {
   try {
     const parsed = new URL(value);
@@ -988,7 +953,6 @@ function portFromUrl(value: string) {
     return null;
   }
 }
-
 function toneForStatus(status: string): StatusTone {
   const normalized = status.toLowerCase();
   if (normalized.includes("ready") || normalized.includes("running") || normalized.includes("ok"))
@@ -1003,13 +967,11 @@ function toneForStatus(status: string): StatusTone {
     return "warning";
   return "default";
 }
-
 function severityRank(severity: CompatibilityCheck["severity"]) {
   if (severity === "error") return 0;
   if (severity === "warn") return 1;
   return 2;
 }
-
 function severityTone(severity: CompatibilityCheck["severity"]): StatusTone {
   if (severity === "error") return "danger";
   if (severity === "warn") return "warning";

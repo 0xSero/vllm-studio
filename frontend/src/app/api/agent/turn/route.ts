@@ -1,44 +1,10 @@
 import { NextRequest } from "next/server";
 import { listSessions } from "@/lib/agent/sessions-store";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
-import { sanitizeComposerPlugins, sanitizeComposerSkills } from "@/lib/agent/composer-context";
+import { parseAgentTurnRequest } from "@/lib/agent/contracts/turn";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type TurnRequest = {
-  sessionId?: string;
-  modelId?: string;
-  message?: string;
-  cwd?: string;
-  // Optional pi session UUID to resume a past conversation. Distinct from
-  // `sessionId`, which is the in-memory PiRpcSession key (one per browser tab).
-  piSessionId?: string | null;
-  // When true, pi-runtime loads the browser extension so the agent can drive
-  // the embedded webview via tool calls.
-  browserToolEnabled?: boolean;
-  plugins?: Array<{
-    id?: string;
-    name?: string;
-    path?: string;
-    skillPath?: string;
-    mcpConfigPath?: string;
-    appConfigPath?: string;
-    appIds?: string[];
-    appPath?: string;
-  }>;
-  skills?: Array<{
-    id?: string;
-    name?: string;
-    path?: string;
-  }>;
-  // Send mode (matches pi-mono RPC): "prompt" runs immediately (or queues with
-  // streamingBehavior), "steer" interrupts the current turn between tool
-  // executions and the next LLM call, "follow_up" waits for the agent to
-  // finish before being delivered.
-  mode?: "prompt" | "steer" | "follow_up";
-  streamingBehavior?: "steer" | "followUp";
-};
 
 function sse(
   controller: ReadableStreamDefaultController<Uint8Array>,
@@ -72,34 +38,26 @@ function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | 
 }
 
 export async function POST(request: NextRequest) {
-  let body: TurnRequest;
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as TurnRequest;
+    rawBody = await request.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-
-  const message = typeof body.message === "string" ? body.message.trim() : "";
-  const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
-  const sessionId =
-    typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : "default";
-  const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : undefined;
-  const piSessionId =
-    typeof body.piSessionId === "string" && body.piSessionId.trim()
-      ? body.piSessionId.trim()
-      : null;
-  const browserToolEnabled = body.browserToolEnabled === true;
-  const plugins = sanitizeComposerPlugins(body.plugins);
-  const skills = sanitizeComposerSkills(body.skills);
-  const mode: TurnRequest["mode"] =
-    body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
-  const streamingBehavior =
-    body.streamingBehavior === "steer" || body.streamingBehavior === "followUp"
-      ? body.streamingBehavior
-      : undefined;
-
-  if (!message) return Response.json({ error: "message is required" }, { status: 400 });
-  if (!modelId) return Response.json({ error: "modelId is required" }, { status: 400 });
+  const parsed = parseAgentTurnRequest(rawBody);
+  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+  const {
+    sessionId,
+    modelId,
+    message,
+    cwd,
+    piSessionId,
+    browserToolEnabled,
+    plugins,
+    skills,
+    mode,
+    streamingBehavior,
+  } = parsed.value;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

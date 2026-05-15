@@ -1,4 +1,5 @@
 import { safeJson } from "@/lib/agent/safe-json";
+import type { GitState } from "@/lib/agent/contracts/git";
 import type { GitSummary, Project } from "./types";
 
 type DesktopBridge = {
@@ -62,16 +63,10 @@ export async function removeProject(id: string): Promise<void> {
 }
 
 export async function loadGitSummary(cwd: string): Promise<GitSummary | null> {
-  const response = await fetch(`/api/agent/git-diff?cwd=${encodeURIComponent(cwd)}`, {
+  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
     cache: "no-store",
   });
-  const payload = await safeJson<{
-    isRepo?: boolean;
-    branch?: string | null;
-    additions?: number;
-    deletions?: number;
-    status?: string[];
-  }>(response);
+  const payload = await safeJson<GitState>(response);
   return {
     isRepo: payload.isRepo === true,
     branch: payload.branch ?? null,
@@ -82,8 +77,10 @@ export async function loadGitSummary(cwd: string): Promise<GitSummary | null> {
 }
 
 export async function initGit(cwd: string): Promise<void> {
-  const response = await fetch(`/api/agent/git-diff?cwd=${encodeURIComponent(cwd)}`, {
+  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "init" }),
   });
   if (!response.ok) {
     const payload = await safeJson<{ error?: string }>(response);

@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
@@ -42,7 +41,6 @@ import {
   type SessionPrefs,
 } from "@/lib/agent/session/prefs";
 import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
-
 type SessionSummary = {
   id: string;
   filename: string;
@@ -54,14 +52,8 @@ type SessionSummary = {
   firstUserMessage: string | null;
   turnCount: number;
 };
-
 type PinnedSession = SessionSummary & { project: ProjectEntry };
-
-type DirectoryBrowserEntry = {
-  name: string;
-  path: string;
-};
-
+type DirectoryBrowserEntry = { name: string; path: string };
 type DirectoryBrowserPayload = {
   path: string;
   parent: string | null;
@@ -69,14 +61,11 @@ type DirectoryBrowserPayload = {
   entries: DirectoryBrowserEntry[];
   error?: string;
 };
-
 type ActiveAgentSession = ActiveAgentSessionSnapshot;
-
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
 const SESSION_NAV_TITLE_PREFIX = "vllm-studio.agent.sessionNavTitle:";
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-[#151515] p-1 text-xs text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]";
-
 function setAgentSessionDragData(
   event: DragEvent,
   session: {
@@ -94,25 +83,21 @@ function setAgentSessionDragData(
   event.dataTransfer.setData("application/x-vllm-agent-session", JSON.stringify(session));
   event.dataTransfer.effectAllowed = "copy";
 }
-
 function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
   return [
     session.piSessionId,
     session.paneId && session.tabId ? `tab:${session.paneId}:${session.tabId}` : null,
   ].filter((value): value is string => Boolean(value));
 }
-
 function activeSessionPref(session: ActiveAgentSession, prefs: SessionPrefs): SessionPref {
   return activeSessionPrefKeys(session).reduce<SessionPref>(
     (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
     {},
   );
 }
-
 function patchActiveSessionPref(session: ActiveAgentSession, patch: SessionPref) {
   for (const key of activeSessionPrefKeys(session)) patchSessionPref(key, patch);
 }
-
 function relativeAge(value?: string | null): string {
   const timestamp = value ? Date.parse(value) : NaN;
   if (!Number.isFinite(timestamp)) return "";
@@ -124,7 +109,6 @@ function relativeAge(value?: string | null): string {
   const days = Math.floor(hours / 24);
   return days === 1 ? "1 day" : `${days} days`;
 }
-
 function sessionDedupeKey(session: SessionSummary): string {
   const label = (session.firstUserMessage || "Untitled session")
     .replace(/\s+/g, " ")
@@ -132,20 +116,15 @@ function sessionDedupeKey(session: SessionSummary): string {
     .toLowerCase();
   return `${label}:${relativeAge(session.startedAt)}`;
 }
-
 function useSessionPrefs() {
   const [prefs, setPrefs] = useState<SessionPrefs>(() => loadSessionPrefs());
   useEffect(() => {
     const refresh = () =>
       setPrefs((current) => {
         const next = loadSessionPrefs();
-        // Avoid rerenders when nothing actually changed — `storage` events fire
-        // for every key write on this domain.
         try {
           if (JSON.stringify(current) === JSON.stringify(next)) return current;
-        } catch {
-          // fall through — return next
-        }
+        } catch {}
         return next;
       });
     window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
@@ -157,12 +136,10 @@ function useSessionPrefs() {
   }, []);
   return prefs;
 }
-
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(ADD_PROJECT_EVENT));
 }
-
 export function rememberAgentSessionNavTitle(sessionId: string | null | undefined, title: string) {
   if (typeof window === "undefined" || !sessionId) return;
   const trimmed = title.trim();
@@ -173,7 +150,6 @@ export function rememberAgentSessionNavTitle(sessionId: string | null | undefine
     return;
   }
 }
-
 export function consumeAgentSessionNavTitle(sessionId: string | null | undefined) {
   if (typeof window === "undefined" || !sessionId) return undefined;
   const key = `${SESSION_NAV_TITLE_PREFIX}${sessionId}`;
@@ -185,7 +161,6 @@ export function consumeAgentSessionNavTitle(sessionId: string | null | undefined
     return undefined;
   }
 }
-
 function ProjectDirectoryPickerModal({
   open,
   error,
@@ -204,7 +179,6 @@ function ProjectDirectoryPickerModal({
   const [entries, setEntries] = useState<DirectoryBrowserEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [browseError, setBrowseError] = useState("");
-
   const loadDirectory = useCallback(async (directoryPath?: string) => {
     setLoading(true);
     setBrowseError("");
@@ -224,29 +198,29 @@ function ProjectDirectoryPickerModal({
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     if (!open) return;
     void loadDirectory();
   }, [open, loadDirectory]);
-
   const goToDraftPath = () => {
     const next = draftPath.trim();
     if (next) void loadDirectory(next);
   };
-
   return (
     <UiModal isOpen={open} onClose={onClose} maxWidth="max-w-3xl">
+      {" "}
       <UiModalHeader
         title="Add project folder"
         icon={<Folder className="h-4 w-4" />}
         onClose={onClose}
       />
       <div className="space-y-4 p-5 text-sm text-(--fg)">
+        {" "}
         <p className="text-xs leading-5 text-(--dim)">
           Browse folders on the machine running vLLM Studio, or paste an absolute path.
         </p>
         <div className="flex gap-2">
+          {" "}
           <input
             value={draftPath}
             onChange={(event) => setDraftPath(event.target.value)}
@@ -256,15 +230,15 @@ function ProjectDirectoryPickerModal({
             className="min-w-0 flex-1 rounded border border-(--border) bg-(--bg) px-3 py-2 font-mono text-xs text-(--fg) outline-none focus:border-(--accent)"
             placeholder="/Users/name/project"
             aria-label="Directory path"
-          />
+          />{" "}
           <Button
             variant="secondary"
             onClick={goToDraftPath}
             disabled={loading || !draftPath.trim()}
           >
-            Go
+            Go{" "}
           </Button>
-        </div>
+        </div>{" "}
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
@@ -272,21 +246,24 @@ function ProjectDirectoryPickerModal({
             onClick={() => homePath && void loadDirectory(homePath)}
             disabled={!homePath || loading}
           >
+            {" "}
             Home
-          </Button>
+          </Button>{" "}
           <Button
             variant="secondary"
             size="sm"
             onClick={() => parentPath && void loadDirectory(parentPath)}
             disabled={!parentPath || loading}
           >
-            Up
+            Up{" "}
           </Button>
           <span className="truncate font-mono text-xs text-(--dim)" title={currentPath}>
+            {" "}
             {currentPath || "Loading…"}
-          </span>
+          </span>{" "}
         </div>
         <div className="h-72 overflow-auto rounded-lg border border-(--border) bg-(--bg)">
+          {" "}
           {loading ? (
             <div className="px-3 py-8 text-center text-xs text-(--dim)">Loading folders…</div>
           ) : entries.length === 0 ? (
@@ -300,21 +277,22 @@ function ProjectDirectoryPickerModal({
                 className="flex w-full items-center gap-2 border-b border-(--border)/50 px-3 py-2 text-left hover:bg-(--surface)"
                 title={entry.path}
               >
-                <Folder className="h-4 w-4 shrink-0 text-(--dim)" />
+                <Folder className="h-4 w-4 shrink-0 text-(--dim)" />{" "}
                 <span className="truncate">{entry.name}</span>
               </button>
             ))
-          )}
+          )}{" "}
         </div>
         {(browseError || error) && (
           <div className="rounded border border-(--err)/30 bg-(--err)/10 px-3 py-2 text-xs text-(--err)">
             {browseError || error}
           </div>
-        )}
+        )}{" "}
         <div className="flex justify-end gap-2 border-t border-(--border) pt-4">
           <Button variant="ghost" onClick={onClose}>
+            {" "}
             Cancel
-          </Button>
+          </Button>{" "}
           <Button
             onClick={() => {
               const selectedPath = draftPath.trim() || currentPath;
@@ -322,22 +300,17 @@ function ProjectDirectoryPickerModal({
             }}
             disabled={!(draftPath.trim() || currentPath) || loading}
           >
-            Select this folder
+            Select this folder{" "}
           </Button>
-        </div>
+        </div>{" "}
       </div>
     </UiModal>
   );
 }
-
-/**
- * Collapsible PROJECTS section in the top-level left sidebar. Each project is
- * a folder; expanding it fetches and lists the recent sessions inside.
- *
- * Hidden when the sidebar is collapsed to its icon rail (caller decides via
- * `expanded`).
- */
-export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
+/** * Collapsible PROJECTS section in the top-level left sidebar. Each project is
+ * a folder; expanding it fetches and lists the recent sessions inside. *
+ * Hidden when the sidebar is collapsed to its icon rail (caller decides via * `expanded`).
+ */ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const upsertProject = projectsContext.upsertProject;
@@ -389,17 +362,12 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           const pref = activeSessionPref(session, prefs);
           return pref.pinned && !pref.hidden;
         })
-        .map((session) => ({
-          session,
-          project: projectsById.get(session.projectId),
-        }))
+        .map((session) => ({ session, project: projectsById.get(session.projectId) }))
         .filter((entry): entry is { session: ActiveAgentSession; project: ProjectEntry } =>
           Boolean(entry.project),
         ),
     [activeSessions, prefs, projectsById],
   );
-  // Track every piSessionId already rendered in a pinned row so per-project
-  // recent/active lists can skip duplicates further down the tree.
   const pinnedRenderedIds = useMemo(() => {
     const ids = new Set<string>();
     for (const { session } of pinnedActiveSessions) {
@@ -408,7 +376,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     for (const session of pinnedSessions) ids.add(session.id);
     return ids;
   }, [pinnedActiveSessions, pinnedSessions]);
-
   const removeProjectAndCloseRow = useCallback(
     async (id: string) => {
       await removeProject(id);
@@ -421,7 +388,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     },
     [removeProject],
   );
-
   const handleAddProject = useCallback(async () => {
     setAddError("");
     try {
@@ -436,7 +402,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     }
     setDirectoryModalOpen(true);
   }, [upsertProject]);
-
   const handleDirectoryPicked = async (directoryPath: string) => {
     setAddError("");
     try {
@@ -448,7 +413,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       setAddError(error instanceof Error ? error.message : "Failed to add project");
     }
   };
-
   const toggle = (id: string) =>
     setOpenIds((current) => {
       const next = new Set(current);
@@ -456,12 +420,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       else next.add(id);
       return next;
     });
-
   useEffect(() => {
     window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
   }, [handleAddProject]);
-
   useEffect(() => {
     const onActiveSessions = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
@@ -474,7 +436,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
   }, []);
-
   useEffect(() => {
     if (!expanded || projects.length === 0) {
       queueMicrotask(() => setPinnedSessions([]));
@@ -524,13 +485,12 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       cancelled = true;
     };
   }, [activePiSessionIdsKey, expanded, hiddenPrefIdsKey, pinnedPrefIdsKey, projects]);
-
   if (!expanded) {
     return null;
   }
-
   return (
     <div className="flex shrink-0 flex-col">
+      {" "}
       <ProjectDirectoryPickerModal
         open={directoryModalOpen}
         error={addError}
@@ -541,7 +501,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         <div className="flex flex-col pb-1">
           <div className="mt-5 flex h-7 items-center px-3 text-[12px] font-medium text-(--dim)">
             Pinned
-          </div>
+          </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
             <ActiveSessionRow
               key={`${session.paneId}:${session.tabId}`}
@@ -557,11 +517,11 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               session={session}
               pref={prefs[session.id] ?? {}}
             />
-          ))}
+          ))}{" "}
         </div>
-      ) : null}
+      ) : null}{" "}
       <div className="mt-5 flex h-7 items-center justify-between px-3 text-[12px] font-medium text-(--dim)">
-        <span>Projects</span>
+        <span>Projects</span>{" "}
         <button
           type="button"
           onClick={handleAddProject}
@@ -569,15 +529,16 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           title="Add folder"
           aria-label="Add folder"
         >
-          <PlusIcon className="h-4 w-4" />
+          <PlusIcon className="h-4 w-4" />{" "}
         </button>
-      </div>
+      </div>{" "}
       {projects.length === 0 ? (
         <button
           type="button"
           onClick={handleAddProject}
           className="px-3 py-1 text-left text-[13px] text-(--dim) hover:text-(--fg)"
         >
+          {" "}
           No projects yet — pick a folder to get started.
         </button>
       ) : (
@@ -599,11 +560,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           />
         ))
       )}
-      {addError ? <div className="px-3 py-1 text-[11px] text-red-400">{addError}</div> : null}
+      {addError ? <div className="px-3 py-1 text-[11px] text-red-400">{addError}</div> : null}{" "}
     </div>
   );
 }
-
 function ProjectRow({
   project,
   open,
@@ -630,10 +590,10 @@ function ProjectRow({
     setMissingErrorVisible(false);
     onToggle();
   };
-
   return (
     <div className="flex flex-col">
       <div className="group relative flex h-8 items-center rounded-md pl-3 pr-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
+        {" "}
         <button
           type="button"
           onClick={handleToggle}
@@ -641,18 +601,15 @@ function ProjectRow({
           className="flex min-w-0 flex-1 items-center gap-3 px-0 pr-8 text-left"
         >
           <span className="relative h-4 w-4 shrink-0 text-(--dim)">
+            {" "}
             <Folder
-              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${
-                open ? "scale-90 opacity-0" : "scale-100 opacity-80"
-              }`}
+              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-80"}`}
             />
             <FolderOpen
-              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${
-                open ? "scale-100 opacity-80" : "scale-90 opacity-0"
-              }`}
-            />
+              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-100 opacity-80" : "scale-90 opacity-0"}`}
+            />{" "}
           </span>
-          <span className="truncate text-[14px] font-medium text-(--fg)">{project.name}</span>
+          <span className="truncate text-[14px] font-medium text-(--fg)">{project.name}</span>{" "}
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -660,7 +617,7 @@ function ProjectRow({
               aria-label={`Folder not found at ${project.path}`}
             />
           ) : null}
-        </button>
+        </button>{" "}
         <Link
           href={`/agent?project=${encodeURIComponent(project.id)}&new=1`}
           onClick={(event) => {
@@ -674,7 +631,7 @@ function ProjectRow({
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
-          <PlusIcon className="h-4 w-4" />
+          <PlusIcon className="h-4 w-4" />{" "}
         </Link>
         <button
           type="button"
@@ -687,18 +644,19 @@ function ProjectRow({
           title="Remove from list"
           aria-label="Remove project"
         >
+          {" "}
           <TrashIcon className="h-4 w-4" />
-        </button>
+        </button>{" "}
       </div>
       {missingErrorVisible && !project.exists ? (
         <div className="pl-12 pr-2 pb-1 text-[12px] text-red-400">
-          <span>Folder not found at {project.path}</span>
+          <span>Folder not found at {project.path}</span>{" "}
           <button
             type="button"
             onClick={onRemove}
             className="ml-2 text-(--dim) underline underline-offset-2 hover:text-(--fg)"
           >
-            Remove
+            Remove{" "}
           </button>
         </div>
       ) : null}
@@ -709,11 +667,10 @@ function ProjectRow({
           prefs={prefs}
           excludedIds={excludedIds}
         />
-      ) : null}
+      ) : null}{" "}
     </div>
   );
 }
-
 function ProjectSessions({
   project,
   activeSessions,
@@ -723,8 +680,7 @@ function ProjectSessions({
   project: ProjectEntry;
   activeSessions: ActiveAgentSession[];
   prefs: SessionPrefs;
-  /** Session ids already rendered elsewhere in the sidebar (e.g. Pinned). */
-  excludedIds: ReadonlySet<string>;
+  /** Session ids already rendered elsewhere in the sidebar (e.g. Pinned). */ excludedIds: ReadonlySet<string>;
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -741,7 +697,6 @@ function ProjectSessions({
       ),
     [projectActiveSessions],
   );
-
   const reload = useCallback(async () => {
     setLoading(true);
     try {
@@ -759,13 +714,11 @@ function ProjectSessions({
       setLoading(false);
     }
   }, [project.path]);
-
   useEffect(() => {
     void reload();
     window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
   }, [reload]);
-
   const [showHidden, setShowHidden] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SHOW_HIDDEN_KEY) === "1";
@@ -778,7 +731,6 @@ function ProjectSessions({
       }
       return next;
     });
-
   const visibleActiveSessions = useMemo(
     () =>
       projectActiveSessions.filter((session) => {
@@ -789,7 +741,6 @@ function ProjectSessions({
       }),
     [projectActiveSessions, prefs, excludedIds, showHidden],
   );
-
   const { recent, hidden, allRecent } = useMemo(() => {
     const seen = new Set<string>();
     const recent: SessionSummary[] = [];
@@ -809,9 +760,9 @@ function ProjectSessions({
     }
     return { recent, hidden, allRecent };
   }, [sessions, activePiSessionIds, excludedIds, prefs]);
-
   return (
     <div className="flex flex-col">
+      {" "}
       {visibleActiveSessions.map((session) => (
         <ActiveSessionRow
           key={`${session.paneId}:${session.tabId}`}
@@ -820,13 +771,13 @@ function ProjectSessions({
           pref={activeSessionPref(session, prefs)}
         />
       ))}
-
       {loading && !sessions ? (
         <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
         <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">No chats</div>
       ) : (
         <>
+          {" "}
           {recent.map((session) => (
             <SessionRow
               key={session.id}
@@ -842,7 +793,7 @@ function ProjectSessions({
               className="flex h-6 items-center gap-1 pl-10 pr-4 text-[13px] text-(--dim) hover:text-(--fg)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
-              <EyeOffIcon className="w-3 h-3 shrink-0" />
+              <EyeOffIcon className="w-3 h-3 shrink-0" />{" "}
               {showHidden ? `Hide ${hidden.length} hidden` : `Show ${hidden.length} hidden`}
             </button>
           ) : null}
@@ -855,13 +806,12 @@ function ProjectSessions({
                   pref={prefs[session.id] ?? {}}
                 />
               ))
-            : null}
+            : null}{" "}
         </>
-      )}
+      )}{" "}
     </div>
   );
 }
-
 type SessionNavRowProps = {
   pref: SessionPref;
   label: string;
@@ -883,7 +833,6 @@ type SessionNavRowProps = {
   renameInputClass?: string;
   menuItemsWithIcons?: boolean;
 };
-
 function SessionNavRow({
   pref,
   label,
@@ -909,9 +858,7 @@ function SessionNavRow({
   const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
-
   const startRename = () => {
     setDraft(initialDraft);
     setRenaming(true);
@@ -922,10 +869,10 @@ function SessionNavRow({
     onRenameCommit?.(trimmed);
     setRenaming(false);
   };
-
   if (renaming) {
     return (
       <div className={renameRowClass}>
+        {" "}
         <input
           autoFocus
           value={draft}
@@ -939,17 +886,17 @@ function SessionNavRow({
             }
           }}
           className={`min-w-0 flex-1 bg-transparent ${renameInputClass} text-(--fg) outline-none`}
-        />
+        />{" "}
       </div>
     );
   }
-
   const content = (
     <>
+      {" "}
       <span className="min-w-0 flex-1 truncate text-[12px] font-normal leading-7">{label}</span>
       {age ? (
         <span className="shrink-0 pl-2 pr-1 font-mono text-[10px] text-(--dim)">{age}</span>
-      ) : null}
+      ) : null}{" "}
     </>
   );
   const openProps = canDoubleClickRename
@@ -960,7 +907,6 @@ function SessionNavRow({
         },
       }
     : {};
-
   return (
     <div
       className={rowClass}
@@ -977,7 +923,7 @@ function SessionNavRow({
         pinned={Boolean(pref.pinned)}
         running={isRunning}
         onToggle={() => onPatchPref({ pinned: !pref.pinned })}
-      />
+      />{" "}
       {href ? (
         <Link
           href={href}
@@ -988,6 +934,7 @@ function SessionNavRow({
           className="flex min-w-0 flex-1 items-center gap-1 pr-5"
           {...openProps}
         >
+          {" "}
           {content}
         </Link>
       ) : (
@@ -999,10 +946,12 @@ function SessionNavRow({
           className="flex min-w-0 flex-1 items-center gap-1 pr-5 text-left"
           {...openProps}
         >
+          {" "}
           {content}
         </button>
       )}
       <div ref={menuRef} className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
+        {" "}
         <button
           type="button"
           onClick={(event) => {
@@ -1014,7 +963,7 @@ function SessionNavRow({
           aria-label="Session options"
           title="Session options"
         >
-          <MoreIcon className={menuIconClass} />
+          <MoreIcon className={menuIconClass} />{" "}
         </button>
         {menuOpen ? (
           <div className={SESSION_MENU_CLASS}>
@@ -1024,7 +973,7 @@ function SessionNavRow({
                 startRename();
               }}
             >
-              Rename
+              Rename{" "}
             </SessionMenuItem>
             <SessionMenuItem
               onClick={() => {
@@ -1034,13 +983,13 @@ function SessionNavRow({
             >
               {menuItemsWithIcons ? (
                 <span className="inline-flex items-center gap-2">
-                  <PinIcon className="h-4 w-4" /> {pref.pinned ? "Unpin" : "Pin"}
+                  <PinIcon className="h-4 w-4" /> {pref.pinned ? "Unpin" : "Pin"}{" "}
                 </span>
               ) : pref.pinned ? (
                 "Unpin"
               ) : (
                 "Pin"
-              )}
+              )}{" "}
             </SessionMenuItem>
             <SessionMenuItem
               onClick={() => {
@@ -1050,13 +999,13 @@ function SessionNavRow({
             >
               {menuItemsWithIcons ? (
                 <span className="inline-flex items-center gap-2">
-                  <EyeOffIcon className="h-4 w-4" /> {pref.hidden ? "Unarchive" : "Archive"}
+                  <EyeOffIcon className="h-4 w-4" /> {pref.hidden ? "Unarchive" : "Archive"}{" "}
                 </span>
               ) : pref.hidden ? (
                 "Unarchive"
               ) : (
                 "Archive"
-              )}
+              )}{" "}
             </SessionMenuItem>
             {showClearAction && (pref.title || pref.pinned || pref.hidden) ? (
               <SessionMenuItem
@@ -1065,18 +1014,18 @@ function SessionNavRow({
                   onPatchPref({ title: undefined, pinned: undefined, hidden: undefined });
                 }}
               >
+                {" "}
                 <span className="inline-flex items-center gap-2 text-(--err)">
-                  <CloseIcon className="h-4 w-4" /> Clear
+                  <CloseIcon className="h-4 w-4" /> Clear{" "}
                 </span>
               </SessionMenuItem>
             ) : null}
           </div>
         ) : null}
-      </div>
+      </div>{" "}
     </div>
   );
 }
-
 function ActiveSessionRow({
   project,
   session,
@@ -1088,12 +1037,7 @@ function ActiveSessionRow({
 }) {
   const label = pref.title || session.title || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${
-    isActive
-      ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']"
-      : "text-(--dim) hover:text-(--fg)"
-  }`;
-
+  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${isActive ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']" : "text-(--dim) hover:text-(--fg)"}`;
   return (
     <SessionNavRow
       pref={pref}
@@ -1134,7 +1078,6 @@ function ActiveSessionRow({
     />
   );
 }
-
 function SessionRow({
   project,
   session,
@@ -1170,7 +1113,6 @@ function SessionRow({
     />
   );
 }
-
 function SessionPinButton({
   pinned,
   onToggle,
@@ -1191,18 +1133,15 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`inline-flex h-6 w-4 shrink-0 items-center justify-center transition-opacity hover:text-(--fg) disabled:opacity-20 ${
-        pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-60 group-hover:opacity-100"
-      }`}
+      className={`inline-flex h-6 w-4 shrink-0 items-center justify-center transition-opacity hover:text-(--fg) disabled:opacity-20 ${pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-60 group-hover:opacity-100"}`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}
     >
-      <PinIcon className={`h-3.5 w-3.5 ${running ? "animate-pulse" : ""}`} />
+      <PinIcon className={`h-3.5 w-3.5 ${running ? "animate-pulse" : ""}`} />{" "}
     </button>
   );
 }
-
 function SessionMenuItem({
   onClick,
   children,
@@ -1216,7 +1155,7 @@ function SessionMenuItem({
       onClick={onClick}
       className="block w-full rounded-sm px-2 py-1 text-left text-xs text-(--fg) hover:bg-[#242424]"
     >
-      {children}
+      {children}{" "}
     </button>
   );
 }

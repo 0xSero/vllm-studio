@@ -1,8 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-
 const sse = (...payloads: unknown[]) =>
   payloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join("");
-
 async function mockAppApis(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("vllm-studio-setup-complete", "true");
@@ -12,7 +10,6 @@ async function mockAppApis(page: Page) {
       JSON.stringify(["http://127.0.0.1:8081"]),
     );
   });
-
   await page.route("**/api/settings", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -135,7 +132,6 @@ async function mockAppApis(page: Page) {
       body: JSON.stringify({ sessions: [] }),
     });
   });
-
   await page.route("**/api/proxy/status", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -160,11 +156,7 @@ async function mockAppApis(page: Page) {
           inference_url: "http://127.0.0.1:8000",
           frontend_url: "http://localhost:3001",
         },
-        runtime: {
-          platform: { kind: "unknown" },
-          gpus: { count: 0, types: [] },
-          cuda: {},
-        },
+        runtime: { platform: { kind: "unknown" }, gpus: { count: 0, types: [] }, cuda: {} },
         services: [],
       }),
     });
@@ -236,17 +228,14 @@ async function mockAppApis(page: Page) {
     });
   });
 }
-
 test.beforeEach(async ({ page }) => {
   await mockAppApis(page);
 });
-
 test("agent new chat surface renders with composer guidance", async ({ page }) => {
   await page.goto("/agent?new=1");
   await expect(page.getByText(/A dream is something you build/)).toBeVisible();
   await expect(page.getByPlaceholder(/Ask test-model/)).toBeVisible();
 });
-
 test("agent composer loads plugins with @ and skills with $ as tabs", async ({ page }) => {
   let turnRequest: { browserToolEnabled?: boolean; message?: string } | null = null;
   await page.route("**/api/agent/turn", async (route) => {
@@ -256,24 +245,20 @@ test("agent composer loads plugins with @ and skills with $ as tabs", async ({ p
       body: 'data: {"type":"status","phase":"done"}\n\n',
     });
   });
-
   await page.goto("/agent?new=1");
   const composer = page.getByPlaceholder(/Ask test-model/);
   await composer.fill("@");
   await page.getByRole("button", { name: /@Computer Use/ }).click();
   await expect(page.getByRole("button", { name: "Unload @Computer Use" })).toBeVisible();
-
   await composer.fill("$browser");
   await page.getByRole("button", { name: /\$browser-use:browser/ }).click();
   await expect(page.getByRole("button", { name: "Unload $browser-use:browser" })).toBeVisible();
-
   await composer.fill("use selected tools");
   await composer.press("Enter");
   await expect.poll(() => turnRequest?.message ?? "").toContain("Enabled plugins:");
   const capturedTurn = turnRequest as { browserToolEnabled?: boolean; message?: string } | null;
   expect(capturedTurn?.message).toContain("Computer Use");
 });
-
 test("agent sends steer and follow-up controls to Pi while running", async ({ page }) => {
   const turnRequests: Array<{ mode?: string; message?: string }> = [];
   await page.route("**/api/agent/turn", async (route) => {
@@ -312,25 +297,21 @@ test("agent sends steer and follow-up controls to Pi while running", async ({ pa
       body: sse({ type: "status", phase: "running", session: { piSessionId: "pi-running" } }),
     });
   });
-
   await page.goto("/agent?new=1");
   const composer = page.getByPlaceholder(/Ask test-model/);
   await composer.fill("start long run");
   await composer.press("Enter");
   await expect(page.getByText(/Pi is running/)).toBeVisible();
   await expect(page.getByPlaceholder(/Steer test-model/)).toBeVisible();
-
   const runningComposer = page.getByPlaceholder(/test-model/);
   await runningComposer.fill("steer now");
   await runningComposer.press("Enter");
   await expect.poll(() => turnRequests.some((request) => request.mode === "steer")).toBe(true);
-
   await runningComposer.fill("follow later");
   await runningComposer.press("Tab");
   await expect(page.getByRole("button", { name: /queue 1 follow later/ })).toBeVisible();
   await expect.poll(() => turnRequests.some((request) => request.mode === "follow_up")).toBe(true);
 });
-
 test("agent session reattaches after navigation and survives mixed tool calls", async ({
   page,
 }) => {
@@ -342,7 +323,6 @@ test("agent session reattaches after navigation and survives mixed tool calls", 
   };
   const waitForReplay = () =>
     replayEnabled ? Promise.resolve() : new Promise<void>((resolve) => replayWaiters.push(resolve));
-
   await page.route("**/api/agent/turn", async (route) => {
     await route.fulfill({
       contentType: "text/event-stream",
@@ -364,9 +344,7 @@ test("agent session reattaches after navigation and survives mixed tool calls", 
   await page.route("**/api/agent/runtime/status**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        status: { active: true, piSessionId: "pi-stream", eventSeq: 2 },
-      }),
+      body: JSON.stringify({ status: { active: true, piSessionId: "pi-stream", eventSeq: 2 } }),
     });
   });
   await page.route("**/api/agent/sessions/pi-stream**", async (route) => {
@@ -433,21 +411,17 @@ test("agent session reattaches after navigation and survives mixed tool calls", 
       })
       .catch(() => undefined);
   });
-
   await page.goto("/agent?new=1");
   const composer = page.getByPlaceholder(/Ask test-model/);
   await composer.fill("stream across nav");
   await composer.press("Enter");
   await expect(page.getByText("partial before nav")).toBeVisible();
-
   await page.goto("/server");
   enableReplay();
   await page.goto("/agent");
-
   await expect(page.getByText("partial before nav")).toBeVisible();
   await expect(page.getByPlaceholder(/Ask test-model/)).toBeVisible();
 });
-
 test("archived active sessions are excluded from restart hydration", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem(
@@ -472,12 +446,10 @@ test("archived active sessions are excluded from restart hydration", async ({ pa
       JSON.stringify({ "pi-archived": { hidden: true } }),
     );
   });
-
   await page.goto("/agent");
   await expect(page.getByText("Archived should stay hidden")).toHaveCount(0);
   await expect(page.getByText(/A dream is something you build/)).toBeVisible();
 });
-
 test("settings exposes archive, plugin, skill, setup, and controller surfaces", async ({
   page,
 }) => {
@@ -485,14 +457,11 @@ test("settings exposes archive, plugin, skill, setup, and controller surfaces", 
   await expect(page.getByRole("heading", { name: "Plugin registry" })).toBeVisible();
   await expect(page.getByText("Computer-use", { exact: true })).toBeVisible();
   await expect(page.getByText("Browser-use", { exact: true })).toBeVisible();
-
   await page.goto("/settings#skills");
   await expect(page.getByText("test skill")).toBeVisible();
-
   await page.goto("/settings#setup");
   await expect(page.getByText("Controller connection")).toBeVisible();
 });
-
 test("models page exposes search, running models, and downloads sections", async ({ page }) => {
   await page.goto("/recipes");
   await expect(page.getByRole("button", { name: "Search Models" })).toBeVisible();
@@ -500,7 +469,6 @@ test("models page exposes search, running models, and downloads sections", async
   await page.getByRole("button", { name: "Downloads" }).click();
   await expect(page.getByText("No downloads")).toBeVisible();
 });
-
 test("models search keeps base models first and expands derivatives before download tracking", async ({
   page,
 }) => {
@@ -555,25 +523,21 @@ test("models search keeps base models first and expands derivatives before downl
     }
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ downloads }) });
   });
-
   await page.goto("/recipes");
   await page.getByRole("button", { name: "Search Models" }).click();
   await page.getByPlaceholder("Search Hugging Face models").fill("Qwen3.6-27B");
   await expect(page.getByText("Qwen/Qwen3.6-27B")).toBeVisible();
   await expect(page.getByText("Qwen3.6-27B-GGUF")).toHaveCount(0);
-
   await page.getByTitle("Show variants").click();
   await expect(page.getByText("Qwen3.6-27B-GGUF")).toBeVisible();
   const baseRow = page
     .getByText("Qwen/Qwen3.6-27B", { exact: true })
     .locator("xpath=ancestor::div[contains(@class,'my-1')][1]");
   await baseRow.getByRole("button", { name: /^Download$/ }).click();
-
   await page.getByRole("button", { name: "Downloads" }).click();
   await expect(page.getByText("Qwen/Qwen3.6-27B", { exact: true })).toBeVisible();
   await expect(page.getByText("250 B / 1000 B · 25%")).toBeVisible();
 });
-
 test("status page shows controller tabs, scrollable logs, and nonzero runtime metrics", async ({
   page,
 }) => {
@@ -627,7 +591,6 @@ test("status page shows controller tabs, scrollable logs, and nonzero runtime me
       ]),
     });
   });
-
   await page.goto("/");
   await expect(page.getByText("controllers")).toBeVisible();
   await expect(page.getByRole("button", { name: "primary" })).toBeVisible();
@@ -682,7 +645,6 @@ test("status page shows controller tabs, scrollable logs, and nonzero runtime me
   await expect(page.getByText("Controller logs")).toBeVisible();
   await expect(page.getByText("controller booted")).toBeVisible();
 });
-
 test("server page exposes health, logs, and API docs tab", async ({ page }) => {
   await page.goto("/server");
   await expect(page.getByText("Server Health")).toBeVisible();

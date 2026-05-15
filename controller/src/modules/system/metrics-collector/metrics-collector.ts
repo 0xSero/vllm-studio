@@ -7,12 +7,7 @@ import { listLogFiles, resolveExistingLogPath, tailFileLines } from "../../../co
 import { fetchLocal } from "../../../http/local-fetch";
 import { isRecipeRunning } from "../../models/recipes/recipe-matching";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import {
-  METRICS_COLLECT_INTERVAL_MS,
-  METRICS_HTTP_TIMEOUT_MS,
-  METRICS_RUNTIME_SUMMARY_INTERVAL_MS,
-  METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS,
-} from "./configs";
+import { METRICS_COLLECT_INTERVAL_MS, METRICS_HTTP_TIMEOUT_MS, METRICS_RUNTIME_SUMMARY_INTERVAL_MS, METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS } from "./configs";
 
 const LLAMACPP_LOG_TAIL_LINES = 240;
 const LLAMACPP_TPS_STALE_MS = 15_000;
@@ -85,23 +80,15 @@ const findRunningRecipeForProcess = (context: AppContext, current: ProcessInfo):
   );
 };
 
-const scrapeLlamacppThroughput = (
-  context: AppContext,
-  current: ProcessInfo
-): LlamacppThroughputSample | null => {
+const scrapeLlamacppThroughput = (context: AppContext, current: ProcessInfo): LlamacppThroughputSample | null => {
   const recipe = findRunningRecipeForProcess(context, current);
   const recipeLogPath = recipe ? resolveExistingLogPath(context.config.data_dir, recipe.id) : null;
   const servedName = (current.served_model_name ?? "").toLowerCase();
 
   let logPath = recipeLogPath;
   if (!logPath) {
-    const entries = listLogFiles(context.config.data_dir).filter(
-      (entry) => entry.sessionId !== "controller"
-    );
-    const byName =
-      servedName.length > 0
-        ? entries.find((entry) => entry.sessionId.toLowerCase().includes(servedName))
-        : null;
+    const entries = listLogFiles(context.config.data_dir).filter((entry) => entry.sessionId !== "controller");
+    const byName = servedName.length > 0 ? entries.find((entry) => entry.sessionId.toLowerCase().includes(servedName)) : null;
     logPath = byName?.path ?? entries[0]?.path ?? null;
   }
 
@@ -223,17 +210,11 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
    */
   const collect = async (): Promise<void> => {
     try {
-      const current = await context.processManager.findInferenceProcess(
-        context.config.inference_port
-      );
+      const current = await context.processManager.findInferenceProcess(context.config.inference_port);
       const gpuList = getGpuInfo();
 
       if (current) {
-        context.metrics.updateActiveModel(
-          current.model_path,
-          current.backend,
-          current.served_model_name
-        );
+        context.metrics.updateActiveModel(current.model_path, current.backend, current.served_model_name);
       } else {
         context.metrics.updateActiveModel();
       }
@@ -258,9 +239,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
       if (Date.now() - lastRuntimeSummaryAt > METRICS_RUNTIME_SUMMARY_INTERVAL_MS) {
         try {
           const runtime = await getSystemRuntimeInfo(context.config);
-          const leaseHolder = current
-            ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference")
-            : null;
+          const leaseHolder = current ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference") : null;
           await context.eventManager.publishRuntimeSummary({
             platform: runtime.platform,
             gpu_monitoring: runtime.gpu_monitoring,
@@ -282,34 +261,16 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         lifetime_energy_kwh: (lifetimeData["energy_wh"] ?? 0) / 1000,
         lifetime_uptime_hours: (lifetimeData["uptime_seconds"] ?? 0) / 3600,
         current_power_watts: totalPowerWatts,
-        kwh_per_million_input: lifetimeData["prompt_tokens_total"]
-          ? (lifetimeData["energy_wh"] ?? 0) /
-            1000 /
-            ((lifetimeData["prompt_tokens_total"] ?? 1) / 1_000_000)
-          : null,
-        kwh_per_million_output: lifetimeData["completion_tokens_total"]
-          ? (lifetimeData["energy_wh"] ?? 0) /
-            1000 /
-            ((lifetimeData["completion_tokens_total"] ?? 1) / 1_000_000)
-          : null,
+        kwh_per_million_input: lifetimeData["prompt_tokens_total"] ? (lifetimeData["energy_wh"] ?? 0) / 1000 / ((lifetimeData["prompt_tokens_total"] ?? 1) / 1_000_000) : null,
+        kwh_per_million_output: lifetimeData["completion_tokens_total"] ? (lifetimeData["energy_wh"] ?? 0) / 1000 / ((lifetimeData["completion_tokens_total"] ?? 1) / 1_000_000) : null,
       };
 
-      const totalVramUsedGb = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.memory_used_mb ?? 0) / 1024,
-        0
-      );
-      const totalVramCapacityGb = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024,
-        0
-      );
-      const totalPowerLimitWatts = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.power_limit ?? 0),
-        0
-      );
+      const totalVramUsedGb = gpuList.reduce((sum, gpu) => sum + Number(gpu.memory_used_mb ?? 0) / 1024, 0);
+      const totalVramCapacityGb = gpuList.reduce((sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024, 0);
+      const totalPowerLimitWatts = gpuList.reduce((sum, gpu) => sum + Number(gpu.power_limit ?? 0), 0);
 
       if (current) {
-        const modelId =
-          current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
+        const modelId = current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
 
         if (sessionModelId !== modelId) {
           sessionModelId = modelId;
@@ -329,24 +290,11 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         if (current.backend === "vllm" || current.backend === "sglang") {
           const vllmMetrics = await scrapeVllmMetrics(context.config.inference_port);
           const now = Date.now() / 1000;
-          const elapsed =
-            lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
+          const elapsed = lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
           const isSglang = current.backend === "sglang";
-          const promptTokenNames = isSglang
-            ? ["sglang:prompt_tokens_total", "sglang:prefill_tokens_total"]
-            : ["vllm:prompt_tokens_total"];
-          const generationTokenNames = isSglang
-            ? [
-                "sglang:generation_tokens_total",
-                "sglang:completion_tokens_total",
-                "sglang:gen_tokens_total",
-              ]
-            : ["vllm:generation_tokens_total"];
-          if (
-            elapsed > 0 &&
-            Object.keys(vllmMetrics).length > 0 &&
-            Object.keys(lastVllmMetrics).length > 0
-          ) {
+          const promptTokenNames = isSglang ? ["sglang:prompt_tokens_total", "sglang:prefill_tokens_total"] : ["vllm:prompt_tokens_total"];
+          const generationTokenNames = isSglang ? ["sglang:generation_tokens_total", "sglang:completion_tokens_total", "sglang:gen_tokens_total"] : ["vllm:generation_tokens_total"];
+          if (elapsed > 0 && Object.keys(vllmMetrics).length > 0 && Object.keys(lastVllmMetrics).length > 0) {
             const previousPromptTokens = firstMetric(lastVllmMetrics, promptTokenNames);
             const currentPromptTokens = firstMetric(vllmMetrics, promptTokenNames);
             const previousGenerationTokens = firstMetric(lastVllmMetrics, generationTokenNames);
@@ -359,52 +307,17 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
             }
           }
 
-          promptThroughput =
-            firstMetric(vllmMetrics, [
-              isSglang ? "sglang:prompt_throughput" : "vllm:prompt_throughput",
-              isSglang ? "sglang:prefill_throughput" : "vllm:prefill_throughput",
-            ]) || promptThroughput;
-          generationThroughput =
-            firstMetric(vllmMetrics, [
-              isSglang ? "sglang:gen_throughput" : "vllm:gen_throughput",
-              isSglang ? "sglang:generation_throughput" : "vllm:generation_throughput",
-            ]) || generationThroughput;
+          promptThroughput = firstMetric(vllmMetrics, [isSglang ? "sglang:prompt_throughput" : "vllm:prompt_throughput", isSglang ? "sglang:prefill_throughput" : "vllm:prefill_throughput"]) || promptThroughput;
+          generationThroughput = firstMetric(vllmMetrics, [isSglang ? "sglang:gen_throughput" : "vllm:gen_throughput", isSglang ? "sglang:generation_throughput" : "vllm:generation_throughput"]) || generationThroughput;
 
-          runningRequests = Number(
-            firstMetric(
-              vllmMetrics,
-              isSglang
-                ? ["sglang:num_running_reqs", "sglang:num_requests_running"]
-                : ["vllm:num_requests_running"]
-            )
-          );
-          pendingRequests = Number(
-            firstMetric(
-              vllmMetrics,
-              isSglang
-                ? [
-                    "sglang:num_queue_reqs",
-                    "sglang:num_pending_reqs",
-                    "sglang:num_requests_waiting",
-                  ]
-                : ["vllm:num_requests_waiting"]
-            )
-          );
-          kvCacheUsage = firstMetric(
-            vllmMetrics,
-            isSglang
-              ? ["sglang:token_usage", "sglang:kv_cache_usage_perc"]
-              : ["vllm:kv_cache_usage_perc"]
-          );
+          runningRequests = Number(firstMetric(vllmMetrics, isSglang ? ["sglang:num_running_reqs", "sglang:num_requests_running"] : ["vllm:num_requests_running"]));
+          pendingRequests = Number(firstMetric(vllmMetrics, isSglang ? ["sglang:num_queue_reqs", "sglang:num_pending_reqs", "sglang:num_requests_waiting"] : ["vllm:num_requests_waiting"]));
+          kvCacheUsage = firstMetric(vllmMetrics, isSglang ? ["sglang:token_usage", "sglang:kv_cache_usage_perc"] : ["vllm:kv_cache_usage_perc"]);
           promptTokensTotal = Number(firstMetric(vllmMetrics, promptTokenNames));
           generationTokensTotal = Number(firstMetric(vllmMetrics, generationTokenNames));
 
-          const ttftSumName = isSglang
-            ? "sglang:time_to_first_token_seconds_sum"
-            : "vllm:time_to_first_token_seconds_sum";
-          const ttftCountName = isSglang
-            ? "sglang:time_to_first_token_seconds_count"
-            : "vllm:time_to_first_token_seconds_count";
+          const ttftSumName = isSglang ? "sglang:time_to_first_token_seconds_sum" : "vllm:time_to_first_token_seconds_sum";
+          const ttftCountName = isSglang ? "sglang:time_to_first_token_seconds_count" : "vllm:time_to_first_token_seconds_count";
           const previousTtftSum = lastVllmMetrics[ttftSumName] ?? 0;
           const previousTtftCount = lastVllmMetrics[ttftCountName] ?? 0;
           const currentTtftSum = vllmMetrics[ttftSumName] ?? 0;
@@ -443,12 +356,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
               lastLlamacppGenerationThroughput = sample.generationTps;
             }
 
-            context.stores.peakMetricsStore.updateIfBetter(
-              modelId,
-              sample.promptTps > 0 ? sample.promptTps : undefined,
-              sample.generationTps > 0 ? sample.generationTps : undefined,
-              undefined
-            );
+            context.stores.peakMetricsStore.updateIfBetter(modelId, sample.promptTps > 0 ? sample.promptTps : undefined, sample.generationTps > 0 ? sample.generationTps : undefined, undefined);
           }
 
           const isFresh = Date.now() - lastLlamacppSampleAt <= LLAMACPP_TPS_STALE_MS;
@@ -473,19 +381,13 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         bumpPeak(sessionPeaks, "vram_used_gb", totalVramUsedGb);
 
         const peakData = context.stores.peakMetricsStore.get(modelId);
-        const usageAggregate = context.stores.inferenceRequestStore.aggregate(
-          new Set([modelId])
-        ) as UsageAggregate | null;
+        const usageAggregate = context.stores.inferenceRequestStore.aggregate(new Set([modelId])) as UsageAggregate | null;
         const usageTotals = usageAggregate?.totals;
         const usageLatencyAvg = positiveOrUndefined(usageAggregate?.latency?.avg_ms);
         const usageTtftAvg = positiveOrUndefined(usageAggregate?.ttft?.avg_ms);
-        const promptTokensDisplay =
-          positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens);
-        const generationTokensDisplay =
-          positiveOrUndefined(generationTokensTotal) ??
-          positiveOrUndefined(usageTotals?.completion_tokens);
-        const avgTtftDisplay =
-          avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : (usageTtftAvg ?? 0);
+        const promptTokensDisplay = positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens);
+        const generationTokensDisplay = positiveOrUndefined(generationTokensTotal) ?? positiveOrUndefined(usageTotals?.completion_tokens);
+        const avgTtftDisplay = avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : (usageTtftAvg ?? 0);
 
         await context.eventManager.publishMetrics({
           ...baseMetrics,
@@ -508,8 +410,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
           power_limit_watts: Math.round(totalPowerLimitWatts),
           // Session peaks (reset on model switch)
           session_peak_prompt_throughput: Math.round(sessionPeaks.prompt_throughput * 10) / 10,
-          session_peak_generation_throughput:
-            Math.round(sessionPeaks.generation_throughput * 10) / 10,
+          session_peak_generation_throughput: Math.round(sessionPeaks.generation_throughput * 10) / 10,
           session_peak_ttft_ms: Math.round(sessionPeaks.ttft_ms * 10) / 10,
           session_peak_kv_cache_usage: sessionPeaks.kv_cache_usage,
           session_peak_running_requests: sessionPeaks.running_requests,

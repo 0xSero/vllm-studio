@@ -1,11 +1,5 @@
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
-import type {
-  AgentTurnSsePayload,
-  QueuedMessage,
-  RuntimeLoggedEvent,
-  SessionTab,
-  TokenStats,
-} from "./types";
+import type { QueuedMessage, RuntimeLoggedEvent, SessionTab, TokenStats } from "./types";
 
 // ----- id / time -----
 
@@ -138,24 +132,7 @@ export function messageText(
 
 // ----- SSE parsing -----
 
-export function parseAgentTurnSsePayload(line: string): AgentTurnSsePayload | null {
-  if (!line.startsWith("data: ")) return null;
-  try {
-    const payload = JSON.parse(line.slice(6)) as Partial<AgentTurnSsePayload>;
-    if (payload.type === "status" && typeof payload.phase === "string") {
-      return payload as AgentTurnSsePayload;
-    }
-    if (payload.type === "error" && typeof payload.error === "string") {
-      return payload as AgentTurnSsePayload;
-    }
-    if (payload.type === "pi" && payload.event && typeof payload.event === "object") {
-      return payload as AgentTurnSsePayload;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
+export { parseAgentTurnSsePayload } from "@/lib/agent/contracts/turn";
 
 // ----- runtime status / control helpers -----
 

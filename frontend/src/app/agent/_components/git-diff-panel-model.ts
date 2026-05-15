@@ -1,10 +1,6 @@
-export type GitDiffPayload = {
-  isRepo?: boolean;
-  branch?: string | null;
-  status?: string[];
-  diff?: string;
-  error?: string;
-};
+import type { GitState } from "@/lib/agent/contracts/git";
+
+export type GitDiffPayload = Partial<GitState>;
 
 export type DiffLineKind = "meta" | "context" | "add" | "del";
 

@@ -1,5 +1,4 @@
 "use client";
-
 import {
   FormEvent,
   useCallback,
@@ -63,9 +62,6 @@ import {
   type ChatAttachment,
 } from "./chat-attachments";
 import { Timeline } from "./timeline/timeline";
-
-// Re-export the session module's public surface so existing imports from
-// "./chat-pane" keep working during the incremental migration.
 export type {
   AgentTurnSsePayload,
   AssistantBlock,
@@ -80,10 +76,8 @@ export type {
   ToolBlock,
 };
 export { visibleQueuedMessages };
-
 type Props = {
   paneId: string;
-  // The unique runtime session id used as the PiRpcSession key on the server.
   runtimeSessionId: string;
   modelId: string;
   modelName: string | null;
@@ -105,22 +99,13 @@ type Props = {
   onToggleBrowserTool: () => void;
   isFocused: boolean;
   onFocus: () => void;
-  // Notify parent that we picked up a fresh pi session id (so the sidebar can
-  // refresh its summary list).
   onPiSessionIdChange?: (sessionId: string) => void;
-  // The pane's tab state lives in the parent so layout / persistence can see
-  // and rehydrate it.
   tabs: SessionTab[];
   activeTabId: string;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
   onClose?: () => void;
-  // Workspace hands ChatPane a setter so it can register/unregister an
-  // imperative handle. There is no useEffect-driven `initialSessionId` field
-  // anymore — the workspace calls handle.loadAndReplay() directly when the
-  // user clicks a session in the navbar. One source of truth, no race.
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
 };
-
 export function ChatPane({
   paneId,
   runtimeSessionId,
@@ -157,7 +142,6 @@ export function ChatPane({
   const [queueExpanded, setQueueExpanded] = useState(false);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [compacting, setCompacting] = useState(false);
-
   const tools = useTools();
   const pluginRows = tools.pluginCatalogue;
   const skillRows = tools.skillCatalogue;
@@ -181,7 +165,6 @@ export function ChatPane({
       ? byQuery(pluginRows, mention.query, 8)
       : byQuery(skillRows, mention.query, 8);
   }, [mention, pluginRows, skillRows]);
-
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
       onTabsChange((currentTabs) =>
@@ -190,7 +173,6 @@ export function ChatPane({
     },
     [onTabsChange],
   );
-
   const selectMentionRow = useCallback(
     async (row: ComposerPluginRef | ComposerSkillRef) => {
       if (!activeTab || !mention) return;
@@ -218,8 +200,6 @@ export function ChatPane({
             ? { ...row, ...loaded.plugin, id: row.id }
             : row;
       }
-      // Stash the new input on the session, then mutate the per-session tool
-      // selection through the tools subsystem (single owner of plugins/skills).
       updateTab(activeTab.id, (tab) => ({ ...tab, input }));
       const current = tools.selectionFor(activeTab.id);
       if (selectedMention.kind === "plugin") {
@@ -247,7 +227,6 @@ export function ChatPane({
     },
     [activeTab, browserToolEnabled, mention, onToggleBrowserTool, tools, updateTab],
   );
-
   const removeLoadedContext = useCallback(
     (kind: "plugin" | "skill", id: string) => {
       if (!activeTab) return;
@@ -263,7 +242,6 @@ export function ChatPane({
     },
     [activeTab, tools],
   );
-
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -271,7 +249,6 @@ export function ChatPane({
       requestAnimationFrame(() => element.scrollTo({ top: element.scrollHeight }));
     }
   }, [activeTab?.messages, activeTab?.status]);
-
   const updateSession = useCallback(
     (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
@@ -287,7 +264,6 @@ export function ChatPane({
     updateSession,
     selectionFor: tools.selectionFor,
   });
-
   const buildPromptArgs = useCallback(
     (sessionId: string, rawText: string) => {
       const text = rawText.trim();
@@ -309,12 +285,8 @@ export function ChatPane({
     },
     [attachments, tools],
   );
-
   const submitPrompt = useCallback(
     async (rawText: string, targetTabId?: string) => {
-      // Composer state (attachments / textarea) is single-instance — gate on
-      // whether *anything* is composable. The engine looks up the target
-      // session itself from its internal snapshot.
       const targetId = targetTabId ?? activeTab?.id;
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
@@ -328,11 +300,6 @@ export function ChatPane({
     },
     [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
   );
-
-  // Compose-then-send orchestration. Steer/follow-up paths route through
-  // engine.sendControl when the runtime accepts in-flight messages; otherwise
-  // we submit a fresh turn via engine.submitPrompt (which our local wrapper
-  // builds args for).
   const queueAndSendControl = useCallback(
     async (
       mode: "steer" | "follow_up",
@@ -366,25 +333,19 @@ export function ChatPane({
     },
     [engine, updateTab],
   );
-
   const sendMessage = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
       if (!activeTab) return;
-      // Block double-sends while the previous turn is still spinning up.
-      // Once pi flips to "running" the user can steer; until then, ignore.
       if (activeTab.status === "starting" || activeTab.status === "loading") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
-
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
       const status = await engine.loadRuntimeStatus(runtime);
       const accepts = engine.acceptsControl(status, activeTab.piSessionId);
       if (running) {
         if (!text) return;
         if (!accepts) {
-          // Stale UI: pi already ended. Drop to idle and submit a normal turn
-          // so the model actually sees the message.
           updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
           await submitPrompt(text, activeTab.id);
           return;
@@ -411,9 +372,6 @@ export function ChatPane({
       updateTab,
     ],
   );
-
-  // Tab-key: while idle, submit immediately; while running, pi-follow-up so
-  // pi owns queue ordering and the original runtime stream continues.
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
@@ -441,7 +399,6 @@ export function ChatPane({
     submitPrompt,
     updateTab,
   ]);
-
   const removeQueued = useCallback(
     (queueId: string) => {
       if (!activeTab) return;
@@ -452,7 +409,6 @@ export function ChatPane({
     },
     [activeTab, updateTab],
   );
-
   const attachFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const fileArray = files ? Array.from(files) : [];
@@ -491,7 +447,6 @@ export function ChatPane({
     },
     [activeTab, running, updateTab],
   );
-
   const handleComposerPaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = filesFromDataTransfer(event.clipboardData);
@@ -501,7 +456,6 @@ export function ChatPane({
     },
     [attachFiles],
   );
-
   const handleComposerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       if (!dataTransferHasFiles(event.dataTransfer)) return;
@@ -511,13 +465,11 @@ export function ChatPane({
     },
     [running],
   );
-
   const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
     const nextTarget = event.relatedTarget;
     if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
     setComposerDragActive(false);
   }, []);
-
   const handleComposerDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       if (!dataTransferHasFiles(event.dataTransfer)) return;
@@ -527,14 +479,10 @@ export function ChatPane({
     },
     [attachFiles],
   );
-
   const abortTurn = useCallback(async () => {
     if (!activeTab) return;
     await engine.abortTurn(activeTab.id);
   }, [activeTab, engine]);
-
-  // Workspace calls this through the imperative handle when the user clicks a
-  // saved session in the sidebar.
   const loadAndReplay = useCallback(
     async (piSessionId: string) => {
       if (!activeTabId) return;
@@ -542,9 +490,6 @@ export function ChatPane({
     },
     [activeTabId, engine],
   );
-
-  // Stable imperative handle so the workspace can drive replay without going
-  // through a useEffect-driven `initialSessionId` prop.
   const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
   handleRef.current = { loadAndReplay };
   useEffect(() => {
@@ -555,14 +500,10 @@ export function ChatPane({
     onRegisterHandle(handle);
     return () => onRegisterHandle(null);
   }, [onRegisterHandle]);
-
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
   const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
-
-  // Compaction is the engine's job; the local `compacting` flag just disables
-  // the button while the request is in flight.
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -572,13 +513,13 @@ export function ChatPane({
       setCompacting(false);
     }
   }, [activeTab, compacting, engine, modelId, running]);
-
   return (
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
     >
+      {" "}
       {onClose ? (
         <button
           type="button"
@@ -592,29 +533,29 @@ export function ChatPane({
           aria-label="Close pane"
           title="Close pane"
         >
-          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />
+          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />{" "}
         </button>
-      ) : null}
+      ) : null}{" "}
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {activeTab.error}
         </div>
       ) : null}
-
-      <Timeline
-        scrollRef={scrollRef}
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          const distanceFromBottom =
-            element.scrollHeight - element.scrollTop - element.clientHeight;
-          stickToBottomRef.current = distanceFromBottom <= 80;
-        }}
-        messages={activeTab?.messages ?? []}
-        running={Boolean(running)}
-        statusLabel={activeTab?.status}
-        emptyPrompt={Boolean(showEmptyPrompt)}
-      />
-
+      <div className="flex min-h-0 flex-1">
+        <Timeline
+          scrollRef={scrollRef}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const distanceFromBottom =
+              element.scrollHeight - element.scrollTop - element.clientHeight;
+            stickToBottomRef.current = distanceFromBottom <= 80;
+          }}
+          messages={activeTab?.messages ?? []}
+          running={Boolean(running)}
+          statusLabel={activeTab?.status}
+          emptyPrompt={Boolean(showEmptyPrompt)}
+        />
+      </div>
       <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
@@ -625,34 +566,33 @@ export function ChatPane({
               aria-expanded={queueExpanded}
               title="Queued follow-ups and steers"
             >
+              {" "}
               <ChevronDownIcon
-                className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${
-                  queueExpanded ? "rotate-180" : "-rotate-90"
-                }`}
+                className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${queueExpanded ? "rotate-180" : "-rotate-90"}`}
               />
               <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
                 queue {visibleQueueItems.length}
-              </span>
+              </span>{" "}
               <span className="min-w-0 flex-1 truncate">
                 {latestQueued?.text ?? "No queued message"}
               </span>
-            </button>
+            </button>{" "}
             {queueExpanded ? (
               <div className="mt-1 space-y-0.5">
+                {" "}
                 {visibleQueue.map((item) => (
                   <div
                     key={item.id}
                     className="flex min-w-0 items-center gap-2 py-1"
                     title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
                   >
+                    {" "}
                     <span
-                      className={`shrink-0 font-mono text-[10px] uppercase tracking-wide ${
-                        item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"
-                      }`}
+                      className={`shrink-0 font-mono text-[10px] uppercase tracking-wide ${item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"}`}
                     >
                       {item.mode === "steer" ? "steer" : "queue"}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{item.text}</span>
+                    <span className="min-w-0 flex-1 truncate">{item.text}</span>{" "}
                     <button
                       type="button"
                       onClick={() => removeQueued(item.id)}
@@ -660,7 +600,7 @@ export function ChatPane({
                       aria-label="Remove queued message"
                       title="Remove queued message"
                     >
-                      <CloseIcon className="h-3 w-3" />
+                      <CloseIcon className="h-3 w-3" />{" "}
                     </button>
                   </div>
                 ))}
@@ -672,10 +612,9 @@ export function ChatPane({
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-lg bg-(--composer) shadow-none transition-colors ${
-            composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""
-          }`}
+          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-lg bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
         >
+          {" "}
           {composerDragActive ? (
             <div className="px-4 pt-2 text-[11px] text-(--accent)">
               Drop files to attach to the next message.
@@ -692,7 +631,7 @@ export function ChatPane({
                   active={plugin.name.toLowerCase().includes("computer-use")}
                   onRemove={() => removeLoadedContext("plugin", plugin.id)}
                 />
-              ))}
+              ))}{" "}
               {selectedSkills.map((skill) => (
                 <LoadedContextTab
                   key={`skill-${skill.id}`}
@@ -709,9 +648,10 @@ export function ChatPane({
             <div className="px-4 pt-2">
               <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
                 {mention.kind === "plugin" ? "Plugins" : "Skills"}
-              </div>
+              </div>{" "}
               {mentionRows.length ? (
                 <div className="grid gap-1">
+                  {" "}
                   {mentionRows.map((row) => (
                     <button
                       key={row.id}
@@ -720,22 +660,24 @@ export function ChatPane({
                       onClick={() => void selectMentionRow(row)}
                       className="flex min-w-0 items-start justify-between gap-3 py-1 text-left text-(--dim) hover:text-(--fg)"
                     >
+                      {" "}
                       <span className="min-w-0">
                         <span className="block truncate text-[12px] text-(--fg)">
+                          {" "}
                           {mention.kind === "plugin" ? "@" : "$"}
-                          {mentionRowTitle(row)}
+                          {mentionRowTitle(row)}{" "}
                           {mentionRowVersion(row) ? (
                             <span className="ml-1 font-mono text-[10px] text-(--dim)">
                               {mentionRowVersion(row)}
                             </span>
                           ) : null}
-                        </span>
+                        </span>{" "}
                         {mentionRowDescription(row) ? (
                           <span className="block truncate text-[10.5px] text-(--dim)">
                             {mentionRowDescription(row)}
                           </span>
                         ) : null}
-                      </span>
+                      </span>{" "}
                       <span className="truncate font-mono text-[10px] text-(--dim)">
                         {row.source ?? ""}
                       </span>
@@ -744,6 +686,7 @@ export function ChatPane({
                 </div>
               ) : (
                 <div className="px-2 py-1 text-[11px] text-(--dim)">
+                  {" "}
                   No {mention.kind === "plugin" ? "plugins" : "skills"} match{" "}
                   <span className="font-mono">{mention.query || "…"}</span>.
                 </div>
@@ -759,8 +702,6 @@ export function ChatPane({
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
                   {isImageAttachment(file) ? (
-                    // Keep composer image previews intentionally small; the
-                    // attachment is still sent at full inline/file fidelity.
                     <img
                       src={file.content}
                       alt=""
@@ -768,9 +709,9 @@ export function ChatPane({
                     />
                   ) : (
                     <FileIcon className="h-3 w-3 shrink-0" />
-                  )}
+                  )}{" "}
                   <span className="truncate">{file.name}</span>
-                  <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>
+                  <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>{" "}
                   <button
                     type="button"
                     onClick={() =>
@@ -780,7 +721,7 @@ export function ChatPane({
                     aria-label={`Remove ${file.name}`}
                     title={`Remove ${file.name}`}
                   >
-                    <CloseIcon className="h-3 w-3" />
+                    <CloseIcon className="h-3 w-3" />{" "}
                   </button>
                 </span>
               ))}
@@ -819,21 +760,17 @@ export function ChatPane({
                   return;
                 }
               }
-              // Enter (no shift) → send. While running, this becomes a steer.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
                 return;
               }
-              // Tab → queue (follow-up). Captured even while running so the
-              // user can pile up tasks while the agent is working.
               if (event.key === "Tab" && !event.shiftKey) {
                 if (!activeTab?.input.trim()) return;
                 event.preventDefault();
                 void queueMessage();
                 return;
               }
-              // Esc → pause (abort). Cmd/Ctrl+. for parity.
               if (
                 event.key === "Escape" ||
                 (event.key === "." && (event.metaKey || event.ctrlKey))
@@ -856,6 +793,7 @@ export function ChatPane({
             className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-sm leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
           />
           <div className="flex min-h-10 items-center gap-1.5 bg-transparent px-3 pb-2 pt-1 text-xs">
+            {" "}
             <input
               ref={fileInputRef}
               type="file"
@@ -871,8 +809,9 @@ export function ChatPane({
               aria-label="Attach files"
               title="Attach files (or paste/drop into composer)"
             >
+              {" "}
               <AttachIcon className="h-3.5 w-3.5" />
-            </button>
+            </button>{" "}
             <button
               type="button"
               onClick={onToggleBrowserTool}
@@ -882,26 +821,27 @@ export function ChatPane({
                   ? "Browser tool: ON — agent can drive the browser"
                   : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
               }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${
-                browserToolEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"
-              }`}
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"}`}
             >
               <span className="relative inline-flex">
+                {" "}
                 <GlobeIcon className="h-3.5 w-3.5" />
-                {computerUseLoaded ? <ComputerUseActivityDot /> : null}
+                {computerUseLoaded ? <ComputerUseActivityDot /> : null}{" "}
               </span>
-            </button>
+            </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {modelSelector}
+              {modelSelector}{" "}
               {running ? (
                 <>
+                  {" "}
                   {activeTab?.status === "starting" ? (
                     <span
                       className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[11px] text-(--dim)"
                       title="Waiting for the model to start"
                     >
+                      {" "}
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      Starting…
+                      Starting…{" "}
                     </span>
                   ) : activeTab?.input.trim() ? (
                     <>
@@ -911,14 +851,15 @@ export function ChatPane({
                         className="inline-flex !h-7 !min-h-7 shrink-0 items-center px-1.5 text-[11px] text-(--dim) underline-offset-2 hover:text-(--fg) hover:underline"
                         title="Queue (Tab)"
                       >
+                        {" "}
                         Queue
-                      </button>
+                      </button>{" "}
                       <button
                         type="submit"
                         className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/15 hover:text-(--fg)"
                         title="Steer (Enter): interrupt current turn and send"
                       >
-                        <SendIcon className="h-3 w-3" /> Steer
+                        <SendIcon className="h-3 w-3" /> Steer{" "}
                       </button>
                     </>
                   ) : null}
@@ -929,8 +870,9 @@ export function ChatPane({
                     className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 px-2 text-xs text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
                     title="Pause (Esc)"
                   >
+                    {" "}
                     <StopIcon className="h-3 w-3" /> Pause
-                  </button>
+                  </button>{" "}
                 </>
               ) : (
                 <button
@@ -950,13 +892,14 @@ export function ChatPane({
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <SendIcon className="h-3.5 w-3.5" />
-                  )}
+                  )}{" "}
                 </button>
-              )}
+              )}{" "}
             </div>
-          </div>
+          </div>{" "}
         </div>
         <div className="mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-hidden font-mono text-[10px] text-(--dim)">
+          {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             <button
               type="button"
@@ -965,22 +908,23 @@ export function ChatPane({
               className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
               title="Compact this Pi session context"
             >
+              {" "}
               {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              compact
+              compact{" "}
             </button>
-            <span className="shrink-0 text-(--border)">·</span>
+            <span className="shrink-0 text-(--border)">·</span>{" "}
             <div className="min-w-0 max-w-[42%] shrink">
               {projectSelector ? (
                 projectSelector
               ) : cwd ? (
                 <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
-                  {cwd}
+                  {cwd}{" "}
                 </span>
-              ) : null}
+              ) : null}{" "}
             </div>
             {gitBranch ? (
               <span className="inline-flex min-w-0 shrink items-center gap-1 text-(--dim)">
-                <GitBranchIcon className="h-3 w-3 shrink-0" />
+                <GitBranchIcon className="h-3 w-3 shrink-0" />{" "}
                 <span className="truncate">{gitBranch}</span>
               </span>
             ) : gitSummary && !gitSummary.isRepo ? (
@@ -990,46 +934,45 @@ export function ChatPane({
                 className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg)"
                 title="Init git"
               >
+                {" "}
                 <GitBranchIcon className="h-3 w-3" />
-                git
+                git{" "}
               </button>
-            ) : null}
+            ) : null}{" "}
             {gitSummary?.isRepo ? (
               <span className="inline-flex shrink-0 items-center gap-1">
+                {" "}
                 <span className="text-emerald-400">+{gitSummary.additions}</span>
-                <span className="text-red-400">-{gitSummary.deletions}</span>
+                <span className="text-red-400">-{gitSummary.deletions}</span>{" "}
                 {gitSummary.statusCount > 0 ? (
                   <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
                 ) : null}
               </span>
             ) : null}
-          </div>
+          </div>{" "}
           <div className="flex shrink-0 items-center justify-end gap-2">
-            <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>
+            <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>{" "}
             <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
             <span>
+              {" "}
               {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
               {formatTokenCount(contextWindow)}
-            </span>
+            </span>{" "}
           </div>
-        </div>
+        </div>{" "}
       </form>
     </section>
   );
 }
-
 function mentionRowTitle(row: ComposerPluginRef | ComposerSkillRef): string {
   return ("displayName" in row && row.displayName) || row.name;
 }
-
 function mentionRowVersion(row: ComposerPluginRef | ComposerSkillRef): string | undefined {
   return "version" in row ? row.version : undefined;
 }
-
 function mentionRowDescription(row: ComposerPluginRef | ComposerSkillRef): string | undefined {
   return "shortDescription" in row ? row.shortDescription : undefined;
 }
-
 function LoadedContextTab({
   prefix,
   label,
@@ -1048,9 +991,9 @@ function LoadedContextTab({
       className="inline-flex max-w-[240px] items-center gap-1 py-0.5 text-[11px] text-(--fg)"
       title={title ?? label}
     >
+      {" "}
       <span className="font-mono text-(--accent)">{prefix}</span>
-      {active ? <ComputerUseActivityDot inline /> : null}
-      <span className="truncate">{label}</span>
+      {active ? <ComputerUseActivityDot inline /> : null} <span className="truncate">{label}</span>
       <button
         type="button"
         onClick={onRemove}
@@ -1058,12 +1001,12 @@ function LoadedContextTab({
         aria-label={`Unload ${prefix}${label}`}
         title={`Unload ${prefix}${label}`}
       >
+        {" "}
         <CloseIcon className="h-3 w-3" />
-      </button>
+      </button>{" "}
     </span>
   );
 }
-
 function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {
   return (
     <span
@@ -1074,7 +1017,7 @@ function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {
       }
       aria-hidden="true"
     >
-      <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-(--accent)/35" />
+      <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-(--accent)/35" />{" "}
       <span className="relative h-1.5 w-1.5 rounded-full bg-(--accent)" />
     </span>
   );

@@ -18,6 +18,7 @@ This release consolidates major repo changes currently in the tree, including:
 - Overview: docs/README.md
 - Setup and deployment: docs/operations.md
 - Environment variables: docs/environment.md
+- Contributing: CONTRIBUTING.md
 
 ## Repository layout
 

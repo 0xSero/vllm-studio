@@ -2,10 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import { createToolCallStream } from "../modules/proxy/tool-call-stream";
 import { parseToolCallsFromContent } from "../modules/proxy/tool-call-parser";
-import {
-  normalizeReasoningAndContentInMessage,
-  normalizeToolCallsInMessage,
-} from "../modules/proxy/reasoning-extractor";
+import { normalizeReasoningAndContentInMessage, normalizeToolCallsInMessage } from "../modules/proxy/reasoning-extractor";
 
 const collectStream = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   const reader = stream.getReader();
@@ -35,9 +32,7 @@ const parseSseDataLines = (output: string): Array<Record<string, unknown> | "[DO
   return events;
 };
 
-const collectDeltaText = (
-  events: Array<Record<string, unknown> | "[DONE]">
-): { content: string; reasoning: string } => {
+const collectDeltaText = (events: Array<Record<string, unknown> | "[DONE]">): { content: string; reasoning: string } => {
   let content = "";
   let reasoning = "";
   for (const event of events) {
@@ -86,8 +81,7 @@ describe("tool-call-core", () => {
   it("does not extract non-streaming tool calls from reasoning_content", () => {
     const message: Record<string, unknown> = {
       content: "visible answer",
-      reasoning_content:
-        '<tool_call><function=calc><arguments>{"x":1}</arguments></tool_call>',
+      reasoning_content: '<tool_call><function=calc><arguments>{"x":1}</arguments></tool_call>',
     };
 
     expect(normalizeToolCallsInMessage(message)).toBe(false);
@@ -95,8 +89,7 @@ describe("tool-call-core", () => {
   });
 
   it("collapses exact duplicated visible content without touching reasoning", () => {
-    const visible =
-      "This is the actual assistant answer with enough text to avoid collapsing short intentional repetition.";
+    const visible = "This is the actual assistant answer with enough text to avoid collapsing short intentional repetition.";
     const message: Record<string, unknown> = {
       content: `${visible}\n\n${visible}`,
       reasoning_content: "normal reasoning",
@@ -112,11 +105,7 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":"<tool_call><function=calc><arguments>{\\"x\\":1}</arguments></tool_call>"}}]}\n\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"<tool_call><function=calc><arguments>{\\"x\\":1}</arguments></tool_call>"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -151,12 +140,8 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"foo <thi"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"nk>secret</think> world"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"foo <thi"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"nk>secret</think> world"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -175,17 +160,9 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"start <thi"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":"nk>first</think> mid <thi"}}]}\n\n'
-          )
-        );
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"nk>second</think> end"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"start <thi"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"nk>first</think> mid <thi"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"nk>second</think> end"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -206,14 +183,8 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"foo <think"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":"ing>secret</thinking> bar"}}]}\n\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"foo <think"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"ing>secret</thinking> bar"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -232,11 +203,7 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":"foo <think>secret</think> bar"}}]\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"foo <think>secret</think> bar"}}]\n'));
         controller.enqueue(encoder.encode("data: }\n\n"));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -256,21 +223,9 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":"before <think>one</think> after"}}]}\n\n'
-          )
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"noop","arguments":"{}"}}]}}]}\n\n'
-          )
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"content":" tail <think>two</think> end"}}]}\n\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"before <think>one</think> after"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"noop","arguments":"{}"}}]}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":" tail <think>two</think> end"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -290,14 +245,8 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"<thi"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"reasoning_content":"nk>classified</think>"}}]}\n\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"<thi"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"nk>classified</think>"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -337,14 +286,8 @@ describe("tool-call-core", () => {
     const toolCallXml = `❌<function=calc><arguments>{"x":1}</arguments>❌`;
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(`data: {"choices":[{"delta":{"content":"result is 42"}}]}\n\n`)
-        );
-        controller.enqueue(
-          encoder.encode(
-            `data: {"choices":[{"delta":{"reasoning_content":"let me use ${toolCallXml}"}}]}\n\n`
-          )
-        );
+        controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"content":"result is 42"}}]}\n\n`));
+        controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"reasoning_content":"let me use ${toolCallXml}"}}]}\n\n`));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -360,12 +303,8 @@ describe("tool-call-core", () => {
     const openTag = String.raw`<think` + ">";
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(`data: {"choices":[{"delta":{"content":"visible ${openTag}"}}]}\n\n`)
-        );
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"\\nreasoning text"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"content":"visible ${openTag}"}}]}\n\n`));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"\\nreasoning text"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -385,9 +324,7 @@ describe("tool-call-core", () => {
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
         for (const part of parts) {
-          controller.enqueue(
-            encoder.encode(`data: {"choices":[{"delta":{"content":"${part}"}}]}\n\n`)
-          );
+          controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"content":"${part}"}}]}\n\n`));
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -406,11 +343,7 @@ describe("tool-call-core", () => {
     const closeTag = String.raw`</think` + ">";
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(
-            `data: {"choices":[{"delta":{"content":"secret text${closeTag} after"}}]}\n\n`
-          )
-        );
+        controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"content":"secret text${closeTag} after"}}]}\n\n`));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -428,12 +361,8 @@ describe("tool-call-core", () => {
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
         controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'));
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"Hello world"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"delta":{"content":"Hello world!"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hello world"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hello world!"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -451,21 +380,9 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"reasoning_content":"thinking","content":"Answer"}}]}\n\n'
-          )
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer"}}]}\n\n'
-          )
-        );
-        controller.enqueue(
-          encoder.encode(
-            'data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer done"}}]}\n\n'
-          )
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"thinking","content":"Answer"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"thinking harder","content":"Answer done"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -485,9 +402,7 @@ describe("tool-call-core", () => {
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
         for (const content of ["H", "He", "Hel", "Hell", "Hello"]) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`));
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -507,9 +422,7 @@ describe("tool-call-core", () => {
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
         for (const content of ["Hello", " world", "Hello", " world", "!"]) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`));
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -528,12 +441,8 @@ describe("tool-call-core", () => {
     const encoder = new TextEncoder();
     const source = new ReadableStream<Uint8Array>({
       start(controller): void {
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"message":{"content":"First chunk"}}]}\n\n')
-        );
-        controller.enqueue(
-          encoder.encode('data: {"choices":[{"message":{"content":"First chunk plus more"}}]}\n\n')
-        );
+        controller.enqueue(encoder.encode('data: {"choices":[{"message":{"content":"First chunk"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"message":{"content":"First chunk plus more"}}]}\n\n'));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -550,9 +459,7 @@ describe("tool-call-core", () => {
 
 describe("normalizeChatMessageContentParts", () => {
   it("collapses OpenAI text content arrays for text-only local backends", async () => {
-    const { normalizeChatMessageContentParts } = await import(
-      "../modules/proxy/content-normalizer"
-    );
+    const { normalizeChatMessageContentParts } = await import("../modules/proxy/content-normalizer");
     const payload: Record<string, unknown> = {
       messages: [
         {
@@ -576,9 +483,7 @@ describe("normalizeChatMessageContentParts", () => {
   });
 
   it("leaves multimodal arrays intact", async () => {
-    const { normalizeChatMessageContentParts } = await import(
-      "../modules/proxy/content-normalizer"
-    );
+    const { normalizeChatMessageContentParts } = await import("../modules/proxy/content-normalizer");
     const content = [
       { type: "text", text: "describe" },
       { type: "image_url", image_url: { url: "data:image/png;base64,abc" } },
