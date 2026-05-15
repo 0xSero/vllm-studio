@@ -171,7 +171,11 @@ describe("useWorkspace", () => {
     await flushAsyncEffects();
 
     act(() => {
-      hook.result.current.dispatch({ type: "openNewSession", project: selected, tab: makeFreshTab() });
+      hook.result.current.dispatch({
+        type: "openNewSession",
+        project: selected,
+        tab: makeFreshTab(),
+      });
     });
 
     const state = hook.result.current.state;
@@ -247,19 +251,18 @@ describe("useWorkspace", () => {
         new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: selected.id } }),
       );
     });
-    const newTabId = hook.result.current.state.panesById.get(paneId)!.activeSessionId;
+    const splitPaneId = hook.result.current.state.focusedPaneId;
+    const newTabId = hook.result.current.state.panesById.get(splitPaneId)!.activeSessionId;
     expect(newTabId).not.toBe(oldTabId);
 
     act(() => {
-      hook.result.current.handles.setPaneTabs(paneId, (currentTabs) =>
-        currentTabs.map((tab) =>
-          tab.id === newTabId ? { ...tab, input: "h" } : tab,
-        ),
+      hook.result.current.handles.setPaneTabs(splitPaneId, (currentTabs) =>
+        currentTabs.map((tab) => (tab.id === newTabId ? { ...tab, input: "h" } : tab)),
       );
     });
 
     const finalState = hook.result.current.state;
-    const finalPane = finalState.panesById.get(paneId)!;
+    const finalPane = finalState.panesById.get(splitPaneId)!;
     expect(finalPane.activeSessionId).toBe(newTabId);
     expect(finalState.sessions.get(newTabId)?.input).toBe("h");
     hook.unmount();

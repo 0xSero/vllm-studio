@@ -188,11 +188,14 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     const pane = persistedPanes[paneId] ?? {};
     const rawTabs = Array.isArray(pane.tabs) ? pane.tabs : [];
     const restored = restoreTabsWithSelections(rawTabs);
-    for (const session of restored.tabs) sessions.set(session.id, session);
-    for (const [sessionId, selection] of restored.selections) selections.set(sessionId, selection);
+    const activeSessionId = activePersistedTabId(pane, restored.tabs);
+    const session = restored.tabs.find((tab) => tab.id === activeSessionId) ?? restored.tabs[0];
+    sessions.set(session.id, session);
+    const selection = restored.selections.get(session.id);
+    if (selection) selections.set(session.id, selection);
     panesById.set(paneId, {
-      sessionIds: restored.tabs.map((tab) => tab.id),
-      activeSessionId: activePersistedTabId(pane, restored.tabs),
+      sessionIds: [session.id],
+      activeSessionId: session.id,
       runtimeSessionId: persistedRuntimeSessionId(pane),
     });
   }

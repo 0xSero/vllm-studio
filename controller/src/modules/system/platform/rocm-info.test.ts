@@ -29,15 +29,15 @@ describe("rocm-info", () => {
       process.env["VLLM_STUDIO_ROCM_VERSION_FILE"] = versionFile;
 
       const hipccPath = join(root, "hipcc");
-      writeFileSync(hipccPath, "#!/usr/bin/env bash\necho 'HIP version: 7.1.1'\n", "utf-8");
+      writeFileSync(hipccPath, "#!/bin/sh\necho 'HIP version: 7.1.1'\n", "utf-8");
       chmodSync(hipccPath, 0o755);
 
       const rocminfoPath = join(root, "rocminfo");
-      writeFileSync(rocminfoPath, "#!/usr/bin/env bash\necho 'Name: gfx942'\n", "utf-8");
+      writeFileSync(rocminfoPath, "#!/bin/sh\necho 'Name: gfx942'\n", "utf-8");
       chmodSync(rocminfoPath, 0o755);
 
       const originalPath = process.env["PATH"] ?? "";
-      process.env["PATH"] = `${root}:${originalPath}`;
+      process.env["PATH"] = `${root}:/bin:/usr/bin`;
 
       const info = getRocmInfo("amd-smi");
       expect(info.smi_tool).toBe("amd-smi");

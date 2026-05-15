@@ -98,12 +98,13 @@ function hydrateSessionSnapshots(
   for (const paneId of paneIds) {
     const group = grouped.get(paneId) ?? [];
     const restored = group.map(tabFromSnapshot);
-    const tabs = restored.length > 0 ? restored : [makeFreshTab()];
-    for (const session of tabs) sessions.set(session.id, session);
-    const activeSessionId = group.find((session) => session.active)?.tabId || tabs[0]?.id;
+    const activeSessionId = group.find((session) => session.active)?.tabId || restored[0]?.id;
+    const session =
+      restored.find((tab) => tab.id === activeSessionId) ?? restored[0] ?? makeFreshTab();
+    sessions.set(session.id, session);
     panesById.set(paneId, {
-      sessionIds: tabs.map((tab) => tab.id),
-      activeSessionId,
+      sessionIds: [session.id],
+      activeSessionId: session.id,
       runtimeSessionId: newRuntimeId(),
     });
   }
