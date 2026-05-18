@@ -4,7 +4,7 @@ import type { AssistantBlock, ChatMessage } from "@/lib/agent/session";
 import { groupAssistantBlocks, SessionPaneBlockRouter } from "./session-pane-block-router";
 
 describe("groupAssistantBlocks", () => {
-  it("groups consecutive reasoning and tool calls without swallowing content", () => {
+  it("groups reasoning and tool activity without swallowing content", () => {
     const blocks: AssistantBlock[] = [
       { kind: "thinking", id: "think", text: "plan" },
       { kind: "thinking", id: "think-2", text: "more plan" },
@@ -15,14 +15,24 @@ describe("groupAssistantBlocks", () => {
     ];
 
     expect(groupAssistantBlocks(blocks)).toEqual([
-      { kind: "reasoning-group", id: "reasoning-think", blocks: [blocks[0], blocks[1]] },
-      { kind: "tool-group", id: "tools-tool-1", blocks: [blocks[2], blocks[3]] },
+      {
+        kind: "activity-group",
+        id: "activity-reasoning-think",
+        segments: [
+          { kind: "reasoning", id: "reasoning-think", blocks: [blocks[0], blocks[1]] },
+          { kind: "tools", id: "tools-tool-1", blocks: [blocks[2], blocks[3]] },
+        ],
+      },
       { kind: "content", block: blocks[4] },
-      { kind: "tool-group", id: "tools-tool-3", blocks: [blocks[5]] },
+      {
+        kind: "activity-group",
+        id: "activity-tools-tool-3",
+        segments: [{ kind: "tools", id: "tools-tool-3", blocks: [blocks[5]] }],
+      },
     ]);
   });
 
-  it("keeps interleaved reasoning and tools in ordered phases", () => {
+  it("keeps interleaved reasoning and tools in one ordered activity group", () => {
     const blocks: AssistantBlock[] = [
       { kind: "thinking", id: "think-1", text: "inspect" },
       { kind: "tool", id: "tool-1", name: "read_file", status: "done", text: "" },
@@ -30,11 +40,17 @@ describe("groupAssistantBlocks", () => {
       { kind: "tool", id: "tool-2", name: "apply_patch", status: "done", text: "" },
     ];
 
-    expect(groupAssistantBlocks(blocks).map((block) => block.kind)).toEqual([
-      "reasoning-group",
-      "tool-group",
-      "reasoning-group",
-      "tool-group",
+    expect(groupAssistantBlocks(blocks)).toEqual([
+      {
+        kind: "activity-group",
+        id: "activity-reasoning-think-1",
+        segments: [
+          { kind: "reasoning", id: "reasoning-think-1", blocks: [blocks[0]] },
+          { kind: "tools", id: "tools-tool-1", blocks: [blocks[1]] },
+          { kind: "reasoning", id: "reasoning-think-2", blocks: [blocks[2]] },
+          { kind: "tools", id: "tools-tool-2", blocks: [blocks[3]] },
+        ],
+      },
     ]);
   });
 });
