@@ -31,7 +31,6 @@ export function useTerminalPanelEffects({
     refs.input = "";
     refs.running = false;
     let cleanupResize: (() => void) | null = null;
-    let cleanupKeyboard: (() => void) | null = null;
 
     async function boot() {
       const element = containerRef.current;
@@ -80,10 +79,6 @@ export function useTerminalPanelEffects({
       const observer = new ResizeObserver(() => refs.fit?.fit());
       observer.observe(element);
       cleanupResize = () => observer.disconnect();
-      const onKeyDown = (event: KeyboardEvent) =>
-        handleTerminalDomKeyDown(event, cwd, refs, term, session);
-      element.addEventListener("keydown", onKeyDown, true);
-      cleanupKeyboard = () => element.removeEventListener("keydown", onKeyDown, true);
     }
 
     void boot();
@@ -91,34 +86,11 @@ export function useTerminalPanelEffects({
     return () => {
       refs.disposed = true;
       cleanupResize?.();
-      cleanupKeyboard?.();
       refs.term?.dispose();
       refs.term = null;
       refs.fit = null;
     };
   }, [containerRef, cwd, stateRef]);
-}
-
-function handleTerminalDomKeyDown(
-  event: KeyboardEvent,
-  cwd: string | null,
-  refs: TerminalRefs,
-  term: XTerm,
-  session: TerminalSessionState,
-) {
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
-  const key = event.key;
-  if (key === "Enter") {
-    if (handleTerminalData("\r", cwd, refs, term, session)) event.preventDefault();
-    return;
-  }
-  if (key === "Backspace") {
-    if (handleTerminalData("\u007f", cwd, refs, term, session)) event.preventDefault();
-    return;
-  }
-  if (key.length === 1) {
-    if (handleTerminalData(key, cwd, refs, term, session)) event.preventDefault();
-  }
 }
 
 function handleTerminalData(
