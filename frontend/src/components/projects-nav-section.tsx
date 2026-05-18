@@ -541,18 +541,32 @@ function ProjectDirectoryPickerModal({
             label="Chats"
             open={chatsExpanded}
             onToggle={() => setChatsExpanded((value) => !value)}
+            action={
+              <Link
+                href={`/agent?project=${encodeURIComponent(chatProject.id)}&new=1`}
+                onClick={(event) => {
+                  if (window.location.pathname !== "/agent") return;
+                  event.preventDefault();
+                  window.dispatchEvent(
+                    new CustomEvent(NEW_AGENT_SESSION_EVENT, {
+                      detail: { projectId: chatProject.id },
+                    }),
+                  );
+                }}
+                className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />{" "}
+              </Link>
+            }
           />
           {chatsExpanded ? (
-            <ProjectRow
+            <ProjectSessions
               project={chatProject}
-              open={openIds.has(chatProject.id)}
-              activeSessions={activeSessions.filter(
-                (session) => session.projectId === chatProject.id,
-              )}
+              activeSessions={activeSessions}
               prefs={prefs}
               excludedIds={pinnedRenderedIds}
-              icon="chat"
-              onToggle={() => toggle(chatProject.id)}
             />
           ) : null}
         </>

@@ -84,8 +84,9 @@ export type SessionTab = {
   lastEventSeq?: number;
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
-  // Outgoing pending messages (steer + follow_up). Drawn as chips above the
-  // input until Pi `queue_update` reconciles the canonical queue.
+  // Outgoing pending follow-up messages. Drawn as chips above the input until
+  // Pi `queue_update` reconciles the canonical queue. Steering messages are
+  // sent as immediate control messages and are not surfaced in this queue UI.
   queue?: QueuedMessage[];
 };
 

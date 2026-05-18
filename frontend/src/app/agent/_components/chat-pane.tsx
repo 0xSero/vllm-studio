@@ -314,7 +314,10 @@ export function ChatPane({
         ...(cwdHint ? { cwd: t.cwd || cwdHint } : {}),
         input: "",
         error: "",
-        queue: [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }],
+        queue:
+          mode === "follow_up"
+            ? [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }]
+            : t.queue,
       }));
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({

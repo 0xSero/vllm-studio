@@ -182,7 +182,7 @@ export function replayCursorAfterRuntimeHydration(
 // ----- queue helpers -----
 
 export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
-  return queue;
+  return queue.filter((item) => item.mode === "follow_up");
 }
 
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
@@ -234,10 +234,10 @@ export function reconcileQueueWithPiEvent(
       pending.set(key, [...(pending.get(key) ?? []), text]);
     }
   };
-  addPending("steer", stringArray(event.steering));
   addPending("follow_up", stringArray(event.followUp));
 
   const next = queue.flatMap((item) => {
+    if (item.mode !== "follow_up") return [];
     const acceptedByPi = consumePending(pending, item.mode, item.text);
     if (acceptedByPi) return [{ ...item, text: queueDisplayText(acceptedByPi), sent: true }];
     return item.sent ? [] : [item];

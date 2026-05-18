@@ -63,6 +63,28 @@ describe("applyPiEventToSession", () => {
     expect(deps.tabsRef.current[0].messages).toHaveLength(1);
   });
 
+  it("dedupes back-to-back Pi user start/end echoes for queued follow-ups", () => {
+    const deps = harness([
+      session({
+        id: "s1",
+        queue: [{ id: "q1", mode: "follow_up", text: "Hello agent", sent: true }],
+      }),
+    ]);
+
+    applyPiEventToSession(deps, "s1", "assistant-1", {
+      type: "message_start",
+      message: { role: "user", content: "Hello agent" },
+    });
+    applyPiEventToSession(deps, "s1", "assistant-1", {
+      type: "message_end",
+      message: { role: "user", content: "Hello agent" },
+    });
+
+    const messages = deps.tabsRef.current[0].messages;
+    expect(messages.filter((message) => message.role === "user")).toHaveLength(1);
+    expect(deps.tabsRef.current[0].queue).toEqual([]);
+  });
+
   it("routes assistant block events to the current live assistant", () => {
     const deps = harness([
       session({

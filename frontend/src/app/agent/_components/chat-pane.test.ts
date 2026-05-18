@@ -40,16 +40,13 @@ describe("parseAgentTurnSsePayload", () => {
   });
 });
 describe("visibleQueuedMessages", () => {
-  it("shows follow-up and steer queue items", () => {
+  it("shows follow-up queue items without surfacing steers", () => {
     expect(
       visibleQueuedMessages([
         { id: "steer", mode: "steer", text: "interrupt", sent: true },
         { id: "follow", mode: "follow_up", text: "next" },
       ]),
-    ).toEqual([
-      { id: "steer", mode: "steer", text: "interrupt", sent: true },
-      { id: "follow", mode: "follow_up", text: "next" },
-    ]);
+    ).toEqual([{ id: "follow", mode: "follow_up", text: "next" }]);
   });
 });
 describe("statusAfterControlPhase", () => {
@@ -131,7 +128,7 @@ describe("drainQueueAfterAgentEnd", () => {
   });
 });
 describe("reconcileQueueWithPiEvent", () => {
-  it("mirrors Pi queue updates without dropping local unsent follow-ups", () => {
+  it("mirrors Pi follow-up queue updates without showing steering entries", () => {
     const result = reconcileQueueWithPiEvent(
       [
         { id: "local", mode: "follow_up", text: "local only" },
@@ -145,7 +142,6 @@ describe("reconcileQueueWithPiEvent", () => {
       { id: "local", mode: "follow_up", text: "local only" },
       { id: "optimistic", mode: "follow_up", text: "claimed by pi", sent: true },
       { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
-      { id: expect.any(String), mode: "steer", text: "new steer", sent: true },
     ]);
   });
   it("removes Pi-accepted follow-ups when Pi reports an empty queue", () => {
@@ -159,7 +155,7 @@ describe("reconcileQueueWithPiEvent", () => {
       ),
     ).toEqual([{ id: "local", mode: "follow_up", text: "retry locally", sent: false }]);
   });
-  it("matches Pi context-wrapped queue text to the local composer text", () => {
+  it("drops Pi steering updates from the follow-up queue model", () => {
     const result = reconcileQueueWithPiEvent(
       [{ id: "optimistic", mode: "steer", text: "focus on the queue bug", sent: true }],
       {
@@ -170,9 +166,7 @@ describe("reconcileQueueWithPiEvent", () => {
         followUp: [],
       },
     );
-    expect(result).toEqual([
-      { id: "optimistic", mode: "steer", text: "focus on the queue bug", sent: true },
-    ]);
+    expect(result).toEqual([]);
   });
   it("displays context-wrapped canonical Pi queue items as user text", () => {
     const result = reconcileQueueWithPiEvent([], {
