@@ -126,14 +126,12 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
     (segment) =>
       segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
   );
-  const [expanded, setExpanded] = useState(hasActiveTool);
-  const open = hasActiveTool || expanded;
-
-  if (segments.length === 1) {
-    const [segment] = segments;
-    if (segment.kind === "reasoning") return <ReasoningGroup blocks={segment.blocks} />;
-    return <ToolCallGroup blocks={segment.blocks} />;
-  }
+  const hasError = segments.some(
+    (segment) =>
+      segment.kind === "tools" && segment.blocks.some((block) => block.status === "error"),
+  );
+  const [expanded, setExpanded] = useState(false);
+  const open = expanded;
 
   return (
     <details className="group min-w-0" open={open}>
@@ -153,6 +151,8 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
         </span>
         {hasActiveTool ? (
           <span className="shrink-0 text-[10px] text-(--accent)">running</span>
+        ) : hasError ? (
+          <span className="shrink-0 text-[10px] text-(--err)">error</span>
         ) : null}
       </summary>
       {open ? (
@@ -203,8 +203,8 @@ function EventBlockView({ block }: { block: EventBlock }) {
 function ToolCallGroup({ blocks }: { blocks: ToolBlock[] }) {
   const hasActiveTool = blocks.some((block) => block.status === "running");
   const hasError = blocks.some((block) => block.status === "error");
-  const [expanded, setExpanded] = useState(hasActiveTool);
-  const open = hasActiveTool || expanded;
+  const [expanded, setExpanded] = useState(false);
+  const open = expanded;
   const preview = toolGroupPreview(blocks);
 
   return (

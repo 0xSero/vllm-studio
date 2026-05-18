@@ -81,6 +81,33 @@ describe("SessionPaneBlockRouter", () => {
     expect(html).not.toContain("private plan text");
   });
 
+  it("keeps running reasoning and tools collapsed behind a status preview", () => {
+    const message: ChatMessage = {
+      id: "assistant",
+      role: "assistant",
+      text: "",
+      blocks: [
+        { kind: "thinking", id: "think-1", text: "noisy live reasoning" },
+        {
+          kind: "tool",
+          id: "tool-1",
+          name: "bash",
+          status: "running",
+          text: "",
+          args: { cmd: "ssh -i ~/.ssh/linux-ai ser@100.90.62.80 'nvidia-smi'" },
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<SessionPaneBlockRouter message={message} />);
+
+    expect(html).toContain("Reasoning + 1 tool");
+    expect(html).toContain("running");
+    expect(html).toContain("ssh -i");
+    expect(html).not.toContain("noisy live reasoning");
+    expect(html).not.toContain("Ran command");
+  });
+
   it("renders collapsed tool group previews without mounting completed tool details", () => {
     const message: ChatMessage = {
       id: "assistant",
