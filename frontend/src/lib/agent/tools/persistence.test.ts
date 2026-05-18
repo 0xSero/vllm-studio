@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { clampComputerWidth, computerSnapWidths, gentlySnapComputerWidth } from "./persistence";
+import {
+  clampComputerWidth,
+  computerSnapWidths,
+  gentlySnapComputerWidth,
+  uniqueComputerTabs,
+} from "./persistence";
 
 describe("computer panel width helpers", () => {
   it("uses the requested percentage snap widths inside the available bounds", () => {
@@ -13,5 +18,13 @@ describe("computer panel width helpers", () => {
 
   it("keeps the chat side usable when clamping wide computer widths", () => {
     expect(clampComputerWidth(900, 1200)).toBe(780);
+  });
+
+  it("keeps status as the anchor while allowing multiple open computer tabs", () => {
+    expect(uniqueComputerTabs(["browser", "files", "browser"])).toEqual([
+      "status",
+      "browser",
+      "files",
+    ]);
   });
 });

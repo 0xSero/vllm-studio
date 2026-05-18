@@ -58,6 +58,7 @@ export type UseSessionEngineDeps = {
   modelId: string;
   cwd: string;
   browserToolEnabled: boolean;
+  canvasEnabled: boolean;
   onPiSessionIdChange?: (piSessionId: string) => void;
   /** Mutate a single session record. */
   updateSession: UpdateSession;
@@ -92,6 +93,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     modelId,
     cwd,
     browserToolEnabled,
+    canvasEnabled,
     onPiSessionIdChange,
     updateSession,
     selectionFor,
@@ -109,6 +111,16 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   // Pi can split a single user turn across multiple assistant messages (after
   // a queue_update / message_start), and we need a stable id to patch.
   const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
+  const piEventBatchesRef = useRef<
+    Map<
+      SessionId,
+      {
+        assistantId: string;
+        events: Record<string, unknown>[];
+        timer: ReturnType<typeof setTimeout> | null;
+      }
+    >
+  >(new Map());
 
   const patchAssistant = useCallback(
     (sessionId: SessionId, assistantId: string, patch: (msg: ChatMessage) => ChatMessage) => {
@@ -132,6 +144,56 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       );
     },
     [patchAssistant, updateSession],
+  );
+
+  const flushPiEventBatch = useCallback(
+    (sessionId: SessionId) => {
+      const batch = piEventBatchesRef.current.get(sessionId);
+      if (!batch) return;
+      if (batch.timer) clearTimeout(batch.timer);
+      piEventBatchesRef.current.delete(sessionId);
+      for (const event of batch.events) {
+        applyPiEvent(sessionId, batch.assistantId, event);
+      }
+    },
+    [applyPiEvent],
+  );
+
+  const enqueuePiEvent = useCallback(
+    (
+      sessionId: SessionId,
+      assistantId: string,
+      event: Record<string, unknown>,
+      options: { flushNow?: boolean } = {},
+    ) => {
+      const existing = piEventBatchesRef.current.get(sessionId);
+      const batch = existing ?? {
+        assistantId,
+        events: [] as Record<string, unknown>[],
+        timer: null,
+      };
+      batch.assistantId = batch.assistantId || assistantId;
+      batch.events.push(event);
+      if (!existing) piEventBatchesRef.current.set(sessionId, batch);
+      if (options.flushNow) {
+        flushPiEventBatch(sessionId);
+        return;
+      }
+      if (!batch.timer) {
+        batch.timer = setTimeout(() => flushPiEventBatch(sessionId), 100);
+      }
+    },
+    [flushPiEventBatch],
+  );
+
+  useEffect(
+    () => () => {
+      for (const batch of piEventBatchesRef.current.values()) {
+        if (batch.timer) clearTimeout(batch.timer);
+      }
+      piEventBatchesRef.current.clear();
+    },
+    [],
   );
 
   const loadRuntimeStatusCb = useCallback(api.loadRuntimeStatus, []);
@@ -179,6 +241,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             piSessionId,
             mode,
             browserToolEnabled,
+            browserSessionId: runtime,
+            canvasEnabled,
             plugins: plugins as ComposerPluginRef[],
             skills,
           },
@@ -203,17 +267,27 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 activeAssistantId: agentEnded ? undefined : assistantId,
               }));
               if (eventId) onPiSessionIdChange?.(eventId);
-              applyPiEvent(sessionId, assistantId, payload.event);
+              enqueuePiEvent(sessionId, assistantId, payload.event, { flushNow: agentEnded });
             }
           },
         );
         if (controlError) throw new Error(controlError);
         return { ok: true };
       } catch (error) {
+        flushPiEventBatch(sessionId);
         return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
       }
     },
-    [applyPiEvent, browserToolEnabled, cwd, modelId, onPiSessionIdChange, updateSession],
+    [
+      browserToolEnabled,
+      canvasEnabled,
+      cwd,
+      enqueuePiEvent,
+      flushPiEventBatch,
+      modelId,
+      onPiSessionIdChange,
+      updateSession,
+    ],
   );
 
   // Stable ref for the queue-drain self-call from inside submitPrompt and the
@@ -273,6 +347,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
               selected.piSessionId,
             browserToolEnabled,
+            browserSessionId: runtime,
+            canvasEnabled,
             plugins: activeComposerPlugins(
               selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
             ) as ComposerPluginRef[],
@@ -290,6 +366,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               if (payload.piSessionId) onPiSessionIdChange?.(payload.piSessionId);
             } else if (payload.type === "error") {
               streamError = payload.error;
+              flushPiEventBatch(sessionId);
               updateSession(sessionId, (session) => ({
                 ...session,
                 error: payload.error,
@@ -317,13 +394,14 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                   "";
                 onPiSessionIdChange?.(latestPiSessionId);
               }
-              applyPiEvent(sessionId, assistantId, piEvent);
+              enqueuePiEvent(sessionId, assistantId, piEvent, { flushNow: agentEnded });
             }
           },
         );
       } catch (err) {
         streamError = err instanceof Error ? err.message : "Agent request failed";
       } finally {
+        flushPiEventBatch(sessionId);
         localStreamRef.current.delete(sessionId);
         liveAssistantIdsRef.current.delete(sessionId);
         const runtimeStatus = agentEnded ? null : await api.loadRuntimeStatus(runtime);
@@ -355,8 +433,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       runtimeSessionId,
       cwd,
       browserToolEnabled,
+      canvasEnabled,
       onPiSessionIdChange,
-      applyPiEvent,
+      enqueuePiEvent,
+      flushPiEventBatch,
       updateSession,
     ],
   );
@@ -368,9 +448,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const session = tabsRef.current.find((tab) => tab.id === sessionId);
       const runtime = resolveRuntimeSessionId(session, runtimeSessionId);
       await api.abortSession(runtime);
+      flushPiEventBatch(sessionId);
       updateSession(sessionId, (s) => ({ ...s, status: "idle" }));
     },
-    [runtimeSessionId, updateSession],
+    [flushPiEventBatch, runtimeSessionId, updateSession],
   );
 
   const loadAndReplay = useCallback(
@@ -432,6 +513,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           cwd: cwd.trim() || undefined,
           piSessionId: session.piSessionId,
           browserToolEnabled,
+          browserSessionId: session.runtimeSessionId || runtimeSessionId,
+          canvasEnabled,
           plugins: activeComposerPlugins(
             selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
           ) as ComposerPluginRef[],
@@ -446,7 +529,15 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         }));
       }
     },
-    [browserToolEnabled, cwd, loadAndReplay, modelId, runtimeSessionId, updateSession],
+    [
+      browserToolEnabled,
+      canvasEnabled,
+      cwd,
+      loadAndReplay,
+      modelId,
+      runtimeSessionId,
+      updateSession,
+    ],
   );
 
   // Resume an in-flight runtime session via SSE — fires when the active
@@ -469,7 +560,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     const sub = subscribeResumeRuntimeSession({
       after: resumeAfter,
       api,
-      applyPiEvent,
+      applyPiEvent: enqueuePiEvent,
+      flushPiEvents: flushPiEventBatch,
       onPiSessionIdChange,
       runtime: resumeRuntimeSessionId,
       sessionId: resumeRuntimeId,
@@ -479,7 +571,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     });
     return sub.close;
   }, [
-    applyPiEvent,
+    enqueuePiEvent,
+    flushPiEventBatch,
     onPiSessionIdChange,
     resumeAfter,
     resumeRuntimeId,

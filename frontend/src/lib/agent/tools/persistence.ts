@@ -11,6 +11,7 @@ export const COMPUTER_FILES_OPEN_KEY = "vllm-studio.agent.computer.filesOpen";
 export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "vllm-studio.agent.computer.defaultCollapsedV2";
 export const COMPUTER_WIDTH_KEY = "vllm-studio.agent.computer.width";
 export const COMPUTER_TAB_KEY = "vllm-studio.agent.computer.tab";
+export const COMPUTER_TABS_KEY = "vllm-studio.agent.computer.tabs";
 export const COMPUTER_CANVAS_ENABLED_KEY = "vllm-studio.agent.computer.canvasEnabled";
 export const COMPUTER_CANVAS_TEXT_KEY = "vllm-studio.agent.computer.canvasText";
 
@@ -20,6 +21,8 @@ export const MIN_COMPUTER_WIDTH = 280;
 export const MAX_COMPUTER_WIDTH = 1800;
 export const MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN = 340;
 export const COMPUTER_SNAP_RATIOS = [0.25, 0.35, 0.5, 0.65] as const;
+
+const COMPUTER_TABS: ComputerTab[] = ["status", "canvas", "browser", "files", "diff", "terminal"];
 
 function viewportWidth(): number | undefined {
   return typeof window === "undefined" ? undefined : window.innerWidth;
@@ -126,20 +129,51 @@ export function loadBrowserState(): BrowserState {
 export function loadComputerState(): ComputerState {
   const storedWidth = Number(read(COMPUTER_WIDTH_KEY));
   const storedTab = read(COMPUTER_TAB_KEY);
-  const tab: ComputerTab =
-    storedTab === "browser" ||
-    storedTab === "files" ||
-    storedTab === "diff" ||
-    storedTab === "terminal"
-      ? storedTab
-      : "status";
+  const tab: ComputerTab = isComputerTab(storedTab) ? storedTab : "status";
+  const storedTabs = readComputerTabs();
+  const canvasEnabled = read(COMPUTER_CANVAS_ENABLED_KEY) === "1";
+  const persistedTabs = uniqueComputerTabs([
+    "status",
+    ...(storedTabs.length ? storedTabs : [tab]),
+    ...(canvasEnabled ? (["canvas"] as const) : []),
+  ]);
+  const tabs = persistedTabs.includes(tab)
+    ? persistedTabs
+    : uniqueComputerTabs([...persistedTabs, tab]);
   return {
     open: false,
     tab,
+    tabs,
     width: Number.isFinite(storedWidth) ? clampComputerWidth(storedWidth) : DEFAULT_COMPUTER_WIDTH,
-    canvasEnabled: read(COMPUTER_CANVAS_ENABLED_KEY) === "1",
+    canvasEnabled,
     canvasText: read(COMPUTER_CANVAS_TEXT_KEY) ?? "",
   };
+}
+
+function isComputerTab(value: unknown): value is ComputerTab {
+  return typeof value === "string" && COMPUTER_TABS.includes(value as ComputerTab);
+}
+
+function readComputerTabs(): ComputerTab[] {
+  const raw = read(COMPUTER_TABS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? uniqueComputerTabs(parsed.filter(isComputerTab)) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function uniqueComputerTabs(tabs: ComputerTab[]): ComputerTab[] {
+  const seen = new Set<ComputerTab>();
+  const out: ComputerTab[] = [];
+  for (const tab of tabs) {
+    if (seen.has(tab)) continue;
+    seen.add(tab);
+    out.push(tab);
+  }
+  return out.includes("status") ? out : ["status", ...out];
 }
 
 export function writeBrowserEnabled(enabled: boolean): void {
@@ -149,6 +183,10 @@ export function writeBrowserEnabled(enabled: boolean): void {
 export function writeComputerTab(tab: ComputerTab): void {
   write(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
   write(COMPUTER_TAB_KEY, tab);
+}
+
+export function writeComputerTabs(tabs: ComputerTab[]): void {
+  write(COMPUTER_TABS_KEY, JSON.stringify(uniqueComputerTabs(tabs)));
 }
 
 export function writeComputerWidth(width: number): void {

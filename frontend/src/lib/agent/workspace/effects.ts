@@ -7,6 +7,7 @@ import type { ToolSelection } from "@/lib/agent/tools/types";
 import type { AgentModel, PaneId, WorkspaceAction, WorkspaceState } from "./types";
 import {
   loadPersistedActiveAgentSessions,
+  sessionMetaForPersistence,
   setupWarningFromPiCheck,
   type WorkspaceStorage,
 } from "./store";
@@ -73,8 +74,6 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "renameTab",
   "splitTab",
   "closePane",
-  "setPaneTabs",
-  "patchActiveTab",
   "hydrateActiveSessions",
   "urlNavRequested",
 ]);
@@ -94,6 +93,8 @@ const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
   "notifySessionsChanged",
   "urlNavRequested",
 ]);
+
+const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>(["setPaneTabs", "patchActiveTab"]);
 
 function dispatchEvent(deps: WorkspaceEffectDeps, type: string): void {
   deps.window.dispatchEvent(new deps.window.Event(type));
@@ -402,15 +403,48 @@ function queueReplayEffects(
 
 function persistActionEffects(
   action: WorkspaceAction,
-  _prevState: WorkspaceState,
+  prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
   if (PANE_STATE_ACTIONS.has(action.type)) {
     writePaneState(deps.storage, nextState, deps.selectionFor);
+    return;
+  }
+  if (
+    METADATA_PATCH_ACTIONS.has(action.type) &&
+    paneMetadataKey(prevState, deps.selectionFor) !== paneMetadataKey(nextState, deps.selectionFor)
+  ) {
+    writePaneState(deps.storage, nextState, deps.selectionFor);
   }
   // Browser/computer tool state persistence now lives in
   // lib/agent/tools/persistence.ts and is driven by ToolsProvider directly.
+}
+
+function paneMetadataKey(
+  state: WorkspaceState,
+  selectionFor: ((sessionId: SessionId) => ToolSelection | null) | undefined,
+): string {
+  const panes: Record<string, unknown> = {};
+  for (const [paneId, pane] of state.panesById.entries()) {
+    panes[paneId] = {
+      activeSessionId: pane.activeSessionId,
+      runtimeSessionId: pane.runtimeSessionId,
+      sessionIds: pane.sessionIds,
+      tabs: pane.sessionIds
+        .map((id) => {
+          const session = state.sessions.get(id);
+          if (!session) return null;
+          return sessionMetaForPersistence(session, selectionFor?.(id) ?? undefined);
+        })
+        .filter(Boolean),
+    };
+  }
+  return JSON.stringify({
+    layout: state.layout,
+    focusedPaneId: state.focusedPaneId,
+    panes,
+  });
 }
 
 export function runWorkspaceEffect(

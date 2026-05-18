@@ -248,7 +248,8 @@ function FileWritePreview({
       </div>
       {isHtml && showPreview ? (
         <iframe
-          sandbox=""
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
           srcDoc={body}
           className="h-72 w-full rounded-md border border-(--border) bg-white"
           title={filePath ?? "preview"}

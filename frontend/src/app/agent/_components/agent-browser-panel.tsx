@@ -33,7 +33,6 @@ type AgentBrowserPanelHandles = Pick<
 type AgentBrowserPanelProps = {
   handles: AgentBrowserPanelHandles;
   activeProject: Project | null;
-  focusedTitle: string;
   focusedSession: Session | null;
   sessions: Session[];
   activeModel: AgentModel | null;
@@ -49,7 +48,6 @@ type AgentBrowserPanelProps = {
 export function AgentBrowserPanel({
   handles,
   activeProject,
-  focusedTitle,
   focusedSession,
   sessions,
   activeModel,
@@ -84,8 +82,9 @@ export function AgentBrowserPanel({
       />
       <ComputerHeader
         tab={tools.computer.tab}
-        focusedTitle={focusedTitle}
+        openTabs={tools.computer.tabs}
         onSelectTab={tools.setComputerTab}
+        onCloseTab={tools.closeComputerTab}
       />
       <div className="absolute right-2 top-1.5 z-20 flex items-center gap-1">
         <button
@@ -109,6 +108,8 @@ export function AgentBrowserPanel({
           sessions={sessions}
           gitSummary={gitSummary}
         />
+      ) : tools.computer.tab === "canvas" ? (
+        <CanvasPanel />
       ) : tools.computer.tab === "browser" ? (
         <AgentBrowser
           ref={registerBrowserHandle}
@@ -136,6 +137,7 @@ export function AgentBrowserPanel({
 
 const TAB_LABELS: Record<ComputerTab, string> = {
   status: "Status",
+  canvas: "Canvas",
   browser: "Browser",
   files: "Filesystem",
   diff: "Git",
@@ -148,6 +150,12 @@ const TAB_OPTIONS: Array<{
   description: string;
   icon: typeof Activity;
 }> = [
+  {
+    tab: "canvas",
+    label: "Canvas",
+    description: "Shared scratchboard for human and model",
+    icon: Code2,
+  },
   {
     tab: "browser",
     label: "Browser",
@@ -166,35 +174,73 @@ const TAB_OPTIONS: Array<{
 
 function ComputerHeader({
   tab,
-  focusedTitle,
+  openTabs,
   onSelectTab,
+  onCloseTab,
 }: {
   tab: ComputerTab;
-  focusedTitle: string;
+  openTabs: ComputerTab[];
   onSelectTab: (tab: ComputerTab) => void;
+  onCloseTab: (tab: ComputerTab) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const activeIcon =
-    tab === "status"
-      ? PanelRight
-      : (TAB_OPTIONS.find((item) => item.tab === tab)?.icon ?? PanelRight);
-  const ActiveIcon = activeIcon;
+  const tabMeta = (candidate: ComputerTab) =>
+    candidate === "status"
+      ? { label: "Status", icon: PanelRight }
+      : {
+          label: TAB_LABELS[candidate],
+          icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
+        };
+  const menuOptions = [
+    {
+      tab: "status" as const,
+      label: "Status",
+      description: "Session and workspace summary",
+      icon: PanelRight,
+    },
+    ...TAB_OPTIONS,
+  ].filter((item) => !openTabs.includes(item.tab));
   return (
-    <div className="relative flex h-10 shrink-0 items-center gap-2 border-b border-(--border) px-3 pr-12 text-xs">
-      <button
-        type="button"
-        onClick={() => onSelectTab("status")}
-        className={`inline-flex h-7 min-w-0 max-w-[52%] items-center gap-2 rounded-md px-2 ${
-          tab === "status" ? "bg-(--surface) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
-        }`}
-        title={`Computer follows focused session: ${focusedTitle}`}
-      >
-        <ActiveIcon className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{TAB_LABELS[tab]}</span>
-      </button>
-      <span className="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wide text-(--dim)">
-        {focusedTitle}
-      </span>
+    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border) px-2 pr-12 text-xs">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        {openTabs.map((openTab) => {
+          const meta = tabMeta(openTab);
+          const Icon = meta.icon;
+          return (
+            <div
+              key={openTab}
+              className={`group inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md px-2 ${
+                tab === openTab ? "bg-(--surface) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+              }`}
+              title={meta.label}
+            >
+              <button
+                type="button"
+                onClick={() => onSelectTab(openTab)}
+                className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-left"
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[9rem] truncate">{meta.label}</span>
+              </button>
+              {openTab !== "status" ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseTab(openTab);
+                  }}
+                  className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) group-hover:inline-flex"
+                  aria-label={`Close ${meta.label}`}
+                  title={`Close ${meta.label}`}
+                >
+                  <CloseIcon className="h-2.5 w-2.5" />
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <span className="min-w-0 flex-1" />
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -207,19 +253,10 @@ function ComputerHeader({
       </button>
       {open ? (
         <div className="absolute right-10 top-9 z-40 w-64 rounded-md border border-(--border) bg-[#151515] p-1 shadow-[0_12px_36px_rgba(0,0,0,0.65)]">
-          <button
-            type="button"
-            onClick={() => {
-              onSelectTab("status");
-              setOpen(false);
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-(--fg) hover:bg-(--hover)"
-          >
-            <PanelRight className="h-3.5 w-3.5 text-(--accent)" />
-            <span className="min-w-0 flex-1">Status</span>
-          </button>
-          <div className="my-1 border-t border-(--border)" />
-          {TAB_OPTIONS.map((item) => {
+          {menuOptions.length === 0 ? (
+            <div className="px-2 py-2 text-[11px] text-(--dim)">All computer tabs are open.</div>
+          ) : null}
+          {menuOptions.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -338,8 +375,15 @@ function ComputerStatusPanel({
           <span className="font-medium text-(--fg)">Canvas</span>
           <button
             type="button"
-            onClick={() => tools.toggleCanvas()}
-            className={`ml-auto h-6 rounded px-2 text-[11px] ${
+            onClick={() => tools.setComputerTab("canvas")}
+            className="ml-auto h-6 rounded px-2 text-[11px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={tools.toggleCanvas}
+            className={`h-6 rounded px-2 text-[11px] ${
               tools.computer.canvasEnabled
                 ? "bg-(--accent)/15 text-(--accent)"
                 : "bg-(--bg) text-(--dim) hover:text-(--fg)"
@@ -348,20 +392,43 @@ function ComputerStatusPanel({
             {tools.computer.canvasEnabled ? "On" : "Off"}
           </button>
         </div>
-        {tools.computer.canvasEnabled ? (
-          <textarea
-            value={tools.computer.canvasText}
-            onChange={(event) => tools.setCanvasText(event.target.value)}
-            placeholder="Scratch notes for the human and model…"
-            className="min-h-44 w-full resize-y bg-transparent p-3 font-mono text-[11px] leading-5 text-(--fg) outline-none placeholder:text-(--dim)"
-            spellCheck={false}
-          />
-        ) : (
-          <div className="py-2 text-[11px] leading-5">
-            Shared scratch notes for the model and human. Toggle it here or from the composer.
-          </div>
-        )}
+        <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[11px] leading-5 text-(--dim)">
+          {tools.computer.canvasText.trim() || "No canvas notes yet."}
+        </div>
       </div>
+    </section>
+  );
+}
+
+function CanvasPanel() {
+  const tools = useTools();
+  return (
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-xs">
+        <Code2 className="h-3.5 w-3.5 text-(--accent)" />
+        <span className="font-medium text-(--fg)">Canvas</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-(--dim)">
+          Shared scratchboard for the human and model
+        </span>
+        <button
+          type="button"
+          onClick={tools.toggleCanvas}
+          className={`h-6 rounded px-2 text-[11px] ${
+            tools.computer.canvasEnabled
+              ? "bg-(--accent)/15 text-(--accent)"
+              : "bg-(--surface) text-(--dim) hover:text-(--fg)"
+          }`}
+        >
+          {tools.computer.canvasEnabled ? "On" : "Off"}
+        </button>
+      </div>
+      <textarea
+        value={tools.computer.canvasText}
+        onChange={(event) => tools.setCanvasText(event.target.value)}
+        placeholder="Scratch notes, live plan, links, state, or anything the model should keep in view..."
+        className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-[12px] leading-6 text-(--fg) outline-none placeholder:text-(--dim)"
+        spellCheck={false}
+      />
     </section>
   );
 }

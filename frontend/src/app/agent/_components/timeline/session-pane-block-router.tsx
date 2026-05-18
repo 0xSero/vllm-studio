@@ -235,7 +235,7 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
         ) : null}
       </summary>
       {open ? (
-        <div className="mt-1.5 flex min-w-0 flex-col gap-2">
+        <div className="ml-[11px] mt-1.5 flex min-w-0 flex-col gap-2 border-l border-(--border) pl-3">
           {segments.map((segment) =>
             segment.kind === "reasoning" ? (
               <ReasoningBlockContent key={segment.id} blocks={segment.blocks} />
@@ -252,11 +252,11 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
 function ReasoningBlockContent({ blocks }: { blocks: ThinkingBlock[] }) {
   const text = blocks.map((block) => block.text).join("\n\n");
   return (
-    <div className="text-xs">
-      <div className="text-[11px] italic text-(--dim)">
+    <div className="text-xs" data-activity-tree-child="reasoning">
+      <div className="text-[11px] italic leading-5 text-(--dim)">
         Reasoning{blocks.length > 1 ? ` · ${blocks.length}` : ""}
       </div>
-      <pre className="mt-2 max-w-full whitespace-pre-wrap break-words border-l-2 border-(--border) pl-3 font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
+      <pre className="mt-1 max-w-full whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
         {text}
       </pre>
     </div>
@@ -275,7 +275,7 @@ function EventBlockView({ block }: { block: EventBlock }) {
 
 function ToolBlockStack({ blocks }: { blocks: ToolBlock[] }) {
   return (
-    <div className="border-l-2 border-(--border) pl-3">
+    <div data-activity-tree-child="tools">
       {blocks.map((block, index) => (
         <div key={block.id} className="pb-1.5 last:pb-0">
           <div className={index === 0 ? "" : "pt-0.5"}>

@@ -256,6 +256,7 @@ export function ChatPane({
     modelId,
     cwd,
     browserToolEnabled,
+    canvasEnabled: tools.computer.canvasEnabled,
     onPiSessionIdChange,
     updateSession,
     selectionFor: tools.selectionFor,

@@ -74,6 +74,11 @@ type PersistedTabShape = Partial<Session> & {
   skills?: ComposerSkillRef[];
 };
 
+export type PersistedSessionMeta = Omit<Session, "messages" | "error"> & {
+  plugins?: ComposerPluginRef[];
+  skills?: ComposerSkillRef[];
+};
+
 export function normalizePersistedTab(value: unknown): Session | null {
   if (!value || typeof value !== "object") return null;
   const tab = value as PersistedTabShape;
@@ -86,7 +91,10 @@ export function normalizePersistedTab(value: unknown): Session | null {
     runtimeSessionId: tab.runtimeSessionId,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: typeof tab.title === "string" && tab.title.trim() ? tab.title : fallback.title,
-    messages: Array.isArray(tab.messages) ? tab.messages.slice(-80) : [],
+    // The canonical session log is the transcript source of truth. Legacy
+    // pane-state entries may still contain messages, but restoring them here
+    // would put large reasoning/tool payloads back onto the renderer hot path.
+    messages: [],
     status: typeof tab.status === "string" ? tab.status : "idle",
     error: "",
     startedAt: typeof tab.startedAt === "string" ? tab.startedAt : undefined,
@@ -210,22 +218,29 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
 }
 
 /**
- * Serialize a session for persistence. Tool selection (plugins/skills) is
- * embedded back into the persisted tab so older clients keep loading; the
- * runtime model keeps them in the tools subsystem.
+ * Serialize only durable session metadata. Transcripts, reasoning, tool
+ * payloads, attachment bodies, and preview data belong to canonical session
+ * storage or runtime memory, never pane-state localStorage.
  */
-export function tabForPersistence(
+export function sessionMetaForPersistence(
   tab: Session,
   selection?: ToolSelection,
-): Session & {
-  plugins?: ComposerPluginRef[];
-  skills?: ComposerSkillRef[];
-} {
-  const base: Session = {
-    ...tab,
-    messages: tab.messages.slice(-80),
+): PersistedSessionMeta {
+  const base: PersistedSessionMeta = {
+    id: tab.id,
+    runtimeSessionId: tab.runtimeSessionId,
+    piSessionId: tab.piSessionId,
+    projectId: tab.projectId,
+    cwd: tab.cwd,
+    modelId: tab.modelId,
+    title: tab.title,
     status: tab.status,
-    error: "",
+    startedAt: tab.startedAt,
+    input: tab.input,
+    tokenStats: tab.tokenStats,
+    activeAssistantId: tab.activeAssistantId,
+    lastEventSeq: tab.lastEventSeq,
+    queue: tab.queue,
   };
   if (selection) {
     return {

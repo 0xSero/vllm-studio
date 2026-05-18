@@ -131,7 +131,6 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
         <AgentBrowserPanel
           handles={handles}
           activeProject={activeProject}
-          focusedTitle={focusedTab?.title ?? "Focused session"}
           focusedSession={focusedTab}
           sessions={[...state.sessions.values()]}
           activeModel={focusedModel}

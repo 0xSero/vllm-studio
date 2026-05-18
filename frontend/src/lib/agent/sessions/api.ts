@@ -69,6 +69,8 @@ export type CompactSessionArgs = {
   cwd?: string;
   piSessionId?: string | null;
   browserToolEnabled: boolean;
+  browserSessionId?: string;
+  canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
 };
@@ -100,6 +102,8 @@ export type SubmitTurnArgs = {
   /** Control mode for steer/follow-up; omitted for a normal prompt. */
   mode?: "steer" | "follow_up";
   browserToolEnabled: boolean;
+  browserSessionId?: string;
+  canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
 };

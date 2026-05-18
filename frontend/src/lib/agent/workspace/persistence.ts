@@ -9,7 +9,7 @@ import {
   PANE_STATE_KEY,
   persistActiveAgentSessions,
   restorePersistedPaneState,
-  tabForPersistence,
+  sessionMetaForPersistence,
   type WorkspaceStorage,
 } from "./store";
 import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
@@ -113,14 +113,14 @@ export function writePaneState(
     {
       activeTabId: string;
       runtimeSessionId: string;
-      tabs: ReturnType<typeof tabForPersistence>[];
+      tabs: ReturnType<typeof sessionMetaForPersistence>[];
     }
   > = {};
   for (const [paneId, pane] of state.panesById.entries()) {
-    const tabs: ReturnType<typeof tabForPersistence>[] = [];
+    const tabs: ReturnType<typeof sessionMetaForPersistence>[] = [];
     for (const id of pane.sessionIds) {
       const session = state.sessions.get(id);
-      if (session) tabs.push(tabForPersistence(session, selectionFor(id) ?? undefined));
+      if (session) tabs.push(sessionMetaForPersistence(session, selectionFor(id) ?? undefined));
     }
     panes[paneId] = {
       activeTabId: pane.activeSessionId,
