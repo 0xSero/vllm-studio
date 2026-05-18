@@ -94,17 +94,31 @@ function setAgentSessionDragData(
   event.dataTransfer.setData("application/x-vllm-agent-session", JSON.stringify(session));
   event.dataTransfer.effectAllowed = "copy";
 }
-function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
+function activeSessionPrefKeys(
+  session: Pick<ActiveAgentSession, "piSessionId" | "paneId" | "tabId">,
+): string[] {
   return [
     session.piSessionId,
     session.paneId && session.tabId ? `tab:${session.paneId}:${session.tabId}` : null,
   ].filter((value): value is string => Boolean(value));
 }
+
+export function mergeActiveSessionPref(
+  session: Pick<ActiveAgentSession, "piSessionId" | "paneId" | "tabId">,
+  prefs: SessionPrefs,
+): SessionPref {
+  const merged: SessionPref = {};
+  for (const key of activeSessionPrefKeys(session)) {
+    const pref = prefs[key];
+    if (!pref) continue;
+    if (pref.title) merged.title = pref.title;
+    if (pref.pinned) merged.pinned = true;
+    if (pref.hidden) merged.hidden = true;
+  }
+  return merged;
+}
 function activeSessionPref(session: ActiveAgentSession, prefs: SessionPrefs): SessionPref {
-  return activeSessionPrefKeys(session).reduce<SessionPref>(
-    (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
-    {},
-  );
+  return mergeActiveSessionPref(session, prefs);
 }
 function patchActiveSessionPref(session: ActiveAgentSession, patch: SessionPref) {
   for (const key of activeSessionPrefKeys(session)) patchSessionPref(key, patch);
@@ -535,42 +549,6 @@ function ProjectDirectoryPickerModal({
           ))}{" "}
         </div>
       ) : null}{" "}
-      {chatProject ? (
-        <>
-          <SidebarSectionHeader
-            label="Chats"
-            open={chatsExpanded}
-            onToggle={() => setChatsExpanded((value) => !value)}
-            action={
-              <Link
-                href={`/agent?project=${encodeURIComponent(chatProject.id)}&new=1`}
-                onClick={(event) => {
-                  if (window.location.pathname !== "/agent") return;
-                  event.preventDefault();
-                  window.dispatchEvent(
-                    new CustomEvent(NEW_AGENT_SESSION_EVENT, {
-                      detail: { projectId: chatProject.id },
-                    }),
-                  );
-                }}
-                className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
-                title="New chat"
-                aria-label="New chat"
-              >
-                <PlusIcon className="h-3.5 w-3.5" />{" "}
-              </Link>
-            }
-          />
-          {chatsExpanded ? (
-            <ProjectSessions
-              project={chatProject}
-              activeSessions={activeSessions}
-              prefs={prefs}
-              excludedIds={pinnedRenderedIds}
-            />
-          ) : null}
-        </>
-      ) : null}
       <SidebarSectionHeader
         label="Projects"
         open={projectsExpanded}
@@ -616,6 +594,42 @@ function ProjectDirectoryPickerModal({
             />
           ))
         )
+      ) : null}
+      {chatProject ? (
+        <>
+          <SidebarSectionHeader
+            label="Chats"
+            open={chatsExpanded}
+            onToggle={() => setChatsExpanded((value) => !value)}
+            action={
+              <Link
+                href={`/agent?project=${encodeURIComponent(chatProject.id)}&new=1`}
+                onClick={(event) => {
+                  if (window.location.pathname !== "/agent") return;
+                  event.preventDefault();
+                  window.dispatchEvent(
+                    new CustomEvent(NEW_AGENT_SESSION_EVENT, {
+                      detail: { projectId: chatProject.id },
+                    }),
+                  );
+                }}
+                className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />{" "}
+              </Link>
+            }
+          />
+          {chatsExpanded ? (
+            <ProjectSessions
+              project={chatProject}
+              activeSessions={activeSessions}
+              prefs={prefs}
+              excludedIds={pinnedRenderedIds}
+            />
+          ) : null}
+        </>
       ) : null}
       {addError ? <div className="px-3 py-1 text-[11px] text-red-400">{addError}</div> : null}{" "}
     </div>
