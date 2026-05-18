@@ -3,12 +3,17 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/lib/agent/contracts/terminal";
 
-type TerminalRefs = {
+export type TerminalRefs = {
   term: XTerm | null;
   fit: FitAddon | null;
   input: string;
   running: boolean;
   disposed: boolean;
+};
+
+type TerminalSessionState = {
+  input: string;
+  running: boolean;
 };
 
 export function useTerminalPanelEffects({
@@ -26,6 +31,7 @@ export function useTerminalPanelEffects({
     refs.input = "";
     refs.running = false;
     let cleanupResize: (() => void) | null = null;
+    let cleanupKeyboard: (() => void) | null = null;
 
     async function boot() {
       const element = containerRef.current;
@@ -64,11 +70,20 @@ export function useTerminalPanelEffects({
       fit.fit();
       refs.term = term;
       refs.fit = fit;
+      const session: TerminalSessionState = { input: "", running: false };
       writeIntro(term, cwd);
-      term.onData((data) => handleTerminalData(data, cwd, refs));
+      term.onData((data) => handleTerminalData(data, cwd, refs, term, session));
+      term.focus();
+      window.setTimeout(() => {
+        if (!refs.disposed) term.focus();
+      }, 0);
       const observer = new ResizeObserver(() => refs.fit?.fit());
       observer.observe(element);
       cleanupResize = () => observer.disconnect();
+      const onKeyDown = (event: KeyboardEvent) =>
+        handleTerminalDomKeyDown(event, cwd, refs, term, session);
+      element.addEventListener("keydown", onKeyDown, true);
+      cleanupKeyboard = () => element.removeEventListener("keydown", onKeyDown, true);
     }
 
     void boot();
@@ -76,6 +91,7 @@ export function useTerminalPanelEffects({
     return () => {
       refs.disposed = true;
       cleanupResize?.();
+      cleanupKeyboard?.();
       refs.term?.dispose();
       refs.term = null;
       refs.fit = null;
@@ -83,27 +99,56 @@ export function useTerminalPanelEffects({
   }, [containerRef, cwd, stateRef]);
 }
 
-function handleTerminalData(data: string, cwd: string | null, refs: TerminalRefs) {
-  const term = refs.term;
-  if (!term || refs.running) return;
-  if (data === "\r") {
-    const command = refs.input.trim();
-    term.write("\r\n");
-    refs.input = "";
-    if (command) void runCommand(command, cwd, refs);
-    else writePrompt(term, cwd);
+function handleTerminalDomKeyDown(
+  event: KeyboardEvent,
+  cwd: string | null,
+  refs: TerminalRefs,
+  term: XTerm,
+  session: TerminalSessionState,
+) {
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  const key = event.key;
+  if (key === "Enter") {
+    if (handleTerminalData("\r", cwd, refs, term, session)) event.preventDefault();
     return;
+  }
+  if (key === "Backspace") {
+    if (handleTerminalData("\u007f", cwd, refs, term, session)) event.preventDefault();
+    return;
+  }
+  if (key.length === 1) {
+    if (handleTerminalData(key, cwd, refs, term, session)) event.preventDefault();
+  }
+}
+
+function handleTerminalData(
+  data: string,
+  cwd: string | null,
+  refs: TerminalRefs,
+  term = refs.term,
+  session: TerminalSessionState = refs,
+): boolean {
+  if (!term || session.running || term.element?.isConnected === false) return false;
+  if (data === "\r") {
+    const command = session.input.trim();
+    term.write("\r\n");
+    session.input = "";
+    if (command) void runCommand(command, cwd, refs, session, term);
+    else writePrompt(term, cwd);
+    return true;
   }
   if (data === "\u007f") {
-    if (refs.input.length === 0) return;
-    refs.input = refs.input.slice(0, -1);
+    if (session.input.length === 0) return true;
+    session.input = session.input.slice(0, -1);
     term.write("\b \b");
-    return;
+    return true;
   }
   if (data >= " " && data !== "\u007f") {
-    refs.input += data;
+    session.input += data;
     term.write(data);
+    return true;
   }
+  return false;
 }
 
 function writeIntro(term: XTerm, cwd: string | null) {
@@ -119,15 +164,20 @@ function writePrompt(term: XTerm, cwd: string | null) {
   term.write(`\x1b[90m${label}\x1b[0m \x1b[32m$\x1b[0m `);
 }
 
-async function runCommand(command: string, cwd: string | null, refs: TerminalRefs) {
-  const term = refs.term;
+async function runCommand(
+  command: string,
+  cwd: string | null,
+  refs: TerminalRefs,
+  session: TerminalSessionState = refs,
+  term = refs.term,
+) {
   if (!term) return;
   if (!cwd) {
     term.writeln("\x1b[31mNo project directory selected.\x1b[0m");
     writePrompt(term, cwd);
     return;
   }
-  refs.running = true;
+  session.running = true;
   try {
     const response = await fetch(`/api/agent/terminal?cwd=${encodeURIComponent(cwd)}`, {
       method: "POST",
@@ -139,7 +189,7 @@ async function runCommand(command: string, cwd: string | null, refs: TerminalRef
   } catch (error) {
     term.writeln(`\x1b[31m${error instanceof Error ? error.message : "Command failed"}\x1b[0m`);
   } finally {
-    refs.running = false;
+    session.running = false;
     if (!refs.disposed) writePrompt(term, cwd);
   }
 }

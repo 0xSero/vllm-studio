@@ -1,17 +1,10 @@
 "use client";
 
 import { useRef } from "react";
-import type { Terminal as XTerm } from "@xterm/xterm";
-import type { FitAddon } from "@xterm/addon-fit";
-import { useTerminalPanelEffects } from "@/hooks/agent/use-terminal-panel-effects";
-
-type TerminalRefs = {
-  term: XTerm | null;
-  fit: FitAddon | null;
-  input: string;
-  running: boolean;
-  disposed: boolean;
-};
+import {
+  useTerminalPanelEffects,
+  type TerminalRefs,
+} from "@/hooks/agent/use-terminal-panel-effects";
 
 export function TerminalPanel({ cwd }: { cwd: string | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,6 +22,9 @@ export function TerminalPanel({ cwd }: { cwd: string | null }) {
     <section className="flex min-h-0 flex-1 flex-col bg-[#070707]">
       <div
         ref={containerRef}
+        tabIndex={0}
+        onMouseDown={() => stateRef.current.term?.focus()}
+        onClick={() => stateRef.current.term?.focus()}
         className="min-h-0 flex-1 overflow-hidden p-2 [--xterm-color-background:#070707]"
       />
     </section>

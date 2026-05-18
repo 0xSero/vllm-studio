@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity,
   Code2,
@@ -284,34 +284,38 @@ function ComputerStatusPanel({
     [sessions],
   );
   const contextWindow = activeModel?.contextWindow ?? 0;
+  const sessionTokens = focusedSession?.tokenStats?.current ?? 0;
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
-      <div className="grid grid-cols-3 gap-2">
-        <Metric
-          label="Session tokens"
-          value={formatTokenCount(focusedSession?.tokenStats?.current ?? 0)}
-        />
-        <Metric label="All tokens" value={formatTokenCount(totals.current)} />
-        <Metric label="Messages" value={String(totals.messages)} />
+      <div className="border-b border-(--border) pb-3">
+        <div className="truncate text-sm font-medium text-(--fg)">
+          {focusedSession?.title ?? "New session"}
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-3 font-mono">
+          <MiniStat label="session" value={formatTokenCount(sessionTokens)} />
+          <MiniStat label="all" value={formatTokenCount(totals.current)} />
+          <MiniStat label="msgs" value={String(totals.messages)} />
+        </div>
       </div>
-      <div className="mt-3 grid gap-1.5 rounded-md border border-(--border) bg-(--surface)/35 p-3">
-        <StatusRow label="Focused" value={focusedSession?.title ?? "No session"} />
-        <StatusRow label="Status" value={focusedSession?.status ?? "idle"} />
+
+      <StatusSection title="Session">
+        <StatusRow label="State" value={focusedSession?.status ?? "idle"} />
         <StatusRow
           label="Model"
           value={activeModel?.name ?? focusedSession?.modelId ?? "No model"}
         />
         <StatusRow
           label="Context"
-          value={`${formatTokenCount(focusedSession?.tokenStats?.current ?? 0)} / ${formatTokenCount(contextWindow)}`}
+          value={`${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`}
         />
         <StatusRow
           label="Read / write"
           value={`${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`}
         />
         <StatusRow label="Queue" value={`${totals.queued} queued · ${totals.running} running`} />
-      </div>
-      <div className="mt-3 grid gap-1.5 rounded-md border border-(--border) bg-(--surface)/25 p-3">
+      </StatusSection>
+
+      <StatusSection title="Workspace">
         <StatusRow label="Project" value={activeProject?.name ?? "No project"} />
         <StatusRow
           label="Directory"
@@ -326,9 +330,10 @@ function ComputerStatusPanel({
           }
         />
         <StatusRow label="Browser" value={tools.browser.enabled ? tools.browser.url : "Tool off"} />
-      </div>
-      <div className="mt-3 rounded-md border border-(--border) bg-(--surface)/25">
-        <div className="flex h-9 items-center gap-2 border-b border-(--border) px-3">
+      </StatusSection>
+
+      <div className="mt-4 border-t border-(--border) pt-3">
+        <div className="flex h-8 items-center gap-2">
           <Code2 className="h-3.5 w-3.5 text-(--accent)" />
           <span className="font-medium text-(--fg)">Canvas</span>
           <button
@@ -352,9 +357,8 @@ function ComputerStatusPanel({
             spellCheck={false}
           />
         ) : (
-          <div className="p-3 text-[11px] leading-5">
-            Enable the canvas from here or the composer to keep shared scratch notes beside the
-            session.
+          <div className="py-2 text-[11px] leading-5">
+            Shared scratch notes for the model and human. Toggle it here or from the composer.
           </div>
         )}
       </div>
@@ -362,19 +366,28 @@ function ComputerStatusPanel({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-(--border) bg-(--surface)/35 p-2">
-      <div className="truncate text-[10px] uppercase tracking-wide text-(--dim)">{label}</div>
-      <div className="mt-1 truncate font-mono text-sm text-(--fg)">{value}</div>
+    <div className="min-w-0">
+      <div className="truncate text-[9px] uppercase tracking-wide text-(--dim)">{label}</div>
+      <div className="mt-1 truncate text-[13px] text-(--fg)">{value}</div>
+    </div>
+  );
+}
+
+function StatusSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mt-4 border-t border-(--border) pt-3">
+      <div className="mb-2 text-[10px] uppercase tracking-wide text-(--dim)">{title}</div>
+      <div className="grid gap-1">{children}</div>
     </div>
   );
 }
 
 function StatusRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[5.5rem_1fr] gap-3">
-      <span className="text-[10px] uppercase tracking-wide text-(--dim)">{label}</span>
+    <div className="grid grid-cols-[5.5rem_1fr] gap-3 py-0.5">
+      <span className="text-[10px] text-(--dim)">{label}</span>
       <span className="min-w-0 truncate text-right font-mono text-[11px] text-(--fg)" title={value}>
         {value}
       </span>
