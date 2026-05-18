@@ -73,7 +73,7 @@ export function AgentBrowserPanel({
     <aside
       className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--bg)"
       ref={registerComputerAside}
-      style={{ width: `min(${tools.computer.width}px, 48vw)` }}
+      style={{ width: `${tools.computer.width}px`, minWidth: "max(280px, 25%)", maxWidth: "65%" }}
     >
       <div
         role="separator"

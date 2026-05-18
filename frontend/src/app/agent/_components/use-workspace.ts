@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { safeJson } from "@/lib/agent/safe-json";
-import { clampComputerWidth } from "@/lib/agent/tools/persistence";
+import { clampComputerWidth, gentlySnapComputerWidth } from "@/lib/agent/tools/persistence";
 import { loadInitialFromStorage } from "@/lib/agent/workspace/persistence";
 import {
   createInitialState,
@@ -340,10 +340,16 @@ export function useWorkspace(): UseWorkspaceResult {
         if (typeof window === "undefined") return;
         event.preventDefault();
         const startX = event.clientX;
-        const startWidth = toolsRef.current.computer.width;
+        const startWidth =
+          computerAsideRef.current?.getBoundingClientRect().width ??
+          toolsRef.current.computer.width;
+        const containerWidth =
+          computerAsideRef.current?.parentElement?.getBoundingClientRect().width ??
+          window.innerWidth;
         let frame = 0;
+        if (computerAsideRef.current) computerAsideRef.current.style.transition = "none";
         const onMove = (moveEvent: MouseEvent) => {
-          const next = clampComputerWidth(startWidth + startX - moveEvent.clientX);
+          const next = clampComputerWidth(startWidth + startX - moveEvent.clientX, containerWidth);
           if (frame) cancelAnimationFrame(frame);
           frame = requestAnimationFrame(() => {
             if (computerAsideRef.current) computerAsideRef.current.style.width = `${next}px`;
@@ -351,8 +357,16 @@ export function useWorkspace(): UseWorkspaceResult {
         };
         const onUp = (upEvent: MouseEvent) => {
           if (frame) cancelAnimationFrame(frame);
-          const next = clampComputerWidth(startWidth + startX - upEvent.clientX);
-          if (computerAsideRef.current) computerAsideRef.current.style.width = `${next}px`;
+          const raw = startWidth + startX - upEvent.clientX;
+          const next = gentlySnapComputerWidth(raw, containerWidth);
+          if (computerAsideRef.current) {
+            computerAsideRef.current.style.transition =
+              "width 150ms cubic-bezier(0.22, 1, 0.36, 1)";
+            computerAsideRef.current.style.width = `${next}px`;
+            window.setTimeout(() => {
+              if (computerAsideRef.current) computerAsideRef.current.style.transition = "";
+            }, 170);
+          }
           toolsRef.current.setComputerWidth(next);
           window.removeEventListener("mousemove", onMove);
           window.removeEventListener("mouseup", onUp);

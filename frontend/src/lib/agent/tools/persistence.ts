@@ -16,12 +16,58 @@ export const COMPUTER_CANVAS_TEXT_KEY = "vllm-studio.agent.computer.canvasText";
 
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 export const DEFAULT_COMPUTER_WIDTH = 440;
-export const MIN_COMPUTER_WIDTH = 320;
-export const MAX_COMPUTER_WIDTH = 960;
+export const MIN_COMPUTER_WIDTH = 280;
+export const MAX_COMPUTER_WIDTH = 1800;
+export const MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN = 340;
+export const COMPUTER_SNAP_RATIOS = [0.25, 0.35, 0.5, 0.65] as const;
 
-export function clampComputerWidth(width: number): number {
+function viewportWidth(): number | undefined {
+  return typeof window === "undefined" ? undefined : window.innerWidth;
+}
+
+export function computerWidthBounds(containerWidth = viewportWidth()): {
+  min: number;
+  max: number;
+} {
+  if (!containerWidth || !Number.isFinite(containerWidth)) {
+    return { min: MIN_COMPUTER_WIDTH, max: MAX_COMPUTER_WIDTH };
+  }
+  const minimum = Math.max(
+    MIN_COMPUTER_WIDTH,
+    Math.round(containerWidth * COMPUTER_SNAP_RATIOS[0]),
+  );
+  const roomyMaximum = Math.round(
+    containerWidth * COMPUTER_SNAP_RATIOS[COMPUTER_SNAP_RATIOS.length - 1],
+  );
+  const chatSafeMaximum = Math.max(minimum, containerWidth - MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN);
+  return {
+    min: minimum,
+    max: Math.min(MAX_COMPUTER_WIDTH, roomyMaximum, chatSafeMaximum),
+  };
+}
+
+export function clampComputerWidth(width: number, containerWidth?: number): number {
   if (!Number.isFinite(width)) return DEFAULT_COMPUTER_WIDTH;
-  return Math.min(MAX_COMPUTER_WIDTH, Math.max(MIN_COMPUTER_WIDTH, Math.round(width)));
+  const { min, max } = computerWidthBounds(containerWidth);
+  return Math.min(max, Math.max(min, Math.round(width)));
+}
+
+export function computerSnapWidths(containerWidth: number): number[] {
+  const { min, max } = computerWidthBounds(containerWidth);
+  return COMPUTER_SNAP_RATIOS.map((ratio) => Math.round(containerWidth * ratio)).filter(
+    (width) => width >= min && width <= max,
+  );
+}
+
+export function gentlySnapComputerWidth(width: number, containerWidth: number): number {
+  const clamped = clampComputerWidth(width, containerWidth);
+  const snapThreshold = Math.max(14, Math.min(30, Math.round(containerWidth * 0.015)));
+  const nearest = computerSnapWidths(containerWidth).reduce<number | null>((best, candidate) => {
+    if (best === null) return candidate;
+    return Math.abs(candidate - clamped) < Math.abs(best - clamped) ? candidate : best;
+  }, null);
+  if (nearest === null || Math.abs(nearest - clamped) > snapThreshold) return clamped;
+  return nearest;
 }
 
 function read(key: string): string | null {
