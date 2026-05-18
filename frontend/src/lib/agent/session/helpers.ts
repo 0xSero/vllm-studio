@@ -209,7 +209,11 @@ export function reconcileQueueWithPiEvent(
     steer: stringArray(event.steering),
     follow_up: stringArray(event.followUp),
   };
-  const next = queue.filter((item) => !item.sent || pending[item.mode].includes(item.text));
+  const next = queue.flatMap((item) => {
+    const acceptedByPi = pending[item.mode].includes(item.text);
+    if (acceptedByPi) return [{ ...item, sent: true }];
+    return item.sent ? [] : [item];
+  });
   const seen = new Set(next.map((item) => `${item.mode}:${item.text}`));
   for (const [mode, messages] of Object.entries(pending) as Array<
     [QueuedMessage["mode"], string[]]

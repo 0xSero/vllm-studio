@@ -131,16 +131,29 @@ describe("reconcileQueueWithPiEvent", () => {
     const result = reconcileQueueWithPiEvent(
       [
         { id: "local", mode: "follow_up", text: "local only" },
+        { id: "optimistic", mode: "follow_up", text: "claimed by pi" },
         { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
         { id: "sent-steer", mode: "steer", text: "delivered", sent: true },
       ],
-      { type: "queue_update", steering: ["new steer"], followUp: ["kept"] },
+      { type: "queue_update", steering: ["new steer"], followUp: ["claimed by pi", "kept"] },
     );
     expect(result).toEqual([
       { id: "local", mode: "follow_up", text: "local only" },
+      { id: "optimistic", mode: "follow_up", text: "claimed by pi", sent: true },
       { id: "sent-follow", mode: "follow_up", text: "kept", sent: true },
       { id: expect.any(String), mode: "steer", text: "new steer", sent: true },
     ]);
+  });
+  it("removes Pi-accepted follow-ups when Pi reports an empty queue", () => {
+    expect(
+      reconcileQueueWithPiEvent(
+        [
+          { id: "accepted", mode: "follow_up", text: "already in pi", sent: true },
+          { id: "local", mode: "follow_up", text: "retry locally", sent: false },
+        ],
+        { type: "queue_update", steering: [], followUp: [] },
+      ),
+    ).toEqual([{ id: "local", mode: "follow_up", text: "retry locally", sent: false }]);
   });
 });
 describe("mergeCanonicalAndRuntimeEvents", () => {

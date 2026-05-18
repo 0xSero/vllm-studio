@@ -314,10 +314,7 @@ export function ChatPane({
         ...(cwdHint ? { cwd: t.cwd || cwdHint } : {}),
         input: "",
         error: "",
-        queue: [
-          ...(t.queue ?? []),
-          { id: queuedId, mode, text, ...(mode === "steer" ? { sent: true } : {}) },
-        ],
+        queue: [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }],
       }));
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({

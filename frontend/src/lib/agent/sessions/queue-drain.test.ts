@@ -55,7 +55,12 @@ describe("session queue drain", () => {
 
   it("clears non-drainable queued work without scheduling a turn", () => {
     const deps = harness([
-      session({ queue: [{ id: "steer", mode: "steer", text: "interrupt", sent: true }] }),
+      session({
+        queue: [
+          { id: "steer", mode: "steer", text: "interrupt", sent: true },
+          { id: "accepted-follow", mode: "follow_up", text: "already accepted", sent: true },
+        ],
+      }),
     ]);
 
     drainQueuedTurnAfterAgentEnd(deps, "session-1");
