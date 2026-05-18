@@ -238,9 +238,9 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
         <div className="mt-1.5 flex min-w-0 flex-col gap-2">
           {segments.map((segment) =>
             segment.kind === "reasoning" ? (
-              <ReasoningGroup key={segment.id} blocks={segment.blocks} />
+              <ReasoningBlockContent key={segment.id} blocks={segment.blocks} />
             ) : (
-              <ToolCallGroup key={segment.id} blocks={segment.blocks} />
+              <ToolBlockStack key={segment.id} blocks={segment.blocks} />
             ),
           )}
         </div>
@@ -249,23 +249,17 @@ function AssistantActivityGroup({ segments }: { segments: ActivitySegment[] }) {
   );
 }
 
-function ReasoningGroup({
-  blocks,
-  defaultOpen = false,
-}: {
-  blocks: ThinkingBlock[];
-  defaultOpen?: boolean;
-}) {
+function ReasoningBlockContent({ blocks }: { blocks: ThinkingBlock[] }) {
   const text = blocks.map((block) => block.text).join("\n\n");
   return (
-    <details className="text-xs" open={defaultOpen}>
-      <summary className="cursor-pointer list-none text-[11px] italic text-(--dim) hover:text-(--fg) [&::-webkit-details-marker]:hidden">
+    <div className="text-xs">
+      <div className="text-[11px] italic text-(--dim)">
         Reasoning{blocks.length > 1 ? ` · ${blocks.length}` : ""}
-      </summary>
+      </div>
       <pre className="mt-2 max-w-full whitespace-pre-wrap break-words border-l-2 border-(--border) pl-3 font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
         {text}
       </pre>
-    </details>
+    </div>
   );
 }
 
@@ -279,49 +273,17 @@ function EventBlockView({ block }: { block: EventBlock }) {
   );
 }
 
-function ToolCallGroup({ blocks }: { blocks: ToolBlock[] }) {
-  const hasActiveTool = blocks.some((block) => block.status === "running");
-  const hasError = blocks.some((block) => block.status === "error");
-  const [expanded, setExpanded] = useState(false);
-  const open = expanded;
-  const preview = toolGroupPreview(blocks);
-
+function ToolBlockStack({ blocks }: { blocks: ToolBlock[] }) {
   return (
-    <details className="group min-w-0" open={open}>
-      <summary
-        className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-(--fg) hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
-        onClick={(event) => {
-          event.preventDefault();
-          setExpanded((value) => !value);
-        }}
-      >
-        <ChevronDown
-          className={`h-3 w-3 shrink-0 text-(--fg)/70 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-        <span className="shrink-0 font-medium text-(--fg)/90">
-          {blocks.length === 1 ? "1 tool" : `${blocks.length} tools`}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--fg)/75">
-          {preview}
-        </span>
-        {hasActiveTool ? (
-          <span className="shrink-0 text-[10px] text-(--accent)">running</span>
-        ) : hasError ? (
-          <span className="shrink-0 text-[10px] text-(--err)">error</span>
-        ) : null}
-      </summary>
-      {open ? (
-        <div className="mt-2 border-l-2 border-(--border) pl-3">
-          {blocks.map((block, index) => (
-            <div key={block.id} className="pb-1.5 last:pb-0">
-              <div className={index === 0 ? "" : "pt-0.5"}>
-                <ToolBlockView block={block} />
-              </div>
-            </div>
-          ))}
+    <div className="border-l-2 border-(--border) pl-3">
+      {blocks.map((block, index) => (
+        <div key={block.id} className="pb-1.5 last:pb-0">
+          <div className={index === 0 ? "" : "pt-0.5"}>
+            <ToolBlockView block={block} />
+          </div>
         </div>
-      ) : null}
-    </details>
+      ))}
+    </div>
   );
 }
 
