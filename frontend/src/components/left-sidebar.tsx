@@ -162,15 +162,15 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="mb-1 flex h-8 items-center gap-3 rounded-md px-3 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                className="mb-1 flex h-7 items-center gap-2 rounded-md px-2.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                 title="Search sessions (⌘K)"
               >
-                <SearchIcon className="h-4 w-4 shrink-0" />
-                <span className="flex-1 truncate text-left text-[14px]">Search</span>
-                <kbd className="px-1 py-0.5 text-[11px] font-mono text-(--dim)">⌘K</kbd>
+                <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate text-left text-[12px]">Search</span>
+                <kbd className="px-1 py-0.5 text-[10px] font-mono text-(--dim)">⌘K</kbd>
               </button>
 
-              <div className="mb-1 mt-4 px-3 text-[12px] font-medium text-(--dim)">Workspace</div>
+              <div className="mb-1 mt-3 px-2.5 text-[11px] font-medium text-(--dim)">Workspace</div>
               {tabs.map((tab) => (
                 <NavItemDesktop
                   key={tab.href}
@@ -342,13 +342,13 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-8 flex items-center gap-3 rounded-md px-3 transition-colors shrink-0 ${
+      className={`h-7 flex items-center gap-2 rounded-md px-2.5 transition-colors shrink-0 ${
         active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
       }`}
     >
-      <Icon className="w-[18px] h-[18px] shrink-0" />
+      <Icon className="w-4 h-4 shrink-0" />
       <span
-        className={`text-[14px] font-medium whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[12px] font-medium whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >

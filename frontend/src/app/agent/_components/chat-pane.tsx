@@ -890,9 +890,9 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-hidden font-mono text-[10px] text-(--dim)">
+        <div className="relative z-20 mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <button
               type="button"
               onClick={() => void compactSession()}
@@ -905,7 +905,7 @@ export function ChatPane({
               compact{" "}
             </button>
             <span className="shrink-0 text-(--border)">·</span>{" "}
-            <div className="min-w-0 max-w-[42%] shrink">
+            <div className="min-w-0 max-w-[42%] shrink overflow-visible">
               {projectSelector ? (
                 projectSelector
               ) : cwd ? (
