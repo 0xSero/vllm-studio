@@ -1,4 +1,5 @@
-import type { RefObject, UIEventHandler } from "react";
+import { forwardRef, useMemo, type ComponentPropsWithoutRef } from "react";
+import { Virtuoso } from "react-virtuoso";
 import type { ChatMessage } from "@/lib/agent/session";
 import { MessageView } from "./message-view";
 
@@ -7,26 +8,54 @@ type TimelineProps = {
   running: boolean;
   statusLabel?: string;
   emptyPrompt?: boolean;
-  scrollRef?: RefObject<HTMLDivElement | null>;
-  onScroll?: UIEventHandler<HTMLDivElement>;
+  stickToBottom?: boolean;
+  onStickToBottomChange?: (value: boolean) => void;
 };
+
+const TimelineList = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  ({ className, ...props }, ref) => (
+    <div
+      {...props}
+      ref={ref}
+      className={`mx-auto flex w-full max-w-[var(--thread-w)] flex-col ${className ?? ""}`}
+    />
+  ),
+);
+TimelineList.displayName = "TimelineList";
+
+function TimelineItem({ className, ...props }: ComponentPropsWithoutRef<"div">) {
+  return <div {...props} className={`pb-5 ${className ?? ""}`} />;
+}
 
 export function Timeline({
   messages,
   running,
   statusLabel,
   emptyPrompt = false,
-  scrollRef,
-  onScroll,
+  stickToBottom = true,
+  onStickToBottomChange,
 }: TimelineProps) {
-  return (
-    <div
-      ref={scrollRef}
-      onScroll={onScroll}
-      className={`min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2 ${emptyPrompt ? "flex" : ""}`}
-    >
-      <div className={`mx-auto w-full max-w-[var(--thread-w)] ${emptyPrompt ? "flex flex-1" : ""}`}>
-        {emptyPrompt ? (
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => message.role !== "system"),
+    [messages],
+  );
+  const footer = useMemo(
+    () =>
+      running
+        ? () => (
+            <div className="mx-auto flex w-full max-w-[var(--thread-w)] items-center gap-2 py-4 text-xs text-(--dim)">
+              <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
+              <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
+            </div>
+          )
+        : undefined,
+    [running, statusLabel],
+  );
+
+  if (emptyPrompt) {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2">
+        <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-1">
           <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
             <p className="max-w-[680px]">
               A dream is something you build for yourself.
@@ -34,22 +63,31 @@ export function Timeline({
               Just talk to it.
             </p>
           </div>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {messages
-              .filter((m) => m.role !== "system")
-              .map((message) => (
-                <MessageView key={message.id} message={message} />
-              ))}
-            {running ? (
-              <div className="flex items-center gap-2 py-4 text-xs text-(--dim)">
-                <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
-                <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
-              </div>
-            ) : null}
-          </div>
-        )}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 px-6 pb-10 pt-2">
+      <Virtuoso
+        className="h-full"
+        data={visibleMessages}
+        computeItemKey={(_, message) => message.id}
+        defaultItemHeight={180}
+        increaseViewportBy={{ top: 700, bottom: 1000 }}
+        alignToBottom
+        atBottomThreshold={80}
+        atBottomStateChange={onStickToBottomChange}
+        followOutput={() => (stickToBottom ? "auto" : false)}
+        initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+        components={{
+          Footer: footer,
+          Item: TimelineItem,
+          List: TimelineList,
+        }}
+        itemContent={(_, message) => <MessageView message={message} />}
+      />
     </div>
   );
 }

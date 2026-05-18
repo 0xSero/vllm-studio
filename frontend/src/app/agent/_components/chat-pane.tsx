@@ -131,11 +131,10 @@ export function ChatPane({
   onClose,
   onRegisterHandle,
 }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [stickToBottom, setStickToBottom] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
@@ -159,6 +158,9 @@ export function ChatPane({
     ),
   );
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
+  useEffect(() => {
+    setStickToBottom(true);
+  }, [activeTab?.id]);
   const mentionRows = useMemo(() => {
     if (!mention) return [];
     return mention.kind === "plugin"
@@ -242,13 +244,6 @@ export function ChatPane({
     },
     [activeTab, tools],
   );
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    if (stickToBottomRef.current) {
-      requestAnimationFrame(() => element.scrollTo({ top: element.scrollHeight }));
-    }
-  }, [activeTab?.messages, activeTab?.status]);
   const updateSession = useCallback(
     (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
@@ -291,7 +286,7 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
-      stickToBottomRef.current = true;
+      setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
@@ -538,13 +533,9 @@ export function ChatPane({
       ) : null}
       <div className="flex min-h-0 flex-1">
         <Timeline
-          scrollRef={scrollRef}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            const distanceFromBottom =
-              element.scrollHeight - element.scrollTop - element.clientHeight;
-            stickToBottomRef.current = distanceFromBottom <= 80;
-          }}
+          key={activeTab?.id ?? "empty"}
+          stickToBottom={stickToBottom}
+          onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={Boolean(running)}
           statusLabel={activeTab?.status}
