@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon, CopyIcon } from "lucide-react";
 import React, { Children, isValidElement, useCallback, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -45,13 +46,27 @@ function CodeBlockCopyButton({ code }: { code: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="absolute right-1.5 top-1.5 rounded px-1 text-[10px] text-(--dim) hover:text-(--fg)"
+      className="inline-flex h-6 items-center gap-1 rounded border border-white/10 bg-white/[0.035] px-2 text-[10px] font-medium text-(--dim) shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-white/20 hover:bg-white/[0.07] hover:text-(--fg) focus-visible:outline focus-visible:outline-1 focus-visible:outline-(--accent)"
       aria-label={copied ? "Copied" : "Copy code"}
       title={copied ? "Copied" : "Copy code"}
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
+      <span>{copied ? "Copied" : "Copy"}</span>
     </button>
   );
+}
+
+function codeLanguage(children: ReactNode): string | null {
+  const codeElement = Children.toArray(children).find(
+    (child) =>
+      isValidElement<{ className?: string }>(child) &&
+      typeof child.props.className === "string" &&
+      /\blanguage-/.test(child.props.className),
+  );
+  if (!isValidElement<{ className?: string }>(codeElement)) return null;
+  const className = codeElement.props.className ?? "";
+  const match = /\blanguage-([^\s]+)/.exec(className);
+  return match ? match[1] : null;
 }
 
 const components: Components = {
@@ -74,10 +89,13 @@ const components: Components = {
   ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
   li: ({ node: _n, ...props }) => <li className="text-sm leading-6" {...props} />,
   code: ({ node: _n, className, children, ...props }) => {
-    const isBlock = typeof className === "string" && /\blanguage-/.test(className);
+    const isBlock = typeof className === "string" && /\b(language-|hljs)\b/.test(className);
     if (isBlock) {
       return (
-        <code className={`${className ?? ""} font-mono`} {...props}>
+        <code
+          className={`${className ?? ""} block min-w-full font-mono text-[12px] leading-5 text-[#d8dee9]`}
+          {...props}
+        >
           {children}
         </code>
       );
@@ -97,14 +115,22 @@ const components: Components = {
         (child) => isValidElement(child) && (child as { type?: string }).type === "code",
       ) ?? children,
     );
+    const language = codeLanguage(children);
     return (
-      <pre
-        className="relative my-2 overflow-x-auto rounded border border-(--border) bg-(--surface) p-2 text-[12px] leading-5"
-        {...props}
-      >
-        {code ? <CodeBlockCopyButton code={code} /> : null}
-        {children}
-      </pre>
+      <div className="assistant-code-block group my-3 overflow-hidden rounded-md border border-white/10 bg-[#07090d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex h-8 items-center justify-between border-b border-white/10 bg-white/[0.025] px-2.5">
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+            {language ?? "code"}
+          </span>
+          {code ? <CodeBlockCopyButton code={code} /> : null}
+        </div>
+        <pre
+          className="m-0 max-w-full overflow-x-auto bg-transparent px-3 py-2.5 text-[12px] leading-5"
+          {...props}
+        >
+          {children}
+        </pre>
+      </div>
     );
   },
   a: ({ node: _n, href, ...props }) => (
@@ -140,7 +166,7 @@ const components: Components = {
 
 export function AssistantMarkdown({ text }: { text: string }) {
   return (
-    <div className="min-w-0 text-sm leading-6 text-(--fg)">
+    <div className="chat-markdown min-w-0 text-sm leading-6 text-(--fg)">
       <MarkdownErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{text}</pre>}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}

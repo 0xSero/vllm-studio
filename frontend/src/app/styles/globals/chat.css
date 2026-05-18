@@ -34,7 +34,11 @@
 }
 
 .message-content code {
-  word-break: break-all;
+  word-break: break-word;
+}
+
+.message-content pre code {
+  word-break: normal;
 }
 
 /* Chat markdown */
@@ -205,17 +209,80 @@
   margin: 0.75rem 0;
 }
 
-.chat-markdown code {
+.chat-markdown :not(pre) > code {
   padding: 0.15rem 0.4rem;
   border-radius: 0.3rem;
-  background: color-mix(in srgb, var(--hl3) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--hl3) 18%, var(--border));
-  color: var(--hl3);
+  background: color-mix(in srgb, var(--fg) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, var(--border));
+  color: var(--fg);
   font-family:
     var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   font-size: 0.82rem;
   word-break: break-word;
+}
+
+.chat-markdown .assistant-code-block pre {
+  scrollbar-color: color-mix(in srgb, var(--fg) 18%, transparent) transparent;
+}
+
+.chat-markdown .assistant-code-block code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #d8dee9;
+  white-space: pre;
+  word-break: normal;
+}
+
+.chat-markdown .assistant-code-block .hljs {
+  background: transparent;
+  color: #d8dee9;
+}
+
+.chat-markdown .assistant-code-block .hljs-keyword,
+.chat-markdown .assistant-code-block .hljs-selector-tag,
+.chat-markdown .assistant-code-block .hljs-literal,
+.chat-markdown .assistant-code-block .hljs-section,
+.chat-markdown .assistant-code-block .hljs-link {
+  color: #c792ea;
+}
+
+.chat-markdown .assistant-code-block .hljs-string,
+.chat-markdown .assistant-code-block .hljs-title,
+.chat-markdown .assistant-code-block .hljs-name,
+.chat-markdown .assistant-code-block .hljs-type,
+.chat-markdown .assistant-code-block .hljs-attribute,
+.chat-markdown .assistant-code-block .hljs-symbol,
+.chat-markdown .assistant-code-block .hljs-bullet,
+.chat-markdown .assistant-code-block .hljs-addition {
+  color: #9ccc65;
+}
+
+.chat-markdown .assistant-code-block .hljs-number,
+.chat-markdown .assistant-code-block .hljs-built_in,
+.chat-markdown .assistant-code-block .hljs-builtin-name,
+.chat-markdown .assistant-code-block .hljs-variable,
+.chat-markdown .assistant-code-block .hljs-template-variable {
+  color: #f78c6c;
+}
+
+.chat-markdown .assistant-code-block .hljs-comment,
+.chat-markdown .assistant-code-block .hljs-quote,
+.chat-markdown .assistant-code-block .hljs-meta {
+  color: #717784;
+}
+
+.chat-markdown .assistant-code-block .hljs-deletion {
+  color: #ff7373;
+}
+
+.chat-markdown .assistant-code-block .hljs-emphasis {
+  font-style: italic;
+}
+
+.chat-markdown .assistant-code-block .hljs-strong {
+  font-weight: 600;
 }
 
 .chat-markdown blockquote {
