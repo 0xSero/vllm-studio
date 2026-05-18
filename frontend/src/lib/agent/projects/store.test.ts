@@ -53,11 +53,12 @@ describe("createProjectsStore", () => {
       .fn()
       .mockResolvedValueOnce([project("p1"), project("p2")])
       .mockResolvedValueOnce([project("p2")]);
+    const loadGitSummary = vi.fn(async () => gitSummary);
     const writeSelectedProjectId = vi.fn();
     const store = createProjectsStore({
       api: {
         initGit: vi.fn(),
-        loadGitSummary: vi.fn(async () => gitSummary),
+        loadGitSummary,
         loadProjects,
         removeProject: vi.fn(),
       },
@@ -73,6 +74,8 @@ describe("createProjectsStore", () => {
 
     expect(store.getSnapshot().selectedId).toBe("p2");
     expect(writeSelectedProjectId).not.toHaveBeenCalledWith("p1");
+    expect(loadGitSummary).toHaveBeenCalledTimes(2);
+    expect(loadGitSummary).toHaveBeenLastCalledWith("/work/p2");
     unsubscribe();
   });
 
