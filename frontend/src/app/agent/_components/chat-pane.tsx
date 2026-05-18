@@ -131,11 +131,10 @@ export function ChatPane({
   onClose,
   onRegisterHandle,
 }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [stickToBottom, setStickToBottom] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
@@ -159,6 +158,9 @@ export function ChatPane({
     ),
   );
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
+  useEffect(() => {
+    setStickToBottom(true);
+  }, [activeTab?.id]);
   const mentionRows = useMemo(() => {
     if (!mention) return [];
     return mention.kind === "plugin"
@@ -242,13 +244,6 @@ export function ChatPane({
     },
     [activeTab, tools],
   );
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    if (stickToBottomRef.current) {
-      requestAnimationFrame(() => element.scrollTo({ top: element.scrollHeight }));
-    }
-  }, [activeTab?.messages, activeTab?.status]);
   const updateSession = useCallback(
     (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
@@ -291,7 +286,7 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
-      stickToBottomRef.current = true;
+      setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
@@ -314,20 +309,15 @@ export function ChatPane({
         ...(cwdHint ? { cwd: t.cwd || cwdHint } : {}),
         input: "",
         error: "",
-        queue: [
-          ...(t.queue ?? []),
-          { id: queuedId, mode, text, ...(mode === "steer" ? { sent: true } : {}) },
-        ],
+        queue:
+          mode === "follow_up"
+            ? [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }]
+            : t.queue,
       }));
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({
         ...t,
-        queue:
-          mode === "steer"
-            ? (t.queue ?? []).filter((item) => item.id !== queuedId)
-            : (t.queue ?? []).map((item) =>
-                item.id === queuedId ? { ...item, sent: result.ok } : item,
-              ),
+        queue: result.ok ? t.queue : (t.queue ?? []).filter((item) => item.id !== queuedId),
         ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
       }));
     },
@@ -543,20 +533,16 @@ export function ChatPane({
       ) : null}
       <div className="flex min-h-0 flex-1">
         <Timeline
-          scrollRef={scrollRef}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            const distanceFromBottom =
-              element.scrollHeight - element.scrollTop - element.clientHeight;
-            stickToBottomRef.current = distanceFromBottom <= 80;
-          }}
+          key={activeTab?.id ?? "empty"}
+          stickToBottom={stickToBottom}
+          onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={Boolean(running)}
           statusLabel={activeTab?.status}
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-1">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-0">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button
@@ -898,9 +884,9 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-hidden font-mono text-[10px] text-(--dim)">
+        <div className="relative z-20 mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <button
               type="button"
               onClick={() => void compactSession()}
@@ -913,7 +899,7 @@ export function ChatPane({
               compact{" "}
             </button>
             <span className="shrink-0 text-(--border)">·</span>{" "}
-            <div className="min-w-0 max-w-[42%] shrink">
+            <div className="min-w-0 max-w-[42%] shrink overflow-visible">
               {projectSelector ? (
                 projectSelector
               ) : cwd ? (

@@ -6,6 +6,7 @@ import {
   newId,
   nowLabel,
   reconcileQueueWithPiEvent,
+  removeDeliveredQueuedMessage,
   usageFromEvent,
   visibleUserTextFromPi,
 } from "@/lib/agent/session";
@@ -71,21 +72,29 @@ function appendUserMessageFromPiEvent(
   const msg = event.message as { role?: string; content?: string | Record<string, unknown>[] };
   if (msg?.role !== "user") return false;
   const text = visibleUserTextFromPi(messageText(msg.content));
-  if (!text || hasMatchingLastUserMessage(deps.tabsRef.current, sessionId, text)) return true;
-  deps.updateSession(sessionId, (session) => ({
-    ...session,
-    messages: [
-      ...session.messages,
-      { id: newId("user"), role: "user", text, timestamp: nowLabel() },
-    ],
-  }));
-  ensureNextAssistant(deps, sessionId);
+  if (!text) return true;
+  let appended = false;
+  deps.updateSession(sessionId, (session) => {
+    const queue = removeDeliveredQueuedMessage(session.queue ?? [], text);
+    if (hasMatchingLastUserMessage(session.messages, text)) {
+      return { ...session, queue };
+    }
+    appended = true;
+    return {
+      ...session,
+      queue,
+      messages: [
+        ...session.messages,
+        { id: newId("user"), role: "user", text, timestamp: nowLabel() },
+      ],
+    };
+  });
+  if (appended) ensureNextAssistant(deps, sessionId);
   return true;
 }
 
-function hasMatchingLastUserMessage(tabs: Session[], sessionId: SessionId, text: string): boolean {
-  const current = tabs.find((tab) => tab.id === sessionId);
-  const lastUser = [...(current?.messages ?? [])].reverse().find((entry) => entry.role === "user");
+function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): boolean {
+  const lastUser = [...messages].reverse().find((entry) => entry.role === "user");
   return Boolean(lastUser && (lastUser.text === text || text.includes(lastUser.text)));
 }
 

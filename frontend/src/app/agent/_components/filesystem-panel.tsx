@@ -654,14 +654,20 @@ function FileViewer({
             >
               {lineNumber}{" "}
             </span>
-            <pre
-              className="min-w-0 flex-1 whitespace-pre font-mono text-(--fg)"
-              style={{ fontSize, lineHeight: `${lineHeight}px` }}
-              {...(html ? { dangerouslySetInnerHTML: { __html: html || " " } } : undefined)}
-            >
-              {" "}
-              {!html ? text || "\u00a0" : undefined}
-            </pre>{" "}
+            {html ? (
+              <pre
+                className="min-w-0 flex-1 whitespace-pre font-mono text-(--fg)"
+                style={{ fontSize, lineHeight: `${lineHeight}px` }}
+                dangerouslySetInnerHTML={{ __html: html || "&nbsp;" }}
+              />
+            ) : (
+              <pre
+                className="min-w-0 flex-1 whitespace-pre font-mono text-(--fg)"
+                style={{ fontSize, lineHeight: `${lineHeight}px` }}
+              >
+                {text || "\u00a0"}
+              </pre>
+            )}{" "}
             {lineComments.length > 0 ? (
               <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 rounded border border-(--border) px-1 font-mono text-[9px] text-(--dim)">
                 {" "}

@@ -1,8 +1,19 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import {
   CloseIcon,
+  ChatIcon,
+  ChevronDownIcon,
   EyeOffIcon,
   Folder,
   FolderOpen,
@@ -40,7 +51,7 @@ import {
   type SessionPref,
   type SessionPrefs,
 } from "@/lib/agent/session/prefs";
-import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
+import { isChatsProject, type Project as ProjectEntry } from "@/lib/agent/projects/types";
 type SessionSummary = {
   id: string;
   filename: string;
@@ -313,6 +324,8 @@ function ProjectDirectoryPickerModal({
  */ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
+  const chatProject = projects.find(isChatsProject) ?? null;
+  const fileProjects = projects.filter((project) => !isChatsProject(project));
   const upsertProject = projectsContext.upsertProject;
   const removeProject = projectsContext.removeProject;
   const refreshProjects = projectsContext.refresh;
@@ -420,6 +433,8 @@ function ProjectDirectoryPickerModal({
       else next.add(id);
       return next;
     });
+  const [chatsExpanded, setChatsExpanded] = useState(true);
+  const [projectsExpanded, setProjectsExpanded] = useState(true);
   useEffect(() => {
     window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
@@ -499,7 +514,7 @@ function ProjectDirectoryPickerModal({
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col pb-1">
-          <div className="mt-5 flex h-7 items-center px-3 text-[12px] font-medium text-(--dim)">
+          <div className="mt-4 flex h-6 items-center px-3 text-[11px] font-medium text-(--dim)">
             Pinned
           </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -520,47 +535,117 @@ function ProjectDirectoryPickerModal({
           ))}{" "}
         </div>
       ) : null}{" "}
-      <div className="mt-5 flex h-7 items-center justify-between px-3 text-[12px] font-medium text-(--dim)">
-        <span>Projects</span>{" "}
-        <button
-          type="button"
-          onClick={handleAddProject}
-          className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
-          title="Add folder"
-          aria-label="Add folder"
-        >
-          <PlusIcon className="h-4 w-4" />{" "}
-        </button>
-      </div>{" "}
-      {projects.length === 0 ? (
-        <button
-          type="button"
-          onClick={handleAddProject}
-          className="px-3 py-1 text-left text-[13px] text-(--dim) hover:text-(--fg)"
-        >
-          {" "}
-          No projects yet — pick a folder to get started.
-        </button>
-      ) : (
-        projects.map((project) => (
-          <ProjectRow
-            key={project.id}
-            project={project}
-            open={openIds.has(project.id)}
-            activeSessions={activeSessions.filter((session) => session.projectId === project.id)}
-            prefs={prefs}
-            excludedIds={pinnedRenderedIds}
-            onToggle={() => toggle(project.id)}
-            onRemove={() => {
-              setAddError("");
-              void removeProjectAndCloseRow(project.id).catch((error) => {
-                setAddError(error instanceof Error ? error.message : "Failed to remove project");
-              });
-            }}
+      {chatProject ? (
+        <>
+          <SidebarSectionHeader
+            label="Chats"
+            open={chatsExpanded}
+            onToggle={() => setChatsExpanded((value) => !value)}
+            action={
+              <Link
+                href={`/agent?project=${encodeURIComponent(chatProject.id)}&new=1`}
+                onClick={(event) => {
+                  if (window.location.pathname !== "/agent") return;
+                  event.preventDefault();
+                  window.dispatchEvent(
+                    new CustomEvent(NEW_AGENT_SESSION_EVENT, {
+                      detail: { projectId: chatProject.id },
+                    }),
+                  );
+                }}
+                className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />{" "}
+              </Link>
+            }
           />
-        ))
-      )}
+          {chatsExpanded ? (
+            <ProjectSessions
+              project={chatProject}
+              activeSessions={activeSessions}
+              prefs={prefs}
+              excludedIds={pinnedRenderedIds}
+            />
+          ) : null}
+        </>
+      ) : null}
+      <SidebarSectionHeader
+        label="Projects"
+        open={projectsExpanded}
+        onToggle={() => setProjectsExpanded((value) => !value)}
+        action={
+          <button
+            type="button"
+            onClick={handleAddProject}
+            className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+            title="Add folder"
+            aria-label="Add folder"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />{" "}
+          </button>
+        }
+      />
+      {projectsExpanded ? (
+        fileProjects.length === 0 ? (
+          <button
+            type="button"
+            onClick={handleAddProject}
+            className="px-3 py-1 text-left text-[12px] text-(--dim) hover:text-(--fg)"
+          >
+            {" "}
+            No projects yet — pick a folder to get started.
+          </button>
+        ) : (
+          fileProjects.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              open={openIds.has(project.id)}
+              activeSessions={activeSessions.filter((session) => session.projectId === project.id)}
+              prefs={prefs}
+              excludedIds={pinnedRenderedIds}
+              onToggle={() => toggle(project.id)}
+              onRemove={() => {
+                setAddError("");
+                void removeProjectAndCloseRow(project.id).catch((error) => {
+                  setAddError(error instanceof Error ? error.message : "Failed to remove project");
+                });
+              }}
+            />
+          ))
+        )
+      ) : null}
       {addError ? <div className="px-3 py-1 text-[11px] text-red-400">{addError}</div> : null}{" "}
+    </div>
+  );
+}
+function SidebarSectionHeader({
+  label,
+  open,
+  onToggle,
+  action,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mt-4 flex h-6 items-center justify-between px-3 text-[11px] font-medium text-(--dim)">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-w-0 items-center gap-1.5 text-left hover:text-(--fg)"
+        aria-expanded={open}
+      >
+        <ChevronDownIcon
+          className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+        <span>{label}</span>
+      </button>
+      {action}
     </div>
   );
 }
@@ -572,14 +657,16 @@ function ProjectRow({
   activeSessions,
   prefs,
   excludedIds,
+  icon = "folder",
 }: {
   project: ProjectEntry;
   open: boolean;
   onToggle: () => void;
-  onRemove: () => void;
+  onRemove?: () => void;
   activeSessions: ActiveAgentSession[];
   prefs: SessionPrefs;
   excludedIds: ReadonlySet<string>;
+  icon?: "folder" | "chat";
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const handleToggle = () => {
@@ -592,24 +679,28 @@ function ProjectRow({
   };
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-8 items-center rounded-md pl-3 pr-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
+      <div className="group relative flex h-7 items-center rounded-md pl-3 pr-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
         {" "}
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-3 px-0 pr-8 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
         >
-          <span className="relative h-4 w-4 shrink-0 text-(--dim)">
-            {" "}
-            <Folder
-              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-80"}`}
-            />
-            <FolderOpen
-              className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-100 opacity-80" : "scale-90 opacity-0"}`}
-            />{" "}
-          </span>
-          <span className="truncate text-[14px] font-medium text-(--fg)">{project.name}</span>{" "}
+          {icon === "chat" ? (
+            <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+          ) : (
+            <span className="relative h-3.5 w-3.5 shrink-0 text-(--dim)">
+              {" "}
+              <Folder
+                className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-80"}`}
+              />
+              <FolderOpen
+                className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-100 opacity-80" : "scale-90 opacity-0"}`}
+              />{" "}
+            </span>
+          )}
+          <span className="truncate text-[13px] font-medium text-(--fg)">{project.name}</span>{" "}
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -631,22 +722,24 @@ function ProjectRow({
           title="New chat"
           aria-label={`New chat in ${project.name}`}
         >
-          <PlusIcon className="h-4 w-4" />{" "}
+          <PlusIcon className="h-3.5 w-3.5" />{" "}
         </Link>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onRemove();
-          }}
-          className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
-          title="Remove from list"
-          aria-label="Remove project"
-        >
-          {" "}
-          <TrashIcon className="h-4 w-4" />
-        </button>{" "}
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove();
+            }}
+            className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
+            title="Remove from list"
+            aria-label="Remove project"
+          >
+            {" "}
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}{" "}
       </div>
       {missingErrorVisible && !project.exists ? (
         <div className="pl-12 pr-2 pb-1 text-[12px] text-red-400">
@@ -654,6 +747,7 @@ function ProjectRow({
           <button
             type="button"
             onClick={onRemove}
+            disabled={!onRemove}
             className="ml-2 text-(--dim) underline underline-offset-2 hover:text-(--fg)"
           >
             Remove{" "}
@@ -772,9 +866,9 @@ function ProjectSessions({
         />
       ))}
       {loading && !sessions ? (
-        <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">Loading…</div>
+        <div className="pl-10 pr-4 py-1 text-[12px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-10 pr-4 py-1 text-[13px] text-(--dim)">No chats</div>
+        <div className="pl-10 pr-4 py-1 text-[12px] text-(--dim)">No chats</div>
       ) : (
         <>
           {" "}
@@ -790,7 +884,7 @@ function ProjectSessions({
             <button
               type="button"
               onClick={toggleShowHidden}
-              className="flex h-6 items-center gap-1 pl-10 pr-4 text-[13px] text-(--dim) hover:text-(--fg)"
+              className="flex h-6 items-center gap-1 pl-10 pr-4 text-[12px] text-(--dim) hover:text-(--fg)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
               <EyeOffIcon className="w-3 h-3 shrink-0" />{" "}
@@ -893,15 +987,15 @@ function SessionNavRow({
   const content = (
     <>
       {" "}
-      <span className="min-w-0 flex-1 truncate text-[12px] font-normal leading-7">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-normal leading-6">{label}</span>
       {age ? (
-        <span className="shrink-0 pl-2 pr-1 font-mono text-[10px] text-(--dim)">{age}</span>
+        <span className="shrink-0 pl-2 pr-1 font-mono text-[9px] text-(--dim)">{age}</span>
       ) : null}{" "}
     </>
   );
   const openProps = canDoubleClickRename
     ? {
-        onDoubleClick: (event: React.MouseEvent) => {
+        onDoubleClick: (event: ReactMouseEvent) => {
           event.preventDefault();
           startRename();
         },
@@ -1037,7 +1131,7 @@ function ActiveSessionRow({
 }) {
   const label = pref.title || session.title || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-7 items-center gap-1 pl-4 pr-2 transition-colors ${isActive ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']" : "text-(--dim) hover:text-(--fg)"}`;
+  const rowClass = `group relative flex h-6 items-center gap-1 pl-4 pr-2 transition-colors ${isActive ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']" : "text-(--dim) hover:text-(--fg)"}`;
   return (
     <SessionNavRow
       pref={pref}
@@ -1073,8 +1167,8 @@ function ActiveSessionRow({
       onDragStart={(event) => setAgentSessionDragData(event, session)}
       isRunning={session.status !== "idle" && session.status !== "done"}
       canDoubleClickRename
-      menuIconClass="h-4 w-4"
-      renameInputClass="text-[13px]"
+      menuIconClass="h-3.5 w-3.5"
+      renameInputClass="text-[12px]"
     />
   );
 }
@@ -1094,8 +1188,8 @@ function SessionRow({
       label={label}
       initialDraft={pref.title ?? session.firstUserMessage ?? ""}
       age={relativeAge(session.startedAt)}
-      rowClass="group relative flex h-7 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
-      renameRowClass="flex h-7 items-center gap-1 bg-(--surface)/60 pl-4 pr-2"
+      rowClass="group relative flex h-6 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
+      renameRowClass="flex h-6 items-center gap-1 bg-(--surface)/60 pl-4 pr-2"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
@@ -1142,13 +1236,7 @@ function SessionPinButton({
     </button>
   );
 }
-function SessionMenuItem({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function SessionMenuItem({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"

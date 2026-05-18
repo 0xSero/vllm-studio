@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addProjectToStore, listProjectsFromStore, removeProjectFromStore } from "./projects-store";
+import { CHATS_PROJECT_ID } from "./projects/types";
 
 const roots: string[] = [];
 const originalEnv = { ...process.env };
@@ -49,7 +50,10 @@ describe("projects store", () => {
       branch: "feature/refactor",
     });
     expect(duplicate).toEqual(created);
-    expect(listProjectsFromStore()).toEqual([created]);
+    expect(listProjectsFromStore()).toEqual([
+      expect.objectContaining({ id: CHATS_PROJECT_ID, name: "Chats" }),
+      created,
+    ]);
     expect(JSON.parse(readFileSync(storeFile, "utf8"))).toMatchObject({
       projects: [expect.objectContaining({ path: projectPath })],
     });
@@ -64,14 +68,18 @@ describe("projects store", () => {
     mkdirSync(path.dirname(storeFile), { recursive: true });
     writeFileSync(storeFile, "not json");
 
-    expect(listProjectsFromStore()).toEqual([]);
+    expect(listProjectsFromStore()).toEqual([
+      expect.objectContaining({ id: CHATS_PROJECT_ID, name: "Chats" }),
+    ]);
     expect(() => addProjectToStore("   ")).toThrow("path is required");
     expect(() => addProjectToStore(path.join(root, "missing"))).toThrow("Path is not a directory");
 
     const created = addProjectToStore(projectPath);
     removeProjectFromStore("missing");
-    expect(listProjectsFromStore()).toHaveLength(1);
+    expect(listProjectsFromStore()).toHaveLength(2);
     removeProjectFromStore(created.id);
-    expect(listProjectsFromStore()).toEqual([]);
+    expect(listProjectsFromStore()).toEqual([
+      expect.objectContaining({ id: CHATS_PROJECT_ID, name: "Chats" }),
+    ]);
   });
 });

@@ -33,13 +33,14 @@ describe("mcp plugin extension", () => {
           tools.push(tool);
         },
       } as Parameters<typeof registerMcpPlugins>[0]);
-      await new Promise((resolve) => setTimeout(resolve, 80));
       const statusTool = tools.find((tool) => tool.name === "mcp_plugin_status");
       expect(statusTool).toBeTruthy();
       expect(typeof statusTool?.execute).toBe("function");
-      const result = await (statusTool?.execute as () => Promise<StatusResult>)();
-      expect(result.content[0]?.text).toContain("fake-plugin/fake-mcp: failed");
-      expect(result.content[0]?.text).toContain("code=42");
+      const text = await waitForStatusText(
+        statusTool?.execute as () => Promise<StatusResult>,
+        "fake-plugin/fake-mcp: failed",
+      );
+      expect(text).toContain("code=42");
     } finally {
       if (previous === undefined) delete process.env.VLLM_STUDIO_MCP_PLUGIN_CONFIGS;
       else process.env.VLLM_STUDIO_MCP_PLUGIN_CONFIGS = previous;
@@ -81,6 +82,22 @@ describe("mcp plugin extension", () => {
     }
   });
 });
+
+async function waitForStatusText(
+  execute: () => Promise<StatusResult>,
+  expected: string,
+): Promise<string> {
+  const deadline = Date.now() + 1000;
+  let text = "";
+  while (Date.now() < deadline) {
+    const result = await execute();
+    text = result.content[0]?.text ?? "";
+    if (text.includes(expected)) return text;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  expect(text).toContain(expected);
+  return text;
+}
 
 function fakeMcpServerSource() {
   return `

@@ -47,7 +47,8 @@ export type TokenStats = {
 export type QueuedMessage = {
   id: string;
   // "steer" interrupts the current turn between tool runs and the next LLM
-  // call; "follow_up" waits until the agent completely finishes.
+  // call; "follow_up" is queued inside Pi for the next turn. `sent: false`
+  // is reserved for local fallback work that Pi did not accept.
   mode: "steer" | "follow_up";
   text: string;
   sent?: boolean;
@@ -83,8 +84,9 @@ export type SessionTab = {
   lastEventSeq?: number;
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
-  // Outgoing pending messages (steer + follow_up). Drawn as chips above the
-  // input. Steers fire immediately; follow-ups wait for `agent_end`.
+  // Outgoing pending follow-up messages. Drawn as chips above the input until
+  // Pi `queue_update` reconciles the canonical queue. Steering messages are
+  // sent as immediate control messages and are not surfaced in this queue UI.
   queue?: QueuedMessage[];
 };
 

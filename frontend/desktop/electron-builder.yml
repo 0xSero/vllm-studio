@@ -16,7 +16,15 @@ extraResources:
     filter:
       - "**/*"
   - from: .next/static
+    to: app/frontend/.next/standalone/.next/static
+    filter:
+      - "**/*"
+  - from: .next/static
     to: app/frontend/.next/standalone/frontend/.next/static
+    filter:
+      - "**/*"
+  - from: public
+    to: app/frontend/.next/standalone/public
     filter:
       - "**/*"
   - from: public
