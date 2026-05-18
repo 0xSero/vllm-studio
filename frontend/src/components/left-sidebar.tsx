@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import {
   BarChart3,
   ChevronLeft,
@@ -43,6 +50,14 @@ const tabs = [
   { href: "/server", label: "Server", icon: Server },
 ];
 
+const SIDEBAR_MIN_WIDTH = 210;
+const SIDEBAR_MAX_WIDTH = 420;
+
+function clampSidebarWidth(width: number): number {
+  if (!Number.isFinite(width)) return 250;
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
 function isRouteActive(pathname: string, href: string): boolean {
   if (href === "/") {
     return pathname === "/" || pathname === "/discover";
@@ -58,18 +73,24 @@ function isRouteActive(pathname: string, href: string): boolean {
  * app bar with a hamburger drawer instead of a bottom tab bar, keeping the
  * viewport clear for dense telemetry and agent panes.
  */
-export function LeftSidebar({ children }: { children: React.ReactNode }) {
+export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { desktopSidebarPinnedOpen, setDesktopSidebarPinnedOpen } = useAppStore(
-    useShallow((s) => ({
-      desktopSidebarPinnedOpen: s.desktopSidebarPinnedOpen,
-      setDesktopSidebarPinnedOpen: s.setDesktopSidebarPinnedOpen,
-    })),
-  );
+  const { desktopSidebarPinnedOpen, setDesktopSidebarPinnedOpen, sidebarWidth, setSidebarWidth } =
+    useAppStore(
+      useShallow((s) => ({
+        desktopSidebarPinnedOpen: s.desktopSidebarPinnedOpen,
+        setDesktopSidebarPinnedOpen: s.setDesktopSidebarPinnedOpen,
+        sidebarWidth: s.sidebarWidth,
+        setSidebarWidth: s.setSidebarWidth,
+      })),
+    );
   const isExpanded = desktopSidebarPinnedOpen;
+  const clampedSidebarWidth = clampSidebarWidth(sidebarWidth);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionDetail[]>([]);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -103,6 +124,45 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
   }, []);
 
+  useEffect(
+    () => () => {
+      resizeCleanupRef.current?.();
+    },
+    [],
+  );
+
+  const startSidebarResize = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!isExpanded) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = clampedSidebarWidth;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      setSidebarResizing(true);
+
+      const cleanup = () => {
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", cleanup);
+        resizeCleanupRef.current = null;
+        setSidebarResizing(false);
+      };
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        setSidebarWidth(clampSidebarWidth(startWidth + moveEvent.clientX - startX));
+      };
+
+      resizeCleanupRef.current?.();
+      resizeCleanupRef.current = cleanup;
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", cleanup);
+    },
+    [clampedSidebarWidth, isExpanded, setSidebarWidth],
+  );
+
   if (pathname.startsWith("/setup")) {
     return <div className="h-full w-full">{children}</div>;
   }
@@ -120,81 +180,104 @@ export function LeftSidebar({ children }: { children: React.ReactNode }) {
         </button>
       ) : null}
       <aside
-        className={`hidden md:flex sticky top-0 h-[100dvh] transition-[width] duration-150 ease-out border-r border-(--border) bg-(--rail) flex-col shrink-0 z-40 overflow-hidden ${
-          isExpanded ? "w-[var(--sidebar-w)]" : "w-0 border-r-0"
-        }`}
+        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--rail) flex-col shrink-0 z-40 overflow-hidden ${
+          sidebarResizing ? "" : "transition-[width] duration-150 ease-out"
+        } ${isExpanded ? "" : "w-0 border-r-0"}`}
+        style={{
+          width: isExpanded ? `${clampedSidebarWidth}px` : 0,
+        }}
         aria-hidden={!isExpanded}
       >
         {isExpanded ? (
-          <>
-            {/* Header with window controls + nav arrows */}
-            <div className="sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between px-4 bg-(--rail)">
-              <button
-                onClick={() => setDesktopSidebarPinnedOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                title="Collapse sidebar"
-                aria-label="Collapse sidebar"
-              >
-                <Square className="h-3.5 w-3.5" />
-              </button>
-              <div className="flex items-center gap-1">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            title="Resize sidebar"
+            onMouseDown={startSidebarResize}
+            className={`absolute right-0 top-0 z-[60] h-full w-2 translate-x-1 cursor-col-resize transition-colors ${
+              sidebarResizing ? "bg-(--accent)/25" : "hover:bg-(--accent)/20"
+            }`}
+          />
+        ) : null}
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+            isExpanded ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          {isExpanded ? (
+            <>
+              {/* Header with window controls + nav arrows */}
+              <div className="sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between px-4 bg-(--rail)">
                 <button
-                  onClick={() => window.history.back()}
+                  onClick={() => setDesktopSidebarPinnedOpen(false)}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                  title="Go back"
-                  aria-label="Go back"
+                  title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <Square className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => window.history.forward()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                  title="Go forward"
-                  aria-label="Go forward"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => window.history.back()}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                    title="Go back"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => window.history.forward()}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                    title="Go forward"
+                    aria-label="Go forward"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Primary nav */}
-            <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
-              <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                className="mb-1 flex h-7 items-center gap-2 rounded-md px-2.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                title="Search sessions (⌘K)"
-              >
-                <SearchIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="flex-1 truncate text-left text-[12px]">Search</span>
-                <kbd className="px-1 py-0.5 text-[10px] font-mono text-(--dim)">⌘K</kbd>
-              </button>
+              {/* Primary nav */}
+              <nav className="flex-1 min-h-0 flex flex-col px-2 py-1 overflow-y-auto overflow-x-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="mb-1 flex h-7 items-center gap-2 rounded-md px-2.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  title="Search sessions (⌘K)"
+                >
+                  <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1 truncate text-left text-[12px]">Search</span>
+                  <kbd className="px-1 py-0.5 text-[10px] font-mono text-(--dim)">⌘K</kbd>
+                </button>
 
-              <div className="mb-1 mt-3 px-2.5 text-[11px] font-medium text-(--dim)">Workspace</div>
-              {tabs.map((tab) => (
+                <div className="mb-1 mt-3 px-2.5 text-[11px] font-medium text-(--dim)">
+                  Workspace
+                </div>
+                {tabs.map((tab) => (
+                  <NavItemDesktop
+                    key={tab.href}
+                    href={tab.href}
+                    label={tab.label}
+                    Icon={tab.icon}
+                    active={isRouteActive(pathname, tab.href)}
+                    expanded={isExpanded}
+                  />
+                ))}
+                <ProjectsNavSection expanded={isExpanded} />
+              </nav>
+
+              <div className="shrink-0 px-2 py-3">
                 <NavItemDesktop
-                  key={tab.href}
-                  href={tab.href}
-                  label={tab.label}
-                  Icon={tab.icon}
-                  active={isRouteActive(pathname, tab.href)}
+                  href="/settings"
+                  label="Settings"
+                  Icon={Settings}
+                  active={isRouteActive(pathname, "/settings")}
                   expanded={isExpanded}
                 />
-              ))}
-              <ProjectsNavSection expanded={isExpanded} />
-            </nav>
-
-            <div className="shrink-0 px-2 py-3">
-              <NavItemDesktop
-                href="/settings"
-                label="Settings"
-                Icon={Settings}
-                active={isRouteActive(pathname, "/settings")}
-                expanded={isExpanded}
-              />
-            </div>
-          </>
-        ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
       </aside>
 
       {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}

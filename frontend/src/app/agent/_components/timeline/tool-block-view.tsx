@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import hljs from "highlight.js";
 import {
   AlertTriangle,
   FileText,
@@ -158,56 +159,116 @@ function ToolOutput({ children }: { children: ReactNode }) {
   );
 }
 
-export function ToolBlockView({ block }: { block: ToolBlock }) {
-  const isFileWrite = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase());
-  const filePath = isFileWrite
-    ? extractFromArgs(block.args, block.argsText, ["path", "file_path", "filePath", "file"])
-    : null;
-  const fileContent = isFileWrite
-    ? extractFromArgs(block.args, block.argsText, ["content", "text", "newText", "new_content"])
-    : null;
-  const patchContent = isFileWrite
-    ? extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"])
-    : null;
+function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
+  const highlighted = useMemo(() => {
+    if (!body) return "";
+    try {
+      const result =
+        lang && hljs.getLanguage(lang) ? hljs.highlight(body, { language: lang }) : null;
+      return result ? result.value : hljs.highlightAuto(body).value;
+    } catch {
+      return null;
+    }
+  }, [body, lang]);
+
+  const className =
+    "max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-(--border)/70 bg-(--surface)/35 p-2 font-mono text-[11px] leading-5 text-(--fg)";
+
+  if (highlighted === null) {
+    return <pre className={className}>{body}</pre>;
+  }
+
+  return (
+    <pre className={className}>
+      <code
+        className={lang ? `language-${lang}` : undefined}
+        dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
+      />
+    </pre>
+  );
+}
+
+type FileWritePreviewData = {
+  filePath: string | null;
+  fileContent: string | null;
+  patchContent: string | null;
+};
+
+function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
+  const filePath = extractFromArgs(block.args, block.argsText, [
+    "path",
+    "file_path",
+    "filePath",
+    "file",
+  ]);
+  const fileContent = extractFromArgs(block.args, block.argsText, [
+    "content",
+    "text",
+    "newText",
+    "new_content",
+  ]);
+  const patchContent = extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"]);
+
+  if (fileContent === null && patchContent === null) return null;
+  return { filePath, fileContent, patchContent };
+}
+
+function FileWritePreview({
+  block,
+  filePath,
+  fileContent,
+  patchContent,
+}: {
+  block: ToolBlock;
+  filePath: string | null;
+  fileContent: string | null;
+  patchContent: string | null;
+}) {
   const lang = detectLang(filePath);
   const isHtml = lang === "html";
   const [showPreview, setShowPreview] = useState(false);
+  const body = fileContent ?? patchContent ?? "";
+  const sourceLang = fileContent === null && patchContent !== null ? "diff" : lang;
 
-  if (isFileWrite && (fileContent !== null || patchContent !== null)) {
-    const body = fileContent ?? patchContent ?? "";
-    return (
-      <ToolSummary block={block} filePath={filePath} open={block.status === "running"}>
-        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
-          <span>{lang || "source"}</span>
-          {isHtml ? (
-            <button
-              type="button"
-              onClick={() => setShowPreview((value) => !value)}
-              className="rounded-md px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-            >
-              {showPreview ? "Source" : "Preview"}
-            </button>
-          ) : null}
-        </div>
-        {isHtml && showPreview ? (
-          <iframe
-            sandbox=""
-            srcDoc={body}
-            className="h-72 w-full rounded-md border border-(--border) bg-white"
-            title={filePath ?? "preview"}
-          />
-        ) : (
-          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-(--border)/70 bg-(--surface)/35 p-2 font-mono text-[11px] leading-5 text-(--fg)">
-            {body}
-          </pre>
-        )}
-        {block.resultText ? (
-          <div className="mt-1 font-mono text-[10px] text-(--dim)">
-            <ToolOutput>{block.resultText}</ToolOutput>
-          </div>
+  return (
+    <ToolSummary block={block} filePath={filePath} open={block.status === "running"}>
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+        <span>{sourceLang || "source"}</span>
+        {isHtml ? (
+          <button
+            type="button"
+            onClick={() => setShowPreview((value) => !value)}
+            className="rounded-md px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          >
+            {showPreview ? "Source" : "Preview"}
+          </button>
         ) : null}
-      </ToolSummary>
-    );
+      </div>
+      {isHtml && showPreview ? (
+        <iframe
+          sandbox=""
+          srcDoc={body}
+          className="h-72 w-full rounded-md border border-(--border) bg-white"
+          title={filePath ?? "preview"}
+        />
+      ) : (
+        <HighlightedToolSource body={body} lang={sourceLang} />
+      )}
+      {block.resultText ? (
+        <div className="mt-1 font-mono text-[10px] text-(--dim)">
+          <ToolOutput>{block.resultText}</ToolOutput>
+        </div>
+      ) : null}
+    </ToolSummary>
+  );
+}
+
+export function ToolBlockView({ block }: { block: ToolBlock }) {
+  const fileWritePreview = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase())
+    ? fileWritePreviewData(block)
+    : null;
+  if (fileWritePreview) {
+    return <FileWritePreview block={block} {...fileWritePreview} />;
   }
 
   // Generic fallback (shells, reads, searches, browser tools, etc.).
