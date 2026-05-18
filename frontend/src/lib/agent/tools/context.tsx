@@ -26,6 +26,8 @@ import {
   loadComputerState,
   migrateToolStorage,
   writeBrowserEnabled,
+  writeComputerCanvasEnabled,
+  writeComputerCanvasText,
   writeComputerTab,
   writeComputerWidth,
 } from "./persistence";
@@ -47,6 +49,9 @@ export type ToolsContextValue = {
   toggleComputerOpen: () => void;
   setComputerTab: (tab: ComputerTab) => void;
   setComputerWidth: (width: number) => void;
+  setCanvasEnabled: (enabled: boolean) => void;
+  toggleCanvas: () => void;
+  setCanvasText: (text: string) => void;
   /**
    * Replace the entire selection for a session. Pass `null` to clear it (used
    * when a session is closed / pruned).
@@ -68,7 +73,7 @@ function buildInitialBrowser(): BrowserState {
 
 function buildInitialComputer(): ComputerState {
   if (typeof window === "undefined") {
-    return { open: false, tab: "browser", width: 0 };
+    return { open: false, tab: "status", width: 0, canvasEnabled: false, canvasText: "" };
   }
   return loadComputerState();
 }
@@ -134,11 +139,19 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setComputerOpen = useCallback((open: boolean) => {
-    setComputer((current) => (current.open === open ? current : { ...current, open }));
+    setComputer((current) =>
+      current.open === open
+        ? current
+        : { ...current, open, tab: open ? current.tab || "status" : current.tab },
+    );
   }, []);
 
   const toggleComputerOpen = useCallback(() => {
-    setComputer((current) => ({ ...current, open: !current.open }));
+    setComputer((current) => ({
+      ...current,
+      open: !current.open,
+      tab: !current.open ? current.tab || "status" : current.tab,
+    }));
   }, []);
 
   const setComputerTab = useCallback((tab: ComputerTab) => {
@@ -153,6 +166,34 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       current.width === clamped ? current : { ...current, width: clamped },
     );
     writeComputerWidth(clamped);
+  }, []);
+
+  const setCanvasEnabled = useCallback((enabled: boolean) => {
+    setComputer((current) =>
+      current.canvasEnabled === enabled ? current : { ...current, canvasEnabled: enabled },
+    );
+    writeComputerCanvasEnabled(enabled);
+  }, []);
+
+  const toggleCanvas = useCallback(() => {
+    setComputer((current) => {
+      const next = !current.canvasEnabled;
+      writeComputerCanvasEnabled(next);
+      return {
+        ...current,
+        canvasEnabled: next,
+        open: next ? true : current.open,
+        tab: next ? "status" : current.tab,
+      };
+    });
+  }, []);
+
+  const setCanvasText = useCallback((text: string) => {
+    if (typeof text !== "string") return;
+    setComputer((current) =>
+      current.canvasText === text ? current : { ...current, canvasText: text },
+    );
+    writeComputerCanvasText(text);
   }, []);
 
   const selectionFor = useCallback(
@@ -213,6 +254,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       toggleComputerOpen,
       setComputerTab,
       setComputerWidth,
+      setCanvasEnabled,
+      toggleCanvas,
+      setCanvasText,
       setSelection,
       hydrateSelections,
     }),
@@ -230,6 +274,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       toggleComputerOpen,
       setComputerTab,
       setComputerWidth,
+      setCanvasEnabled,
+      toggleCanvas,
+      setCanvasText,
       setSelection,
       hydrateSelections,
     ],

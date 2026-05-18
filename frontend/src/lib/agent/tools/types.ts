@@ -9,7 +9,7 @@
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 import type { SessionId } from "@/lib/agent/sessions/types";
 
-export type ComputerTab = "browser" | "files" | "diff" | "terminal";
+export type ComputerTab = "status" | "browser" | "files" | "diff" | "terminal";
 
 export type BrowserState = {
   enabled: boolean;
@@ -21,6 +21,8 @@ export type ComputerState = {
   open: boolean;
   tab: ComputerTab;
   width: number;
+  canvasEnabled: boolean;
+  canvasText: string;
 };
 
 export type ToolSelection = {

@@ -8,9 +8,11 @@ export const BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY =
   "***************************************************";
 export const COMPUTER_BROWSER_OPEN_KEY = "vllm-studio.agent.computer.browserOpen";
 export const COMPUTER_FILES_OPEN_KEY = "vllm-studio.agent.computer.filesOpen";
-export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID =
-  "vllm-studio.agent.computer.defaultCollapsedV2";
+export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "vllm-studio.agent.computer.defaultCollapsedV2";
 export const COMPUTER_WIDTH_KEY = "vllm-studio.agent.computer.width";
+export const COMPUTER_TAB_KEY = "vllm-studio.agent.computer.tab";
+export const COMPUTER_CANVAS_ENABLED_KEY = "vllm-studio.agent.computer.canvasEnabled";
+export const COMPUTER_CANVAS_TEXT_KEY = "vllm-studio.agent.computer.canvasText";
 
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 export const DEFAULT_COMPUTER_WIDTH = 440;
@@ -77,11 +79,20 @@ export function loadBrowserState(): BrowserState {
 
 export function loadComputerState(): ComputerState {
   const storedWidth = Number(read(COMPUTER_WIDTH_KEY));
-  const tab: ComputerTab = read(COMPUTER_FILES_OPEN_KEY) === "1" ? "files" : "browser";
+  const storedTab = read(COMPUTER_TAB_KEY);
+  const tab: ComputerTab =
+    storedTab === "browser" ||
+    storedTab === "files" ||
+    storedTab === "diff" ||
+    storedTab === "terminal"
+      ? storedTab
+      : "status";
   return {
     open: false,
     tab,
     width: Number.isFinite(storedWidth) ? clampComputerWidth(storedWidth) : DEFAULT_COMPUTER_WIDTH,
+    canvasEnabled: read(COMPUTER_CANVAS_ENABLED_KEY) === "1",
+    canvasText: read(COMPUTER_CANVAS_TEXT_KEY) ?? "",
   };
 }
 
@@ -91,8 +102,17 @@ export function writeBrowserEnabled(enabled: boolean): void {
 
 export function writeComputerTab(tab: ComputerTab): void {
   write(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
+  write(COMPUTER_TAB_KEY, tab);
 }
 
 export function writeComputerWidth(width: number): void {
   write(COMPUTER_WIDTH_KEY, String(clampComputerWidth(width)));
+}
+
+export function writeComputerCanvasEnabled(enabled: boolean): void {
+  write(COMPUTER_CANVAS_ENABLED_KEY, enabled ? "1" : "0");
+}
+
+export function writeComputerCanvasText(text: string): void {
+  write(COMPUTER_CANVAS_TEXT_KEY, text);
 }

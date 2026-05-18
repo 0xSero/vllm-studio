@@ -89,6 +89,9 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
 
   const activeProject = projects.selectedProject;
   const focusedTab = focusedSession(state);
+  const focusedModel =
+    state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
+  const focusedGitSummary = projects.gitSummary(activeProject?.path);
   const focusedComputerUseLoaded = tools
     .selectionFor(focusedTab?.id)
     .plugins.some((plugin) =>
@@ -129,6 +132,10 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
           handles={handles}
           activeProject={activeProject}
           focusedTitle={focusedTab?.title ?? "Focused session"}
+          focusedSession={focusedTab}
+          sessions={[...state.sessions.values()]}
+          activeModel={focusedModel}
+          gitSummary={focusedGitSummary}
         />
       </div>
     </div>

@@ -10,7 +10,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Loader2 } from "lucide-react";
+import { Code2, Loader2 } from "lucide-react";
 import {
   AttachIcon,
   ChevronDownIcon,
@@ -814,6 +814,21 @@ export function ChatPane({
                 <GlobeIcon className="h-3.5 w-3.5" />
                 {computerUseLoaded ? <ComputerUseActivityDot /> : null}{" "}
               </span>
+            </button>{" "}
+            <button
+              type="button"
+              onClick={tools.toggleCanvas}
+              aria-pressed={tools.computer.canvasEnabled}
+              title={
+                tools.computer.canvasEnabled
+                  ? "Canvas: ON — shared scratchboard is visible in Computer"
+                  : "Canvas: OFF — click to open a shared scratchboard in Computer"
+              }
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${
+                tools.computer.canvasEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"
+              }`}
+            >
+              <Code2 className="h-3.5 w-3.5" />
             </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
               {modelSelector}{" "}
