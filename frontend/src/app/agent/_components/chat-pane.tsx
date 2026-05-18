@@ -59,6 +59,7 @@ import {
   filesFromDataTransfer,
   formatFileSize,
   isImageAttachment,
+  revokeAttachmentPreview,
   type ChatAttachment,
 } from "./chat-attachments";
 import { Timeline } from "./timeline/timeline";
@@ -268,7 +269,7 @@ export function ChatPane({
           ? `Attached: ${attachments.map((file) => file.name).join(", ")}`
           : "";
       const userText = text || attachmentSummary;
-      const displayText = [text, attachmentSummary].filter(Boolean).join("\n\n");
+      const displayText = text;
       const selection = tools.selectionFor(sessionId);
       const contextText = selectedContextPrompt(
         text,
@@ -276,7 +277,13 @@ export function ChatPane({
         selection.skills,
       );
       const prompt = [contextText, attachedText].filter(Boolean).join("\n\n");
-      return { text, prompt, displayText, userText };
+      return {
+        text,
+        prompt,
+        displayText,
+        userText,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      };
     },
     [attachments, tools],
   );
@@ -418,7 +425,10 @@ export function ChatPane({
           const uniqueNext: ChatAttachment[] = [];
           next.forEach((file) => {
             const key = attachmentDedupKey(file);
-            if (seen.has(key)) return;
+            if (seen.has(key)) {
+              revokeAttachmentPreview(file);
+              return;
+            }
             seen.add(key);
             uniqueNext.push(file);
           });
@@ -684,14 +694,27 @@ export function ChatPane({
               {attachments.map((file) => (
                 <span
                   key={file.id}
-                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[11px] text-(--dim)"
+                  className="inline-flex max-w-[260px] items-center gap-1.5 rounded-md bg-white/[0.035] px-1.5 py-1 text-[11px] text-(--dim)"
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
                   {isImageAttachment(file) ? (
                     <img
-                      src={file.content}
+                      src={file.previewUrl ?? file.content}
                       alt=""
-                      className="h-7 w-7 shrink-0 rounded object-cover"
+                      className="h-9 w-9 shrink-0 rounded object-cover"
+                    />
+                  ) : file.previewKind === "video" && file.previewUrl ? (
+                    <video
+                      src={file.previewUrl}
+                      muted
+                      playsInline
+                      className="h-9 w-12 shrink-0 rounded object-cover"
+                    />
+                  ) : file.previewKind === "pdf" && file.previewUrl ? (
+                    <iframe
+                      src={file.previewUrl}
+                      title={file.name}
+                      className="h-9 w-12 shrink-0 rounded border border-white/10 bg-(--bg)"
                     />
                   ) : (
                     <FileIcon className="h-3 w-3 shrink-0" />
@@ -700,9 +723,10 @@ export function ChatPane({
                   <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>{" "}
                   <button
                     type="button"
-                    onClick={() =>
-                      setAttachments((current) => current.filter((item) => item.id !== file.id))
-                    }
+                    onClick={() => {
+                      revokeAttachmentPreview(file);
+                      setAttachments((current) => current.filter((item) => item.id !== file.id));
+                    }}
                     className="p-0.5 hover:text-(--fg)"
                     aria-label={`Remove ${file.name}`}
                     title={`Remove ${file.name}`}

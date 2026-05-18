@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { FileIcon } from "@/components/icons";
 import type {
   AssistantBlock,
+  ChatMessageAttachment,
   ChatMessage,
   EventBlock,
   TextBlock,
@@ -93,7 +95,14 @@ export function SessionPaneBlockRouter({ message }: { message: ChatMessage }) {
     return (
       <article className="flex justify-end">
         <div className="max-w-[72%] rounded-xl bg-(--surface) px-3.5 py-2 text-sm leading-6 text-(--fg)">
-          <div className="whitespace-pre-wrap break-words">{message.text}</div>
+          {message.text ? (
+            <div className="whitespace-pre-wrap break-words">{message.text}</div>
+          ) : null}
+          {message.attachments?.length ? (
+            <div className={message.text ? "mt-2" : ""}>
+              <UserMessageAttachments attachments={message.attachments} />
+            </div>
+          ) : null}
         </div>
       </article>
     );
@@ -118,6 +127,76 @@ export function SessionPaneBlockRouter({ message }: { message: ChatMessage }) {
         </div>
       )}
     </article>
+  );
+}
+
+function formatAttachmentSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function UserMessageAttachments({ attachments }: { attachments: ChatMessageAttachment[] }) {
+  return (
+    <div className={messageAttachmentsClassName(attachments.length)}>
+      {attachments.map((attachment) => (
+        <UserMessageAttachmentPreview key={attachment.id} attachment={attachment} />
+      ))}
+    </div>
+  );
+}
+
+function messageAttachmentsClassName(count: number) {
+  const base = "grid gap-2";
+  return count > 1 ? `${base} sm:grid-cols-2` : base;
+}
+
+function UserMessageAttachmentPreview({ attachment }: { attachment: ChatMessageAttachment }) {
+  const label = `${attachment.name} · ${attachment.type || "file"} · ${formatAttachmentSize(attachment.size)}`;
+  const previewUrl = attachment.previewUrl;
+  if (attachment.previewKind === "image" && previewUrl) {
+    return (
+      <figure className="min-w-0 overflow-hidden rounded-lg bg-black/20">
+        <img
+          src={previewUrl}
+          alt={attachment.name}
+          className="max-h-[360px] w-full object-contain"
+        />
+        <figcaption className="truncate px-2 py-1.5 text-[11px] leading-4 text-(--dim)">
+          {label}
+        </figcaption>
+      </figure>
+    );
+  }
+  if (attachment.previewKind === "video" && previewUrl) {
+    return (
+      <figure className="min-w-0 overflow-hidden rounded-lg bg-black/20">
+        <video src={previewUrl} controls playsInline className="max-h-[360px] w-full bg-black" />
+        <figcaption className="truncate px-2 py-1.5 text-[11px] leading-4 text-(--dim)">
+          {label}
+        </figcaption>
+      </figure>
+    );
+  }
+  if (attachment.previewKind === "pdf" && previewUrl) {
+    return (
+      <figure className="min-w-0 overflow-hidden rounded-lg bg-black/20">
+        <iframe
+          src={previewUrl}
+          title={attachment.name}
+          className="h-[360px] w-full border-0 bg-(--bg)"
+        />
+        <figcaption className="truncate px-2 py-1.5 text-[11px] leading-4 text-(--dim)">
+          {label}
+        </figcaption>
+      </figure>
+    );
+  }
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-lg bg-black/20 px-2.5 py-2 text-[12px] leading-5 text-(--dim)">
+      <FileIcon className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </div>
   );
 }
 

@@ -56,6 +56,56 @@ describe("groupAssistantBlocks", () => {
 });
 
 describe("SessionPaneBlockRouter", () => {
+  it("renders sent image, video, and PDF attachments inside the user bubble", () => {
+    const message: ChatMessage = {
+      id: "user",
+      role: "user",
+      text: "look at these",
+      attachments: [
+        {
+          id: "image",
+          name: "image.png",
+          type: "image/png",
+          size: 123,
+          mode: "metadata",
+          content: "",
+          previewKind: "image",
+          previewUrl: "blob:image",
+        },
+        {
+          id: "video",
+          name: "clip.mp4",
+          type: "video/mp4",
+          size: 456,
+          mode: "metadata",
+          content: "",
+          previewKind: "video",
+          previewUrl: "blob:video",
+        },
+        {
+          id: "pdf",
+          name: "paper.pdf",
+          type: "application/pdf",
+          size: 789,
+          mode: "metadata",
+          content: "",
+          previewKind: "pdf",
+          previewUrl: "blob:pdf",
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<SessionPaneBlockRouter message={message} />);
+
+    expect(html).toContain("look at these");
+    expect(html).toContain("<img");
+    expect(html).toContain("<video");
+    expect(html).toContain("<iframe");
+    expect(html).toContain("image.png");
+    expect(html).toContain("clip.mp4");
+    expect(html).toContain("paper.pdf");
+  });
+
   it("keeps mixed reasoning and finished tools collapsed as a preview", () => {
     const message: ChatMessage = {
       id: "assistant",

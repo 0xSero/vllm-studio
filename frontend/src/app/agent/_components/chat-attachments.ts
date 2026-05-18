@@ -1,16 +1,9 @@
 "use client";
 
 import { newId, randomIdSegment } from "@/lib/agent/session/helpers";
+import type { ChatMessageAttachment } from "@/lib/agent/session";
 
-export type ChatAttachment = {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  path?: string;
-  mode: "text" | "data-url" | "metadata";
-  content: string;
-};
+export type ChatAttachment = ChatMessageAttachment;
 
 export function attachmentDedupKey(file: Pick<ChatAttachment, "name" | "type" | "size" | "path">) {
   const path = file.path?.trim();
@@ -18,10 +11,38 @@ export function attachmentDedupKey(file: Pick<ChatAttachment, "name" | "type" | 
   return `file:${file.name.trim().toLowerCase()}:${file.type}:${file.size}`;
 }
 
-export function isImageAttachment(file: Pick<ChatAttachment, "type" | "mode" | "content">) {
+export function isImageAttachment(
+  file: Pick<ChatAttachment, "type" | "mode" | "content" | "previewKind" | "previewUrl">,
+) {
+  if (file.previewKind === "image" && Boolean(file.previewUrl)) return true;
   return (
     file.type.startsWith("image/") && file.mode === "data-url" && file.content.startsWith("data:")
   );
+}
+
+export function attachmentPreviewKind(type: string, name = ""): ChatAttachment["previewKind"] {
+  const normalized = type.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("video/")) return "video";
+  if (normalized === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
+  return undefined;
+}
+
+function objectUrlFor(file: File, previewKind: ChatAttachment["previewKind"]): string | undefined {
+  if (!previewKind || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return undefined;
+  }
+  try {
+    return URL.createObjectURL(file);
+  } catch {
+    return undefined;
+  }
+}
+
+export function revokeAttachmentPreview(file: Pick<ChatAttachment, "previewUrl">) {
+  if (!file.previewUrl?.startsWith("blob:")) return;
+  if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") return;
+  URL.revokeObjectURL(file.previewUrl);
 }
 
 function newAttachmentId() {
@@ -132,6 +153,7 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
   const name = fileDisplayName(file);
   const type = file.type || "application/octet-stream";
   const path = getDesktopFilePath(file) ?? undefined;
+  const previewKind = attachmentPreviewKind(type, name);
   if (isTextLike(file, name) && file.size <= 350_000) {
     return {
       id,
@@ -144,6 +166,7 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
     };
   }
   if (file.size <= 1_500_000) {
+    const content = await readFileAsDataUrl(file);
     return {
       id,
       name,
@@ -151,7 +174,9 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
       size: file.size,
       path,
       mode: "data-url",
-      content: await readFileAsDataUrl(file),
+      content,
+      previewKind,
+      previewUrl: previewKind ? content : undefined,
     };
   }
   return {
@@ -164,6 +189,8 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
     content: path
       ? `File is too large to inline; it is available on disk at ${path}.`
       : "File is too large to inline; only metadata is attached.",
+    previewKind,
+    previewUrl: objectUrlFor(file, previewKind),
   };
 }
 
