@@ -57,7 +57,10 @@
      Reference: /Applications/Codex.app -> index-DJG96UDN.css gray ladder
      (#0d0d0d, #181818, #212121, #282828, #303030). */
   --bg: #0d0d0d;
-  --fg: #ededed;
+  /* Slightly dimmed from pure-white #ededed to reduce dark-mode glare while
+     keeping AAA contrast on --bg. Tuned to match calm chat surfaces (Codex,
+     Linear, Notion dark). */
+  --fg: #d4d4d4;
   --dim: #8a8a8a;
   --surface: #161616;
   --surface-2: #1c1c1c;
