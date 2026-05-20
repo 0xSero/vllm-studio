@@ -67,11 +67,18 @@ export function Timeline({
     <div
       ref={scrollerRef}
       data-timeline-scroller
-      className="min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:auto]"
+      className="min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain]"
     >
       <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
-        {visibleMessages.map((message) => (
-          <div key={message.id} className="pb-5 [overflow-anchor:none]">
+        {visibleMessages.map((message, index) => (
+          <div
+            key={message.id}
+            // Let the browser anchor to earlier messages when the user scrolls
+            // up — that's how Chromium keeps the viewport pinned without JS.
+            // Only the LAST item (the one that grows during streaming) and the
+            // bottom sentinel opt out so growth doesn't shift earlier messages.
+            className={`pb-5 ${index === visibleMessages.length - 1 ? "[overflow-anchor:none]" : "[overflow-anchor:auto]"}`}
+          >
             <MemoMessage message={message} />
           </div>
         ))}
@@ -81,7 +88,7 @@ export function Timeline({
             <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
           </div>
         ) : null}
-        <div ref={bottomRef} aria-hidden="true" />
+        <div ref={bottomRef} aria-hidden="true" className="[overflow-anchor:none]" />
       </div>
     </div>
   );
