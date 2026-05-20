@@ -157,6 +157,56 @@ export default function registerParchiBrowserExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "parchi_new_tab",
+    label: "Parchi: New Tab",
+    description: "Open a new tab inside the isolated Parchi browser session.",
+    parameters: Type.Object({
+      url: Type.Optional(Type.String({ description: "Optional absolute http(s) URL to load" })),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiBridge(
+        "new-tab",
+        typeof params.url === "string" ? { url: params.url } : {},
+        signal,
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "parchi_list_tabs",
+    label: "Parchi: List Tabs",
+    description: "List tabs in the isolated Parchi browser session.",
+    parameters: Type.Object({}),
+    async execute(_id, _params, signal) {
+      return safeParchiBridge("list-tabs", {}, signal);
+    },
+  });
+
+  pi.registerTool({
+    name: "parchi_switch_tab",
+    label: "Parchi: Switch Tab",
+    description: "Switch the active tab in the isolated Parchi browser session.",
+    parameters: Type.Object({
+      tabId: Type.String({ description: "Tab id or agent-browser tab label" }),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiBridge("switch-tab", { tabId: params.tabId }, signal);
+    },
+  });
+
+  pi.registerTool({
+    name: "parchi_close_tab",
+    label: "Parchi: Close Tab",
+    description: "Close a tab in the isolated Parchi browser session.",
+    parameters: Type.Object({
+      tabId: Type.String({ description: "Tab id or agent-browser tab label" }),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiBridge("close-tab", { tabId: params.tabId }, signal);
+    },
+  });
+
+  pi.registerTool({
     name: "parchi_get_url",
     label: "Parchi: Current URL",
     description: "Return the current URL from Parchi's browser session.",
