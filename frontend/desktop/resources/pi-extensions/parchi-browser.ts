@@ -118,6 +118,33 @@ async function safeParchiBridge(
 
 export default function registerParchiBrowserExtension(pi: ExtensionAPI) {
   pi.registerTool({
+    name: "parchi_create_workspace",
+    label: "Parchi: Create Workspace",
+    description:
+      "Prepare an isolated Parchi browser workspace for this Pi session before navigation or page interaction.",
+    parameters: Type.Object({
+      url: Type.Optional(
+        Type.String({ description: "Optional first absolute http(s) URL to load" }),
+      ),
+      reset: Type.Optional(
+        Type.Boolean({
+          description: "Close existing tabs in this relay session first. Defaults to true.",
+        }),
+      ),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiBridge(
+        "create-workspace",
+        {
+          ...(typeof params.url === "string" ? { url: params.url } : {}),
+          ...(typeof params.reset === "boolean" ? { reset: params.reset } : {}),
+        },
+        signal,
+      );
+    },
+  });
+
+  pi.registerTool({
     name: "parchi_navigate",
     label: "Parchi: Navigate",
     description: "Ask Parchi to navigate its isolated browser session to an absolute http(s) URL.",
