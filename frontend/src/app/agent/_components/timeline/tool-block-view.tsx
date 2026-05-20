@@ -233,7 +233,7 @@ function FileWritePreview({
   const sourceLang = fileContent === null && patchContent !== null ? "diff" : lang;
 
   return (
-    <ToolSummary block={block} filePath={filePath} open={block.status === "running"}>
+    <ToolSummary block={block} filePath={filePath} open>
       <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
         <span>{sourceLang || "source"}</span>
         {isHtml ? (
@@ -248,7 +248,8 @@ function FileWritePreview({
       </div>
       {isHtml && showPreview ? (
         <iframe
-          sandbox=""
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
           srcDoc={body}
           className="h-72 w-full rounded-md border border-(--border) bg-white"
           title={filePath ?? "preview"}
@@ -265,12 +266,35 @@ function FileWritePreview({
   );
 }
 
+function diffPreviewData(block: ToolBlock): string | null {
+  const diffText =
+    extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"]) ?? block.resultText;
+  if (!diffText) return null;
+  if (block.name.toLowerCase().includes("diff")) return diffText;
+  if (/^(diff --git|@@\s+-|\+\+\+ |--- )/m.test(diffText)) return diffText;
+  return null;
+}
+
+function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }) {
+  const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
+  return (
+    <ToolSummary block={block} filePath={filePath} open>
+      <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-(--dim)">diff</div>
+      <HighlightedToolSource body={diffText} lang="diff" />
+    </ToolSummary>
+  );
+}
+
 export function ToolBlockView({ block }: { block: ToolBlock }) {
   const fileWritePreview = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase())
     ? fileWritePreviewData(block)
     : null;
   if (fileWritePreview) {
     return <FileWritePreview block={block} {...fileWritePreview} />;
+  }
+  const diffPreview = diffPreviewData(block);
+  if (diffPreview) {
+    return <DiffPreview block={block} diffText={diffPreview} />;
   }
 
   // Generic fallback (shells, reads, searches, browser tools, etc.).

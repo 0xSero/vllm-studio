@@ -21,7 +21,13 @@ type RuntimeResumeApi = {
 export type RuntimeResumeDeps = {
   after: number;
   api: RuntimeResumeApi;
-  applyPiEvent: (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => void;
+  applyPiEvent: (
+    sessionId: SessionId,
+    assistantId: string,
+    event: Record<string, unknown>,
+    options?: { flushNow?: boolean },
+  ) => void;
+  flushPiEvents?: (sessionId: SessionId) => void;
   onPiSessionIdChange?: (piSessionId: string) => void;
   runtime: string;
   schedule?: (callback: () => void) => void;
@@ -47,6 +53,7 @@ export function subscribeResumeRuntimeSession(deps: RuntimeResumeDeps): RuntimeE
   return {
     close: () => {
       closed = true;
+      deps.flushPiEvents?.(deps.sessionId);
       sub.close();
     },
   };
@@ -88,7 +95,11 @@ function applyRuntimePiPayload(
     activeAssistantId: agentEnded ? undefined : assistantId,
   }));
   if (eventId) deps.onPiSessionIdChange?.(eventId);
-  deps.applyPiEvent(deps.sessionId, assistantId, payload.event);
+  if (agentEnded) {
+    deps.applyPiEvent(deps.sessionId, assistantId, payload.event, { flushNow: true });
+  } else {
+    deps.applyPiEvent(deps.sessionId, assistantId, payload.event);
+  }
   if (agentEnded) drainQueuedTurnAfterAgentEnd(deps, deps.sessionId);
 }
 
@@ -132,6 +143,7 @@ async function reconcileRuntimeLiveness(
     return;
   }
   sub.close();
+  deps.flushPiEvents?.(deps.sessionId);
   deps.updateSession(deps.sessionId, (session) =>
     session.status === "running" || session.status === "starting"
       ? { ...session, status: "idle", activeAssistantId: undefined }

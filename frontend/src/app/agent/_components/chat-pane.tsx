@@ -2,7 +2,6 @@
 import {
   FormEvent,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -21,6 +20,11 @@ import {
   SendIcon,
   StopIcon,
 } from "@/components/icons";
+import {
+  useChatPaneMentionEffects,
+  useChatPaneRegisterHandleEffect,
+  useChatPaneStickToBottomEffect,
+} from "@/hooks/agent/use-chat-pane-effects";
 import {
   activateComposerPlugin,
   activeComposerPlugins,
@@ -173,9 +177,10 @@ export function ChatPane({
     ),
   );
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
-  useEffect(() => {
-    setStickToBottom(true);
-  }, [activeTab?.id]);
+  useChatPaneStickToBottomEffect({
+    activeTabId: activeTab?.id,
+    setStickToBottom,
+  });
   const mentionRows = useMemo<MentionRow[]>(() => {
     if (!mention) return [];
     if (mention.kind === "skill") {
@@ -194,43 +199,12 @@ export function ChatPane({
       .map((row) => ({ kind: "file" as const, row }));
     return [...plugins, ...files].slice(0, 8);
   }, [fileMentionRows, mention, pluginRows, skillRows]);
-  useEffect(() => {
-    setMentionIndex(0);
-  }, [mention?.kind, mention?.query]);
-  useEffect(() => {
-    if (!mention || mention.kind !== "plugin" || !cwd) {
-      setFileMentionRows([]);
-      return;
-    }
-    let cancelled = false;
-    void fetch(`/api/agent/fs?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then(
-        (
-          payload: {
-            entries?: Array<{ name: string; rel: string; path: string; kind: string }>;
-          } | null,
-        ) => {
-          if (cancelled) return;
-          const rows = (payload?.entries ?? [])
-            .filter((entry) => entry.kind === "file")
-            .map((entry) => ({
-              id: `file:${entry.rel}`,
-              name: entry.name,
-              rel: entry.rel,
-              path: entry.path,
-              source: "project",
-            }));
-          setFileMentionRows(rows);
-        },
-      )
-      .catch(() => {
-        if (!cancelled) setFileMentionRows([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, mention]);
+  useChatPaneMentionEffects({
+    cwd,
+    mention,
+    setFileMentionRows,
+    setMentionIndex,
+  });
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
       onTabsChange((currentTabs) =>
@@ -332,6 +306,7 @@ export function ChatPane({
     modelId,
     cwd,
     browserToolEnabled,
+    canvasEnabled: tools.computer.canvasEnabled,
     onPiSessionIdChange,
     updateSession,
     selectionFor: tools.selectionFor,
@@ -368,6 +343,8 @@ export function ChatPane({
           type: file.type,
           size: file.size,
           path: file.path,
+          mode: file.mode,
+          content: file.content,
           previewKind: file.previewKind,
           previewUrl: durablePreviewUrl,
         };
@@ -580,14 +557,7 @@ export function ChatPane({
   );
   const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
   handleRef.current = { loadAndReplay };
-  useEffect(() => {
-    if (!onRegisterHandle) return;
-    const handle: ChatPaneHandle = {
-      loadAndReplay: (id) => handleRef.current.loadAndReplay(id),
-    };
-    onRegisterHandle(handle);
-    return () => onRegisterHandle(null);
-  }, [onRegisterHandle]);
+  useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
@@ -899,7 +869,7 @@ export function ChatPane({
             }
             className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="flex min-h-10 items-center gap-1.5 bg-transparent px-3 pb-2 pt-1 text-xs">
+          <div className="agent-composer-actions-row flex min-h-10 items-center gap-1.5 bg-transparent px-3 pb-2 pt-1 text-xs">
             {" "}
             <input
               ref={fileInputRef}

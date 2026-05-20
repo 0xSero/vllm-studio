@@ -103,6 +103,92 @@ describe("runWorkspaceEffect", () => {
     expect(events.map((event) => event.type)).not.toContain(SESSIONS_CHANGED_EVENT);
   });
 
+  it("persists pane metadata without transcript payloads", () => {
+    const storage = memoryStorage();
+    const { deps } = makeDeps(storage);
+    const state = createInitialState();
+    const action: WorkspaceAction = {
+      type: "replaySession",
+      piSessionId: "pi-1",
+      tab: tab({
+        id: "tab-pi-1",
+        runtimeSessionId: "rt-tab-pi-1",
+        piSessionId: "pi-1",
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            text: "",
+            blocks: [{ kind: "thinking", id: "think-1", text: "x".repeat(50_000) }],
+          },
+        ],
+      }),
+    };
+    const next = reducer(state, action);
+
+    runWorkspaceEffect(action, state, next, deps);
+
+    const raw = storage.value(PANE_STATE_KEY) ?? "";
+    expect(raw).toContain("pi-1");
+    expect(raw).not.toContain("messages");
+    expect(raw).not.toContain("think-1");
+  });
+
+  it("does not write pane state for streaming setPaneTabs mutations", () => {
+    const storage = memoryStorage();
+    const { deps } = makeDeps(storage);
+    const state = createInitialState();
+    const paneId = state.focusedPaneId;
+    const session = state.sessions.get(state.panesById.get(paneId)!.activeSessionId)!;
+    const action: WorkspaceAction = {
+      type: "setPaneTabs",
+      paneId,
+      tabs: [
+        {
+          ...session,
+          messages: [
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: "",
+              blocks: [{ kind: "thinking", id: "think-1", text: "x".repeat(50_000) }],
+            },
+          ],
+        },
+      ],
+    };
+    const next = reducer(state, action);
+
+    runWorkspaceEffect(action, state, next, deps);
+
+    expect(storage.value(PANE_STATE_KEY)).toBeUndefined();
+    expect(storage.setItem).not.toHaveBeenCalledWith(
+      PANE_STATE_KEY,
+      expect.stringContaining("think-1"),
+    );
+  });
+
+  it("writes pane metadata when setPaneTabs changes recoverable session identity", () => {
+    const storage = memoryStorage();
+    const { deps } = makeDeps(storage);
+    const state = createInitialState();
+    const paneId = state.focusedPaneId;
+    const session = state.sessions.get(state.panesById.get(paneId)!.activeSessionId)!;
+    const action: WorkspaceAction = {
+      type: "setPaneTabs",
+      paneId,
+      tabs: [{ ...session, piSessionId: "pi-1", status: "running" }],
+    };
+    const next = reducer(state, action);
+
+    runWorkspaceEffect(action, state, next, deps);
+
+    const raw = storage.value(PANE_STATE_KEY) ?? "";
+    expect(raw).toContain("pi-1");
+    expect(raw).toContain("running");
+    expect(raw).not.toContain("messages");
+  });
+
   it("dispatches a sessions refresh when a tab gains a pi session id", () => {
     const { deps, events } = makeDeps();
     const state = hydratedProjectState(createInitialState());

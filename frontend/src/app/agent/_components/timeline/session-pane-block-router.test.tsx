@@ -79,6 +79,108 @@ describe("groupAssistantBlocks", () => {
 });
 
 describe("SessionPaneBlockRouter", () => {
+  it("renders sent image, video, and PDF attachments inside the user bubble", () => {
+    const message: ChatMessage = {
+      id: "user",
+      role: "user",
+      text: "look at these",
+      attachments: [
+        {
+          id: "image",
+          name: "image.png",
+          type: "image/png",
+          size: 123,
+          mode: "metadata",
+          content: "",
+          previewKind: "image",
+          previewUrl: "blob:image",
+        },
+        {
+          id: "video",
+          name: "clip.mp4",
+          type: "video/mp4",
+          size: 456,
+          mode: "metadata",
+          content: "",
+          previewKind: "video",
+          previewUrl: "blob:video",
+        },
+        {
+          id: "pdf",
+          name: "paper.pdf",
+          type: "application/pdf",
+          size: 789,
+          mode: "metadata",
+          content: "",
+          previewKind: "pdf",
+          previewUrl: "blob:pdf",
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<SessionPaneBlockRouter message={message} />);
+
+    expect(html).toContain("look at these");
+    expect(html).toContain("<img");
+    expect(html).toContain("<video");
+    expect(html).toContain("<iframe");
+    expect(html).toContain("image.png");
+    expect(html).toContain("clip.mp4");
+    expect(html).toContain("paper.pdf");
+  });
+
+  it("keeps mixed reasoning and finished tools collapsed as a preview", () => {
+    const message: ChatMessage = {
+      id: "assistant",
+      role: "assistant",
+      text: "",
+      blocks: [
+        { kind: "thinking", id: "think-1", text: "private plan text" },
+        {
+          kind: "tool",
+          id: "tool-1",
+          name: "read_file",
+          status: "done",
+          text: "",
+          args: { path: "src/app.ts" },
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<SessionPaneBlockRouter message={message} />);
+
+    expect(html).toContain("Reasoning + 1 tool");
+    expect(html).toContain("read app.ts");
+    expect(html).not.toContain("private plan text");
+  });
+
+  it("keeps running reasoning and tools collapsed behind a status preview", () => {
+    const message: ChatMessage = {
+      id: "assistant",
+      role: "assistant",
+      text: "",
+      blocks: [
+        { kind: "thinking", id: "think-1", text: "noisy live reasoning" },
+        {
+          kind: "tool",
+          id: "tool-1",
+          name: "bash",
+          status: "running",
+          text: "",
+          args: { cmd: "ssh -i ~/.ssh/linux-ai ser@100.90.62.80 'nvidia-smi'" },
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<SessionPaneBlockRouter message={message} />);
+
+    expect(html).toContain("Reasoning + 1 tool");
+    expect(html).toContain("running");
+    expect(html).toContain("ssh -i");
+    expect(html).not.toContain("noisy live reasoning");
+    expect(html).not.toContain("Ran command");
+  });
+
   it("renders collapsed tool group previews without mounting completed tool details", () => {
     const message: ChatMessage = {
       id: "assistant",

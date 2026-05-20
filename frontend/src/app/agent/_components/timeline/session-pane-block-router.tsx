@@ -171,9 +171,11 @@ function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachme
         className="overflow-hidden rounded-md border border-(--border) bg-black/40"
         title={title}
       >
-        <object data={attachment.previewUrl} type="application/pdf" className="h-72 w-full">
-          <span className="block p-3 text-xs text-(--dim)">PDF preview unavailable.</span>
-        </object>
+        <iframe
+          src={attachment.previewUrl}
+          title={attachment.name}
+          className="h-72 w-full border-0 bg-(--bg)"
+        />
         <div className="truncate px-2 py-1 font-mono text-[10px] text-(--dim)">
           {attachment.name} · {size}
         </div>

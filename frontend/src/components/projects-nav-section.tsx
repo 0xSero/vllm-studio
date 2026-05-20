@@ -2,7 +2,6 @@
 import Link from "next/link";
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -24,31 +23,29 @@ import {
 } from "@/components/icons";
 import { Button, UiModal, UiModalHeader } from "@/components/ui-kit";
 import { safeJson } from "@/lib/agent/safe-json";
+import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
 import {
-  mergeActiveAgentSessions,
-  type ActiveAgentSessionSnapshot,
-} from "@/lib/agent/active-sessions";
+  useActiveAgentSessionsEffect,
+  usePinnedSessionsEffect,
+  useProjectDirectoryPickerModalEffects,
+  useProjectSessionsReloadEffect,
+  useProjectsNavAddProjectEffect,
+  useProjectsNavSessionPrefs,
+} from "@/hooks/agent/use-projects-nav-section-effects";
 import {
   ACTIVE_AGENT_SESSION_OPEN_EVENT,
   ACTIVE_AGENT_SESSION_RENAME_EVENT,
-  ACTIVE_AGENT_SESSIONS_EVENT,
   ADD_PROJECT_EVENT,
   NEW_AGENT_SESSION_EVENT,
   PROJECTS_CHANGED_EVENT,
-  SESSION_PREFS_CHANGED_EVENT,
-  SESSIONS_CHANGED_EVENT,
 } from "@/lib/agent/workspace/events";
-import {
-  loadPersistedActiveAgentSessions,
-  persistActiveAgentSessions,
-} from "@/lib/agent/workspace/store";
+import { loadPersistedActiveAgentSessions } from "@/lib/agent/workspace/store";
 import { useProjects } from "@/lib/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/lib/agent/projects/api";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import {
   loadSessionPrefs,
   patchSessionPref,
-  hydrateSessionPrefsFromDesktop,
   type SessionPref,
   type SessionPrefs,
 } from "@/lib/agent/session/prefs";
@@ -95,17 +92,31 @@ function setAgentSessionDragData(
   event.dataTransfer.setData("application/x-vllm-agent-session", JSON.stringify(session));
   event.dataTransfer.effectAllowed = "copy";
 }
-function activeSessionPrefKeys(session: ActiveAgentSession): string[] {
+function activeSessionPrefKeys(
+  session: Pick<ActiveAgentSession, "piSessionId" | "paneId" | "tabId">,
+): string[] {
   return [
     session.piSessionId,
     session.paneId && session.tabId ? `tab:${session.paneId}:${session.tabId}` : null,
   ].filter((value): value is string => Boolean(value));
 }
+export function mergeActiveSessionPref(
+  session: Pick<ActiveAgentSession, "piSessionId" | "paneId" | "tabId">,
+  prefs: SessionPrefs,
+): SessionPref {
+  const merged: SessionPref = {};
+  for (const key of activeSessionPrefKeys(session)) {
+    const pref = prefs[key];
+    if (!pref) continue;
+    if (pref.title) merged.title = pref.title;
+    if (pref.pinned) merged.pinned = true;
+    if (pref.hidden) merged.hidden = true;
+  }
+  return merged;
+}
+
 function activeSessionPref(session: ActiveAgentSession, prefs: SessionPrefs): SessionPref {
-  return activeSessionPrefKeys(session).reduce<SessionPref>(
-    (merged, key) => ({ ...merged, ...(prefs[key] ?? {}) }),
-    {},
-  );
+  return mergeActiveSessionPref(session, prefs);
 }
 function patchActiveSessionPref(session: ActiveAgentSession, patch: SessionPref) {
   for (const key of activeSessionPrefKeys(session)) patchSessionPref(key, patch);
@@ -128,27 +139,7 @@ function sessionDedupeKey(session: SessionSummary): string {
     .toLowerCase();
   return `${label}:${relativeAge(session.startedAt)}`;
 }
-function useSessionPrefs() {
-  const [prefs, setPrefs] = useState<SessionPrefs>(() => loadSessionPrefs());
-  useEffect(() => {
-    void hydrateSessionPrefsFromDesktop();
-    const refresh = () =>
-      setPrefs((current) => {
-        const next = loadSessionPrefs();
-        try {
-          if (JSON.stringify(current) === JSON.stringify(next)) return current;
-        } catch {}
-        return next;
-      });
-    window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-  return prefs;
-}
+const useSessionPrefs = useProjectsNavSessionPrefs;
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(ADD_PROJECT_EVENT));
@@ -211,10 +202,7 @@ function ProjectDirectoryPickerModal({
       setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    if (!open) return;
-    void loadDirectory();
-  }, [open, loadDirectory]);
+  useProjectDirectoryPickerModalEffects({ loadDirectory, open });
   const goToDraftPath = () => {
     const next = draftPath.trim();
     if (next) void loadDirectory(next);
@@ -443,69 +431,16 @@ function ProjectDirectoryPickerModal({
     });
   const [chatsExpanded, setChatsExpanded] = useState(true);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
-  useEffect(() => {
-    window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
-    return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
-  }, [handleAddProject]);
-  useEffect(() => {
-    const onActiveSessions = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
-      const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
-      setActiveSessions((current) =>
-        sessions.length > 0 ? mergeActiveAgentSessions([], sessions, loadSessionPrefs()) : [],
-      );
-      persistActiveAgentSessions(sessions);
-    };
-    window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
-    return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
-  }, []);
-  useEffect(() => {
-    if (!expanded || projects.length === 0) {
-      queueMicrotask(() => setPinnedSessions([]));
-      return;
-    }
-    if (!pinnedPrefIdsKey) {
-      queueMicrotask(() => setPinnedSessions([]));
-      return;
-    }
-    let cancelled = false;
-    const pinnedIdsList = pinnedPrefIdsKey.split("\u0000").filter(Boolean);
-    const pinnedIds = new Set(pinnedIdsList);
-    const hiddenIds = new Set(hiddenPrefIdsKey.split("\u0000").filter(Boolean));
-    const idsParam = encodeURIComponent(pinnedIdsList.join(","));
-    (async () => {
-      const rows = await Promise.all(
-        projects.map(async (project) => {
-          try {
-            const response = await fetch(
-              `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=30d&ids=${idsParam}`,
-              { cache: "no-store" },
-            );
-            const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
-            return (payload.sessions ?? [])
-              .filter((session) => pinnedIds.has(session.id) && !hiddenIds.has(session.id))
-              .map((session) => ({ ...session, project }));
-          } catch {
-            return [];
-          }
-        }),
-      );
-      if (!cancelled) {
-        setPinnedSessions(
-          rows
-            .flat()
-            .sort(
-              (a, b) =>
-                new Date(b.startedAt || b.updatedAt).getTime() -
-                new Date(a.startedAt || a.updatedAt).getTime(),
-            ),
-        );
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activePiSessionIdsKey, expanded, hiddenPrefIdsKey, pinnedPrefIdsKey, projects]);
+  useProjectsNavAddProjectEffect(handleAddProject);
+  useActiveAgentSessionsEffect({ setActiveSessions });
+  usePinnedSessionsEffect({
+    activePiSessionIdsKey,
+    expanded,
+    hiddenPrefIdsKey,
+    pinnedPrefIdsKey,
+    projects,
+    setPinnedSessions,
+  });
   if (!expanded) {
     return null;
   }
@@ -816,11 +751,7 @@ function ProjectSessions({
       setLoading(false);
     }
   }, [project.path]);
-  useEffect(() => {
-    void reload();
-    window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
-    return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
-  }, [reload]);
+  useProjectSessionsReloadEffect(reload);
   const [showHidden, setShowHidden] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SHOW_HIDDEN_KEY) === "1";

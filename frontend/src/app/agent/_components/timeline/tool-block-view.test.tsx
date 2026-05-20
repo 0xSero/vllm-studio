@@ -42,4 +42,23 @@ describe("ToolBlockView", () => {
     expect(html).toContain("hljs-addition");
     expect(html).toContain("hljs-deletion");
   });
+
+  it("renders git diff output with the same highlighted source treatment", () => {
+    const block: ToolBlock = {
+      kind: "tool",
+      id: "diff-1",
+      name: "git_diff",
+      status: "done",
+      text: "",
+      resultText:
+        "diff --git a/app.ts b/app.ts\n@@ -1 +1 @@\n-const oldValue = 0;\n+const newValue = 1;\n",
+    };
+
+    const html = renderToStaticMarkup(<ToolBlockView block={block} />);
+
+    expect(html).toContain("Git Diff");
+    expect(html).toContain("language-diff");
+    expect(html).toContain("hljs-addition");
+    expect(html).toContain("hljs-deletion");
+  });
 });

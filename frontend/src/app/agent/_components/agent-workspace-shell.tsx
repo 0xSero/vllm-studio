@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   consumeAgentSessionNavTitle,
@@ -14,6 +14,7 @@ import { useProjects, type ProjectsContextValue } from "@/lib/agent/projects/con
 import { useTools } from "@/lib/agent/tools/context";
 import type { Project } from "@/lib/agent/projects/types";
 import { useClickOutside } from "@/hooks/use-click-outside";
+import { useAgentWorkspaceNavigationEffects } from "@/hooks/agent/use-agent-workspace-navigation-effects";
 import { focusedSession, materializePaneSessions } from "@/lib/agent/sessions/selectors";
 import { AgentBrowserPanel } from "./agent-browser-panel";
 import { ChatPane } from "./chat-pane";
@@ -83,12 +84,17 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
-  useEffect(() => {
-    requestWorkspaceUrlNavigation(state, projects, searchParams, dispatch);
-  }, [searchParams, state, projects, dispatch]);
+  useAgentWorkspaceNavigationEffects(
+    useCallback(() => {
+      requestWorkspaceUrlNavigation(state, projects, searchParams, dispatch);
+    }, [searchParams, state, projects, dispatch]),
+  );
 
   const activeProject = projects.selectedProject;
   const focusedTab = focusedSession(state);
+  const focusedModel =
+    state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
+  const focusedGitSummary = projects.gitSummary(activeProject?.path);
   const focusedComputerUseLoaded = tools
     .selectionFor(focusedTab?.id)
     .plugins.some((plugin) =>
@@ -128,7 +134,10 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
         <AgentBrowserPanel
           handles={handles}
           activeProject={activeProject}
-          focusedTitle={focusedTab?.title ?? "Focused session"}
+          focusedSession={focusedTab}
+          sessions={[...state.sessions.values()]}
+          activeModel={focusedModel}
+          gitSummary={focusedGitSummary}
         />
       </div>
     </div>

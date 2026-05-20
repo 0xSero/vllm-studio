@@ -30,6 +30,18 @@ export type ThinkingBlock = { kind: "thinking"; id: string; text: string };
 export type EventBlock = { kind: "event"; id: string; text: string };
 export type AssistantBlock = TextBlock | ThinkingBlock | ToolBlock | EventBlock;
 
+export type ChatMessageAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  path?: string;
+  mode: "text" | "data-url" | "metadata";
+  content: string;
+  previewKind?: "image" | "video" | "pdf" | "file";
+  previewUrl?: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system";
@@ -37,16 +49,6 @@ export type ChatMessage = {
   attachments?: ChatMessageAttachment[];
   blocks?: AssistantBlock[];
   timestamp?: string;
-};
-
-export type ChatMessageAttachment = {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  path?: string;
-  previewKind?: "image" | "video" | "pdf" | "file";
-  previewUrl?: string;
 };
 
 export type TokenStats = {

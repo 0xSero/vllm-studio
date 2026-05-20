@@ -14,6 +14,14 @@ let appState: DesktopAppState = "starting";
 let mainWindow: BrowserWindow | null = null;
 let frontendServer: ServerHandle | undefined;
 
+async function processMemorySummary(): Promise<string> {
+  try {
+    return `memory=${JSON.stringify(await process.getProcessMemoryInfo())}`;
+  } catch {
+    return "memory=unavailable";
+  }
+}
+
 async function bootstrap(): Promise<void> {
   if (!frontendServer) {
     frontendServer = await startFrontendServer();
@@ -128,6 +136,21 @@ async function run(): Promise<void> {
 
   app.on("before-quit", () => {
     void shutdown();
+  });
+
+  app.on("render-process-gone", (_event, webContents, details) => {
+    void processMemorySummary().then((memory) => {
+      log.error(
+        [
+          "App render-process-gone",
+          `reason=${details.reason}`,
+          `exitCode=${details.exitCode}`,
+          `url=${webContents.getURL()}`,
+          `appVersion=${app.getVersion()}`,
+          memory,
+        ].join(" "),
+      );
+    });
   });
 
   process.on("uncaughtException", (error) => {

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
+import { useCanvasEffects } from "@/hooks/agent/use-canvas-effects";
 import { useToolsCatalogueEffects } from "@/hooks/agent/use-tools-catalogue-effects";
 import type { SessionId } from "@/lib/agent/sessions/types";
 import {
@@ -110,6 +111,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setSkillCatalogue(skills);
     },
   });
+  useCanvasEffects({ setComputer });
 
   const setBrowserEnabled = useCallback((enabled: boolean) => {
     setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));

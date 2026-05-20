@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
     cwd,
     piSessionId,
     browserToolEnabled,
+    browserSessionId,
+    canvasEnabled,
     plugins,
     skills,
     mode,
@@ -92,6 +94,8 @@ export async function POST(request: NextRequest) {
         if (ownsPromptStream) {
           await session.ensureStarted(modelId, cwd, effectivePiSessionId, {
             browserToolEnabled,
+            browserSessionId,
+            canvasEnabled,
             plugins,
             skills,
           });

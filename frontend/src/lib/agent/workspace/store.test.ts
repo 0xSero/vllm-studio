@@ -7,6 +7,7 @@ import {
   createInitialState,
   normalizePersistedTab,
   reducer,
+  sessionMetaForPersistence,
   setupWarningFromPiCheck,
 } from "./store";
 
@@ -44,6 +45,31 @@ function pane(state: WorkspaceState, paneId = state.focusedPaneId) {
 }
 
 describe("normalizePersistedTab", () => {
+  it("drops legacy persisted transcript payloads during pane-state restore", () => {
+    const restored = normalizePersistedTab({
+      id: "tab-1",
+      runtimeSessionId: "rt-1",
+      piSessionId: "pi-1",
+      title: "Legacy payload",
+      messages: [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          text: "answer",
+          blocks: [
+            { kind: "thinking", id: "think-1", text: "x".repeat(50_000) },
+            { kind: "tool", id: "tool-1", name: "write", status: "done", text: "payload" },
+          ],
+        },
+      ],
+      status: "idle",
+      input: "",
+    });
+
+    expect(restored?.messages).toEqual([]);
+    expect(restored?.piSessionId).toBe("pi-1");
+  });
+
   it("preserves selected plugin and skill tabs across pane-state restore", () => {
     const restored = normalizePersistedTab({
       id: "tab-1",
@@ -62,6 +88,66 @@ describe("normalizePersistedTab", () => {
       runtimeSessionId: "rt-1",
       plugins: [{ id: "browser", name: "browser-use", enabled: true }],
       skills: [{ id: "agent-browser", name: "agent-browser", path: "/skills/agent-browser" }],
+    });
+  });
+});
+
+describe("sessionMetaForPersistence", () => {
+  it("strips transcript, tool, reasoning, and attachment bodies from persisted pane state", () => {
+    const persisted = sessionMetaForPersistence(
+      tab({
+        piSessionId: "pi-1",
+        messages: [
+          {
+            id: "user-1",
+            role: "user",
+            text: "look",
+            attachments: [
+              {
+                id: "att-1",
+                name: "image.png",
+                type: "image/png",
+                size: 123,
+                mode: "data-url",
+                content: "data:image/png;base64,huge",
+                previewKind: "image",
+                previewUrl: "blob:http://local/1",
+              },
+            ],
+          },
+          {
+            id: "assistant-1",
+            role: "assistant",
+            text: "",
+            blocks: [
+              { kind: "thinking", id: "think-1", text: "private reasoning" },
+              {
+                kind: "tool",
+                id: "tool-1",
+                name: "write",
+                status: "done",
+                argsText: "large args",
+                resultText: "large result",
+                text: "large args",
+              },
+            ],
+          },
+        ],
+        queue: [{ id: "queue-1", mode: "follow_up", text: "next", sent: true }],
+      }),
+      { plugins: [{ id: "browser", name: "browser-use", enabled: true }], skills: [] },
+    );
+
+    expect("messages" in persisted).toBe(false);
+    expect("error" in persisted).toBe(false);
+    expect(JSON.stringify(persisted)).not.toContain("private reasoning");
+    expect(JSON.stringify(persisted)).not.toContain("data:image/png");
+    expect(persisted).toMatchObject({
+      id: "tab-1",
+      runtimeSessionId: "rt-tab-1",
+      piSessionId: "pi-1",
+      queue: [{ id: "queue-1", mode: "follow_up", text: "next", sent: true }],
+      plugins: [{ id: "browser", name: "browser-use", enabled: true }],
     });
   });
 });

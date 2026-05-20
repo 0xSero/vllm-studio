@@ -66,6 +66,18 @@ function CodeBlockCopyButton({ code }: { code: string }) {
   );
 }
 
+function codeLanguage(children: ReactNode): string | null {
+  const codeElement = Children.toArray(children).find(
+    (child) =>
+      isValidElement<{ className?: string }>(child) &&
+      typeof child.props.className === "string" &&
+      /\blanguage-/.test(child.props.className),
+  );
+  if (!isValidElement<{ className?: string }>(codeElement)) return null;
+  const match = /\blanguage-([^\s]+)/.exec(codeElement.props.className ?? "");
+  return match ? match[1] : null;
+}
+
 const components: Components = {
   h1: ({ node: _n, ...props }) => (
     <h1 className="mb-1 mt-4 text-[18px] font-medium leading-[1.33] text-(--fg)" {...props} />
@@ -114,14 +126,22 @@ const components: Components = {
         (child) => isValidElement(child) && (child as { type?: string }).type === "code",
       ) ?? children,
     );
+    const language = codeLanguage(children);
     return (
-      <pre
-        className="relative my-2 max-w-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words rounded border border-(--border) bg-(--surface) p-2 text-[12px] leading-5 [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap"
-        {...props}
-      >
-        {code ? <CodeBlockCopyButton code={code} /> : null}
-        {children}
-      </pre>
+      <div className="assistant-code-block group my-3 overflow-hidden rounded-md border border-white/10 bg-[#07090d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex h-8 items-center justify-between border-b border-white/10 bg-white/[0.025] px-2.5">
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+            {language ?? "code"}
+          </span>
+          {code ? <CodeBlockCopyButton code={code} /> : null}
+        </div>
+        <pre
+          className="m-0 max-w-full overflow-x-auto bg-transparent px-3 py-2.5 text-[12px] leading-5"
+          {...props}
+        >
+          {children}
+        </pre>
+      </div>
     );
   },
   a: ({ node: _n, href, ...props }) => (
@@ -219,7 +239,7 @@ export function AssistantMarkdown({ text }: { text: string }) {
     ),
   };
   return (
-    <div className="min-w-0 max-w-full overflow-x-hidden font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg) [overflow-wrap:anywhere]">
+    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg) [overflow-wrap:anywhere]">
       <MarkdownErrorBoundary
         fallback={
           <pre className="max-w-full whitespace-pre-wrap break-words font-sans text-[14px] leading-[22px] tracking-[-0.003em] [overflow-wrap:anywhere]">
