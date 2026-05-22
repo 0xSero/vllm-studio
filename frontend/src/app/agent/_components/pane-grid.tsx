@@ -2,6 +2,7 @@
 
 import { ReactNode, useState } from "react";
 import type { Layout, PaneId } from "@/lib/agent/workspace/layout";
+import { useSessionDragActive } from "@/hooks/agent/use-pane-grid-effects";
 
 type RenderPane = (paneId: PaneId) => ReactNode;
 
@@ -182,6 +183,7 @@ function PaneLeaf({
   const [hoverEdge, setHoverEdge] = useState<null | "center" | "left" | "right" | "top" | "bottom">(
     null,
   );
+  const dragActive = useSessionDragActive();
 
   const onDragOver =
     (edge: "center" | "left" | "right" | "top" | "bottom") =>
@@ -225,32 +227,37 @@ function PaneLeaf({
       {renderPane(paneId)}
 
       {/* Edge drop targets: thin strips along each edge that catch a session
-          row being dragged. The visible highlight only appears while
-          something is being dragged over us. */}
-      <div
-        onDragOver={onDragOver("left")}
-        onDragLeave={() => setHoverEdge((e) => (e === "left" ? null : e))}
-        onDrop={onDrop("vertical", "a")}
-        className="absolute inset-y-0 left-0 z-10 w-6"
-      />
-      <div
-        onDragOver={onDragOver("right")}
-        onDragLeave={() => setHoverEdge((e) => (e === "right" ? null : e))}
-        onDrop={onDrop("vertical", "b")}
-        className="absolute inset-y-0 right-0 z-10 w-6"
-      />
-      <div
-        onDragOver={onDragOver("top")}
-        onDragLeave={() => setHoverEdge((e) => (e === "top" ? null : e))}
-        onDrop={onDrop("horizontal", "a")}
-        className="absolute inset-x-0 top-0 z-10 h-6"
-      />
-      <div
-        onDragOver={onDragOver("bottom")}
-        onDragLeave={() => setHoverEdge((e) => (e === "bottom" ? null : e))}
-        onDrop={onDrop("horizontal", "b")}
-        className="absolute inset-x-0 bottom-0 z-10 h-6"
-      />
+          row being dragged. They are only mounted while a session drag is in
+          progress so they don't steal clicks from the chat-pane header
+          (e.g. the "..." menu or the right sidebar toggle). */}
+      {dragActive ? (
+        <>
+          <div
+            onDragOver={onDragOver("left")}
+            onDragLeave={() => setHoverEdge((e) => (e === "left" ? null : e))}
+            onDrop={onDrop("vertical", "a")}
+            className="absolute inset-y-0 left-0 z-10 w-6"
+          />
+          <div
+            onDragOver={onDragOver("right")}
+            onDragLeave={() => setHoverEdge((e) => (e === "right" ? null : e))}
+            onDrop={onDrop("vertical", "b")}
+            className="absolute inset-y-0 right-0 z-10 w-6"
+          />
+          <div
+            onDragOver={onDragOver("top")}
+            onDragLeave={() => setHoverEdge((e) => (e === "top" ? null : e))}
+            onDrop={onDrop("horizontal", "a")}
+            className="absolute inset-x-0 top-0 z-10 h-6"
+          />
+          <div
+            onDragOver={onDragOver("bottom")}
+            onDragLeave={() => setHoverEdge((e) => (e === "bottom" ? null : e))}
+            onDrop={onDrop("horizontal", "b")}
+            className="absolute inset-x-0 bottom-0 z-10 h-6"
+          />
+        </>
+      ) : null}
 
       {hoverEdge ? (
         <div
