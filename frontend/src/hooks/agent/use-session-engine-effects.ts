@@ -8,7 +8,7 @@ import {
 } from "@/lib/agent/sessions/runtime-resume";
 
 type PiEventBatch = {
-  timer?: ReturnType<typeof setTimeout> | null;
+  rafId?: number | null;
 };
 
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
@@ -21,7 +21,9 @@ export function useSessionEngineBatchCleanupEffect({
   useEffect(
     () => () => {
       for (const batch of piEventBatchesRef.current.values()) {
-        if (batch.timer) clearTimeout(batch.timer);
+        if (batch.rafId != null && typeof cancelAnimationFrame !== "undefined") {
+          cancelAnimationFrame(batch.rafId);
+        }
       }
       piEventBatchesRef.current.clear();
     },
