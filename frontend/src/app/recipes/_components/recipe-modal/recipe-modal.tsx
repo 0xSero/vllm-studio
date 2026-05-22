@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Layers, RefreshCw, Save, X } from "lucide-react";
 import api from "@/lib/api";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
@@ -16,6 +16,7 @@ import {
 import { RecipeModalTabBar } from "./recipe-modal-tab-bar";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 import { RecipeModalTabContent } from "./tabs/tab-content";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function RecipeModal({
   recipe,
@@ -56,7 +57,7 @@ export function RecipeModal({
   const isLlamacpp = backend === "llamacpp";
   const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!isLlamacpp) return;
     if (llamaConfigHelp) return;
 

@@ -15,6 +15,7 @@ import { useTools } from "@/lib/agent/tools/context";
 import type { Project } from "@/lib/agent/projects/types";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useAgentWorkspaceNavigationEffects } from "@/hooks/agent/use-agent-workspace-navigation-effects";
+import { useActiveCanvasSessionEffects } from "@/hooks/agent/use-active-canvas-session-effects";
 import { focusedSession, materializePaneSessions } from "@/lib/agent/sessions/selectors";
 import { AgentBrowserPanel } from "./agent-browser-panel";
 import { ChatPane } from "./chat-pane";
@@ -92,6 +93,10 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
 
   const activeProject = projects.selectedProject;
   const focusedTab = focusedSession(state);
+  useActiveCanvasSessionEffects({
+    sessionId: focusedTab?.id ?? null,
+    setActiveCanvasSession: tools.setActiveCanvasSession,
+  });
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
   const focusedGitSummary = projects.gitSummary(activeProject?.path);

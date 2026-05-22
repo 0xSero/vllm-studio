@@ -58,4 +58,27 @@ describe("agent model normalization", () => {
     expect(visionModel?.vision).toBe(true);
     expect(textModel?.vision).toBe(false);
   });
+
+  it("infers vision for well-known multimodal model ids", () => {
+    const ids = [
+      "gemma-4-31b-it",
+      "Qwen2.5-VL-72B-Instruct",
+      "llava-onevision-7b",
+      "pixtral-12b",
+      "llama-3.2-vision-instruct",
+      "InternVL3-8B",
+      "MiniCPM-V-2_6",
+      "phi-4-multimodal",
+      "deepseek-vl2",
+    ];
+    const models = normalizeOpenAIModels({ data: ids.map((id) => ({ id })) });
+    for (const id of ids) {
+      const model = models.find((m) => m.id === id);
+      expect(model?.vision, `expected vision: true for ${id}`).toBe(true);
+    }
+    const pi = modelsToPiModels(models);
+    for (const id of ids) {
+      expect(pi.find((m) => m.id === id)?.input).toEqual(["text", "image"]);
+    }
+  });
 });

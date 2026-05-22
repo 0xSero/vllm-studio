@@ -1,9 +1,10 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api";
 import type { ModelDownload } from "@/lib/types";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 type StartDownloadParams = {
   model_id: string;
@@ -32,7 +33,7 @@ export function useDownloads(pollIntervalMs = 2500) {
     }
   }, []);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     refresh();
     if (pollIntervalMs <= 0) return;
     const interval = setInterval(refresh, pollIntervalMs);

@@ -1,9 +1,10 @@
 // CRITICAL
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { LaunchStage } from "@/lib/types";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 
@@ -177,7 +178,7 @@ function start() {
 }
 
 export function useSidebarStatus(): SidebarStatusSnapshot {
-  useEffect(() => {
+  useLegacyEffect(() => {
     start();
   }, []);
 

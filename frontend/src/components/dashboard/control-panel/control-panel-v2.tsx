@@ -1,11 +1,12 @@
 // CRITICAL
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
 import { getStoredBackendUrl, setStoredBackendUrl } from "@/lib/backend-url";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function ControlPanel(props: DashboardLayoutProps) {
   const { currentProcess, currentRecipe, metrics, gpus, recipes } = props;
@@ -42,7 +43,7 @@ function ControllerTabs() {
   const [controllers, setControllers] = useState<string[]>([]);
   const [active, setActive] = useState("");
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     const load = () => {
       const primary = getStoredBackendUrl() || "http://127.0.0.1:8080";
       let extras: string[] = [];

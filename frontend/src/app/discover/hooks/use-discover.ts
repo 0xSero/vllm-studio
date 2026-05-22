@@ -1,10 +1,11 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api";
 import type { HuggingFaceModel, ModelInfo, ModelRecommendation } from "@/lib/types";
 import { extractProvider, extractQuantizations, normalizeModelId } from "../_components/utils";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function useDiscover() {
   const [models, setModels] = useState<HuggingFaceModel[]>([]);
@@ -54,7 +55,7 @@ export function useDiscover() {
     }
   }, []);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     let mounted = true;
     if (mounted) {
       loadLocalModels();
@@ -131,7 +132,7 @@ export function useDiscover() {
     [library, page, search, sort, task],
   );
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     setPage(0);
     const debounce = setTimeout(() => {
       fetchModels(false);

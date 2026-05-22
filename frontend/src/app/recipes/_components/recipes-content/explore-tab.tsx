@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -29,6 +29,7 @@ import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
 import api from "@/lib/api";
 import { estimateRoughWeightsGb } from "./explore-model-stats";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 function ExploreVramCell({ needGb, poolGb }: { needGb: number | null; poolGb: number }) {
   if (needGb == null || !Number.isFinite(needGb)) {
@@ -223,7 +224,7 @@ export function ExploreTab() {
   const completedSet = useRef<Set<string>>(new Set());
 
   // Load local models
-  useEffect(() => {
+  useLegacyEffect(() => {
     (async () => {
       try {
         const data = await api.getModels();
@@ -240,7 +241,7 @@ export function ExploreTab() {
   }, []);
 
   // Refresh local models on download completion
-  useEffect(() => {
+  useLegacyEffect(() => {
     let shouldRefresh = false;
     for (const d of downloads) {
       if (d.status === "completed" && !completedSet.current.has(d.id)) {

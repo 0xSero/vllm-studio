@@ -25,6 +25,7 @@ import {
   type ComposerPluginRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { Session, SessionId, SessionStatus } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
 import * as api from "./api";
@@ -48,6 +49,7 @@ type SubmitArgs = {
   prompt: string;
   displayText: string;
   userText: string;
+  images?: AgentImageInput[];
   attachments?: ChatMessageAttachment[];
   targetSessionId?: SessionId;
 };
@@ -337,6 +339,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             sessionId: runtime,
             modelId,
             message: args.prompt,
+            images: args.images,
             cwd: cwd.trim() || undefined,
             piSessionId:
               tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??

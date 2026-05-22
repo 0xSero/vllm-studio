@@ -112,7 +112,13 @@ export function sessionTitleFromPrompt(text: string): string {
 export function visibleUserTextFromPi(text: string): string {
   const marker = "\n\nUser prompt:\n";
   const idx = text.lastIndexOf(marker);
-  return (idx === -1 ? text : text.slice(idx + marker.length)).trim();
+  return stripAttachmentPromptText(idx === -1 ? text : text.slice(idx + marker.length)).trim();
+}
+
+function stripAttachmentPromptText(text: string): string {
+  const attachmentStart = text.search(/(?:^|\n\n)Attachment \d+:/);
+  if (attachmentStart === -1) return text;
+  return text.slice(0, attachmentStart).trim();
 }
 
 export function messageText(

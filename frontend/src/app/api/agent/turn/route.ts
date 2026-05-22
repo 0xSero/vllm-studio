@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     sessionId,
     modelId,
     message,
+    images,
     cwd,
     piSessionId,
     browserToolEnabled,
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     mode,
     streamingBehavior,
   } = parsed.value;
+  const commandImages = images.length ? images : undefined;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -102,20 +104,32 @@ export async function POST(request: NextRequest) {
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);
         if (ownsPromptStream) {
+          const promptOptions = {
+            streamingBehavior: effectiveStreamingBehavior,
+            ...(commandImages ? { images: commandImages } : {}),
+          };
           await session.prompt(
             message,
             (event, seq) => {
               sse(controller, { type: "pi", seq, event }, isOpen);
             },
-            { streamingBehavior: effectiveStreamingBehavior },
+            promptOptions,
           );
         } else if (mode === "steer") {
-          await session.steer(message);
+          if (commandImages) {
+            await session.steer(message, commandImages);
+          } else {
+            await session.steer(message);
+          }
           // Steer is a fire-and-forget control message — events keep flowing on
           // the original prompt's stream. Close ours immediately.
           sse(controller, { type: "status", phase: "queued", queue: "steer" }, isOpen);
         } else if (mode === "follow_up") {
-          await session.followUp(message);
+          if (commandImages) {
+            await session.followUp(message, commandImages);
+          } else {
+            await session.followUp(message);
+          }
           sse(controller, { type: "status", phase: "queued", queue: "follow_up" }, isOpen);
         }
         const status = session.status;

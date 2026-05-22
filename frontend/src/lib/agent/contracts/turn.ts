@@ -4,10 +4,17 @@ import { boolField, objectRecord, stringField, type ParseResult } from "./common
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
 export type AgentStreamingBehavior = "steer" | "followUp";
 
+export type AgentImageInput = {
+  type: "image";
+  data: string;
+  mimeType: string;
+};
+
 export type AgentTurnRequest = {
   sessionId: string;
   modelId: string;
   message: string;
+  images: AgentImageInput[];
   cwd?: string;
   piSessionId: string | null;
   browserToolEnabled: boolean;
@@ -50,6 +57,7 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       sessionId: sessionId.value ?? "default",
       modelId: modelId.value!,
       message: message.value!,
+      images: sanitizeImages(body.images),
       cwd: cwd.value,
       piSessionId: piSessionId.value ?? null,
       browserToolEnabled: boolField(body, "browserToolEnabled"),
@@ -61,6 +69,18 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       ...(streamingBehavior ? { streamingBehavior } : {}),
     },
   };
+}
+
+function sanitizeImages(value: unknown): AgentImageInput[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): AgentImageInput[] => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    const data = typeof record.data === "string" ? record.data.replace(/\s+/g, "") : "";
+    const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
+    if (!data || !/^image\/[a-z0-9.+-]+$/i.test(mimeType)) return [];
+    return [{ type: "image", data, mimeType }];
+  });
 }
 
 export function parseAgentTurnSsePayload(line: string): AgentTurnSsePayload | null {

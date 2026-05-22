@@ -1,7 +1,8 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import { getApiKey } from "@/lib/api-key";
 import { resolveControllerEventsBaseUrl } from "@/lib/backend-config";
 import { CONTROLLER_EVENT_TYPES } from "./use-controller-events/event-types";
@@ -40,7 +41,7 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     ? `${apiBaseUrl}/events?api_key=${encodeURIComponent(apiKey)}`
     : `${apiBaseUrl}/events`;
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }

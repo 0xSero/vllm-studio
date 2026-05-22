@@ -62,6 +62,8 @@ import {
   dataTransferHasFiles,
   filesFromDataTransfer,
   formatFileSize,
+  imageFileFromDataUrlText,
+  imageInputFromAttachment,
   isImageAttachment,
   isRenderableAttachment,
   type ChatAttachment,
@@ -150,6 +152,7 @@ export function ChatPane({
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerSubmitInFlightRef = useRef(false);
   const [isMultiline, setIsMultiline] = useState(false);
   const [stickToBottom, setStickToBottom] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -328,6 +331,10 @@ export function ChatPane({
         selection.skills,
       );
       const prompt = [contextText, attachedText].filter(Boolean).join("\n\n");
+      const images = attachments.flatMap((file) => {
+        const image = imageInputFromAttachment(file);
+        return image ? [image] : [];
+      });
       const messageAttachments = attachments.map((file) => {
         // Prefer the durable inline data URL over the ephemeral blob: URL when
         // available — blob URLs are tied to the composer document and become
@@ -349,7 +356,7 @@ export function ChatPane({
           previewUrl: durablePreviewUrl,
         };
       });
-      return { text, prompt, displayText, userText, attachments: messageAttachments };
+      return { text, prompt, displayText, userText, images, attachments: messageAttachments };
     },
     [attachments, tools],
   );
@@ -401,28 +408,38 @@ export function ChatPane({
   const sendMessage = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
+      if (composerSubmitInFlightRef.current) return;
       if (!activeTab) return;
       if (activeTab.status === "starting" || activeTab.status === "loading") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      const status = await engine.loadRuntimeStatus(runtime);
-      const accepts = engine.acceptsControl(status, activeTab.piSessionId);
-      if (running) {
-        if (!text) return;
+      composerSubmitInFlightRef.current = true;
+      try {
+        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+        const status = await engine.loadRuntimeStatus(runtime);
+        const accepts = engine.acceptsControl(status, activeTab.piSessionId);
+        if (running) {
+          if (!text) return;
+          if (!accepts) {
+            updateTab(activeTab.id, (t) => ({
+              ...t,
+              status: "idle",
+              activeAssistantId: undefined,
+            }));
+            await submitPrompt(text, activeTab.id);
+            return;
+          }
+          await queueAndSendControl("steer", text, activeTab, runtime);
+          return;
+        }
         if (!accepts) {
-          updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
           await submitPrompt(text, activeTab.id);
           return;
         }
         await queueAndSendControl("steer", text, activeTab, runtime);
-        return;
+      } finally {
+        composerSubmitInFlightRef.current = false;
       }
-      if (accepts) {
-        await queueAndSendControl("steer", text, activeTab, runtime);
-        return;
-      }
-      await submitPrompt(text, activeTab.id);
     },
     [
       activeTab,
@@ -438,21 +455,27 @@ export function ChatPane({
     ],
   );
   const queueMessage = useCallback(async () => {
+    if (composerSubmitInFlightRef.current) return;
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
-    if (!running) {
-      await submitPrompt(text, activeTab.id);
-      return;
+    composerSubmitInFlightRef.current = true;
+    try {
+      if (!running) {
+        await submitPrompt(text, activeTab.id);
+        return;
+      }
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      const status = await engine.loadRuntimeStatus(runtime);
+      if (!engine.acceptsControl(status, activeTab.piSessionId)) {
+        updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
+        await submitPrompt(text, activeTab.id);
+        return;
+      }
+      await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
+    } finally {
+      composerSubmitInFlightRef.current = false;
     }
-    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-    const status = await engine.loadRuntimeStatus(runtime);
-    if (!engine.acceptsControl(status, activeTab.piSessionId)) {
-      updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
-      await submitPrompt(text, activeTab.id);
-      return;
-    }
-    await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
   }, [
     activeTab,
     cwd,
@@ -515,7 +538,13 @@ export function ChatPane({
   const handleComposerPaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = filesFromDataTransfer(event.clipboardData);
-      if (files.length === 0) return;
+      if (files.length === 0) {
+        const pastedImage = imageFileFromDataUrlText(event.clipboardData.getData("text/plain"));
+        if (!pastedImage) return;
+        event.preventDefault();
+        void attachFiles([pastedImage]);
+        return;
+      }
       event.preventDefault();
       void attachFiles(files);
     },

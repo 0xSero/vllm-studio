@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Archive,
   Cable,
@@ -31,6 +31,7 @@ import {
 } from "@/components/settings-primitives";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
 import { SESSION_PREFS_KEY } from "@/lib/agent/workspace/store";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 interface ConfigsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -103,7 +104,7 @@ export function ConfigsView({
     const hash = window.location.hash.replace("#", "");
     return normalizeSectionId(hash) ?? "connection";
   });
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (typeof window === "undefined") return;
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
@@ -465,7 +466,7 @@ function ArchivedChatsSettings() {
     }
   });
   const [sessions, setSessions] = useState<Session[]>([]);
-  useEffect(() => {
+  useLegacyEffect(() => {
     void fetch("/api/agent/sessions/all?since=365d", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ sessions?: Session[] }>)
       .then((payload) => setSessions(payload.sessions ?? []))
@@ -580,7 +581,7 @@ function PluginsSettings() {
         setMarketplaces([]);
         setValidation({ browserUseAvailable: false, computerUseAvailable: false });
       });
-  useEffect(() => {
+  useLegacyEffect(() => {
     void loadPlugins();
   }, []);
   const setPluginEnabled = (plugin: Plugin, enabled: boolean) => {
@@ -842,7 +843,7 @@ function pluginLocation(plugin: { enabled: boolean; source?: string; path: strin
 function SkillsSettings() {
   type Skill = { id: string; name: string; source: string; path: string };
   const [skills, setSkills] = useState<Skill[]>([]);
-  useEffect(() => {
+  useLegacyEffect(() => {
     void fetch("/api/agent/skills", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ skills?: Skill[] }>)
       .then((payload) => setSkills(payload.skills ?? []))
@@ -883,7 +884,7 @@ function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
   const [checks, setChecks] = useState<Check[]>([]);
   const controllerStatus = useSidebarStatus();
-  useEffect(() => {
+  useLegacyEffect(() => {
     void fetch("/api/agent/setup-checks", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ checks?: Check[] }>)
       .then((payload) => setChecks(payload.checks ?? []))

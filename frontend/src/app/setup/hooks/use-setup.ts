@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type {
@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
 import { buildStarterRecipe } from "./setup-helpers";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -71,7 +72,7 @@ export function useSetup() {
     }
   }, []);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     void loadSetupData();
   }, [loadSetupData]);
 

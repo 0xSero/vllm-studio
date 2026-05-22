@@ -2,7 +2,8 @@
 "use client";
 
 import { ArrowUpCircle, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import api from "@/lib/api";
 import type { EngineJob, RuntimeCommandPayload, RuntimeUpgradeResult } from "@/lib/types";
 import { useMachine } from "@/hooks/use-machine";
@@ -129,7 +130,7 @@ export function VllmRuntimePanel() {
     [dispatch, loadRuntime, loadRuntimeConfig, upgradeResultFromJob, waitForRuntimeJob],
   );
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     handleRefresh();
   }, [handleRefresh]);
 

@@ -1,10 +1,11 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import api from "@/lib/api";
 import { getApiKey } from "@/lib/api-key";
 import type { LogSession } from "@/lib/types";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 const MAX_RENDERED_LINES = 20_000;
 
@@ -48,15 +49,15 @@ export function useLogs() {
     }
   }, []);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (selectedSession) loadLogContent(selectedSession);
   }, [loadLogContent, selectedSession]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!autoRefresh || !selectedSession) {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -73,17 +74,18 @@ export function useLogs() {
     // Use SSE for low-latency log updates (better than polling).
     const apiKey = getApiKey();
     const base = `/api/proxy/logs/${encodeURIComponent(selectedSession)}/stream`;
-    const url = apiKey
-      ? `${base}?tail=0&api_key=${encodeURIComponent(apiKey)}`
-      : `${base}?tail=0`;
+    const url = apiKey ? `${base}?tail=0&api_key=${encodeURIComponent(apiKey)}` : `${base}?tail=0`;
 
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
     const onLog = (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data) as { data?: { session_id?: unknown; line?: unknown } };
-        const sessionId = typeof payload.data?.session_id === "string" ? payload.data.session_id : null;
+        const payload = JSON.parse(event.data) as {
+          data?: { session_id?: unknown; line?: unknown };
+        };
+        const sessionId =
+          typeof payload.data?.session_id === "string" ? payload.data.session_id : null;
         const line = typeof payload.data?.line === "string" ? payload.data.line : null;
         if (!line) return;
         if (sessionId && sessionId !== selectedSession) return;
@@ -109,7 +111,7 @@ export function useLogs() {
     };
   }, [autoRefresh, loadLogContent, selectedSession]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (autoScroll && logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
@@ -174,7 +176,9 @@ export function useLogs() {
 
   const renderLogs = useCallback(() => {
     const query = contentFilter.trim().toLowerCase();
-    const visible = query ? logLines.filter((line) => line.toLowerCase().includes(query)) : logLines;
+    const visible = query
+      ? logLines.filter((line) => line.toLowerCase().includes(query))
+      : logLines;
     return visible.map((line, index) => (
       <div key={index} className={`${getLogLineClass(line)} hover:bg-(--surface) px-2 py-0.5`}>
         {line || "\u00A0"}

@@ -4,7 +4,8 @@
 import { DiscoverView } from "./_components/discover-view";
 import { useDiscover } from "./hooks/use-discover";
 import { useDownloads } from "@/hooks/use-downloads";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export default function DiscoverPage() {
   const {
@@ -53,7 +54,7 @@ export default function DiscoverPage() {
 
   const completedSet = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     let shouldRefresh = false;
     for (const download of downloads) {
       if (download.status === "completed" && !completedSet.current.has(download.id)) {

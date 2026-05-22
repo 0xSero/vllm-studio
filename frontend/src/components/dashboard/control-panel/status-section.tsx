@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Moon, Square, Sun } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/components/model-stop-confirm";
@@ -9,6 +9,7 @@ import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import type { GPU, Metrics, ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
 import { toGB, toGBFromMB } from "@/lib/formatters";
 import { useAppStore } from "@/store";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 interface StatusSectionProps {
   currentProcess: ProcessInfo | null;
@@ -668,7 +669,7 @@ function ModelsDropdown({
   const [filter, setFilter] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);

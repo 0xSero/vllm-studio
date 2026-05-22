@@ -39,8 +39,10 @@
     "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck"
   },
   "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.12",
     "@mariozechner/pi-coding-agent": "^0.70.6",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.13.0-beta.220",
     "@xterm/xterm": "^6.0.0",
     "electron-updater": "^6.6.2",
     "highlight.js": "11.11.1",

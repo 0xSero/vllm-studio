@@ -1,10 +1,11 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { useRealtimeStatus } from "./use-realtime-status";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 type ModelLifecycleStatus = "idle" | "starting" | "ready" | "error";
 
@@ -32,7 +33,7 @@ export function useModelLifecycle(): ModelLifecycle {
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     let cancelled = false;
     api
       .getRecipes()

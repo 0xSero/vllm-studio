@@ -58,6 +58,8 @@ export type ToolsContextValue = {
   setCanvasEnabled: (enabled: boolean) => void;
   toggleCanvas: () => void;
   setCanvasText: (text: string) => void;
+  /** Tell the canvas store which session is currently focused so reads/writes are per-session. */
+  setActiveCanvasSession: (sessionId: SessionId | null) => void;
   requestFileOpen: (path: string) => void;
   /**
    * Replace the entire selection for a session. Pass `null` to clear it (used
@@ -101,6 +103,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   // Bump on every selection mutation so consumers re-render.
   const [selectionVersion, setSelectionVersion] = useState(0);
+  const activeCanvasSessionRef = useRef<SessionId | null>(null);
+  const [activeCanvasSessionId, setActiveCanvasSessionIdState] = useState<SessionId | null>(null);
+  const canvasQuery = (sessionId: SessionId | null) =>
+    sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
 
   // Discover the workspace-global plugin / skill catalogue once on mount.
   // The actual side effect lives in `use-tools-catalogue-effects.ts` — the
@@ -111,7 +117,12 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setSkillCatalogue(skills);
     },
   });
-  useCanvasEffects({ setComputer });
+  useCanvasEffects({ setComputer, sessionId: activeCanvasSessionId });
+
+  const setActiveCanvasSession = useCallback((sessionId: SessionId | null) => {
+    activeCanvasSessionRef.current = sessionId;
+    setActiveCanvasSessionIdState(sessionId);
+  }, []);
 
   const setBrowserEnabled = useCallback((enabled: boolean) => {
     setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
@@ -208,7 +219,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     // Best-effort server sync; the use-canvas-effects hook owns full hydration
     // and reconciliation. Failures here are harmless because the next mount
     // will re-read the server-side document.
-    void fetch("/api/agent/canvas", {
+    void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
@@ -221,7 +232,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       const tabs = next ? uniqueComputerTabs([...current.tabs, "canvas"]) : current.tabs;
       writeComputerCanvasEnabled(next);
       if (next) writeComputerTabs(tabs);
-      void fetch("/api/agent/canvas", {
+      void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: next }),
@@ -242,7 +253,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       current.canvasText === text ? current : { ...current, canvasText: text },
     );
     writeComputerCanvasText(text);
-    void fetch("/api/agent/canvas", {
+    void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true, text }),
@@ -323,6 +334,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setCanvasEnabled,
       toggleCanvas,
       setCanvasText,
+      setActiveCanvasSession,
       requestFileOpen,
       setSelection,
       hydrateSelections,
@@ -346,6 +358,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setCanvasEnabled,
       toggleCanvas,
       setCanvasText,
+      setActiveCanvasSession,
       requestFileOpen,
       setSelection,
       hydrateSelections,

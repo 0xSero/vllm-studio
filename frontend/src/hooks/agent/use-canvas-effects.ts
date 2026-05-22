@@ -1,15 +1,19 @@
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 
 import type { ComputerState } from "@/lib/agent/tools/types";
+import type { SessionId } from "@/lib/agent/sessions/types";
 
 export function useCanvasEffects({
   setComputer,
+  sessionId,
 }: {
   setComputer: Dispatch<SetStateAction<ComputerState>>;
+  sessionId?: SessionId | null;
 }): void {
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/agent/canvas", { cache: "no-store" })
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+    fetch(`/api/agent/canvas${query}`, { cache: "no-store" })
       .then((res) =>
         res.ok
           ? (res.json() as Promise<{ enabled?: boolean; text?: string }>)
@@ -27,5 +31,5 @@ export function useCanvasEffects({
     return () => {
       cancelled = true;
     };
-  }, [setComputer]);
+  }, [setComputer, sessionId]);
 }

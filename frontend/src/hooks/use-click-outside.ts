@@ -1,4 +1,5 @@
-import { useEffect, type RefObject } from "react";
+import { type RefObject } from "react";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 /**
  * Closes a popover / dropdown when the user clicks anywhere outside the
@@ -11,7 +12,7 @@ export function useClickOutside(
   open: boolean,
   onOutside: () => void,
 ): void {
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!open) return;
     const onDocClick = (event: MouseEvent) => {
       if (!ref.current) return;

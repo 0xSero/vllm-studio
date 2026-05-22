@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ArrowUpCircle, Check, Loader2, Settings, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
@@ -14,6 +14,7 @@ import {
   StatusPill,
   type StatusTone,
 } from "@/components/settings-primitives";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import {
   ENGINE_META,
   hasHydratedEngineRows,
@@ -48,7 +49,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     setJobs(jobPayload.jobs);
   }, []);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     void Promise.resolve().then(refreshRuntimeJobs);
     const timer = setInterval(() => void refreshRuntimeJobs(), 2500);
     return () => clearInterval(timer);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api";
 import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/app/recipes/_components/recipes-content/explore-model-stats";
 
 import { normalizeModelId } from "@/app/discover/_components/utils";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export interface ModelGroup {
   key: string;
@@ -68,7 +69,7 @@ export function useExplore() {
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
   const PAGE_SIZE = 50;
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     setPoolOverrideGbState(readExplorePoolOverrideGb());
   }, []);
 
@@ -148,11 +149,11 @@ export function useExplore() {
     [search],
   );
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     void loadRecommendationsAndGpus();
   }, [loadRecommendationsAndGpus]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     setPage(0);
     const debounce = setTimeout(() => {
       void fetchModels(false, 0);

@@ -1,10 +1,11 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api";
 import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "../lib/normalize-usage-stats";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 function normalizePeakNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -55,7 +56,7 @@ export function useUsage(source: UsageSource = "provider") {
     }
   }, [source]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     loadStats();
   }, [loadStats]);
 

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "lucide-react";
 import { safeJson } from "@/lib/agent/safe-json";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 // Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
 // page doesn't import server-only modules into the client bundle.
@@ -73,13 +74,13 @@ export default function AgentSessionsPage() {
     }
   };
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     void reload();
   }, []);
 
   // Listen for active-session broadcasts so the table stays in sync with the
   // agent workspace if the user has it open in another tab/pane.
-  useEffect(() => {
+  useLegacyEffect(() => {
     const onActive = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveSession[] }>).detail;
       setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);

@@ -3,6 +3,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
+import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
 import { isAgentEndEvent } from "./pi-events";
@@ -323,7 +324,7 @@ class PiRpcSession extends EventEmitter {
   async prompt(
     message: string,
     onEvent: (event: PiEvent, seq: number) => void,
-    options: { streamingBehavior?: "steer" | "followUp" } = {},
+    options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] } = {},
   ): Promise<void> {
     const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
     this.on("loggedEvent", listener);
@@ -361,6 +362,9 @@ class PiRpcSession extends EventEmitter {
       if (options.streamingBehavior) {
         command.streamingBehavior = options.streamingBehavior;
       }
+      if (options.images?.length) {
+        command.images = options.images;
+      }
       await this.sendCommand(command);
       await donePromise;
     } catch (error) {
@@ -380,12 +384,12 @@ class PiRpcSession extends EventEmitter {
    * turn (or when idle) and keep emitting events through the existing
    * event subscription.
    */
-  async steer(message: string): Promise<void> {
-    await this.sendCommand({ type: "steer", message });
+  async steer(message: string, images: AgentImageInput[] = []): Promise<void> {
+    await this.sendCommand({ type: "steer", message, ...(images.length ? { images } : {}) });
   }
 
-  async followUp(message: string): Promise<void> {
-    await this.sendCommand({ type: "follow_up", message });
+  async followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
+    await this.sendCommand({ type: "follow_up", message, ...(images.length ? { images } : {}) });
   }
 
   adoptPiSessionId(piSessionId: string | null | undefined): void {

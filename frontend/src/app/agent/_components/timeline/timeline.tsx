@@ -67,7 +67,7 @@ export function Timeline({
     <div
       ref={scrollerRef}
       data-timeline-scroller
-      className="min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain]"
+      className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain]"
     >
       <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
         {visibleMessages.map((message, index) => (

@@ -63,6 +63,62 @@ describe("applyPiEventToSession", () => {
     expect(deps.tabsRef.current[0].messages).toHaveLength(1);
   });
 
+  it("does not append internal attachment prompts echoed by Pi", () => {
+    const deps = harness([
+      session({
+        id: "s1",
+        messages: [
+          {
+            id: "user-1",
+            role: "user",
+            text: "Attached: image.png",
+            attachments: [
+              {
+                id: "file-1",
+                name: "image.png",
+                type: "image/png",
+                size: 98100,
+                mode: "data-url",
+                content: "data:image/png;base64,aGVsbG8=",
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    applyPiEventToSession(deps, "s1", "assistant-1", {
+      type: "message_start",
+      message: {
+        role: "user",
+        content:
+          "Attachment 1: image.png (image/png, 98.1 KB)\nImage is attached as multimodal input. Do not print or transcribe its base64 data.",
+      },
+    });
+
+    expect(deps.tabsRef.current[0].messages).toHaveLength(1);
+  });
+
+  it("dedupes text prompts when Pi echoes appended attachment metadata", () => {
+    const deps = harness([
+      session({
+        id: "s1",
+        messages: [{ id: "user-1", role: "user", text: "Build this\n\nAttached: image.png" }],
+      }),
+    ]);
+
+    applyPiEventToSession(deps, "s1", "assistant-1", {
+      type: "message_start",
+      message: {
+        role: "user",
+        content:
+          "Composer context:\nEnabled plugins: @computer-use.\n\nUser prompt:\nBuild this\n\nAttachment 1: image.png (image/png, 98.1 KB)\nImage is attached as multimodal input.",
+      },
+    });
+
+    expect(deps.tabsRef.current[0].messages).toHaveLength(1);
+  });
+
   it("dedupes back-to-back Pi user start/end echoes for queued follow-ups", () => {
     const deps = harness([
       session({

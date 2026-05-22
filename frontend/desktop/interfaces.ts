@@ -15,6 +15,29 @@ export type SessionPrefsPayload = Record<
   { title?: string; pinned?: boolean; hidden?: boolean }
 >;
 
+export interface PtyStatus {
+  available: boolean;
+  reason: string | null;
+}
+
+export interface PtyOpenOpts {
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}
+
+export interface PtyBridge {
+  status(): Promise<PtyStatus>;
+  open(opts: PtyOpenOpts): Promise<{ id: string }>;
+  write(id: string, data: string): Promise<void>;
+  resize(id: string, cols: number, rows: number): Promise<void>;
+  close(id: string): Promise<void>;
+  onData(listener: (id: string, chunk: string) => void): () => void;
+  onExit(
+    listener: (id: string, info: { exitCode: number; signal: number | null }) => void,
+  ): () => void;
+}
+
 export interface DesktopBridge {
   getRuntime(): Promise<{
     platform: NodeJS.Platform;
@@ -33,6 +56,7 @@ export interface DesktopBridge {
   /** Durable file-backed session prefs that survive process kill. */
   loadSessionPrefs(): Promise<SessionPrefsPayload>;
   saveSessionPrefs(prefs: SessionPrefsPayload): Promise<void>;
+  terminal: PtyBridge;
 }
 
 export interface IpcRequestMap {

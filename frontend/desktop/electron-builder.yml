@@ -2,9 +2,15 @@ appId: org.vllm.studio.desktop
 productName: vLLM Studio
 asar: true
 
+asarUnpack:
+  - "node_modules/@lydell/**/*.node"
+  - "node_modules/@lydell/**/spawn-helper"
+
 files:
   - desktop/dist/**
   - package.json
+  - node_modules/@lydell/node-pty/**
+  - node_modules/@lydell/node-pty-${platform}-${arch}/**
 
 extraResources:
   - from: .next/standalone

@@ -9,6 +9,15 @@ import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
 import { checkForUpdates, getUpdateState, initializeAutoUpdates } from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
+import {
+  closePty,
+  isPtyAvailable,
+  killAllPtys,
+  openPty,
+  ptyUnavailableReason,
+  resizePty,
+  writePty,
+} from "./logic/pty-manager";
 
 let appState: DesktopAppState = "starting";
 let mainWindow: BrowserWindow | null = null;
@@ -100,11 +109,39 @@ function registerIpcHandlers(): void {
     }
     writeSessionPrefsFile(prefs as Record<string, unknown>);
   });
+
+  ipcMain.handle("desktop:pty-status", async () => ({
+    available: isPtyAvailable(),
+    reason: ptyUnavailableReason(),
+  }));
+
+  ipcMain.handle(
+    "desktop:pty-open",
+    async (event, opts: { cwd?: string; cols?: number; rows?: number }) => {
+      return openPty(event.sender, opts ?? {});
+    },
+  );
+
+  ipcMain.handle("desktop:pty-write", async (_, id: string, data: string) => {
+    if (typeof id !== "string" || typeof data !== "string") return;
+    writePty(id, data);
+  });
+
+  ipcMain.handle("desktop:pty-resize", async (_, id: string, cols: number, rows: number) => {
+    if (typeof id !== "string") return;
+    resizePty(id, Number(cols), Number(rows));
+  });
+
+  ipcMain.handle("desktop:pty-close", async (_, id: string) => {
+    if (typeof id !== "string") return;
+    closePty(id);
+  });
 }
 
 async function shutdown(): Promise<void> {
   if (appState === "stopping") return;
   appState = "stopping";
+  killAllPtys();
   await stopFrontendServer(frontendServer);
   frontendServer = undefined;
 }

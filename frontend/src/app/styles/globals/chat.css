@@ -230,6 +230,34 @@
   scrollbar-color: color-mix(in srgb, var(--fg) 18%, transparent) transparent;
 }
 
+.agent-chat-scroller {
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb, var(--fg) 34%, transparent)
+    color-mix(in srgb, var(--bg) 82%, var(--border));
+}
+
+.agent-chat-scroller::-webkit-scrollbar {
+  width: 16px;
+}
+
+.agent-chat-scroller::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--bg) 82%, var(--border));
+}
+
+.agent-chat-scroller::-webkit-scrollbar-thumb {
+  min-height: 56px;
+  border: 3px solid color-mix(in srgb, var(--bg) 82%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 34%, transparent);
+  background-clip: padding-box;
+}
+
+.agent-chat-scroller::-webkit-scrollbar-thumb:hover,
+.agent-chat-scroller::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--accent) 60%, var(--fg));
+  background-clip: padding-box;
+}
+
 .chat-markdown .assistant-code-block code {
   background: transparent;
   border: 0;

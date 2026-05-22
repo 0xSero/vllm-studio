@@ -206,8 +206,8 @@ function ComputerHeader({
     ...TAB_OPTIONS,
   ].filter((item) => !openTabs.includes(item.tab));
   return (
-    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border) px-2 pr-12 text-xs">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border) px-2 pr-20 text-xs">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {openTabs.map((openTab) => {
           const meta = tabMeta(openTab);
           const Icon = meta.icon;
@@ -245,7 +245,6 @@ function ComputerHeader({
           );
         })}
       </div>
-      <span className="min-w-0 flex-1" />
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

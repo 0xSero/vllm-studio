@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { ChatIcon, Folder } from "@/components/icons";
 import { safeJson } from "@/lib/agent/safe-json";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 // Aggregated session row returned by /api/agent/sessions/all. Mirrored here
 // so the component is decoupled from the API module.
@@ -65,7 +66,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
 
   // Load on open. Sessions index is small and changes infrequently; we just
   // refetch each time the palette opens so the user always sees the latest.
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!open) return;
     let cancelled = false;
     (async () => {
@@ -82,7 +83,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
     };
   }, [open]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
       setQuery("");

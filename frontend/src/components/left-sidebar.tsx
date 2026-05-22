@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -30,6 +29,7 @@ import { useAppStore } from "@/store";
 import { ProjectsNavSection } from "@/components/projects-nav-section";
 import { SessionsCommand } from "@/components/sessions-command";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 type ActiveSessionDetail = {
   projectId: string;
@@ -92,7 +92,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!mobileMenuOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMobileMenuOpen(false);
@@ -102,7 +102,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   }, [mobileMenuOpen]);
 
   // Global Cmd/Ctrl+K opens the session search palette.
-  useEffect(() => {
+  useLegacyEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -115,7 +115,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
 
   // Mirror active sessions broadcast by the agent workspace so the palette
   // can show what's running even when the user is on a non-agent route.
-  useEffect(() => {
+  useLegacyEffect(() => {
     const onActive = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveSessionDetail[] }>).detail;
       setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);
@@ -124,7 +124,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
   }, []);
 
-  useEffect(
+  useLegacyEffect(
     () => () => {
       resizeCleanupRef.current?.();
     },

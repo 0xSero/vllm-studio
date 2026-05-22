@@ -95,7 +95,13 @@ function appendUserMessageFromPiEvent(
 
 function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): boolean {
   const lastUser = [...messages].reverse().find((entry) => entry.role === "user");
-  return Boolean(lastUser && (lastUser.text === text || text.includes(lastUser.text)));
+  return Boolean(
+    lastUser &&
+    (lastUser.text === text ||
+      text.includes(lastUser.text) ||
+      Boolean(text && lastUser.text.includes(text)) ||
+      Boolean(!text && lastUser.attachments?.length)),
+  );
 }
 
 function ensureNextAssistant(deps: PiEventApplierDeps, sessionId: SessionId): string {

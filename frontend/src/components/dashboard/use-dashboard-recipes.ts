@@ -1,7 +1,8 @@
 // CRITICAL
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import api from "@/lib/api";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
@@ -108,11 +109,11 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     }
   }, [currentProcess, refreshLogs]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     reload();
   }, [reload]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     const handler = () => {
       void reload();
     };
@@ -122,7 +123,7 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     };
   }, [reload]);
 
-  useEffect(() => {
+  useLegacyEffect(() => {
     if (!currentProcess) return;
     let cancelled = false;
     const poll = async () => {
