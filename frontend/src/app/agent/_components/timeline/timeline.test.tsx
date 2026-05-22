@@ -43,10 +43,14 @@ describe("Timeline", () => {
     expect(html).toContain("Pi is thinking");
   });
 
-  it("uses overflow-anchor on the scroller and disables it on each message", () => {
+  it("splits the scroll container from the timeline list and pins scroll CSS", () => {
     const html = renderToStaticMarkup(<Timeline messages={messages} running={false} />);
 
-    expect(html).toContain("[overflow-anchor:auto]");
+    expect(html).toContain("data-timeline-list");
+    expect(html).toContain("[scrollbar-gutter:stable_both-edges]");
+    expect(html).toContain("[scroll-behavior:auto]");
     expect(html).toContain("[overflow-anchor:none]");
+    expect(html).toContain("[content-visibility:auto]");
+    expect(html).toContain("[contain-intrinsic-size:auto_240px]");
   });
 });

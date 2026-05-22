@@ -67,21 +67,20 @@ export function Timeline({
     <div
       ref={scrollerRef}
       data-timeline-scroller
-      className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain]"
+      className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
     >
-      <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
-        {visibleMessages.map((message, index) => (
-          <div
-            key={message.id}
-            // Let the browser anchor to earlier messages when the user scrolls
-            // up — that's how Chromium keeps the viewport pinned without JS.
-            // Only the LAST item (the one that grows during streaming) and the
-            // bottom sentinel opt out so growth doesn't shift earlier messages.
-            className={`pb-5 ${index === visibleMessages.length - 1 ? "[overflow-anchor:none]" : "[overflow-anchor:auto]"}`}
-          >
-            <MemoMessage message={message} />
-          </div>
-        ))}
+      <div data-timeline-list className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
+        {visibleMessages.map((message, index) => {
+          const isLast = index === visibleMessages.length - 1;
+          return (
+            <div
+              key={message.id}
+              className={`pb-5 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_240px]"}`}
+            >
+              <MemoMessage message={message} />
+            </div>
+          );
+        })}
         {running ? (
           <div className="flex items-center gap-2 py-4 text-xs text-(--dim) [overflow-anchor:none]">
             <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
