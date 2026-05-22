@@ -495,7 +495,11 @@ export function ChatPane({
       event.preventDefault();
       if (composerSubmitInFlightRef.current) return;
       if (!activeTab) return;
-      if (activeTab.status === "starting" || activeTab.status === "loading") return;
+      // Only block while a prompt is actively starting up; a "loading"
+      // status means we're hydrating prior session history and the user
+      // must still be able to send. Without this, a stuck/never-resolving
+      // canonical-session replay leaves the composer permanently locked.
+      if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
       composerSubmitInFlightRef.current = true;
@@ -1081,14 +1085,13 @@ export function ChatPane({
                     (!activeTab?.input.trim() && attachments.length === 0) ||
                     !modelId ||
                     readingAttachments ||
-                    activeTab?.status === "starting" ||
-                    activeTab?.status === "loading"
+                    activeTab?.status === "starting"
                   }
                   className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--fg) hover:text-(--accent) disabled:opacity-30"
                   aria-label="Send"
                   title="Send (Enter) · Queue (Tab)"
                 >
-                  {activeTab?.status === "starting" || activeTab?.status === "loading" ? (
+                  {activeTab?.status === "starting" ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <SendIcon className="h-3.5 w-3.5" />

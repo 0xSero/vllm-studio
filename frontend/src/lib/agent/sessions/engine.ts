@@ -459,7 +459,16 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
 
   const loadAndReplay = useCallback(
     async (piSessionId: string, sessionId: SessionId) => {
-      if (!cwd) return;
+      if (!cwd) {
+        // No cwd yet — we can't hydrate session history. Make sure the
+        // session isn't left in a permanent "loading" state (which blocks
+        // the composer's send button) just because the snapshot reducer
+        // optimistically tagged it as loading on hydration.
+        updateSession(sessionId, (session) =>
+          session.status === "loading" ? { ...session, status: "idle" } : session,
+        );
+        return;
+      }
       updateSession(sessionId, (session) => ({ ...session, status: "loading", error: "" }));
       try {
         const { events } = await api.loadCanonicalSession(piSessionId, cwd);
