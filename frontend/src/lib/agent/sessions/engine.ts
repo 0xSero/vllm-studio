@@ -37,7 +37,6 @@ import {
 } from "./engine-helpers";
 import { applyPiEventToSession } from "./pi-event-applier";
 import { drainQueuedTurnAfterAgentEnd } from "./queue-drain";
-import { createSessionBatcher } from "./session-batcher";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -117,123 +116,52 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   // Pi can split a single user turn across multiple assistant messages (after
   // a queue_update / message_start), and we need a stable id to patch.
   const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
+  const piEventBatchesRef = useRef<
+    Map<
+      SessionId,
+      {
+        assistantId: string;
+        events: Record<string, unknown>[];
+        timer: ReturnType<typeof setTimeout> | null;
+      }
+    >
+  >(new Map());
 
-  // Per-session frame queue. Each entry is either a raw Pi event (applied via
-  // `applyPiEventToSession`) or a direct session patch (status / lastEventSeq /
-  // piSessionId / etc. emitted by the SSE handler outside the Pi taxonomy).
-  // The whole queue drains inside one `requestAnimationFrame` tick through the
-  // session batcher, so a frame of streaming maps to exactly one React commit.
-  type FrameItem =
-    | { kind: "pi"; assistantId: string; event: Record<string, unknown> }
-    | { kind: "patch"; patch: (session: Session) => Session };
-  type FrameQueue = {
-    assistantId: string;
-    items: FrameItem[];
-    rafId: number | null;
-  };
-  const piEventBatchesRef = useRef<Map<SessionId, FrameQueue>>(new Map());
-
-  // The session batcher composes every `updateSession` call made during a
-  // single flush into ONE functional patch — both our direct `updateSession`
-  // calls and the (potentially many) calls that `applyPiEventToSession` makes
-  // internally for queue/token/user-message/assistant-message bookkeeping.
-  // We always read the LATEST `updateSession` via a ref so the batcher itself
-  // can stay stable for the component's lifetime.
-  const updateSessionRef = useRef(updateSession);
-  updateSessionRef.current = updateSession;
-  const batcherRef = useRef(
-    createSessionBatcher((sessionId, patch) => updateSessionRef.current(sessionId, patch)),
+  const patchAssistant = useCallback(
+    (sessionId: SessionId, assistantId: string, patch: (msg: ChatMessage) => ChatMessage) => {
+      updateSession(sessionId, (session) => ({
+        ...session,
+        messages: session.messages.map((m) => (m.id === assistantId ? patch(m) : m)),
+      }));
+    },
+    [updateSession],
   );
 
-  const flushPiEventBatch = useCallback((sessionId: SessionId) => {
-    const batch = piEventBatchesRef.current.get(sessionId);
-    if (!batch) return;
-    if (batch.rafId != null && typeof cancelAnimationFrame !== "undefined") {
-      cancelAnimationFrame(batch.rafId);
-    }
-    piEventBatchesRef.current.delete(sessionId);
-    if (batch.items.length === 0) return;
-    batcherRef.current.run(sessionId, (update) => {
-      const patchAssistant = (
-        sid: SessionId,
-        assistantId: string,
-        patch: (msg: ChatMessage) => ChatMessage,
-      ) => {
-        update(sid, (session) => ({
-          ...session,
-          messages: session.messages.map((m) => (m.id === assistantId ? patch(m) : m)),
-        }));
-      };
-      for (const item of batch.items) {
-        if (item.kind === "patch") {
-          update(sessionId, item.patch);
-          continue;
-        }
-        applyPiEventToSession(
-          {
-            liveAssistantIdsRef,
-            patchAssistant,
-            tabsRef,
-            updateSession: update,
-          },
-          sessionId,
-          item.assistantId,
-          item.event,
-        );
-      }
-    });
-  }, []);
-
-  // Schedule a per-session drain on the next animation frame. We use rAF (with
-  // a `setTimeout(..., 16)` fallback for hidden tabs / SSR) so streaming
-  // updates align with the browser's paint cadence — the same trick Codex's
-  // `frameTextDeltaQueue` uses.
-  const scheduleFrame = useCallback(
-    (sessionId: SessionId, queue: FrameQueue) => {
-      if (queue.rafId != null) return;
-      const raf =
-        typeof requestAnimationFrame === "function"
-          ? requestAnimationFrame
-          : (callback: FrameRequestCallback) =>
-              setTimeout(() => callback(performance.now()), 16) as unknown as number;
-      queue.rafId = raf(() => {
-        queue.rafId = null;
-        flushPiEventBatch(sessionId);
-      });
+  // Apply a single pi event to a session through a deep Module that owns Pi
+  // event routing while the hook owns React lifecycle and runtime streams.
+  const applyPiEvent = useCallback(
+    (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => {
+      applyPiEventToSession(
+        { liveAssistantIdsRef, patchAssistant, tabsRef, updateSession },
+        sessionId,
+        assistantId,
+        event,
+      );
     },
-    [flushPiEventBatch],
+    [patchAssistant, updateSession],
   );
 
-  function getOrCreateQueue(sessionId: SessionId, assistantId: string): FrameQueue {
-    let queue = piEventBatchesRef.current.get(sessionId);
-    if (!queue) {
-      queue = { assistantId, items: [], rafId: null };
-      piEventBatchesRef.current.set(sessionId, queue);
-    } else if (assistantId && !queue.assistantId) {
-      queue.assistantId = assistantId;
-    }
-    return queue;
-  }
-
-  // Enqueue an out-of-Pi-taxonomy session patch (e.g. status / lastEventSeq /
-  // piSessionId / activeAssistantId / error) onto the same frame queue Pi
-  // events flow through. This is what eliminates the "3 extra updateSession
-  // calls per Pi event" cost the audit identified.
-  const enqueueSessionPatch = useCallback(
-    (
-      sessionId: SessionId,
-      patch: (session: Session) => Session,
-      options: { flushNow?: boolean; assistantId?: string } = {},
-    ) => {
-      const queue = getOrCreateQueue(sessionId, options.assistantId ?? "");
-      queue.items.push({ kind: "patch", patch });
-      if (options.flushNow) {
-        flushPiEventBatch(sessionId);
-        return;
+  const flushPiEventBatch = useCallback(
+    (sessionId: SessionId) => {
+      const batch = piEventBatchesRef.current.get(sessionId);
+      if (!batch) return;
+      if (batch.timer) clearTimeout(batch.timer);
+      piEventBatchesRef.current.delete(sessionId);
+      for (const event of batch.events) {
+        applyPiEvent(sessionId, batch.assistantId, event);
       }
-      scheduleFrame(sessionId, queue);
     },
-    [flushPiEventBatch, scheduleFrame],
+    [applyPiEvent],
   );
 
   const enqueuePiEvent = useCallback(
@@ -243,15 +171,24 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       event: Record<string, unknown>,
       options: { flushNow?: boolean } = {},
     ) => {
-      const queue = getOrCreateQueue(sessionId, assistantId);
-      queue.items.push({ kind: "pi", assistantId, event });
+      const existing = piEventBatchesRef.current.get(sessionId);
+      const batch = existing ?? {
+        assistantId,
+        events: [] as Record<string, unknown>[],
+        timer: null,
+      };
+      batch.assistantId = batch.assistantId || assistantId;
+      batch.events.push(event);
+      if (!existing) piEventBatchesRef.current.set(sessionId, batch);
       if (options.flushNow) {
         flushPiEventBatch(sessionId);
         return;
       }
-      scheduleFrame(sessionId, queue);
+      if (!batch.timer) {
+        batch.timer = setTimeout(() => flushPiEventBatch(sessionId), 100);
+      }
     },
-    [flushPiEventBatch, scheduleFrame],
+    [flushPiEventBatch],
   );
 
   useSessionEngineBatchCleanupEffect({ piEventBatchesRef });
@@ -309,34 +246,23 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           (payload) => {
             if (payload.type === "error") controlError = payload.error;
             if (payload.type === "status") {
-              // Status transitions are user-visible chrome; flush immediately
-              // so any UI bound to `session.status` reacts on the same tick.
-              enqueueSessionPatch(
-                sessionId,
-                (session) => ({
-                  ...session,
-                  piSessionId: payload.piSessionId || session.piSessionId,
-                  status: statusAfterControlPhase(session.status, payload.phase),
-                }),
-                { flushNow: true },
-              );
+              updateSession(sessionId, (session) => ({
+                ...session,
+                piSessionId: payload.piSessionId || session.piSessionId,
+                status: statusAfterControlPhase(session.status, payload.phase),
+              }));
             }
             if (payload.type === "pi") {
               const eventId = piSessionIdFromEvent(payload.event);
               const assistantId = ensureAssistantId();
               const agentEnded = isAgentEndEvent(payload.event);
-              const seq = typeof payload.seq === "number" ? payload.seq : undefined;
-              enqueueSessionPatch(
-                sessionId,
-                (session) => ({
-                  ...session,
-                  piSessionId: eventId || session.piSessionId,
-                  lastEventSeq: seq ?? session.lastEventSeq,
-                  status: agentEnded ? "idle" : session.status,
-                  activeAssistantId: agentEnded ? undefined : assistantId,
-                }),
-                { assistantId },
-              );
+              updateSession(sessionId, (session) => ({
+                ...session,
+                piSessionId: eventId || session.piSessionId,
+                lastEventSeq: typeof payload.seq === "number" ? payload.seq : session.lastEventSeq,
+                status: agentEnded ? "idle" : session.status,
+                activeAssistantId: agentEnded ? undefined : assistantId,
+              }));
               if (eventId) onPiSessionIdChange?.(eventId);
               enqueuePiEvent(sessionId, assistantId, payload.event, { flushNow: agentEnded });
             }
@@ -354,7 +280,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       canvasEnabled,
       cwd,
       enqueuePiEvent,
-      enqueueSessionPatch,
       flushPiEventBatch,
       modelId,
       onPiSessionIdChange,
@@ -430,28 +355,34 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           (payload) => {
             if (payload.type === "status") {
               const phase = payload.phase;
-              enqueueSessionPatch(
-                sessionId,
-                (session) => ({
-                  ...session,
-                  piSessionId: payload.piSessionId || session.piSessionId,
-                  status: (phase === "done" ? "idle" : phase) as SessionStatus,
-                  activeAssistantId: phase === "done" ? undefined : session.activeAssistantId,
-                }),
-                { flushNow: true },
-              );
+              updateSession(sessionId, (session) => ({
+                ...session,
+                piSessionId: payload.piSessionId || session.piSessionId,
+                status: (phase === "done" ? "idle" : phase) as SessionStatus,
+                activeAssistantId: phase === "done" ? undefined : session.activeAssistantId,
+              }));
               if (payload.piSessionId) onPiSessionIdChange?.(payload.piSessionId);
             } else if (payload.type === "error") {
               streamError = payload.error;
-              enqueueSessionPatch(
-                sessionId,
-                (session) => ({ ...session, error: payload.error, status: "idle" }),
-                { flushNow: true },
-              );
+              flushPiEventBatch(sessionId);
+              updateSession(sessionId, (session) => ({
+                ...session,
+                error: payload.error,
+                status: "idle",
+              }));
             } else if (payload.type === "pi") {
               const piEvent = payload.event;
               const eventId = piSessionIdFromEvent(piEvent);
-              if (eventId) onPiSessionIdChange?.(eventId);
+              if (eventId) {
+                updateSession(sessionId, (session) => ({ ...session, piSessionId: eventId }));
+                onPiSessionIdChange?.(eventId);
+              }
+              if (typeof payload.seq === "number") {
+                updateSession(sessionId, (session) => ({
+                  ...session,
+                  lastEventSeq: payload.seq,
+                }));
+              }
               if (isAgentEndEvent(piEvent)) {
                 agentEnded = true;
                 const latestPiSessionId =
@@ -460,22 +391,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                   selected.piSessionId ??
                   "";
                 onPiSessionIdChange?.(latestPiSessionId);
-              }
-              // Coalesce the three previously-bare `updateSession` calls
-              // (piSessionId, lastEventSeq, agent-end housekeeping) into one
-              // patch that rides on the same animation frame as the Pi event.
-              const seq = typeof payload.seq === "number" ? payload.seq : undefined;
-              if (eventId || seq !== undefined || agentEnded) {
-                enqueueSessionPatch(
-                  sessionId,
-                  (session) => ({
-                    ...session,
-                    piSessionId: eventId || session.piSessionId,
-                    lastEventSeq: seq ?? session.lastEventSeq,
-                    activeAssistantId: agentEnded ? undefined : session.activeAssistantId,
-                  }),
-                  { assistantId },
-                );
               }
               enqueuePiEvent(sessionId, assistantId, piEvent, { flushNow: agentEnded });
             }
@@ -519,7 +434,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       canvasEnabled,
       onPiSessionIdChange,
       enqueuePiEvent,
-      enqueueSessionPatch,
       flushPiEventBatch,
       updateSession,
     ],
