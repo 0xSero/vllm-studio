@@ -192,7 +192,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const closeComputerTab = useCallback((tab: ComputerTab) => {
-    if (tab === "status") return;
+    if (tab === "status" || tab === "tools") return;
     setComputer((current) => {
       const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
       const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "status") : current.tab;

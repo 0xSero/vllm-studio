@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   Code2,
   FolderTree,
   GitBranch,
@@ -20,6 +21,7 @@ import type { Session } from "@/lib/agent/sessions/types";
 import type { AgentModel } from "@/lib/agent/workspace/types";
 import { NEW_AGENT_SESSION_EVENT } from "@/lib/agent/workspace/events";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
+import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
 import { TerminalPanel } from "./terminal-panel";
@@ -45,7 +47,14 @@ type AgentBrowserPanelProps = {
   } | null;
 };
 
-export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelProps) {
+export function AgentBrowserPanel({
+  handles,
+  activeProject,
+  focusedSession,
+  sessions,
+  activeModel,
+  gitSummary,
+}: AgentBrowserPanelProps) {
   const tools = useTools();
   if (!tools.computer.open) return null;
 
@@ -84,11 +93,19 @@ export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelP
         openTabs={tools.computer.tabs}
         onSelectTab={tools.setComputerTab}
         onCloseTab={tools.closeComputerTab}
-        onShowLauncher={() => tools.setComputerTab("status")}
+        onShowLauncher={() => tools.setComputerTab("tools")}
         onCloseComputer={() => tools.setComputerOpen(false)}
       />
 
       {tools.computer.tab === "status" ? (
+        <ComputerStatusPanel
+          activeProject={activeProject}
+          activeModel={activeModel}
+          focusedSession={focusedSession}
+          sessions={sessions}
+          gitSummary={gitSummary}
+        />
+      ) : tools.computer.tab === "tools" ? (
         <ComputerLauncherPanel
           activeTab={tools.computer.tab}
           onSelectTab={tools.setComputerTab}
@@ -123,7 +140,8 @@ export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelP
 }
 
 const TAB_LABELS: Record<ComputerTab, string> = {
-  status: "Tools",
+  status: "Status",
+  tools: "Tools",
   canvas: "Canvas",
   browser: "Browser",
   files: "Filesystem",
@@ -174,10 +192,12 @@ function ComputerHeader({
   onShowLauncher: () => void;
   onCloseComputer: () => void;
 }) {
-  const visibleTabs = openTabs.filter((openTab) => openTab !== "status");
+  // The launcher ("tools") is reached via the Plus button, so it never
+  // appears as a row entry. Status IS a real row tab again.
+  const visibleTabs = openTabs.filter((openTab) => openTab !== "tools");
   const tabMeta = (candidate: ComputerTab) =>
     candidate === "status"
-      ? { label: "Status", icon: PanelRight }
+      ? { label: "Status", icon: Activity }
       : {
           label: TAB_LABELS[candidate],
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
@@ -188,13 +208,13 @@ function ComputerHeader({
         type="button"
         onClick={onShowLauncher}
         className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-          tab === "status"
+          tab === "tools"
             ? "text-(--fg) hover:bg-(--surface)"
             : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
         }`}
         title="Show tools"
         aria-label="Show tools"
-        aria-pressed={tab === "status"}
+        aria-pressed={tab === "tools"}
       >
         <Plus className="pointer-events-none h-3.5 w-3.5" />
       </button>
