@@ -168,6 +168,14 @@ export function ChatPane({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerSubmitInFlightRef = useRef(false);
+  // Track the height we last *applied* to the composer textarea so we can
+  // skip the "height: auto" reset on every keystroke. Resetting to auto
+  // collapses the textarea for one paint before the new scrollHeight is
+  // re-applied, which the user sees as flicker once the composer is
+  // multi-line. We only need that reset when content might have *shrunk*
+  // (i.e., when the value got shorter than before).
+  const lastAppliedComposerHeightRef = useRef(0);
+  const lastComposerValueLengthRef = useRef(0);
   const [isMultiline, setIsMultiline] = useState(false);
   const [stickToBottom, setStickToBottom] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -443,6 +451,8 @@ export function ChatPane({
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
+      lastAppliedComposerHeightRef.current = 0;
+      lastComposerValueLengthRef.current = 0;
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
@@ -469,6 +479,8 @@ export function ChatPane({
       }));
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
+      lastAppliedComposerHeightRef.current = 0;
+      lastComposerValueLengthRef.current = 0;
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({
         ...t,
@@ -905,13 +917,34 @@ export function ChatPane({
               const element = event.currentTarget;
               if (!value) {
                 element.style.height = "";
+                lastAppliedComposerHeightRef.current = 0;
+                lastComposerValueLengthRef.current = 0;
                 setIsMultiline(false);
                 setMention(null);
                 return;
               }
-              element.style.height = "auto";
-              element.style.height = `${element.scrollHeight}px`;
-              setIsMultiline(element.scrollHeight > 38);
+              const prevLength = lastComposerValueLengthRef.current;
+              lastComposerValueLengthRef.current = value.length;
+              const shrinking = value.length < prevLength;
+              // When the content shrinks we have to briefly let the textarea
+              // collapse so `scrollHeight` reflects the new minimum.
+              // When the content only grows, we can skip the "height: auto"
+              // reset — that reset is what causes the one-frame flicker
+              // every keystroke in a multi-line composer.
+              if (shrinking) {
+                element.style.height = "auto";
+              }
+              const next = element.scrollHeight;
+              if (!shrinking && next === lastAppliedComposerHeightRef.current) {
+                // Height didn't change while growing — skip the write
+                // entirely. Re-assigning the same `style.height` still
+                // forces a style recompute on Electron/Chromium and
+                // contributes to the perceptible shake.
+                return;
+              }
+              element.style.height = `${next}px`;
+              lastAppliedComposerHeightRef.current = next;
+              setIsMultiline(next > 38);
             }}
             onKeyDown={(event) => {
               if (mention) {
