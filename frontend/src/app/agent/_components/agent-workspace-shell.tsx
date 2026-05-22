@@ -91,15 +91,19 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
     }, [searchParams, state, projects, dispatch]),
   );
 
-  const activeProject = projects.selectedProject;
   const focusedTab = focusedSession(state);
+  // The right panel (browser / files / git / terminal / status) follows the
+  // FOCUSED session, not the workspace-global selectedProject. Otherwise
+  // splitting/switching panes leaves the right panel pinned to whichever
+  // project was active when the panel was first opened.
+  const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
   useActiveCanvasSessionEffects({
     sessionId: focusedTab?.id ?? null,
     setActiveCanvasSession: tools.setActiveCanvasSession,
   });
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
-  const focusedGitSummary = projects.gitSummary(activeProject?.path);
+  const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
   const focusedComputerUseLoaded = tools
     .selectionFor(focusedTab?.id)
     .plugins.some((plugin) =>
