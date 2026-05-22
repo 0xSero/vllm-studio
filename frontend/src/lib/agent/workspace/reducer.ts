@@ -190,6 +190,7 @@ function reduceSessionOpenAction(
         tab: action.tab,
         paneId: action.paneId,
         runtimeSessionId: action.runtimeSessionId,
+        mode: action.mode,
       });
     case "replaySession":
       return replaySessionInFocusedPane(state, {

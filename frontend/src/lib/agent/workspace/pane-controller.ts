@@ -245,7 +245,8 @@ export function openNewSessionInFocusedPane(
 ): WorkspaceState {
   const pane = state.panesById.get(state.focusedPaneId);
   if (!pane) return state;
-  // Reuse an existing empty starter tab (avoid piling up blanks).
+  // Reuse an existing empty starter tab (avoid piling up blanks). The user's
+  // mode choice doesn't matter here — there's nothing to displace.
   const existing = findEmptyStarterInPane(state, pane, payload.project);
   if (existing) {
     const sessions = payload.project
@@ -265,8 +266,23 @@ export function openNewSessionInFocusedPane(
     projectId: payload.project?.id,
     cwd: payload.project?.path,
   };
-  // If the focused pane has an active agent session, keep it visible: drop the new chat
-  // into the sibling leaf (if one exists) or split right.
+  // Explicit user choice from the sidebar dropdown wins over heuristics:
+  //   "split"   — always drop into a sibling leaf (or split right if alone).
+  //   "replace" — always overwrite the focused pane's session.
+  // When `mode` is omitted (URL-driven `new=1` navigation, programmatic
+  // openers) we fall back to the legacy heuristic: split if the focused pane
+  // is busy, otherwise replace.
+  if (payload.mode === "split") {
+    return openSessionAdjacentToFocusedPane(
+      state,
+      session,
+      payload.paneId,
+      payload.runtimeSessionId,
+    );
+  }
+  if (payload.mode === "replace") {
+    return replacePaneSession(state, state.focusedPaneId, session);
+  }
   if (hasActiveAgentSession(state, pane)) {
     return openSessionAdjacentToFocusedPane(
       state,

@@ -126,12 +126,15 @@ export function subscribeWorkspaceWindowEvents(
     const detail = eventDetail(event);
     const projectId = isRecord(detail) ? stringField(detail, "projectId") : undefined;
     const project = projectId ? (findProjectById(projectId) ?? undefined) : undefined;
+    const rawMode = isRecord(detail) ? stringField(detail, "mode") : undefined;
+    const mode = rawMode === "split" || rawMode === "replace" ? rawMode : undefined;
     dispatch({
       type: "openNewSession",
       project,
       tab: makeFreshTab(),
       paneId: newPaneId(),
       runtimeSessionId: newRuntimeId(),
+      ...(mode ? { mode } : {}),
     });
   };
   const onRename = (event: Event) => {

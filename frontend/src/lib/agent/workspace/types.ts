@@ -82,6 +82,14 @@ export type WorkspaceAction =
       /** Pre-allocated pane id used when the focused pane is busy and we split right. */
       paneId?: PaneId;
       runtimeSessionId?: string;
+      /**
+       * Explicit user choice when the focused pane already has an active
+       * session. `"split"` forces a new sibling pane, `"replace"` reuses the
+       * focused pane and replaces its session. When omitted the legacy
+       * heuristic (split if busy) applies — kept for URL-driven `new=1`
+       * navigation that doesn't have a UI affordance to ask.
+       */
+      mode?: "split" | "replace";
     }
   | { type: "replaySession"; piSessionId: string; tab: Session; sessionTitle?: string }
   | {

@@ -429,7 +429,9 @@ function ProjectDirectoryPickerModal({
       else next.add(id);
       return next;
     });
-  const [chatsExpanded, setChatsExpanded] = useState(true);
+  // Chats collapses by default — its row count grows fast and most navigation
+  // happens via the Pinned strip above it.
+  const [chatsExpanded, setChatsExpanded] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   useProjectsNavAddProjectEffect(handleAddProject);
   useActiveAgentSessionsEffect({ setActiveSessions });
@@ -485,23 +487,11 @@ function ProjectDirectoryPickerModal({
             open={chatsExpanded}
             onToggle={() => setChatsExpanded((value) => !value)}
             action={
-              <Link
-                href={`/agent?project=${encodeURIComponent(chatProject.id)}&new=1`}
-                onClick={(event) => {
-                  if (window.location.pathname !== "/agent") return;
-                  event.preventDefault();
-                  window.dispatchEvent(
-                    new CustomEvent(NEW_AGENT_SESSION_EVENT, {
-                      detail: { projectId: chatProject.id },
-                    }),
-                  );
-                }}
+              <NewChatPlusButton
+                projectId={chatProject.id}
+                label="New chat"
                 className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
-                title="New chat"
-                aria-label="New chat"
-              >
-                <PlusIcon className="h-3.5 w-3.5" />{" "}
-              </Link>
+              />
             }
           />
           {chatsExpanded ? (
@@ -652,21 +642,13 @@ function ProjectRow({
             />
           ) : null}
         </button>{" "}
-        <Link
-          href={`/agent?project=${encodeURIComponent(project.id)}&new=1`}
-          onClick={(event) => {
-            if (window.location.pathname !== "/agent") return;
-            event.preventDefault();
-            window.dispatchEvent(
-              new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId: project.id } }),
-            );
-          }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
-          title="New chat"
-          aria-label={`New chat in ${project.name}`}
-        >
-          <PlusIcon className="h-3.5 w-3.5" />{" "}
-        </Link>
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100">
+          <NewChatPlusButton
+            projectId={project.id}
+            label={`New chat in ${project.name}`}
+            className="block p-0.5 text-(--dim) hover:text-(--fg)"
+          />
+        </div>
         {onRemove ? (
           <button
             type="button"
@@ -960,7 +942,7 @@ function SessionNavRow({
       {href ? (
         <Link
           href={href}
-          title={label}
+          aria-label={label}
           draggable
           onClick={onRememberTitle}
           onDragStart={onDragStart}
@@ -976,6 +958,7 @@ function SessionNavRow({
           draggable
           onDragStart={onDragStart}
           onClick={onOpen}
+          aria-label={label}
           className="flex min-w-0 flex-1 items-center gap-1 pr-5 text-left"
           {...openProps}
         >
@@ -1184,5 +1167,60 @@ function SessionMenuItem({ onClick, children }: { onClick: () => void; children:
     >
       {children}{" "}
     </button>
+  );
+}
+
+/**
+ * The "+" affordance in the sidebar (Chats header + each project row). When
+ * already on the workspace page it pops a dropdown so the user explicitly
+ * picks Split (sibling pane) or New (replace focused pane). When elsewhere it
+ * acts as a regular `<Link>` into `/agent` — no UI choice to make until we
+ * land on the workspace.
+ */
+function NewChatPlusButton({
+  projectId,
+  label,
+  className,
+}: {
+  projectId: string;
+  label: string;
+  className: string;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useClickOutside(containerRef, menuOpen, () => setMenuOpen(false));
+
+  const dispatchNew = (mode: "split" | "replace") => {
+    setMenuOpen(false);
+    window.dispatchEvent(new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId, mode } }));
+  };
+
+  return (
+    <div ref={containerRef} className="relative inline-flex">
+      <Link
+        href={`/agent?project=${encodeURIComponent(projectId)}&new=1`}
+        onClick={(event) => {
+          if (window.location.pathname !== "/agent") return;
+          // On the workspace we never navigate — open the dropdown instead so
+          // the user can choose how to slot the new session.
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen((value) => !value);
+        }}
+        className={className}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title={label}
+      >
+        <PlusIcon className="h-3.5 w-3.5" />{" "}
+      </Link>
+      {menuOpen ? (
+        <div className={`${SESSION_MENU_CLASS} min-w-[140px]`} role="menu">
+          <SessionMenuItem onClick={() => dispatchNew("replace")}>New session </SessionMenuItem>
+          <SessionMenuItem onClick={() => dispatchNew("split")}>Split right </SessionMenuItem>
+        </div>
+      ) : null}
+    </div>
   );
 }
