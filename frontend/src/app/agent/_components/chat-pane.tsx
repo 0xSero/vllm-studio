@@ -9,7 +9,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Loader2 } from "lucide-react";
+import { Code2, Loader2 } from "lucide-react";
 import {
   AttachIcon,
   ChevronDownIcon,
@@ -104,6 +104,8 @@ type Props = {
   onInitGit?: () => void;
   browserToolEnabled: boolean;
   onToggleBrowserTool: () => void;
+  canvasEnabled: boolean;
+  onToggleCanvas: () => void;
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
@@ -141,6 +143,8 @@ export function ChatPane({
   onInitGit,
   browserToolEnabled,
   onToggleBrowserTool,
+  canvasEnabled,
+  onToggleCanvas,
   isFocused,
   onFocus,
   onPiSessionIdChange,
@@ -934,6 +938,19 @@ export function ChatPane({
                 <GlobeIcon className="h-3.5 w-3.5" />
                 {computerUseLoaded ? <ComputerUseActivityDot /> : null}{" "}
               </span>
+            </button>{" "}
+            <button
+              type="button"
+              onClick={onToggleCanvas}
+              aria-pressed={canvasEnabled}
+              title={
+                canvasEnabled
+                  ? "Canvas: ON — shared scratchboard tools loaded; model reads/writes the canvas"
+                  : "Canvas: OFF — click to share a scratchboard with the model (notes, plans, links, state)"
+              }
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"}`}
+            >
+              <Code2 className="h-3.5 w-3.5" />
             </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
               {modelSelector}{" "}

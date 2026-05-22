@@ -121,6 +121,7 @@ describe("pi runtime helper seams", () => {
     const root = makeRoot();
     const pluginSkills = path.join(root, "plugin", "skills");
     const selectedSkills = path.join(root, "selected-skills");
+    const canvasSkill = path.join(root, "canvas-skill");
     const timeoutExtension = path.join(root, "vllm-studio-timeouts.ts");
     const mcpExtension = path.join(root, "mcp-plugin.ts");
     const browserExtension = path.join(root, "browser.ts");
@@ -129,6 +130,7 @@ describe("pi runtime helper seams", () => {
     const mcpConfigPath = path.join(root, "plugin", ".mcp.json");
     mkdirSync(pluginSkills, { recursive: true });
     mkdirSync(selectedSkills, { recursive: true });
+    mkdirSync(canvasSkill, { recursive: true });
     for (const file of [
       timeoutExtension,
       mcpExtension,
@@ -145,6 +147,7 @@ describe("pi runtime helper seams", () => {
     process.env.VLLM_STUDIO_BROWSER_EXTENSION_PATH = browserExtension;
     process.env.VLLM_STUDIO_PARCHI_BROWSER_EXTENSION_PATH = parchiBrowserExtension;
     process.env.VLLM_STUDIO_CANVAS_EXTENSION_PATH = canvasExtension;
+    process.env.VLLM_STUDIO_CANVAS_SKILL_PATH = canvasSkill;
 
     const plan = buildPiLaunchPlan({
       agentDir: path.join(root, "agent"),
@@ -176,6 +179,8 @@ describe("pi runtime helper seams", () => {
       pluginSkills,
       "--skill",
       selectedSkills,
+      "--skill",
+      canvasSkill,
       "--extension",
       timeoutExtension,
       "--extension",

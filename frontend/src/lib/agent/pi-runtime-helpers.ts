@@ -159,6 +159,26 @@ export function resolveMcpExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("mcp-plugin.ts", process.env.VLLM_STUDIO_MCP_EXTENSION_PATH);
 }
 
+// Locate the bundled canvas skill directory (contains SKILL.md). Searched only
+// when the canvas toggle is ON so it can be appended to `--skill` and teach
+// the model how/when to use the canvas tools.
+export function resolveCanvasSkillPath(): string | null {
+  const override = process.env.VLLM_STUDIO_CANVAS_SKILL_PATH;
+  const candidates = [
+    override,
+    process.resourcesPath
+      ? path.join(process.resourcesPath, "desktop", "resources", "skills", "canvas")
+      : null,
+    path.resolve(process.cwd(), "frontend", "desktop", "resources", "skills", "canvas"),
+    path.resolve(process.cwd(), "desktop", "resources", "skills", "canvas"),
+    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "skills", "canvas"),
+  ].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function pluginNameMatches(plugin: RuntimePluginRef, needle: string): boolean {
   return [
     plugin.id,
@@ -314,10 +334,22 @@ function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
     : "embedded";
 }
 
-function skillArgs(plugins: RuntimePluginRef[], skills: RuntimeSkillRef[]): string[] {
-  return uniqueExistingPaths([...pluginSkillPaths(plugins), ...selectedSkillPaths(skills)]).flatMap(
-    (skillPath) => ["--skill", skillPath],
-  );
+function skillArgs(
+  options: RuntimeStartOptions,
+  plugins: RuntimePluginRef[],
+  skills: RuntimeSkillRef[],
+): string[] {
+  // The canvas skill is bundled and only attached when the user has explicitly
+  // flipped the canvas toggle ON in the composer. This is what teaches the
+  // model when/how to use the canvas_read/write/append tools registered by
+  // the canvas extension.
+  const canvasSkillPath =
+    options.canvasEnabled === true ? [resolveCanvasSkillPath()] : ([] as Array<string | null>);
+  return uniqueExistingPaths([
+    ...pluginSkillPaths(plugins),
+    ...selectedSkillPaths(skills),
+    ...canvasSkillPath,
+  ]).flatMap((skillPath) => ["--skill", skillPath]);
 }
 
 function extensionArgs(
@@ -363,7 +395,10 @@ export function buildPiLaunchPlan(input: RuntimeLaunchPlanInput): RuntimeLaunchP
   ];
   if (input.selectedModel.reasoning) args.push("--thinking", "high");
   if (input.piSessionId) args.push("--session", input.piSessionId);
-  args.push(...skillArgs(plugins, skills), ...extensionArgs(input.options, plugins, mcpConfigs));
+  args.push(
+    ...skillArgs(input.options, plugins, skills),
+    ...extensionArgs(input.options, plugins, mcpConfigs),
+  );
 
   return {
     args,

@@ -317,6 +317,8 @@ function renderWorkspacePane(
       }
       browserToolEnabled={state.focusedPaneId === paneId && tools.browser.enabled}
       onToggleBrowserTool={tools.toggleBrowser}
+      canvasEnabled={state.focusedPaneId === paneId && tools.computer.canvasEnabled}
+      onToggleCanvas={tools.toggleCanvas}
       onPiSessionIdChange={handles.notifySessionsChanged}
       isFocused={state.focusedPaneId === paneId}
       onFocus={() => dispatch({ type: "focusPane", paneId })}
