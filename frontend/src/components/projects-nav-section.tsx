@@ -74,7 +74,7 @@ type ActiveAgentSession = ActiveAgentSessionSnapshot;
 const SHOW_HIDDEN_KEY = "vllm-studio.agent.sessionPrefs.showHidden";
 const SESSION_NAV_TITLE_PREFIX = "vllm-studio.agent.sessionNavTitle:";
 const SESSION_MENU_CLASS =
-  "absolute right-0 top-5 z-50 min-w-[150px] rounded-md border border-(--border) bg-[#151515] p-1 text-xs text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]";
+  "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
 function setAgentSessionDragData(
   event: DragEvent,
   session: {
@@ -457,7 +457,7 @@ function ProjectDirectoryPickerModal({
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col pb-1">
-          <div className="mt-4 flex h-6 items-center px-2 text-[11px] font-medium text-(--dim)">
+          <div className="mt-4 flex h-6 items-center px-1.5 text-[10.5px] font-medium text-(--dim)">
             Pinned
           </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -490,7 +490,7 @@ function ProjectDirectoryPickerModal({
               <NewChatPlusButton
                 projectId={chatProject.id}
                 label="New chat"
-                className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+                className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
               />
             }
           />
@@ -512,11 +512,11 @@ function ProjectDirectoryPickerModal({
           <button
             type="button"
             onClick={handleAddProject}
-            className="rounded p-0.5 text-(--dim) transition-colors hover:text-(--fg)"
+            className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
             title="Add folder"
             aria-label="Add folder"
           >
-            <PlusIcon className="h-3.5 w-3.5" />{" "}
+            <PlusIcon className="block h-3.5 w-3.5" />
           </button>
         }
       />
@@ -566,19 +566,23 @@ function SidebarSectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mt-4 flex h-6 items-center justify-between px-2 text-[11px] font-medium text-(--dim)">
+    <div className="group mt-4 flex h-6 items-center justify-between px-1.5 text-[10.5px] font-medium text-(--dim)">
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-w-0 items-center gap-1.5 text-left hover:text-(--fg)"
+        className="flex min-w-0 items-center gap-1.5 text-left hover:text-(--fg) focus-visible:text-(--fg) focus-visible:outline-none"
         aria-expanded={open}
       >
-        <ChevronDownIcon
-          className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
-        />
         <span>{label}</span>
+        <ChevronDownIcon
+          className={`h-2.5 w-2.5 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-within:opacity-100 ${open ? "" : "-rotate-90"}`}
+        />
       </button>
-      {action}
+      {action ? (
+        <div className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -602,6 +606,7 @@ function ProjectRow({
   icon?: "folder" | "chat";
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
+  const [newChatMenuOpen, setNewChatMenuOpen] = useState(false);
   const handleToggle = () => {
     if (!project.exists) {
       setMissingErrorVisible(true);
@@ -612,13 +617,13 @@ function ProjectRow({
   };
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
+      <div className="group relative flex h-6 items-center rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
         {" "}
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-0 pr-8 text-left"
         >
           {icon === "chat" ? (
             <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
@@ -633,7 +638,7 @@ function ProjectRow({
               />{" "}
             </span>
           )}
-          <span className="truncate text-[13px] font-medium text-(--fg)">{project.name}</span>{" "}
+          <span className="truncate text-[12px] font-medium text-(--fg)">{project.name}</span>{" "}
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -642,11 +647,16 @@ function ProjectRow({
             />
           ) : null}
         </button>{" "}
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100">
+        <div
+          className={`absolute right-1.5 top-1/2 -translate-y-1/2 transition-opacity ${
+            newChatMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
           <NewChatPlusButton
             projectId={project.id}
             label={`New chat in ${project.name}`}
-            className="block p-0.5 text-(--dim) hover:text-(--fg)"
+            className="flex h-5 w-5 items-center justify-center text-(--dim) hover:text-(--fg)"
+            onMenuOpenChange={setNewChatMenuOpen}
           />
         </div>
         {onRemove ? (
@@ -657,7 +667,7 @@ function ProjectRow({
               event.stopPropagation();
               onRemove();
             }}
-            className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
+            className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 text-(--dim) opacity-0 hover:text-(--err) group-hover:opacity-100"
             title="Remove from list"
             aria-label="Remove project"
           >
@@ -787,9 +797,9 @@ function ProjectSessions({
         />
       ))}
       {loading && !sessions ? (
-        <div className="pl-10 pr-4 py-1 text-[12px] text-(--dim)">Loading…</div>
+        <div className="pl-7 pr-2 py-1 text-[11px] text-(--dim)">Loading…</div>
       ) : allRecent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-10 pr-4 py-1 text-[12px] text-(--dim)">No chats</div>
+        <div className="pl-7 pr-2 py-1 text-[11px] text-(--dim)">No chats</div>
       ) : (
         <>
           {" "}
@@ -805,7 +815,7 @@ function ProjectSessions({
             <button
               type="button"
               onClick={toggleShowHidden}
-              className="flex h-6 items-center gap-1 pl-10 pr-4 text-[12px] text-(--dim) hover:text-(--fg)"
+              className="flex h-6 items-center gap-1 rounded-md pl-7 pr-2 text-[11px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
               title={showHidden ? "Hide hidden sessions" : "Show hidden sessions"}
             >
               <EyeOffIcon className="w-3 h-3 shrink-0" />{" "}
@@ -908,9 +918,9 @@ function SessionNavRow({
   const content = (
     <>
       {" "}
-      <span className="min-w-0 flex-1 truncate text-[11px] font-normal leading-6">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal leading-5">{label}</span>
       {age ? (
-        <span className="shrink-0 pl-2 pr-1 font-mono text-[9px] text-(--dim)">{age}</span>
+        <span className="shrink-0 pl-1.5 pr-1 font-mono text-[8.5px] text-(--dim)">{age}</span>
       ) : null}{" "}
     </>
   );
@@ -924,7 +934,7 @@ function SessionNavRow({
     : {};
   return (
     <div
-      className={rowClass}
+      className={`${rowClass} ${menuOpen ? "z-[900]" : "z-0"}`}
       onContextMenu={
         onContextMenu
           ? (event) => {
@@ -975,14 +985,16 @@ function SessionNavRow({
             event.stopPropagation();
             setMenuOpen((value) => !value);
           }}
-          className="p-0.5 text-(--dim) opacity-0 hover:text-(--fg) group-hover:opacity-100"
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg) ${
+            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
           aria-label="Session options"
           title="Session options"
         >
-          <MoreIcon className={menuIconClass} />{" "}
+          <MoreIcon className={`pointer-events-none ${menuIconClass}`} />{" "}
         </button>
         {menuOpen ? (
-          <div className={SESSION_MENU_CLASS}>
+          <div className={SESSION_MENU_CLASS} role="menu">
             <SessionMenuItem
               onClick={() => {
                 setMenuOpen(false);
@@ -1053,7 +1065,7 @@ function ActiveSessionRow({
 }) {
   const label = pref.title || session.title || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-6 items-center gap-1 pl-4 pr-2 transition-colors ${isActive ? "text-(--fg) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--accent) before:content-['']" : "text-(--dim) hover:text-(--fg)"}`;
+  const rowClass = `group relative flex h-6 items-center gap-1 rounded-md pl-1.5 pr-1 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`;
   return (
     <SessionNavRow
       pref={pref}
@@ -1090,7 +1102,7 @@ function ActiveSessionRow({
       isRunning={session.status !== "idle" && session.status !== "done"}
       canDoubleClickRename
       menuIconClass="h-3.5 w-3.5"
-      renameInputClass="text-[12px]"
+      renameInputClass="text-[10.5px]"
     />
   );
 }
@@ -1110,8 +1122,8 @@ function SessionRow({
       label={label}
       initialDraft={pref.title ?? session.firstUserMessage ?? ""}
       age={relativeAge(session.startedAt)}
-      rowClass="group relative flex h-6 items-center gap-1 pl-4 pr-2 text-(--dim) transition-colors hover:text-(--fg)"
-      renameRowClass="flex h-6 items-center gap-1 bg-(--surface)/60 pl-4 pr-2"
+      rowClass="group relative flex h-6 items-center gap-1 rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+      renameRowClass="flex h-6 items-center gap-1 rounded-md bg-(--surface)/60 pl-1.5 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
@@ -1181,22 +1193,28 @@ function NewChatPlusButton({
   projectId,
   label,
   className,
+  onMenuOpenChange,
 }: {
   projectId: string;
   label: string;
   className: string;
+  onMenuOpenChange?: (open: boolean) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  useClickOutside(containerRef, menuOpen, () => setMenuOpen(false));
+  const setMenuOpenAndNotify = (open: boolean) => {
+    setMenuOpen(open);
+    onMenuOpenChange?.(open);
+  };
+  useClickOutside(containerRef, menuOpen, () => setMenuOpenAndNotify(false));
 
   const dispatchNew = (mode: "split" | "replace") => {
-    setMenuOpen(false);
+    setMenuOpenAndNotify(false);
     window.dispatchEvent(new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId, mode } }));
   };
 
   return (
-    <div ref={containerRef} className="relative inline-flex">
+    <div ref={containerRef} className="relative flex items-center justify-center leading-none">
       <Link
         href={`/agent?project=${encodeURIComponent(projectId)}&new=1`}
         onClick={(event) => {
@@ -1205,7 +1223,7 @@ function NewChatPlusButton({
           // the user can choose how to slot the new session.
           event.preventDefault();
           event.stopPropagation();
-          setMenuOpen((value) => !value);
+          setMenuOpenAndNotify(!menuOpen);
         }}
         className={className}
         aria-label={label}
@@ -1213,7 +1231,7 @@ function NewChatPlusButton({
         aria-expanded={menuOpen}
         title={label}
       >
-        <PlusIcon className="h-3.5 w-3.5" />{" "}
+        <PlusIcon className="block h-3.5 w-3.5" />
       </Link>
       {menuOpen ? (
         <div className={`${SESSION_MENU_CLASS} min-w-[140px]`} role="menu">

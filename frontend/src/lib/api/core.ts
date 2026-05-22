@@ -157,8 +157,14 @@ function isBenignSseTransportFailure(error: unknown, signal?: AbortSignal): bool
 
 export type ApiCore = ReturnType<typeof createApiCore>;
 
-export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
-  const { baseUrl, useProxy } = params;
+export function createApiCore(params: {
+  baseUrl: string;
+  useProxy: boolean;
+  backendUrlOverride?: string;
+  apiKeyOverride?: string;
+}) {
+  const { baseUrl, useProxy, backendUrlOverride, apiKeyOverride } = params;
+  const hasBackendUrlOverride = Boolean(backendUrlOverride?.trim());
 
   const normalizeSsePayload = (
     event: string,
@@ -199,6 +205,7 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
 
   const maybeClearInvalidBackendOverride = (response: Response): void => {
     if (!useProxy) return;
+    if (hasBackendUrlOverride) return;
     if (response.headers.get("x-backend-override-invalid") !== "1") return;
     clearStoredBackendUrl();
   };
@@ -209,6 +216,7 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
     retriedWithoutBackendOverride: boolean,
   ): boolean =>
     useProxy &&
+    !hasBackendUrlOverride &&
     response.headers.get("x-backend-override-invalid") === "1" &&
     Boolean(headers["X-Backend-Url"]) &&
     !retriedWithoutBackendOverride;
@@ -255,12 +263,12 @@ export function createApiCore(params: { baseUrl: string; useProxy: boolean }) {
   const buildHeaders = (extraHeaders?: HeadersInit): Record<string, string> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-    const storedBackendUrl = getStoredBackendUrl();
+    const storedBackendUrl = backendUrlOverride?.trim() || getStoredBackendUrl();
     if (useProxy && storedBackendUrl) {
       headers["X-Backend-Url"] = storedBackendUrl;
     }
 
-    const storedKey = getApiKey();
+    const storedKey = apiKeyOverride?.trim() || getApiKey();
     if (storedKey) {
       headers["Authorization"] = `Bearer ${storedKey}`;
     }

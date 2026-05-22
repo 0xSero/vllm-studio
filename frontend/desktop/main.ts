@@ -110,6 +110,23 @@ function registerIpcHandlers(): void {
     writeSessionPrefsFile(prefs as Record<string, unknown>);
   });
 
+  ipcMain.handle("desktop:load-ui-preferences", async () => {
+    return readUiPreferencesFile();
+  });
+
+  ipcMain.handle("desktop:save-ui-preferences", async (_, prefs: unknown) => {
+    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+      throw new Error("prefs must be a plain object");
+    }
+    const stringPrefs = Object.fromEntries(
+      Object.entries(prefs as Record<string, unknown>).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === "string" && typeof entry[1] === "string",
+      ),
+    );
+    writeUiPreferencesFile(stringPrefs);
+  });
+
   ipcMain.handle("desktop:pty-status", async () => ({
     available: isPtyAvailable(),
     reason: ptyUnavailableReason(),
@@ -218,6 +235,10 @@ function sessionPrefsFilePath(): string {
   return path.join(app.getPath("userData"), "session-prefs.json");
 }
 
+function uiPreferencesFilePath(): string {
+  return path.join(app.getPath("userData"), "ui-preferences.json");
+}
+
 function readSessionPrefsFile(): Record<string, unknown> {
   const filePath = sessionPrefsFilePath();
   try {
@@ -234,9 +255,36 @@ function readSessionPrefsFile(): Record<string, unknown> {
 
 function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
   const filePath = sessionPrefsFilePath();
+  writeJsonFile(filePath, prefs);
+}
+
+function readUiPreferencesFile(): Record<string, string> {
+  const filePath = uiPreferencesFilePath();
+  try {
+    if (!existsSync(filePath)) return {};
+    const raw = readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === "string" && typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeUiPreferencesFile(prefs: Record<string, string>): void {
+  const filePath = uiPreferencesFilePath();
+  writeJsonFile(filePath, prefs);
+}
+
+function writeJsonFile(filePath: string, payload: Record<string, unknown>): void {
   const directory = path.dirname(filePath);
   mkdirSync(directory, { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(prefs)}\n`, "utf8");
+  writeFileSync(tempPath, `${JSON.stringify(payload)}\n`, "utf8");
   renameSync(tempPath, filePath);
 }

@@ -31,6 +31,7 @@ export function createStudioApi(core: ApiCore) {
 
     updateStudioSettings: (payload: {
       models_dir?: string | null;
+      ui_preferences?: Record<string, string> | null;
     }): Promise<StudioSettings & { success: boolean }> =>
       core.request("/studio/settings", {
         method: "POST",

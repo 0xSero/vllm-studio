@@ -52,7 +52,6 @@
     "react-dom": "19.2.1",
     "react-markdown": "^10.1.0",
     "react-virtuoso": "^4.18.1",
-    "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "typebox": "^1.1.34",
     "zustand": "^4.5.4"

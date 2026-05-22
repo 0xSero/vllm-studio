@@ -13,6 +13,7 @@ type UseAgentBrowserEffectsParams = {
   fetchReadable: (target: string) => Promise<void>;
   onLocationChange?: (value: string) => void;
   setLiveBlank: (value: boolean) => void;
+  enabled?: boolean;
 };
 
 export function useAgentBrowserEffects({
@@ -23,13 +24,16 @@ export function useAgentBrowserEffects({
   fetchReadable,
   onLocationChange,
   setLiveBlank,
+  enabled = true,
 }: UseAgentBrowserEffectsParams): void {
   useEffect(() => {
+    if (!enabled) return;
     if (!url || !readingMode) return;
     void fetchReadable(url);
-  }, [fetchReadable, readingMode, url]);
+  }, [enabled, fetchReadable, readingMode, url]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!isElectron || readingMode) return;
     const webview = webviewRef.current;
     if (!webview) return;
@@ -60,9 +64,10 @@ export function useAgentBrowserEffects({
       webview.removeEventListener("did-finish-load", onLoaded as EventListener);
       webview.removeEventListener("did-fail-load", onFailed as EventListener);
     };
-  }, [isElectron, readingMode, setLiveBlank, url, webviewRef]);
+  }, [enabled, isElectron, readingMode, setLiveBlank, url, webviewRef]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!isElectron || readingMode || !onLocationChange) return;
     const webview = webviewRef.current;
     if (!webview) return;
@@ -80,5 +85,5 @@ export function useAgentBrowserEffects({
       webview.removeEventListener("did-navigate", syncUrl as EventListener);
       webview.removeEventListener("did-navigate-in-page", syncUrl as EventListener);
     };
-  }, [isElectron, onLocationChange, readingMode, url, webviewRef]);
+  }, [enabled, isElectron, onLocationChange, readingMode, url, webviewRef]);
 }

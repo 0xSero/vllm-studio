@@ -3,6 +3,12 @@ import { useState } from "react";
 import { Check, Eye, EyeOff, Link, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-configs";
 import {
+  loadSavedControllers,
+  saveSavedControllers,
+  type SavedController,
+} from "@/lib/controllers";
+import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
+import {
   SettingsButton,
   SettingsGroup,
   SettingsInput,
@@ -37,21 +43,17 @@ export function ApiConnectionSection({
   onTestConnection: () => void;
   onSave: () => void;
 }) {
-  const [controllers, setControllers] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem("vllm-studio.controllers");
-      return raw ? (JSON.parse(raw) as string[]) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [draftController, setDraftController] = useState("");
+  const [controllers, setControllers] = useState<SavedController[]>(() => loadSavedControllers());
+  const [draftController, setDraftController] = useState<SavedController>({ url: "" });
+  const [revealedControllerKeys, setRevealedControllerKeys] = useState<Record<string, boolean>>({});
 
-  const persistControllers = (next: string[]) => {
-    const deduped = [...new Set(next.map((url) => url.trim()).filter(Boolean))];
-    setControllers(deduped);
-    localStorage.setItem("vllm-studio.controllers", JSON.stringify(deduped));
+  const persistControllers = (next: SavedController[]) => {
+    const saved = saveSavedControllers(next);
+    setControllers(saved);
+    scheduleDurableUiPreferencesSave();
+  };
+  const toggleControllerKey = (key: string) => {
+    setRevealedControllerKeys((current) => ({ ...current, [key]: !current[key] }));
   };
 
   return (
@@ -139,44 +141,72 @@ export function ApiConnectionSection({
         />
         <SettingsRow
           label="Additional controllers"
-          description="Optional second, third, and fourth controllers for status tabs and routing ownership."
+          description="Optional controller targets. Each can carry its own API key for status tabs and proxy routing."
           control={
             <div className="space-y-2">
-              {controllers.map((url, index) => (
-                <div key={`${url}-${index}`} className="flex min-w-0 items-center gap-2">
-                  <SettingsInput
-                    value={url}
-                    onChange={(value) => {
-                      const next = controllers.slice();
-                      next[index] = value;
-                      persistControllers(next);
-                    }}
-                  />
-                  <SettingsButton
-                    tone="danger"
-                    onClick={() => persistControllers(controllers.filter((_, i) => i !== index))}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </SettingsButton>
-                </div>
-              ))}
-              <div className="flex min-w-0 items-center gap-2">
-                <SettingsInput
-                  value={draftController}
-                  placeholder="http://192.168.1.70:8080"
-                  onChange={setDraftController}
+              {controllers.map((controller, index) => (
+                <ControllerCredentialRow
+                  key={`${controller.url}-${index}`}
+                  controller={controller}
+                  index={index}
+                  revealed={Boolean(revealedControllerKeys[`controller-${index}`])}
+                  onToggleReveal={() => toggleControllerKey(`controller-${index}`)}
+                  onChange={(nextController) => {
+                    const next = controllers.slice();
+                    next[index] = nextController;
+                    persistControllers(next);
+                  }}
+                  onRemove={() => persistControllers(controllers.filter((_, i) => i !== index))}
                 />
+              ))}
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)_auto]">
+                <SettingsInput
+                  value={draftController.url}
+                  placeholder="http://192.168.1.70:8080"
+                  onChange={(url) => setDraftController((current) => ({ ...current, url }))}
+                />
+                <div className="relative">
+                  <SettingsInput
+                    type={revealedControllerKeys.draft ? "text" : "password"}
+                    value={draftController.apiKey ?? ""}
+                    placeholder="API key optional"
+                    onChange={(apiKey) => setDraftController((current) => ({ ...current, apiKey }))}
+                    className="pr-7"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleControllerKey("draft")}
+                    className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                    aria-label={revealedControllerKeys.draft ? "Hide API key" : "Reveal API key"}
+                  >
+                    {revealedControllerKeys.draft ? (
+                      <EyeOff className="pointer-events-none h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="pointer-events-none h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
                 <SettingsButton
                   onClick={() => {
-                    if (!draftController.trim()) return;
-                    persistControllers([...controllers, draftController.trim()]);
-                    setDraftController("");
+                    if (!draftController.url.trim()) return;
+                    persistControllers([...controllers, draftController]);
+                    setDraftController({ url: "" });
                   }}
+                  title="Add controller"
                 >
                   <Plus className="h-3 w-3" />
                   Add
                 </SettingsButton>
               </div>
+              {controllers.length ? (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {controllers.map((controller, index) => (
+                    <StatusPill key={`${controller.url}-status`} tone="default">
+                      controller {index + 2} · {controller.apiKey ? "key set" : "no key"}
+                    </StatusPill>
+                  ))}
+                </div>
+              ) : null}
             </div>
           }
           status={
@@ -224,6 +254,55 @@ export function ApiConnectionSection({
   );
 }
 
+function ControllerCredentialRow({
+  controller,
+  index,
+  revealed,
+  onToggleReveal,
+  onChange,
+  onRemove,
+}: {
+  controller: SavedController;
+  index: number;
+  revealed: boolean;
+  onToggleReveal: () => void;
+  onChange: (controller: SavedController) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)_auto]">
+      <SettingsInput
+        value={controller.url}
+        placeholder={`Controller ${index + 2} URL`}
+        onChange={(url) => onChange({ ...controller, url })}
+      />
+      <div className="relative">
+        <SettingsInput
+          type={revealed ? "text" : "password"}
+          value={controller.apiKey ?? ""}
+          placeholder="API key optional"
+          onChange={(apiKey) => onChange({ ...controller, apiKey })}
+          className="pr-7"
+        />
+        <button
+          type="button"
+          onClick={onToggleReveal}
+          className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          aria-label={revealed ? "Hide API key" : "Reveal API key"}
+        >
+          {revealed ? (
+            <EyeOff className="pointer-events-none h-3.5 w-3.5" />
+          ) : (
+            <Eye className="pointer-events-none h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+      <SettingsButton tone="danger" onClick={onRemove} title="Remove controller">
+        <Trash2 className="h-3 w-3" />
+      </SettingsButton>
+    </div>
+  );
+}
 function ApiStatus({
   status,
   message,

@@ -152,6 +152,7 @@ const createEngineRoutesHarness = (): {
       peakMetricsStore: {} as never,
       lifetimeMetricsStore: {} as never,
       inferenceRequestStore: {} as never,
+      controllerSettingsStore: {} as never,
     },
   } as AppContext);
 

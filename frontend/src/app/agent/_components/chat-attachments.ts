@@ -15,6 +15,15 @@ export type ChatAttachment = {
   previewKind?: "image" | "video" | "pdf" | "file";
 };
 
+export type ProjectFileAttachmentInput = {
+  id: string;
+  name: string;
+  path: string;
+  content: string;
+  truncated: boolean;
+  size: number;
+};
+
 export function attachmentDedupKey(file: Pick<ChatAttachment, "name" | "type" | "size" | "path">) {
   const path = file.path?.trim();
   if (path) return `path:${path}`;
@@ -238,6 +247,22 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
         : "File is too large to inline; only metadata is attached.",
     previewKind,
     previewUrl,
+  };
+}
+
+export function createProjectFileAttachment(file: ProjectFileAttachmentInput): ChatAttachment {
+  const truncatedMessage = file.size
+    ? `File is too large or binary to inline; it is available on disk at ${file.path}.`
+    : `File is available on disk at ${file.path}.`;
+  return {
+    id: file.id,
+    name: file.name,
+    type: "text/plain",
+    size: file.size,
+    path: file.path,
+    mode: file.truncated ? "metadata" : "text",
+    content: file.truncated ? truncatedMessage : file.content,
+    previewKind: "file",
   };
 }
 

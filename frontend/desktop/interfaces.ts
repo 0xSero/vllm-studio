@@ -15,6 +15,8 @@ export type SessionPrefsPayload = Record<
   { title?: string; pinned?: boolean; hidden?: boolean }
 >;
 
+export type UiPreferencesPayload = Record<string, string>;
+
 export interface PtyStatus {
   available: boolean;
   reason: string | null;
@@ -56,6 +58,9 @@ export interface DesktopBridge {
   /** Durable file-backed session prefs that survive process kill. */
   loadSessionPrefs(): Promise<SessionPrefsPayload>;
   saveSessionPrefs(prefs: SessionPrefsPayload): Promise<void>;
+  /** Durable backup for renderer localStorage UI prefs (theme, font, layout). */
+  loadUiPreferences(): Promise<UiPreferencesPayload>;
+  saveUiPreferences(prefs: UiPreferencesPayload): Promise<void>;
   terminal: PtyBridge;
 }
 

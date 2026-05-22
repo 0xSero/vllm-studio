@@ -13,6 +13,8 @@ const bridge: DesktopBridge = {
   removeProject: (id) => ipcRenderer.invoke("desktop:remove-project", id),
   loadSessionPrefs: () => ipcRenderer.invoke("desktop:load-session-prefs"),
   saveSessionPrefs: (prefs) => ipcRenderer.invoke("desktop:save-session-prefs", prefs),
+  loadUiPreferences: () => ipcRenderer.invoke("desktop:load-ui-preferences"),
+  saveUiPreferences: (prefs) => ipcRenderer.invoke("desktop:save-ui-preferences", prefs),
   terminal: {
     status: () => ipcRenderer.invoke("desktop:pty-status"),
     open: (opts) => ipcRenderer.invoke("desktop:pty-open", opts),

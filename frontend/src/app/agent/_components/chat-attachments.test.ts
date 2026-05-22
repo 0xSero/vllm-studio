@@ -3,6 +3,7 @@ import {
   attachmentDedupKey,
   attachmentPrompt,
   createAttachment,
+  createProjectFileAttachment,
   filesFromDataTransfer,
   imageFileFromDataUrlText,
   imageInputFromAttachment,
@@ -68,5 +69,20 @@ describe("chat attachments", () => {
     expect(prompt).not.toContain("aGVsbG8=");
     expect(prompt).not.toContain("data:image");
     expect(prompt).toContain("multimodal input");
+  });
+
+  it("turns selected project files into normal text attachments", () => {
+    const attachment = createProjectFileAttachment({
+      id: "file:src/app.ts",
+      name: "app.ts",
+      path: "/tmp/project/src/app.ts",
+      content: "export const ok = true;",
+      truncated: false,
+      size: 23,
+    });
+
+    expect(attachment.mode).toBe("text");
+    expect(attachment.path).toBe("/tmp/project/src/app.ts");
+    expect(attachmentPrompt([attachment])).toContain("export const ok = true;");
   });
 });

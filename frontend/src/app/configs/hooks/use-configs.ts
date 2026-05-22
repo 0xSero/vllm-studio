@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { getApiKey, setApiKey, clearApiKey } from "@/lib/api-key";
 import { resolveSettingsDefaultBackendUrl } from "@/lib/backend-config";
 import { getStoredBackendUrl, setStoredBackendUrl, clearStoredBackendUrl } from "@/lib/backend-url";
+import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
@@ -94,6 +95,7 @@ export function useConfigs() {
     } else if (!apiKey) {
       clearApiKey();
     }
+    scheduleDurableUiPreferencesSave();
   };
 
   const testConnection = async () => {

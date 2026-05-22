@@ -9,7 +9,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Code2, Loader2 } from "lucide-react";
+import { Code2, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   AttachIcon,
   ChevronDownIcon,
@@ -17,14 +17,17 @@ import {
   FileIcon,
   GitBranchIcon,
   GlobeIcon,
+  MoreIcon,
   SendIcon,
   StopIcon,
 } from "@/components/icons";
+import { useClickOutside } from "@/hooks/use-click-outside";
 import {
   useChatPaneMentionEffects,
   useChatPaneRegisterHandleEffect,
   useChatPaneStickToBottomEffect,
 } from "@/hooks/agent/use-chat-pane-effects";
+import { useProjectsNavSessionPrefs } from "@/hooks/agent/use-projects-nav-section-effects";
 import {
   activateComposerPlugin,
   activeComposerPlugins,
@@ -54,11 +57,13 @@ import {
   visibleQueuedMessages,
 } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
+import { patchSessionPref } from "@/lib/agent/session/prefs";
 import { useTools } from "@/lib/agent/tools/context";
 import {
   attachmentDedupKey,
   attachmentPrompt,
   createAttachment,
+  createProjectFileAttachment,
   dataTransferHasFiles,
   filesFromDataTransfer,
   formatFileSize,
@@ -113,6 +118,9 @@ type Props = {
   activeTabId: string;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
   onClose?: () => void;
+  onForkSession?: () => void;
+  rightPanelOpen: boolean;
+  onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
 };
 type FileMentionRow = {
@@ -152,6 +160,9 @@ export function ChatPane({
   activeTabId,
   onTabsChange,
   onClose,
+  onForkSession,
+  rightPanelOpen,
+  onToggleRightPanel,
   onRegisterHandle,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -168,6 +179,7 @@ export function ChatPane({
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
   const [compacting, setCompacting] = useState(false);
   const tools = useTools();
+  const sessionPrefs = useProjectsNavSessionPrefs();
   const pluginRows = tools.pluginCatalogue;
   const skillRows = tools.skillCatalogue;
   const activeTab = useMemo(
@@ -220,17 +232,74 @@ export function ChatPane({
     },
     [onTabsChange],
   );
+  const sessionPrefKeys = useMemo(
+    () =>
+      [
+        activeTab?.piSessionId,
+        paneId && activeTab?.id ? `tab:${paneId}:${activeTab.id}` : null,
+      ].filter((value): value is string => Boolean(value)),
+    [activeTab?.id, activeTab?.piSessionId, paneId],
+  );
+  const sessionPrefTitle = sessionPrefKeys.reduce((title, key) => {
+    const nextTitle = sessionPrefs[key]?.title?.trim();
+    return nextTitle || title;
+  }, "");
+  const displayedSessionTitle = sessionPrefTitle || activeTab?.title?.trim() || "New session";
+  const sessionPinned = sessionPrefKeys.some((key) => Boolean(sessionPrefs[key]?.pinned));
+  const patchActiveSessionPrefs = useCallback(
+    (patch: { title?: string; pinned?: boolean }) => {
+      for (const key of sessionPrefKeys) patchSessionPref(key, patch);
+    },
+    [sessionPrefKeys],
+  );
+  const togglePinnedSession = useCallback(() => {
+    if (sessionPrefKeys.length === 0) return;
+    patchActiveSessionPrefs({ pinned: !sessionPinned });
+  }, [patchActiveSessionPrefs, sessionPinned, sessionPrefKeys.length]);
+  const renameActiveSession = useCallback(
+    (nextTitle: string) => {
+      if (!activeTab) return;
+      const trimmed = nextTitle.trim();
+      if (!trimmed || trimmed === displayedSessionTitle) return;
+      updateTab(activeTab.id, (tab) => ({ ...tab, title: trimmed }));
+      patchActiveSessionPrefs({ title: trimmed });
+    },
+    [activeTab, displayedSessionTitle, patchActiveSessionPrefs, updateTab],
+  );
   const selectMentionRow = useCallback(
     async (entry: MentionRow) => {
       if (!activeTab || !mention) return;
       const selectedMention = mention;
       if (entry.kind === "file") {
-        const before = activeTab.input.slice(0, selectedMention.start);
-        const after = activeTab.input.slice(selectedMention.end);
-        const token = `@${entry.row.rel}`;
-        const prefix = before && !/\s$/.test(before) ? `${before} ` : before;
-        const suffix = after && !/^\s/.test(after) ? ` ${after}` : after;
-        updateTab(activeTab.id, (tab) => ({ ...tab, input: `${prefix}${token}${suffix}` }));
+        const input = consumeComposerMention(activeTab.input, selectedMention);
+        updateTab(activeTab.id, (tab) => ({ ...tab, input }));
+        const loaded = await fetch(
+          `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(entry.row.rel)}`,
+          { cache: "no-store" },
+        )
+          .then((response) =>
+            response.ok
+              ? (response.json() as Promise<{
+                  content: string;
+                  truncated: boolean;
+                  size: number;
+                }>)
+              : null,
+          )
+          .catch(() => null);
+        const attachment = createProjectFileAttachment({
+          id: entry.row.id,
+          name: entry.row.name,
+          path: entry.row.path,
+          content: loaded?.content ?? "",
+          truncated: loaded?.truncated ?? true,
+          size: loaded?.size ?? 0,
+        });
+        setAttachments((current) => {
+          const nextKey = attachmentDedupKey(attachment);
+          if (current.some((file) => attachmentDedupKey(file) === nextKey)) return current;
+          return [...current, attachment];
+        });
         setMention(null);
         requestAnimationFrame(() => textareaRef.current?.focus());
         return;
@@ -285,7 +354,7 @@ export function ChatPane({
       setMention(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [activeTab, browserToolEnabled, mention, onToggleBrowserTool, tools, updateTab],
+    [activeTab, browserToolEnabled, cwd, mention, onToggleBrowserTool, tools, updateTab],
   );
   const removeLoadedContext = useCallback(
     (kind: "plugin" | "skill", id: string) => {
@@ -610,23 +679,18 @@ export function ChatPane({
       data-pane-id={paneId}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
     >
-      {" "}
-      {onClose ? (
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onClose();
-          }}
-          className="absolute right-12 top-2 z-30 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-          aria-label="Close pane"
-          title="Close pane"
-        >
-          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />{" "}
-        </button>
-      ) : null}{" "}
+      <ChatPaneHeader
+        title={displayedSessionTitle}
+        pinned={sessionPinned}
+        rightPanelOpen={rightPanelOpen}
+        canFork={Boolean(onForkSession)}
+        canClose={Boolean(onClose)}
+        onTogglePinned={togglePinnedSession}
+        onRename={renameActiveSession}
+        onFork={onForkSession}
+        onClose={onClose}
+        onToggleRightPanel={onToggleRightPanel}
+      />
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {activeTab.error}
@@ -643,7 +707,7 @@ export function ChatPane({
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-2 pt-0">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-0">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button
@@ -830,6 +894,7 @@ export function ChatPane({
           ) : null}
           <textarea
             ref={textareaRef}
+            rows={1}
             value={activeTab?.input ?? ""}
             onPaste={handleComposerPaste}
             onChange={(event) => {
@@ -846,7 +911,7 @@ export function ChatPane({
               }
               element.style.height = "auto";
               element.style.height = `${element.scrollHeight}px`;
-              setIsMultiline(element.scrollHeight > 44);
+              setIsMultiline(element.scrollHeight > 38);
             }}
             onKeyDown={(event) => {
               if (mention) {
@@ -900,9 +965,9 @@ export function ChatPane({
                     ? `Steer ${modelName}…`
                     : `Message ${modelName}`
             }
-            className="min-h-[42px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg) outline-none placeholder:text-(--dim)"
+            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 font-sans text-[14px] leading-[21px] tracking-[-0.003em] text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <div className="agent-composer-actions-row flex min-h-10 items-center gap-1.5 bg-transparent px-3 pb-2 pt-1 text-xs">
+          <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}
             <input
               ref={fileInputRef}
@@ -1087,6 +1152,173 @@ export function ChatPane({
     </section>
   );
 }
+
+const CHAT_HEADER_MENU_CLASS =
+  "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
+
+function ChatPaneHeader({
+  title,
+  pinned,
+  rightPanelOpen,
+  canFork,
+  canClose,
+  onTogglePinned,
+  onRename,
+  onFork,
+  onClose,
+  onToggleRightPanel,
+}: {
+  title: string;
+  pinned: boolean;
+  rightPanelOpen: boolean;
+  canFork: boolean;
+  canClose: boolean;
+  onTogglePinned: () => void;
+  onRename: (title: string) => void;
+  onFork?: () => void;
+  onClose?: () => void;
+  onToggleRightPanel: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, open, () => setOpen(false));
+  const RightPanelIcon = rightPanelOpen ? PanelRightClose : PanelRightOpen;
+  const startRename = () => {
+    setDraftTitle(title);
+    setRenaming(true);
+    setOpen(false);
+  };
+  const finishRename = () => {
+    const trimmed = draftTitle.trim();
+    if (trimmed) onRename(trimmed);
+    setRenaming(false);
+  };
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-2 text-xs">
+      <div ref={ref} className="relative flex min-w-0 flex-1 items-center gap-1.5">
+        {renaming ? (
+          <input
+            autoFocus
+            value={draftTitle}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            onBlur={finishRename}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") finishRename();
+              if (event.key === "Escape") {
+                setDraftTitle(title);
+                setRenaming(false);
+              }
+            }}
+            className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[12px] font-medium text-(--fg) outline-none"
+            aria-label="Rename session"
+          />
+        ) : (
+          <span className="min-w-0 truncate text-[12px] font-medium text-(--fg)" title={title}>
+            {title}
+          </span>
+        )}
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => setOpen((value) => !value)}
+          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+            open
+              ? "text-(--fg) hover:bg-(--surface)"
+              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          }`}
+          aria-label="Session settings"
+          title="Session settings"
+          aria-haspopup="menu"
+          aria-expanded={open}
+        >
+          <MoreIcon className="pointer-events-none h-3.5 w-3.5" />
+        </button>
+        {open ? (
+          <div className={CHAT_HEADER_MENU_CLASS} role="menu">
+            <HeaderMenuItem onClick={startRename}>Rename</HeaderMenuItem>
+            <HeaderMenuItem
+              onClick={() => {
+                onTogglePinned();
+                setOpen(false);
+              }}
+            >
+              {pinned ? "Unpin" : "Pin"}
+            </HeaderMenuItem>
+            <HeaderMenuItem
+              disabled={!canFork}
+              onClick={() => {
+                onFork?.();
+                setOpen(false);
+              }}
+            >
+              Fork
+            </HeaderMenuItem>
+          </div>
+        ) : null}
+      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {canClose ? (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose?.();
+            }}
+            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            aria-label="Close pane"
+            title="Close pane"
+          >
+            <CloseIcon className="h-3 w-3 pointer-events-none" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={onToggleRightPanel}
+          aria-pressed={rightPanelOpen}
+          className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md ${
+            rightPanelOpen
+              ? "text-(--fg) hover:bg-(--surface)"
+              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          }`}
+          title={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
+          aria-label={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
+        >
+          <RightPanelIcon className="pointer-events-none h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeaderMenuItem({
+  onClick,
+  children,
+  disabled = false,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="block w-full rounded-sm px-2.5 py-1.5 text-left text-xs text-(--fg) hover:bg-[#2a2a2a] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+      role="menuitem"
+    >
+      {children}
+    </button>
+  );
+}
+
 function mentionRowTitle(entry: MentionRow): string {
   if (entry.kind === "file") return entry.row.rel;
   return ("displayName" in entry.row && entry.row.displayName) || entry.row.name;

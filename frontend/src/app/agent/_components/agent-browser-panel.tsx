@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
-  Activity,
   Code2,
   FolderTree,
   GitBranch,
   Globe2,
+  MessageSquarePlus,
   PanelRight,
   Plus,
   TerminalSquare,
+  type LucideIcon,
 } from "lucide-react";
 import { CloseIcon } from "@/components/icons";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
@@ -18,7 +18,7 @@ import type { ComputerTab } from "@/lib/agent/tools/types";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session } from "@/lib/agent/sessions/types";
 import type { AgentModel } from "@/lib/agent/workspace/types";
-import { formatTokenCount } from "@/lib/agent/session";
+import { NEW_AGENT_SESSION_EVENT } from "@/lib/agent/workspace/events";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
@@ -45,14 +45,7 @@ type AgentBrowserPanelProps = {
   } | null;
 };
 
-export function AgentBrowserPanel({
-  handles,
-  activeProject,
-  focusedSession,
-  sessions,
-  activeModel,
-  gitSummary,
-}: AgentBrowserPanelProps) {
+export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelProps) {
   const tools = useTools();
   if (!tools.computer.open) return null;
 
@@ -65,9 +58,12 @@ export function AgentBrowserPanel({
     tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
   };
-  const submitBrowserUrl = (event: FormEvent) => {
-    event.preventDefault();
-    navigateBrowser(tools.browser.input);
+  const startSideChat = () => {
+    window.dispatchEvent(
+      new CustomEvent(NEW_AGENT_SESSION_EVENT, {
+        detail: { projectId: activeProject?.id, mode: "split" },
+      }),
+    );
   };
 
   return (
@@ -88,28 +84,15 @@ export function AgentBrowserPanel({
         openTabs={tools.computer.tabs}
         onSelectTab={tools.setComputerTab}
         onCloseTab={tools.closeComputerTab}
+        onShowLauncher={() => tools.setComputerTab("status")}
+        onCloseComputer={() => tools.setComputerOpen(false)}
       />
-      <div className="absolute right-2 top-1.5 z-20 flex items-center gap-1">
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => tools.setComputerOpen(false)}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-          title="Close"
-          aria-label="Close computer"
-        >
-          <CloseIcon className="h-3.5 w-3.5 pointer-events-none" />
-        </button>
-      </div>
 
       {tools.computer.tab === "status" ? (
-        <ComputerStatusPanel
-          activeProject={activeProject}
-          activeModel={activeModel}
-          focusedSession={focusedSession}
-          sessions={sessions}
-          gitSummary={gitSummary}
+        <ComputerLauncherPanel
+          activeTab={tools.computer.tab}
+          onSelectTab={tools.setComputerTab}
+          onStartSideChat={startSideChat}
         />
       ) : tools.computer.tab === "canvas" ? (
         <CanvasPanel />
@@ -121,7 +104,6 @@ export function AgentBrowserPanel({
           onInputChange={tools.setBrowserInput}
           onNavigate={navigateBrowser}
           onLocationChange={(next) => tools.setBrowserUrl(next, next)}
-          onSubmit={submitBrowserUrl}
           onClose={() => tools.setComputerOpen(false)}
           isElectron={isElectron}
         />
@@ -141,7 +123,7 @@ export function AgentBrowserPanel({
 }
 
 const TAB_LABELS: Record<ComputerTab, string> = {
-  status: "Status",
+  status: "Tools",
   canvas: "Canvas",
   browser: "Browser",
   files: "Filesystem",
@@ -153,7 +135,7 @@ const TAB_OPTIONS: Array<{
   tab: ComputerTab;
   label: string;
   description: string;
-  icon: typeof Activity;
+  icon: LucideIcon;
 }> = [
   {
     tab: "canvas",
@@ -182,13 +164,17 @@ function ComputerHeader({
   openTabs,
   onSelectTab,
   onCloseTab,
+  onShowLauncher,
+  onCloseComputer,
 }: {
   tab: ComputerTab;
   openTabs: ComputerTab[];
   onSelectTab: (tab: ComputerTab) => void;
   onCloseTab: (tab: ComputerTab) => void;
+  onShowLauncher: () => void;
+  onCloseComputer: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const visibleTabs = openTabs.filter((openTab) => openTab !== "status");
   const tabMeta = (candidate: ComputerTab) =>
     candidate === "status"
       ? { label: "Status", icon: PanelRight }
@@ -196,209 +182,146 @@ function ComputerHeader({
           label: TAB_LABELS[candidate],
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
-  const menuOptions = [
-    {
-      tab: "status" as const,
-      label: "Status",
-      description: "Session and workspace summary",
-      icon: PanelRight,
-    },
-    ...TAB_OPTIONS,
-  ].filter((item) => !openTabs.includes(item.tab));
   return (
-    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border) px-2 pr-20 text-xs">
+    <div className="relative flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-1.5 text-[11px]">
+      <button
+        type="button"
+        onClick={onShowLauncher}
+        className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+          tab === "status"
+            ? "text-(--fg) hover:bg-(--surface)"
+            : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+        }`}
+        title="Show tools"
+        aria-label="Show tools"
+        aria-pressed={tab === "status"}
+      >
+        <Plus className="pointer-events-none h-3.5 w-3.5" />
+      </button>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
-        {openTabs.map((openTab) => {
+        {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
           const Icon = meta.icon;
           return (
             <div
               key={openTab}
-              className={`group inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md px-2 ${
-                tab === openTab ? "bg-(--surface) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
+                tab === openTab
+                  ? "text-(--fg) hover:bg-(--surface)"
+                  : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
               }`}
               title={meta.label}
             >
               <button
                 type="button"
                 onClick={() => onSelectTab(openTab)}
-                className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
               >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-[9rem] truncate">{meta.label}</span>
+                <Icon className="pointer-events-none h-3 w-3 shrink-0" />
+                <span className="max-w-[7rem] truncate">{meta.label}</span>
               </button>
-              {openTab !== "status" ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseTab(openTab);
-                  }}
-                  className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) group-hover:inline-flex"
-                  aria-label={`Close ${meta.label}`}
-                  title={`Close ${meta.label}`}
-                >
-                  <CloseIcon className="h-2.5 w-2.5" />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseTab(openTab);
+                }}
+                className="hidden h-8 w-7 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) group-hover:inline-flex"
+                aria-label={`Close ${meta.label}`}
+                title={`Close ${meta.label}`}
+              >
+                <CloseIcon className="pointer-events-none h-2 w-2" />
+              </button>
             </div>
           );
         })}
       </div>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--surface) text-(--fg) hover:bg-(--hover)"
-        title="Open computer tab"
-        aria-label="Open computer tab"
-        aria-expanded={open}
-      >
-        <Plus className="h-4 w-4" />
-      </button>
-      {open ? (
-        <div className="absolute right-10 top-9 z-40 w-64 rounded-md border border-(--border) bg-[#151515] p-1 shadow-[0_12px_36px_rgba(0,0,0,0.65)]">
-          {menuOptions.length === 0 ? (
-            <div className="px-2 py-2 text-[11px] text-(--dim)">All computer tabs are open.</div>
-          ) : null}
-          {menuOptions.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                type="button"
-                key={item.tab}
-                onClick={() => {
-                  onSelectTab(item.tab);
-                  setOpen(false);
-                }}
-                className="flex w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-(--hover)"
-              >
-                <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--accent)" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-(--fg)">{item.label}</span>
-                  <span className="block text-[10px] leading-4 text-(--dim)">
-                    {item.description}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={onCloseComputer}
+          className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+          title="Close"
+          aria-label="Close computer"
+        >
+          <CloseIcon className="h-3 w-3 pointer-events-none" />
+        </button>
+      </div>
     </div>
   );
 }
 
-function ComputerStatusPanel({
-  activeProject,
-  activeModel,
-  focusedSession,
-  sessions,
-  gitSummary,
+function ComputerLauncherPanel({
+  activeTab,
+  onSelectTab,
+  onStartSideChat,
 }: {
-  activeProject: Project | null;
-  activeModel: AgentModel | null;
-  focusedSession: Session | null;
-  sessions: Session[];
-  gitSummary?: {
-    isRepo: boolean;
-    branch?: string | null;
-    additions: number;
-    deletions: number;
-    statusCount: number;
-  } | null;
+  activeTab: ComputerTab;
+  onSelectTab: (tab: ComputerTab) => void;
+  onStartSideChat: () => void;
 }) {
-  const tools = useTools();
-  const totals = useMemo(
-    () =>
-      sessions.reduce(
-        (acc, session) => ({
-          read: acc.read + (session.tokenStats?.read ?? 0),
-          write: acc.write + (session.tokenStats?.write ?? 0),
-          current: acc.current + (session.tokenStats?.current ?? 0),
-          messages: acc.messages + session.messages.length,
-          queued: acc.queued + (session.queue?.length ?? 0),
-          running:
-            acc.running + (session.status === "running" || session.status === "starting" ? 1 : 0),
-        }),
-        { read: 0, write: 0, current: 0, messages: 0, queued: 0, running: 0 },
-      ),
-    [sessions],
-  );
-  const contextWindow = activeModel?.contextWindow ?? 0;
-  const sessionTokens = focusedSession?.tokenStats?.current ?? 0;
+  const cards = [
+    {
+      key: "files",
+      title: "Files",
+      description: "Browse project files",
+      icon: FolderTree,
+      onClick: () => onSelectTab("files"),
+    },
+    {
+      key: "side-chat",
+      title: "Side chat",
+      description: "Start a side conversation",
+      icon: MessageSquarePlus,
+      onClick: onStartSideChat,
+    },
+    {
+      key: "browser",
+      title: "Browser",
+      description: "Open a website",
+      icon: Globe2,
+      onClick: () => onSelectTab("browser"),
+    },
+    {
+      key: "diff",
+      title: "Review",
+      description: "View code changes",
+      icon: GitBranch,
+      onClick: () => onSelectTab("diff"),
+    },
+    {
+      key: "terminal",
+      title: "Terminal",
+      description: "Start an interactive shell",
+      icon: TerminalSquare,
+      onClick: () => onSelectTab("terminal"),
+    },
+  ] as const;
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
-      <div className="border-b border-(--border) pb-3">
-        <div className="truncate text-sm font-medium text-(--fg)">
-          {focusedSession?.title ?? "New session"}
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-3 font-mono">
-          <MiniStat label="session" value={formatTokenCount(sessionTokens)} />
-          <MiniStat label="all" value={formatTokenCount(totals.current)} />
-          <MiniStat label="msgs" value={String(totals.messages)} />
-        </div>
-      </div>
-
-      <StatusSection title="Session">
-        <StatusRow label="State" value={focusedSession?.status ?? "idle"} />
-        <StatusRow
-          label="Model"
-          value={activeModel?.name ?? focusedSession?.modelId ?? "No model"}
-        />
-        <StatusRow
-          label="Context"
-          value={`${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`}
-        />
-        <StatusRow
-          label="Read / write"
-          value={`${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`}
-        />
-        <StatusRow label="Queue" value={`${totals.queued} queued · ${totals.running} running`} />
-      </StatusSection>
-
-      <StatusSection title="Workspace">
-        <StatusRow label="Project" value={activeProject?.name ?? "No project"} />
-        <StatusRow
-          label="Directory"
-          value={activeProject?.path ?? focusedSession?.cwd ?? "No directory"}
-        />
-        <StatusRow
-          label="Git"
-          value={
-            gitSummary?.isRepo
-              ? `${gitSummary.branch ?? "detached"} · +${gitSummary.additions} -${gitSummary.deletions} · ${gitSummary.statusCount} files`
-              : "Not a repo"
-          }
-        />
-        <StatusRow label="Browser" value={tools.browser.enabled ? tools.browser.url : "Tool off"} />
-      </StatusSection>
-
-      <div className="mt-4 border-t border-(--border) pt-3">
-        <div className="flex h-8 items-center gap-2">
-          <Code2 className="h-3.5 w-3.5 text-(--accent)" />
-          <span className="font-medium text-(--fg)">Canvas</span>
-          <button
-            type="button"
-            onClick={() => tools.setComputerTab("canvas")}
-            className="ml-auto h-6 rounded px-2 text-[11px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-          >
-            Open
-          </button>
-          <button
-            type="button"
-            onClick={tools.toggleCanvas}
-            className={`h-6 rounded px-2 text-[11px] ${
-              tools.computer.canvasEnabled
-                ? "bg-(--accent)/15 text-(--accent)"
-                : "bg-(--bg) text-(--dim) hover:text-(--fg)"
-            }`}
-          >
-            {tools.computer.canvasEnabled ? "On" : "Off"}
-          </button>
-        </div>
-        <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[11px] leading-5 text-(--dim)">
-          {tools.computer.canvasText.trim() || "No canvas notes yet."}
-        </div>
+    <section className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-5 py-7">
+      <div className="mx-auto flex max-w-[30rem] flex-col gap-3">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          const selected = card.key !== "side-chat" && activeTab === card.key;
+          return (
+            <button
+              key={card.key}
+              type="button"
+              onClick={card.onClick}
+              className={`group flex min-h-24 flex-col items-center justify-center rounded-xl border px-5 py-5 text-center transition-colors ${
+                selected
+                  ? "border-(--border) bg-(--surface) text-(--fg)"
+                  : "border-transparent bg-black/20 text-(--fg) hover:border-(--border) hover:bg-(--surface)/70"
+              }`}
+            >
+              <Icon className="mb-3 h-5 w-5 text-(--dim) transition-colors group-hover:text-(--fg)" />
+              <span className="text-[15px] font-semibold tracking-tight">{card.title}</span>
+              <span className="mt-1.5 text-[13px] text-(--dim)">{card.description}</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -434,34 +357,5 @@ function CanvasPanel() {
         spellCheck={false}
       />
     </section>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-[9px] uppercase tracking-wide text-(--dim)">{label}</div>
-      <div className="mt-1 truncate text-[13px] text-(--fg)">{value}</div>
-    </div>
-  );
-}
-
-function StatusSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 text-[10px] uppercase tracking-wide text-(--dim)">{title}</div>
-      <div className="grid gap-1">{children}</div>
-    </div>
-  );
-}
-
-function StatusRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[5.5rem_1fr] gap-3 py-0.5">
-      <span className="text-[10px] text-(--dim)">{label}</span>
-      <span className="min-w-0 truncate text-right font-mono text-[11px] text-(--fg)" title={value}>
-        {value}
-      </span>
-    </div>
   );
 }

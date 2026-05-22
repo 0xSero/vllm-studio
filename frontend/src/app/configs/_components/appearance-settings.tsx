@@ -3,6 +3,7 @@
 import { Check, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAppStore } from "@/store";
+import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import {
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
@@ -145,7 +146,7 @@ export function AppearanceSettings() {
       <SettingsGroup
         title="Custom theme tokens"
         description="Edits map directly onto the existing bg/fg/surface/accent token contract."
-        actions={<StatusPill tone="info">local</StatusPill>}
+        actions={<StatusPill tone="info">controller synced</StatusPill>}
       >
         <SettingsRow
           label="Token editor"
@@ -208,6 +209,7 @@ function readCustomTokens(): ThemeTokens | null {
 function writeCustomTokens(tokens: ThemeTokens) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(CUSTOM_THEME_TOKEN_KEY, JSON.stringify(tokens));
+  scheduleDurableUiPreferencesSave();
 }
 
 function applyTokensToDocument(tokens: ThemeTokens) {

@@ -10,6 +10,7 @@ export interface StudioSettings {
   config_path: string;
   persisted: {
     models_dir?: string;
+    ui_preferences?: Record<string, string>;
   };
   effective: {
     models_dir: string;

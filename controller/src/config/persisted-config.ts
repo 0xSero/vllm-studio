@@ -13,6 +13,7 @@ export interface ProviderConfig {
 export interface PersistedConfig {
   models_dir?: string;
   providers?: ProviderConfig[];
+  ui_preferences?: Record<string, string>;
   selected_runtime_target_ids?: Partial<Record<"vllm" | "sglang" | "llamacpp", string>>;
 }
 

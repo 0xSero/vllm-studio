@@ -65,7 +65,7 @@ function CodeBlockCopyButton({ code }: { code: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="absolute right-1.5 top-1.5 rounded px-1 text-[10px] text-(--dim) hover:text-(--fg)"
+      className="shrink-0 rounded px-1 text-[10px] text-(--dim) hover:text-(--fg)"
       aria-label={copied ? "Copied" : "Copy code"}
       title={copied ? "Copied" : "Copy code"}
     >
@@ -99,8 +99,8 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-md border border-white/10 bg-[#07090d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="flex h-8 items-center justify-between border-b border-white/10 bg-white/[0.025] px-2.5">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-white/[0.06] bg-[#2f2f33] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+      <div className="flex h-8 items-center justify-between border-b border-white/[0.06] bg-white/[0.015] px-2.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-(--dim)">
           {language ?? "code"}
         </span>
@@ -116,16 +116,25 @@ FencedCodeBlock.displayName = "FencedCodeBlock";
 
 const components: Components = {
   h1: ({ node: _n, ...props }) => (
-    <h1 className="mb-1 mt-4 text-[18px] font-medium leading-[1.33] text-(--fg)" {...props} />
+    <h1
+      className="mb-3 mt-5 text-[24px] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
+      {...props}
+    />
   ),
   h2: ({ node: _n, ...props }) => (
-    <h2 className="mb-1 mt-4 text-[16px] font-medium leading-[1.33] text-(--fg)" {...props} />
+    <h2
+      className="mb-2 mt-5 text-[18px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      {...props}
+    />
   ),
   h3: ({ node: _n, ...props }) => (
-    <h3 className="mb-1 mt-3 text-[14px] font-medium leading-[1.4] text-(--fg)" {...props} />
+    <h3
+      className="mb-2 mt-4 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      {...props}
+    />
   ),
   h4: ({ node: _n, ...props }) => (
-    <h4 className="mb-1 mt-3 text-[13px] font-medium leading-[1.4] text-(--fg)" {...props} />
+    <h4 className="mb-1.5 mt-3 text-[14px] font-medium leading-snug text-(--fg)" {...props} />
   ),
   p: ({ node: _n, ...props }) => (
     <p
@@ -149,7 +158,7 @@ const components: Components = {
     }
     return (
       <code
-        className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] text-(--fg) [overflow-wrap:anywhere]"
+        className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) [overflow-wrap:anywhere]"
         {...props}
       >
         {children}
@@ -231,7 +240,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
           <button
             type="button"
             onClick={() => tools.requestFileOpen(value)}
-            className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] text-(--fg) hover:bg-(--hover) [overflow-wrap:anywhere]"
+            className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) hover:bg-(--hover) [overflow-wrap:anywhere]"
             title="Open file"
           >
             {children}
@@ -240,7 +249,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       }
       return (
         <code
-          className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] text-(--fg) [overflow-wrap:anywhere]"
+          className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) [overflow-wrap:anywhere]"
           {...props}
         >
           {children}
