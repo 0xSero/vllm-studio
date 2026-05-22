@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import {
   useSessionEngineBatchCleanupEffect,
   useSessionEngineRuntimeResumeEffect,
+  useSessionEngineTextDeltaCleanupEffect,
 } from "@/hooks/agent/use-session-engine-effects";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
@@ -37,6 +38,7 @@ import {
 } from "./engine-helpers";
 import { applyPiEventToSession } from "./pi-event-applier";
 import { drainQueuedTurnAfterAgentEnd } from "./queue-drain";
+import { createTextDeltaCoalescer, type TextDeltaCoalescer } from "./text-delta-coalescer";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -150,9 +152,22 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     },
     [patchAssistant, updateSession],
   );
+  const applyPiEventRef = useRef(applyPiEvent);
+  applyPiEventRef.current = applyPiEvent;
+  const textDeltaCoalescerRef = useRef<TextDeltaCoalescer | null>(null);
+  if (!textDeltaCoalescerRef.current) {
+    textDeltaCoalescerRef.current = createTextDeltaCoalescer({
+      applyPiEvent: (sessionId, assistantId, event) => {
+        applyPiEventRef.current(sessionId, assistantId, event);
+      },
+    });
+  }
+
+  useSessionEngineTextDeltaCleanupEffect({ textDeltaCoalescerRef });
 
   const flushPiEventBatch = useCallback(
     (sessionId: SessionId) => {
+      textDeltaCoalescerRef.current?.flushNow(sessionId);
       const batch = piEventBatchesRef.current.get(sessionId);
       if (!batch) return;
       if (batch.timer) clearTimeout(batch.timer);
@@ -171,24 +186,14 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       event: Record<string, unknown>,
       options: { flushNow?: boolean } = {},
     ) => {
-      const existing = piEventBatchesRef.current.get(sessionId);
-      const batch = existing ?? {
-        assistantId,
-        events: [] as Record<string, unknown>[],
-        timer: null,
-      };
-      batch.assistantId = batch.assistantId || assistantId;
-      batch.events.push(event);
-      if (!existing) piEventBatchesRef.current.set(sessionId, batch);
-      if (options.flushNow) {
-        flushPiEventBatch(sessionId);
+      if (textDeltaCoalescerRef.current?.enqueuePiEvent(sessionId, assistantId, event, options)) {
         return;
       }
-      if (!batch.timer) {
-        batch.timer = setTimeout(() => flushPiEventBatch(sessionId), 100);
-      }
+      textDeltaCoalescerRef.current?.flushNow(sessionId);
+      if (options.flushNow) flushPiEventBatch(sessionId);
+      applyPiEvent(sessionId, assistantId, event);
     },
-    [flushPiEventBatch],
+    [applyPiEvent, flushPiEventBatch],
   );
 
   useSessionEngineBatchCleanupEffect({ piEventBatchesRef });

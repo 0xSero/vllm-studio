@@ -6,6 +6,7 @@ import {
   subscribeResumeRuntimeSession,
   type RuntimeResumeDeps,
 } from "@/lib/agent/sessions/runtime-resume";
+import type { TextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 
 type PiEventBatch = {
   timer?: ReturnType<typeof setTimeout> | null;
@@ -26,6 +27,20 @@ export function useSessionEngineBatchCleanupEffect({
       piEventBatchesRef.current.clear();
     },
     [piEventBatchesRef],
+  );
+}
+
+export function useSessionEngineTextDeltaCleanupEffect({
+  textDeltaCoalescerRef,
+}: {
+  textDeltaCoalescerRef: RefObject<TextDeltaCoalescer | null>;
+}): void {
+  useEffect(
+    () => () => {
+      textDeltaCoalescerRef.current?.flushAll();
+      textDeltaCoalescerRef.current?.dispose();
+    },
+    [textDeltaCoalescerRef],
   );
 }
 
