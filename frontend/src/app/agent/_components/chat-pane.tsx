@@ -9,9 +9,8 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Code2, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Code2, Loader2, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import {
-  AttachIcon,
   ChevronDownIcon,
   CloseIcon,
   FileIcon,
@@ -671,6 +670,10 @@ export function ChatPane({
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
   const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
+  const openComputerStatus = useCallback(() => {
+    tools.setComputerTab("status");
+    tools.setComputerOpen(true);
+  }, [tools]);
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -714,7 +717,7 @@ export function ChatPane({
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-0">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-2">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button
@@ -993,7 +996,7 @@ export function ChatPane({
                     ? `Steer ${modelName}…`
                     : `Message ${modelName}`
             }
-            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-[14px] leading-6 tracking-normal text-(--fg) outline-none [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] placeholder:text-(--dim)"
+            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-[13px] leading-6 tracking-normal text-(--fg) outline-none [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] placeholder:text-(--dim)"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}
@@ -1013,7 +1016,7 @@ export function ChatPane({
               title="Attach files (or paste/drop into composer)"
             >
               {" "}
-              <AttachIcon className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" />
             </button>{" "}
             <button
               type="button"
@@ -1165,14 +1168,17 @@ export function ChatPane({
               </span>
             ) : null}
           </div>{" "}
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>{" "}
-            <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
-            <span>
-              {" "}
+          <div className="flex shrink-0 items-center justify-end">
+            <button
+              type="button"
+              onClick={openComputerStatus}
+              className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-(--border) bg-(--composer) px-2 text-[10px] text-(--dim) hover:border-(--dim) hover:text-(--fg)"
+              title={`Open status · Context ${formatTokenCount(activeTab?.tokenStats?.current ?? 0)} / ${formatTokenCount(contextWindow)}`}
+              aria-label="Open status"
+            >
               {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
               {formatTokenCount(contextWindow)}
-            </span>{" "}
+            </button>
           </div>
         </div>{" "}
       </form>
