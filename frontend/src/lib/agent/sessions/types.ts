@@ -1,23 +1,13 @@
 // Sessions are the flat collection of conversations the workspace orchestrates.
-// Identity is `SessionId` — the same string a pane stores in `sessionIds`. A
+// Identity is `SessionId` — the same string a pane stores as `sessionId`. A
 // session lives independently of any pane (panes can hold the same session id
 // in different layouts; closing a pane doesn't drop session content).
 
-import type {
-  ChatMessage,
-  QueuedMessage,
-  TokenStats,
-} from "@/lib/agent/session/types";
+import type { ChatMessage, QueuedMessage, TokenStats } from "@/lib/agent/session/types";
 
 export type SessionId = string;
 
-export type SessionStatus =
-  | "idle"
-  | "starting"
-  | "running"
-  | "loading"
-  | "done"
-  | string;
+export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done" | string;
 
 /**
  * A `Session` is a conversation record — domain content and runtime status,

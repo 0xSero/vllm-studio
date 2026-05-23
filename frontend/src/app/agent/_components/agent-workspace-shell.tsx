@@ -1,31 +1,23 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  consumeAgentSessionNavTitle,
-  triggerAddProjectFlow,
-} from "@/components/projects-nav-section";
-import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
+import { triggerAddProjectFlow } from "@/components/projects-nav-section";
 import { ChevronDownIcon, CloseIcon, PlusIcon } from "@/components/icons";
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
-import type { AgentModel, PaneId, WorkspaceState } from "@/lib/agent/workspace/types";
+import type { AgentModel, PaneId, PaneState, WorkspaceState } from "@/lib/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/lib/agent/projects/context";
 import { useTools } from "@/lib/agent/tools/context";
 import type { Project } from "@/lib/agent/projects/types";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useAgentWorkspaceNavigationEffects } from "@/hooks/agent/use-agent-workspace-navigation-effects";
 import { useActiveCanvasSessionEffects } from "@/hooks/agent/use-active-canvas-session-effects";
-import { focusedSession, materializePaneSessions } from "@/lib/agent/sessions/selectors";
+import { activeSession, focusedSession } from "@/lib/agent/sessions/selectors";
 import { AgentBrowserPanel } from "./agent-browser-panel";
 import { ChatPane } from "./chat-pane";
 import { PaneGrid } from "./pane-grid";
 import { collectLeaves } from "@/lib/agent/workspace/layout";
 import type { WorkspaceHandles } from "./use-workspace";
-
-type SearchParamsReader = {
-  get: (key: string) => string | null;
-};
 
 type AgentWorkspaceShellProps = {
   state: WorkspaceState;
@@ -45,51 +37,18 @@ export function shouldShowProjectEmptyState(
   );
 }
 
-export function requestWorkspaceUrlNavigation(
-  state: WorkspaceState,
-  projects: ProjectsContextValue,
-  searchParams: SearchParamsReader,
-  dispatch: WorkspaceDispatch,
-): void {
-  const projectParam = searchParams.get("project");
-  const sessionParam = searchParams.get("session");
-  const newParam = searchParams.get("new");
-  const splitParam = searchParams.get("split");
-  const navKey =
-    projectParam || sessionParam || newParam
-      ? `${projectParam ?? ""}|${sessionParam ?? ""}|${newParam ?? ""}|${splitParam ?? ""}`
-      : "";
-  if (!navKey || state.lastHandledNavKey === navKey) return;
-  const target = projectParam ? projects.findById(projectParam) : null;
-  // Wait until projects have loaded (or until the named project resolves).
-  if (projectParam && !target) return;
-  if (target) projects.selectProject(target);
-  const sessionTitle = sessionParam ? consumeAgentSessionNavTitle(sessionParam) : undefined;
-  dispatch({
-    type: "urlNavRequested",
-    key: navKey,
-    project: target,
-    sessionId: sessionParam,
-    ...(sessionTitle ? { sessionTitle } : {}),
-    newSession: newParam === "1",
-    split: splitParam === "1",
-    paneId: newPaneId(),
-    runtimeSessionId: newRuntimeId(),
-    tab: makeFreshTab(),
-  });
-}
-
 export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspaceShellProps) {
   const projects = useProjects();
   const tools = useTools();
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
-  useAgentWorkspaceNavigationEffects(
-    useCallback(() => {
-      requestWorkspaceUrlNavigation(state, projects, searchParams, dispatch);
-    }, [searchParams, state, projects, dispatch]),
-  );
+  useAgentWorkspaceNavigationEffects({
+    lastHandledNavKey: state.lastHandledNavKey,
+    projects,
+    searchParams,
+    dispatch,
+  });
 
   const focusedTab = focusedSession(state);
   // The right panel (browser / files / git / terminal / status) follows the
@@ -120,7 +79,7 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
               <PaneGrid
                 layout={state.layout}
                 renderPane={(paneId) =>
-                  renderWorkspacePane(paneId, state, projects, tools, dispatch, handles)
+                  renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles })
                 }
                 onSplit={handles.splitPaneWithPayload}
                 onOpenTab={handles.openSessionPayloadInPane}
@@ -218,80 +177,121 @@ function ProjectEmptyState() {
   );
 }
 
-function renderWorkspacePane(
+type WorkspacePaneRenderContext = {
+  paneId: PaneId;
+  state: WorkspaceState;
+  projects: ProjectsContextValue;
+  tools: ReturnType<typeof useTools>;
+  dispatch: WorkspaceDispatch;
+  handles: WorkspaceHandles;
+};
+
+type WorkspacePaneView = {
+  paneId: PaneId;
+  pane: PaneState;
+  session: ReturnType<typeof activeSession>;
+  sessionList: NonNullable<ReturnType<typeof activeSession>>[];
+  project: Project | null;
+  cwd: string;
+  modelId: string;
+  model: AgentModel | null;
+  gitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
+  gitBranch: string | null;
+  isNewSession: boolean;
+  canClose: boolean;
+  isFocused: boolean;
+};
+
+function paneGitBranch(
+  summary: ReturnType<ProjectsContextValue["gitSummary"]>,
+  project: Project | null,
+): string | null {
+  return summary?.isRepo === false ? null : (summary?.branch ?? project?.branch ?? null);
+}
+
+function selectWorkspacePaneView(
   paneId: PaneId,
   state: WorkspaceState,
   projects: ProjectsContextValue,
-  tools: ReturnType<typeof useTools>,
-  dispatch: WorkspaceDispatch,
-  handles: WorkspaceHandles,
-) {
+): WorkspacePaneView | null {
   const pane = state.panesById.get(paneId);
   if (!pane) return null;
-  const onlyOne = collectLeaves(state.layout).length === 1;
-  // Materialize the pane's session list from the flat sessions map. Sessions
-  // are the source of truth — the pane just stores ids.
-  const paneTabs = materializePaneSessions(state, pane);
-  const paneActiveTab =
-    paneTabs.find((tab) => tab.id === pane.activeSessionId) ?? paneTabs[0] ?? null;
-  const paneProject = projects.resolveProject(paneActiveTab);
-  const paneCwd = paneActiveTab?.cwd ?? paneProject?.path ?? projects.agentCwd;
-  const paneModelId = paneActiveTab?.modelId ?? state.selectedModel;
-  const paneModel = state.models.find((model) => model.id === paneModelId) ?? null;
-  const paneGitSummary = projects.gitSummary(paneProject?.path);
-  const paneGitBranch =
-    paneGitSummary?.isRepo === false
-      ? null
-      : (paneGitSummary?.branch ?? paneProject?.branch ?? null);
-  const paneTabIsNew =
-    Boolean(paneActiveTab) &&
-    !paneActiveTab?.piSessionId &&
-    (paneActiveTab?.messages.length ?? 0) === 0;
+  const session = activeSession(state, paneId);
+  const project = projects.resolveProject(session);
+  const modelId = session?.modelId ?? state.selectedModel;
+  const gitSummary = projects.gitSummary(project?.path);
+  return {
+    paneId,
+    pane,
+    session,
+    sessionList: session ? [session] : [],
+    project,
+    cwd: session?.cwd ?? project?.path ?? projects.agentCwd,
+    modelId,
+    model: state.models.find((model) => model.id === modelId) ?? null,
+    gitSummary,
+    gitBranch: paneGitBranch(gitSummary, project),
+    isNewSession: Boolean(session && !session.piSessionId && session.messages.length === 0),
+    canClose: collectLeaves(state.layout).length > 1,
+    isFocused: state.focusedPaneId === paneId,
+  };
+}
+
+function renderWorkspacePane({
+  paneId,
+  state,
+  projects,
+  tools,
+  dispatch,
+  handles,
+}: WorkspacePaneRenderContext) {
+  const view = selectWorkspacePaneView(paneId, state, projects);
+  if (!view) return null;
 
   return (
     <ChatPane
-      key={paneId}
-      paneId={paneId}
-      runtimeSessionId={pane.runtimeSessionId}
-      modelId={paneModelId}
-      modelName={paneModel?.name ?? null}
+      key={view.paneId}
+      paneId={view.paneId}
+      runtimeSessionId={view.pane.runtimeSessionId}
+      modelId={view.modelId}
+      modelName={view.model?.name ?? null}
       modelsLoading={state.modelsLoading}
-      contextWindow={paneModel?.contextWindow ?? 0}
-      cwd={paneCwd}
-      projectName={paneProject?.name ?? null}
+      contextWindow={view.model?.contextWindow ?? 0}
+      cwd={view.cwd}
+      projectName={view.project?.name ?? null}
       projectSelector={renderProjectSelector(
-        paneId,
+        view.paneId,
         projects.projects,
-        paneProject,
-        paneTabIsNew,
+        view.project,
+        view.isNewSession,
         handles,
       )}
-      gitBranch={paneGitBranch}
-      gitSummary={paneGitSummary}
+      gitBranch={view.gitBranch}
+      gitSummary={view.gitSummary}
       onInitGit={handles.initGitForActiveProject}
       modelSelector={
         <ModelPicker
           models={state.models}
-          selectedModel={paneModelId}
-          onSelect={(modelId) => handles.selectPaneModel(paneId, modelId)}
+          selectedModel={view.modelId}
+          onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
           loading={state.modelsLoading}
         />
       }
-      browserToolEnabled={state.focusedPaneId === paneId && tools.browser.enabled}
+      browserToolEnabled={view.isFocused && tools.browser.enabled}
       onToggleBrowserTool={tools.toggleBrowser}
-      canvasEnabled={state.focusedPaneId === paneId && tools.computer.canvasEnabled}
+      canvasEnabled={view.isFocused && tools.computer.canvasEnabled}
       onToggleCanvas={tools.toggleCanvas}
       onPiSessionIdChange={handles.notifySessionsChanged}
-      isFocused={state.focusedPaneId === paneId}
-      onFocus={() => dispatch({ type: "focusPane", paneId })}
-      tabs={paneTabs}
-      activeTabId={pane.activeSessionId}
-      onTabsChange={(nextTabsOrUpdater) => handles.setPaneTabs(paneId, nextTabsOrUpdater)}
-      onClose={onlyOne ? undefined : () => handles.closePane(paneId)}
-      onForkSession={() => handles.splitTabIntoNewPane(paneId, pane.activeSessionId)}
+      isFocused={view.isFocused}
+      onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
+      tabs={view.sessionList}
+      activeTabId={view.pane.sessionId}
+      onTabsChange={(nextTabsOrUpdater) => handles.setPaneTabs(view.paneId, nextTabsOrUpdater)}
+      onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
+      onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
       rightPanelOpen={tools.computer.open}
       onToggleRightPanel={tools.toggleComputerOpen}
-      onRegisterHandle={(handle) => handles.registerPaneHandle(paneId, handle)}
+      onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
     />
   );
 }

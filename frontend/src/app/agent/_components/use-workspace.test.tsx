@@ -180,7 +180,7 @@ describe("useWorkspace", () => {
 
     const state = hook.result.current.state;
     const pane = state.panesById.get(state.focusedPaneId);
-    expect(state.sessions.get(pane!.activeSessionId)?.projectId).toBe(selected.id);
+    expect(state.sessions.get(pane!.sessionId)?.projectId).toBe(selected.id);
     expect(window.localStorage.getItem(PANE_STATE_KEY)).toBeTruthy();
     hook.unmount();
   });
@@ -199,7 +199,7 @@ describe("useWorkspace", () => {
 
     const state = hook.result.current.state;
     const pane = state.panesById.get(state.focusedPaneId);
-    const activeTab = state.sessions.get(pane!.activeSessionId);
+    const activeTab = state.sessions.get(pane!.sessionId);
     expect(activeTab?.projectId).toBe(selected.id);
     expect(activeTab?.cwd).toBe(selected.path);
     hook.unmount();
@@ -227,22 +227,18 @@ describe("useWorkspace", () => {
       });
     });
     const paneId = hook.result.current.state.focusedPaneId;
-    const oldTabId = hook.result.current.state.panesById.get(paneId)!.activeSessionId;
+    const oldTabId = hook.result.current.state.panesById.get(paneId)!.sessionId;
     act(() => {
       const state = hook.result.current.state;
       const oldPane = state.panesById.get(paneId)!;
-      const oldSessions = oldPane.sessionIds.map((id) => state.sessions.get(id)!);
+      const oldSession = state.sessions.get(oldPane.sessionId)!;
       hook.result.current.dispatch({
-        type: "setPaneTabs",
+        type: "setPaneSession",
         paneId,
-        tabs: oldSessions.map((tab) =>
-          tab.id === oldTabId
-            ? {
-                ...tab,
-                messages: [{ id: "m-1", role: "user", text: "hello", timestamp: "now" }],
-              }
-            : tab,
-        ),
+        session: {
+          ...oldSession,
+          messages: [{ id: "m-1", role: "user", text: "hello", timestamp: "now" }],
+        },
       });
     });
 
@@ -252,7 +248,7 @@ describe("useWorkspace", () => {
       );
     });
     const splitPaneId = hook.result.current.state.focusedPaneId;
-    const newTabId = hook.result.current.state.panesById.get(splitPaneId)!.activeSessionId;
+    const newTabId = hook.result.current.state.panesById.get(splitPaneId)!.sessionId;
     expect(newTabId).not.toBe(oldTabId);
 
     act(() => {
@@ -263,7 +259,7 @@ describe("useWorkspace", () => {
 
     const finalState = hook.result.current.state;
     const finalPane = finalState.panesById.get(splitPaneId)!;
-    expect(finalPane.activeSessionId).toBe(newTabId);
+    expect(finalPane.sessionId).toBe(newTabId);
     expect(finalState.sessions.get(newTabId)?.input).toBe("h");
     hook.unmount();
   });

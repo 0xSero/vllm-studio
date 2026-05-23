@@ -3,10 +3,8 @@ import { createInitialState } from "@/lib/agent/workspace/store";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import type { Project } from "@/lib/agent/projects/types";
 import type { ProjectsContextValue } from "@/lib/agent/projects/context";
-import {
-  requestWorkspaceUrlNavigation,
-  shouldShowProjectEmptyState,
-} from "./agent-workspace-shell";
+import { requestWorkspaceUrlNavigation } from "@/hooks/agent/use-agent-workspace-navigation-effects";
+import { shouldShowProjectEmptyState } from "./agent-workspace-shell";
 
 const PROJECT: Project = {
   id: "proj-1",
@@ -62,7 +60,9 @@ describe("shouldShowProjectEmptyState", () => {
   it("shows only after projects are loaded without selection or URL project", () => {
     expect(shouldShowProjectEmptyState(makeProjectsContext(), null)).toBe(false);
     expect(shouldShowProjectEmptyState(makeProjectsContext({ loaded: true }), null)).toBe(true);
-    expect(shouldShowProjectEmptyState(makeProjectsContext({ loaded: true }), "proj-1")).toBe(false);
+    expect(shouldShowProjectEmptyState(makeProjectsContext({ loaded: true }), "proj-1")).toBe(
+      false,
+    );
   });
 });
 
@@ -81,7 +81,12 @@ describe("requestWorkspaceUrlNavigation", () => {
       split: "1",
     });
 
-    requestWorkspaceUrlNavigation(state, projects, searchParams, dispatch);
+    requestWorkspaceUrlNavigation({
+      lastHandledNavKey: state.lastHandledNavKey,
+      projects,
+      searchParams,
+      dispatch,
+    });
 
     expect(projects.selectProject).toHaveBeenCalledWith(PROJECT);
     expect(dispatch).toHaveBeenCalledWith(

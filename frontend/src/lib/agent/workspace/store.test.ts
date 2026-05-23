@@ -171,20 +171,20 @@ describe("setupWarningFromPiCheck", () => {
 
 function paneSessionList(state: WorkspaceState, paneId = state.focusedPaneId) {
   const p = pane(state, paneId);
-  return p.sessionIds.map((id) => state.sessions.get(id)!);
+  const session = state.sessions.get(p.sessionId);
+  return session ? [session] : [];
 }
 
 describe("workspace reducer", () => {
   it("opens a new session by reusing the empty starter pane", () => {
     const state = createInitialState();
-    const starterTabId = pane(state).activeSessionId;
+    const starterTabId = pane(state).sessionId;
     const selected = project();
 
     const next = reducer(state, { type: "openNewSession", project: selected, tab: makeFreshTab() });
     const nextPane = pane(next, "p-init");
 
-    expect(nextPane.sessionIds).toHaveLength(1);
-    expect(nextPane.activeSessionId).toBe(starterTabId);
+    expect(nextPane.sessionId).toBe(starterTabId);
     expect(paneSessionList(next, "p-init")[0]).toMatchObject({
       projectId: selected.id,
       cwd: selected.path,
@@ -202,8 +202,7 @@ describe("workspace reducer", () => {
     const nextPane = pane(next, "p-init");
     const sessions = paneSessionList(next, "p-init");
 
-    expect(nextPane.sessionIds).toHaveLength(1);
-    expect(nextPane.activeSessionId).toBe(sessions[0].id);
+    expect(nextPane.sessionId).toBe(sessions[0].id);
     expect(sessions[0].piSessionId).toBe("pi-1");
     expect(next.focusedPaneId).toBe("p-init");
   });
@@ -238,7 +237,7 @@ describe("workspace reducer", () => {
     expect(collectLeaves(next.layout)).toEqual(["p-init", "p-sibling"]);
     expect(next.focusedPaneId).toBe("p-sibling");
     expect(pane(next, "p-sibling")).toMatchObject({
-      activeSessionId: "tab-sibling",
+      sessionId: "tab-sibling",
       runtimeSessionId: "rt-sibling",
     });
     expect(paneSessionList(next, "p-sibling")[0]).toMatchObject({
@@ -250,7 +249,7 @@ describe("workspace reducer", () => {
 
   it("renames a tab", () => {
     const state = createInitialState();
-    const tabId = pane(state).activeSessionId;
+    const tabId = pane(state).sessionId;
 
     const next = reducer(state, {
       type: "renameTab",
@@ -262,7 +261,7 @@ describe("workspace reducer", () => {
     expect(paneSessionList(next, "p-init")[0].title).toBe("Renamed session");
   });
 
-  it("focuses a tab and its pane", () => {
+  it("focuses a pane", () => {
     const split = reducer(createInitialState(), {
       type: "replaySessionInSplit",
       piSessionId: "pi-2",
@@ -270,19 +269,18 @@ describe("workspace reducer", () => {
       runtimeSessionId: "rt-sibling",
       tab: tab({ id: "tab-sibling", runtimeSessionId: "rt-tab-sibling" }),
     });
-    const starterTabId = pane(split, "p-init").activeSessionId;
+    const starterTabId = pane(split, "p-init").sessionId;
 
     const next = reducer(split, {
-      type: "focusTab",
+      type: "focusPane",
       paneId: "p-init",
-      tabId: starterTabId,
     });
 
     expect(next.focusedPaneId).toBe("p-init");
-    expect(pane(next, "p-init").activeSessionId).toBe(starterTabId);
+    expect(pane(next, "p-init").sessionId).toBe(starterTabId);
   });
 
-  it("opens a split pane when + is clicked while on an existing session", () => {
+  it("replaces the focused pane when + is clicked while on an existing session", () => {
     // Simulates the user's flow: replay an existing pi session into the focused
     // pane (so the starter tab becomes the OLD session with messages), then
     // click + and assert a fresh empty session opens in a split pane.
@@ -294,18 +292,13 @@ describe("workspace reducer", () => {
       tab: makeFreshTab(),
     });
     // Promote the replayed tab so it's no longer an empty starter.
-    const oldTabId = pane(state, "p-init").activeSessionId;
     state = reducer(state, {
-      type: "setPaneTabs",
+      type: "setPaneSession",
       paneId: "p-init",
-      tabs: paneSessionList(state, "p-init").map((session) =>
-        session.id === oldTabId
-          ? {
-              ...session,
-              messages: [{ id: "m-1", role: "user", text: "hello", timestamp: "now" }],
-            }
-          : session,
-      ),
+      session: {
+        ...paneSessionList(state, "p-init")[0],
+        messages: [{ id: "m-1", role: "user", text: "hello", timestamp: "now" }],
+      },
     });
 
     const selected = project();
@@ -317,15 +310,12 @@ describe("workspace reducer", () => {
       runtimeSessionId: "rt-split",
     });
 
-    expect(collectLeaves(next.layout)).toEqual(["p-init", "p-split"]);
-    expect(next.focusedPaneId).toBe("p-split");
-    expect(pane(next, "p-init").activeSessionId).toBe(oldTabId);
-    const splitPane = pane(next, "p-split");
-    expect(splitPane).toMatchObject({
-      activeSessionId: "tab-split",
-      runtimeSessionId: "rt-split",
+    expect(collectLeaves(next.layout)).toEqual(["p-init"]);
+    expect(next.focusedPaneId).toBe("p-init");
+    expect(pane(next, "p-init")).toMatchObject({
+      sessionId: "tab-split",
     });
-    expect(paneSessionList(next, "p-split")[0]).toMatchObject({
+    expect(paneSessionList(next, "p-init")[0]).toMatchObject({
       id: "tab-split",
       piSessionId: null,
       messages: [],
@@ -340,12 +330,11 @@ describe("workspace reducer", () => {
     const selected = project();
     let state = createInitialState();
     state = reducer(state, { type: "openNewSession", project: selected, tab: makeFreshTab() });
-    const firstNewTabId = pane(state, "p-init").activeSessionId;
+    const firstNewTabId = pane(state, "p-init").sessionId;
 
     const next = reducer(state, { type: "openNewSession", project: selected, tab: makeFreshTab() });
 
-    expect(pane(next, "p-init").sessionIds).toHaveLength(1);
-    expect(pane(next, "p-init").activeSessionId).toBe(firstNewTabId);
+    expect(pane(next, "p-init").sessionId).toBe(firstNewTabId);
   });
 
   it("replaces an empty starter from a different project", () => {
@@ -356,33 +345,29 @@ describe("workspace reducer", () => {
     const projectB = project({ id: "proj-b", path: "/tmp/b" });
     let state = createInitialState();
     state = reducer(state, { type: "openNewSession", project: projectA, tab: makeFreshTab() });
-    const tabA = pane(state, "p-init").activeSessionId;
+    const tabA = pane(state, "p-init").sessionId;
 
     const next = reducer(state, { type: "openNewSession", project: projectB, tab: makeFreshTab() });
 
     const sessions = paneSessionList(next, "p-init");
     expect(sessions).toHaveLength(1);
-    expect(pane(next, "p-init").activeSessionId).not.toBe(tabA);
-    const activeTab = sessions.find((s) => s.id === pane(next, "p-init").activeSessionId);
+    expect(pane(next, "p-init").sessionId).not.toBe(tabA);
+    const activeTab = sessions.find((s) => s.id === pane(next, "p-init").sessionId);
     expect(activeTab?.projectId).toBe(projectB.id);
   });
 
-  it("auto-splits to a new pane when + is clicked while the focused session is running", () => {
-    // The user explicitly asked: if a session is currently streaming, "new
-    // chat" must NOT clobber it — open the new chat in a split pane instead.
+  it("explicit split mode opens a side pane while the focused session is running", () => {
     let state = createInitialState();
-    const starterTabId = pane(state, "p-init").activeSessionId;
+    const starterTabId = pane(state, "p-init").sessionId;
     // Promote the starter into a running session.
     state = reducer(state, {
-      type: "setPaneTabs",
+      type: "setPaneSession",
       paneId: "p-init",
-      tabs: [
-        {
-          ...paneSessionList(state, "p-init")[0],
-          status: "running",
-          messages: [{ id: "m-1", role: "user", text: "hi", timestamp: "now" }],
-        },
-      ],
+      session: {
+        ...paneSessionList(state, "p-init")[0],
+        status: "running",
+        messages: [{ id: "m-1", role: "user", text: "hi", timestamp: "now" }],
+      },
     });
 
     const next = reducer(state, {
@@ -390,17 +375,17 @@ describe("workspace reducer", () => {
       tab: makeFreshTab(),
       paneId: "p-split",
       runtimeSessionId: "rt-split",
+      mode: "split",
     });
 
     expect(collectLeaves(next.layout)).toEqual(["p-init", "p-split"]);
     expect(next.focusedPaneId).toBe("p-split");
     // Original running session is untouched.
-    expect(pane(next, "p-init").activeSessionId).toBe(starterTabId);
+    expect(pane(next, "p-init").sessionId).toBe(starterTabId);
     expect(next.sessions.get(starterTabId)?.status).toBe("running");
     // New blank session lives in the new pane.
     const splitPane = pane(next, "p-split");
-    expect(splitPane.sessionIds).toHaveLength(1);
-    expect(next.sessions.get(splitPane.activeSessionId)?.messages).toHaveLength(0);
+    expect(next.sessions.get(splitPane.sessionId)?.messages).toHaveLength(0);
   });
 
   it("drops the new chat into the existing sibling pane when one is already running", () => {
@@ -415,15 +400,13 @@ describe("workspace reducer", () => {
     });
     // Mark the focused (newly split) pane as running.
     state = reducer(state, {
-      type: "setPaneTabs",
+      type: "setPaneSession",
       paneId: "p-sibling",
-      tabs: [
-        {
-          ...paneSessionList(state, "p-sibling")[0],
-          status: "running",
-          messages: [{ id: "m-1", role: "user", text: "still going", timestamp: "now" }],
-        },
-      ],
+      session: {
+        ...paneSessionList(state, "p-sibling")[0],
+        status: "running",
+        messages: [{ id: "m-1", role: "user", text: "still going", timestamp: "now" }],
+      },
     });
 
     const next = reducer(state, {
@@ -431,13 +414,14 @@ describe("workspace reducer", () => {
       tab: makeFreshTab(),
       paneId: "p-third",
       runtimeSessionId: "rt-third",
+      mode: "split",
     });
 
     expect(collectLeaves(next.layout)).toEqual(["p-init", "p-sibling"]);
     // The new fresh session lands in the *other* leaf (p-init).
     const initSessions = paneSessionList(next, "p-init");
     expect(initSessions).toHaveLength(1);
-    const newest = initSessions.find((s) => s.id === pane(next, "p-init").activeSessionId);
+    const newest = initSessions.find((s) => s.id === pane(next, "p-init").sessionId);
     expect(newest?.messages).toHaveLength(0);
   });
 

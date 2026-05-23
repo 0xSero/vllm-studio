@@ -19,7 +19,6 @@ import type { ComputerTab } from "@/lib/agent/tools/types";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session } from "@/lib/agent/sessions/types";
 import type { AgentModel } from "@/lib/agent/workspace/types";
-import { NEW_AGENT_SESSION_EVENT } from "@/lib/agent/workspace/events";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
@@ -29,7 +28,11 @@ import type { WorkspaceHandles } from "./use-workspace";
 
 type AgentBrowserPanelHandles = Pick<
   WorkspaceHandles,
-  "registerComputerAside" | "startComputerResize" | "registerBrowserHandle" | "runBrowserCommand"
+  | "registerComputerAside"
+  | "startComputerResize"
+  | "registerBrowserHandle"
+  | "runBrowserCommand"
+  | "openSideSessionFromFocusedPane"
 >;
 
 type AgentBrowserPanelProps = {
@@ -58,21 +61,19 @@ export function AgentBrowserPanel({
   const tools = useTools();
   if (!tools.computer.open) return null;
 
-  const { registerComputerAside, startComputerResize, registerBrowserHandle, runBrowserCommand } =
-    handles;
+  const {
+    registerComputerAside,
+    startComputerResize,
+    registerBrowserHandle,
+    runBrowserCommand,
+    openSideSessionFromFocusedPane,
+  } = handles;
   const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, activeProject?.path ?? "");
     if (!next) return;
     tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
-  };
-  const startSideChat = () => {
-    window.dispatchEvent(
-      new CustomEvent(NEW_AGENT_SESSION_EVENT, {
-        detail: { projectId: activeProject?.id, mode: "split" },
-      }),
-    );
   };
 
   return (
@@ -109,7 +110,7 @@ export function AgentBrowserPanel({
         <ComputerLauncherPanel
           activeTab={tools.computer.tab}
           onSelectTab={tools.setComputerTab}
-          onStartSideChat={startSideChat}
+          onStartSideChat={openSideSessionFromFocusedPane}
         />
       ) : tools.computer.tab === "canvas" ? (
         <CanvasPanel />

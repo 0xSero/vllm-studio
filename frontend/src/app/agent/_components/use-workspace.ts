@@ -39,11 +39,11 @@ export type WorkspaceHandles = {
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
   registerComputerAside: (element: HTMLElement | null) => void;
   openNewSessionInFocusedPane: (project?: Project) => void;
+  openSideSessionFromFocusedPane: () => void;
   replaySessionInFocusedPane: (piSessionId: string) => void;
   replaySessionInSplitPane: (piSessionId: string) => void;
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
-  focusTab: (paneId: PaneId, tabId: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
   selectProject: (project: Project | null) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
@@ -104,7 +104,7 @@ function parseBrowserCommand(raw: string): BrowserCommand | null {
 function focusedBrowserSessionId(state: WorkspaceState): string | null {
   const pane = state.panesById.get(state.focusedPaneId);
   if (!pane) return null;
-  const activeSession = state.sessions.get(pane.activeSessionId);
+  const activeSession = state.sessions.get(pane.sessionId);
   return activeSession?.runtimeSessionId || pane.runtimeSessionId || null;
 }
 
@@ -289,6 +289,23 @@ export function useWorkspace(): UseWorkspaceResult {
           runtimeSessionId: newRuntimeId(),
         });
       },
+      openSideSessionFromFocusedPane: () => {
+        const focused = stateRef.current.panesById.get(stateRef.current.focusedPaneId);
+        const session = focused ? stateRef.current.sessions.get(focused.sessionId) : null;
+        const project =
+          projectsRef.current.resolveProject(session ?? null) ??
+          projectsRef.current.selectedProject ??
+          undefined;
+        if (project) projectsRef.current.selectProject(project);
+        dispatch({
+          type: "openNewSession",
+          project,
+          tab: makeFreshTab(),
+          paneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+          mode: "split",
+        });
+      },
       replaySessionInFocusedPane: (piSessionId: string) =>
         dispatch({ type: "replaySession", piSessionId, tab: makeFreshTab() }),
       replaySessionInSplitPane: (piSessionId: string) =>
@@ -303,7 +320,6 @@ export function useWorkspace(): UseWorkspaceResult {
         dispatch({ type: "openSessionPayloadInPane", paneId, payload, tab: makeFreshTab() }),
       renameTab: (paneId: PaneId, tabId: string, title: string) =>
         dispatch({ type: "renameTab", paneId, tabId, title }),
-      focusTab: (paneId: PaneId, tabId: string) => dispatch({ type: "focusTab", paneId, tabId }),
       splitTabIntoNewPane: (paneId: PaneId, tabId: string) =>
         dispatch({
           type: "splitTab",
@@ -330,10 +346,13 @@ export function useWorkspace(): UseWorkspaceResult {
         const pane = stateRef.current.panesById.get(paneId);
         if (!pane) return;
         const current = paneSessions(stateRef.current, paneId);
+        const next = typeof tabs === "function" ? tabs(current) : tabs;
+        const session = next.at(-1) ?? current[0];
+        if (!session) return;
         dispatch({
-          type: "setPaneTabs",
+          type: "setPaneSession",
           paneId,
-          tabs: typeof tabs === "function" ? tabs(current) : tabs,
+          session,
         });
       },
       patchActiveTab: (paneId: PaneId, patch: Partial<SessionTab>) =>

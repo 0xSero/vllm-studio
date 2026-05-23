@@ -606,7 +606,6 @@ function ProjectRow({
   icon?: "folder" | "chat";
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
-  const [newChatMenuOpen, setNewChatMenuOpen] = useState(false);
   const handleToggle = () => {
     if (!project.exists) {
       setMissingErrorVisible(true);
@@ -647,16 +646,11 @@ function ProjectRow({
             />
           ) : null}
         </button>{" "}
-        <div
-          className={`absolute right-1.5 top-1/2 -translate-y-1/2 transition-opacity ${
-            newChatMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          }`}
-        >
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
           <NewChatPlusButton
             projectId={project.id}
             label={`New chat in ${project.name}`}
             className="flex h-5 w-5 items-center justify-center text-(--dim) hover:text-(--fg)"
-            onMenuOpenChange={setNewChatMenuOpen}
           />
         </div>
         {onRemove ? (
@@ -1182,63 +1176,32 @@ function SessionMenuItem({ onClick, children }: { onClick: () => void; children:
   );
 }
 
-/**
- * The "+" affordance in the sidebar (Chats header + each project row). When
- * already on the workspace page it pops a dropdown so the user explicitly
- * picks Split (sibling pane) or New (replace focused pane). When elsewhere it
- * acts as a regular `<Link>` into `/agent` — no UI choice to make until we
- * land on the workspace.
- */
+/** The "+" affordance in the sidebar (Chats header + each project row). */
 function NewChatPlusButton({
   projectId,
   label,
   className,
-  onMenuOpenChange,
 }: {
   projectId: string;
   label: string;
   className: string;
-  onMenuOpenChange?: (open: boolean) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const setMenuOpenAndNotify = (open: boolean) => {
-    setMenuOpen(open);
-    onMenuOpenChange?.(open);
-  };
-  useClickOutside(containerRef, menuOpen, () => setMenuOpenAndNotify(false));
-
-  const dispatchNew = (mode: "split" | "replace") => {
-    setMenuOpenAndNotify(false);
-    window.dispatchEvent(new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId, mode } }));
-  };
-
   return (
-    <div ref={containerRef} className="relative flex items-center justify-center leading-none">
+    <div className="relative flex items-center justify-center leading-none">
       <Link
         href={`/agent?project=${encodeURIComponent(projectId)}&new=1`}
         onClick={(event) => {
           if (window.location.pathname !== "/agent") return;
-          // On the workspace we never navigate — open the dropdown instead so
-          // the user can choose how to slot the new session.
           event.preventDefault();
           event.stopPropagation();
-          setMenuOpenAndNotify(!menuOpen);
+          window.dispatchEvent(new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId } }));
         }}
         className={className}
         aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
         title={label}
       >
         <PlusIcon className="block h-3.5 w-3.5" />
       </Link>
-      {menuOpen ? (
-        <div className={`${SESSION_MENU_CLASS} min-w-[140px]`} role="menu">
-          <SessionMenuItem onClick={() => dispatchNew("replace")}>New session </SessionMenuItem>
-          <SessionMenuItem onClick={() => dispatchNew("split")}>Split right </SessionMenuItem>
-        </div>
-      ) : null}
     </div>
   );
 }

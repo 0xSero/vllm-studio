@@ -134,28 +134,26 @@ describe("runWorkspaceEffect", () => {
     expect(raw).not.toContain("think-1");
   });
 
-  it("does not write pane state for streaming setPaneTabs mutations", () => {
+  it("does not write pane state for streaming setPaneSession mutations", () => {
     const storage = memoryStorage();
     const { deps } = makeDeps(storage);
     const state = createInitialState();
     const paneId = state.focusedPaneId;
-    const session = state.sessions.get(state.panesById.get(paneId)!.activeSessionId)!;
+    const session = state.sessions.get(state.panesById.get(paneId)!.sessionId)!;
     const action: WorkspaceAction = {
-      type: "setPaneTabs",
+      type: "setPaneSession",
       paneId,
-      tabs: [
-        {
-          ...session,
-          messages: [
-            {
-              id: "assistant-1",
-              role: "assistant",
-              text: "",
-              blocks: [{ kind: "thinking", id: "think-1", text: "x".repeat(50_000) }],
-            },
-          ],
-        },
-      ],
+      session: {
+        ...session,
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            text: "",
+            blocks: [{ kind: "thinking", id: "think-1", text: "x".repeat(50_000) }],
+          },
+        ],
+      },
     };
     const next = reducer(state, action);
 
@@ -168,16 +166,16 @@ describe("runWorkspaceEffect", () => {
     );
   });
 
-  it("writes pane metadata when setPaneTabs changes recoverable session identity", () => {
+  it("writes pane metadata when setPaneSession changes recoverable session identity", () => {
     const storage = memoryStorage();
     const { deps } = makeDeps(storage);
     const state = createInitialState();
     const paneId = state.focusedPaneId;
-    const session = state.sessions.get(state.panesById.get(paneId)!.activeSessionId)!;
+    const session = state.sessions.get(state.panesById.get(paneId)!.sessionId)!;
     const action: WorkspaceAction = {
-      type: "setPaneTabs",
+      type: "setPaneSession",
       paneId,
-      tabs: [{ ...session, piSessionId: "pi-1", status: "running" }],
+      session: { ...session, piSessionId: "pi-1", status: "running" },
     };
     const next = reducer(state, action);
 

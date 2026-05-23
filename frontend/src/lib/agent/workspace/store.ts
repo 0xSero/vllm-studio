@@ -47,8 +47,7 @@ export function createInitialState(): WorkspaceState {
       [
         "p-init",
         {
-          sessionIds: [session.id],
-          activeSessionId: session.id,
+          sessionId: session.id,
           runtimeSessionId: newRuntimeId(),
         },
       ],
@@ -202,8 +201,7 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     const selection = restored.selections.get(session.id);
     if (selection) selections.set(session.id, selection);
     panesById.set(paneId, {
-      sessionIds: [session.id],
-      activeSessionId: session.id,
+      sessionId: session.id,
       runtimeSessionId: persistedRuntimeSessionId(pane),
     });
   }
