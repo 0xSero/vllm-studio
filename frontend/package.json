@@ -7,6 +7,7 @@
     "build": "next build --webpack",
     "start": "node scripts/start-standalone.mjs",
     "start:next": "next start",
+    "test": "tsx --test scripts/test-build-agent-session-options.ts",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
@@ -73,6 +74,7 @@
     "madge": "^8.0.0",
     "prettier": "^3.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   },
   "overrides": {

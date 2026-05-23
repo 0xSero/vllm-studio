@@ -10,21 +10,10 @@ import {
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import { isAgentEndEvent } from "./pi-events";
 import {
-  deriveFrontendBase,
+  applyRuntimeEnvInjections,
+  buildAgentSessionOptions,
   pluginFingerprint,
-  pluginMcpConfigs,
-  pluginNameMatches,
-  pluginSkillPaths,
   resolveAgentCwd,
-  resolveBrowserExtensionPath,
-  resolveCanvasExtensionPath,
-  resolveCanvasSkillPath,
-  resolveMcpExtensionPath,
-  resolveParchiBrowserExtensionPath,
-  resolveTimeoutExtensionPath,
-  selectedSkillPaths,
-  uniqueExistingPaths,
-  type RuntimePluginRef,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
 import { refreshPiModels } from "./pi-runtime";
@@ -33,54 +22,6 @@ import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 const PROVIDER_ID = "vllm-studio";
 
 type PiEvent = LoggedPiEvent["event"];
-
-function shouldLoadBrowserTool(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): boolean {
-  return (
-    options.browserToolEnabled === true ||
-    plugins.some(
-      (plugin) =>
-        pluginNameMatches(plugin, "browser-use") || pluginNameMatches(plugin, "computer-use"),
-    )
-  );
-}
-
-function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
-  return options.browserBackend === "parchi" || process.env.VLLM_STUDIO_BROWSER_BACKEND === "parchi"
-    ? "parchi"
-    : "embedded";
-}
-
-function sdkExtensionPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
-  const mcpConfigs = pluginMcpConfigs(plugins);
-  const browserExtensionPath = shouldLoadBrowserTool(options, plugins)
-    ? browserBackend(options) === "parchi"
-      ? resolveParchiBrowserExtensionPath()
-      : resolveBrowserExtensionPath()
-    : null;
-  process.env.VLLM_STUDIO_MCP_PLUGIN_CONFIGS = JSON.stringify(mcpConfigs);
-  process.env.VLLM_STUDIO_BROWSER_SESSION_ID = options.browserSessionId ?? "";
-  process.env.VLLM_STUDIO_FRONTEND_BASE =
-    process.env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(process.env);
-  process.env.PARCHI_RELAY_ORIGIN =
-    process.env.PARCHI_RELAY_ORIGIN ??
-    process.env.VLLM_STUDIO_FRONTEND_BASE ??
-    deriveFrontendBase(process.env);
-  process.env.PARCHI_RELAY_SESSION_ID = options.browserSessionId ?? "";
-  return uniqueExistingPaths([
-    resolveTimeoutExtensionPath(),
-    mcpConfigs.length ? resolveMcpExtensionPath() : null,
-    browserExtensionPath,
-    options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
-  ]);
-}
-
-function sdkSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
-  return uniqueExistingPaths([
-    ...pluginSkillPaths(plugins),
-    ...selectedSkillPaths(options.skills ?? []),
-    options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
-  ]);
-}
 
 function runtimeFingerprint(
   modelId: string,
@@ -132,9 +73,8 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
       throw new Error(`Model '${modelId}' is not available from /v1/models.`);
     }
 
-    const plugins = options.plugins ?? [];
-    const additionalExtensionPaths = sdkExtensionPaths(options, plugins);
-    const additionalSkillPaths = sdkSkillPaths(options, plugins);
+    const sessionOptions = await buildAgentSessionOptions({ options });
+    applyRuntimeEnvInjections(sessionOptions.envInjections);
     const sessionManager = SessionManager.create(resolvedCwd);
     const runtime = await createAgentSessionRuntime(
       async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
@@ -142,8 +82,8 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
           cwd,
           agentDir,
           resourceLoaderOptions: {
-            additionalExtensionPaths,
-            additionalSkillPaths,
+            additionalSkillPaths: sessionOptions.skills,
+            extensionFactories: sessionOptions.extensions,
           },
         });
         const model = services.modelRegistry.find(PROVIDER_ID, modelId);

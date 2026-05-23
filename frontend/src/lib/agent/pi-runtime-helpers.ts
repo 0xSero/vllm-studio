@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "@/lib/data-dir";
 import { listProjectsFromStore } from "./projects-store";
 
@@ -56,6 +58,17 @@ export type RuntimeLaunchPlan = {
   env: NodeJS.ProcessEnv;
   mcpConfigs: RuntimeMcpConfig[];
   plugins: RuntimePluginRef[];
+};
+
+export type AgentSessionOptionsInput = {
+  options: RuntimeStartOptions;
+  processEnv?: NodeJS.ProcessEnv;
+};
+
+export type AgentSessionOptions = {
+  extensions: ExtensionFactory[];
+  skills: string[];
+  envInjections: Record<string, string>;
 };
 
 export function normalizeBackendUrl(value: string): string {
@@ -376,6 +389,78 @@ function extensionArgs(
     if (canvasExtensionPath) args.push("--extension", canvasExtensionPath);
   }
   return args;
+}
+
+function runtimeExtensionPaths(
+  options: RuntimeStartOptions,
+  plugins: RuntimePluginRef[],
+  mcpConfigs: RuntimeMcpConfig[],
+): string[] {
+  const timeoutExtensionPath = resolveTimeoutExtensionPath();
+  const browserExtensionPath = shouldLoadBrowserTool(options, plugins)
+    ? browserBackend(options) === "parchi"
+      ? resolveParchiBrowserExtensionPath()
+      : resolveBrowserExtensionPath()
+    : null;
+  return uniqueExistingPaths([
+    timeoutExtensionPath,
+    mcpConfigs.length ? resolveMcpExtensionPath() : null,
+    browserExtensionPath,
+    options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
+  ]);
+}
+
+function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
+  return uniqueExistingPaths([
+    ...pluginSkillPaths(plugins),
+    ...selectedSkillPaths(options.skills ?? []),
+    options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
+  ]);
+}
+
+function runtimeEnvInjections(
+  options: RuntimeStartOptions,
+  mcpConfigs: RuntimeMcpConfig[],
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  const frontendBase = env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
+  return {
+    VLLM_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
+    VLLM_STUDIO_FRONTEND_BASE: frontendBase,
+    VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
+    PARCHI_RELAY_ORIGIN: env.PARCHI_RELAY_ORIGIN ?? frontendBase,
+    PARCHI_RELAY_SESSION_ID: options.browserSessionId ?? "",
+  };
+}
+
+async function importExtensionFactory(extensionPath: string): Promise<ExtensionFactory | null> {
+  const mod = (await import(pathToFileURL(extensionPath).href)) as { default?: unknown };
+  return typeof mod.default === "function" ? (mod.default as ExtensionFactory) : null;
+}
+
+export function applyRuntimeEnvInjections(
+  envInjections: Record<string, string>,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  for (const [key, value] of Object.entries(envInjections)) env[key] = value;
+}
+
+export async function buildAgentSessionOptions(
+  input: AgentSessionOptionsInput,
+): Promise<AgentSessionOptions> {
+  const options = input.options;
+  const plugins = options.plugins ?? [];
+  const mcpConfigs = pluginMcpConfigs(plugins);
+  const extensions = (
+    await Promise.all(
+      runtimeExtensionPaths(options, plugins, mcpConfigs).map(importExtensionFactory),
+    )
+  ).filter((factory): factory is ExtensionFactory => Boolean(factory));
+  return {
+    extensions,
+    skills: runtimeSkillPaths(options, plugins),
+    envInjections: runtimeEnvInjections(options, mcpConfigs, input.processEnv ?? process.env),
+  };
 }
 
 // Convert runtime selection state into the exact Pi RPC process contract. This
