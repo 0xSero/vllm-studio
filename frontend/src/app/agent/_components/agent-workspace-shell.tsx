@@ -287,6 +287,7 @@ function renderWorkspacePane({
       tabs={view.sessionList}
       activeTabId={view.pane.sessionId}
       onTabsChange={(nextTabsOrUpdater) => handles.setPaneTabs(view.paneId, nextTabsOrUpdater)}
+      onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
       onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
       onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
       rightPanelOpen={tools.computer.open}

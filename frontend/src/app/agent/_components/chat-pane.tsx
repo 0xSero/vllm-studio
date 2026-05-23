@@ -56,7 +56,7 @@ import {
   visibleQueuedMessages,
 } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
-import { patchSessionPref } from "@/lib/agent/session/prefs";
+import { copySessionPref, patchSessionPref } from "@/lib/agent/session/prefs";
 import { useTools } from "@/lib/agent/tools/context";
 import {
   attachmentDedupKey,
@@ -116,6 +116,7 @@ type Props = {
   tabs: SessionTab[];
   activeTabId: string;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
+  onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
   onForkSession?: () => void;
   rightPanelOpen: boolean;
@@ -158,6 +159,7 @@ export function ChatPane({
   tabs,
   activeTabId,
   onTabsChange,
+  onRenameSession,
   onClose,
   onForkSession,
   rightPanelOpen,
@@ -275,15 +277,22 @@ export function ChatPane({
     if (sessionPrefKeys.length === 0) return;
     patchActiveSessionPrefs({ pinned: !sessionPinned });
   }, [patchActiveSessionPrefs, sessionPinned, sessionPrefKeys.length]);
+  const handlePiSessionIdChange = useCallback(
+    (piSessionId: string) => {
+      if (paneId && activeTabId) copySessionPref(`tab:${paneId}:${activeTabId}`, piSessionId);
+      onPiSessionIdChange?.(piSessionId);
+    },
+    [activeTabId, onPiSessionIdChange, paneId],
+  );
   const renameActiveSession = useCallback(
     (nextTitle: string) => {
       if (!activeTab) return;
       const trimmed = nextTitle.trim();
       if (!trimmed || trimmed === displayedSessionTitle) return;
-      updateTab(activeTab.id, (tab) => ({ ...tab, title: trimmed }));
+      onRenameSession(activeTab.id, trimmed);
       patchActiveSessionPrefs({ title: trimmed });
     },
-    [activeTab, displayedSessionTitle, patchActiveSessionPrefs, updateTab],
+    [activeTab, displayedSessionTitle, onRenameSession, patchActiveSessionPrefs],
   );
   const selectMentionRow = useCallback(
     async (entry: MentionRow) => {
@@ -402,7 +411,7 @@ export function ChatPane({
     cwd,
     browserToolEnabled,
     canvasEnabled: tools.computer.canvasEnabled,
-    onPiSessionIdChange,
+    onPiSessionIdChange: handlePiSessionIdChange,
     updateSession,
     selectionFor: tools.selectionFor,
   });

@@ -31,7 +31,7 @@ function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | 
   if (typeof runtime.adoptPiSessionId === "function") {
     runtime.adoptPiSessionId(next);
   } else if (!runtime.currentPiSessionId) {
-    // Dev HMR can keep a PiRpcSession instance from the previous module
+    // Dev HMR can keep an older runtime instance from the previous module
     // version alive. Preserve reattach correctness for those sessions too.
     runtime.currentPiSessionId = next;
   }

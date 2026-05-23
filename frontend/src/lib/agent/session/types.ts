@@ -75,8 +75,8 @@ export type AgentTurnSsePayload =
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
-  // In-memory PiRpcSession key. One per tab so tabs can run independent pi
-  // processes instead of sharing a pane-level runtime.
+  // In-memory Pi runtime key. One per tab so tabs can run independent agent
+  // sessions instead of sharing a pane-level runtime.
   runtimeSessionId: string;
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).

@@ -417,11 +417,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           ...session,
           status: runtimeStillActive ? "running" : "idle",
           activeAssistantId: runtimeStillActive ? assistantId : undefined,
-          error: streamError
-            ? runtimeStillActive
-              ? `${streamError}; reattaching to the running session.`
-              : streamError
-            : session.error,
+          error: streamError && !runtimeStillActive ? streamError : session.error,
         }));
       }
 
