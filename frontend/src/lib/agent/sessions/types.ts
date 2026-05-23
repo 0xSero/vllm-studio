@@ -28,6 +28,12 @@ export type Session = {
   startedAt?: string;
   input: string;
   tokenStats?: TokenStats;
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+    shouldCompact: boolean;
+  } | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
   queue?: QueuedMessage[];

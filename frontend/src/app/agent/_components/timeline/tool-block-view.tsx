@@ -9,7 +9,7 @@ import {
   TerminalSquare,
   Wrench,
 } from "lucide-react";
-import { ChevronDownIcon, GlobeIcon } from "@/components/icons";
+import { GlobeIcon } from "@/components/icons";
 import type { ToolBlock } from "@/lib/agent/session";
 import {
   FILE_WRITE_TOOL_NAMES,
@@ -144,9 +144,6 @@ function ToolSummary({
           ) : null}
         </span>
         <ToolStatus status={block.status} />
-        {children ? (
-          <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-(--dim) transition-transform group-open:rotate-180" />
-        ) : null}
       </summary>
       {children ? <div className="ml-6 mt-1 min-w-0">{children}</div> : null}
     </details>

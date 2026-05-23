@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import type {
   AssistantBlock,
   ChatMessage,
@@ -235,8 +235,7 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
       segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
   );
   // Default to expanded so reasoning (and tool args) stream into view as they
-  // arrive. Users can still collapse manually; the chevron continues to
-  // reflect open/closed.
+  // arrive. Users can still collapse manually from the summary row.
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -248,9 +247,6 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
           setExpanded((value) => !value);
         }}
       >
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-(--dim) transition-transform ${expanded ? "rotate-180" : "-rotate-90"}`}
-        />
         <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
         <span className="shrink-0 font-medium text-(--fg)/90">{activityLabel(segments)}</span>
         <span className="min-w-0 flex-1 truncate text-(--dim)">{activityPreview(segments)}</span>
