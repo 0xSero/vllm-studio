@@ -47,6 +47,7 @@ export type WorkspaceHandles = {
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
   selectProject: (project: Project | null) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
+  compactFocusedSession: () => Promise<void>;
   runBrowserCommand: (
     verb: string,
     payload: Record<string, unknown>,
@@ -335,6 +336,10 @@ export function useWorkspace(): UseWorkspaceResult {
         else paneHandlesRef.current.delete(paneId);
         const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
         if (handle && pendingSessionId) queueSessionReplay(paneId, pendingSessionId);
+      },
+      compactFocusedSession: async () => {
+        const handle = paneHandlesRef.current.get(stateRef.current.focusedPaneId);
+        await handle?.compact();
       },
       runBrowserCommand,
       setSplitRatio: (path: number[], ratio: number) =>

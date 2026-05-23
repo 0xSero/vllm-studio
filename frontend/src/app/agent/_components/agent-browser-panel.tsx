@@ -33,6 +33,7 @@ type AgentBrowserPanelHandles = Pick<
   | "registerBrowserHandle"
   | "runBrowserCommand"
   | "openSideSessionFromFocusedPane"
+  | "compactFocusedSession"
 >;
 
 type AgentBrowserPanelProps = {
@@ -84,6 +85,7 @@ export function AgentBrowserPanel({
         focusedSession={focusedSession}
         sessions={sessions}
         gitSummary={gitSummary}
+        onCompactSession={handles.compactFocusedSession}
       />
     ) : tools.computer.tab === "tools" ? (
       <ComputerLauncherPanel

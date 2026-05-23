@@ -95,7 +95,6 @@ type Props = {
   contextWindow: number;
   cwd: string;
   projectName: string | null;
-  projectSelector?: ReactNode;
   modelSelector?: ReactNode;
   gitBranch?: string | null;
   gitSummary?: {
@@ -143,7 +142,6 @@ export function ChatPane({
   contextWindow,
   cwd,
   projectName,
-  projectSelector,
   modelSelector,
   gitBranch,
   gitSummary,
@@ -671,9 +669,6 @@ export function ChatPane({
     },
     [activeTabId, engine],
   );
-  const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
-  handleRef.current = { loadAndReplay };
-  useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
@@ -696,6 +691,10 @@ export function ChatPane({
       setCompacting(false);
     }
   }, [activeTab, compacting, engine, modelId, running]);
+  const handleRef = useRef<ChatPaneHandle>({ loadAndReplay, compact: compactSession });
+  handleRef.current = { loadAndReplay, compact: compactSession };
+  useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
+  const displayCwd = formatHomeRelativePath(cwd);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -1128,24 +1127,10 @@ export function ChatPane({
         <div className="relative z-20 mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-            <button
-              type="button"
-              onClick={() => void compactSession()}
-              disabled={running || compacting || !activeTab?.piSessionId || !modelId}
-              className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
-              title="Compact this Pi session context"
-            >
-              {" "}
-              {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              compact{" "}
-            </button>
-            <span className="shrink-0 text-(--border)">·</span>{" "}
             <div className="min-w-0 max-w-[42%] shrink overflow-visible">
-              {projectSelector ? (
-                projectSelector
-              ) : cwd ? (
+              {displayCwd ? (
                 <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
-                  {cwd}{" "}
+                  {displayCwd}{" "}
                 </span>
               ) : null}{" "}
             </div>
@@ -1369,6 +1354,14 @@ function HeaderMenuItem({
       {children}
     </button>
   );
+}
+
+function formatHomeRelativePath(value: string): string {
+  const normalized = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized) return "";
+  const homeMatch = normalized.match(/^\/Users\/[^/]+(\/.*)?$/);
+  if (homeMatch) return `~${homeMatch[1] ?? ""}`;
+  return normalized;
 }
 
 function mentionRowTitle(entry: MentionRow): string {

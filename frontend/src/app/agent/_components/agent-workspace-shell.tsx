@@ -259,13 +259,6 @@ function renderWorkspacePane({
       contextWindow={view.model?.contextWindow ?? 0}
       cwd={view.cwd}
       projectName={view.project?.name ?? null}
-      projectSelector={renderProjectSelector(
-        view.paneId,
-        projects.projects,
-        view.project,
-        view.isNewSession,
-        handles,
-      )}
       gitBranch={view.gitBranch}
       gitSummary={view.gitSummary}
       onInitGit={handles.initGitForActiveProject}
@@ -294,93 +287,6 @@ function renderWorkspacePane({
       onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
     />
-  );
-}
-
-function renderProjectSelector(
-  paneId: PaneId,
-  projects: Project[],
-  paneProject: Project | null | undefined,
-  paneTabIsNew: boolean,
-  handles: WorkspaceHandles,
-) {
-  if (!paneProject || projects.length === 0) return null;
-  return (
-    <ProjectSelector
-      paneId={paneId}
-      projects={projects}
-      paneProject={paneProject}
-      paneTabIsNew={paneTabIsNew}
-      handles={handles}
-    />
-  );
-}
-
-function basenameOfPath(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
-  return normalized.split("/").filter(Boolean).pop() || value;
-}
-
-function ProjectSelector({
-  paneId,
-  projects,
-  paneProject,
-  paneTabIsNew,
-  handles,
-}: {
-  paneId: PaneId;
-  projects: Project[];
-  paneProject: Project;
-  paneTabIsNew: boolean;
-  handles: WorkspaceHandles;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
-  const label = paneProject.name || basenameOfPath(paneProject.path);
-  return (
-    <div ref={ref} className="relative min-w-0">
-      <button
-        type="button"
-        onClick={() => {
-          if (paneTabIsNew) setOpen((value) => !value);
-        }}
-        disabled={!paneTabIsNew}
-        className="inline-flex !h-6 !min-h-6 max-w-full min-w-0 items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0 font-mono !text-[10px] text-(--dim) outline-none hover:bg-(--surface) hover:text-(--fg) disabled:opacity-100"
-        title={paneTabIsNew ? "Change directory for this new session" : paneProject.path}
-        aria-label="Session directory"
-        aria-expanded={open}
-      >
-        <span className="min-w-0 max-w-[18ch] truncate">{label}</span>
-        {paneTabIsNew ? (
-          <ChevronDownIcon
-            className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        ) : null}
-      </button>
-      {open ? (
-        <div className="absolute bottom-full left-0 z-50 mb-1 max-h-60 min-w-[min(34rem,70vw)] overflow-y-auto rounded-md border border-(--border) bg-[#151515] p-1 text-[11px] text-(--fg) shadow-[0_8px_28px_rgba(0,0,0,0.65)]">
-          {projects.map((project) => (
-            <button
-              type="button"
-              key={project.id}
-              onClick={() => {
-                handles.selectPaneProject(paneId, project);
-                setOpen(false);
-              }}
-              className={`flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono ${
-                project.id === paneProject.id
-                  ? "bg-(--hover) text-(--fg)"
-                  : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-              }`}
-              title={project.path}
-            >
-              <span className="min-w-0 flex-1 truncate">{project.path}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-c
 // so the control flow is auditable in one place.
 export type ChatPaneHandle = {
   loadAndReplay: (piSessionId: string) => Promise<void>;
+  compact: () => Promise<void>;
 };
 
 export type ToolBlock = {

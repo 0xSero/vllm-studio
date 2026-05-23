@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import { Code2 } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Code2, Loader2 } from "lucide-react";
 import { formatTokenCount } from "@/lib/agent/session";
 import { useTools } from "@/lib/agent/tools/context";
 import type { Project } from "@/lib/agent/projects/types";
@@ -22,14 +22,17 @@ export function ComputerStatusPanel({
   focusedSession,
   sessions,
   gitSummary,
+  onCompactSession,
 }: {
   activeProject: Project | null;
   activeModel: AgentModel | null;
   focusedSession: Session | null;
   sessions: Session[];
   gitSummary?: GitSummary;
+  onCompactSession?: () => Promise<void>;
 }) {
   const tools = useTools();
+  const [compacting, setCompacting] = useState(false);
   const totals = useMemo(
     () =>
       sessions.reduce(
@@ -48,6 +51,24 @@ export function ComputerStatusPanel({
   );
   const contextWindow = activeModel?.contextWindow ?? 0;
   const sessionTokens = focusedSession?.tokenStats?.current ?? 0;
+  const sessionRunning =
+    focusedSession?.status === "running" || focusedSession?.status === "starting";
+  const compactDisabled =
+    compacting ||
+    sessionRunning ||
+    !focusedSession?.piSessionId ||
+    !activeModel ||
+    !onCompactSession;
+  const shouldCompact = Boolean(focusedSession?.contextUsage?.shouldCompact);
+  const compactFocusedSession = async () => {
+    if (compactDisabled) return;
+    setCompacting(true);
+    try {
+      await onCompactSession?.();
+    } finally {
+      setCompacting(false);
+    }
+  };
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
       <SessionSummary
@@ -67,6 +88,26 @@ export function ComputerStatusPanel({
           label="Context"
           value={`${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`}
         />
+        <StatusActionRow label="Compact">
+          <button
+            type="button"
+            onClick={() => void compactFocusedSession()}
+            disabled={compactDisabled}
+            className={`inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] ${
+              shouldCompact
+                ? "text-(--accent) ring-1 ring-(--accent)/40"
+                : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+            } disabled:pointer-events-none disabled:opacity-30`}
+            title={
+              shouldCompact
+                ? "Context near limit - compact this session"
+                : "Compact this session context"
+            }
+          >
+            {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {compacting ? "Compacting" : "Compact"}
+          </button>
+        </StatusActionRow>
         <StatusRow
           label="Read / write"
           value={`${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`}
@@ -175,6 +216,15 @@ function StatusRow({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 truncate text-right font-mono text-[11px] text-(--fg)" title={value}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function StatusActionRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_1fr] items-center gap-3 py-0.5">
+      <span className="text-[10px] text-(--dim)">{label}</span>
+      <span className="flex min-w-0 justify-end">{children}</span>
     </div>
   );
 }
