@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import type {
   AssistantBlock,
   ChatMessage,
@@ -107,7 +107,7 @@ function SessionPaneBlockRouterInner({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
     return (
       <article className="flex justify-end">
-        <div className="max-w-[72%] rounded-xl bg-(--surface) px-3.5 py-2 font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg)">
+        <div className="max-w-[72%] rounded-[14px] bg-(--surface-3)/80 px-4 py-2.5 font-sans text-[14px] leading-[22px] tracking-normal text-(--fg)">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
             <div className="mt-2 grid gap-2">
@@ -139,7 +139,7 @@ const AssistantBlocks = memo(function AssistantBlocks({ blocks }: { blocks: Assi
       {routedBlocks.length === 0 ? (
         <div className="text-[13px] leading-[21px] text-(--dim)">…</div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3.5">
           {routedBlocks.map((item) => {
             if (item.kind === "activity-group") {
               return <AssistantActivityGroup key={item.id} segments={item.segments} />;
@@ -239,25 +239,24 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   return (
     <details className="group min-w-0 overflow-hidden" open={expanded}>
       <summary
-        className="flex min-w-0 cursor-pointer list-none items-center gap-1 rounded-md px-1 py-0.5 text-[11px] text-(--fg) hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-8 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-0.5 py-1 text-[13px] leading-5 text-(--dim) transition-colors hover:text-(--fg) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setExpanded((value) => !value);
         }}
       >
         <ChevronDown
-          className={`h-3 w-3 shrink-0 text-(--fg)/70 transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 text-(--dim) transition-transform ${expanded ? "rotate-180" : "-rotate-90"}`}
         />
+        <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
         <span className="shrink-0 font-medium text-(--fg)/90">{activityLabel(segments)}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--fg)/70">
-          {activityPreview(segments)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-(--dim)">{activityPreview(segments)}</span>
         {hasActiveTool ? (
-          <span className="shrink-0 text-[10px] text-(--accent)">running</span>
+          <span className="shrink-0 text-[12px] text-(--accent)">running</span>
         ) : null}
       </summary>
       {expanded ? (
-        <div className="ml-1.5 mt-1 flex min-w-0 flex-col gap-1.5 border-l border-(--border)/70 pl-2">
+        <div className="ml-3 mt-1.5 flex min-w-0 flex-col gap-1.5 border-l border-(--border)/70 pl-3">
           {segments.flatMap(activitySegmentItems).map((item) => (
             <ActivityTreeItem key={item.id} item={item} />
           ))}
@@ -285,7 +284,7 @@ function ActivityTreeItem({ item }: { item: ActivityTreeItem }) {
 
 function ReasoningLeaf({ block }: { block: ThinkingBlock }) {
   return (
-    <pre className="max-w-full whitespace-pre-wrap break-words py-0.5 font-mono text-[11px] leading-5 text-(--dim) [overflow-wrap:anywhere]">
+    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap rounded-md py-1 pr-2 font-mono text-[12px] leading-5 text-(--dim)">
       {block.text}
     </pre>
   );
@@ -305,14 +304,44 @@ function activityLabel(segments: ActivitySegment[]): string {
   const reasoningCount = segments
     .filter((segment) => segment.kind === "reasoning")
     .reduce((count, segment) => count + segment.blocks.length, 0);
-  const toolCount = segments
+  const tools = segments
     .filter((segment) => segment.kind === "tools")
-    .reduce((count, segment) => count + segment.blocks.length, 0);
+    .flatMap((segment) => segment.blocks);
+  const toolCount = tools.length;
+  const toolSummary = summarizeTools(tools);
   const pieces = [];
   if (reasoningCount > 0)
-    pieces.push(reasoningCount === 1 ? "Reasoning" : `${reasoningCount} reasoning`);
-  if (toolCount > 0) pieces.push(toolCount === 1 ? "1 tool" : `${toolCount} tools`);
-  return pieces.join(" + ");
+    pieces.push(reasoningCount === 1 ? "Reasoned" : `${reasoningCount} reasoning`);
+  if (toolSummary) pieces.push(toolSummary);
+  if (!toolSummary && toolCount > 0) pieces.push(toolCount === 1 ? "1 tool" : `${toolCount} tools`);
+  return pieces.join(", ");
+}
+
+function summarizeTools(blocks: ToolBlock[]): string {
+  const counts = blocks.reduce<Record<string, number>>((acc, block) => {
+    const kind = classifyTool(block);
+    acc[kind] = (acc[kind] ?? 0) + 1;
+    return acc;
+  }, {});
+  return [
+    pluralAction(counts.search, "Explored", "search", "searches"),
+    pluralAction(counts.read, "read", "file", "files"),
+    pluralAction(counts.exec, "ran", "command", "commands"),
+    pluralAction(counts.edit, "edited", "file", "files"),
+    pluralAction(counts.browser, "used", "browser", "browser"),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function pluralAction(
+  count: number | undefined,
+  verb: string,
+  singular: string,
+  plural: string,
+): string | null {
+  if (!count) return null;
+  return `${verb} ${count} ${count === 1 ? singular : plural}`;
 }
 
 function activityPreview(segments: ActivitySegment[]): string {

@@ -770,7 +770,7 @@ export function ChatPane({
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-lg bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
+          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
         >
           {" "}
           {composerDragActive ? (
@@ -993,7 +993,7 @@ export function ChatPane({
                     ? `Steer ${modelName}…`
                     : `Message ${modelName}`
             }
-            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 font-sans text-[14px] leading-[21px] tracking-[-0.003em] text-(--fg) outline-none placeholder:text-(--dim)"
+            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 font-sans text-[15px] leading-[22px] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}

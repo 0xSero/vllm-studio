@@ -99,8 +99,8 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-white/[0.06] bg-[#2f2f33] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-      <div className="flex h-8 items-center justify-between border-b border-white/[0.06] bg-white/[0.015] px-2.5">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-lg border border-white/[0.06] bg-[#242424] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="flex h-8 items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-2.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-(--dim)">
           {language ?? "code"}
         </span>
@@ -138,14 +138,14 @@ const components: Components = {
   ),
   p: ({ node: _n, ...props }) => (
     <p
-      className="my-2 max-w-full break-words text-[14px] leading-[22px] tracking-[-0.003em] first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
+      className="my-2.5 max-w-full break-words text-[15px] leading-6 tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
       {...props}
     />
   ),
   ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-5" {...props} />,
   ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
   li: ({ node: _n, ...props }) => (
-    <li className="text-[14px] leading-[22px] tracking-[-0.003em]" {...props} />
+    <li className="text-[15px] leading-6 tracking-normal" {...props} />
   ),
   code: ({ node: _n, className, children, ...props }) => {
     const isBlock = typeof className === "string" && /\blanguage-/.test(className);
@@ -158,7 +158,7 @@ const components: Components = {
     }
     return (
       <code
-        className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) [overflow-wrap:anywhere]"
+        className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 [overflow-wrap:anywhere]"
         {...props}
       >
         {children}
@@ -240,7 +240,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
           <button
             type="button"
             onClick={() => tools.requestFileOpen(value)}
-            className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) hover:bg-(--hover) [overflow-wrap:anywhere]"
+            className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 hover:bg-(--hover) [overflow-wrap:anywhere]"
             title="Open file"
           >
             {children}
@@ -249,7 +249,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       }
       return (
         <code
-          className="rounded bg-(--surface) px-1 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg) [overflow-wrap:anywhere]"
+          className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 [overflow-wrap:anywhere]"
           {...props}
         >
           {children}
@@ -295,10 +295,10 @@ function AssistantMarkdownInner({ text }: { text: string }) {
     [tools.requestFileOpen, tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
   );
   return (
-    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden font-sans text-[14px] leading-[22px] tracking-[-0.003em] text-(--fg) [overflow-wrap:anywhere]">
+    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden font-sans text-[15px] leading-6 tracking-normal text-(--fg) [overflow-wrap:anywhere]">
       <MarkdownErrorBoundary
         fallback={
-          <pre className="max-w-full whitespace-pre-wrap break-words font-sans text-[14px] leading-[22px] tracking-[-0.003em] [overflow-wrap:anywhere]">
+          <pre className="max-w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-6 tracking-normal [overflow-wrap:anywhere]">
             {text}
           </pre>
         }
