@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit",
     "build": "bun build src/main.ts --compile --outfile vllm-studio",
     "prepare": "cd ../.. && husky cli/.husky",
-    "test": "vitest run",
     "check": "knip && jscpd src && depcheck",
     "check:fix": "knip --fix"
   },
@@ -27,8 +26,7 @@
     "husky": "9.1.7",
     "jscpd": "4.0.5",
     "knip": "5.44.2",
-    "typescript": "^5.4.0",
-    "vitest": "3.2.4"
+    "typescript": "^5.4.0"
   },
   "engines": {
     "bun": ">=1.0.0"

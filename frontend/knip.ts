@@ -4,14 +4,7 @@
 const config = {
   entry: ["src/app/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
   project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
-  ignore: [
-    ".next/**",
-    "node_modules/**",
-    ".husky/**",
-    "playwright-report/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-  ],
+  ignore: [".next/**", "node_modules/**", ".husky/**"],
   // Some tooling is used implicitly (CSS/postcss pipeline, git hooks), which knip can't reliably
   // infer from source imports. Keep this list small and intentional.
   ignoreDependencies: ["tailwindcss", "postcss", "husky"],

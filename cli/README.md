@@ -42,7 +42,6 @@ vllm-studio help
 
 ```bash
 bun install
-bun test
 bun run typecheck
 bun run lint
 bun run build
