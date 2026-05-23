@@ -17,6 +17,7 @@ import {
   type RuntimePluginRef,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
+import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
 const PROVIDER_ID = "vllm-studio";
 const DEFAULT_SESSION_ID = "default";
@@ -31,13 +32,7 @@ type PiResponse = {
   error?: string | { message?: string };
 };
 
-type PiEvent = Record<string, unknown> & { type?: string };
-
-export type LoggedPiEvent = {
-  seq: number;
-  event: PiEvent;
-  timestamp: string;
-};
+type PiEvent = LoggedPiEvent["event"];
 
 type PendingCommand = {
   resolve: (response: PiResponse) => void;
@@ -103,7 +98,7 @@ export async function refreshPiModels(): Promise<{ models: AgentModel[]; agentDi
   return { models, agentDir };
 }
 
-class PiRpcSession extends EventEmitter {
+class PiRpcSession extends EventEmitter implements PiAgentSession {
   private process: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";
   private commandSeq = 0;
@@ -477,7 +472,7 @@ class PiRpcSession extends EventEmitter {
 class PiRuntimeManager {
   private sessions = new Map<string, PiRpcSession>();
 
-  getSession(sessionId = DEFAULT_SESSION_ID): PiRpcSession {
+  getSession(sessionId = DEFAULT_SESSION_ID): PiAgentSession {
     const existing = this.sessions.get(sessionId);
     if (existing) return existing;
     const created = new PiRpcSession();

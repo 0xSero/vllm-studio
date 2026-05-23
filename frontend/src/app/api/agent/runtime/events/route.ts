@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { piRuntimeManager, type LoggedPiEvent } from "@/lib/agent/pi-runtime";
+import { piRuntimeManager } from "@/lib/agent/pi-runtime";
+import type { LoggedPiEvent } from "@/lib/agent/pi-runtime-types";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 
 export const runtime = "nodejs";
