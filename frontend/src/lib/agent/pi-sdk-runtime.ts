@@ -1,0 +1,306 @@
+import { EventEmitter } from "node:events";
+import {
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
+  SessionManager,
+  type AgentSessionEvent,
+  type AgentSessionRuntime,
+} from "@earendil-works/pi-coding-agent";
+import type { AgentImageInput } from "@/lib/agent/contracts/turn";
+import { isAgentEndEvent } from "./pi-events";
+import {
+  deriveFrontendBase,
+  pluginFingerprint,
+  pluginMcpConfigs,
+  pluginNameMatches,
+  pluginSkillPaths,
+  resolveAgentCwd,
+  resolveBrowserExtensionPath,
+  resolveCanvasExtensionPath,
+  resolveCanvasSkillPath,
+  resolveMcpExtensionPath,
+  resolveParchiBrowserExtensionPath,
+  resolveTimeoutExtensionPath,
+  selectedSkillPaths,
+  uniqueExistingPaths,
+  type RuntimePluginRef,
+  type RuntimeStartOptions,
+} from "./pi-runtime-helpers";
+import { refreshPiModels } from "./pi-runtime";
+import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
+
+const PROVIDER_ID = "vllm-studio";
+
+type PiEvent = LoggedPiEvent["event"];
+
+function shouldLoadBrowserTool(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): boolean {
+  return (
+    options.browserToolEnabled === true ||
+    plugins.some(
+      (plugin) =>
+        pluginNameMatches(plugin, "browser-use") || pluginNameMatches(plugin, "computer-use"),
+    )
+  );
+}
+
+function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
+  return options.browserBackend === "parchi" || process.env.VLLM_STUDIO_BROWSER_BACKEND === "parchi"
+    ? "parchi"
+    : "embedded";
+}
+
+function sdkExtensionPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
+  const mcpConfigs = pluginMcpConfigs(plugins);
+  const browserExtensionPath = shouldLoadBrowserTool(options, plugins)
+    ? browserBackend(options) === "parchi"
+      ? resolveParchiBrowserExtensionPath()
+      : resolveBrowserExtensionPath()
+    : null;
+  process.env.VLLM_STUDIO_MCP_PLUGIN_CONFIGS = JSON.stringify(mcpConfigs);
+  process.env.VLLM_STUDIO_BROWSER_SESSION_ID = options.browserSessionId ?? "";
+  process.env.VLLM_STUDIO_FRONTEND_BASE =
+    process.env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(process.env);
+  process.env.PARCHI_RELAY_ORIGIN =
+    process.env.PARCHI_RELAY_ORIGIN ??
+    process.env.VLLM_STUDIO_FRONTEND_BASE ??
+    deriveFrontendBase(process.env);
+  process.env.PARCHI_RELAY_SESSION_ID = options.browserSessionId ?? "";
+  return uniqueExistingPaths([
+    resolveTimeoutExtensionPath(),
+    mcpConfigs.length ? resolveMcpExtensionPath() : null,
+    browserExtensionPath,
+    options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
+  ]);
+}
+
+function sdkSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
+  return uniqueExistingPaths([
+    ...pluginSkillPaths(plugins),
+    ...selectedSkillPaths(options.skills ?? []),
+    options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
+  ]);
+}
+
+function runtimeFingerprint(
+  modelId: string,
+  cwd: string,
+  piSessionId: string | null,
+  options: RuntimeStartOptions,
+) {
+  return JSON.stringify({
+    modelId,
+    cwd,
+    piSessionId: piSessionId ?? "",
+    options: pluginFingerprint(options),
+  });
+}
+
+export class PiSdkSession extends EventEmitter implements PiAgentSession {
+  private runtime: AgentSessionRuntime | null = null;
+  private unsubscribe: (() => void) | null = null;
+  private eventSeq = 0;
+  private eventLog: LoggedPiEvent[] = [];
+  private activePromptCount = 0;
+  private lastError: string | null = null;
+  private currentFingerprint = "";
+  private currentPiSessionId: string | null = null;
+  private currentCwd = "";
+  private currentModelId = "";
+  private agentDir = "";
+
+  async ensureStarted(
+    modelId: string,
+    cwd?: string,
+    piSessionId?: string | null,
+    options: RuntimeStartOptions = {},
+  ): Promise<void> {
+    const resolvedCwd = await resolveAgentCwd(cwd);
+    const desiredSessionId = piSessionId ?? null;
+    const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
+    if (this.runtime && this.currentFingerprint === fingerprint) return;
+
+    await this.stop();
+    this.eventSeq = 0;
+    this.eventLog = [];
+    this.activePromptCount = 0;
+    this.lastError = null;
+
+    const { models, agentDir } = await refreshPiModels();
+    const selectedModel = models.find((model) => model.id === modelId);
+    if (!selectedModel) {
+      throw new Error(`Model '${modelId}' is not available from /v1/models.`);
+    }
+
+    const plugins = options.plugins ?? [];
+    const additionalExtensionPaths = sdkExtensionPaths(options, plugins);
+    const additionalSkillPaths = sdkSkillPaths(options, plugins);
+    const sessionManager = SessionManager.create(resolvedCwd);
+    const runtime = await createAgentSessionRuntime(
+      async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+        const services = await createAgentSessionServices({
+          cwd,
+          agentDir,
+          resourceLoaderOptions: {
+            additionalExtensionPaths,
+            additionalSkillPaths,
+          },
+        });
+        const model = services.modelRegistry.find(PROVIDER_ID, modelId);
+        if (!model) {
+          throw new Error(`Model '${PROVIDER_ID}/${modelId}' is not available to the SDK runtime.`);
+        }
+        const created = await createAgentSessionFromServices({
+          services,
+          sessionManager,
+          sessionStartEvent,
+          model,
+          thinkingLevel: selectedModel.reasoning ? "high" : undefined,
+        });
+        return {
+          ...created,
+          services,
+          diagnostics: services.diagnostics,
+        };
+      },
+      {
+        cwd: resolvedCwd,
+        agentDir,
+        sessionManager,
+        sessionStartEvent: desiredSessionId
+          ? { type: "session_start", reason: "resume" }
+          : undefined,
+      },
+    );
+
+    this.runtime = runtime;
+    this.agentDir = agentDir;
+    this.currentModelId = modelId;
+    this.currentCwd = resolvedCwd;
+    this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
+    this.currentFingerprint = fingerprint;
+    this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
+  }
+
+  async prompt(
+    message: string,
+    onEvent: (event: PiEvent, seq: number) => void,
+    options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] } = {},
+  ): Promise<void> {
+    const session = this.requireSession();
+    const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
+    this.on("loggedEvent", listener);
+    this.activePromptCount += 1;
+    this.lastError = null;
+    try {
+      await session.prompt(message, {
+        streamingBehavior: options.streamingBehavior,
+        images: options.images,
+      });
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      this.activePromptCount = Math.max(0, this.activePromptCount - 1);
+      this.off("loggedEvent", listener);
+    }
+  }
+
+  async steer(message: string, images: AgentImageInput[] = []): Promise<void> {
+    await this.requireSession().steer(message, images);
+  }
+
+  async followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
+    await this.requireSession().followUp(message, images);
+  }
+
+  adoptPiSessionId(piSessionId: string | null | undefined): void {
+    const next = piSessionId?.trim();
+    if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
+  }
+
+  async compact(customInstructions?: string): Promise<unknown> {
+    if (this.activePromptCount > 0) {
+      throw new Error("Cannot compact while the agent is running.");
+    }
+    return this.requireSession().compact(customInstructions);
+  }
+
+  async abort(): Promise<void> {
+    await this.runtime?.session.abort().catch(() => undefined);
+  }
+
+  async stop(): Promise<void> {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    const runtime = this.runtime;
+    this.runtime = null;
+    await runtime?.dispose().catch(() => undefined);
+  }
+
+  get status() {
+    const running = Boolean(this.runtime);
+    const lastTurnEvent = [...this.eventLog].reverse().find((entry) => {
+      const type = String(entry.event.type ?? "");
+      return (
+        type === "agent_start" ||
+        type === "turn_start" ||
+        type === "message_start" ||
+        type === "message_update" ||
+        type === "message_end" ||
+        type === "tool_execution_start" ||
+        type === "tool_execution_update" ||
+        type === "tool_execution_end" ||
+        type === "turn_end" ||
+        type === "agent_end" ||
+        type === "process_exit"
+      );
+    });
+    const eventLooksActive =
+      running &&
+      lastTurnEvent &&
+      !isAgentEndEvent(lastTurnEvent.event) &&
+      lastTurnEvent.event.type !== "process_exit";
+    return {
+      running,
+      active: this.activePromptCount > 0 || Boolean(eventLooksActive),
+      modelId: this.currentModelId,
+      cwd: this.currentCwd,
+      piSessionId: this.currentPiSessionId,
+      agentDir: this.agentDir,
+      eventSeq: this.eventSeq,
+      lastError: this.lastError,
+    };
+  }
+
+  getEventsAfter(seq: number): LoggedPiEvent[] {
+    const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
+    return this.eventLog.filter((entry) => entry.seq > floor);
+  }
+
+  onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
+    this.on("loggedEvent", listener);
+    return () => this.off("loggedEvent", listener);
+  }
+
+  private requireSession() {
+    const session = this.runtime?.session;
+    if (!session) throw new Error("pi sdk session is not running");
+    return session;
+  }
+
+  private recordEvent(event: AgentSessionEvent) {
+    if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
+      this.currentPiSessionId = this.runtime.session.sessionId;
+    }
+    const logged: LoggedPiEvent = {
+      seq: ++this.eventSeq,
+      event: event as PiEvent,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventLog.push(logged);
+    if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
+    this.emit("loggedEvent", logged);
+    this.emit("event", event);
+  }
+}

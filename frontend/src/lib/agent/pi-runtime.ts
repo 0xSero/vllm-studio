@@ -8,6 +8,7 @@ import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
 import { isAgentEndEvent } from "./pi-events";
 import { piPathEnv, resolvePiLaunchCommand } from "./pi-binary";
+import { PiSdkSession } from "./pi-sdk-runtime";
 import {
   buildPiLaunchPlan,
   normalizeBackendUrl,
@@ -22,6 +23,7 @@ import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 const PROVIDER_ID = "vllm-studio";
 const DEFAULT_SESSION_ID = "default";
 const RPC_COMMAND_TIMEOUT_MS = 30_000;
+const USE_SDK = process.env.VLLM_STUDIO_PI_RUNTIME === "sdk";
 
 type PiResponse = {
   id?: string;
@@ -470,12 +472,12 @@ class PiRpcSession extends EventEmitter implements PiAgentSession {
 }
 
 class PiRuntimeManager {
-  private sessions = new Map<string, PiRpcSession>();
+  private sessions = new Map<string, PiAgentSession>();
 
   getSession(sessionId = DEFAULT_SESSION_ID): PiAgentSession {
     const existing = this.sessions.get(sessionId);
     if (existing) return existing;
-    const created = new PiRpcSession();
+    const created = USE_SDK ? new PiSdkSession() : new PiRpcSession();
     this.sessions.set(sessionId, created);
     return created;
   }
