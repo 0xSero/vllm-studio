@@ -252,17 +252,19 @@ export function ChatPane({
     const nextTitle = sessionPrefs[key]?.title?.trim();
     return nextTitle || title;
   }, "");
-  // An empty starter tab has no pi session, no messages, and an empty
-  // composer. Stale pref entries (e.g. a prior chat that used the same
-  // composite `tab:<paneId>:<tabId>` key) or stale `tab.title` left over
-  // from `replacePaneSession`/restore paths must NOT bleed into a fresh
-  // chat's header — always show "New session" until the user actually
-  // types something or pi assigns a session id.
-  const isEmptyStarter =
-    !activeTab?.piSessionId && (activeTab?.messages.length ?? 0) === 0 && !activeTab?.input.trim();
-  const displayedSessionTitle = isEmptyStarter
-    ? "New session"
-    : sessionPrefTitle || activeTab?.title?.trim() || "New session";
+  // Rule: if the visible session is empty (no rendered messages, no input,
+  // not actively running) the header is blank. This covers three different
+  // cases that all looked broken before:
+  //   - a brand-new starter tab opened via "+" (no piSessionId yet)
+  //   - a persisted chat being restored before replay has filled in messages
+  //   - a freshly cleared/forked session waiting for its first turn
+  // Once the user types or pi streams the first message in, the real title
+  // takes over.
+  const sessionLooksEmpty =
+    !activeTab || (activeTab.messages.length === 0 && !activeTab.input.trim() && !running);
+  const displayedSessionTitle = sessionLooksEmpty
+    ? ""
+    : sessionPrefTitle || activeTab?.title?.trim() || "";
   const sessionPinned = sessionPrefKeys.some((key) => Boolean(sessionPrefs[key]?.pinned));
   const patchActiveSessionPrefs = useCallback(
     (patch: { title?: string; pinned?: boolean }) => {
