@@ -682,6 +682,11 @@ export function ChatPane({
     tools.setComputerTab("status");
     tools.setComputerOpen(true);
   }, [tools]);
+  const currentContextTokens = activeTab?.tokenStats?.current ?? 0;
+  const contextUsagePercent =
+    contextWindow > 0
+      ? Math.min(100, Math.max(0, (currentContextTokens / contextWindow) * 100))
+      : 0;
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -1176,12 +1181,22 @@ export function ChatPane({
             <button
               type="button"
               onClick={openComputerStatus}
-              className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-(--border) bg-(--composer) px-2 text-[10px] text-(--dim) hover:border-(--dim) hover:text-(--fg)"
-              title={`Open status · Context ${formatTokenCount(activeTab?.tokenStats?.current ?? 0)} / ${formatTokenCount(contextWindow)}`}
+              className="group flex w-32 shrink-0 flex-col gap-1 text-left text-[9px] uppercase tracking-wide text-(--dim) hover:text-(--fg)"
+              title={`Open status · Context ${formatTokenCount(currentContextTokens)} / ${formatTokenCount(contextWindow)}`}
               aria-label="Open status"
             >
-              {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
-              {formatTokenCount(contextWindow)}
+              <span className="flex w-full items-center justify-between gap-2">
+                <span>context</span>
+                <span className="normal-case tracking-normal">
+                  {formatTokenCount(currentContextTokens)}/{formatTokenCount(contextWindow)}
+                </span>
+              </span>
+              <span className="h-1 w-full overflow-hidden rounded-full bg-(--border)">
+                <span
+                  className="block h-full rounded-full bg-(--dim) transition-[width,background-color] group-hover:bg-(--fg)"
+                  style={{ width: `${contextUsagePercent}%` }}
+                />
+              </span>
             </button>
           </div>
         </div>{" "}
