@@ -246,15 +246,20 @@ export function openNewSessionInFocusedPane(
   const pane = state.panesById.get(state.focusedPaneId);
   if (!pane) return state;
   // Reuse an existing empty starter tab (avoid piling up blanks). The user's
-  // mode choice doesn't matter here — there's nothing to displace.
+  // mode choice doesn't matter here — there's nothing to displace. Reset the
+  // starter's title/error/status so a stale carryover (e.g. a title persisted
+  // by restorePaneState from before the user cleared its messages) can't bleed
+  // into the freshly opened session's header.
   const existing = findEmptyStarterInPane(state, pane, payload.project);
   if (existing) {
-    const sessions = payload.project
-      ? patchSessionInMap(state.sessions, existing.id, {
-          projectId: payload.project.id,
-          cwd: payload.project.path,
-        })
-      : state.sessions;
+    const freshTitle = isSession(payload.tab) ? payload.tab.title : "New session";
+    const starterPatch: Partial<Session> = {
+      title: freshTitle,
+      error: "",
+      status: "idle",
+      ...(payload.project ? { projectId: payload.project.id, cwd: payload.project.path } : {}),
+    };
+    const sessions = patchSessionInMap(state.sessions, existing.id, starterPatch);
     return setPane(withSessions(state, sessions), state.focusedPaneId, {
       ...pane,
       activeSessionId: existing.id,
@@ -502,7 +507,18 @@ export function applyUrlNavigation(
   const { paneId, runtimeSessionId, tab, sessionTitle } = payload;
   const project = payload.project ?? undefined;
   if (payload.newSession && !payload.sessionId) {
-    return openNewSessionInFocusedPane(marked, { project, tab, paneId, runtimeSessionId });
+    // URL-driven `new=1` shares the dropdown's default "New session" intent:
+    // always replace the focused pane. The legacy "split when busy" heuristic
+    // made the same URL produce different results depending on what the
+    // focused pane currently held, which is the source of the "sometimes
+    // opens, sometimes doesn't" complaint about new chats.
+    return openNewSessionInFocusedPane(marked, {
+      project,
+      tab,
+      paneId,
+      runtimeSessionId,
+      mode: "replace",
+    });
   }
   if (payload.sessionId && payload.split) {
     return replaySessionInSplitPane(marked, {
