@@ -2,8 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "@/lib/data-dir";
 import { listProjectsFromStore } from "./projects-store";
 
@@ -44,7 +42,11 @@ export type AgentSessionOptionsInput = {
 };
 
 export type AgentSessionOptions = {
-  extensions: ExtensionFactory[];
+  // Absolute filesystem paths to .ts/.js extension modules. The SDK's
+  // resource-loader uses jiti to load these; we hand paths instead of
+  // pre-imported factories so we never trigger webpack's static analyser on a
+  // dynamic `import(variable)` in the Next runtime bundle.
+  extensionPaths: string[];
   skills: string[];
   envInjections: Record<string, string>;
 };
@@ -350,11 +352,6 @@ function runtimeEnvInjections(
   };
 }
 
-async function importExtensionFactory(extensionPath: string): Promise<ExtensionFactory | null> {
-  const mod = (await import(pathToFileURL(extensionPath).href)) as { default?: unknown };
-  return typeof mod.default === "function" ? (mod.default as ExtensionFactory) : null;
-}
-
 export function applyRuntimeEnvInjections(
   envInjections: Record<string, string>,
   env: NodeJS.ProcessEnv = process.env,
@@ -368,13 +365,8 @@ export async function buildAgentSessionOptions(
   const options = input.options;
   const plugins = options.plugins ?? [];
   const mcpConfigs = pluginMcpConfigs(plugins);
-  const extensions = (
-    await Promise.all(
-      runtimeExtensionPaths(options, plugins, mcpConfigs).map(importExtensionFactory),
-    )
-  ).filter((factory): factory is ExtensionFactory => Boolean(factory));
   return {
-    extensions,
+    extensionPaths: runtimeExtensionPaths(options, plugins, mcpConfigs),
     skills: runtimeSkillPaths(options, plugins),
     envInjections: runtimeEnvInjections(options, mcpConfigs, input.processEnv ?? process.env),
   };

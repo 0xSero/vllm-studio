@@ -62,7 +62,17 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
       processEnv: { ...process.env, PORT: "3007" },
     });
 
-    assert.equal(result.extensions.length, 4);
+    // SDK loads .ts/.js extensions via jiti; we hand it absolute paths instead
+    // of pre-imported factories. The four bundled extensions in this fixture
+    // are: timeout, mcp (since plugins[].mcpConfigPath exists), browser,
+    // canvas.
+    assert.equal(result.extensionPaths.length, 4);
+    assert.deepEqual(result.extensionPaths.toSorted(), [
+      browserExtension,
+      canvasExtension,
+      mcpExtension,
+      timeoutExtension,
+    ]);
     assert.deepEqual(result.skills, [pluginSkills, selectedSkill, canvasSkill]);
     assert.equal(result.envInjections.VLLM_STUDIO_BROWSER_SESSION_ID, "browser-session");
     assert.equal(result.envInjections.VLLM_STUDIO_FRONTEND_BASE, "http://127.0.0.1:3007");

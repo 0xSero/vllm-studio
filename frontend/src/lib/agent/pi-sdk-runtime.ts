@@ -90,7 +90,10 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
           agentDir,
           resourceLoaderOptions: {
             additionalSkillPaths: sessionOptions.skills,
-            extensionFactories: sessionOptions.extensions,
+            // Hand the SDK absolute paths so its jiti-based loader handles
+            // .ts/.js resolution. We avoid pre-importing via `import(variable)`
+            // because Next/webpack's static analyser refuses dynamic specifiers.
+            additionalExtensionPaths: sessionOptions.extensionPaths,
           },
         });
         const model = services.modelRegistry.find(PROVIDER_ID, modelId);
