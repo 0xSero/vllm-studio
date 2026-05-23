@@ -24,3 +24,8 @@ This addendum introduces commit hygiene rules for agent execution.
 - Never bypass hooks with `--no-verify`.
 - Never batch unrelated work into one commit.
 - If blocked by failing hooks you cannot safely fix in-turn, stop and report the blocker with logs.
+
+## Pi runtime
+
+- The SDK runtime is the default when `VLLM_STUDIO_PI_RUNTIME` is unset.
+- Roll back to the legacy RPC runtime with `VLLM_STUDIO_PI_RUNTIME=rpc`.

@@ -8,7 +8,6 @@ import {
   type AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
-import { isAgentEndEvent } from "./pi-events";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptions,
@@ -16,7 +15,8 @@ import {
   resolveAgentCwd,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
-import { refreshPiModels } from "./pi-runtime";
+import { refreshPiModels } from "./pi-runtime-models";
+import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
 const PROVIDER_ID = "vllm-studio";
@@ -179,43 +179,21 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   get status() {
-    const running = Boolean(this.runtime);
-    const lastTurnEvent = [...this.eventLog].reverse().find((entry) => {
-      const type = String(entry.event.type ?? "");
-      return (
-        type === "agent_start" ||
-        type === "turn_start" ||
-        type === "message_start" ||
-        type === "message_update" ||
-        type === "message_end" ||
-        type === "tool_execution_start" ||
-        type === "tool_execution_update" ||
-        type === "tool_execution_end" ||
-        type === "turn_end" ||
-        type === "agent_end" ||
-        type === "process_exit"
-      );
-    });
-    const eventLooksActive =
-      running &&
-      lastTurnEvent &&
-      !isAgentEndEvent(lastTurnEvent.event) &&
-      lastTurnEvent.event.type !== "process_exit";
-    return {
-      running,
-      active: this.activePromptCount > 0 || Boolean(eventLooksActive),
+    return piStatusFromEvents({
+      running: Boolean(this.runtime),
+      activePromptCount: this.activePromptCount,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,
       agentDir: this.agentDir,
       eventSeq: this.eventSeq,
       lastError: this.lastError,
-    };
+      eventLog: this.eventLog,
+    });
   }
 
   getEventsAfter(seq: number): LoggedPiEvent[] {
-    const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
-    return this.eventLog.filter((entry) => entry.seq > floor);
+    return piEventsAfter(this.eventLog, seq);
   }
 
   onLoggedEvent(listener: (event: LoggedPiEvent) => void) {

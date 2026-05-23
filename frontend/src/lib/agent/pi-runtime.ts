@@ -1,17 +1,13 @@
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
-import { resolveDataDir } from "@/lib/data-dir";
-import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
 import { isAgentEndEvent } from "./pi-events";
 import { piPathEnv, resolvePiLaunchCommand } from "./pi-binary";
 import { PiSdkSession } from "./pi-sdk-runtime";
+import { refreshPiModels } from "./pi-runtime-models";
+import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
 import {
   buildPiLaunchPlan,
-  normalizeBackendUrl,
   pluginFingerprint,
   resolveAgentCwd,
   resolveComputerUseApp,
@@ -20,10 +16,12 @@ import {
 } from "./pi-runtime-helpers";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
+export { refreshPiModels } from "./pi-runtime-models";
+
 const PROVIDER_ID = "vllm-studio";
 const DEFAULT_SESSION_ID = "default";
 const RPC_COMMAND_TIMEOUT_MS = 30_000;
-const USE_SDK = process.env.VLLM_STUDIO_PI_RUNTIME === "sdk";
+const USE_RPC = process.env.VLLM_STUDIO_PI_RUNTIME === "rpc";
 
 type PiResponse = {
   id?: string;
@@ -50,54 +48,6 @@ function launchComputerUseApp(plugins: RuntimePluginRef[]) {
     stdio: "ignore",
   });
   child.unref();
-}
-
-async function fetchModelsFromBackend(settings: ApiSettings): Promise<AgentModel[]> {
-  const backendUrl = normalizeBackendUrl(settings.backendUrl);
-  const headers: HeadersInit = { Accept: "application/json" };
-  if (settings.apiKey) headers.Authorization = `Bearer ${settings.apiKey}`;
-  const response = await fetch(`${backendUrl}/v1/models`, { headers, cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`/v1/models failed with HTTP ${response.status}`);
-  }
-  const payload = (await response.json()) as unknown;
-  return normalizeOpenAIModels(payload && typeof payload === "object" ? payload : {});
-}
-
-async function writePiModelsConfig(settings: ApiSettings, models: AgentModel[]): Promise<string> {
-  const dataDir = resolveDataDir();
-  const agentDir = path.join(dataDir, "pi-agent");
-  await mkdir(agentDir, { recursive: true });
-  await chmod(agentDir, 0o700).catch(() => undefined);
-
-  const backendUrl = normalizeBackendUrl(settings.backendUrl);
-  const config = {
-    providers: {
-      [PROVIDER_ID]: {
-        baseUrl: `${backendUrl}/v1`,
-        api: "openai-completions",
-        apiKey: settings.apiKey || "vllm-studio",
-        authHeader: Boolean(settings.apiKey),
-        compat: {
-          supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
-        },
-        models: modelsToPiModels(models),
-      },
-    },
-  };
-
-  const modelsPath = path.join(agentDir, "models.json");
-  await writeFile(modelsPath, JSON.stringify(config, null, 2), "utf-8");
-  await chmod(modelsPath, 0o600).catch(() => undefined);
-  return agentDir;
-}
-
-export async function refreshPiModels(): Promise<{ models: AgentModel[]; agentDir: string }> {
-  const settings = await getApiSettings();
-  const models = await fetchModelsFromBackend(settings);
-  const agentDir = await writePiModelsConfig(settings, models);
-  return { models, agentDir };
 }
 
 class PiRpcSession extends EventEmitter implements PiAgentSession {
@@ -426,43 +376,21 @@ class PiRpcSession extends EventEmitter implements PiAgentSession {
   }
 
   get status() {
-    const running = Boolean(this.process && !this.process.killed);
-    const lastTurnEvent = [...this.eventLog].reverse().find((entry) => {
-      const type = String(entry.event.type ?? "");
-      return (
-        type === "agent_start" ||
-        type === "turn_start" ||
-        type === "message_start" ||
-        type === "message_update" ||
-        type === "message_end" ||
-        type === "tool_execution_start" ||
-        type === "tool_execution_update" ||
-        type === "tool_execution_end" ||
-        type === "turn_end" ||
-        type === "agent_end" ||
-        type === "process_exit"
-      );
-    });
-    const eventLooksActive =
-      running &&
-      lastTurnEvent &&
-      !isAgentEndEvent(lastTurnEvent.event) &&
-      lastTurnEvent.event.type !== "process_exit";
-    return {
-      running,
-      active: this.activePromptCount > 0 || Boolean(eventLooksActive),
+    return piStatusFromEvents({
+      running: Boolean(this.process && !this.process.killed),
+      activePromptCount: this.activePromptCount,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,
       agentDir: this.agentDir,
       eventSeq: this.eventSeq,
       lastError: this.lastError,
-    };
+      eventLog: this.eventLog,
+    });
   }
 
   getEventsAfter(seq: number): LoggedPiEvent[] {
-    const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
-    return this.eventLog.filter((entry) => entry.seq > floor);
+    return piEventsAfter(this.eventLog, seq);
   }
 
   onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
@@ -477,7 +405,7 @@ class PiRuntimeManager {
   getSession(sessionId = DEFAULT_SESSION_ID): PiAgentSession {
     const existing = this.sessions.get(sessionId);
     if (existing) return existing;
-    const created = USE_SDK ? new PiSdkSession() : new PiRpcSession();
+    const created = USE_RPC ? new PiRpcSession() : new PiSdkSession();
     this.sessions.set(sessionId, created);
     return created;
   }

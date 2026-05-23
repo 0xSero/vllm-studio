@@ -3,16 +3,11 @@
 // store the visible session id — so all "give me the session of pane X" reads
 // go through these.
 
-import type { PaneId, PaneState, WorkspaceState } from "@/lib/agent/workspace/types";
+import type { PaneId, WorkspaceState } from "@/lib/agent/workspace/types";
 import type { Session, SessionId } from "./types";
 
 export function paneSessions(state: WorkspaceState, paneId: PaneId): Session[] {
   const session = activeSession(state, paneId);
-  return session ? [session] : [];
-}
-
-export function materializePaneSessions(state: WorkspaceState, pane: PaneState): Session[] {
-  const session = state.sessions.get(pane.sessionId);
   return session ? [session] : [];
 }
 

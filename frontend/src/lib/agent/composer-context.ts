@@ -119,18 +119,6 @@ export function detectComposerMention(value: string, caret = value.length): Comp
   };
 }
 
-export function replaceComposerMention(
-  value: string,
-  mention: ComposerMention,
-  label: string,
-): string {
-  const before = value.slice(0, mention.start);
-  const after = value.slice(mention.end);
-  const prefix = before && !/\s$/.test(before) ? `${before} ` : before;
-  const suffix = after && !/^\s/.test(after) ? ` ${after}` : after;
-  return `${prefix}${mention.kind === "plugin" ? "@" : "$"}${label} ${suffix}`.trimStart();
-}
-
 export function consumeComposerMention(value: string, mention: ComposerMention): string {
   const before = value.slice(0, mention.start).replace(/[ \t]+$/, "");
   const after = value.slice(mention.end).replace(/^[ \t]+/, "");

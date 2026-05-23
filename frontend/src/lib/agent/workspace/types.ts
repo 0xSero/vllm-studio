@@ -18,11 +18,6 @@ export type AgentModel = {
   active: boolean;
 };
 
-/**
- * Re-exports for callers still importing the old names. Project state itself
- * lives in `lib/agent/projects/`; the workspace no longer owns it.
- */
-export type ProjectEntry = Project;
 export type { GitSummary } from "@/lib/agent/projects/types";
 
 /** A pane is a layout slot pointing at one visible session — it doesn't carry session content. */
