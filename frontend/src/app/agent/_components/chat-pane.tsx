@@ -11,7 +11,6 @@ import {
 } from "react";
 import { Code2, Loader2, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import {
-  ChevronDownIcon,
   CloseIcon,
   FileIcon,
   GitBranchIcon,
@@ -736,13 +735,9 @@ export function ChatPane({
               aria-expanded={queueExpanded}
               title="Queued follow-ups and steers"
             >
-              {" "}
-              <ChevronDownIcon
-                className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${queueExpanded ? "rotate-180" : "-rotate-90"}`}
-              />
               <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
                 queue {visibleQueueItems.length}
-              </span>{" "}
+              </span>
               <span className="min-w-0 flex-1 truncate">
                 {latestQueued?.text ?? "No queued message"}
               </span>

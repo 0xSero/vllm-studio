@@ -234,7 +234,10 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
     (segment) =>
       segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
   );
-  const [expanded, setExpanded] = useState(false);
+  // Default to expanded so reasoning (and tool args) stream into view as they
+  // arrive. Users can still collapse manually; the chevron continues to
+  // reflect open/closed.
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <details className="group min-w-0 overflow-hidden" open={expanded}>
