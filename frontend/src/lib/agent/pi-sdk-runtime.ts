@@ -17,6 +17,7 @@ import {
 } from "./pi-runtime-helpers";
 import { refreshPiModels } from "./pi-runtime-models";
 import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
+import { findSessionFile } from "./sessions-store";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
 const PROVIDER_ID = "vllm-studio";
@@ -75,7 +76,13 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
 
     const sessionOptions = await buildAgentSessionOptions({ options });
     applyRuntimeEnvInjections(sessionOptions.envInjections);
+    // SessionManager.create() returns the most-recent session for the cwd. When
+    // the caller wants to resume a specific Pi session id, locate its JSONL on
+    // disk and rebind the SessionManager before the SDK constructs the agent.
     const sessionManager = SessionManager.create(resolvedCwd);
+    const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
+    if (resumeFile) sessionManager.setSessionFile(resumeFile);
+    const resuming = Boolean(resumeFile);
     const runtime = await createAgentSessionRuntime(
       async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
         const services = await createAgentSessionServices({
@@ -107,9 +114,7 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
         cwd: resolvedCwd,
         agentDir,
         sessionManager,
-        sessionStartEvent: desiredSessionId
-          ? { type: "session_start", reason: "resume" }
-          : undefined,
+        sessionStartEvent: { type: "session_start", reason: resuming ? "resume" : "startup" },
       },
     );
 

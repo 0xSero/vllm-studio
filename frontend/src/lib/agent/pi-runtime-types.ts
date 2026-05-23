@@ -1,7 +1,15 @@
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { RuntimeStartOptions } from "./pi-runtime-helpers";
 
-type PiEvent = Record<string, unknown> & { type?: string };
+// Pi event surface seen by the rest of the app. Upstream consumers
+// (`sessions/engine.ts`, `pane-controller.ts`, etc.) duck-type on string event
+// names, so we keep the loose index signature for back-compat while widening
+// the type to include the SDK's typed union so newer call sites get
+// autocompletion and discriminated narrowing where they ask for it.
+type PiEvent = (Record<string, unknown> & { type?: string }) | AgentSessionEvent;
+
+export type { AgentSessionEvent };
 
 export type LoggedPiEvent = {
   seq: number;

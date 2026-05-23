@@ -33,31 +33,9 @@ export type RuntimeStartOptions = {
   skills?: RuntimeSkillRef[];
 };
 
-type RuntimeLaunchModel = {
-  reasoning?: boolean;
-};
-
 type RuntimeMcpConfig = {
   pluginName: string;
   configPath: string;
-};
-
-export type RuntimeLaunchPlanInput = {
-  agentDir: string;
-  modelId: string;
-  options: RuntimeStartOptions;
-  pathEnv: string;
-  piSessionId: string | null;
-  processEnv: NodeJS.ProcessEnv;
-  providerId: string;
-  selectedModel: RuntimeLaunchModel;
-};
-
-export type RuntimeLaunchPlan = {
-  args: string[];
-  env: NodeJS.ProcessEnv;
-  mcpConfigs: RuntimeMcpConfig[];
-  plugins: RuntimePluginRef[];
 };
 
 export type AgentSessionOptionsInput = {
@@ -226,23 +204,6 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
   });
 }
 
-export function resolveComputerUseApp(plugins: RuntimePluginRef[]): string | null {
-  const selected = plugins.find((plugin) => pluginNameMatches(plugin, "computer-use"));
-  const candidates = [
-    selected?.appPath,
-    selected?.path && !selected.path.endsWith(".app")
-      ? path.join(selected.path, "Codex Computer Use.app")
-      : null,
-    selected?.path,
-    "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app",
-    path.join(resolveDataDir(), "computer-use", "Codex Computer Use.app"),
-    path.join(homedir(), ".codex", "computer-use", "Codex Computer Use.app"),
-  ].filter((value): value is string => Boolean(value));
-  return (
-    candidates.find((candidate) => candidate.endsWith(".app") && existsSync(candidate)) ?? null
-  );
-}
-
 export function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
   return uniqueExistingPaths(
     plugins.flatMap((plugin) => [
@@ -347,50 +308,6 @@ function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
     : "embedded";
 }
 
-function skillArgs(
-  options: RuntimeStartOptions,
-  plugins: RuntimePluginRef[],
-  skills: RuntimeSkillRef[],
-): string[] {
-  // The canvas skill is bundled and only attached when the user has explicitly
-  // flipped the canvas toggle ON in the composer. This is what teaches the
-  // model when/how to use the canvas_read/write/append tools registered by
-  // the canvas extension.
-  const canvasSkillPath =
-    options.canvasEnabled === true ? [resolveCanvasSkillPath()] : ([] as Array<string | null>);
-  return uniqueExistingPaths([
-    ...pluginSkillPaths(plugins),
-    ...selectedSkillPaths(skills),
-    ...canvasSkillPath,
-  ]).flatMap((skillPath) => ["--skill", skillPath]);
-}
-
-function extensionArgs(
-  options: RuntimeStartOptions,
-  plugins: RuntimePluginRef[],
-  mcpConfigs: RuntimeMcpConfig[],
-): string[] {
-  const args: string[] = [];
-  const timeoutExtensionPath = resolveTimeoutExtensionPath();
-  if (timeoutExtensionPath) args.push("--extension", timeoutExtensionPath);
-  if (mcpConfigs.length) {
-    const mcpExtensionPath = resolveMcpExtensionPath();
-    if (mcpExtensionPath) args.push("--extension", mcpExtensionPath);
-  }
-  if (shouldLoadBrowserTool(options, plugins)) {
-    const browserExtensionPath =
-      browserBackend(options) === "parchi"
-        ? resolveParchiBrowserExtensionPath()
-        : resolveBrowserExtensionPath();
-    if (browserExtensionPath) args.push("--extension", browserExtensionPath);
-  }
-  if (options.canvasEnabled === true) {
-    const canvasExtensionPath = resolveCanvasExtensionPath();
-    if (canvasExtensionPath) args.push("--extension", canvasExtensionPath);
-  }
-  return args;
-}
-
 function runtimeExtensionPaths(
   options: RuntimeStartOptions,
   plugins: RuntimePluginRef[],
@@ -460,49 +377,5 @@ export async function buildAgentSessionOptions(
     extensions,
     skills: runtimeSkillPaths(options, plugins),
     envInjections: runtimeEnvInjections(options, mcpConfigs, input.processEnv ?? process.env),
-  };
-}
-
-// Convert runtime selection state into the exact Pi RPC process contract. This
-// is the launch seam: callers no longer need to know arg ordering, extension
-// rules, skill path de-duping, or environment variable names.
-export function buildPiLaunchPlan(input: RuntimeLaunchPlanInput): RuntimeLaunchPlan {
-  const plugins = input.options.plugins ?? [];
-  const skills = input.options.skills ?? [];
-  const mcpConfigs = pluginMcpConfigs(plugins);
-  const args = [
-    "--mode",
-    "rpc",
-    "--provider",
-    input.providerId,
-    "--model",
-    `${input.providerId}/${input.modelId}`,
-  ];
-  if (input.selectedModel.reasoning) args.push("--thinking", "high");
-  if (input.piSessionId) args.push("--session", input.piSessionId);
-  args.push(
-    ...skillArgs(input.options, plugins, skills),
-    ...extensionArgs(input.options, plugins, mcpConfigs),
-  );
-
-  return {
-    args,
-    env: {
-      ...input.processEnv,
-      PATH: input.pathEnv,
-      PI_CODING_AGENT_DIR: input.agentDir,
-      PI_SKIP_VERSION_CHECK: "1",
-      VLLM_STUDIO_BROWSER_SESSION_ID: input.options.browserSessionId ?? "",
-      VLLM_STUDIO_FRONTEND_BASE:
-        input.processEnv.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(input.processEnv),
-      VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
-      PARCHI_RELAY_ORIGIN:
-        input.processEnv.PARCHI_RELAY_ORIGIN ??
-        input.processEnv.VLLM_STUDIO_FRONTEND_BASE ??
-        deriveFrontendBase(input.processEnv),
-      PARCHI_RELAY_SESSION_ID: input.options.browserSessionId ?? "",
-    },
-    mcpConfigs,
-    plugins,
   };
 }

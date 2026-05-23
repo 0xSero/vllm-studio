@@ -56,10 +56,6 @@ export async function GET(request: NextRequest) {
           safeSend({ type: "status", phase: "done", session: session.status });
           setTimeout(close, 25);
         }
-        if (logged.event.type === "process_exit") {
-          safeSend({ type: "status", phase: "idle", session: session.status });
-          setTimeout(close, 25);
-        }
       };
       const onLiveEvent = (logged: LoggedPiEvent) => {
         if (replaying) {

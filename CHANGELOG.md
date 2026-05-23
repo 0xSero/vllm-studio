@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Refactors
+
+- Pi runtime: replaced the `pi --mode rpc` subprocess pipeline with the in-process `@earendil-works/pi-coding-agent` SDK. Removed `pi-binary.ts`, `buildPiLaunchPlan`, `PiRpcSession`, and the `desktop:prepare-pi` build step. Extensions are now loaded as ESM via dynamic `import()` instead of `--extension <path>` CLI flags.
+
+### Fixes
+
+- Pi resume now binds the SDK's `SessionManager` to the requested session JSONL via `findSessionFile`, restoring conversation continuity across tab reloads.
+
+### Documentation
+
+- Documented the SDK-based Pi runtime entry points, extension/skill loading, and resume semantics in `frontend/AGENTS.md`.
+
 ## [v1.18.5] - 2026-04-26
 
 ### Changed
