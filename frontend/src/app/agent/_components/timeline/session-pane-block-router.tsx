@@ -234,9 +234,11 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
     (segment) =>
       segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
   );
-  // Default to expanded so reasoning (and tool args) stream into view as they
-  // arrive. Users can still collapse manually from the summary row.
-  const [expanded, setExpanded] = useState(true);
+  // Default collapsed: tool calls + reasoning are progress detail, not the
+  // primary signal. The summary row already shows what happened ("Explored 1
+  // search, read 2 files") plus a live "running" badge while a tool is in
+  // flight, so the timeline stays scannable. Users can click to expand.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <details className="group min-w-0 overflow-hidden" open={expanded}>

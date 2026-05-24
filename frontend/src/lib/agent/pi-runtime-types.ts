@@ -17,6 +17,17 @@ export type LoggedPiEvent = {
   timestamp: string;
 };
 
+export type PiContextUsage = {
+  /** Estimated context tokens, or null if unknown (e.g. fresh session). */
+  tokens: number | null;
+  /** Maximum context window for the current model. */
+  contextWindow: number;
+  /** Percentage of context window consumed, or null if tokens unknown. */
+  percent: number | null;
+  /** True when the SDK's compaction settings say we're near the limit. */
+  shouldCompact: boolean;
+};
+
 export type PiAgentStatus = {
   running: boolean;
   active: boolean;
@@ -26,6 +37,7 @@ export type PiAgentStatus = {
   agentDir: string;
   eventSeq: number;
   lastError: string | null;
+  contextUsage: PiContextUsage | null;
 };
 
 export interface PiAgentSession {

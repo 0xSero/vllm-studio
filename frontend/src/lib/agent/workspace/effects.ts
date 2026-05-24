@@ -21,7 +21,12 @@ import {
   SESSIONS_CHANGED_EVENT,
 } from "./events";
 
-const EMPTY_SELECTION: ToolSelection = { plugins: [], skills: [] };
+const EMPTY_SELECTION: ToolSelection = {
+  plugins: [],
+  skills: [],
+  promptTemplates: [],
+  extensionOverrides: [],
+};
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
 

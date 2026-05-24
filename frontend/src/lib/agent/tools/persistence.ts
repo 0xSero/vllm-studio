@@ -30,6 +30,7 @@ const COMPUTER_TABS: ComputerTab[] = [
   "files",
   "diff",
   "terminal",
+  "plugins",
 ];
 
 function viewportWidth(): number | undefined {

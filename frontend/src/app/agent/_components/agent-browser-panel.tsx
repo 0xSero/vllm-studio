@@ -8,6 +8,7 @@ import {
   Globe2,
   MessageSquarePlus,
   PanelRight,
+  Plug,
   Plus,
   TerminalSquare,
   type LucideIcon,
@@ -23,6 +24,7 @@ import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
+import { PluginsPanel } from "./plugins-panel";
 import { TerminalPanel } from "./terminal-panel";
 import type { WorkspaceHandles } from "./use-workspace";
 
@@ -76,45 +78,6 @@ export function AgentBrowserPanel({
     tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
   };
-  const terminalTabOpen = tools.computer.tabs.includes("terminal");
-  const activePanel =
-    tools.computer.tab === "status" ? (
-      <ComputerStatusPanel
-        activeProject={activeProject}
-        activeModel={activeModel}
-        focusedSession={focusedSession}
-        sessions={sessions}
-        gitSummary={gitSummary}
-        onCompactSession={handles.compactFocusedSession}
-      />
-    ) : tools.computer.tab === "tools" ? (
-      <ComputerLauncherPanel
-        activeTab={tools.computer.tab}
-        onSelectTab={tools.setComputerTab}
-        onStartSideChat={openSideSessionFromFocusedPane}
-      />
-    ) : tools.computer.tab === "canvas" ? (
-      <CanvasPanel />
-    ) : tools.computer.tab === "browser" ? (
-      <AgentBrowser
-        ref={registerBrowserHandle}
-        url={tools.browser.url}
-        inputValue={tools.browser.input}
-        onInputChange={tools.setBrowserInput}
-        onNavigate={navigateBrowser}
-        onLocationChange={(next) => tools.setBrowserUrl(next, next)}
-        onClose={() => tools.setComputerOpen(false)}
-        isElectron={isElectron}
-      />
-    ) : tools.computer.tab === "files" ? (
-      <section className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1">
-          <FilesystemPanel cwd={activeProject?.path ?? null} />
-        </div>
-      </section>
-    ) : tools.computer.tab === "diff" ? (
-      <GitDiffPanel cwd={activeProject?.path ?? null} />
-    ) : null;
 
   return (
     <aside
@@ -138,12 +101,47 @@ export function AgentBrowserPanel({
         onCloseComputer={() => tools.setComputerOpen(false)}
       />
 
-      {activePanel}
-      {terminalTabOpen ? (
-        <div className={tools.computer.tab === "terminal" ? "contents" : "hidden"}>
-          <TerminalPanel cwd={activeProject?.path ?? null} />
-        </div>
-      ) : null}
+      {tools.computer.tab === "status" ? (
+        <ComputerStatusPanel
+          activeProject={activeProject}
+          activeModel={activeModel}
+          focusedSession={focusedSession}
+          sessions={sessions}
+          gitSummary={gitSummary}
+          onCompactSession={handles.compactFocusedSession}
+        />
+      ) : tools.computer.tab === "tools" ? (
+        <ComputerLauncherPanel
+          activeTab={tools.computer.tab}
+          onSelectTab={tools.setComputerTab}
+          onStartSideChat={openSideSessionFromFocusedPane}
+        />
+      ) : tools.computer.tab === "canvas" ? (
+        <CanvasPanel />
+      ) : tools.computer.tab === "browser" ? (
+        <AgentBrowser
+          ref={registerBrowserHandle}
+          url={tools.browser.url}
+          inputValue={tools.browser.input}
+          onInputChange={tools.setBrowserInput}
+          onNavigate={navigateBrowser}
+          onLocationChange={(next) => tools.setBrowserUrl(next, next)}
+          onClose={() => tools.setComputerOpen(false)}
+          isElectron={isElectron}
+        />
+      ) : tools.computer.tab === "files" ? (
+        <section className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1">
+            <FilesystemPanel cwd={activeProject?.path ?? null} />
+          </div>
+        </section>
+      ) : tools.computer.tab === "diff" ? (
+        <GitDiffPanel cwd={activeProject?.path ?? null} />
+      ) : tools.computer.tab === "plugins" ? (
+        <PluginsPanel />
+      ) : (
+        <TerminalPanel cwd={activeProject?.path ?? null} />
+      )}
     </aside>
   );
 }
@@ -156,6 +154,7 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   files: "Filesystem",
   diff: "Git",
   terminal: "Terminal",
+  plugins: "Plugins",
 };
 
 const TAB_OPTIONS: Array<{
@@ -184,6 +183,12 @@ const TAB_OPTIONS: Array<{
     icon: FolderTree,
   },
   { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
+  {
+    tab: "plugins",
+    label: "Plugins",
+    description: "Install and manage Pi extensions, skills, prompts, themes",
+    icon: Plug,
+  },
 ];
 
 function ComputerHeader({
@@ -326,6 +331,13 @@ function ComputerLauncherPanel({
       description: "Start an interactive shell",
       icon: TerminalSquare,
       onClick: () => onSelectTab("terminal"),
+    },
+    {
+      key: "plugins",
+      title: "Plugins",
+      description: "Install Pi extensions, skills, prompts, themes",
+      icon: Plug,
+      onClick: () => onSelectTab("plugins"),
     },
   ] as const;
   return (

@@ -4,6 +4,7 @@ import {
   createAgentSessionRuntime,
   createAgentSessionServices,
   SessionManager,
+  shouldCompact,
   type AgentSessionEvent,
   type AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
@@ -17,6 +18,7 @@ import {
 } from "./pi-runtime-helpers";
 import { refreshPiModels } from "./pi-runtime-models";
 import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
+import { readEnabledOverrides } from "./pi-packages-store";
 import { findSessionFile } from "./sessions-store";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
@@ -36,6 +38,37 @@ function runtimeFingerprint(
     piSessionId: piSessionId ?? "",
     options: pluginFingerprint(options),
   });
+}
+
+/** Resource diagnostics gathered at session-creation time. Stored at module
+ * scope so the setup-checks API route can surface extension load failures
+ * without holding a runtime handle. */
+export type PiResourceDiagnostic = {
+  type: "info" | "warning" | "error";
+  message: string;
+  /** Extension/skill path the diagnostic relates to, when available. */
+  path?: string;
+};
+
+// Pinned on globalThis so Next.js dev — which can re-evaluate this module
+// independently for the turn route, the setup-checks route, and the cached
+// session manager — shares a single map. Resolve via globalThis on every read
+// to defeat closure-bound copies left behind by HMR.
+type DiagnosticsGlobal = typeof globalThis & {
+  __vllmStudioPiResourceDiagnostics?: Map<string, PiResourceDiagnostic[]>;
+};
+function diagnosticsMap(): Map<string, PiResourceDiagnostic[]> {
+  const g = globalThis as DiagnosticsGlobal;
+  if (!g.__vllmStudioPiResourceDiagnostics) {
+    g.__vllmStudioPiResourceDiagnostics = new Map();
+  }
+  return g.__vllmStudioPiResourceDiagnostics;
+}
+
+export function piResourceDiagnostics(agentDir?: string): PiResourceDiagnostic[] {
+  const map = diagnosticsMap();
+  if (agentDir) return map.get(agentDir) ?? [];
+  return [...map.values()].flat();
 }
 
 export class PiSdkSession extends EventEmitter implements PiAgentSession {
@@ -85,6 +118,23 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
     const resuming = Boolean(resumeFile);
     const runtime = await createAgentSessionRuntime(
       async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+        // Per-extension disable overrides written by the plugins panel,
+        // overlaid with any per-turn `/plugins` overrides from the composer.
+        // The turn-level entries win because they're the user's most recent
+        // explicit intent. We filter the SDK's loaded extension list AFTER
+        // the loader has already executed each module; this preserves
+        // load-error diagnostics while preventing disabled extensions from
+        // contributing tools or handlers to the active session.
+        const persistedOverrides = readEnabledOverrides();
+        const turnOverrides = sessionOptions.extensionOverrides;
+        const isEnabled = (extPath: string, source: string | undefined) => {
+          // Turn-level override wins if either the path or the source is keyed.
+          if (extPath in turnOverrides) return turnOverrides[extPath];
+          if (source && source in turnOverrides) return turnOverrides[source];
+          if (persistedOverrides[extPath] === false) return false;
+          if (source && persistedOverrides[source] === false) return false;
+          return true;
+        };
         const services = await createAgentSessionServices({
           cwd,
           agentDir,
@@ -94,6 +144,13 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
             // .ts/.js resolution. We avoid pre-importing via `import(variable)`
             // because Next/webpack's static analyser refuses dynamic specifiers.
             additionalExtensionPaths: sessionOptions.extensionPaths,
+            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+            extensionsOverride: (base) => ({
+              ...base,
+              extensions: base.extensions.filter((ext) =>
+                isEnabled(ext.path, ext.sourceInfo?.source),
+              ),
+            }),
           },
         });
         const model = services.modelRegistry.find(PROVIDER_ID, modelId);
@@ -107,10 +164,28 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
           model,
           thinkingLevel: selectedModel.reasoning ? "high" : undefined,
         });
+        // Capture extension-load failures so the setup-checks endpoint can
+        // surface broken drop-in extensions without the user tailing logs.
+        const extensionErrors = services.resourceLoader
+          .getExtensions()
+          .errors.map(({ path, error }) => ({
+            type: "error" as const,
+            message: `Failed to load extension "${path}": ${error}`,
+            path,
+          }));
+        const diagnostics = [...services.diagnostics, ...extensionErrors];
+        diagnosticsMap().set(
+          agentDir,
+          diagnostics.map((d) => ({
+            type: d.type as PiResourceDiagnostic["type"],
+            message: d.message,
+            path: "path" in d ? (d as { path?: string }).path : undefined,
+          })),
+        );
         return {
           ...created,
           services,
-          diagnostics: services.diagnostics,
+          diagnostics,
         };
       },
       {
@@ -197,7 +272,31 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
       eventSeq: this.eventSeq,
       lastError: this.lastError,
       eventLog: this.eventLog,
+      contextUsage: this.computeContextUsage(),
     });
+  }
+
+  /**
+   * Snapshot the SDK-computed context usage for the active session. Returns
+   * `null` when the runtime isn't started yet or the SDK has no usage data
+   * (e.g. before the first assistant message).
+   */
+  private computeContextUsage() {
+    const session = this.runtime?.session;
+    if (!session) return null;
+    const usage = session.getContextUsage();
+    if (!usage) return null;
+    const settings = session.settingsManager.getCompactionSettings();
+    const tokens = typeof usage.tokens === "number" ? usage.tokens : null;
+    return {
+      tokens,
+      contextWindow: usage.contextWindow,
+      percent: typeof usage.percent === "number" ? usage.percent : null,
+      shouldCompact:
+        tokens !== null && usage.contextWindow > 0
+          ? shouldCompact(tokens, usage.contextWindow, settings)
+          : false,
+    };
   }
 
   getEventsAfter(seq: number): LoggedPiEvent[] {

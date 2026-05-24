@@ -3,6 +3,7 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { resolveDataDir } from "@/lib/data-dir";
+import { packagesConfigToken, readEnabledOverrides } from "./pi-packages-store";
 import { listProjectsFromStore } from "./projects-store";
 
 export type RuntimePluginRef = {
@@ -22,6 +23,24 @@ export type RuntimeSkillRef = {
   path?: string;
 };
 
+export type RuntimePromptTemplateRef = {
+  id?: string;
+  name?: string;
+  path?: string;
+};
+
+/**
+ * Per-turn override for a single Pi extension. The runtime applies these on
+ * top of the persistent `<agentDir>/extension-config/enabled.json` map without
+ * writing to disk; this is how the composer's `/plugins` slash command toggles
+ * extensions for the next turn only.
+ */
+export type RuntimeExtensionOverride = {
+  /** Source string preferred, falls back to absolute path. */
+  key: string;
+  enabled: boolean;
+};
+
 export type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
@@ -29,6 +48,9 @@ export type RuntimeStartOptions = {
   canvasEnabled?: boolean;
   plugins?: RuntimePluginRef[];
   skills?: RuntimeSkillRef[];
+  promptTemplates?: RuntimePromptTemplateRef[];
+  /** Per-turn extension overrides — empty array means "no per-turn override". */
+  extensionOverrides?: RuntimeExtensionOverride[];
 };
 
 type RuntimeMcpConfig = {
@@ -48,6 +70,13 @@ export type AgentSessionOptions = {
   // dynamic `import(variable)` in the Next runtime bundle.
   extensionPaths: string[];
   skills: string[];
+  /** Absolute prompt-template file/dir paths; forwarded to the SDK. */
+  promptTemplatePaths: string[];
+  /**
+   * Per-turn extension on/off override map (key = source or path → enabled).
+   * Empty when no `/plugins` overrides were specified for this turn.
+   */
+  extensionOverrides: Record<string, boolean>;
   envInjections: Record<string, string>;
 };
 
@@ -196,6 +225,22 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
   const skills = (options.skills ?? [])
     .map((skill) => `${skill.name ?? ""}:${skill.path ?? ""}`)
     .sort();
+  const promptTemplates = (options.promptTemplates ?? [])
+    .map((template) => `${template.name ?? ""}:${template.path ?? ""}`)
+    .sort();
+  // Include the Pi-package enable/disable overrides so that toggling a Pi
+  // extension on or off invalidates the cached runtime and the loader's
+  // extensionsOverride filter is re-evaluated on the next session start.
+  const overrides = Object.entries(readEnabledOverrides())
+    .filter(([, enabled]) => enabled === false)
+    .map(([key]) => key)
+    .sort();
+  // Per-turn `/plugins` overrides also invalidate the cached runtime — they
+  // layer on top of the persisted overrides, so a turn that wants to re-enable
+  // a globally disabled extension (or vice versa) needs a fresh session.
+  const turnOverrides = (options.extensionOverrides ?? [])
+    .map((entry) => `${entry.key}=${entry.enabled ? "1" : "0"}`)
+    .sort();
   return JSON.stringify({
     browser: options.browserToolEnabled === true,
     browserBackend: options.browserBackend ?? process.env.VLLM_STUDIO_BROWSER_BACKEND ?? "embedded",
@@ -203,6 +248,10 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
     canvas: options.canvasEnabled === true,
     plugins: names,
     skills,
+    promptTemplates,
+    extensionsDisabled: overrides,
+    extensionsTurnOverride: turnOverrides,
+    piPackagesToken: packagesConfigToken(),
   });
 }
 
@@ -217,6 +266,10 @@ export function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
 
 export function selectedSkillPaths(skills: RuntimeSkillRef[]): string[] {
   return uniqueExistingPaths(skills.map((skill) => skill.path));
+}
+
+export function selectedPromptTemplatePaths(templates: RuntimePromptTemplateRef[]): string[] {
+  return uniqueExistingPaths(templates.map((template) => template.path));
 }
 
 export function uniqueExistingPaths(values: Array<string | null | undefined>): string[] {
@@ -368,6 +421,17 @@ export async function buildAgentSessionOptions(
   return {
     extensionPaths: runtimeExtensionPaths(options, plugins, mcpConfigs),
     skills: runtimeSkillPaths(options, plugins),
+    promptTemplatePaths: selectedPromptTemplatePaths(options.promptTemplates ?? []),
+    extensionOverrides: extensionOverrideMap(options.extensionOverrides ?? []),
     envInjections: runtimeEnvInjections(options, mcpConfigs, input.processEnv ?? process.env),
   };
+}
+
+function extensionOverrideMap(entries: RuntimeExtensionOverride[]): Record<string, boolean> {
+  const map: Record<string, boolean> = {};
+  for (const entry of entries) {
+    if (!entry.key) continue;
+    map[entry.key] = entry.enabled;
+  }
+  return map;
 }

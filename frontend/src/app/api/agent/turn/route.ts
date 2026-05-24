@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
     canvasEnabled,
     plugins,
     skills,
+    promptTemplates,
+    extensionOverrides,
     mode,
     streamingBehavior,
   } = parsed.value;
@@ -100,6 +102,8 @@ export async function POST(request: NextRequest) {
             canvasEnabled,
             plugins,
             skills,
+            promptTemplates,
+            extensionOverrides,
           });
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);

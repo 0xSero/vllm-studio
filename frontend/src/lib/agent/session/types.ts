@@ -94,6 +94,13 @@ export type SessionTab = {
   startedAt?: string;
   input: string;
   tokenStats?: TokenStats;
+  /** SDK-reported context usage; refreshed when runtime status is polled. */
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+    shouldCompact: boolean;
+  } | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
   plugins?: ComposerPluginRef[];

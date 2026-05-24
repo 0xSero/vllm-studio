@@ -1,5 +1,5 @@
 import { isAgentEndEvent } from "./pi-events";
-import type { LoggedPiEvent, PiAgentStatus } from "./pi-runtime-types";
+import type { LoggedPiEvent, PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
 
 const TURN_EVENT_TYPES = new Set([
   "agent_start",
@@ -25,6 +25,7 @@ export function piStatusFromEvents(input: {
   eventSeq: number;
   lastError: string | null;
   eventLog: LoggedPiEvent[];
+  contextUsage?: PiContextUsage | null;
 }): PiAgentStatus {
   const lastTurnEvent = [...input.eventLog]
     .reverse()
@@ -43,6 +44,7 @@ export function piStatusFromEvents(input: {
     agentDir: input.agentDir,
     eventSeq: input.eventSeq,
     lastError: input.lastError,
+    contextUsage: input.contextUsage ?? null,
   };
 }
 

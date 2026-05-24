@@ -33,8 +33,11 @@ import {
   detectComposerMention,
   consumeComposerMention,
   selectedContextPrompt,
+  type ComposerExtensionOverride,
+  type ComposerExtensionRef,
   type ComposerMention,
   type ComposerPluginRef,
+  type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
 import {
@@ -128,10 +131,19 @@ type FileMentionRow = {
   path: string;
   source: string;
 };
+type ExtensionRowState = ComposerExtensionRef & {
+  /** Resolved on/off state after layering the per-turn override on top of `enabled`. */
+  effectiveEnabled: boolean;
+  /** Whether the current selection carries a per-turn override for this extension. */
+  hasTurnOverride: boolean;
+};
+
 type MentionRow =
   | { kind: "plugin"; row: ComposerPluginRef }
   | { kind: "skill"; row: ComposerSkillRef }
-  | { kind: "file"; row: FileMentionRow };
+  | { kind: "promptTemplate"; row: ComposerPromptTemplateRef }
+  | { kind: "file"; row: FileMentionRow }
+  | { kind: "extension"; row: ExtensionRowState };
 
 export function ChatPane({
   paneId,
@@ -188,6 +200,7 @@ export function ChatPane({
   const sessionPrefs = useProjectsNavSessionPrefs();
   const pluginRows = tools.pluginCatalogue;
   const skillRows = tools.skillCatalogue;
+  const promptTemplateRows = tools.promptTemplateCatalogue;
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [tabs, activeTabId],
@@ -196,6 +209,10 @@ export function ChatPane({
   const activeSelection = tools.selectionFor(activeTab?.id);
   const selectedPlugins = activeSelection.plugins;
   const selectedSkills = activeSelection.skills;
+  const selectedPromptTemplates = activeSelection.promptTemplates;
+  const selectedExtensionOverrides = activeSelection.extensionOverrides;
+  const extensionCatalogue = tools.extensionCatalogue;
+  const refreshExtensionCatalogue = tools.refreshExtensionCatalogue;
   const computerUseLoaded = selectedPlugins.some((plugin) =>
     [plugin.id, plugin.name, plugin.path].some((value) =>
       value?.toLowerCase().includes("computer-use"),
@@ -206,10 +223,39 @@ export function ChatPane({
     activeTabId: activeTab?.id,
     setStickToBottom,
   });
+  const overrideByKey = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const entry of selectedExtensionOverrides) map.set(entry.key, entry.enabled);
+    return map;
+  }, [selectedExtensionOverrides]);
   const mentionRows = useMemo<MentionRow[]>(() => {
     if (!mention) return [];
     if (mention.kind === "skill") {
       return byQuery(skillRows, mention.query, 8).map((row) => ({ kind: "skill", row }));
+    }
+    if (mention.kind === "promptTemplate") {
+      return byQuery(promptTemplateRows, mention.query, 8).map((row) => ({
+        kind: "promptTemplate" as const,
+        row,
+      }));
+    }
+    if (mention.kind === "extension") {
+      return byQuery(extensionCatalogue, mention.query, 12).map((row) => {
+        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
+        let effectiveEnabled = row.enabled;
+        let hasTurnOverride = false;
+        for (const key of overrideKeys) {
+          if (overrideByKey.has(key)) {
+            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
+            hasTurnOverride = true;
+            break;
+          }
+        }
+        return {
+          kind: "extension" as const,
+          row: { ...row, effectiveEnabled, hasTurnOverride },
+        };
+      });
     }
     const plugins = byQuery(pluginRows, mention.query, 5).map((row) => ({
       kind: "plugin" as const,
@@ -223,7 +269,26 @@ export function ChatPane({
       .slice(0, 5)
       .map((row) => ({ kind: "file" as const, row }));
     return [...plugins, ...files].slice(0, 8);
-  }, [fileMentionRows, mention, pluginRows, skillRows]);
+  }, [
+    extensionCatalogue,
+    fileMentionRows,
+    mention,
+    overrideByKey,
+    pluginRows,
+    promptTemplateRows,
+    skillRows,
+  ]);
+  // Refresh the extension catalogue whenever the `/plugins` picker opens so
+  // freshly-installed packages or external `enabled.json` edits show up.
+  const mentionKind = mention?.kind;
+  const lastExtensionRefreshRef = useRef<number>(0);
+  if (mentionKind === "extension") {
+    const now = Date.now();
+    if (now - lastExtensionRefreshRef.current > 1_500) {
+      lastExtensionRefreshRef.current = now;
+      void refreshExtensionCatalogue();
+    }
+  }
   useChatPaneMentionEffects({
     cwd,
     mention,
@@ -291,10 +356,59 @@ export function ChatPane({
     },
     [activeTab, displayedSessionTitle, onRenameSession, patchActiveSessionPrefs],
   );
+  const toggleExtensionOverride = useCallback(
+    (row: ExtensionRowState) => {
+      if (!activeTab) return;
+      const current = tools.selectionFor(activeTab.id);
+      const key = row.source && row.source !== "auto" ? row.source : row.path;
+      const next = !row.effectiveEnabled;
+      // If the new state matches the persisted enabled flag we have no
+      // reason to keep a per-turn override around (cleaner UX, no stale chip).
+      const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
+      if (next !== row.enabled) {
+        overrides.push({ key, enabled: next });
+      }
+      tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
+    },
+    [activeTab, tools],
+  );
+  const persistExtensionEnabled = useCallback(
+    async (row: ExtensionRowState, enabled: boolean) => {
+      const key = row.source && row.source !== "auto" ? row.source : row.path;
+      try {
+        await fetch("/api/agent/extensions/enable", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ key, enabled }),
+        });
+        if (activeTab) {
+          const current = tools.selectionFor(activeTab.id);
+          const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
+          if (overrides.length !== current.extensionOverrides.length) {
+            tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
+          }
+        }
+        await refreshExtensionCatalogue();
+      } catch {
+        // Best-effort — the picker will reflect the previous state.
+      }
+    },
+    [activeTab, refreshExtensionCatalogue, tools],
+  );
   const selectMentionRow = useCallback(
     async (entry: MentionRow) => {
       if (!activeTab || !mention) return;
       const selectedMention = mention;
+      if (entry.kind === "extension") {
+        // `/plugins` picker: clicking a row toggles the per-turn override.
+        // The picker stays open so the user can flip multiple plugins; the
+        // composer text is preserved so they can continue typing afterwards.
+        toggleExtensionOverride(entry.row);
+        // Keep focus in the textarea but don't close the picker; users
+        // typically toggle several before sending.
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
       if (entry.kind === "file") {
         const input = consumeComposerMention(activeTab.input, selectedMention);
         updateTab(activeTab.id, (tab) => ({ ...tab, input }));
@@ -336,13 +450,16 @@ export function ChatPane({
         const endpoint =
           selectedMention.kind === "skill"
             ? `/api/agent/skills/load?path=${encodeURIComponent(row.path)}`
-            : `/api/agent/plugins/load?path=${encodeURIComponent(row.path)}`;
+            : selectedMention.kind === "promptTemplate"
+              ? `/api/agent/prompt-templates/load?path=${encodeURIComponent(row.path)}`
+              : `/api/agent/plugins/load?path=${encodeURIComponent(row.path)}`;
         const loaded = await fetch(endpoint, { cache: "no-store" })
           .then((res) =>
             res.ok
               ? (res.json() as Promise<{
                   skill?: ComposerSkillRef;
                   plugin?: ComposerPluginRef;
+                  template?: ComposerPromptTemplateRef;
                 }>)
               : null,
           )
@@ -351,21 +468,33 @@ export function ChatPane({
           ? { ...row, ...loaded.skill, id: row.id }
           : loaded?.plugin
             ? { ...row, ...loaded.plugin, id: row.id }
-            : row;
+            : loaded?.template
+              ? { ...row, ...loaded.template, id: row.id }
+              : row;
       }
       updateTab(activeTab.id, (tab) => ({ ...tab, input }));
       const current = tools.selectionFor(activeTab.id);
       if (selectedMention.kind === "plugin") {
         if (!current.plugins.some((plugin) => plugin.id === selectedRow.id)) {
           tools.setSelection(activeTab.id, {
+            ...current,
             plugins: [...current.plugins, activateComposerPlugin(selectedRow as ComposerPluginRef)],
-            skills: current.skills,
           });
         }
-      } else if (!current.skills.some((skill) => skill.id === selectedRow.id)) {
+      } else if (selectedMention.kind === "skill") {
+        if (!current.skills.some((skill) => skill.id === selectedRow.id)) {
+          tools.setSelection(activeTab.id, {
+            ...current,
+            skills: [...current.skills, selectedRow as ComposerSkillRef],
+          });
+        }
+      } else if (
+        selectedMention.kind === "promptTemplate" &&
+        !current.promptTemplates.some((template) => template.id === selectedRow.id)
+      ) {
         tools.setSelection(activeTab.id, {
-          plugins: current.plugins,
-          skills: [...current.skills, selectedRow as ComposerSkillRef],
+          ...current,
+          promptTemplates: [...current.promptTemplates, selectedRow as ComposerPromptTemplateRef],
         });
       }
       if (
@@ -379,10 +508,19 @@ export function ChatPane({
       setMention(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [activeTab, browserToolEnabled, cwd, mention, onToggleBrowserTool, tools, updateTab],
+    [
+      activeTab,
+      browserToolEnabled,
+      cwd,
+      mention,
+      onToggleBrowserTool,
+      toggleExtensionOverride,
+      tools,
+      updateTab,
+    ],
   );
   const removeLoadedContext = useCallback(
-    (kind: "plugin" | "skill", id: string) => {
+    (kind: "plugin" | "skill" | "promptTemplate" | "extensionOverride", id: string) => {
       if (!activeTab) return;
       const current = tools.selectionFor(activeTab.id);
       tools.setSelection(activeTab.id, {
@@ -392,10 +530,19 @@ export function ChatPane({
             : current.plugins,
         skills:
           kind === "skill" ? current.skills.filter((skill) => skill.id !== id) : current.skills,
+        promptTemplates:
+          kind === "promptTemplate"
+            ? current.promptTemplates.filter((template) => template.id !== id)
+            : current.promptTemplates,
+        extensionOverrides:
+          kind === "extensionOverride"
+            ? current.extensionOverrides.filter((entry) => entry.key !== id)
+            : current.extensionOverrides,
       });
     },
     [activeTab, tools],
   );
+
   const updateSession = useCallback(
     (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
@@ -677,11 +824,22 @@ export function ChatPane({
     tools.setComputerTab("status");
     tools.setComputerOpen(true);
   }, [tools]);
-  const currentContextTokens = activeTab?.tokenStats?.current ?? 0;
+  // Prefer SDK-computed context usage (uses the model's real tokenizer + the
+  // same compaction settings the SDK enforces). Fall back to the locally
+  // estimated tokenStats while we're waiting for the first runtime status
+  // poll to land.
+  const sdkContextUsage = activeTab?.contextUsage ?? null;
+  const currentContextTokens = sdkContextUsage?.tokens ?? activeTab?.tokenStats?.current ?? 0;
+  const effectiveContextWindow =
+    sdkContextUsage?.contextWindow && sdkContextUsage.contextWindow > 0
+      ? sdkContextUsage.contextWindow
+      : contextWindow;
   const contextUsagePercent =
-    contextWindow > 0
-      ? Math.min(100, Math.max(0, (currentContextTokens / contextWindow) * 100))
-      : 0;
+    typeof sdkContextUsage?.percent === "number"
+      ? Math.min(100, Math.max(0, sdkContextUsage.percent * 100))
+      : effectiveContextWindow > 0
+        ? Math.min(100, Math.max(0, (currentContextTokens / effectiveContextWindow) * 100))
+        : 0;
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -789,7 +947,11 @@ export function ChatPane({
               Drop files to attach to the next message.
             </div>
           ) : null}
-          {selectedPlugins.length + selectedSkills.length > 0 ? (
+          {selectedPlugins.length +
+            selectedSkills.length +
+            selectedPromptTemplates.length +
+            selectedExtensionOverrides.length >
+          0 ? (
             <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[11px]">
               {selectedPlugins.map((plugin) => (
                 <LoadedContextTab
@@ -811,57 +973,181 @@ export function ChatPane({
                   onRemove={() => removeLoadedContext("skill", skill.id)}
                 />
               ))}
+              {selectedPromptTemplates.map((template) => (
+                <LoadedContextTab
+                  key={`template-${template.id}`}
+                  prefix="/"
+                  label={template.name}
+                  title={template.description ?? template.path}
+                  active={false}
+                  onRemove={() => removeLoadedContext("promptTemplate", template.id)}
+                />
+              ))}
+              {selectedExtensionOverrides.map((entry) => {
+                const ext = extensionCatalogue.find(
+                  (row) => row.source === entry.key || row.path === entry.key,
+                );
+                const label = ext?.name ?? entry.key;
+                return (
+                  <LoadedContextTab
+                    key={`extover-${entry.key}`}
+                    prefix={entry.enabled ? "/+" : "/-"}
+                    label={label}
+                    title={`${entry.enabled ? "Force-enable" : "Force-disable"} for this turn: ${entry.key}`}
+                    active={entry.enabled}
+                    onRemove={() => removeLoadedContext("extensionOverride", entry.key)}
+                  />
+                );
+              })}
             </div>
           ) : null}
           {mention ? (
             <div className="px-4 pt-2">
-              <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
-                {mention.kind === "plugin" ? "Plugins & files" : "Skills"}
+              <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
+                <span>
+                  {mention.kind === "plugin"
+                    ? "Plugins & files"
+                    : mention.kind === "skill"
+                      ? "Skills"
+                      : mention.kind === "promptTemplate"
+                        ? "Prompt templates"
+                        : "Pi plugins · click toggles for this turn"}
+                </span>
+                {mention.kind === "extension" ? (
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      tools.setComputerTab("plugins");
+                      tools.setComputerOpen(true);
+                    }}
+                    className="ml-auto rounded px-1.5 py-[1px] text-[10px] normal-case tracking-normal text-(--dim) hover:text-(--fg)"
+                    title="Open the Pi packages panel"
+                  >
+                    install / manage
+                  </button>
+                ) : null}
               </div>{" "}
               {mentionRows.length ? (
                 <div className="grid gap-1">
                   {" "}
-                  {mentionRows.map((entry, index) => (
-                    <button
-                      key={entry.row.id}
-                      type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => void selectMentionRow(entry)}
-                      className={`flex min-w-0 items-start justify-between gap-3 rounded-md px-2 py-1 text-left ${
-                        index === mentionIndex
-                          ? "bg-(--hover) text-(--fg)"
-                          : "text-(--dim) hover:text-(--fg)"
-                      }`}
-                    >
-                      {" "}
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12px] text-(--fg)">
-                          {" "}
-                          {entry.kind === "skill" ? "$" : "@"}
-                          {mentionRowTitle(entry)}{" "}
-                          {mentionRowVersion(entry) ? (
-                            <span className="ml-1 font-mono text-[10px] text-(--dim)">
-                              {mentionRowVersion(entry)}
+                  {mentionRows.map((entry, index) => {
+                    if (entry.kind === "extension") {
+                      const isActive = index === mentionIndex;
+                      const persisted = entry.row.enabled;
+                      const effective = entry.row.effectiveEnabled;
+                      const turnOverride = entry.row.hasTurnOverride;
+                      return (
+                        <div
+                          key={`ext:${entry.row.id}`}
+                          className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[12px] ${
+                            isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim)"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void selectMentionRow(entry)}
+                            className={`h-5 shrink-0 rounded px-1.5 text-[10px] ${
+                              effective
+                                ? "bg-(--accent)/15 text-(--accent)"
+                                : "bg-(--bg) text-(--dim)"
+                            }`}
+                            title={
+                              effective
+                                ? "Click to disable for this turn"
+                                : "Click to enable for this turn"
+                            }
+                          >
+                            {effective ? "ON" : "OFF"}
+                          </button>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-(--fg)">
+                              {entry.row.name}
+                              {turnOverride ? (
+                                <span
+                                  className="ml-1.5 rounded bg-(--accent)/10 px-1 py-[1px] font-mono text-[9px] uppercase text-(--accent)"
+                                  title="Per-turn override; original persisted state is reversed"
+                                >
+                                  turn
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="block truncate font-mono text-[10px] text-(--dim)">
+                              {entry.row.source && entry.row.source !== "auto"
+                                ? entry.row.source
+                                : entry.row.path}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void persistExtensionEnabled(entry.row, !persisted)}
+                            className="h-5 shrink-0 rounded px-1.5 text-[10px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                            title={
+                              persisted
+                                ? "Disable persistently (writes enabled.json)"
+                                : "Enable persistently (writes enabled.json)"
+                            }
+                          >
+                            {persisted ? "save off" : "save on"}
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <button
+                        key={entry.row.id}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => void selectMentionRow(entry)}
+                        className={`flex min-w-0 items-start justify-between gap-3 rounded-md px-2 py-1 text-left ${
+                          index === mentionIndex
+                            ? "bg-(--hover) text-(--fg)"
+                            : "text-(--dim) hover:text-(--fg)"
+                        }`}
+                      >
+                        {" "}
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] text-(--fg)">
+                            {" "}
+                            {entry.kind === "skill"
+                              ? "$"
+                              : entry.kind === "promptTemplate"
+                                ? "/"
+                                : "@"}
+                            {mentionRowTitle(entry)}{" "}
+                            {mentionRowVersion(entry) ? (
+                              <span className="ml-1 font-mono text-[10px] text-(--dim)">
+                                {mentionRowVersion(entry)}
+                              </span>
+                            ) : null}
+                          </span>{" "}
+                          {mentionRowDescription(entry) ? (
+                            <span className="block truncate text-[10.5px] text-(--dim)">
+                              {mentionRowDescription(entry)}
                             </span>
                           ) : null}
                         </span>{" "}
-                        {mentionRowDescription(entry) ? (
-                          <span className="block truncate text-[10.5px] text-(--dim)">
-                            {mentionRowDescription(entry)}
-                          </span>
-                        ) : null}
-                      </span>{" "}
-                      <span className="truncate font-mono text-[10px] text-(--dim)">
-                        {entry.row.source ?? ""}
-                      </span>
-                    </button>
-                  ))}
+                        <span className="truncate font-mono text-[10px] text-(--dim)">
+                          {entry.kind !== "file" ? (entry.row.source ?? "") : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="px-2 py-1 text-[11px] text-(--dim)">
                   {" "}
-                  No {mention.kind === "plugin" ? "plugins or files" : "skills"} match{" "}
-                  <span className="font-mono">{mention.query || "…"}</span>.
+                  No{" "}
+                  {mention.kind === "plugin"
+                    ? "plugins or files"
+                    : mention.kind === "skill"
+                      ? "skills"
+                      : mention.kind === "promptTemplate"
+                        ? "prompt templates"
+                        : "installed Pi extensions"}{" "}
+                  match <span className="font-mono">{mention.query || "…"}</span>.
                 </div>
               )}
             </div>
@@ -1167,13 +1453,14 @@ export function ChatPane({
               type="button"
               onClick={openComputerStatus}
               className="group flex w-32 shrink-0 flex-col gap-1 text-left text-[9px] uppercase tracking-wide text-(--dim) hover:text-(--fg)"
-              title={`Open status · Context ${formatTokenCount(currentContextTokens)} / ${formatTokenCount(contextWindow)}`}
+              title={`Open status · Context ${formatTokenCount(currentContextTokens)} / ${formatTokenCount(effectiveContextWindow)}`}
               aria-label="Open status"
             >
               <span className="flex w-full items-center justify-between gap-2">
                 <span>context</span>
                 <span className="normal-case tracking-normal">
-                  {formatTokenCount(currentContextTokens)}/{formatTokenCount(contextWindow)}
+                  {formatTokenCount(currentContextTokens)}/
+                  {formatTokenCount(effectiveContextWindow)}
                 </span>
               </span>
               <span className="h-1 w-full overflow-hidden rounded-full bg-(--border)">
@@ -1373,7 +1660,9 @@ function mentionRowVersion(entry: MentionRow): string | undefined {
 }
 function mentionRowDescription(entry: MentionRow): string | undefined {
   if (entry.kind === "file") return entry.row.path;
-  return entry.kind === "plugin" ? entry.row.shortDescription : undefined;
+  if (entry.kind === "plugin") return entry.row.shortDescription;
+  if (entry.kind === "promptTemplate") return entry.row.description;
+  return undefined;
 }
 function LoadedContextTab({
   prefix,
@@ -1382,7 +1671,7 @@ function LoadedContextTab({
   active,
   onRemove,
 }: {
-  prefix: "@" | "$";
+  prefix: "@" | "$" | "/" | "/+" | "/-";
   label: string;
   title?: string;
   active?: boolean;

@@ -23,7 +23,9 @@ import {
 import {
   activeComposerPlugins,
   selectedContextPrompt,
+  type ComposerExtensionOverride,
   type ComposerPluginRef,
+  type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
@@ -42,6 +44,8 @@ import { createTextDeltaCoalescer, type TextDeltaCoalescer } from "./text-delta-
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
+const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
+const EMPTY_EXTENSION_OVERRIDES: ComposerExtensionOverride[] = [];
 
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
@@ -212,6 +216,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const selection = selectionForRef.current(sessionId);
       const plugins = activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
       const skills = selection.skills ?? EMPTY_SKILLS;
+      const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
+      const extensionOverrides = selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
       const message = selectedContextPrompt(text, plugins, skills);
       const ensureAssistantId = () => {
         const current = tabsRef.current.find((tab) => tab.id === sessionId);
@@ -247,6 +253,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             canvasEnabled,
             plugins: plugins as ComposerPluginRef[],
             skills,
+            promptTemplates,
+            extensionOverrides,
           },
           (payload) => {
             if (payload.type === "error") controlError = payload.error;
@@ -356,6 +364,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
             ) as ComposerPluginRef[],
             skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
+            promptTemplates:
+              selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+            extensionOverrides:
+              selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
           },
           (payload) => {
             if (payload.type === "status") {
@@ -407,17 +419,19 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         flushPiEventBatch(sessionId);
         localStreamRef.current.delete(sessionId);
         liveAssistantIdsRef.current.delete(sessionId);
-        const runtimeStatus = agentEnded ? null : await api.loadRuntimeStatus(runtime);
+        const runtimeStatus = await api.loadRuntimeStatus(runtime);
         const currentPiSessionId =
           tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
           selected.piSessionId ??
           null;
-        const runtimeStillActive = runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
+        const runtimeStillActive =
+          !agentEnded && runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
         updateSession(sessionId, (session) => ({
           ...session,
           status: runtimeStillActive ? "running" : "idle",
           activeAssistantId: runtimeStillActive ? assistantId : undefined,
           error: streamError && !runtimeStillActive ? streamError : session.error,
+          contextUsage: runtimeStatus?.contextUsage ?? session.contextUsage ?? null,
         }));
       }
 
@@ -493,6 +507,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           title: title ?? session.title,
           startedAt: startedAt ?? session.startedAt,
           tokenStats: tokenStats ?? session.tokenStats,
+          contextUsage: runtimeStatus?.contextUsage ?? session.contextUsage ?? null,
           status: runtimeActive ? "running" : "idle",
           activeAssistantId: undefined,
           lastEventSeq: replaySeq,
@@ -527,6 +542,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
           ) as ComposerPluginRef[],
           skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
+          promptTemplates:
+            selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+          extensionOverrides:
+            selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
         });
         const nextSessionId = result.status?.piSessionId || session.piSessionId;
         if (nextSessionId) await loadAndReplay(nextSessionId, sessionId);

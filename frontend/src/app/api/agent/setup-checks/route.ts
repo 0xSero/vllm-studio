@@ -3,6 +3,7 @@ import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { piResourceDiagnostics } from "@/lib/agent/pi-sdk-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,10 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
+  // Extension load failures captured during the most recent SDK runtime
+  // creation. Surfaced here so users dropping a broken extension into
+  // `<agentDir>/extensions/` see why it didn't activate.
+  const diagnostics = piResourceDiagnostics();
   return NextResponse.json({
     checks: [
       {
@@ -34,5 +39,6 @@ export async function GET() {
         guidance: "Optional but recommended for plugins and skills parity.",
       },
     ],
+    diagnostics,
   });
 }
