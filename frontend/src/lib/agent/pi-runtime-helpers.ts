@@ -181,24 +181,31 @@ export function resolveMcpExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("mcp-plugin.ts", process.env.VLLM_STUDIO_MCP_EXTENSION_PATH);
 }
 
-// Locate the bundled canvas skill directory (contains SKILL.md). Searched only
-// when the canvas toggle is ON so it can be appended to `--skill` and teach
-// the model how/when to use the canvas tools.
-export function resolveCanvasSkillPath(): string | null {
-  const override = process.env.VLLM_STUDIO_CANVAS_SKILL_PATH;
+// Locate a bundled skill directory (contains SKILL.md). Searched only when the
+// matching tool surface is ON so it can be appended to the SDK skill list and
+// teach the model how/when to use those tools.
+function resolveBundledSkillPath(name: string, override?: string): string | null {
   const candidates = [
     override,
     process.resourcesPath
-      ? path.join(process.resourcesPath, "desktop", "resources", "skills", "canvas")
+      ? path.join(process.resourcesPath, "desktop", "resources", "skills", name)
       : null,
-    path.resolve(process.cwd(), "frontend", "desktop", "resources", "skills", "canvas"),
-    path.resolve(process.cwd(), "desktop", "resources", "skills", "canvas"),
-    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "skills", "canvas"),
+    path.resolve(process.cwd(), "frontend", "desktop", "resources", "skills", name),
+    path.resolve(process.cwd(), "desktop", "resources", "skills", name),
+    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "skills", name),
   ].filter((value): value is string => Boolean(value));
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
   return null;
+}
+
+export function resolveBrowserSkillPath(): string | null {
+  return resolveBundledSkillPath("browser", process.env.VLLM_STUDIO_BROWSER_SKILL_PATH);
+}
+
+export function resolveCanvasSkillPath(): string | null {
+  return resolveBundledSkillPath("canvas", process.env.VLLM_STUDIO_CANVAS_SKILL_PATH);
 }
 
 export function pluginNameMatches(plugin: RuntimePluginRef, needle: string): boolean {
@@ -383,9 +390,11 @@ function runtimeExtensionPaths(
 }
 
 function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
+  const loadBrowser = shouldLoadBrowserTool(options, plugins);
   return uniqueExistingPaths([
     ...pluginSkillPaths(plugins),
     ...selectedSkillPaths(options.skills ?? []),
+    loadBrowser ? resolveBrowserSkillPath() : null,
     options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
   ]);
 }

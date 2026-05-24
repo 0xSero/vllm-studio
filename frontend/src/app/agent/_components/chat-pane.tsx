@@ -9,7 +9,19 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Code2, Loader2, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import {
+  AtSign,
+  Code2,
+  FileText,
+  Hash,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Plug,
+  Plus,
+  Slash,
+  Sparkles,
+} from "lucide-react";
 import {
   CloseIcon,
   FileIcon,
@@ -40,6 +52,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import {
   AgentTurnSsePayload,
   AssistantBlock,
@@ -234,10 +247,30 @@ export function ChatPane({
       return byQuery(skillRows, mention.query, 8).map((row) => ({ kind: "skill", row }));
     }
     if (mention.kind === "promptTemplate") {
-      return byQuery(promptTemplateRows, mention.query, 8).map((row) => ({
+      const templates = byQuery(promptTemplateRows, mention.query, 8).map((row) => ({
         kind: "promptTemplate" as const,
         row,
       }));
+      // Surface installed Pi extensions here too — they own real slash
+      // commands (e.g. /goal from @narumitw/pi-goal) and the user otherwise
+      // has no visual confirmation that they're loaded.
+      const extensions = byQuery(extensionCatalogue, mention.query, 8).map((row) => {
+        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
+        let effectiveEnabled = row.enabled;
+        let hasTurnOverride = false;
+        for (const key of overrideKeys) {
+          if (overrideByKey.has(key)) {
+            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
+            hasTurnOverride = true;
+            break;
+          }
+        }
+        return {
+          kind: "extension" as const,
+          row: { ...row, effectiveEnabled, hasTurnOverride },
+        };
+      });
+      return [...templates, ...extensions].slice(0, 12);
     }
     if (mention.kind === "extension") {
       return byQuery(extensionCatalogue, mention.query, 12).map((row) => {
@@ -282,7 +315,7 @@ export function ChatPane({
   // freshly-installed packages or external `enabled.json` edits show up.
   const mentionKind = mention?.kind;
   const lastExtensionRefreshRef = useRef<number>(0);
-  if (mentionKind === "extension") {
+  if (mentionKind === "extension" || mentionKind === "promptTemplate") {
     const now = Date.now();
     if (now - lastExtensionRefreshRef.current > 1_500) {
       lastExtensionRefreshRef.current = now;
@@ -611,6 +644,10 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
+      if (promptRequestsBrowser(args.userText)) {
+        tools.setComputerTab("browser");
+        tools.setBrowserEnabled(true);
+      }
       setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
@@ -620,7 +657,7 @@ export function ChatPane({
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
-    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
+    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments, tools],
   );
   const queueAndSendControl = useCallback(
     async (
@@ -666,6 +703,8 @@ export function ChatPane({
       if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
+      // Dismiss any open mention picker on submit so it doesn't linger.
+      setMention(null);
       composerSubmitInFlightRef.current = true;
       try {
         const runtime = activeTab.runtimeSessionId || runtimeSessionId;
@@ -702,6 +741,7 @@ export function ChatPane({
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
+    setMention(null);
     composerSubmitInFlightRef.current = true;
     try {
       // Queue follows the same contract as Steer: trust the user's
@@ -1003,151 +1043,66 @@ export function ChatPane({
           ) : null}
           {mention ? (
             <div className="px-4 pt-2">
-              <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
-                <span>
-                  {mention.kind === "plugin"
-                    ? "Plugins & files"
-                    : mention.kind === "skill"
-                      ? "Skills"
-                      : mention.kind === "promptTemplate"
-                        ? "Prompt templates"
-                        : "Pi plugins · click toggles for this turn"}
-                </span>
-                {mention.kind === "extension" ? (
-                  <button
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      tools.setComputerTab("plugins");
-                      tools.setComputerOpen(true);
-                    }}
-                    className="ml-auto rounded px-1.5 py-[1px] text-[10px] normal-case tracking-normal text-(--dim) hover:text-(--fg)"
-                    title="Open the Pi packages panel"
-                  >
-                    install / manage
-                  </button>
-                ) : null}
-              </div>{" "}
+              <MentionPickerHeader
+                kind={mention.kind}
+                query={mention.query}
+                onOpenPlugins={() => {
+                  tools.setComputerTab("plugins");
+                  tools.setComputerOpen(true);
+                }}
+              />{" "}
               {mentionRows.length ? (
                 <div className="grid gap-1">
                   {" "}
                   {mentionRows.map((entry, index) => {
                     if (entry.kind === "extension") {
-                      const isActive = index === mentionIndex;
-                      const persisted = entry.row.enabled;
-                      const effective = entry.row.effectiveEnabled;
-                      const turnOverride = entry.row.hasTurnOverride;
                       return (
-                        <div
+                        <MentionExtensionRow
                           key={`ext:${entry.row.id}`}
-                          className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[12px] ${
-                            isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim)"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => void selectMentionRow(entry)}
-                            className={`h-5 shrink-0 rounded px-1.5 text-[10px] ${
-                              effective
-                                ? "bg-(--accent)/15 text-(--accent)"
-                                : "bg-(--bg) text-(--dim)"
-                            }`}
-                            title={
-                              effective
-                                ? "Click to disable for this turn"
-                                : "Click to enable for this turn"
-                            }
-                          >
-                            {effective ? "ON" : "OFF"}
-                          </button>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-(--fg)">
-                              {entry.row.name}
-                              {turnOverride ? (
-                                <span
-                                  className="ml-1.5 rounded bg-(--accent)/10 px-1 py-[1px] font-mono text-[9px] uppercase text-(--accent)"
-                                  title="Per-turn override; original persisted state is reversed"
-                                >
-                                  turn
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="block truncate font-mono text-[10px] text-(--dim)">
-                              {entry.row.source && entry.row.source !== "auto"
-                                ? entry.row.source
-                                : entry.row.path}
-                            </span>
-                          </span>
-                          <button
-                            type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => void persistExtensionEnabled(entry.row, !persisted)}
-                            className="h-5 shrink-0 rounded px-1.5 text-[10px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-                            title={
-                              persisted
-                                ? "Disable persistently (writes enabled.json)"
-                                : "Enable persistently (writes enabled.json)"
-                            }
-                          >
-                            {persisted ? "save off" : "save on"}
-                          </button>
-                        </div>
+                          entry={entry}
+                          active={index === mentionIndex}
+                          onSelect={() => void selectMentionRow(entry)}
+                          onPersist={(next) => void persistExtensionEnabled(entry.row, next)}
+                        />
                       );
                     }
                     return (
-                      <button
+                      <MentionRowItem
                         key={entry.row.id}
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => void selectMentionRow(entry)}
-                        className={`flex min-w-0 items-start justify-between gap-3 rounded-md px-2 py-1 text-left ${
-                          index === mentionIndex
-                            ? "bg-(--hover) text-(--fg)"
-                            : "text-(--dim) hover:text-(--fg)"
-                        }`}
-                      >
-                        {" "}
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12px] text-(--fg)">
-                            {" "}
-                            {entry.kind === "skill"
-                              ? "$"
-                              : entry.kind === "promptTemplate"
-                                ? "/"
-                                : "@"}
-                            {mentionRowTitle(entry)}{" "}
-                            {mentionRowVersion(entry) ? (
-                              <span className="ml-1 font-mono text-[10px] text-(--dim)">
-                                {mentionRowVersion(entry)}
-                              </span>
-                            ) : null}
-                          </span>{" "}
-                          {mentionRowDescription(entry) ? (
-                            <span className="block truncate text-[10.5px] text-(--dim)">
-                              {mentionRowDescription(entry)}
-                            </span>
-                          ) : null}
-                        </span>{" "}
-                        <span className="truncate font-mono text-[10px] text-(--dim)">
-                          {entry.kind !== "file" ? (entry.row.source ?? "") : ""}
-                        </span>
-                      </button>
+                        entry={entry}
+                        active={index === mentionIndex}
+                        onSelect={() => void selectMentionRow(entry)}
+                      />
                     );
                   })}
                 </div>
               ) : (
-                <div className="px-2 py-1 text-[11px] text-(--dim)">
-                  {" "}
+                <div className="rounded-md border border-dashed border-(--border) px-3 py-3 text-center text-[11px] text-(--dim)">
                   No{" "}
                   {mention.kind === "plugin"
                     ? "plugins or files"
                     : mention.kind === "skill"
                       ? "skills"
                       : mention.kind === "promptTemplate"
-                        ? "prompt templates"
+                        ? "slash commands or extensions"
                         : "installed Pi extensions"}{" "}
-                  match <span className="font-mono">{mention.query || "…"}</span>.
+                  match <span className="font-mono text-(--fg)">{mention.query || "…"}</span>
+                  {mention.kind === "extension" ? (
+                    <>
+                      .{" "}
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          tools.setComputerTab("plugins");
+                          tools.setComputerOpen(true);
+                        }}
+                        className="text-(--accent) hover:underline"
+                      >
+                        Browse catalog →
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1677,25 +1632,243 @@ function LoadedContextTab({
   active?: boolean;
   onRemove: () => void;
 }) {
+  const meta = LOADED_TAB_META[prefix];
   return (
     <span
-      className="inline-flex max-w-[240px] items-center gap-1 py-0.5 text-[11px] text-(--fg)"
+      className={`inline-flex max-w-[240px] items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] ${meta.classes}`}
       title={title ?? label}
     >
-      {" "}
-      <span className="font-mono text-(--accent)">{prefix}</span>
-      {active ? <ComputerUseActivityDot inline /> : null} <span className="truncate">{label}</span>
+      <meta.Icon className="h-3 w-3 shrink-0" />
+      {active ? <ComputerUseActivityDot inline /> : null}
+      <span className="truncate text-(--fg)">{label}</span>
       <button
         type="button"
         onClick={onRemove}
-        className="p-0.5 text-(--dim) hover:text-(--fg)"
+        className="-mr-0.5 ml-0.5 rounded p-0.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         aria-label={`Unload ${prefix}${label}`}
         title={`Unload ${prefix}${label}`}
       >
-        {" "}
-        <CloseIcon className="h-3 w-3" />
-      </button>{" "}
+        <CloseIcon className="h-2.5 w-2.5" />
+      </button>
     </span>
+  );
+}
+
+const LOADED_TAB_META: Record<
+  "@" | "$" | "/" | "/+" | "/-",
+  { Icon: typeof AtSign; classes: string }
+> = {
+  "@": {
+    Icon: AtSign,
+    classes: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+  },
+  $: {
+    Icon: Sparkles,
+    classes: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+  },
+  "/": {
+    Icon: Slash,
+    classes: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  },
+  "/+": {
+    Icon: Plug,
+    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  },
+  "/-": {
+    Icon: Plug,
+    classes: "border-red-500/30 bg-red-500/10 text-red-300",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Mention picker chrome
+// ---------------------------------------------------------------------------
+
+const MENTION_KIND_META: Record<
+  "plugin" | "skill" | "promptTemplate" | "extension",
+  {
+    title: string;
+    hint: string;
+    Icon: typeof AtSign;
+    accentClass: string;
+  }
+> = {
+  plugin: {
+    title: "Plugins & files",
+    hint: "Type to filter · Enter to attach",
+    Icon: AtSign,
+    accentClass: "text-sky-300",
+  },
+  skill: {
+    title: "Skills",
+    hint: "Pick a skill to instruct the agent",
+    Icon: Sparkles,
+    accentClass: "text-violet-300",
+  },
+  promptTemplate: {
+    title: "Slash commands",
+    hint: "Templates + installed Pi extensions",
+    Icon: Slash,
+    accentClass: "text-amber-300",
+  },
+  extension: {
+    title: "Pi extensions",
+    hint: "Click ON/OFF to override for this turn",
+    Icon: Plug,
+    accentClass: "text-emerald-300",
+  },
+};
+
+function MentionPickerHeader({
+  kind,
+  query,
+  onOpenPlugins,
+}: {
+  kind: "plugin" | "skill" | "promptTemplate" | "extension";
+  query: string;
+  onOpenPlugins: () => void;
+}) {
+  const meta = MENTION_KIND_META[kind];
+  return (
+    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[11px]">
+      <meta.Icon className={`h-3.5 w-3.5 ${meta.accentClass}`} />
+      <span className="font-medium text-(--fg)">{meta.title}</span>
+      {query ? (
+        <span className="font-mono text-[10px] text-(--dim)">
+          {query.length > 24 ? `${query.slice(0, 24)}…` : query}
+        </span>
+      ) : null}
+      <span className="ml-auto truncate text-[10px] text-(--dim)">{meta.hint}</span>
+      {kind === "extension" ? (
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onOpenPlugins}
+          className="rounded border border-(--border) px-1.5 py-[1px] text-[10px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          title="Open the Pi packages panel"
+        >
+          Manage
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MentionExtensionRow({
+  entry,
+  active,
+  onSelect,
+  onPersist,
+}: {
+  entry: { kind: "extension"; row: ExtensionRowState };
+  active: boolean;
+  onSelect: () => void;
+  onPersist: (next: boolean) => void;
+}) {
+  const effective = entry.row.effectiveEnabled;
+  const persisted = entry.row.enabled;
+  const turnOverride = entry.row.hasTurnOverride;
+  const source =
+    entry.row.source && entry.row.source !== "auto" ? entry.row.source : entry.row.path;
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSelect}
+      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
+      }`}
+      title={effective ? "Click to disable for this turn" : "Click to enable for this turn"}
+    >
+      <Plug className={`h-3.5 w-3.5 shrink-0 ${effective ? "text-emerald-300" : "text-(--dim)"}`} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-1.5">
+          <span className="truncate text-[12px] text-(--fg)">{entry.row.name}</span>
+          <span
+            className={`shrink-0 rounded px-1 py-[1px] text-[9px] font-medium uppercase tracking-wide ${
+              effective ? "bg-emerald-500/20 text-emerald-300" : "bg-(--bg) text-(--dim)"
+            }`}
+          >
+            {effective ? "On" : "Off"}
+          </span>
+          {turnOverride ? (
+            <span
+              className="shrink-0 rounded bg-(--accent)/15 px-1 py-[1px] font-mono text-[9px] uppercase tracking-wide text-(--accent)"
+              title="Per-turn override"
+            >
+              turn
+            </span>
+          ) : null}
+        </span>
+        <span className="block truncate text-[10.5px] text-(--dim)">{source}</span>
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onPersist(!persisted);
+        }}
+        className="hidden shrink-0 rounded border border-(--border) px-1.5 py-[1px] text-[9px] uppercase tracking-wide text-(--dim) hover:bg-(--hover) hover:text-(--fg) sm:inline"
+        title={
+          persisted
+            ? "Disable persistently (writes enabled.json)"
+            : "Enable persistently (writes enabled.json)"
+        }
+      >
+        {persisted ? "Save off" : "Save on"}
+      </span>
+    </button>
+  );
+}
+
+function MentionRowItem({
+  entry,
+  active,
+  onSelect,
+}: {
+  entry: MentionRow;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  // `extension` kind has its own renderer above; this only handles file /
+  // plugin / skill / promptTemplate.
+  const kindMeta = MENTION_KIND_META[entry.kind === "file" ? "plugin" : entry.kind];
+  const Icon = entry.kind === "file" ? FileText : kindMeta.Icon;
+  const accent = entry.kind === "file" ? "text-(--dim)" : kindMeta.accentClass;
+  const title = mentionRowTitle(entry);
+  const description = mentionRowDescription(entry);
+  const version = mentionRowVersion(entry);
+  const source = entry.kind !== "file" ? (entry.row.source ?? "") : "";
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSelect}
+      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
+      }`}
+    >
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${accent}`} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-1.5">
+          <span className="truncate text-[12px] text-(--fg)">{title}</span>
+          {version ? <span className="font-mono text-[10px] text-(--dim)">{version}</span> : null}
+        </span>
+        {description ? (
+          <span className="block truncate text-[10.5px] text-(--dim)">{description}</span>
+        ) : null}
+      </span>
+      {source ? (
+        <span
+          className="hidden truncate font-mono text-[9px] uppercase tracking-wide text-(--dim) sm:inline"
+          title={source}
+        >
+          {source}
+        </span>
+      ) : null}
+    </button>
   );
 }
 function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {

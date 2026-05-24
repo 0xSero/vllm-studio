@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { loadSavedControllers } from "@/lib/controllers";
+import { getStoredBackendUrl } from "@/lib/backend-url";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/components/projects-nav-section";
 import { ChevronDownIcon, CloseIcon, PlusIcon } from "@/components/icons";
@@ -271,7 +273,10 @@ function renderWorkspacePane({
         />
       }
       browserToolEnabled={view.isFocused && tools.browser.enabled}
-      onToggleBrowserTool={tools.toggleBrowser}
+      onToggleBrowserTool={() => {
+        tools.setComputerTab("browser");
+        if (!tools.browser.enabled) tools.setBrowserEnabled(true);
+      }}
       canvasEnabled={view.isFocused && tools.computer.canvasEnabled}
       onToggleCanvas={tools.toggleCanvas}
       onPiSessionIdChange={handles.notifySessionsChanged}
@@ -302,6 +307,7 @@ function ModelPicker({
   loading: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const controllerLabel = useActiveControllerLabel();
   const active = models.find((model) => model.id === selectedModel) || null;
   const triggerLabel = loading
     ? "Loading…"
@@ -332,6 +338,14 @@ function ModelPicker({
         title={active?.name || triggerLabel}
       >
         <span className="min-w-0 max-w-[118px] truncate">{triggerLabel}</span>
+        {controllerLabel ? (
+          <span
+            className="hidden shrink-0 rounded-sm border border-(--border)/60 px-1 font-mono text-[9px] uppercase tracking-wide text-(--dim) sm:inline"
+            title={`Active controller · ${controllerLabel}`}
+          >
+            {controllerLabel}
+          </span>
+        ) : null}
         <ChevronDownIcon className="h-3 w-3 shrink-0 text-(--dim)" />
       </button>
       {open ? (
@@ -369,4 +383,36 @@ function ModelPicker({
       ) : null}
     </div>
   );
+}
+
+function subscribeToControllerStorage(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function computeActiveControllerLabel(): string | null {
+  const url = getStoredBackendUrl();
+  if (!url) return null;
+  const saved = loadSavedControllers();
+  if (saved.length === 0) return null;
+  const match = saved.find((entry) => entry.url === url);
+  return match?.name?.trim() || shortHost(url);
+}
+
+function useActiveControllerLabel(): string | null {
+  return useSyncExternalStore(
+    subscribeToControllerStorage,
+    computeActiveControllerLabel,
+    () => null,
+  );
+}
+
+function shortHost(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.host || url;
+  } catch {
+    return url;
+  }
 }

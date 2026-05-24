@@ -37,6 +37,10 @@ extraResources:
     to: desktop/resources/pi-extensions
     filter:
       - "**/*"
+  - from: desktop/resources/skills
+    to: desktop/resources/skills
+    filter:
+      - "**/*"
 
 directories:
   output: dist-desktop

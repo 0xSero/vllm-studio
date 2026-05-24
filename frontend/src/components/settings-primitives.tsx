@@ -245,12 +245,14 @@ export function SettingsButton({
 export function SettingsInput({
   value,
   onChange,
+  onBlur,
   placeholder,
   type = "text",
   className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   type?: "text" | "password";
   className?: string;
@@ -260,6 +262,7 @@ export function SettingsInput({
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       placeholder={placeholder}
       className={`h-8 w-full border-0 border-b border-(--border)/70 bg-transparent px-0.5 text-[12px] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:border-(--hl1) ${className}`}
     />

@@ -30,8 +30,6 @@ type ConfiguredPackage = {
   installedPath?: string;
 };
 
-export type PiPackageScope = "user" | "project";
-
 export type PiPackageListEntry = ConfiguredPackage & {
   enabled: boolean;
 };
@@ -157,11 +155,6 @@ export function setExtensionEnabled(key: string, enabled: boolean): EnabledOverr
   return current;
 }
 
-export function isExtensionEnabled(key: string): boolean {
-  const overrides = readEnabledOverrides();
-  return overrides[key] !== false;
-}
-
 /**
  * Token that changes whenever the on-disk Pi package configuration changes.
  * Used by the runtime fingerprint to invalidate cached sessions after an
@@ -175,15 +168,6 @@ export function packagesConfigToken(): string {
   } catch {
     return "missing";
   }
-}
-
-// Helper to derive a stable key for a resolved extension resource. We use
-// the source if available (so user-installed packages share one key across
-// scopes), falling back to the resolved path for auto-discovered entries.
-export function extensionResourceKey(
-  resource: Pick<PiExtensionResource, "path" | "source">,
-): string {
-  return resource.source && resource.source !== "auto" ? resource.source : resource.path;
 }
 
 // ---------------------------------------------------------------------------

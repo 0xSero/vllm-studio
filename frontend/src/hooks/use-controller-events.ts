@@ -1,9 +1,10 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import { getApiKey } from "@/lib/api-key";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
 import { resolveControllerEventsBaseUrl } from "@/lib/backend-config";
 import { CONTROLLER_EVENT_TYPES } from "./use-controller-events/event-types";
 import { dispatchCustomEvent } from "./use-controller-events/helpers";
@@ -20,6 +21,7 @@ interface SSEPayload<T = unknown> {
 
 export function useControllerEvents(apiBaseUrl: string = resolveControllerEventsBaseUrl()) {
   const eventSourceRef = useRef<EventSource | null>(null);
+  const [backendRevision, setBackendRevision] = useState(0);
 
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
@@ -57,5 +59,11 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     return () => {
       es.close();
     };
-  }, [handleMessage, sseUrl]);
+  }, [backendRevision, handleMessage, sseUrl]);
+
+  useLegacyEffect(() => {
+    const reconnect = () => setBackendRevision((value) => value + 1);
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
+    return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
+  }, []);
 }

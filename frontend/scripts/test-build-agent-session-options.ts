@@ -17,12 +17,14 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
   const pluginRoot = path.join(root, "plugin");
   const pluginSkills = path.join(pluginRoot, "skills");
   const selectedSkill = path.join(root, "selected-skill");
+  const browserSkill = path.join(root, "browser-skill");
   const canvasSkill = path.join(root, "canvas-skill");
   const mcpConfig = path.join(pluginRoot, ".mcp.json");
 
   await Promise.all([
     mkdir(pluginSkills, { recursive: true }),
     mkdir(selectedSkill),
+    mkdir(browserSkill),
     mkdir(canvasSkill),
   ]);
   await Promise.all(
@@ -37,6 +39,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     VLLM_STUDIO_BROWSER_EXTENSION_PATH: process.env.VLLM_STUDIO_BROWSER_EXTENSION_PATH,
     VLLM_STUDIO_CANVAS_EXTENSION_PATH: process.env.VLLM_STUDIO_CANVAS_EXTENSION_PATH,
     VLLM_STUDIO_MCP_EXTENSION_PATH: process.env.VLLM_STUDIO_MCP_EXTENSION_PATH,
+    VLLM_STUDIO_BROWSER_SKILL_PATH: process.env.VLLM_STUDIO_BROWSER_SKILL_PATH,
     VLLM_STUDIO_CANVAS_SKILL_PATH: process.env.VLLM_STUDIO_CANVAS_SKILL_PATH,
   };
   Object.assign(process.env, {
@@ -44,6 +47,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     VLLM_STUDIO_BROWSER_EXTENSION_PATH: browserExtension,
     VLLM_STUDIO_CANVAS_EXTENSION_PATH: canvasExtension,
     VLLM_STUDIO_MCP_EXTENSION_PATH: mcpExtension,
+    VLLM_STUDIO_BROWSER_SKILL_PATH: browserSkill,
     VLLM_STUDIO_CANVAS_SKILL_PATH: canvasSkill,
   });
 
@@ -73,7 +77,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
       mcpExtension,
       timeoutExtension,
     ]);
-    assert.deepEqual(result.skills, [pluginSkills, selectedSkill, canvasSkill]);
+    assert.deepEqual(result.skills, [pluginSkills, selectedSkill, browserSkill, canvasSkill]);
     assert.equal(result.envInjections.VLLM_STUDIO_BROWSER_SESSION_ID, "browser-session");
     assert.equal(result.envInjections.VLLM_STUDIO_FRONTEND_BASE, "http://127.0.0.1:3007");
     assert.equal(result.envInjections.PARCHI_RELAY_ORIGIN, "http://127.0.0.1:3007");

@@ -13,6 +13,8 @@ import {
   type WorkspaceWindow,
 } from "@/lib/agent/workspace/effects";
 import { useWorkspaceHydrationEffects } from "@/hooks/agent/use-workspace-hydration-effects";
+import { useBrowserEventsEffects } from "@/hooks/agent/use-browser-events-effects";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import type {
   AgentModel,
   PaneId,
@@ -267,10 +269,48 @@ export function useWorkspace(): UseWorkspaceResult {
         setBrowserUrl: toolsRef.current.setBrowserUrl,
         isElectron: typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent),
       });
-    return { dispatch: workspaceDispatch, runBrowserCommand };
+    return { browserEvents: getBrowserEvents(), dispatch: workspaceDispatch, runBrowserCommand };
   }, [queueSessionReplay]);
 
-  const { dispatch, runBrowserCommand } = controller;
+  const { browserEvents, dispatch, runBrowserCommand } = controller;
+
+  useBrowserEventsEffects({ browserEvents, enabled: tools.browser.enabled });
+
+  // Re-fetch the model list whenever the active controller (backend URL or
+  // api key) changes. The control panel persists this to localStorage and
+  // fires a `storage` event on changes; we listen for it here so the agent's
+  // model picker always reflects whichever controller is currently primary.
+  useLegacyEffect(() => {
+    if (typeof window === "undefined") return;
+    const reload = () => {
+      dispatch({ type: "setModelsLoading", loading: true });
+      dispatch({ type: "setError", error: "" });
+      void (async () => {
+        const response = await fetch("/api/agent/models", { cache: "no-store" });
+        const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
+        if (!response.ok) throw new Error(payload.error || "Failed to load models");
+        return payload.models ?? [];
+      })()
+        .then((models) => {
+          dispatch({ type: "setModels", models });
+        })
+        .catch((error) => {
+          dispatch({
+            type: "setError",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          dispatch({ type: "setModels", models: [] });
+        })
+        .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
+    };
+    const onStorage = (event: StorageEvent | Event) => {
+      const key = (event as StorageEvent).key;
+      if (key && key !== "vllmstudio_backend_url" && key !== "vllm-studio.controllers") return;
+      reload();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [dispatch]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({

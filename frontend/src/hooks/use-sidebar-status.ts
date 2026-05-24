@@ -3,6 +3,7 @@
 
 import { useSyncExternalStore } from "react";
 import api from "@/lib/api";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
 import type { LaunchStage } from "@/lib/types";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
@@ -143,6 +144,11 @@ async function fetchNow() {
   emitIfChanged(next);
 }
 
+function resetForControllerSwitch() {
+  emitIfChanged({ ...initialState, lastUpdateAt: Date.now() });
+  void fetchNow();
+}
+
 function start() {
   if (started) return;
   started = true;
@@ -157,6 +163,7 @@ function start() {
   };
 
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
+  window.addEventListener(BACKEND_URL_CHANGED_EVENT, resetForControllerSwitch);
 
   // Polling fallback for initial state and missed events (low frequency).
   void fetchNow();

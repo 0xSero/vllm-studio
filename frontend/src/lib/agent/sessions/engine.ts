@@ -28,6 +28,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { Session, SessionId, SessionStatus } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
@@ -218,6 +219,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const skills = selection.skills ?? EMPTY_SKILLS;
       const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
       const extensionOverrides = selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
+      const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(text);
       const message = selectedContextPrompt(text, plugins, skills);
       const ensureAssistantId = () => {
         const current = tabsRef.current.find((tab) => tab.id === sessionId);
@@ -248,7 +250,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             cwd: cwd.trim() || undefined,
             piSessionId,
             mode,
-            browserToolEnabled,
+            browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
             canvasEnabled,
             plugins: plugins as ComposerPluginRef[],
@@ -313,6 +315,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const userId = newId("user");
       const assistantId = newId("assistant");
       const runtime = selected.runtimeSessionId || runtimeSessionId;
+      const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(args.userText);
 
       // Optimistic: push a user message + a blank assistant placeholder so the
       // UI shows "we received it" even before the first SSE chunk lands.
@@ -357,7 +360,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             piSessionId:
               tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
               selected.piSessionId,
-            browserToolEnabled,
+            browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
             canvasEnabled,
             plugins: activeComposerPlugins(
@@ -535,7 +538,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           modelId,
           cwd: cwd.trim() || undefined,
           piSessionId: session.piSessionId,
-          browserToolEnabled,
+          browserToolEnabled: browserToolEnabled || promptRequestsBrowser(session.input),
           browserSessionId: session.runtimeSessionId || runtimeSessionId,
           canvasEnabled,
           plugins: activeComposerPlugins(
