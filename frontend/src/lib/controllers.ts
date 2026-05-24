@@ -3,23 +3,38 @@ const CONTROLLERS_STORAGE_KEY = "vllm-studio.controllers";
 export type SavedController = {
   url: string;
   apiKey?: string;
+  name?: string;
 };
 
-function normalizeUrl(url: string): string {
-  return url.trim().replace(/\/+$/, "");
+export function normalizeControllerUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    parsed.pathname = parsed.pathname.replace(/\/v1\/?$/i, "") || "/";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return trimmed.replace(/\/v1\/?$/i, "").replace(/\/+$/, "");
+  }
 }
 
 function parseSavedController(entry: unknown): SavedController | null {
   if (typeof entry === "string") {
-    const url = normalizeUrl(entry);
+    const url = normalizeControllerUrl(entry);
     return url ? { url } : null;
   }
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
   const record = entry as Record<string, unknown>;
-  const url = typeof record.url === "string" ? normalizeUrl(record.url) : "";
+  const url = typeof record.url === "string" ? normalizeControllerUrl(record.url) : "";
   if (!url) return null;
   const apiKey = typeof record.apiKey === "string" ? record.apiKey.trim() : "";
-  return apiKey ? { url, apiKey } : { url };
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const out: SavedController = { url };
+  if (apiKey) out.apiKey = apiKey;
+  if (name) out.name = name;
+  return out;
 }
 
 export function loadSavedControllers(): SavedController[] {
@@ -35,7 +50,11 @@ export function loadSavedControllers(): SavedController[] {
       if (!controller) continue;
       byUrl.set(controller.url, { ...byUrl.get(controller.url), ...controller });
     }
-    return [...byUrl.values()];
+    const next = [...byUrl.values()];
+    if (JSON.stringify(parsed) !== JSON.stringify(next)) {
+      window.localStorage.setItem(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
+    }
+    return next;
   } catch {
     return [];
   }
@@ -45,10 +64,14 @@ export function saveSavedControllers(controllers: SavedController[]): SavedContr
   if (typeof window === "undefined") return [];
   const byUrl = new Map<string, SavedController>();
   for (const controller of controllers) {
-    const url = normalizeUrl(controller.url);
+    const url = normalizeControllerUrl(controller.url);
     if (!url) continue;
     const apiKey = controller.apiKey?.trim();
-    byUrl.set(url, apiKey ? { url, apiKey } : { url });
+    const name = controller.name?.trim();
+    const out: SavedController = { url };
+    if (apiKey) out.apiKey = apiKey;
+    if (name) out.name = name;
+    byUrl.set(url, out);
   }
   const next = [...byUrl.values()];
   window.localStorage.setItem(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
@@ -57,10 +80,11 @@ export function saveSavedControllers(controllers: SavedController[]): SavedContr
 }
 
 export function getControllerApiKey(url: string): string {
-  const normalized = normalizeUrl(url);
+  const normalized = normalizeControllerUrl(url);
   if (!normalized) return "";
   return (
-    loadSavedControllers().find((controller) => normalizeUrl(controller.url) === normalized)
-      ?.apiKey ?? ""
+    loadSavedControllers().find(
+      (controller) => normalizeControllerUrl(controller.url) === normalized,
+    )?.apiKey ?? ""
   );
 }

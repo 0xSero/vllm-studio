@@ -85,6 +85,7 @@ export function useChatPaneRegisterHandleEffect({
     if (!onRegisterHandle) return;
     const handle: ChatPaneHandle = {
       loadAndReplay: (id) => handleRef.current.loadAndReplay(id),
+      compact: () => handleRef.current.compact(),
     };
     onRegisterHandle(handle);
     return () => onRegisterHandle(null);

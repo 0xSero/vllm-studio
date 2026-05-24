@@ -362,16 +362,16 @@ function MetricTrends({ samples }: { samples: MetricSample[] }) {
           label="Throughput (tok/s)"
           meta="Last 30 minutes"
           lines={[
-            { values: samples.map((sample) => sample.prefill), className: "text-(--dim)/35" },
-            { values: samples.map((sample) => sample.generation), className: "text-(--fg)/80" },
+            { values: samples.map((sample) => sample.prefill), className: "text-(--fg)/80" },
+            { values: samples.map((sample) => sample.generation), className: "text-(--dim)/35" },
           ]}
         />
         <TrendPanel
           label="TTFT (ms) & requests"
           meta="Last 30 minutes"
           lines={[
-            { values: samples.map((sample) => sample.ttft), className: "text-(--dim)/45" },
-            { values: samples.map((sample) => sample.requests), className: "text-(--fg)/70" },
+            { values: samples.map((sample) => sample.ttft), className: "text-(--fg)/80" },
+            { values: samples.map((sample) => sample.requests), className: "text-(--dim)/35" },
           ]}
         />
       </div>
@@ -440,7 +440,7 @@ function Sparkline({ lines }: { lines: Array<{ values: number[]; className: stri
           fill="none"
           className={line.className}
           stroke="currentColor"
-          strokeWidth={index === paths.length - 1 ? 1.6 : 1.1}
+          strokeWidth={index === 0 ? 1.6 : 1.1}
           strokeLinecap="square"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"

@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  Activity,
   Code2,
   FolderTree,
   GitBranch,
   Globe2,
   MessageSquarePlus,
   PanelRight,
+  Plug,
   Plus,
   TerminalSquare,
   type LucideIcon,
@@ -18,16 +20,22 @@ import type { ComputerTab } from "@/lib/agent/tools/types";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session } from "@/lib/agent/sessions/types";
 import type { AgentModel } from "@/lib/agent/workspace/types";
-import { NEW_AGENT_SESSION_EVENT } from "@/lib/agent/workspace/events";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
+import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
+import { PluginsPanel } from "./plugins-panel";
 import { TerminalPanel } from "./terminal-panel";
 import type { WorkspaceHandles } from "./use-workspace";
 
 type AgentBrowserPanelHandles = Pick<
   WorkspaceHandles,
-  "registerComputerAside" | "startComputerResize" | "registerBrowserHandle" | "runBrowserCommand"
+  | "registerComputerAside"
+  | "startComputerResize"
+  | "registerBrowserHandle"
+  | "runBrowserCommand"
+  | "openSideSessionFromFocusedPane"
+  | "compactFocusedSession"
 >;
 
 type AgentBrowserPanelProps = {
@@ -45,25 +53,30 @@ type AgentBrowserPanelProps = {
   } | null;
 };
 
-export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelProps) {
+export function AgentBrowserPanel({
+  handles,
+  activeProject,
+  focusedSession,
+  sessions,
+  activeModel,
+  gitSummary,
+}: AgentBrowserPanelProps) {
   const tools = useTools();
   if (!tools.computer.open) return null;
 
-  const { registerComputerAside, startComputerResize, registerBrowserHandle, runBrowserCommand } =
-    handles;
+  const {
+    registerComputerAside,
+    startComputerResize,
+    registerBrowserHandle,
+    runBrowserCommand,
+    openSideSessionFromFocusedPane,
+  } = handles;
   const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, activeProject?.path ?? "");
     if (!next) return;
     tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
-  };
-  const startSideChat = () => {
-    window.dispatchEvent(
-      new CustomEvent(NEW_AGENT_SESSION_EVENT, {
-        detail: { projectId: activeProject?.id, mode: "split" },
-      }),
-    );
   };
 
   return (
@@ -84,15 +97,24 @@ export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelP
         openTabs={tools.computer.tabs}
         onSelectTab={tools.setComputerTab}
         onCloseTab={tools.closeComputerTab}
-        onShowLauncher={() => tools.setComputerTab("status")}
+        onShowLauncher={() => tools.setComputerTab("tools")}
         onCloseComputer={() => tools.setComputerOpen(false)}
       />
 
       {tools.computer.tab === "status" ? (
+        <ComputerStatusPanel
+          activeProject={activeProject}
+          activeModel={activeModel}
+          focusedSession={focusedSession}
+          sessions={sessions}
+          gitSummary={gitSummary}
+          onCompactSession={handles.compactFocusedSession}
+        />
+      ) : tools.computer.tab === "tools" ? (
         <ComputerLauncherPanel
           activeTab={tools.computer.tab}
           onSelectTab={tools.setComputerTab}
-          onStartSideChat={startSideChat}
+          onStartSideChat={openSideSessionFromFocusedPane}
         />
       ) : tools.computer.tab === "canvas" ? (
         <CanvasPanel />
@@ -115,6 +137,8 @@ export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelP
         </section>
       ) : tools.computer.tab === "diff" ? (
         <GitDiffPanel cwd={activeProject?.path ?? null} />
+      ) : tools.computer.tab === "plugins" ? (
+        <PluginsPanel />
       ) : (
         <TerminalPanel cwd={activeProject?.path ?? null} />
       )}
@@ -123,12 +147,14 @@ export function AgentBrowserPanel({ handles, activeProject }: AgentBrowserPanelP
 }
 
 const TAB_LABELS: Record<ComputerTab, string> = {
-  status: "Tools",
+  status: "Status",
+  tools: "Tools",
   canvas: "Canvas",
   browser: "Browser",
   files: "Filesystem",
   diff: "Git",
   terminal: "Terminal",
+  plugins: "Plugins",
 };
 
 const TAB_OPTIONS: Array<{
@@ -157,6 +183,12 @@ const TAB_OPTIONS: Array<{
     icon: FolderTree,
   },
   { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
+  {
+    tab: "plugins",
+    label: "Plugins",
+    description: "Install and manage Pi extensions, skills, prompts, themes",
+    icon: Plug,
+  },
 ];
 
 function ComputerHeader({
@@ -174,10 +206,12 @@ function ComputerHeader({
   onShowLauncher: () => void;
   onCloseComputer: () => void;
 }) {
-  const visibleTabs = openTabs.filter((openTab) => openTab !== "status");
+  // The launcher ("tools") is reached via the Plus button, so it never
+  // appears as a row entry. Status IS a real row tab again.
+  const visibleTabs = openTabs.filter((openTab) => openTab !== "tools");
   const tabMeta = (candidate: ComputerTab) =>
     candidate === "status"
-      ? { label: "Status", icon: PanelRight }
+      ? { label: "Status", icon: Activity }
       : {
           label: TAB_LABELS[candidate],
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
@@ -188,13 +222,13 @@ function ComputerHeader({
         type="button"
         onClick={onShowLauncher}
         className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-          tab === "status"
+          tab === "tools"
             ? "text-(--fg) hover:bg-(--surface)"
             : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
         }`}
         title="Show tools"
         aria-label="Show tools"
-        aria-pressed={tab === "status"}
+        aria-pressed={tab === "tools"}
       >
         <Plus className="pointer-events-none h-3.5 w-3.5" />
       </button>
@@ -297,6 +331,13 @@ function ComputerLauncherPanel({
       description: "Start an interactive shell",
       icon: TerminalSquare,
       onClick: () => onSelectTab("terminal"),
+    },
+    {
+      key: "plugins",
+      title: "Plugins",
+      description: "Install Pi extensions, skills, prompts, themes",
+      icon: Plug,
+      onClick: () => onSelectTab("plugins"),
     },
   ] as const;
   return (

@@ -9,7 +9,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
+import type {
+  ComposerExtensionRef,
+  ComposerPluginRef,
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
+} from "@/lib/agent/composer-context";
 import { useCanvasEffects } from "@/hooks/agent/use-canvas-effects";
 import { useToolsCatalogueEffects } from "@/hooks/agent/use-tools-catalogue-effects";
 import type { SessionId } from "@/lib/agent/sessions/types";
@@ -44,6 +49,16 @@ export type ToolsContextValue = {
   pluginCatalogue: ComposerPluginRef[];
   /** Workspace-global skill catalogue (loaded once on mount). */
   skillCatalogue: ComposerSkillRef[];
+  /** Workspace-global prompt-template catalogue (loaded once on mount). */
+  promptTemplateCatalogue: ComposerPromptTemplateRef[];
+  /**
+   * Workspace-global Pi extension catalogue (installed packages + auto-
+   * discovered drop-ins). Hydrated lazily — empty until the user opens the
+   * `/plugins` slash menu or the plugins panel.
+   */
+  extensionCatalogue: ComposerExtensionRef[];
+  /** Force a re-fetch of the extension catalogue (e.g. after install/toggle). */
+  refreshExtensionCatalogue: () => Promise<void>;
   /** Per-session selection — empty for sessions that haven't picked tools yet. */
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
   setBrowserEnabled: (enabled: boolean) => void;
@@ -100,6 +115,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
   const [pluginCatalogue, setPluginCatalogue] = useState<ComposerPluginRef[]>([]);
   const [skillCatalogue, setSkillCatalogue] = useState<ComposerSkillRef[]>([]);
+  const [promptTemplateCatalogue, setPromptTemplateCatalogue] = useState<
+    ComposerPromptTemplateRef[]
+  >([]);
+  const [extensionCatalogue, setExtensionCatalogue] = useState<ComposerExtensionRef[]>([]);
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   // Bump on every selection mutation so consumers re-render.
   const [selectionVersion, setSelectionVersion] = useState(0);
@@ -112,9 +131,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   // The actual side effect lives in `use-tools-catalogue-effects.ts` — the
   // only sanctioned home for `useEffect` in this codebase.
   useToolsCatalogueEffects({
-    onLoaded: ({ plugins, skills }) => {
+    onLoaded: ({ plugins, skills, promptTemplates, extensions }) => {
       setPluginCatalogue(plugins);
       setSkillCatalogue(skills);
+      setPromptTemplateCatalogue(promptTemplates);
+      setExtensionCatalogue(extensions);
     },
   });
   useCanvasEffects({ setComputer, sessionId: activeCanvasSessionId });
@@ -192,7 +213,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const closeComputerTab = useCallback((tab: ComputerTab) => {
-    if (tab === "status") return;
+    if (tab === "status" || tab === "tools") return;
     setComputer((current) => {
       const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
       const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "status") : current.tab;
@@ -287,7 +308,13 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       if (!map.delete(sessionId)) return;
     } else {
       const current = map.get(sessionId);
-      if (current && current.plugins === selection.plugins && current.skills === selection.skills) {
+      if (
+        current &&
+        current.plugins === selection.plugins &&
+        current.skills === selection.skills &&
+        current.promptTemplates === selection.promptTemplates &&
+        current.extensionOverrides === selection.extensionOverrides
+      ) {
         return;
       }
       map.set(sessionId, selection);
@@ -304,7 +331,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       if (
         existing &&
         existing.plugins === selection.plugins &&
-        existing.skills === selection.skills
+        existing.skills === selection.skills &&
+        existing.promptTemplates === selection.promptTemplates &&
+        existing.extensionOverrides === selection.extensionOverrides
       ) {
         continue;
       }
@@ -314,6 +343,42 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     if (changed) setSelectionVersion((v) => v + 1);
   }, []);
 
+  const refreshExtensionCatalogue = useCallback(async () => {
+    try {
+      const response = await fetch("/api/agent/extensions", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        resources?: {
+          extensions?: Array<{
+            path: string;
+            source: string;
+            enabled: boolean;
+            origin: "package" | "top-level";
+            scope: "user" | "project" | "temporary";
+          }>;
+        };
+      };
+      const extensions = payload.resources?.extensions ?? [];
+      setExtensionCatalogue(
+        extensions.map((ext) => {
+          const id = ext.source && ext.source !== "auto" ? ext.source : ext.path;
+          const name = deriveExtensionName(ext.source, ext.path);
+          return {
+            id,
+            name,
+            source: ext.source,
+            path: ext.path,
+            scope: ext.scope,
+            origin: ext.origin,
+            enabled: ext.enabled,
+          };
+        }),
+      );
+    } catch {
+      // Best-effort; leave previous catalogue in place.
+    }
+  }, []);
+
   const value = useMemo<ToolsContextValue>(
     () => ({
       browser,
@@ -321,6 +386,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       fileOpenRequest,
       pluginCatalogue,
       skillCatalogue,
+      promptTemplateCatalogue,
+      extensionCatalogue,
+      refreshExtensionCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
@@ -345,6 +413,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       fileOpenRequest,
       pluginCatalogue,
       skillCatalogue,
+      promptTemplateCatalogue,
+      extensionCatalogue,
+      refreshExtensionCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
@@ -375,3 +446,15 @@ export function useTools(): ToolsContextValue {
 }
 
 export type { ToolSelection, ToolSelectionMap, BrowserState, ComputerState, ComputerTab };
+
+function deriveExtensionName(source: string, absPath: string): string {
+  // Prefer the package name from sources like "npm:@scope/foo" or "git:owner/repo".
+  if (source && source !== "auto") {
+    const m = /^(?:npm|git|file|ssh|https?):(.+)$/.exec(source);
+    const tail = (m?.[1] ?? source).trim();
+    const last = tail.split(/[\\/]/).filter(Boolean).pop();
+    if (last) return last;
+  }
+  const base = absPath.split(/[\\/]/).filter(Boolean).pop() ?? absPath;
+  return base.replace(/\.(?:t|j)sx?$/i, "");
+}

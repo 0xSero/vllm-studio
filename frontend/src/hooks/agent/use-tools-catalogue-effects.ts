@@ -9,11 +9,44 @@
 
 import { useEffect } from "react";
 
-import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
+import type {
+  ComposerExtensionRef,
+  ComposerPluginRef,
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
+} from "@/lib/agent/composer-context";
 
 type UseToolsCatalogueEffectsOptions = {
-  onLoaded: (payload: { plugins: ComposerPluginRef[]; skills: ComposerSkillRef[] }) => void;
+  onLoaded: (payload: {
+    plugins: ComposerPluginRef[];
+    skills: ComposerSkillRef[];
+    promptTemplates: ComposerPromptTemplateRef[];
+    extensions: ComposerExtensionRef[];
+  }) => void;
 };
+
+type ExtensionsApiResponse = {
+  resources?: {
+    extensions?: Array<{
+      path: string;
+      source: string;
+      enabled: boolean;
+      origin: "package" | "top-level";
+      scope: "user" | "project" | "temporary";
+    }>;
+  };
+};
+
+function deriveExtensionName(source: string, absPath: string): string {
+  if (source && source !== "auto") {
+    const m = /^(?:npm|git|file|ssh|https?):(.+)$/.exec(source);
+    const tail = (m?.[1] ?? source).trim();
+    const last = tail.split(/[\\/]/).filter(Boolean).pop();
+    if (last) return last;
+  }
+  const base = absPath.split(/[\\/]/).filter(Boolean).pop() ?? absPath;
+  return base.replace(/\.(?:t|j)sx?$/i, "");
+}
 
 export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions): void {
   useEffect(() => {
@@ -27,9 +60,30 @@ export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsO
         .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
         .then((payload) => payload.skills ?? [])
         .catch(() => [] as ComposerSkillRef[]),
-    ]).then(([plugins, skills]) => {
+      fetch("/api/agent/prompt-templates", { cache: "no-store" })
+        .then((res) => res.json() as Promise<{ templates?: ComposerPromptTemplateRef[] }>)
+        .then((payload) => payload.templates ?? [])
+        .catch(() => [] as ComposerPromptTemplateRef[]),
+      fetch("/api/agent/extensions", { cache: "no-store" })
+        .then((res) => res.json() as Promise<ExtensionsApiResponse>)
+        .then((payload): ComposerExtensionRef[] =>
+          (payload.resources?.extensions ?? []).map((ext) => {
+            const id = ext.source && ext.source !== "auto" ? ext.source : ext.path;
+            return {
+              id,
+              name: deriveExtensionName(ext.source, ext.path),
+              source: ext.source,
+              path: ext.path,
+              scope: ext.scope,
+              origin: ext.origin,
+              enabled: ext.enabled,
+            };
+          }),
+        )
+        .catch(() => [] as ComposerExtensionRef[]),
+    ]).then(([plugins, skills, promptTemplates, extensions]) => {
       if (cancelled) return;
-      onLoaded({ plugins, skills });
+      onLoaded({ plugins, skills, promptTemplates, extensions });
     });
     return () => {
       cancelled = true;

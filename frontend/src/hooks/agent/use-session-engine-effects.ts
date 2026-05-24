@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
-import * as sessionsApi from "@/lib/agent/sessions/api";
+import { loadRuntimeStatus, subscribeRuntimeEvents } from "@/lib/agent/sessions/api";
 import {
   subscribeResumeRuntimeSession,
   type RuntimeResumeDeps,
@@ -73,7 +73,7 @@ export function useSessionEngineRuntimeResumeEffect({
 
     const sub = subscribeResumeRuntimeSession({
       after,
-      api: sessionsApi,
+      api: { loadRuntimeStatus, subscribeRuntimeEvents },
       applyPiEvent,
       flushPiEvents,
       onPiSessionIdChange,

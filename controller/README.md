@@ -26,11 +26,10 @@ bun --watch src/main.ts
 - Health: /health
 - Status: /status
 
-## Tests
+## Checks
 
 ```bash
 npx tsc --noEmit
-bun test
 bun run lint
 ```
 

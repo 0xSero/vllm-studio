@@ -47,8 +47,7 @@ export function createInitialState(): WorkspaceState {
       [
         "p-init",
         {
-          sessionIds: [session.id],
-          activeSessionId: session.id,
+          sessionId: session.id,
           runtimeSessionId: newRuntimeId(),
         },
       ],
@@ -114,11 +113,23 @@ export function normalizePersistedTab(value: unknown): Session | null {
  */
 export function selectionFromPersistedTab(value: unknown): ToolSelection | null {
   if (!value || typeof value !== "object") return null;
-  const tab = value as PersistedTabShape;
+  const tab = value as PersistedTabShape & {
+    promptTemplates?: ToolSelection["promptTemplates"];
+    extensionOverrides?: ToolSelection["extensionOverrides"];
+  };
   const plugins = Array.isArray(tab.plugins) ? tab.plugins : [];
   const skills = Array.isArray(tab.skills) ? tab.skills : [];
-  if (plugins.length === 0 && skills.length === 0) return null;
-  return { plugins, skills };
+  const promptTemplates = Array.isArray(tab.promptTemplates) ? tab.promptTemplates : [];
+  const extensionOverrides = Array.isArray(tab.extensionOverrides) ? tab.extensionOverrides : [];
+  if (
+    plugins.length === 0 &&
+    skills.length === 0 &&
+    promptTemplates.length === 0 &&
+    extensionOverrides.length === 0
+  ) {
+    return null;
+  }
+  return { plugins, skills, promptTemplates, extensionOverrides };
 }
 
 export type RestoredPaneState = {
@@ -202,8 +213,7 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     const selection = restored.selections.get(session.id);
     if (selection) selections.set(session.id, selection);
     panesById.set(paneId, {
-      sessionIds: [session.id],
-      activeSessionId: session.id,
+      sessionId: session.id,
       runtimeSessionId: persistedRuntimeSessionId(pane),
     });
   }
@@ -247,6 +257,12 @@ export function sessionMetaForPersistence(
       ...base,
       ...(selection.plugins.length > 0 ? { plugins: selection.plugins } : {}),
       ...(selection.skills.length > 0 ? { skills: selection.skills } : {}),
+      ...(selection.promptTemplates.length > 0
+        ? { promptTemplates: selection.promptTemplates }
+        : {}),
+      ...(selection.extensionOverrides.length > 0
+        ? { extensionOverrides: selection.extensionOverrides }
+        : {}),
     };
   }
   return base;

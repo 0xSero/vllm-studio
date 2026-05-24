@@ -23,9 +23,12 @@ import {
 import {
   activeComposerPlugins,
   selectedContextPrompt,
+  type ComposerExtensionOverride,
   type ComposerPluginRef,
+  type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { Session, SessionId, SessionStatus } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
@@ -42,6 +45,8 @@ import { createTextDeltaCoalescer, type TextDeltaCoalescer } from "./text-delta-
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
+const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
+const EMPTY_EXTENSION_OVERRIDES: ComposerExtensionOverride[] = [];
 
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
@@ -212,6 +217,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const selection = selectionForRef.current(sessionId);
       const plugins = activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
       const skills = selection.skills ?? EMPTY_SKILLS;
+      const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
+      const extensionOverrides = selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
+      const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(text);
       const message = selectedContextPrompt(text, plugins, skills);
       const ensureAssistantId = () => {
         const current = tabsRef.current.find((tab) => tab.id === sessionId);
@@ -242,11 +250,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             cwd: cwd.trim() || undefined,
             piSessionId,
             mode,
-            browserToolEnabled,
+            browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
             canvasEnabled,
             plugins: plugins as ComposerPluginRef[],
             skills,
+            promptTemplates,
+            extensionOverrides,
           },
           (payload) => {
             if (payload.type === "error") controlError = payload.error;
@@ -305,6 +315,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const userId = newId("user");
       const assistantId = newId("assistant");
       const runtime = selected.runtimeSessionId || runtimeSessionId;
+      const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(args.userText);
 
       // Optimistic: push a user message + a blank assistant placeholder so the
       // UI shows "we received it" even before the first SSE chunk lands.
@@ -349,13 +360,17 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             piSessionId:
               tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
               selected.piSessionId,
-            browserToolEnabled,
+            browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
             canvasEnabled,
             plugins: activeComposerPlugins(
               selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
             ) as ComposerPluginRef[],
             skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
+            promptTemplates:
+              selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+            extensionOverrides:
+              selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
           },
           (payload) => {
             if (payload.type === "status") {
@@ -407,21 +422,19 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         flushPiEventBatch(sessionId);
         localStreamRef.current.delete(sessionId);
         liveAssistantIdsRef.current.delete(sessionId);
-        const runtimeStatus = agentEnded ? null : await api.loadRuntimeStatus(runtime);
+        const runtimeStatus = await api.loadRuntimeStatus(runtime);
         const currentPiSessionId =
           tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
           selected.piSessionId ??
           null;
-        const runtimeStillActive = runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
+        const runtimeStillActive =
+          !agentEnded && runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
         updateSession(sessionId, (session) => ({
           ...session,
           status: runtimeStillActive ? "running" : "idle",
           activeAssistantId: runtimeStillActive ? assistantId : undefined,
-          error: streamError
-            ? runtimeStillActive
-              ? `${streamError}; reattaching to the running session.`
-              : streamError
-            : session.error,
+          error: streamError && !runtimeStillActive ? streamError : session.error,
+          contextUsage: runtimeStatus?.contextUsage ?? session.contextUsage ?? null,
         }));
       }
 
@@ -459,7 +472,16 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
 
   const loadAndReplay = useCallback(
     async (piSessionId: string, sessionId: SessionId) => {
-      if (!cwd) return;
+      if (!cwd) {
+        // No cwd yet — we can't hydrate session history. Make sure the
+        // session isn't left in a permanent "loading" state (which blocks
+        // the composer's send button) just because the snapshot reducer
+        // optimistically tagged it as loading on hydration.
+        updateSession(sessionId, (session) =>
+          session.status === "loading" ? { ...session, status: "idle" } : session,
+        );
+        return;
+      }
       updateSession(sessionId, (session) => ({ ...session, status: "loading", error: "" }));
       try {
         const { events } = await api.loadCanonicalSession(piSessionId, cwd);
@@ -488,6 +510,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           title: title ?? session.title,
           startedAt: startedAt ?? session.startedAt,
           tokenStats: tokenStats ?? session.tokenStats,
+          contextUsage: runtimeStatus?.contextUsage ?? session.contextUsage ?? null,
           status: runtimeActive ? "running" : "idle",
           activeAssistantId: undefined,
           lastEventSeq: replaySeq,
@@ -515,13 +538,17 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           modelId,
           cwd: cwd.trim() || undefined,
           piSessionId: session.piSessionId,
-          browserToolEnabled,
+          browserToolEnabled: browserToolEnabled || promptRequestsBrowser(session.input),
           browserSessionId: session.runtimeSessionId || runtimeSessionId,
           canvasEnabled,
           plugins: activeComposerPlugins(
             selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
           ) as ComposerPluginRef[],
           skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
+          promptTemplates:
+            selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+          extensionOverrides:
+            selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
         });
         const nextSessionId = result.status?.piSessionId || session.piSessionId;
         if (nextSessionId) await loadAndReplay(nextSessionId, sessionId);

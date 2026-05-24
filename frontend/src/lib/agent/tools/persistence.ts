@@ -22,7 +22,16 @@ export const MAX_COMPUTER_WIDTH = 1800;
 export const MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN = 340;
 export const COMPUTER_SNAP_RATIOS = [0.25, 0.35, 0.5, 0.65] as const;
 
-const COMPUTER_TABS: ComputerTab[] = ["status", "canvas", "browser", "files", "diff", "terminal"];
+const COMPUTER_TABS: ComputerTab[] = [
+  "status",
+  "tools",
+  "canvas",
+  "browser",
+  "files",
+  "diff",
+  "terminal",
+  "plugins",
+];
 
 function viewportWidth(): number | undefined {
   return typeof window === "undefined" ? undefined : window.innerWidth;

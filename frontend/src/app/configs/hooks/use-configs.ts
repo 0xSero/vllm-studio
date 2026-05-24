@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { getApiKey, setApiKey, clearApiKey } from "@/lib/api-key";
 import { resolveSettingsDefaultBackendUrl } from "@/lib/backend-config";
 import { getStoredBackendUrl, setStoredBackendUrl, clearStoredBackendUrl } from "@/lib/backend-url";
+import { normalizeControllerUrl } from "@/lib/controllers";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
@@ -83,7 +84,7 @@ export function useConfigs() {
   };
 
   const persistLocalApiSettings = () => {
-    const backendUrl = apiSettings.backendUrl?.trim() || "";
+    const backendUrl = normalizeControllerUrl(apiSettings.backendUrl ?? "");
     if (backendUrl) {
       setStoredBackendUrl(backendUrl);
     } else {
@@ -104,13 +105,13 @@ export function useConfigs() {
       setConnectionStatus("unknown");
       setStatusMessage("Testing...");
 
-      const baseUrl = apiSettings.backendUrl?.trim() || "";
+      const baseUrl = normalizeControllerUrl(apiSettings.backendUrl ?? "");
       if (!baseUrl) {
         setConnectionStatus("error");
         setStatusMessage("Missing API URL");
         return;
       }
-      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/status`);
+      const res = await fetch(`${baseUrl}/status`);
       if (res.ok) {
         setConnectionStatus("connected");
         setStatusMessage("Connected");
@@ -168,7 +169,7 @@ export function useConfigs() {
   };
 
   const saveApiSettings = async () => {
-    const backendUrl = apiSettings.backendUrl?.trim() || "";
+    const backendUrl = normalizeControllerUrl(apiSettings.backendUrl ?? "");
     persistLocalApiSettings();
 
     let savedRemotely = false;
@@ -179,7 +180,7 @@ export function useConfigs() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          backendUrl: apiSettings.backendUrl,
+          backendUrl,
           apiKey: apiSettings.apiKey,
           voiceUrl: apiSettings.voiceUrl,
           voiceModel: apiSettings.voiceModel,

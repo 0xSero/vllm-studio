@@ -13,6 +13,8 @@ import {
   type WorkspaceWindow,
 } from "@/lib/agent/workspace/effects";
 import { useWorkspaceHydrationEffects } from "@/hooks/agent/use-workspace-hydration-effects";
+import { useBrowserEventsEffects } from "@/hooks/agent/use-browser-events-effects";
+import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import type {
   AgentModel,
   PaneId,
@@ -39,14 +41,15 @@ export type WorkspaceHandles = {
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
   registerComputerAside: (element: HTMLElement | null) => void;
   openNewSessionInFocusedPane: (project?: Project) => void;
+  openSideSessionFromFocusedPane: () => void;
   replaySessionInFocusedPane: (piSessionId: string) => void;
   replaySessionInSplitPane: (piSessionId: string) => void;
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
-  focusTab: (paneId: PaneId, tabId: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
   selectProject: (project: Project | null) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
+  compactFocusedSession: () => Promise<void>;
   runBrowserCommand: (
     verb: string,
     payload: Record<string, unknown>,
@@ -104,7 +107,7 @@ function parseBrowserCommand(raw: string): BrowserCommand | null {
 function focusedBrowserSessionId(state: WorkspaceState): string | null {
   const pane = state.panesById.get(state.focusedPaneId);
   if (!pane) return null;
-  const activeSession = state.sessions.get(pane.activeSessionId);
+  const activeSession = state.sessions.get(pane.sessionId);
   return activeSession?.runtimeSessionId || pane.runtimeSessionId || null;
 }
 
@@ -266,10 +269,48 @@ export function useWorkspace(): UseWorkspaceResult {
         setBrowserUrl: toolsRef.current.setBrowserUrl,
         isElectron: typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent),
       });
-    return { dispatch: workspaceDispatch, runBrowserCommand };
+    return { browserEvents: getBrowserEvents(), dispatch: workspaceDispatch, runBrowserCommand };
   }, [queueSessionReplay]);
 
-  const { dispatch, runBrowserCommand } = controller;
+  const { browserEvents, dispatch, runBrowserCommand } = controller;
+
+  useBrowserEventsEffects({ browserEvents, enabled: tools.browser.enabled });
+
+  // Re-fetch the model list whenever the active controller (backend URL or
+  // api key) changes. The control panel persists this to localStorage and
+  // fires a `storage` event on changes; we listen for it here so the agent's
+  // model picker always reflects whichever controller is currently primary.
+  useLegacyEffect(() => {
+    if (typeof window === "undefined") return;
+    const reload = () => {
+      dispatch({ type: "setModelsLoading", loading: true });
+      dispatch({ type: "setError", error: "" });
+      void (async () => {
+        const response = await fetch("/api/agent/models", { cache: "no-store" });
+        const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
+        if (!response.ok) throw new Error(payload.error || "Failed to load models");
+        return payload.models ?? [];
+      })()
+        .then((models) => {
+          dispatch({ type: "setModels", models });
+        })
+        .catch((error) => {
+          dispatch({
+            type: "setError",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          dispatch({ type: "setModels", models: [] });
+        })
+        .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
+    };
+    const onStorage = (event: StorageEvent | Event) => {
+      const key = (event as StorageEvent).key;
+      if (key && key !== "vllmstudio_backend_url" && key !== "vllm-studio.controllers") return;
+      reload();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [dispatch]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
@@ -289,6 +330,23 @@ export function useWorkspace(): UseWorkspaceResult {
           runtimeSessionId: newRuntimeId(),
         });
       },
+      openSideSessionFromFocusedPane: () => {
+        const focused = stateRef.current.panesById.get(stateRef.current.focusedPaneId);
+        const session = focused ? stateRef.current.sessions.get(focused.sessionId) : null;
+        const project =
+          projectsRef.current.resolveProject(session ?? null) ??
+          projectsRef.current.selectedProject ??
+          undefined;
+        if (project) projectsRef.current.selectProject(project);
+        dispatch({
+          type: "openNewSession",
+          project,
+          tab: makeFreshTab(),
+          paneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+          mode: "split",
+        });
+      },
       replaySessionInFocusedPane: (piSessionId: string) =>
         dispatch({ type: "replaySession", piSessionId, tab: makeFreshTab() }),
       replaySessionInSplitPane: (piSessionId: string) =>
@@ -303,7 +361,6 @@ export function useWorkspace(): UseWorkspaceResult {
         dispatch({ type: "openSessionPayloadInPane", paneId, payload, tab: makeFreshTab() }),
       renameTab: (paneId: PaneId, tabId: string, title: string) =>
         dispatch({ type: "renameTab", paneId, tabId, title }),
-      focusTab: (paneId: PaneId, tabId: string) => dispatch({ type: "focusTab", paneId, tabId }),
       splitTabIntoNewPane: (paneId: PaneId, tabId: string) =>
         dispatch({
           type: "splitTab",
@@ -320,6 +377,10 @@ export function useWorkspace(): UseWorkspaceResult {
         const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
         if (handle && pendingSessionId) queueSessionReplay(paneId, pendingSessionId);
       },
+      compactFocusedSession: async () => {
+        const handle = paneHandlesRef.current.get(stateRef.current.focusedPaneId);
+        await handle?.compact();
+      },
       runBrowserCommand,
       setSplitRatio: (path: number[], ratio: number) =>
         dispatch({ type: "setSplitRatio", path, ratio }),
@@ -330,10 +391,13 @@ export function useWorkspace(): UseWorkspaceResult {
         const pane = stateRef.current.panesById.get(paneId);
         if (!pane) return;
         const current = paneSessions(stateRef.current, paneId);
+        const next = typeof tabs === "function" ? tabs(current) : tabs;
+        const session = next.at(-1) ?? current[0];
+        if (!session) return;
         dispatch({
-          type: "setPaneTabs",
+          type: "setPaneSession",
           paneId,
-          tabs: typeof tabs === "function" ? tabs(current) : tabs,
+          session,
         });
       },
       patchActiveTab: (paneId: PaneId, patch: Partial<SessionTab>) =>

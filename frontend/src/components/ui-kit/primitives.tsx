@@ -7,34 +7,6 @@ function joinClassNames(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-interface UiPanelSurfaceProps {
-  children: ReactNode;
-  className?: string;
-}
-
-export function UiPanelSurface({ children, className }: UiPanelSurfaceProps) {
-  return (
-    <div
-      className={joinClassNames("rounded-lg border border-(--border) bg-(--surface)", className)}
-    >
-      {children}
-    </div>
-  );
-}
-
-interface UiInsetSurfaceProps {
-  children: ReactNode;
-  className?: string;
-}
-
-export function UiInsetSurface({ children, className }: UiInsetSurfaceProps) {
-  return (
-    <div className={joinClassNames("rounded-lg border border-(--border) bg-(--bg) p-4", className)}>
-      {children}
-    </div>
-  );
-}
-
 interface UiModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -119,5 +91,3 @@ export function UiModalHeader({
     </div>
   );
 }
-
-

@@ -75,16 +75,18 @@ export function Timeline({
           return (
             <div
               key={message.id}
-              className={`pb-5 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_240px]"}`}
+              className={`pb-6 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_240px]"}`}
             >
               <MemoMessage message={message} />
             </div>
           );
         })}
         {running ? (
-          <div className="flex items-center gap-2 py-4 text-xs text-(--dim) [overflow-anchor:none]">
-            <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--accent)" />
-            <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
+          <div className="border-t border-(--border) py-4 [overflow-anchor:none]">
+            <div className="flex items-center gap-2 text-[13px] leading-5 text-(--dim)">
+              <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--dim)" />
+              <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
+            </div>
           </div>
         ) : null}
         <div ref={bottomRef} aria-hidden="true" className="[overflow-anchor:none]" />

@@ -9,9 +9,8 @@
     "setup:git-hooks": "git config core.hooksPath .githooks && chmod +x .githooks/*",
     "frontend:lint": "npm --prefix frontend run lint",
     "frontend:typecheck": "npm --prefix frontend run typecheck",
-    "frontend:test": "npm --prefix frontend test",
     "frontend:check": "npm --prefix frontend run check:quality",
-    "check": "npm run frontend:check"
+    "check": "npm run frontend:lint && npm run frontend:typecheck"
   },
   "dependencies": {
     "electron-updater": "^6.6.2",

@@ -180,7 +180,7 @@ export async function listSessions(
   return summaries;
 }
 
-function findSessionFile(cwd: string, sessionId: string): string | null {
+export function findSessionFile(cwd: string, sessionId: string): string | null {
   const matches: Array<{ filepath: string; mtime: number }> = [];
   for (const dir of sessionsDirsForCwd(cwd)) {
     if (!existsSync(dir)) continue;

@@ -10,6 +10,7 @@ import type {
   RuntimeBackendInfo,
 } from "@/lib/types";
 import api from "@/lib/api";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
 import type {
   LeaseInfo,
   RealtimeStatusSnapshot,
@@ -184,6 +185,14 @@ async function fetchStatusNow() {
   }
 }
 
+function resetForControllerSwitch() {
+  emitIfChanged({
+    ...initialSnapshot,
+    lastEventAt: Date.now(),
+  });
+  void fetchStatusNow();
+}
+
 function start() {
   if (started) return;
   if (typeof window === "undefined") return;
@@ -290,6 +299,7 @@ function start() {
   };
 
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
+  window.addEventListener(BACKEND_URL_CHANGED_EVENT, resetForControllerSwitch);
 
   // Initial fetch + polling fallback in case SSE is blocked.
   void fetchStatusNow();

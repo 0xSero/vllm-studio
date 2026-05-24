@@ -8,7 +8,19 @@ import {
   type RuntimeLoggedEvent,
 } from "@/lib/agent/session";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
-import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
+import type {
+  ComposerExtensionOverride,
+  ComposerPluginRef,
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
+} from "@/lib/agent/composer-context";
+
+export type RuntimeContextUsage = {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  shouldCompact: boolean;
+};
 
 export type RuntimeStatus = {
   active?: boolean;
@@ -16,6 +28,7 @@ export type RuntimeStatus = {
   piSessionId?: string | null;
   eventSeq?: number;
   events?: RuntimeLoggedEvent[];
+  contextUsage?: RuntimeContextUsage | null;
 };
 
 export async function loadRuntimeStatus(sessionId: string): Promise<RuntimeStatus | null> {
@@ -30,6 +43,7 @@ export async function loadRuntimeStatus(sessionId: string): Promise<RuntimeStatu
         running?: boolean;
         piSessionId?: string | null;
         eventSeq?: number;
+        contextUsage?: RuntimeContextUsage | null;
       };
       events?: RuntimeLoggedEvent[];
     }>(response);
@@ -74,6 +88,8 @@ export type CompactSessionArgs = {
   canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
+  promptTemplates?: ComposerPromptTemplateRef[];
+  extensionOverrides?: ComposerExtensionOverride[];
 };
 
 export type CompactSessionResult = {
@@ -108,6 +124,8 @@ export type SubmitTurnArgs = {
   canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
+  promptTemplates?: ComposerPromptTemplateRef[];
+  extensionOverrides?: ComposerExtensionOverride[];
 };
 
 /**

@@ -9,10 +9,20 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { Code2, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
-  AttachIcon,
-  ChevronDownIcon,
+  AtSign,
+  Code2,
+  FileText,
+  Hash,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Plug,
+  Plus,
+  Slash,
+  Sparkles,
+} from "lucide-react";
+import {
   CloseIcon,
   FileIcon,
   GitBranchIcon,
@@ -35,10 +45,14 @@ import {
   detectComposerMention,
   consumeComposerMention,
   selectedContextPrompt,
+  type ComposerExtensionOverride,
+  type ComposerExtensionRef,
   type ComposerMention,
   type ComposerPluginRef,
+  type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import {
   AgentTurnSsePayload,
   AssistantBlock,
@@ -57,7 +71,7 @@ import {
   visibleQueuedMessages,
 } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
-import { patchSessionPref } from "@/lib/agent/session/prefs";
+import { copySessionPref, patchSessionPref } from "@/lib/agent/session/prefs";
 import { useTools } from "@/lib/agent/tools/context";
 import {
   attachmentDedupKey,
@@ -97,7 +111,6 @@ type Props = {
   contextWindow: number;
   cwd: string;
   projectName: string | null;
-  projectSelector?: ReactNode;
   modelSelector?: ReactNode;
   gitBranch?: string | null;
   gitSummary?: {
@@ -117,6 +130,7 @@ type Props = {
   tabs: SessionTab[];
   activeTabId: string;
   onTabsChange: (tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[])) => void;
+  onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
   onForkSession?: () => void;
   rightPanelOpen: boolean;
@@ -130,10 +144,19 @@ type FileMentionRow = {
   path: string;
   source: string;
 };
+type ExtensionRowState = ComposerExtensionRef & {
+  /** Resolved on/off state after layering the per-turn override on top of `enabled`. */
+  effectiveEnabled: boolean;
+  /** Whether the current selection carries a per-turn override for this extension. */
+  hasTurnOverride: boolean;
+};
+
 type MentionRow =
   | { kind: "plugin"; row: ComposerPluginRef }
   | { kind: "skill"; row: ComposerSkillRef }
-  | { kind: "file"; row: FileMentionRow };
+  | { kind: "promptTemplate"; row: ComposerPromptTemplateRef }
+  | { kind: "file"; row: FileMentionRow }
+  | { kind: "extension"; row: ExtensionRowState };
 
 export function ChatPane({
   paneId,
@@ -144,7 +167,6 @@ export function ChatPane({
   contextWindow,
   cwd,
   projectName,
-  projectSelector,
   modelSelector,
   gitBranch,
   gitSummary,
@@ -159,6 +181,7 @@ export function ChatPane({
   tabs,
   activeTabId,
   onTabsChange,
+  onRenameSession,
   onClose,
   onForkSession,
   rightPanelOpen,
@@ -168,6 +191,14 @@ export function ChatPane({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerSubmitInFlightRef = useRef(false);
+  // Track the height we last *applied* to the composer textarea so we can
+  // skip the "height: auto" reset on every keystroke. Resetting to auto
+  // collapses the textarea for one paint before the new scrollHeight is
+  // re-applied, which the user sees as flicker once the composer is
+  // multi-line. We only need that reset when content might have *shrunk*
+  // (i.e., when the value got shorter than before).
+  const lastAppliedComposerHeightRef = useRef(0);
+  const lastComposerValueLengthRef = useRef(0);
   const [isMultiline, setIsMultiline] = useState(false);
   const [stickToBottom, setStickToBottom] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -182,6 +213,7 @@ export function ChatPane({
   const sessionPrefs = useProjectsNavSessionPrefs();
   const pluginRows = tools.pluginCatalogue;
   const skillRows = tools.skillCatalogue;
+  const promptTemplateRows = tools.promptTemplateCatalogue;
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [tabs, activeTabId],
@@ -190,6 +222,10 @@ export function ChatPane({
   const activeSelection = tools.selectionFor(activeTab?.id);
   const selectedPlugins = activeSelection.plugins;
   const selectedSkills = activeSelection.skills;
+  const selectedPromptTemplates = activeSelection.promptTemplates;
+  const selectedExtensionOverrides = activeSelection.extensionOverrides;
+  const extensionCatalogue = tools.extensionCatalogue;
+  const refreshExtensionCatalogue = tools.refreshExtensionCatalogue;
   const computerUseLoaded = selectedPlugins.some((plugin) =>
     [plugin.id, plugin.name, plugin.path].some((value) =>
       value?.toLowerCase().includes("computer-use"),
@@ -200,10 +236,59 @@ export function ChatPane({
     activeTabId: activeTab?.id,
     setStickToBottom,
   });
+  const overrideByKey = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const entry of selectedExtensionOverrides) map.set(entry.key, entry.enabled);
+    return map;
+  }, [selectedExtensionOverrides]);
   const mentionRows = useMemo<MentionRow[]>(() => {
     if (!mention) return [];
     if (mention.kind === "skill") {
       return byQuery(skillRows, mention.query, 8).map((row) => ({ kind: "skill", row }));
+    }
+    if (mention.kind === "promptTemplate") {
+      const templates = byQuery(promptTemplateRows, mention.query, 8).map((row) => ({
+        kind: "promptTemplate" as const,
+        row,
+      }));
+      // Surface installed Pi extensions here too — they own real slash
+      // commands (e.g. /goal from @narumitw/pi-goal) and the user otherwise
+      // has no visual confirmation that they're loaded.
+      const extensions = byQuery(extensionCatalogue, mention.query, 8).map((row) => {
+        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
+        let effectiveEnabled = row.enabled;
+        let hasTurnOverride = false;
+        for (const key of overrideKeys) {
+          if (overrideByKey.has(key)) {
+            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
+            hasTurnOverride = true;
+            break;
+          }
+        }
+        return {
+          kind: "extension" as const,
+          row: { ...row, effectiveEnabled, hasTurnOverride },
+        };
+      });
+      return [...templates, ...extensions].slice(0, 12);
+    }
+    if (mention.kind === "extension") {
+      return byQuery(extensionCatalogue, mention.query, 12).map((row) => {
+        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
+        let effectiveEnabled = row.enabled;
+        let hasTurnOverride = false;
+        for (const key of overrideKeys) {
+          if (overrideByKey.has(key)) {
+            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
+            hasTurnOverride = true;
+            break;
+          }
+        }
+        return {
+          kind: "extension" as const,
+          row: { ...row, effectiveEnabled, hasTurnOverride },
+        };
+      });
     }
     const plugins = byQuery(pluginRows, mention.query, 5).map((row) => ({
       kind: "plugin" as const,
@@ -217,7 +302,26 @@ export function ChatPane({
       .slice(0, 5)
       .map((row) => ({ kind: "file" as const, row }));
     return [...plugins, ...files].slice(0, 8);
-  }, [fileMentionRows, mention, pluginRows, skillRows]);
+  }, [
+    extensionCatalogue,
+    fileMentionRows,
+    mention,
+    overrideByKey,
+    pluginRows,
+    promptTemplateRows,
+    skillRows,
+  ]);
+  // Refresh the extension catalogue whenever the `/plugins` picker opens so
+  // freshly-installed packages or external `enabled.json` edits show up.
+  const mentionKind = mention?.kind;
+  const lastExtensionRefreshRef = useRef<number>(0);
+  if (mentionKind === "extension" || mentionKind === "promptTemplate") {
+    const now = Date.now();
+    if (now - lastExtensionRefreshRef.current > 1_500) {
+      lastExtensionRefreshRef.current = now;
+      void refreshExtensionCatalogue();
+    }
+  }
   useChatPaneMentionEffects({
     cwd,
     mention,
@@ -244,7 +348,19 @@ export function ChatPane({
     const nextTitle = sessionPrefs[key]?.title?.trim();
     return nextTitle || title;
   }, "");
-  const displayedSessionTitle = sessionPrefTitle || activeTab?.title?.trim() || "New session";
+  // Rule: if the visible session is empty (no rendered messages, no input,
+  // not actively running) the header is blank. This covers three different
+  // cases that all looked broken before:
+  //   - a brand-new starter tab opened via "+" (no piSessionId yet)
+  //   - a persisted chat being restored before replay has filled in messages
+  //   - a freshly cleared/forked session waiting for its first turn
+  // Once the user types or pi streams the first message in, the real title
+  // takes over.
+  const sessionLooksEmpty =
+    !activeTab || (activeTab.messages.length === 0 && !activeTab.input.trim() && !running);
+  const displayedSessionTitle = sessionLooksEmpty
+    ? ""
+    : sessionPrefTitle || activeTab?.title?.trim() || "";
   const sessionPinned = sessionPrefKeys.some((key) => Boolean(sessionPrefs[key]?.pinned));
   const patchActiveSessionPrefs = useCallback(
     (patch: { title?: string; pinned?: boolean }) => {
@@ -256,20 +372,76 @@ export function ChatPane({
     if (sessionPrefKeys.length === 0) return;
     patchActiveSessionPrefs({ pinned: !sessionPinned });
   }, [patchActiveSessionPrefs, sessionPinned, sessionPrefKeys.length]);
+  const handlePiSessionIdChange = useCallback(
+    (piSessionId: string) => {
+      if (paneId && activeTabId) copySessionPref(`tab:${paneId}:${activeTabId}`, piSessionId);
+      onPiSessionIdChange?.(piSessionId);
+    },
+    [activeTabId, onPiSessionIdChange, paneId],
+  );
   const renameActiveSession = useCallback(
     (nextTitle: string) => {
       if (!activeTab) return;
       const trimmed = nextTitle.trim();
       if (!trimmed || trimmed === displayedSessionTitle) return;
-      updateTab(activeTab.id, (tab) => ({ ...tab, title: trimmed }));
+      onRenameSession(activeTab.id, trimmed);
       patchActiveSessionPrefs({ title: trimmed });
     },
-    [activeTab, displayedSessionTitle, patchActiveSessionPrefs, updateTab],
+    [activeTab, displayedSessionTitle, onRenameSession, patchActiveSessionPrefs],
+  );
+  const toggleExtensionOverride = useCallback(
+    (row: ExtensionRowState) => {
+      if (!activeTab) return;
+      const current = tools.selectionFor(activeTab.id);
+      const key = row.source && row.source !== "auto" ? row.source : row.path;
+      const next = !row.effectiveEnabled;
+      // If the new state matches the persisted enabled flag we have no
+      // reason to keep a per-turn override around (cleaner UX, no stale chip).
+      const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
+      if (next !== row.enabled) {
+        overrides.push({ key, enabled: next });
+      }
+      tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
+    },
+    [activeTab, tools],
+  );
+  const persistExtensionEnabled = useCallback(
+    async (row: ExtensionRowState, enabled: boolean) => {
+      const key = row.source && row.source !== "auto" ? row.source : row.path;
+      try {
+        await fetch("/api/agent/extensions/enable", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ key, enabled }),
+        });
+        if (activeTab) {
+          const current = tools.selectionFor(activeTab.id);
+          const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
+          if (overrides.length !== current.extensionOverrides.length) {
+            tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
+          }
+        }
+        await refreshExtensionCatalogue();
+      } catch {
+        // Best-effort — the picker will reflect the previous state.
+      }
+    },
+    [activeTab, refreshExtensionCatalogue, tools],
   );
   const selectMentionRow = useCallback(
     async (entry: MentionRow) => {
       if (!activeTab || !mention) return;
       const selectedMention = mention;
+      if (entry.kind === "extension") {
+        // `/plugins` picker: clicking a row toggles the per-turn override.
+        // The picker stays open so the user can flip multiple plugins; the
+        // composer text is preserved so they can continue typing afterwards.
+        toggleExtensionOverride(entry.row);
+        // Keep focus in the textarea but don't close the picker; users
+        // typically toggle several before sending.
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
       if (entry.kind === "file") {
         const input = consumeComposerMention(activeTab.input, selectedMention);
         updateTab(activeTab.id, (tab) => ({ ...tab, input }));
@@ -311,13 +483,16 @@ export function ChatPane({
         const endpoint =
           selectedMention.kind === "skill"
             ? `/api/agent/skills/load?path=${encodeURIComponent(row.path)}`
-            : `/api/agent/plugins/load?path=${encodeURIComponent(row.path)}`;
+            : selectedMention.kind === "promptTemplate"
+              ? `/api/agent/prompt-templates/load?path=${encodeURIComponent(row.path)}`
+              : `/api/agent/plugins/load?path=${encodeURIComponent(row.path)}`;
         const loaded = await fetch(endpoint, { cache: "no-store" })
           .then((res) =>
             res.ok
               ? (res.json() as Promise<{
                   skill?: ComposerSkillRef;
                   plugin?: ComposerPluginRef;
+                  template?: ComposerPromptTemplateRef;
                 }>)
               : null,
           )
@@ -326,21 +501,33 @@ export function ChatPane({
           ? { ...row, ...loaded.skill, id: row.id }
           : loaded?.plugin
             ? { ...row, ...loaded.plugin, id: row.id }
-            : row;
+            : loaded?.template
+              ? { ...row, ...loaded.template, id: row.id }
+              : row;
       }
       updateTab(activeTab.id, (tab) => ({ ...tab, input }));
       const current = tools.selectionFor(activeTab.id);
       if (selectedMention.kind === "plugin") {
         if (!current.plugins.some((plugin) => plugin.id === selectedRow.id)) {
           tools.setSelection(activeTab.id, {
+            ...current,
             plugins: [...current.plugins, activateComposerPlugin(selectedRow as ComposerPluginRef)],
-            skills: current.skills,
           });
         }
-      } else if (!current.skills.some((skill) => skill.id === selectedRow.id)) {
+      } else if (selectedMention.kind === "skill") {
+        if (!current.skills.some((skill) => skill.id === selectedRow.id)) {
+          tools.setSelection(activeTab.id, {
+            ...current,
+            skills: [...current.skills, selectedRow as ComposerSkillRef],
+          });
+        }
+      } else if (
+        selectedMention.kind === "promptTemplate" &&
+        !current.promptTemplates.some((template) => template.id === selectedRow.id)
+      ) {
         tools.setSelection(activeTab.id, {
-          plugins: current.plugins,
-          skills: [...current.skills, selectedRow as ComposerSkillRef],
+          ...current,
+          promptTemplates: [...current.promptTemplates, selectedRow as ComposerPromptTemplateRef],
         });
       }
       if (
@@ -354,10 +541,19 @@ export function ChatPane({
       setMention(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [activeTab, browserToolEnabled, cwd, mention, onToggleBrowserTool, tools, updateTab],
+    [
+      activeTab,
+      browserToolEnabled,
+      cwd,
+      mention,
+      onToggleBrowserTool,
+      toggleExtensionOverride,
+      tools,
+      updateTab,
+    ],
   );
   const removeLoadedContext = useCallback(
-    (kind: "plugin" | "skill", id: string) => {
+    (kind: "plugin" | "skill" | "promptTemplate" | "extensionOverride", id: string) => {
       if (!activeTab) return;
       const current = tools.selectionFor(activeTab.id);
       tools.setSelection(activeTab.id, {
@@ -367,10 +563,19 @@ export function ChatPane({
             : current.plugins,
         skills:
           kind === "skill" ? current.skills.filter((skill) => skill.id !== id) : current.skills,
+        promptTemplates:
+          kind === "promptTemplate"
+            ? current.promptTemplates.filter((template) => template.id !== id)
+            : current.promptTemplates,
+        extensionOverrides:
+          kind === "extensionOverride"
+            ? current.extensionOverrides.filter((entry) => entry.key !== id)
+            : current.extensionOverrides,
       });
     },
     [activeTab, tools],
   );
+
   const updateSession = useCallback(
     (sessionId: string, patch: (session: SessionTab) => SessionTab) => updateTab(sessionId, patch),
     [updateTab],
@@ -383,7 +588,7 @@ export function ChatPane({
     cwd,
     browserToolEnabled,
     canvasEnabled: tools.computer.canvasEnabled,
-    onPiSessionIdChange,
+    onPiSessionIdChange: handlePiSessionIdChange,
     updateSession,
     selectionFor: tools.selectionFor,
   });
@@ -439,14 +644,20 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
+      if (promptRequestsBrowser(args.userText)) {
+        tools.setComputerTab("browser");
+        tools.setBrowserEnabled(true);
+      }
       setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
+      lastAppliedComposerHeightRef.current = 0;
+      lastComposerValueLengthRef.current = 0;
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
-    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
+    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments, tools],
   );
   const queueAndSendControl = useCallback(
     async (
@@ -469,6 +680,8 @@ export function ChatPane({
       }));
       setIsMultiline(false);
       if (textareaRef.current) textareaRef.current.style.height = "";
+      lastAppliedComposerHeightRef.current = 0;
+      lastComposerValueLengthRef.current = 0;
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({
         ...t,
@@ -483,33 +696,31 @@ export function ChatPane({
       event.preventDefault();
       if (composerSubmitInFlightRef.current) return;
       if (!activeTab) return;
-      if (activeTab.status === "starting" || activeTab.status === "loading") return;
+      // Only block while a prompt is actively starting up; a "loading"
+      // status means we're hydrating prior session history and the user
+      // must still be able to send. Without this, a stuck/never-resolving
+      // canonical-session replay leaves the composer permanently locked.
+      if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
+      // Dismiss any open mention picker on submit so it doesn't linger.
+      setMention(null);
       composerSubmitInFlightRef.current = true;
       try {
         const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-        const status = await engine.loadRuntimeStatus(runtime);
-        const accepts = engine.acceptsControl(status, activeTab.piSessionId);
+        // When the UI shows a live turn, the form's primary action is
+        // "Steer" — always honor that intent and let the server decide
+        // whether to steer (turn in flight) or treat it as a fresh prompt
+        // (turn already settled). The previous accepts-control gate
+        // silently demoted explicit steers to brand-new prompts whenever
+        // the runtime's `active` snapshot lagged the UI, which made the
+        // Steer button look like a no-op.
         if (running) {
           if (!text) return;
-          if (!accepts) {
-            updateTab(activeTab.id, (t) => ({
-              ...t,
-              status: "idle",
-              activeAssistantId: undefined,
-            }));
-            await submitPrompt(text, activeTab.id);
-            return;
-          }
           await queueAndSendControl("steer", text, activeTab, runtime);
           return;
         }
-        if (!accepts) {
-          await submitPrompt(text, activeTab.id);
-          return;
-        }
-        await queueAndSendControl("steer", text, activeTab, runtime);
+        await submitPrompt(text, activeTab.id);
       } finally {
         composerSubmitInFlightRef.current = false;
       }
@@ -517,14 +728,12 @@ export function ChatPane({
     [
       activeTab,
       attachments.length,
-      engine,
       modelId,
       queueAndSendControl,
       readingAttachments,
       running,
       runtimeSessionId,
       submitPrompt,
-      updateTab,
     ],
   );
   const queueMessage = useCallback(async () => {
@@ -532,34 +741,24 @@ export function ChatPane({
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
+    setMention(null);
     composerSubmitInFlightRef.current = true;
     try {
+      // Queue follows the same contract as Steer: trust the user's
+      // explicit intent and let the server route follow_up vs. fresh
+      // prompt based on the live runtime state. The old client-side
+      // accepts-control fallback silently turned Queue clicks into
+      // ordinary prompts when the status snapshot was stale.
       if (!running) {
         await submitPrompt(text, activeTab.id);
         return;
       }
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      const status = await engine.loadRuntimeStatus(runtime);
-      if (!engine.acceptsControl(status, activeTab.piSessionId)) {
-        updateTab(activeTab.id, (t) => ({ ...t, status: "idle", activeAssistantId: undefined }));
-        await submitPrompt(text, activeTab.id);
-        return;
-      }
       await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
     } finally {
       composerSubmitInFlightRef.current = false;
     }
-  }, [
-    activeTab,
-    cwd,
-    engine,
-    modelId,
-    queueAndSendControl,
-    running,
-    runtimeSessionId,
-    submitPrompt,
-    updateTab,
-  ]);
+  }, [activeTab, cwd, modelId, queueAndSendControl, running, runtimeSessionId, submitPrompt]);
   const removeQueued = useCallback(
     (queueId: string) => {
       if (!activeTab) return;
@@ -657,13 +856,30 @@ export function ChatPane({
     },
     [activeTabId, engine],
   );
-  const handleRef = useRef<ChatPaneHandle>({ loadAndReplay });
-  handleRef.current = { loadAndReplay };
-  useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
   const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
   const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
+  const openComputerStatus = useCallback(() => {
+    tools.setComputerTab("status");
+    tools.setComputerOpen(true);
+  }, [tools]);
+  // Prefer SDK-computed context usage (uses the model's real tokenizer + the
+  // same compaction settings the SDK enforces). Fall back to the locally
+  // estimated tokenStats while we're waiting for the first runtime status
+  // poll to land.
+  const sdkContextUsage = activeTab?.contextUsage ?? null;
+  const currentContextTokens = sdkContextUsage?.tokens ?? activeTab?.tokenStats?.current ?? 0;
+  const effectiveContextWindow =
+    sdkContextUsage?.contextWindow && sdkContextUsage.contextWindow > 0
+      ? sdkContextUsage.contextWindow
+      : contextWindow;
+  const contextUsagePercent =
+    typeof sdkContextUsage?.percent === "number"
+      ? Math.min(100, Math.max(0, sdkContextUsage.percent * 100))
+      : effectiveContextWindow > 0
+        ? Math.min(100, Math.max(0, (currentContextTokens / effectiveContextWindow) * 100))
+        : 0;
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -673,6 +889,10 @@ export function ChatPane({
       setCompacting(false);
     }
   }, [activeTab, compacting, engine, modelId, running]);
+  const handleRef = useRef<ChatPaneHandle>({ loadAndReplay, compact: compactSession });
+  handleRef.current = { loadAndReplay, compact: compactSession };
+  useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
+  const displayCwd = formatHomeRelativePath(cwd);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -707,7 +927,7 @@ export function ChatPane({
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-0">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-2">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button
@@ -717,13 +937,9 @@ export function ChatPane({
               aria-expanded={queueExpanded}
               title="Queued follow-ups and steers"
             >
-              {" "}
-              <ChevronDownIcon
-                className={`h-3 w-3 shrink-0 text-(--dim) transition-transform ${queueExpanded ? "rotate-180" : "-rotate-90"}`}
-              />
               <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
                 queue {visibleQueueItems.length}
-              </span>{" "}
+              </span>
               <span className="min-w-0 flex-1 truncate">
                 {latestQueued?.text ?? "No queued message"}
               </span>
@@ -763,7 +979,7 @@ export function ChatPane({
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-lg bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
+          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
         >
           {" "}
           {composerDragActive ? (
@@ -771,7 +987,11 @@ export function ChatPane({
               Drop files to attach to the next message.
             </div>
           ) : null}
-          {selectedPlugins.length + selectedSkills.length > 0 ? (
+          {selectedPlugins.length +
+            selectedSkills.length +
+            selectedPromptTemplates.length +
+            selectedExtensionOverrides.length >
+          0 ? (
             <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[11px]">
               {selectedPlugins.map((plugin) => (
                 <LoadedContextTab
@@ -793,57 +1013,96 @@ export function ChatPane({
                   onRemove={() => removeLoadedContext("skill", skill.id)}
                 />
               ))}
+              {selectedPromptTemplates.map((template) => (
+                <LoadedContextTab
+                  key={`template-${template.id}`}
+                  prefix="/"
+                  label={template.name}
+                  title={template.description ?? template.path}
+                  active={false}
+                  onRemove={() => removeLoadedContext("promptTemplate", template.id)}
+                />
+              ))}
+              {selectedExtensionOverrides.map((entry) => {
+                const ext = extensionCatalogue.find(
+                  (row) => row.source === entry.key || row.path === entry.key,
+                );
+                const label = ext?.name ?? entry.key;
+                return (
+                  <LoadedContextTab
+                    key={`extover-${entry.key}`}
+                    prefix={entry.enabled ? "/+" : "/-"}
+                    label={label}
+                    title={`${entry.enabled ? "Force-enable" : "Force-disable"} for this turn: ${entry.key}`}
+                    active={entry.enabled}
+                    onRemove={() => removeLoadedContext("extensionOverride", entry.key)}
+                  />
+                );
+              })}
             </div>
           ) : null}
           {mention ? (
             <div className="px-4 pt-2">
-              <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-(--dim)">
-                {mention.kind === "plugin" ? "Plugins & files" : "Skills"}
-              </div>{" "}
+              <MentionPickerHeader
+                kind={mention.kind}
+                query={mention.query}
+                onOpenPlugins={() => {
+                  tools.setComputerTab("plugins");
+                  tools.setComputerOpen(true);
+                }}
+              />{" "}
               {mentionRows.length ? (
                 <div className="grid gap-1">
                   {" "}
-                  {mentionRows.map((entry, index) => (
-                    <button
-                      key={entry.row.id}
-                      type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => void selectMentionRow(entry)}
-                      className={`flex min-w-0 items-start justify-between gap-3 rounded-md px-2 py-1 text-left ${
-                        index === mentionIndex
-                          ? "bg-(--hover) text-(--fg)"
-                          : "text-(--dim) hover:text-(--fg)"
-                      }`}
-                    >
-                      {" "}
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12px] text-(--fg)">
-                          {" "}
-                          {entry.kind === "skill" ? "$" : "@"}
-                          {mentionRowTitle(entry)}{" "}
-                          {mentionRowVersion(entry) ? (
-                            <span className="ml-1 font-mono text-[10px] text-(--dim)">
-                              {mentionRowVersion(entry)}
-                            </span>
-                          ) : null}
-                        </span>{" "}
-                        {mentionRowDescription(entry) ? (
-                          <span className="block truncate text-[10.5px] text-(--dim)">
-                            {mentionRowDescription(entry)}
-                          </span>
-                        ) : null}
-                      </span>{" "}
-                      <span className="truncate font-mono text-[10px] text-(--dim)">
-                        {entry.row.source ?? ""}
-                      </span>
-                    </button>
-                  ))}
+                  {mentionRows.map((entry, index) => {
+                    if (entry.kind === "extension") {
+                      return (
+                        <MentionExtensionRow
+                          key={`ext:${entry.row.id}`}
+                          entry={entry}
+                          active={index === mentionIndex}
+                          onSelect={() => void selectMentionRow(entry)}
+                          onPersist={(next) => void persistExtensionEnabled(entry.row, next)}
+                        />
+                      );
+                    }
+                    return (
+                      <MentionRowItem
+                        key={entry.row.id}
+                        entry={entry}
+                        active={index === mentionIndex}
+                        onSelect={() => void selectMentionRow(entry)}
+                      />
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="px-2 py-1 text-[11px] text-(--dim)">
-                  {" "}
-                  No {mention.kind === "plugin" ? "plugins or files" : "skills"} match{" "}
-                  <span className="font-mono">{mention.query || "…"}</span>.
+                <div className="rounded-md border border-dashed border-(--border) px-3 py-3 text-center text-[11px] text-(--dim)">
+                  No{" "}
+                  {mention.kind === "plugin"
+                    ? "plugins or files"
+                    : mention.kind === "skill"
+                      ? "skills"
+                      : mention.kind === "promptTemplate"
+                        ? "slash commands or extensions"
+                        : "installed Pi extensions"}{" "}
+                  match <span className="font-mono text-(--fg)">{mention.query || "…"}</span>
+                  {mention.kind === "extension" ? (
+                    <>
+                      .{" "}
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          tools.setComputerTab("plugins");
+                          tools.setComputerOpen(true);
+                        }}
+                        className="text-(--accent) hover:underline"
+                      >
+                        Browse catalog →
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -905,13 +1164,34 @@ export function ChatPane({
               const element = event.currentTarget;
               if (!value) {
                 element.style.height = "";
+                lastAppliedComposerHeightRef.current = 0;
+                lastComposerValueLengthRef.current = 0;
                 setIsMultiline(false);
                 setMention(null);
                 return;
               }
-              element.style.height = "auto";
-              element.style.height = `${element.scrollHeight}px`;
-              setIsMultiline(element.scrollHeight > 38);
+              const prevLength = lastComposerValueLengthRef.current;
+              lastComposerValueLengthRef.current = value.length;
+              const shrinking = value.length < prevLength;
+              // When the content shrinks we have to briefly let the textarea
+              // collapse so `scrollHeight` reflects the new minimum.
+              // When the content only grows, we can skip the "height: auto"
+              // reset — that reset is what causes the one-frame flicker
+              // every keystroke in a multi-line composer.
+              if (shrinking) {
+                element.style.height = "auto";
+              }
+              const next = element.scrollHeight;
+              if (!shrinking && next === lastAppliedComposerHeightRef.current) {
+                // Height didn't change while growing — skip the write
+                // entirely. Re-assigning the same `style.height` still
+                // forces a style recompute on Electron/Chromium and
+                // contributes to the perceptible shake.
+                return;
+              }
+              element.style.height = `${next}px`;
+              lastAppliedComposerHeightRef.current = next;
+              setIsMultiline(next > 38);
             }}
             onKeyDown={(event) => {
               if (mention) {
@@ -965,7 +1245,7 @@ export function ChatPane({
                     ? `Steer ${modelName}…`
                     : `Message ${modelName}`
             }
-            className="min-h-[34px] max-h-[108px] w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 font-sans text-[14px] leading-[21px] tracking-[-0.003em] text-(--fg) outline-none placeholder:text-(--dim)"
+            className="min-h-[34px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-[13px] leading-6 tracking-normal text-(--fg) outline-none [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] placeholder:text-(--dim)"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}
@@ -985,7 +1265,7 @@ export function ChatPane({
               title="Attach files (or paste/drop into composer)"
             >
               {" "}
-              <AttachIcon className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" />
             </button>{" "}
             <button
               type="button"
@@ -1069,14 +1349,13 @@ export function ChatPane({
                     (!activeTab?.input.trim() && attachments.length === 0) ||
                     !modelId ||
                     readingAttachments ||
-                    activeTab?.status === "starting" ||
-                    activeTab?.status === "loading"
+                    activeTab?.status === "starting"
                   }
                   className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--fg) hover:text-(--accent) disabled:opacity-30"
                   aria-label="Send"
                   title="Send (Enter) · Queue (Tab)"
                 >
-                  {activeTab?.status === "starting" || activeTab?.status === "loading" ? (
+                  {activeTab?.status === "starting" ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <SendIcon className="h-3.5 w-3.5" />
@@ -1089,24 +1368,10 @@ export function ChatPane({
         <div className="relative z-20 mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-            <button
-              type="button"
-              onClick={() => void compactSession()}
-              disabled={running || compacting || !activeTab?.piSessionId || !modelId}
-              className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
-              title="Compact this Pi session context"
-            >
-              {" "}
-              {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              compact{" "}
-            </button>
-            <span className="shrink-0 text-(--border)">·</span>{" "}
             <div className="min-w-0 max-w-[42%] shrink overflow-visible">
-              {projectSelector ? (
-                projectSelector
-              ) : cwd ? (
+              {displayCwd ? (
                 <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
-                  {cwd}{" "}
+                  {displayCwd}{" "}
                 </span>
               ) : null}{" "}
             </div>
@@ -1138,14 +1403,28 @@ export function ChatPane({
               </span>
             ) : null}
           </div>{" "}
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            <span>R {formatTokenCount(activeTab?.tokenStats?.read ?? 0)}</span>{" "}
-            <span>W {formatTokenCount(activeTab?.tokenStats?.write ?? 0)}</span>
-            <span>
-              {" "}
-              {formatTokenCount(activeTab?.tokenStats?.current ?? 0)}/
-              {formatTokenCount(contextWindow)}
-            </span>{" "}
+          <div className="flex shrink-0 items-center justify-end">
+            <button
+              type="button"
+              onClick={openComputerStatus}
+              className="group flex w-32 shrink-0 flex-col gap-1 text-left text-[9px] uppercase tracking-wide text-(--dim) hover:text-(--fg)"
+              title={`Open status · Context ${formatTokenCount(currentContextTokens)} / ${formatTokenCount(effectiveContextWindow)}`}
+              aria-label="Open status"
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span>context</span>
+                <span className="normal-case tracking-normal">
+                  {formatTokenCount(currentContextTokens)}/
+                  {formatTokenCount(effectiveContextWindow)}
+                </span>
+              </span>
+              <span className="h-1 w-full overflow-hidden rounded-full bg-(--border)">
+                <span
+                  className="block h-full rounded-full bg-(--dim) transition-[width,background-color] group-hover:bg-(--fg)"
+                  style={{ width: `${contextUsagePercent}%` }}
+                />
+              </span>
+            </button>
           </div>
         </div>{" "}
       </form>
@@ -1319,6 +1598,14 @@ function HeaderMenuItem({
   );
 }
 
+function formatHomeRelativePath(value: string): string {
+  const normalized = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized) return "";
+  const homeMatch = normalized.match(/^\/Users\/[^/]+(\/.*)?$/);
+  if (homeMatch) return `~${homeMatch[1] ?? ""}`;
+  return normalized;
+}
+
 function mentionRowTitle(entry: MentionRow): string {
   if (entry.kind === "file") return entry.row.rel;
   return ("displayName" in entry.row && entry.row.displayName) || entry.row.name;
@@ -1328,7 +1615,9 @@ function mentionRowVersion(entry: MentionRow): string | undefined {
 }
 function mentionRowDescription(entry: MentionRow): string | undefined {
   if (entry.kind === "file") return entry.row.path;
-  return entry.kind === "plugin" ? entry.row.shortDescription : undefined;
+  if (entry.kind === "plugin") return entry.row.shortDescription;
+  if (entry.kind === "promptTemplate") return entry.row.description;
+  return undefined;
 }
 function LoadedContextTab({
   prefix,
@@ -1337,31 +1626,249 @@ function LoadedContextTab({
   active,
   onRemove,
 }: {
-  prefix: "@" | "$";
+  prefix: "@" | "$" | "/" | "/+" | "/-";
   label: string;
   title?: string;
   active?: boolean;
   onRemove: () => void;
 }) {
+  const meta = LOADED_TAB_META[prefix];
   return (
     <span
-      className="inline-flex max-w-[240px] items-center gap-1 py-0.5 text-[11px] text-(--fg)"
+      className={`inline-flex max-w-[240px] items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] ${meta.classes}`}
       title={title ?? label}
     >
-      {" "}
-      <span className="font-mono text-(--accent)">{prefix}</span>
-      {active ? <ComputerUseActivityDot inline /> : null} <span className="truncate">{label}</span>
+      <meta.Icon className="h-3 w-3 shrink-0" />
+      {active ? <ComputerUseActivityDot inline /> : null}
+      <span className="truncate text-(--fg)">{label}</span>
       <button
         type="button"
         onClick={onRemove}
-        className="p-0.5 text-(--dim) hover:text-(--fg)"
+        className="-mr-0.5 ml-0.5 rounded p-0.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         aria-label={`Unload ${prefix}${label}`}
         title={`Unload ${prefix}${label}`}
       >
-        {" "}
-        <CloseIcon className="h-3 w-3" />
-      </button>{" "}
+        <CloseIcon className="h-2.5 w-2.5" />
+      </button>
     </span>
+  );
+}
+
+const LOADED_TAB_META: Record<
+  "@" | "$" | "/" | "/+" | "/-",
+  { Icon: typeof AtSign; classes: string }
+> = {
+  "@": {
+    Icon: AtSign,
+    classes: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+  },
+  $: {
+    Icon: Sparkles,
+    classes: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+  },
+  "/": {
+    Icon: Slash,
+    classes: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  },
+  "/+": {
+    Icon: Plug,
+    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  },
+  "/-": {
+    Icon: Plug,
+    classes: "border-red-500/30 bg-red-500/10 text-red-300",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Mention picker chrome
+// ---------------------------------------------------------------------------
+
+const MENTION_KIND_META: Record<
+  "plugin" | "skill" | "promptTemplate" | "extension",
+  {
+    title: string;
+    hint: string;
+    Icon: typeof AtSign;
+    accentClass: string;
+  }
+> = {
+  plugin: {
+    title: "Plugins & files",
+    hint: "Type to filter · Enter to attach",
+    Icon: AtSign,
+    accentClass: "text-sky-300",
+  },
+  skill: {
+    title: "Skills",
+    hint: "Pick a skill to instruct the agent",
+    Icon: Sparkles,
+    accentClass: "text-violet-300",
+  },
+  promptTemplate: {
+    title: "Slash commands",
+    hint: "Templates + installed Pi extensions",
+    Icon: Slash,
+    accentClass: "text-amber-300",
+  },
+  extension: {
+    title: "Pi extensions",
+    hint: "Click ON/OFF to override for this turn",
+    Icon: Plug,
+    accentClass: "text-emerald-300",
+  },
+};
+
+function MentionPickerHeader({
+  kind,
+  query,
+  onOpenPlugins,
+}: {
+  kind: "plugin" | "skill" | "promptTemplate" | "extension";
+  query: string;
+  onOpenPlugins: () => void;
+}) {
+  const meta = MENTION_KIND_META[kind];
+  return (
+    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[11px]">
+      <meta.Icon className={`h-3.5 w-3.5 ${meta.accentClass}`} />
+      <span className="font-medium text-(--fg)">{meta.title}</span>
+      {query ? (
+        <span className="font-mono text-[10px] text-(--dim)">
+          {query.length > 24 ? `${query.slice(0, 24)}…` : query}
+        </span>
+      ) : null}
+      <span className="ml-auto truncate text-[10px] text-(--dim)">{meta.hint}</span>
+      {kind === "extension" ? (
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onOpenPlugins}
+          className="rounded border border-(--border) px-1.5 py-[1px] text-[10px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          title="Open the Pi packages panel"
+        >
+          Manage
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MentionExtensionRow({
+  entry,
+  active,
+  onSelect,
+  onPersist,
+}: {
+  entry: { kind: "extension"; row: ExtensionRowState };
+  active: boolean;
+  onSelect: () => void;
+  onPersist: (next: boolean) => void;
+}) {
+  const effective = entry.row.effectiveEnabled;
+  const persisted = entry.row.enabled;
+  const turnOverride = entry.row.hasTurnOverride;
+  const source =
+    entry.row.source && entry.row.source !== "auto" ? entry.row.source : entry.row.path;
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSelect}
+      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
+      }`}
+      title={effective ? "Click to disable for this turn" : "Click to enable for this turn"}
+    >
+      <Plug className={`h-3.5 w-3.5 shrink-0 ${effective ? "text-emerald-300" : "text-(--dim)"}`} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-1.5">
+          <span className="truncate text-[12px] text-(--fg)">{entry.row.name}</span>
+          <span
+            className={`shrink-0 rounded px-1 py-[1px] text-[9px] font-medium uppercase tracking-wide ${
+              effective ? "bg-emerald-500/20 text-emerald-300" : "bg-(--bg) text-(--dim)"
+            }`}
+          >
+            {effective ? "On" : "Off"}
+          </span>
+          {turnOverride ? (
+            <span
+              className="shrink-0 rounded bg-(--accent)/15 px-1 py-[1px] font-mono text-[9px] uppercase tracking-wide text-(--accent)"
+              title="Per-turn override"
+            >
+              turn
+            </span>
+          ) : null}
+        </span>
+        <span className="block truncate text-[10.5px] text-(--dim)">{source}</span>
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onPersist(!persisted);
+        }}
+        className="hidden shrink-0 rounded border border-(--border) px-1.5 py-[1px] text-[9px] uppercase tracking-wide text-(--dim) hover:bg-(--hover) hover:text-(--fg) sm:inline"
+        title={
+          persisted
+            ? "Disable persistently (writes enabled.json)"
+            : "Enable persistently (writes enabled.json)"
+        }
+      >
+        {persisted ? "Save off" : "Save on"}
+      </span>
+    </button>
+  );
+}
+
+function MentionRowItem({
+  entry,
+  active,
+  onSelect,
+}: {
+  entry: MentionRow;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  // `extension` kind has its own renderer above; this only handles file /
+  // plugin / skill / promptTemplate.
+  const kindMeta = MENTION_KIND_META[entry.kind === "file" ? "plugin" : entry.kind];
+  const Icon = entry.kind === "file" ? FileText : kindMeta.Icon;
+  const accent = entry.kind === "file" ? "text-(--dim)" : kindMeta.accentClass;
+  const title = mentionRowTitle(entry);
+  const description = mentionRowDescription(entry);
+  const version = mentionRowVersion(entry);
+  const source = entry.kind !== "file" ? (entry.row.source ?? "") : "";
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSelect}
+      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
+      }`}
+    >
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${accent}`} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-1.5">
+          <span className="truncate text-[12px] text-(--fg)">{title}</span>
+          {version ? <span className="font-mono text-[10px] text-(--dim)">{version}</span> : null}
+        </span>
+        {description ? (
+          <span className="block truncate text-[10.5px] text-(--dim)">{description}</span>
+        ) : null}
+      </span>
+      {source ? (
+        <span
+          className="hidden truncate font-mono text-[9px] uppercase tracking-wide text-(--dim) sm:inline"
+          title={source}
+        >
+          {source}
+        </span>
+      ) : null}
+    </button>
   );
 }
 function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {

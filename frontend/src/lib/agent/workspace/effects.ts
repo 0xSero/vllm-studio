@@ -17,12 +17,16 @@ import {
   ACTIVE_AGENT_SESSION_RENAME_EVENT,
   ACTIVE_AGENT_SESSIONS_EVENT,
   NEW_AGENT_SESSION_EVENT,
-  OPEN_SESSION_SPLIT_EVENT,
   PROJECTS_LOADED_EVENT,
   SESSIONS_CHANGED_EVENT,
 } from "./events";
 
-const EMPTY_SELECTION: ToolSelection = { plugins: [], skills: [] };
+const EMPTY_SELECTION: ToolSelection = {
+  plugins: [],
+  skills: [],
+  promptTemplates: [],
+  extensionOverrides: [],
+};
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
 
@@ -70,7 +74,6 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "openSessionPayloadInPane",
   "splitPaneWithPayload",
   "focusPane",
-  "focusTab",
   "renameTab",
   "splitTab",
   "closePane",
@@ -87,14 +90,17 @@ const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
   "renameTab",
   "splitTab",
   "closePane",
-  "setPaneTabs",
+  "setPaneSession",
   "patchActiveTab",
   "hydrateActiveSessions",
   "notifySessionsChanged",
   "urlNavRequested",
 ]);
 
-const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>(["setPaneTabs", "patchActiveTab"]);
+const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>([
+  "setPaneSession",
+  "patchActiveTab",
+]);
 
 function dispatchEvent(deps: WorkspaceEffectDeps, type: string): void {
   deps.window.dispatchEvent(new deps.window.Event(type));
@@ -164,24 +170,8 @@ export function subscribeWorkspaceWindowEvents(
       });
       return;
     }
-    dispatch({ type: "focusTab", paneId, tabId });
+    dispatch({ type: "focusPane", paneId });
   };
-  const onSplitSession = (event: Event) => {
-    const detail = eventDetail(event);
-    const piSessionId = isRecord(detail) ? stringField(detail, "piSessionId") : undefined;
-    const sessionTitle = isRecord(detail) ? stringField(detail, "title") : undefined;
-    if (piSessionId) {
-      dispatch({
-        type: "replaySessionInSplit",
-        piSessionId,
-        sessionTitle,
-        paneId: newPaneId(),
-        runtimeSessionId: newRuntimeId(),
-        tab: makeFreshTab(),
-      });
-    }
-  };
-
   // Fired by ProjectsProvider once its first load settles. We hold off on
   // hydrating active-session snapshots until then so we can filter sessions
   // whose project is no longer installed.
@@ -202,14 +192,12 @@ export function subscribeWorkspaceWindowEvents(
   workspaceWindow.addEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
   workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
   workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
-  workspaceWindow.addEventListener(OPEN_SESSION_SPLIT_EVENT, onSplitSession);
   workspaceWindow.addEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
 
   return () => {
     workspaceWindow.removeEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
     workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
     workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
-    workspaceWindow.removeEventListener(OPEN_SESSION_SPLIT_EVENT, onSplitSession);
     workspaceWindow.removeEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
     dispatch({ type: "workspaceUnmounted" });
   };
@@ -277,28 +265,26 @@ function computeActiveSessionBroadcast(
   if (!state.hydrated) return null;
   const out: ActiveAgentSessionSnapshot[] = [];
   for (const [paneId, pane] of state.panesById.entries()) {
-    for (const id of pane.sessionIds) {
-      const tab = state.sessions.get(id);
-      if (!tab) continue;
-      if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
-        continue;
-      const selection = selectionFor(id);
-      out.push({
-        projectId: tab.projectId ?? "",
-        cwd: tab.cwd ?? "",
-        paneId,
-        tabId: tab.id,
-        piSessionId: tab.piSessionId,
-        modelId: tab.modelId ?? state.selectedModel,
-        title: tab.title,
-        status: tab.status,
-        active: paneId === state.focusedPaneId && tab.id === pane.activeSessionId,
-        startedAt: tab.startedAt,
-        updatedAt: tab.startedAt || new Date().toISOString(),
-        plugins: selection.plugins.length > 0 ? selection.plugins : undefined,
-        skills: selection.skills.length > 0 ? selection.skills : undefined,
-      });
-    }
+    const tab = state.sessions.get(pane.sessionId);
+    if (!tab) continue;
+    if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
+      continue;
+    const selection = selectionFor(tab.id);
+    out.push({
+      projectId: tab.projectId ?? "",
+      cwd: tab.cwd ?? "",
+      paneId,
+      tabId: tab.id,
+      piSessionId: tab.piSessionId,
+      modelId: tab.modelId ?? state.selectedModel,
+      title: tab.title,
+      status: tab.status,
+      active: paneId === state.focusedPaneId,
+      startedAt: tab.startedAt,
+      updatedAt: tab.startedAt || new Date().toISOString(),
+      plugins: selection.plugins.length > 0 ? selection.plugins : undefined,
+      skills: selection.skills.length > 0 ? selection.skills : undefined,
+    });
   }
   return out;
 }
@@ -343,9 +329,7 @@ function queueLocatedReplay(
 function queueRecoverableActiveTabReplays(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
   const queued = new Set<string>();
   for (const [paneId, pane] of state.panesById.entries()) {
-    const activeTab =
-      state.sessions.get(pane.activeSessionId) ??
-      (pane.sessionIds[0] ? state.sessions.get(pane.sessionIds[0]) : undefined);
+    const activeTab = state.sessions.get(pane.sessionId);
     if (
       activeTab?.piSessionId &&
       (activeTab.messages.length === 0 ||
@@ -431,16 +415,14 @@ function paneMetadataKey(
   const panes: Record<string, unknown> = {};
   for (const [paneId, pane] of state.panesById.entries()) {
     panes[paneId] = {
-      activeSessionId: pane.activeSessionId,
+      sessionId: pane.sessionId,
       runtimeSessionId: pane.runtimeSessionId,
-      sessionIds: pane.sessionIds,
-      tabs: pane.sessionIds
-        .map((id) => {
-          const session = state.sessions.get(id);
-          if (!session) return null;
-          return sessionMetaForPersistence(session, selectionFor?.(id) ?? undefined);
-        })
-        .filter(Boolean),
+      tab: state.sessions.get(pane.sessionId)
+        ? sessionMetaForPersistence(
+            state.sessions.get(pane.sessionId)!,
+            selectionFor?.(pane.sessionId) ?? undefined,
+          )
+        : null,
     };
   }
   return JSON.stringify({

@@ -81,9 +81,3 @@ function migrateLegacySettings(targetDir: string): void {
     }
   }
 }
-
-// Test helper. Not exported from index; only consumed by vitest setups.
-export function __resetDataDirCacheForTests(): void {
-  cachedDataDir = null;
-  migrated = false;
-}

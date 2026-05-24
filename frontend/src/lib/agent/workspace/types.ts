@@ -18,17 +18,11 @@ export type AgentModel = {
   active: boolean;
 };
 
-/**
- * Re-exports for callers still importing the old names. Project state itself
- * lives in `lib/agent/projects/`; the workspace no longer owns it.
- */
-export type ProjectEntry = Project;
 export type { GitSummary } from "@/lib/agent/projects/types";
 
-/** A pane is a layout slot pointing at session ids — it doesn't carry session content. */
+/** A pane is a layout slot pointing at one visible session — it doesn't carry session content. */
 export type PaneState = {
-  sessionIds: SessionId[];
-  activeSessionId: SessionId;
+  sessionId: SessionId;
   runtimeSessionId: string;
 };
 
@@ -117,7 +111,6 @@ export type WorkspaceAction =
       tab: Session;
     }
   | { type: "focusPane"; paneId: PaneId }
-  | { type: "focusTab"; paneId: PaneId; tabId: SessionId }
   | { type: "renameTab"; paneId: PaneId; tabId: SessionId; title: string }
   | {
       type: "splitTab";
@@ -129,10 +122,9 @@ export type WorkspaceAction =
     }
   | { type: "closePane"; paneId: PaneId }
   /**
-   * Replace the session list of a pane. The reducer writes the new sessions
-   * into the flat `sessions` map and rebuilds `pane.sessionIds` to match.
+   * Replace the visible session of a pane and write it into the flat sessions map.
    */
-  | { type: "setPaneTabs"; paneId: PaneId; tabs: Session[] }
+  | { type: "setPaneSession"; paneId: PaneId; session: Session }
   | { type: "patchActiveTab"; paneId: PaneId; patch: Partial<Session> }
   | { type: "notifySessionsChanged" }
   | {

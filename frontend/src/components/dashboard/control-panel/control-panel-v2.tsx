@@ -8,7 +8,11 @@ import { GpuSection } from "./gpu-section";
 import { createApiClient } from "@/lib/api/create-api-client";
 import { setApiKey } from "@/lib/api-key";
 import { getStoredBackendUrl, setStoredBackendUrl } from "@/lib/backend-url";
-import { loadSavedControllers, type SavedController } from "@/lib/controllers";
+import {
+  loadSavedControllers,
+  normalizeControllerUrl,
+  type SavedController,
+} from "@/lib/controllers";
 import type { GPU, ProcessInfo } from "@/lib/types";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
@@ -18,6 +22,7 @@ type ControllerSnapshot = SavedController & {
   index: number;
   primary: boolean;
   online: boolean;
+  authRequired: boolean;
   running: boolean;
   process: ProcessInfo | null;
   gpus: GPU[];
@@ -62,12 +67,29 @@ function ControllerMatrix() {
 
   useLegacyEffect(() => {
     const load = () => {
-      const primary = getStoredBackendUrl() || "http://127.0.0.1:8080";
-      const extras = loadSavedControllers();
+      const saved = loadSavedControllers();
       const byUrl = new Map<string, SavedController>();
-      byUrl.set(primary, { url: primary });
-      for (const controller of extras) byUrl.set(controller.url, controller);
-      setControllers([...byUrl.values()]);
+      const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
+      for (const controller of saved) {
+        const url = normalizeControllerUrl(controller.url);
+        if (!url) continue;
+        if (!controller.name?.trim() && url !== activeUrl) continue;
+        byUrl.set(url, { ...controller, url });
+      }
+      // If nothing is saved yet, fall back to a synthesized primary so a
+      // brand new install still shows *something*. Don't add the primary
+      // when saved entries exist; the connection page owns the list.
+      if (byUrl.size === 0) {
+        const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
+        if (primary) byUrl.set(primary, { url: primary });
+      }
+      const next = [...byUrl.values()];
+      // Wipe stale snapshots so phantom rows from previous lists don't
+      // linger until the next poll cycle finishes.
+      setSnapshots((current) =>
+        current.filter((snapshot) => byUrl.has(normalizeControllerUrl(snapshot.url))),
+      );
+      setControllers(next);
     };
     load();
     window.addEventListener("storage", load);
@@ -93,6 +115,7 @@ function ControllerMatrix() {
 
   if (controllers.length <= 1) return null;
   const rows = snapshots.length ? snapshots : controllers.map(pendingController);
+  const activeUrl = normalizeControllerUrl(getStoredBackendUrl() || rows[0]?.url || "");
   return (
     <section className="mb-3 border-b border-(--border)/35 pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -103,12 +126,77 @@ function ControllerMatrix() {
           {rows.filter((row) => row.online).length}/{rows.length} online
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-wrap gap-1.5">
         {rows.map((controller) => (
-          <ControllerCard key={controller.url} controller={controller} />
+          <ControllerTab
+            key={controller.url}
+            controller={controller}
+            active={normalizeControllerUrl(controller.url) === activeUrl}
+            onActivate={() => {
+              if (controller.apiKey) setApiKey(controller.apiKey);
+              setStoredBackendUrl(controller.url);
+              void fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  backendUrl: controller.url,
+                  apiKey: controller.apiKey || "",
+                }),
+              }).finally(() => window.dispatchEvent(new Event("storage")));
+            }}
+          />
         ))}
       </div>
     </section>
+  );
+}
+
+function ControllerTab({
+  controller,
+  active,
+  onActivate,
+}: {
+  controller: ControllerSnapshot;
+  active: boolean;
+  onActivate: () => void;
+}) {
+  const fallback = controller.primary ? "primary" : `controller ${controller.index + 1}`;
+  const label = controller.name?.trim() || fallback;
+  const state = controller.authRequired
+    ? "auth"
+    : controller.online
+      ? controller.running
+        ? "running"
+        : "idle"
+      : "offline";
+  const model =
+    controller.process?.served_model_name || controller.process?.model_path || "no model";
+  const dotClass = controller.online
+    ? controller.running
+      ? "bg-(--hl2)"
+      : "bg-(--dim)"
+    : controller.authRequired
+      ? "bg-(--hl3)"
+      : "bg-(--err)";
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      title={controller.url}
+      className={`group inline-flex h-7 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-left text-[11px] transition ${
+        active
+          ? "border-(--accent)/60 bg-(--accent)/10 text-(--fg)"
+          : "border-(--border)/55 bg-(--surface)/40 text-(--dim) hover:border-(--border) hover:text-(--fg)"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+      <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
+      <span className="font-mono text-[9.5px] uppercase tracking-wide text-(--dim)">{state}</span>
+      <span className="font-mono text-[9.5px] text-(--dim)">{controller.gpus.length}× gpu</span>
+      <span className="max-w-[14rem] truncate text-[10px] text-(--dim)" title={model}>
+        {controller.online ? model : controller.error || "unreachable"}
+      </span>
+    </button>
   );
 }
 
@@ -133,6 +221,7 @@ async function pollController(
       index,
       primary: index === 0,
       online: true,
+      authRequired: false,
       running: statusResult.value.running,
       process: statusResult.value.process,
       inferencePort: statusResult.value.inference_port,
@@ -144,10 +233,15 @@ async function pollController(
       index,
       primary: index === 0,
       online: false,
+      authRequired: isAuthRequiredError(error),
       running: false,
       process: null,
       gpus: [],
-      error: error instanceof Error ? error.message : String(error),
+      error: isAuthRequiredError(error)
+        ? "auth required"
+        : error instanceof Error
+          ? error.message
+          : String(error),
     };
   }
 }
@@ -158,75 +252,17 @@ function pendingController(controller: SavedController, index: number): Controll
     index,
     primary: index === 0,
     online: false,
+    authRequired: false,
     running: false,
     process: null,
     gpus: [],
   };
 }
 
-function ControllerCard({ controller }: { controller: ControllerSnapshot }) {
-  const title = controller.primary ? "primary" : `controller ${controller.index + 1}`;
-  const model =
-    controller.process?.served_model_name || controller.process?.model_path || "no model";
-  return (
-    <div className="min-w-0 rounded-lg border border-(--border)/55 bg-(--surface)/50 px-3 py-2">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                controller.online ? "bg-(--hl2)" : "bg-(--err)"
-              }`}
-            />
-            <span className="text-[12px] font-medium text-(--fg)">{title}</span>
-            {controller.apiKey ? (
-              <span className="rounded-full border border-(--hl2)/25 px-1.5 text-[9px] text-(--hl2)">
-                key
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-1 truncate font-mono text-[10px] text-(--dim)" title={controller.url}>
-            {controller.url}
-          </div>
-        </div>
-        {!controller.primary ? (
-          <button
-            type="button"
-            onClick={() => {
-              setStoredBackendUrl(controller.url);
-              if (controller.apiKey) setApiKey(controller.apiKey);
-            }}
-            className="h-7 shrink-0 rounded-md px-2 text-[10.5px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-            title="Use this controller for global actions"
-          >
-            make primary
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-[10.5px]">
-        <Metric
-          label="state"
-          value={controller.online ? (controller.running ? "running" : "idle") : "offline"}
-        />
-        <Metric label="gpus" value={String(controller.gpus.length)} />
-        <Metric label="port" value={String(controller.inferencePort ?? "—")} />
-      </div>
-      <div className="mt-2 truncate text-[10.5px] text-(--dim)" title={controller.error ?? model}>
-        {controller.online ? model : controller.error || "not reachable"}
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-(--dim)/70">
-        {label}
-      </div>
-      <div className="mt-0.5 truncate font-mono text-(--fg)">{value}</div>
-    </div>
-  );
+function isAuthRequiredError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = (error as { status?: unknown }).status;
+  return status === 401 || status === 403;
 }
 
 function ActivityStrip({ logs }: DashboardLayoutProps) {

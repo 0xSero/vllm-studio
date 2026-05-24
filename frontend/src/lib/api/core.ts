@@ -223,7 +223,9 @@ export function createApiCore(params: {
 
   const responseError = async (response: Response): Promise<Error> => {
     const errorBody: unknown = await response.json().catch(() => ({ detail: "Request failed" }));
-    return new Error(formatHttpErrorMessage(response.status, errorBody));
+    const error = new Error(formatHttpErrorMessage(response.status, errorBody));
+    (error as Error & { status: number }).status = response.status;
+    return error;
   };
 
   const normalizeRequestError = (error: unknown, timeout: number): Error => {

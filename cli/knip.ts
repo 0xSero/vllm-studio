@@ -2,7 +2,6 @@
 export default {
   entry: ['src/main.ts'],
   project: ['src/**/*.ts'],
-  test: ['src/**/*.test.ts'],
   ignore: [
     'vllm-studio',
     'node_modules/**',

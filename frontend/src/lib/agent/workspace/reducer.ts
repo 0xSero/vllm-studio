@@ -14,14 +14,13 @@ import {
   applyUrlNavigation,
   closePane,
   focusPane,
-  focusTab,
   openNewSessionInFocusedPane,
   openSessionPayloadInPane,
   patchActiveTab,
   replaySessionInFocusedPane,
   replaySessionInSplitPane,
   restorePaneState as restorePaneWorkspaceState,
-  setPaneTabs,
+  setPaneSession,
   setWorkspaceLayout,
   setWorkspaceSplitRatio,
   splitPaneWithPayload,
@@ -103,8 +102,7 @@ function hydrateSessionSnapshots(
       restored.find((tab) => tab.id === activeSessionId) ?? restored[0] ?? makeFreshTab();
     sessions.set(session.id, session);
     panesById.set(paneId, {
-      sessionIds: [session.id],
-      activeSessionId: session.id,
+      sessionId: session.id,
       runtimeSessionId: newRuntimeId(),
     });
   }
@@ -170,8 +168,6 @@ function reducePaneLayoutAction(
       return restorePaneWorkspaceState(state, action);
     case "focusPane":
       return focusPane(state, { paneId: action.paneId });
-    case "focusTab":
-      return focusTab(state, { paneId: action.paneId, tabId: action.tabId });
     case "closePane":
       return closePane(state, { paneId: action.paneId });
     default:
@@ -246,8 +242,8 @@ function reduceSessionEditAction(
         runtimeSessionId: action.runtimeSessionId,
         tab: action.tab,
       });
-    case "setPaneTabs":
-      return setPaneTabs(state, { paneId: action.paneId, tabs: action.tabs });
+    case "setPaneSession":
+      return setPaneSession(state, { paneId: action.paneId, session: action.session });
     case "patchActiveTab":
       return patchActiveTab(state, { paneId: action.paneId, patch: action.patch });
     case "urlNavRequested":

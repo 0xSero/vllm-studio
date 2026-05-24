@@ -6,6 +6,7 @@ import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-c
 // so the control flow is auditable in one place.
 export type ChatPaneHandle = {
   loadAndReplay: (piSessionId: string) => Promise<void>;
+  compact: () => Promise<void>;
 };
 
 export type ToolBlock = {
@@ -75,8 +76,8 @@ export type AgentTurnSsePayload =
 export type SessionTab = {
   // Stable id local to this pane, used as a React key for tabs.
   id: string;
-  // In-memory PiRpcSession key. One per tab so tabs can run independent pi
-  // processes instead of sharing a pane-level runtime.
+  // In-memory Pi runtime key. One per tab so tabs can run independent agent
+  // sessions instead of sharing a pane-level runtime.
   runtimeSessionId: string;
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).
@@ -93,6 +94,13 @@ export type SessionTab = {
   startedAt?: string;
   input: string;
   tokenStats?: TokenStats;
+  /** SDK-reported context usage; refreshed when runtime status is polled. */
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+    shouldCompact: boolean;
+  } | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
   plugins?: ComposerPluginRef[];

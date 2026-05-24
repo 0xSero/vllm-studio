@@ -31,7 +31,7 @@ function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | 
   if (typeof runtime.adoptPiSessionId === "function") {
     runtime.adoptPiSessionId(next);
   } else if (!runtime.currentPiSessionId) {
-    // Dev HMR can keep a PiRpcSession instance from the previous module
+    // Dev HMR can keep an older runtime instance from the previous module
     // version alive. Preserve reattach correctness for those sessions too.
     runtime.currentPiSessionId = next;
   }
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
     canvasEnabled,
     plugins,
     skills,
+    promptTemplates,
+    extensionOverrides,
     mode,
     streamingBehavior,
   } = parsed.value;
@@ -100,6 +102,8 @@ export async function POST(request: NextRequest) {
             canvasEnabled,
             plugins,
             skills,
+            promptTemplates,
+            extensionOverrides,
           });
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);

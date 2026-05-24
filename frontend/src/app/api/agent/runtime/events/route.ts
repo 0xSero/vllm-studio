@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { piRuntimeManager, type LoggedPiEvent } from "@/lib/agent/pi-runtime";
+import { piRuntimeManager } from "@/lib/agent/pi-runtime";
+import type { LoggedPiEvent } from "@/lib/agent/pi-runtime-types";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 
 export const runtime = "nodejs";
@@ -53,10 +54,6 @@ export async function GET(request: NextRequest) {
         safeSend({ type: "pi", seq: logged.seq, event: logged.event });
         if (isAgentEndEvent(logged.event)) {
           safeSend({ type: "status", phase: "done", session: session.status });
-          setTimeout(close, 25);
-        }
-        if (logged.event.type === "process_exit") {
-          safeSend({ type: "status", phase: "idle", session: session.status });
           setTimeout(close, 25);
         }
       };
