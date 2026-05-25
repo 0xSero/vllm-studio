@@ -874,12 +874,6 @@ export function ChatPane({
     sdkContextUsage?.contextWindow && sdkContextUsage.contextWindow > 0
       ? sdkContextUsage.contextWindow
       : contextWindow;
-  const contextUsagePercent =
-    typeof sdkContextUsage?.percent === "number"
-      ? Math.min(100, Math.max(0, sdkContextUsage.percent * 100))
-      : effectiveContextWindow > 0
-        ? Math.min(100, Math.max(0, (currentContextTokens / effectiveContextWindow) * 100))
-        : 0;
   const compactSession = useCallback(async () => {
     if (!activeTab || running || compacting || !modelId) return;
     setCompacting(true);
@@ -1260,7 +1254,7 @@ export function ChatPane({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={readingAttachments || running}
-              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/75 hover:text-(--fg)/80 disabled:opacity-30"
+              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg)/80 disabled:opacity-30"
               aria-label="Attach files"
               title="Attach files (or paste/drop into composer)"
             >
@@ -1298,11 +1292,6 @@ export function ChatPane({
               <Code2 className="h-3.5 w-3.5" />
             </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              <ContextReadout
-                current={currentContextTokens}
-                contextWindow={effectiveContextWindow}
-                onClick={openComputerStatus}
-              />
               {modelSelector}{" "}
               {running ? (
                 <>
@@ -1408,6 +1397,11 @@ export function ChatPane({
               </span>
             ) : null}
           </div>{" "}
+          <ContextReadout
+            current={currentContextTokens}
+            contextWindow={effectiveContextWindow}
+            onClick={openComputerStatus}
+          />
         </div>{" "}
       </form>
     </section>
@@ -1429,7 +1423,7 @@ function ContextReadout({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10.5px] text-(--dim)/80 hover:bg-(--hover) hover:text-(--fg)/80"
+      className="ml-auto inline-flex shrink-0 items-center rounded-sm px-1 text-(--dim) hover:text-(--fg)/80"
       title={title}
       aria-label={title}
     >
