@@ -81,7 +81,7 @@ export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
             isActive = true;
           }
         }
-        if (activeModelData?.data?.[0]?.max_model_len) {
+        if (isActive && activeModelData?.data?.[0]?.max_model_len) {
           maxModelLength = activeModelData.data[0].max_model_len;
         }
       }
