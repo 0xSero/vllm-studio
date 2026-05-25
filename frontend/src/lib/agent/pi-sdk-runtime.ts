@@ -16,13 +16,11 @@ import {
   resolveAgentCwd,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
-import { refreshPiModels } from "./pi-runtime-models";
+import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
 import { readEnabledOverrides } from "./pi-packages-store";
 import { findSessionFile } from "./sessions-store";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
-
-const PROVIDER_ID = "vllm-studio";
 
 type PiEvent = LoggedPiEvent["event"];
 
@@ -101,6 +99,7 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
     this.activePromptCount = 0;
     this.lastError = null;
 
+    const { providerId, modelId: backendModelId } = resolvePiModelSelection(modelId);
     const { models, agentDir } = await refreshPiModels();
     const selectedModel = models.find((model) => model.id === modelId);
     if (!selectedModel) {
@@ -153,9 +152,11 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
             }),
           },
         });
-        const model = services.modelRegistry.find(PROVIDER_ID, modelId);
+        const model = services.modelRegistry.find(providerId, backendModelId);
         if (!model) {
-          throw new Error(`Model '${PROVIDER_ID}/${modelId}' is not available to the SDK runtime.`);
+          throw new Error(
+            `Model '${providerId}/${backendModelId}' is not available to the SDK runtime.`,
+          );
         }
         const created = await createAgentSessionFromServices({
           services,

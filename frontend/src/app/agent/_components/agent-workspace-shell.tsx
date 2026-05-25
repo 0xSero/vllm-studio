@@ -370,7 +370,7 @@ function ModelPicker({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs text-(--fg)">{model.name}</span>
                     <span className="mt-0.5 block truncate font-mono text-[10px] text-(--dim)">
-                      {controllerLabel ?? model.provider} ·{" "}
+                      {model.controllerName ?? controllerLabel ?? model.provider} ·{" "}
                       {formatCompactNumber(model.contextWindow)} context
                       {model.reasoning ? " · reasoning" : ""}
                     </span>

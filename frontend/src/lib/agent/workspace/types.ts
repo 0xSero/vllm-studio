@@ -12,6 +12,10 @@ export type AgentModel = {
   id: string;
   name: string;
   provider: "vllm-studio";
+  providerId?: string;
+  rawId?: string;
+  controllerUrl?: string;
+  controllerName?: string;
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;

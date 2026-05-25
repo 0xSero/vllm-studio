@@ -23,6 +23,10 @@ export interface AgentModel {
   id: string;
   name: string;
   provider: "vllm-studio";
+  providerId?: string;
+  rawId?: string;
+  controllerUrl?: string;
+  controllerName?: string;
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
@@ -241,7 +245,7 @@ export function normalizeOpenAIModels(payload: OpenAIModelsResponse): AgentModel
 
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => ({
-    id: model.id,
+    id: model.rawId ?? model.id,
     name: model.name,
     reasoning: model.reasoning,
     input: model.vision ? ["text", "image"] : ["text"],

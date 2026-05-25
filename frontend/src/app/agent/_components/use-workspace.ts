@@ -23,6 +23,9 @@ import type {
 } from "@/lib/agent/workspace/types";
 import { useProjects } from "@/lib/agent/projects/context";
 import { useTools } from "@/lib/agent/tools/context";
+import { getApiKey } from "@/lib/api-key";
+import { getStoredBackendUrl } from "@/lib/backend-url";
+import { loadSavedControllers, normalizeControllerUrl } from "@/lib/controllers";
 import type { Project } from "@/lib/agent/projects/types";
 import { paneSessions } from "@/lib/agent/sessions/selectors";
 import { runBrowserPanelCommand, type BrowserCommandResult } from "@/lib/agent/browser/command";
@@ -179,6 +182,45 @@ function createBrowserEvents(
   };
 }
 
+function agentModelControllersPayload() {
+  const byUrl = new Map<string, { url: string; apiKey?: string; name?: string }>();
+  const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
+  if (activeUrl) {
+    const activeApiKey = getApiKey();
+    byUrl.set(activeUrl, {
+      url: activeUrl,
+      ...(activeApiKey ? { apiKey: activeApiKey } : {}),
+      name: "primary",
+    });
+  }
+  for (const controller of loadSavedControllers()) {
+    const url = normalizeControllerUrl(controller.url);
+    if (!url) continue;
+    const existing = byUrl.get(url);
+    byUrl.set(url, {
+      ...existing,
+      url,
+      ...(controller.apiKey || existing?.apiKey
+        ? { apiKey: controller.apiKey || existing?.apiKey }
+        : {}),
+      ...(controller.name || existing?.name ? { name: controller.name || existing?.name } : {}),
+    });
+  }
+  return [...byUrl.values()];
+}
+
+async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?: string }> {
+  const response = await fetch("/api/agent/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ controllers: agentModelControllersPayload() }),
+  });
+  const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || "Failed to load models");
+  return payload;
+}
+
 function api(): WorkspaceEffectDeps["api"] {
   return {
     loadSetupChecks: async () => {
@@ -186,10 +228,7 @@ function api(): WorkspaceEffectDeps["api"] {
       return safeJson<{ checks?: Array<{ id: string; ok: boolean; guidance?: string }> }>(response);
     },
     loadModels: async () => {
-      const response = await fetch("/api/agent/models", { cache: "no-store" });
-      const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
-      if (!response.ok) throw new Error(payload.error || "Failed to load models");
-      return payload;
+      return loadAgentModelsPayload();
     },
   };
 }
@@ -284,14 +323,9 @@ export function useWorkspace(): UseWorkspaceResult {
     const reload = () => {
       dispatch({ type: "setModelsLoading", loading: true });
       dispatch({ type: "setError", error: "" });
-      void (async () => {
-        const response = await fetch("/api/agent/models", { cache: "no-store" });
-        const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
-        if (!response.ok) throw new Error(payload.error || "Failed to load models");
-        return payload.models ?? [];
-      })()
+      void loadAgentModelsPayload()
         .then((models) => {
-          dispatch({ type: "setModels", models });
+          dispatch({ type: "setModels", models: models.models ?? [] });
         })
         .catch((error) => {
           dispatch({
