@@ -16,6 +16,19 @@ class PiRuntimeManager {
     this.sessions.set(sessionId, created);
     return created;
   }
+
+  getSessionForLookup(
+    sessionId = DEFAULT_SESSION_ID,
+    piSessionId?: string | null,
+  ): { sessionId: string; session: PiAgentSession } {
+    const target = piSessionId?.trim();
+    if (target) {
+      for (const [id, session] of this.sessions.entries()) {
+        if (session.status.piSessionId === target) return { sessionId: id, session };
+      }
+    }
+    return { sessionId, session: this.getSession(sessionId) };
+  }
 }
 
 const globalForPi = globalThis as typeof globalThis & {

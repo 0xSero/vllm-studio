@@ -17,8 +17,10 @@ function encode(payload: unknown): Uint8Array {
 
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim() || "default";
+  const piSessionId = request.nextUrl.searchParams.get("piSessionId")?.trim() || null;
   const after = parseSeq(request.nextUrl.searchParams.get("after"));
-  const session = piRuntimeManager.getSession(sessionId);
+  const resolved = piRuntimeManager.getSessionForLookup(sessionId, piSessionId);
+  const session = resolved.session;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

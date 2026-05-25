@@ -52,6 +52,7 @@ function tabFromSnapshot(session: ActiveAgentSessionSnapshot): Session {
     title: session.title || "Loading session",
     status: "loading",
     startedAt: session.startedAt ?? session.updatedAt,
+    usedSkills: session.usedSkills,
   };
 }
 

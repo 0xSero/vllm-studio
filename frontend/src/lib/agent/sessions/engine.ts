@@ -50,6 +50,17 @@ const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
 const EMPTY_EXTENSION_OVERRIDES: ComposerExtensionOverride[] = [];
 
+function mergeSkills(
+  existing: ComposerSkillRef[] | undefined,
+  next: ComposerSkillRef[],
+): ComposerSkillRef[] | undefined {
+  if (!existing?.length && next.length === 0) return existing;
+  const byId = new Map<string, ComposerSkillRef>();
+  for (const skill of existing ?? []) byId.set(skill.id || skill.path || skill.name, skill);
+  for (const skill of next) byId.set(skill.id || skill.path || skill.name, skill);
+  return [...byId.values()];
+}
+
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
 type SubmitArgs = {
@@ -60,6 +71,10 @@ type SubmitArgs = {
   userText: string;
   images?: AgentImageInput[];
   attachments?: ChatMessageAttachment[];
+  plugins?: ComposerPluginRef[];
+  skills?: ComposerSkillRef[];
+  promptTemplates?: ComposerPromptTemplateRef[];
+  extensionOverrides?: ComposerExtensionOverride[];
   targetSessionId?: SessionId;
 };
 
@@ -340,6 +355,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const assistantId = newId("assistant");
       const runtime = selected.runtimeSessionId || runtimeSessionId;
       const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(args.userText);
+      const selection = selectionForRef.current(sessionId);
+      const plugins = args.plugins ?? activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
+      const skills = args.skills ?? selection.skills ?? EMPTY_SKILLS;
+      const promptTemplates =
+        args.promptTemplates ?? selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
+      const extensionOverrides =
+        args.extensionOverrides ?? selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
 
       // Optimistic: push a user message + a blank assistant placeholder so the
       // UI shows "we received it" even before the first SSE chunk lands.
@@ -351,6 +373,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         input: "",
         error: "",
         status: "starting",
+        usedSkills: mergeSkills(session.usedSkills, skills),
         activeAssistantId: assistantId,
         title:
           session.messages.filter((m) => m.role === "user").length === 0
@@ -363,6 +386,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             role: "user",
             text: args.displayText,
             attachments: args.attachments,
+            skills,
             timestamp: nowLabel(),
           },
           { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
@@ -391,14 +415,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
             canvasEnabled,
-            plugins: activeComposerPlugins(
-              selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
-            ) as ComposerPluginRef[],
-            skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
-            promptTemplates:
-              selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
-            extensionOverrides:
-              selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
+            plugins: plugins as ComposerPluginRef[],
+            skills,
+            promptTemplates,
+            extensionOverrides,
           },
           (payload) => {
             if (controller.signal.aborted) return;
@@ -451,11 +471,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         promptStreamControllersRef.current.delete(runtime);
         releaseRuntimePromptStream(runtime, streamOwnerId);
         liveAssistantIdsRef.current.delete(sessionId);
-        const runtimeStatus = await api.loadRuntimeStatus(runtime);
         const currentPiSessionId =
           tabsRef.current.find((tab) => tab.id === sessionId)?.piSessionId ??
           selected.piSessionId ??
           null;
+        const runtimeStatus = await api.loadRuntimeStatus(runtime, currentPiSessionId);
         const runtimeStillActive =
           !agentEnded && runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
         updateSession(sessionId, (session) => ({
@@ -519,7 +539,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           tabsRef.current.find((tab) => tab.id === sessionId),
           runtimeSessionId,
         );
-        const runtimeStatus = await api.loadRuntimeStatus(runtimeId);
+        const runtimeStatus = await api.loadRuntimeStatus(runtimeId, piSessionId);
         const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
         const replayEvents = mergeCanonicalAndRuntimeEvents(
           events,
@@ -612,6 +632,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const resumeRuntimeId = resumeRuntimeTarget?.sessionId ?? null;
   const resumeRuntimeSessionId = resumeRuntimeTarget?.runtimeSessionId ?? null;
   const resumeAfter = resumeRuntimeTarget?.after ?? 0;
+  const resumePiSessionId = resumeRuntimeTarget?.piSessionId ?? null;
 
   useSessionEngineRuntimeResumeEffect({
     after: resumeAfter,
@@ -619,6 +640,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     flushPiEvents: flushPiEventBatch,
     localStreamRef,
     onPiSessionIdChange,
+    piSessionId: resumePiSessionId,
     runtime: resumeRuntimeSessionId,
     sessionId: resumeRuntimeId,
     shouldApplySeq: shouldApplyRuntimeSeq,

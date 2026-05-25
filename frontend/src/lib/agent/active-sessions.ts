@@ -14,6 +14,7 @@ export type ActiveAgentSessionSnapshot = {
   updatedAt: string;
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
+  usedSkills?: ComposerSkillRef[];
 };
 
 export type ActiveSessionPrefs = Record<string, { hidden?: boolean }>;
@@ -115,6 +116,7 @@ function preserveActiveSnapshot(
     ),
     plugins: preferDefined(session.plugins, existing.plugins),
     skills: preferDefined(session.skills, existing.skills),
+    usedSkills: preferDefined(session.usedSkills, existing.usedSkills),
   };
 }
 
@@ -132,6 +134,7 @@ function applyIncomingSnapshot(
     ),
     plugins: preferDefined(session.plugins, target.existing?.plugins),
     skills: preferDefined(session.skills, target.existing?.skills),
+    usedSkills: preferDefined(session.usedSkills, target.existing?.usedSkills),
   };
 }
 

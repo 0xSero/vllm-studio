@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Code2, Loader2 } from "lucide-react";
 import { formatTokenCount } from "@/lib/agent/session";
 import { useTools } from "@/lib/agent/tools/context";
+import type { ComposerSkillRef } from "@/lib/agent/composer-context";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session } from "@/lib/agent/sessions/types";
 import type { AgentModel } from "@/lib/agent/workspace/types";
@@ -60,6 +61,7 @@ export function ComputerStatusPanel({
     !activeModel ||
     !onCompactSession;
   const shouldCompact = Boolean(focusedSession?.contextUsage?.shouldCompact);
+  const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
   const compactFocusedSession = async () => {
     if (compactDisabled) return;
     setCompacting(true);
@@ -115,6 +117,8 @@ export function ComputerStatusPanel({
         <StatusRow label="Queue" value={`${totals.queued} queued · ${totals.running} running`} />
       </StatusSection>
 
+      <UsedSkillsSection skills={sessionSkills} />
+
       <StatusSection title="Workspace">
         <StatusRow label="Project" value={activeProject?.name ?? "No project"} />
         <StatusRow
@@ -129,6 +133,53 @@ export function ComputerStatusPanel({
 
       <CanvasPeek />
     </section>
+  );
+}
+
+function usedSkillsForSession(session: Session | null): ComposerSkillRef[] {
+  const byId = new Map<string, ComposerSkillRef>();
+  for (const skill of session?.usedSkills ?? []) {
+    const key = skill.id || skill.path || skill.name;
+    if (!byId.has(key)) byId.set(key, skill);
+  }
+  for (const message of session?.messages ?? []) {
+    for (const skill of message.skills ?? []) {
+      const key = skill.id || skill.path || skill.name;
+      if (!byId.has(key)) byId.set(key, skill);
+    }
+  }
+  return [...byId.values()];
+}
+
+function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
+  return (
+    <div className="mt-4 border-t border-(--border) pt-3">
+      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-(--dim)">
+        <span>Skills · session</span>
+        <span className="font-mono normal-case tracking-normal">{skills.length}</span>
+      </div>
+      {skills.length === 0 ? (
+        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[10.5px] text-(--dim)">
+          No skills used in this session yet.
+        </div>
+      ) : (
+        <ul className="grid gap-0.5">
+          {skills.map((skill) => (
+            <li
+              key={skill.id || skill.path || skill.name}
+              className="flex min-w-0 items-center gap-2 py-0.5 text-[11px]"
+              title={skill.path}
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/75" />
+              <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{skill.name}</span>
+              <span className="shrink-0 truncate text-[10px] text-(--dim)">
+                {skill.source ?? "skill"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

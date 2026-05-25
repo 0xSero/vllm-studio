@@ -102,6 +102,7 @@ export function normalizePersistedTab(value: unknown): Session | null {
     activeAssistantId:
       typeof tab.activeAssistantId === "string" ? tab.activeAssistantId : undefined,
     lastEventSeq: typeof tab.lastEventSeq === "number" ? tab.lastEventSeq : undefined,
+    usedSkills: Array.isArray(tab.usedSkills) ? (tab.usedSkills as ComposerSkillRef[]) : undefined,
   };
 }
 
@@ -248,6 +249,7 @@ export function sessionMetaForPersistence(
     startedAt: tab.startedAt,
     input: tab.input,
     tokenStats: tab.tokenStats,
+    usedSkills: tab.usedSkills,
     activeAssistantId: tab.activeAssistantId,
     lastEventSeq: tab.lastEventSeq,
     queue: tab.queue,
@@ -316,6 +318,9 @@ export function loadPersistedActiveAgentSessions(
             ? (entry.plugins as ComposerPluginRef[])
             : undefined,
           skills: Array.isArray(entry.skills) ? (entry.skills as ComposerSkillRef[]) : undefined,
+          usedSkills: Array.isArray(entry.usedSkills)
+            ? (entry.usedSkills as ComposerSkillRef[])
+            : undefined,
         };
       })
       .filter(

@@ -633,7 +633,18 @@ export function ChatPane({
           previewUrl: durablePreviewUrl,
         };
       });
-      return { text, prompt, displayText, userText, images, attachments: messageAttachments };
+      return {
+        text,
+        prompt,
+        displayText,
+        userText,
+        images,
+        attachments: messageAttachments,
+        plugins: activeComposerPlugins(selection.plugins) as ComposerPluginRef[],
+        skills: selection.skills,
+        promptTemplates: selection.promptTemplates,
+        extensionOverrides: selection.extensionOverrides,
+      };
     },
     [attachments, tools],
   );
@@ -643,6 +654,10 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
+      const currentSelection = tools.selectionFor(targetId);
+      if (currentSelection.skills.length > 0) {
+        tools.setSelection(targetId, { ...currentSelection, skills: [] });
+      }
       setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
@@ -652,7 +667,7 @@ export function ChatPane({
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
-    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
+    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments, tools],
   );
   const queueAndSendControl = useCallback(
     async (
@@ -1632,7 +1647,7 @@ function LoadedContextTab({
   const meta = LOADED_TAB_META[prefix];
   return (
     <span
-      className={`inline-flex max-w-[240px] items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] ${meta.classes}`}
+      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded border px-2 py-1 text-[11px] shadow-sm shadow-black/5 ${meta.classes}`}
       title={title ?? label}
     >
       <meta.Icon className="h-3 w-3 shrink-0" />
@@ -1641,7 +1656,7 @@ function LoadedContextTab({
       <button
         type="button"
         onClick={onRemove}
-        className="-mr-0.5 ml-0.5 rounded p-0.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        className="-mr-1 ml-0.5 rounded p-0.5 text-(--dim) hover:bg-black/10 hover:text-(--fg)"
         aria-label={`Unload ${prefix}${label}`}
         title={`Unload ${prefix}${label}`}
       >
@@ -1661,7 +1676,7 @@ const LOADED_TAB_META: Record<
   },
   $: {
     Icon: Sparkles,
-    classes: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   },
   "/": {
     Icon: Slash,

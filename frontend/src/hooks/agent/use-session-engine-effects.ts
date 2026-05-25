@@ -68,6 +68,7 @@ export function useSessionEngineRuntimeResumeEffect({
   localStreamRef,
   onPiSessionIdChange,
   runtime,
+  piSessionId,
   sessionId,
   shouldApplySeq,
   submitPromptRef,
@@ -80,6 +81,7 @@ export function useSessionEngineRuntimeResumeEffect({
   localStreamRef: RefObject<Set<SessionId>>;
   onPiSessionIdChange?: (piSessionId: string) => void;
   runtime: string | null;
+  piSessionId?: string | null;
   sessionId: SessionId | null;
   shouldApplySeq?: RuntimeResumeDeps["shouldApplySeq"];
   submitPromptRef: RuntimeResumeDeps["submitPromptRef"];
@@ -97,6 +99,7 @@ export function useSessionEngineRuntimeResumeEffect({
       applyPiEvent,
       flushPiEvents,
       onPiSessionIdChange,
+      piSessionId,
       runtime,
       sessionId,
       shouldApplySeq,
@@ -111,6 +114,7 @@ export function useSessionEngineRuntimeResumeEffect({
     flushPiEvents,
     localStreamRef,
     onPiSessionIdChange,
+    piSessionId,
     runtime,
     sessionId,
     shouldApplySeq,

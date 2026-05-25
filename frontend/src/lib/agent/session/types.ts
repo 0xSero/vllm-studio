@@ -48,6 +48,7 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system";
   text: string;
   attachments?: ChatMessageAttachment[];
+  skills?: ComposerSkillRef[];
   blocks?: AssistantBlock[];
   timestamp?: string;
 };

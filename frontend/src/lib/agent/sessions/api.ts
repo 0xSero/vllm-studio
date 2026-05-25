@@ -31,12 +31,16 @@ export type RuntimeStatus = {
   contextUsage?: RuntimeContextUsage | null;
 };
 
-export async function loadRuntimeStatus(sessionId: string): Promise<RuntimeStatus | null> {
+export async function loadRuntimeStatus(
+  sessionId: string,
+  piSessionId?: string | null,
+): Promise<RuntimeStatus | null> {
   try {
-    const response = await fetch(
-      `/api/agent/runtime/status?sessionId=${encodeURIComponent(sessionId)}`,
-      { cache: "no-store" },
-    );
+    const params = new URLSearchParams({ sessionId });
+    if (piSessionId) params.set("piSessionId", piSessionId);
+    const response = await fetch(`/api/agent/runtime/status?${params.toString()}`, {
+      cache: "no-store",
+    });
     const payload = await safeJson<{
       status?: {
         active?: boolean;
@@ -182,12 +186,14 @@ export type RuntimeEventSubscription = { close: () => void };
 export function subscribeRuntimeEvents(
   sessionId: string,
   after: number,
+  piSessionId: string | null | undefined,
   handlers: {
     onPayload: (payload: RuntimeEventPayload) => void;
     onError: () => void;
   },
 ): RuntimeEventSubscription {
   const params = new URLSearchParams({ sessionId, after: String(after) });
+  if (piSessionId) params.set("piSessionId", piSessionId);
   const source = new EventSource(`/api/agent/runtime/events?${params.toString()}`);
   source.onmessage = (event) => {
     let payload: RuntimeEventPayload;

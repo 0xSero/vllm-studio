@@ -252,12 +252,16 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
       >
         <Search className="h-3 w-3 shrink-0 text-(--dim)/65" />
         <span className="shrink-0 font-medium text-(--fg)/60">{activityLabel(segments)}</span>
-        <span
-          className={`agent-activity-preview min-w-0 flex-1 truncate text-(--dim)/65 ${hasActiveTool ? "agent-activity-preview-running" : ""}`}
-          data-preview={preview}
-        >
-          {preview}
-        </span>
+        {!expanded ? (
+          <span
+            className={`agent-activity-preview min-w-0 flex-1 truncate text-(--dim)/65 ${hasActiveTool ? "agent-activity-preview-running" : ""}`}
+            data-preview={preview}
+          >
+            {preview}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
         {hasActiveTool ? (
           <span className="shrink-0 text-[11px] text-(--accent)/70">running</span>
         ) : null}
