@@ -64,7 +64,10 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   const lifetimeData = context.stores.lifetimeMetricsStore.getAll();
   const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
   const vramUsedGb = gpus.reduce((sum, gpu) => sum + Number(gpu.memory_used_mb ?? 0) / 1024, 0);
-  const vramCapacityGb = gpus.reduce((sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024, 0);
+  const vramCapacityGb = gpus.reduce(
+    (sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024,
+    0
+  );
   const powerLimitWatts = gpus.reduce((sum, gpu) => sum + Number(gpu.power_limit ?? 0), 0);
   const baseMetrics: Record<string, unknown> = {
     lifetime_prompt_tokens: lifetimeData["prompt_tokens_total"] ?? 0,
@@ -118,6 +121,7 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   const ttftCount = prometheus[ttftCountName] ?? 0;
   const avgTtftMs = ttftCount > 0 ? ((prometheus[ttftSumName] ?? 0) / ttftCount) * 1000 : 0;
   const peakData = context.stores.peakMetricsStore.get(modelId);
+  const bestSessionPeakData = context.stores.peakMetricsStore.getBestSession(modelId);
 
   return {
     ...baseMetrics,
@@ -161,6 +165,10 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
     ),
     avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : usageAggregate?.ttft?.avg_ms,
     latency_avg: positiveOrUndefined(usageAggregate?.latency?.avg_ms),
+    best_session_peak_id: bestSessionPeakData?.["session_id"] ?? null,
+    best_session_prefill_tps: bestSessionPeakData?.["peak_prefill_tps"] ?? null,
+    best_session_generation_tps: bestSessionPeakData?.["peak_generation_tps"] ?? null,
+    best_session_ttft_ms: bestSessionPeakData?.["best_ttft_ms"] ?? null,
     peak_prefill_tps: peakData?.["prefill_tps"] ?? null,
     peak_generation_tps: peakData?.["generation_tps"] ?? null,
     peak_ttft_ms: peakData?.["ttft_ms"] ?? null,

@@ -89,6 +89,10 @@ export function createSystemApi(core: ApiCore) {
         prefill_tps: number;
         generation_tps: number;
         ttft_ms: number;
+        best_session_id?: string | null;
+        best_session_prefill_tps?: number | null;
+        best_session_generation_tps?: number | null;
+        best_session_ttft_ms?: number | null;
         total_tokens: number;
         total_requests: number;
       }>;

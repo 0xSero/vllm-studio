@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Moon, Square, Sun } from "lucide-react";
+import { Info, Moon, Square, Sun } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/components/model-stop-confirm";
 import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
@@ -75,27 +75,37 @@ export function StatusSection({
   const powerLimit = firstPositive(metrics?.power_limit_watts, fallbackPowerLimit);
 
   const peakGenTps = firstPositive(
+    metrics?.session_peak_generation_tps,
     metrics?.session_peak_generation_throughput,
     metrics?.session_peak_generation,
-    metrics?.peak_generation_tps,
+  );
+  const allPeakGenTps = firstPositive(metrics?.peak_generation_tps);
+  const bestSessionGenTps = firstPositive(
+    metrics?.best_session_generation_tps,
+    metrics?.session_peak_generation_tps,
   );
   const peakPrefillTps = firstPositive(
+    metrics?.session_peak_prefill_tps,
     metrics?.session_peak_prompt_throughput,
     metrics?.session_peak_prefill,
-    metrics?.peak_prefill_tps,
   );
-  const peakTtftMs = firstPositive(metrics?.session_peak_ttft_ms, metrics?.peak_ttft_ms);
-  const genTps = firstPositive(
-    metrics?.generation_throughput,
-    metrics?.session_avg_generation,
-    peakGenTps,
+  const allPeakPrefillTps = firstPositive(metrics?.peak_prefill_tps);
+  const bestSessionPrefillTps = firstPositive(
+    metrics?.best_session_prefill_tps,
+    metrics?.session_peak_prefill_tps,
   );
-  const prefillTps = firstPositive(
-    metrics?.prompt_throughput,
-    metrics?.session_avg_prefill,
-    peakPrefillTps,
+  const peakTtftMs = firstPositive(
+    metrics?.session_peak_best_ttft_ms,
+    metrics?.session_peak_ttft_ms,
   );
-  const ttftMs = firstPositive(metrics?.avg_ttft_ms, peakTtftMs);
+  const allPeakTtftMs = firstPositive(metrics?.peak_ttft_ms);
+  const bestSessionTtftMs = firstPositive(
+    metrics?.best_session_ttft_ms,
+    metrics?.session_peak_best_ttft_ms,
+  );
+  const genTps = firstPositive(metrics?.generation_throughput, metrics?.session_avg_generation);
+  const prefillTps = firstPositive(metrics?.prompt_throughput, metrics?.session_avg_prefill);
+  const ttftMs = firstPositive(metrics?.avg_ttft_ms);
   const sessions = metrics?.running_requests ?? 0;
   const peakReq = metrics?.session_peak_running_requests ?? 0;
   const samples = useMetricSamples({
@@ -107,6 +117,26 @@ export function StatusSection({
     active: isRunning,
   });
 
+  const decodeMax = speedMaxDetail({
+    session: peakGenTps,
+    bestSession: bestSessionGenTps,
+    all: allPeakGenTps,
+    digits: 1,
+  });
+  const prefillMax = speedMaxDetail({
+    session: peakPrefillTps,
+    bestSession: bestSessionPrefillTps,
+    all: allPeakPrefillTps,
+    digits: 1,
+  });
+  const ttftMax = speedMaxDetail({
+    session: peakTtftMs,
+    bestSession: bestSessionTtftMs,
+    all: allPeakTtftMs,
+    digits: 0,
+    suffix: " ms",
+    label: "best",
+  });
   const headerActions = (
     <div className="flex items-center gap-1.5">
       <HeaderThemeToggle />
@@ -169,19 +199,22 @@ export function StatusSection({
           label="Decode"
           value={metricValue(genTps, 1)}
           unit="tok/s"
-          detail={peakMetricDetail(peakGenTps, 1)}
+          detail={decodeMax.short}
+          detailTitle={decodeMax.title}
         />
         <MetricColumn
           label="TTFT"
           value={metricValue(ttftMs, 0)}
           unit="ms"
-          detail={peakMetricDetail(peakTtftMs, 0, " ms")}
+          detail={ttftMax.short}
+          detailTitle={ttftMax.title}
         />
         <MetricColumn
           label="Prefill"
           value={metricValue(prefillTps, 1)}
           unit="t/s"
-          detail={peakMetricDetail(peakPrefillTps, 1)}
+          detail={prefillMax.short}
+          detailTitle={prefillMax.title}
         />
         <CompactMetric label="Req" value={`${sessions}/${peakReq || sessions}`} />
         <CompactMetric label="VRAM" value={ratioMetric(totalMemUsed, vramCapacity, "G", 1)} />
@@ -261,10 +294,31 @@ export function ratioMetric(
   return `${value.toFixed(valueDigits)}/${total.toFixed(0)}${unit}`;
 }
 
-function peakMetricDetail(value: number | null, digits: number, suffix = ""): string | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? `peak ${value.toFixed(digits)}${suffix}`
-    : undefined;
+function speedMaxDetail({
+  session,
+  bestSession,
+  all,
+  digits,
+  suffix = "",
+  label = "max",
+}: {
+  session: number | null;
+  bestSession: number | null;
+  all: number | null;
+  digits: number;
+  suffix?: string;
+  label?: string;
+}): { short?: string; title?: string } {
+  const sessionText = metricValue(session, digits);
+  const bestSessionText = metricValue(bestSession, digits);
+  const allText = metricValue(all, digits);
+  const short = sessionText ? `${label} ${sessionText}${suffix}` : undefined;
+  const rows = [
+    sessionText ? `current session ${label}: ${sessionText}${suffix}` : null,
+    bestSessionText ? `best session ${label}: ${bestSessionText}${suffix}` : null,
+    allText ? `all-time ${label}: ${allText}${suffix}` : null,
+  ].filter((row): row is string => Boolean(row));
+  return { short, title: rows.length ? rows.join(" | ") : undefined };
 }
 
 function tokenMetric(...values: Array<number | undefined>): string {
@@ -483,11 +537,13 @@ function MetricColumn({
   value,
   unit,
   detail,
+  detailTitle,
 }: {
   label: string;
   value: string | null;
   unit: string;
   detail?: string;
+  detailTitle?: string;
 }) {
   const displayValue = value ?? "unavailable";
 
@@ -506,8 +562,16 @@ function MetricColumn({
         {value ? <span className="shrink-0 text-[11px] text-(--dim)">{unit}</span> : null}
       </div>
       {detail ? (
-        <div className="mt-1 truncate font-mono text-[10.5px] tabular-nums text-(--dim)">
-          {detail}
+        <div className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] tabular-nums text-(--dim)">
+          <span className="truncate">{detail}</span>
+          {detailTitle ? (
+            <Info
+              className="h-3 w-3 shrink-0 text-(--dim)/70 hover:text-(--fg)"
+              aria-label={detailTitle}
+            >
+              <title>{detailTitle}</title>
+            </Info>
+          ) : null}
         </div>
       ) : null}
     </div>
