@@ -79,12 +79,11 @@ function ControllerMatrix() {
       for (const controller of saved) {
         const url = normalizeControllerUrl(controller.url);
         if (!url) continue;
-        if (!controller.name?.trim() && url !== activeUrl) continue;
         byUrl.set(url, { ...controller, url });
       }
+      if (activeUrl && !byUrl.has(activeUrl)) byUrl.set(activeUrl, { url: activeUrl });
       // If nothing is saved yet, fall back to a synthesized primary so a
-      // brand new install still shows *something*. Don't add the primary
-      // when saved entries exist; the connection page owns the list.
+      // brand new install still shows *something*.
       if (byUrl.size === 0) {
         const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
         if (primary) byUrl.set(primary, { url: primary });

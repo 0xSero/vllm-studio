@@ -52,7 +52,6 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/lib/agent/composer-context";
-import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import {
   AgentTurnSsePayload,
   AssistantBlock,
@@ -644,10 +643,6 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
-      if (promptRequestsBrowser(args.userText)) {
-        tools.setComputerTab("browser");
-        tools.setBrowserEnabled(true);
-      }
       setStickToBottom(true);
       setAttachments([]);
       setIsMultiline(false);
@@ -657,7 +652,7 @@ export function ChatPane({
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
-    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments, tools],
+    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments],
   );
   const queueAndSendControl = useCallback(
     async (
