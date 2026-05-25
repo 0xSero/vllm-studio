@@ -26,6 +26,7 @@ const COMPUTER_TABS: ComputerTab[] = [
   "status",
   "tools",
   "canvas",
+  "side-chat",
   "browser",
   "files",
   "diff",

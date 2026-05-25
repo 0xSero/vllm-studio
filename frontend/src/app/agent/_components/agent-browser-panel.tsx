@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import {
   Activity,
   Code2,
@@ -19,8 +20,10 @@ import { useTools } from "@/lib/agent/tools/context";
 import type { ComputerTab } from "@/lib/agent/tools/types";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session } from "@/lib/agent/sessions/types";
+import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
 import type { AgentModel } from "@/lib/agent/workspace/types";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
+import { ChatPane } from "./chat-pane";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
@@ -34,7 +37,6 @@ type AgentBrowserPanelHandles = Pick<
   | "startComputerResize"
   | "registerBrowserHandle"
   | "runBrowserCommand"
-  | "openSideSessionFromFocusedPane"
   | "compactFocusedSession"
 >;
 
@@ -43,6 +45,7 @@ type AgentBrowserPanelProps = {
   activeProject: Project | null;
   focusedSession: Session | null;
   sessions: Session[];
+  activeModelId: string;
   activeModel: AgentModel | null;
   gitSummary?: {
     isRepo: boolean;
@@ -53,24 +56,37 @@ type AgentBrowserPanelProps = {
   } | null;
 };
 
+function createSideChatSession(
+  activeProject: Project | null,
+  focusedSession: Session | null,
+  activeModelId: string,
+): Session {
+  const tab = makeFreshTab();
+  return {
+    ...tab,
+    runtimeSessionId: newRuntimeId(),
+    title: "Side chat",
+    cwd: activeProject?.path ?? focusedSession?.cwd,
+    projectId: activeProject?.id ?? focusedSession?.projectId,
+    modelId: focusedSession?.modelId ?? activeModelId,
+  };
+}
+
 export function AgentBrowserPanel({
   handles,
   activeProject,
   focusedSession,
   sessions,
+  activeModelId,
   activeModel,
   gitSummary,
 }: AgentBrowserPanelProps) {
   const tools = useTools();
-  if (!tools.computer.open) return null;
-
-  const {
-    registerComputerAside,
-    startComputerResize,
-    registerBrowserHandle,
-    runBrowserCommand,
-    openSideSessionFromFocusedPane,
-  } = handles;
+  const [sideChatSession, setSideChatSession] = useState<Session>(() =>
+    createSideChatSession(null, null, ""),
+  );
+  const { registerComputerAside, startComputerResize, registerBrowserHandle, runBrowserCommand } =
+    handles;
   const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, activeProject?.path ?? "");
@@ -78,6 +94,39 @@ export function AgentBrowserPanel({
     tools.setBrowserUrl(next, next);
     void runBrowserCommand("navigate", { url: next });
   };
+  const openSideChat = useCallback(() => {
+    setSideChatSession((current) =>
+      current.messages.length
+        ? current
+        : {
+            ...current,
+            cwd: activeProject?.path ?? focusedSession?.cwd,
+            projectId: activeProject?.id ?? focusedSession?.projectId,
+            modelId: current.modelId || focusedSession?.modelId || activeModelId,
+          },
+    );
+    tools.setComputerTab("side-chat");
+  }, [activeModelId, activeProject, focusedSession, tools]);
+  const updateSideChatTabs = useCallback(
+    (nextTabsOrUpdater: Session[] | ((tabs: Session[]) => Session[])) => {
+      setSideChatSession((current) => {
+        const nextTabs =
+          typeof nextTabsOrUpdater === "function"
+            ? nextTabsOrUpdater([current])
+            : nextTabsOrUpdater;
+        return nextTabs.at(-1) ?? current;
+      });
+    },
+    [],
+  );
+  const renameSideChat = useCallback((tabId: string, title: string) => {
+    setSideChatSession((current) => (current?.id === tabId ? { ...current, title } : current));
+  }, []);
+  const closeSideChat = useCallback(() => {
+    setSideChatSession(createSideChatSession(activeProject ?? null, focusedSession, activeModelId));
+    tools.closeComputerTab("side-chat");
+  }, [activeModelId, activeProject, focusedSession, tools]);
+  if (!tools.computer.open) return null;
 
   return (
     <aside
@@ -113,10 +162,34 @@ export function AgentBrowserPanel({
         <ComputerLauncherPanel
           activeTab={tools.computer.tab}
           onSelectTab={tools.setComputerTab}
-          onStartSideChat={openSideSessionFromFocusedPane}
+          onStartSideChat={openSideChat}
         />
       ) : tools.computer.tab === "canvas" ? (
         <CanvasPanel />
+      ) : tools.computer.tab === "side-chat" ? (
+        <ChatPane
+          paneId="computer-side-chat"
+          runtimeSessionId={sideChatSession.runtimeSessionId}
+          modelId={sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId}
+          modelName={activeModel?.name ?? null}
+          modelsLoading={false}
+          contextWindow={activeModel?.contextWindow ?? 0}
+          cwd={sideChatSession.cwd ?? activeProject?.path ?? focusedSession?.cwd ?? ""}
+          projectName={activeProject?.name ?? null}
+          browserToolEnabled={false}
+          onToggleBrowserTool={() => tools.setComputerTab("browser")}
+          canvasEnabled={false}
+          onToggleCanvas={tools.toggleCanvas}
+          isFocused
+          onFocus={() => undefined}
+          tabs={[sideChatSession]}
+          activeTabId={sideChatSession.id}
+          onTabsChange={updateSideChatTabs}
+          onRenameSession={renameSideChat}
+          onClose={closeSideChat}
+          rightPanelOpen
+          onToggleRightPanel={() => tools.setComputerOpen(false)}
+        />
       ) : tools.computer.tab === "browser" ? (
         <AgentBrowser
           ref={registerBrowserHandle}
@@ -149,6 +222,7 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   status: "Status",
   tools: "Tools",
   canvas: "Canvas",
+  "side-chat": "Side chat",
   browser: "Browser",
   files: "Filesystem",
   diff: "Git",
@@ -167,6 +241,12 @@ const TAB_OPTIONS: Array<{
     label: "Canvas",
     description: "Shared scratchboard for human and model",
     icon: Code2,
+  },
+  {
+    tab: "side-chat",
+    label: "Side chat",
+    description: "Focused side conversation",
+    icon: MessageSquarePlus,
   },
   {
     tab: "browser",

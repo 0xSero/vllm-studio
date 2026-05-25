@@ -95,6 +95,7 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
           activeProject={activeProject}
           focusedSession={focusedTab}
           sessions={[...state.sessions.values()]}
+          activeModelId={focusedTab?.modelId ?? state.selectedModel}
           activeModel={focusedModel}
           gitSummary={focusedGitSummary}
         />

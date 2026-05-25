@@ -41,7 +41,6 @@ export type WorkspaceHandles = {
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
   registerComputerAside: (element: HTMLElement | null) => void;
   openNewSessionInFocusedPane: (project?: Project) => void;
-  openSideSessionFromFocusedPane: () => void;
   replaySessionInFocusedPane: (piSessionId: string) => void;
   replaySessionInSplitPane: (piSessionId: string) => void;
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
@@ -328,23 +327,6 @@ export function useWorkspace(): UseWorkspaceResult {
           tab: makeFreshTab(),
           paneId: newPaneId(),
           runtimeSessionId: newRuntimeId(),
-        });
-      },
-      openSideSessionFromFocusedPane: () => {
-        const focused = stateRef.current.panesById.get(stateRef.current.focusedPaneId);
-        const session = focused ? stateRef.current.sessions.get(focused.sessionId) : null;
-        const project =
-          projectsRef.current.resolveProject(session ?? null) ??
-          projectsRef.current.selectedProject ??
-          undefined;
-        if (project) projectsRef.current.selectProject(project);
-        dispatch({
-          type: "openNewSession",
-          project,
-          tab: makeFreshTab(),
-          paneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
-          mode: "split",
         });
       },
       replaySessionInFocusedPane: (piSessionId: string) =>
