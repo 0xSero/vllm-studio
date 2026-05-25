@@ -1260,7 +1260,7 @@ export function ChatPane({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={readingAttachments || running}
-              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg) disabled:opacity-30"
+              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/75 hover:text-(--fg)/80 disabled:opacity-30"
               aria-label="Attach files"
               title="Attach files (or paste/drop into composer)"
             >
@@ -1276,7 +1276,7 @@ export function ChatPane({
                   ? "Browser tool: ON — agent can drive the browser"
                   : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
               }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"}`}
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
             >
               <span className="relative inline-flex">
                 {" "}
@@ -1293,11 +1293,16 @@ export function ChatPane({
                   ? "Canvas: ON — shared scratchboard tools loaded; model reads/writes the canvas"
                   : "Canvas: OFF — click to share a scratchboard with the model (notes, plans, links, state)"
               }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? "text-(--accent)" : "text-(--dim) hover:text-(--fg)"}`}
+              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
             >
               <Code2 className="h-3.5 w-3.5" />
             </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              <ContextReadout
+                current={currentContextTokens}
+                contextWindow={effectiveContextWindow}
+                onClick={openComputerStatus}
+              />
               {modelSelector}{" "}
               {running ? (
                 <>
@@ -1324,7 +1329,7 @@ export function ChatPane({
                       </button>{" "}
                       <button
                         type="submit"
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent) hover:bg-(--accent)/15 hover:text-(--fg)"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent)/75 hover:bg-(--accent)/15 hover:text-(--fg)/85"
                         title="Steer (Enter): interrupt current turn and send"
                       >
                         <SendIcon className="h-3 w-3" /> Steer{" "}
@@ -1351,7 +1356,7 @@ export function ChatPane({
                     readingAttachments ||
                     activeTab?.status === "starting"
                   }
-                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--fg) hover:text-(--accent) disabled:opacity-30"
+                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/85 hover:text-(--fg)/85 disabled:opacity-30"
                   aria-label="Send"
                   title="Send (Enter) · Queue (Tab)"
                 >
@@ -1403,32 +1408,35 @@ export function ChatPane({
               </span>
             ) : null}
           </div>{" "}
-          <div className="flex shrink-0 items-center justify-end">
-            <button
-              type="button"
-              onClick={openComputerStatus}
-              className="group flex w-32 shrink-0 flex-col gap-1 text-left text-[9px] uppercase tracking-wide text-(--dim) hover:text-(--fg)"
-              title={`Open status · Context ${formatTokenCount(currentContextTokens)} / ${formatTokenCount(effectiveContextWindow)}`}
-              aria-label="Open status"
-            >
-              <span className="flex w-full items-center justify-between gap-2">
-                <span>context</span>
-                <span className="normal-case tracking-normal">
-                  {formatTokenCount(currentContextTokens)}/
-                  {formatTokenCount(effectiveContextWindow)}
-                </span>
-              </span>
-              <span className="h-1 w-full overflow-hidden rounded-full bg-(--border)">
-                <span
-                  className="block h-full rounded-full bg-(--dim) transition-[width,background-color] group-hover:bg-(--fg)"
-                  style={{ width: `${contextUsagePercent}%` }}
-                />
-              </span>
-            </button>
-          </div>
         </div>{" "}
       </form>
     </section>
+  );
+}
+
+function ContextReadout({
+  current,
+  contextWindow,
+  onClick,
+}: {
+  current: number;
+  contextWindow: number;
+  onClick: () => void;
+}) {
+  const title = `Open status · Context ${formatTokenCount(current)} / ${formatTokenCount(contextWindow)}`;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10.5px] text-(--dim)/80 hover:bg-(--hover) hover:text-(--fg)/80"
+      title={title}
+      aria-label={title}
+    >
+      <span className="tabular-nums">
+        {formatTokenCount(current)}/{formatTokenCount(contextWindow)}
+      </span>
+    </button>
   );
 }
 

@@ -272,6 +272,48 @@
   background-clip: padding-box;
 }
 
+.agent-activity-preview {
+  position: relative;
+}
+
+.agent-activity-preview-running::after {
+  content: attr(data-preview);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 48%,
+    color-mix(in srgb, var(--fg) 82%, transparent) 50%,
+    transparent 52%,
+    transparent 100%
+  );
+  background-size: 500% 100%;
+  background-position: 100% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: agent-activity-preview-sweep 1.5s linear infinite;
+}
+
+@keyframes agent-activity-preview-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity-preview-running::after {
+    animation: none;
+  }
+}
+
 .chat-markdown .assistant-code-block code {
   background: transparent;
   border: 0;

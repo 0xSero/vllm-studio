@@ -75,7 +75,7 @@ export function Timeline({
           return (
             <div
               key={message.id}
-              className={`pb-6 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_240px]"}`}
+              className={`pb-4 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_220px]"}`}
             >
               <MemoMessage message={message} />
             </div>

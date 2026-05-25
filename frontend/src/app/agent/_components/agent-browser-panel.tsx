@@ -98,7 +98,6 @@ export function AgentBrowserPanel({
         onSelectTab={tools.setComputerTab}
         onCloseTab={tools.closeComputerTab}
         onShowLauncher={() => tools.setComputerTab("tools")}
-        onCloseComputer={() => tools.setComputerOpen(false)}
       />
 
       {tools.computer.tab === "status" ? (
@@ -197,14 +196,12 @@ function ComputerHeader({
   onSelectTab,
   onCloseTab,
   onShowLauncher,
-  onCloseComputer,
 }: {
   tab: ComputerTab;
   openTabs: ComputerTab[];
   onSelectTab: (tab: ComputerTab) => void;
   onCloseTab: (tab: ComputerTab) => void;
   onShowLauncher: () => void;
-  onCloseComputer: () => void;
 }) {
   // The launcher ("tools") is reached via the Plus button, so it never
   // appears as a row entry. Status IS a real row tab again.
@@ -218,20 +215,6 @@ function ComputerHeader({
         };
   return (
     <div className="relative flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-1.5 text-[11px]">
-      <button
-        type="button"
-        onClick={onShowLauncher}
-        className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-          tab === "tools"
-            ? "text-(--fg) hover:bg-(--surface)"
-            : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-        }`}
-        title="Show tools"
-        aria-label="Show tools"
-        aria-pressed={tab === "tools"}
-      >
-        <Plus className="pointer-events-none h-3.5 w-3.5" />
-      </button>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
@@ -241,8 +224,8 @@ function ComputerHeader({
               key={openTab}
               className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
                 tab === openTab
-                  ? "text-(--fg) hover:bg-(--surface)"
-                  : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+                  ? "text-(--fg)/70 hover:bg-(--surface) hover:text-(--fg)/85"
+                  : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
               }`}
               title={meta.label}
             >
@@ -260,7 +243,7 @@ function ComputerHeader({
                   event.stopPropagation();
                   onCloseTab(openTab);
                 }}
-                className="hidden h-8 w-7 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) group-hover:inline-flex"
+                className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
                 aria-label={`Close ${meta.label}`}
                 title={`Close ${meta.label}`}
               >
@@ -273,14 +256,17 @@ function ComputerHeader({
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <button
           type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={onCloseComputer}
-          className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-          title="Close"
-          aria-label="Close computer"
+          onClick={onShowLauncher}
+          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+            tab === "tools"
+              ? "text-(--fg)/70 hover:bg-(--surface) hover:text-(--fg)/85"
+              : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
+          }`}
+          title="Show tools"
+          aria-label="Show tools"
+          aria-pressed={tab === "tools"}
         >
-          <CloseIcon className="h-3 w-3 pointer-events-none" />
+          <Plus className="pointer-events-none h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -353,11 +339,11 @@ function ComputerLauncherPanel({
               onClick={card.onClick}
               className={`group flex min-h-24 flex-col items-center justify-center rounded-xl border px-5 py-5 text-center transition-colors ${
                 selected
-                  ? "border-(--border) bg-(--surface) text-(--fg)"
-                  : "border-transparent bg-black/20 text-(--fg) hover:border-(--border) hover:bg-(--surface)/70"
+                  ? "border-(--border) bg-(--surface) text-(--fg)/80"
+                  : "border-transparent bg-black/20 text-(--fg)/75 hover:border-(--border) hover:bg-(--surface)/70"
               }`}
             >
-              <Icon className="mb-3 h-5 w-5 text-(--dim) transition-colors group-hover:text-(--fg)" />
+              <Icon className="mb-3 h-5 w-5 text-(--dim)/70 transition-colors group-hover:text-(--fg)/75" />
               <span className="text-[15px] font-semibold tracking-tight">{card.title}</span>
               <span className="mt-1.5 text-[13px] text-(--dim)">{card.description}</span>
             </button>
@@ -373,7 +359,7 @@ function CanvasPanel() {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-xs">
-        <Code2 className="h-3.5 w-3.5 text-(--accent)" />
+        <Code2 className="h-3.5 w-3.5 text-(--accent)/70" />
         <span className="font-medium text-(--fg)">Canvas</span>
         <span className="min-w-0 flex-1 truncate text-[11px] text-(--dim)">
           Shared scratchboard for the human and model
@@ -383,8 +369,8 @@ function CanvasPanel() {
           onClick={tools.toggleCanvas}
           className={`h-6 rounded px-2 text-[11px] ${
             tools.computer.canvasEnabled
-              ? "bg-(--accent)/15 text-(--accent)"
-              : "bg-(--surface) text-(--dim) hover:text-(--fg)"
+              ? "bg-(--accent)/15 text-(--accent)/75"
+              : "bg-(--surface) text-(--dim)/75 hover:text-(--fg)/75"
           }`}
         >
           {tools.computer.canvasEnabled ? "On" : "Off"}

@@ -334,27 +334,19 @@ function ModelPicker({
           setOpen((value) => !value);
         }}
         disabled={disabled}
-        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[150px] items-center gap-1.5 bg-transparent px-2 !text-xs text-(--fg) hover:text-(--accent) disabled:opacity-60"
+        className="inline-flex !h-7 !min-h-7 !min-w-0 max-w-[168px] items-center gap-1.5 rounded-md bg-transparent px-2 !text-xs text-(--fg) hover:bg-(--hover) disabled:opacity-60"
         title={active?.name || triggerLabel}
       >
-        <span className="min-w-0 max-w-[118px] truncate">{triggerLabel}</span>
-        {controllerLabel ? (
-          <span
-            className="hidden shrink-0 rounded-sm border border-(--border)/60 px-1 font-mono text-[9px] uppercase tracking-wide text-(--dim) sm:inline"
-            title={`Active controller · ${controllerLabel}`}
-          >
-            {controllerLabel}
-          </span>
-        ) : null}
+        <span className="min-w-0 max-w-[136px] truncate">{triggerLabel}</span>
         <ChevronDownIcon className="h-3 w-3 shrink-0 text-(--dim)" />
       </button>
       {open ? (
         <div
-          className="absolute bottom-9 right-0 z-[80] w-72 border border-(--border) bg-(--surface) shadow-lg"
+          className="absolute bottom-9 right-0 z-[80] w-80 overflow-hidden rounded-md border border-(--border) bg-[#151515] shadow-[0_12px_36px_rgba(0,0,0,0.65)]"
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <div className="max-h-72 overflow-y-auto p-1">
+          <div className="max-h-72 overflow-y-auto p-1.5">
             {models.map((model) => {
               const isActive = model.id === selectedModel;
               return (
@@ -365,16 +357,23 @@ function ModelPicker({
                     onSelect(model.id);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-xs hover:bg-(--bg) ${
-                    isActive ? "bg-(--bg)" : ""
+                  className={`flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left hover:bg-(--hover) ${
+                    isActive ? "bg-(--hover)" : ""
                   }`}
                 >
-                  <span className="min-w-0 flex-1 truncate text-left text-(--fg)">
-                    {model.name}
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      isActive ? "bg-(--accent)" : "bg-(--dim)/35"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-(--fg)">{model.name}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[10px] text-(--dim)">
+                      {controllerLabel ?? model.provider} ·{" "}
+                      {formatCompactNumber(model.contextWindow)} context
+                      {model.reasoning ? " · reasoning" : ""}
+                    </span>
                   </span>
-                  {model.reasoning ? (
-                    <span className="shrink-0 text-[10px] text-(--dim)">· reasoning</span>
-                  ) : null}
                 </button>
               );
             })}
@@ -383,6 +382,13 @@ function ModelPicker({
       ) : null}
     </div>
   );
+}
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "unknown";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return String(value);
 }
 
 function subscribeToControllerStorage(callback: () => void): () => void {

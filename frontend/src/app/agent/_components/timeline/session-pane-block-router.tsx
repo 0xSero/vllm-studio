@@ -239,25 +239,31 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   // search, read 2 files") plus a live "running" badge while a tool is in
   // flight, so the timeline stays scannable. Users can click to expand.
   const [expanded, setExpanded] = useState(false);
+  const preview = activityPreview(segments);
 
   return (
     <details className="group min-w-0 overflow-hidden" open={expanded}>
       <summary
-        className="flex min-h-8 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-0.5 py-1 text-[13px] leading-5 text-(--dim) transition-colors [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] hover:text-(--fg) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[12px] leading-5 text-(--dim)/75 transition-colors [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] hover:text-(--fg)/80 [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setExpanded((value) => !value);
         }}
       >
-        <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
-        <span className="shrink-0 font-medium text-(--fg)/90">{activityLabel(segments)}</span>
-        <span className="min-w-0 flex-1 truncate text-(--dim)">{activityPreview(segments)}</span>
+        <Search className="h-3 w-3 shrink-0 text-(--dim)/65" />
+        <span className="shrink-0 font-medium text-(--fg)/60">{activityLabel(segments)}</span>
+        <span
+          className={`agent-activity-preview min-w-0 flex-1 truncate text-(--dim)/65 ${hasActiveTool ? "agent-activity-preview-running" : ""}`}
+          data-preview={preview}
+        >
+          {preview}
+        </span>
         {hasActiveTool ? (
-          <span className="shrink-0 text-[12px] text-(--accent)">running</span>
+          <span className="shrink-0 text-[11px] text-(--accent)/70">running</span>
         ) : null}
       </summary>
       {expanded ? (
-        <div className="ml-3 mt-1.5 flex min-w-0 flex-col gap-1.5 border-l border-(--border)/70 pl-3">
+        <div className="ml-3 mt-1 flex min-w-0 flex-col gap-1 border-l border-(--border)/70 pl-3">
           {segments.flatMap(activitySegmentItems).map((item) => (
             <ActivityTreeItem key={item.id} item={item} />
           ))}
