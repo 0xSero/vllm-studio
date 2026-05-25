@@ -136,11 +136,13 @@ export type SubmitTurnArgs = {
 export async function submitTurnStream(
   args: SubmitTurnArgs,
   onPayload: (payload: AgentTurnSsePayload) => void,
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> {
   const response = await fetch("/api/agent/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args),
+    signal: options.signal,
   });
   if (!response.ok || !response.body) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -150,6 +152,7 @@ export async function submitTurnStream(
   const decoder = new TextDecoder();
   let buffer = "";
   while (true) {
+    if (options.signal?.aborted) break;
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
@@ -159,6 +162,7 @@ export async function submitTurnStream(
       const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
       if (!line) continue;
       const payload = parseAgentTurnSsePayload(line);
+      if (options.signal?.aborted) break;
       if (payload) onPayload(payload);
     }
   }

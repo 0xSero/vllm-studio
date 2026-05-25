@@ -32,6 +32,7 @@ export type RuntimeResumeDeps = {
   runtime: string;
   schedule?: (callback: () => void) => void;
   sessionId: SessionId;
+  shouldApplySeq?: (sessionId: SessionId, seq?: number) => boolean;
   submitPromptRef: ReadonlyRef<(args: QueuedTurnSubmitArgs) => Promise<void>>;
   tabsRef: ReadonlyRef<Session[]>;
   updateSession: UpdateSession;
@@ -85,12 +86,15 @@ function applyRuntimePiPayload(
   payload: Extract<RuntimeEventPayload, { type: "pi" }>,
 ): void {
   const eventId = piSessionIdFromEvent(payload.event);
+  const seqAllowed = deps.shouldApplySeq ? deps.shouldApplySeq(deps.sessionId, payload.seq) : true;
+  if (!seqAllowed) {
+    return;
+  }
   const assistantId = ensureAssistantId(deps);
   const agentEnded = isAgentEndEvent(payload.event);
   deps.updateSession(deps.sessionId, (session) => ({
     ...session,
     piSessionId: eventId || session.piSessionId,
-    lastEventSeq: typeof payload.seq === "number" ? payload.seq : session.lastEventSeq,
     status: agentEnded ? "idle" : "running",
     activeAssistantId: agentEnded ? undefined : assistantId,
   }));

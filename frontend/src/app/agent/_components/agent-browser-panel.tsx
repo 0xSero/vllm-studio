@@ -299,6 +299,7 @@ function ComputerHeader({
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
           const Icon = meta.icon;
+          const canClose = openTab !== "status";
           return (
             <div
               key={openTab}
@@ -317,18 +318,20 @@ function ComputerHeader({
                 <Icon className="pointer-events-none h-3 w-3 shrink-0" />
                 <span className="max-w-[7rem] truncate">{meta.label}</span>
               </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCloseTab(openTab);
-                }}
-                className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
-                aria-label={`Close ${meta.label}`}
-                title={`Close ${meta.label}`}
-              >
-                <CloseIcon className="pointer-events-none h-2 w-2" />
-              </button>
+              {canClose ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseTab(openTab);
+                  }}
+                  className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
+                  aria-label={`Close ${meta.label}`}
+                  title={`Close ${meta.label}`}
+                >
+                  <CloseIcon className="pointer-events-none h-2 w-2" />
+                </button>
+              ) : null}
             </div>
           );
         })}

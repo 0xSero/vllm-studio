@@ -1059,7 +1059,7 @@ function ActiveSessionRow({
 }) {
   const label = pref.title || session.title || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-6 items-center gap-1 rounded-md pl-1.5 pr-1 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`;
+  const rowClass = `group relative flex h-[26px] items-center gap-1 rounded-md pl-1.5 pr-1 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`;
   return (
     <SessionNavRow
       pref={pref}
@@ -1116,8 +1116,8 @@ function SessionRow({
       label={label}
       initialDraft={pref.title ?? session.firstUserMessage ?? ""}
       age={relativeAge(session.startedAt)}
-      rowClass="group relative flex h-6 items-center gap-1 rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-      renameRowClass="flex h-6 items-center gap-1 rounded-md bg-(--surface)/60 pl-1.5 pr-1"
+      rowClass="group relative flex h-[26px] items-center gap-1 rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+      renameRowClass="flex h-[26px] items-center gap-1 rounded-md bg-(--surface)/60 pl-1.5 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
@@ -1155,7 +1155,7 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`inline-flex h-6 w-4 shrink-0 items-center justify-center transition-opacity hover:text-(--fg) disabled:opacity-20 ${pinned ? "text-(--accent) opacity-100" : "text-(--dim) opacity-60 group-hover:opacity-100"}`}
+      className={`inline-flex h-[26px] w-4 shrink-0 items-center justify-center opacity-0 transition-opacity hover:text-(--fg) group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-20 ${pinned ? "text-(--accent)" : "text-(--dim)"}`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}

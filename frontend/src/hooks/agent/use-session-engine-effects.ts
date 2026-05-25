@@ -6,6 +6,7 @@ import {
   subscribeResumeRuntimeSession,
   type RuntimeResumeDeps,
 } from "@/lib/agent/sessions/runtime-resume";
+import { hasRuntimePromptStream } from "@/lib/agent/sessions/stream-ownership";
 import type { TextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 
 type PiEventBatch = {
@@ -44,6 +45,22 @@ export function useSessionEngineTextDeltaCleanupEffect({
   );
 }
 
+export function useSessionEnginePromptStreamCleanupEffect({
+  promptStreamControllersRef,
+}: {
+  promptStreamControllersRef: RefObject<Map<string, AbortController>>;
+}): void {
+  useEffect(
+    () => () => {
+      for (const controller of promptStreamControllersRef.current.values()) {
+        controller.abort();
+      }
+      promptStreamControllersRef.current.clear();
+    },
+    [promptStreamControllersRef],
+  );
+}
+
 export function useSessionEngineRuntimeResumeEffect({
   after,
   applyPiEvent,
@@ -52,6 +69,7 @@ export function useSessionEngineRuntimeResumeEffect({
   onPiSessionIdChange,
   runtime,
   sessionId,
+  shouldApplySeq,
   submitPromptRef,
   tabsRef,
   updateSession,
@@ -63,6 +81,7 @@ export function useSessionEngineRuntimeResumeEffect({
   onPiSessionIdChange?: (piSessionId: string) => void;
   runtime: string | null;
   sessionId: SessionId | null;
+  shouldApplySeq?: RuntimeResumeDeps["shouldApplySeq"];
   submitPromptRef: RuntimeResumeDeps["submitPromptRef"];
   tabsRef: RefObject<Session[]>;
   updateSession: UpdateSession;
@@ -70,6 +89,7 @@ export function useSessionEngineRuntimeResumeEffect({
   useEffect(() => {
     if (!sessionId || !runtime) return;
     if (localStreamRef.current.has(sessionId)) return;
+    if (hasRuntimePromptStream(runtime)) return;
 
     const sub = subscribeResumeRuntimeSession({
       after,
@@ -79,6 +99,7 @@ export function useSessionEngineRuntimeResumeEffect({
       onPiSessionIdChange,
       runtime,
       sessionId,
+      shouldApplySeq,
       submitPromptRef,
       tabsRef,
       updateSession,
@@ -92,6 +113,7 @@ export function useSessionEngineRuntimeResumeEffect({
     onPiSessionIdChange,
     runtime,
     sessionId,
+    shouldApplySeq,
     submitPromptRef,
     tabsRef,
     updateSession,
