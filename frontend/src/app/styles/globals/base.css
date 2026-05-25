@@ -146,8 +146,14 @@ a.nav-link:hover,
 
 /* Selection */
 ::selection {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--hl1) 42%, transparent);
   color: var(--fg);
+}
+
+:root[data-theme="omlx-dark"] ::selection,
+.dark ::selection {
+  background: color-mix(in srgb, var(--hl1) 52%, #000 28%);
+  color: #fff;
 }
 
 /* Scroll shadows */

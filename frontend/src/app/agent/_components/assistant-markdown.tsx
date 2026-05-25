@@ -295,10 +295,10 @@ function AssistantMarkdownInner({ text }: { text: string }) {
     [tools.requestFileOpen, tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
   );
   return (
-    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[14px] leading-6 tracking-normal text-(--fg) [overflow-wrap:anywhere]">
+    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[13px] leading-[22px] tracking-normal text-(--fg) [overflow-wrap:anywhere]">
       <MarkdownErrorBoundary
         fallback={
-          <pre className="max-w-full whitespace-pre-wrap break-words text-[14px] leading-6 tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">
+          <pre className="max-w-full whitespace-pre-wrap break-words text-[13px] leading-[22px] tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">
             {text}
           </pre>
         }
