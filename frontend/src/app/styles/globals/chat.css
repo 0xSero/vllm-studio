@@ -46,14 +46,14 @@
   --codex-chat-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --codex-chat-font-size: 14px;
-  --codex-chat-line-height: 24px;
+  --codex-chat-font-size: 13px;
+  --codex-chat-line-height: 22px;
   --codex-chat-code-font-size: 12px;
   --codex-chat-font-weight: 430;
 }
 
 .chat-markdown {
-  /* Codex desktop typography values: system UI, 14px chat, 12px code, 430 weight. */
+  /* Codex desktop typography values: system UI, 13px chat, 12px code, 430 weight. */
   font-family: var(--codex-chat-font-family);
   font-size: var(--codex-chat-font-size);
   line-height: var(--codex-chat-line-height);
@@ -72,8 +72,8 @@
   }
 
   .chat-markdown {
-    font-size: 14px;
-    line-height: 22px;
+    font-size: var(--codex-chat-font-size);
+    line-height: var(--codex-chat-line-height);
   }
 
   .chat-markdown p {
