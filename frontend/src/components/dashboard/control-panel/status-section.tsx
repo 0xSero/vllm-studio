@@ -17,6 +17,7 @@ interface StatusSectionProps {
   metrics: Metrics | null;
   gpus: GPU[];
   isConnected: boolean;
+  isStatusLoading: boolean;
   platformKind?: RuntimePlatformKind | null;
   inferencePort?: number;
   onNavigateLogs: () => void;
@@ -35,6 +36,7 @@ export function StatusSection({
   metrics,
   gpus,
   isConnected,
+  isStatusLoading,
   platformKind,
   inferencePort,
   onNavigateLogs,
@@ -47,10 +49,12 @@ export function StatusSection({
   onViewAll,
 }: StatusSectionProps) {
   const modelName =
-    currentRecipe?.name ||
-    currentProcess?.served_model_name ||
-    currentProcess?.model_path?.split("/").pop() ||
-    "No model loaded";
+    isStatusLoading && !currentProcess
+      ? "Checking controller"
+      : currentRecipe?.name ||
+        currentProcess?.served_model_name ||
+        currentProcess?.model_path?.split("/").pop() ||
+        "No model loaded";
   const modelSampleKey =
     currentProcess?.served_model_name || currentProcess?.model_path || currentRecipe?.id || "idle";
   const isRunning = !!currentProcess;
@@ -166,11 +170,11 @@ export function StatusSection({
 
   const statusLine = (
     <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.04em]">
-      <StatusDot running={isRunning} />
+      <StatusDot running={isRunning} loading={isStatusLoading} />
       <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">
-        {isRunning ? "Active" : "Standby"}
+        {isStatusLoading ? "Checking" : isRunning ? "Active" : "Standby"}
       </span>
-      {!isConnected && <Tag tone="err">offline</Tag>}
+      {isStatusLoading ? <Tag>loading</Tag> : !isConnected ? <Tag tone="err">offline</Tag> : null}
       {backend && <Tag>{backend}</Tag>}
       {displayPlatformKind && <Tag>{displayPlatformKind}</Tag>}
       {displayPort && (
@@ -664,10 +668,10 @@ function Inline({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-function StatusDot({ running }: { running: boolean }) {
+function StatusDot({ running, loading }: { running: boolean; loading?: boolean }) {
   return (
     <span
-      className={`inline-flex h-1.5 w-1.5 shrink-0 ${running ? "bg-(--fg)" : "bg-(--dim)/55"}`}
+      className={`inline-flex h-1.5 w-1.5 shrink-0 ${loading ? "animate-pulse bg-(--dim)" : running ? "bg-(--fg)" : "bg-(--dim)/55"}`}
     />
   );
 }

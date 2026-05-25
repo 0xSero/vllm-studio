@@ -41,6 +41,7 @@ export interface LeaseInfo {
 
 export interface RealtimeStatusSnapshot {
   status: StatusData | null;
+  statusLoading: boolean;
   gpus: GPU[];
   metrics: Metrics | null;
   launchProgress: LaunchProgressData | null;

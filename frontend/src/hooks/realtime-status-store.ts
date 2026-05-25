@@ -50,6 +50,7 @@ function normalizeRuntimeBackends(
 
 const initialSnapshot: RealtimeStatusSnapshot = {
   status: null,
+  statusLoading: true,
   gpus: [],
   metrics: null,
   launchProgress: null,
@@ -80,6 +81,7 @@ function processKey(process: ProcessInfo | null | undefined): string {
 function emitIfChanged(next: RealtimeStatusSnapshot) {
   const changed =
     !areStatusEqual(snapshot.status, next.status) ||
+    snapshot.statusLoading !== next.statusLoading ||
     !areGpusEqual(snapshot.gpus, next.gpus) ||
     !areMetricsEqual(snapshot.metrics, next.metrics) ||
     !areLaunchProgressEqual(snapshot.launchProgress, next.launchProgress) ||
@@ -127,6 +129,14 @@ function scheduleLaunchClear(stage: LaunchProgressData["stage"]) {
 }
 
 async function fetchStatusNow() {
+  if (!snapshot.statusLoading) {
+    emitIfChanged({
+      ...snapshot,
+      statusLoading: true,
+      lastEventAt: Date.now(),
+    });
+  }
+
   const [statusResult, compatibilityResult, gpuResult, metricsResult] = await Promise.allSettled([
     api.getStatus(FAST_STATUS_REQUEST),
     api.getCompatibility(FAST_COMPAT_REQUEST),
@@ -169,6 +179,7 @@ async function fetchStatusNow() {
 
     emitIfChanged({
       status: { running, process, inference_port, launching: status.launching ?? null },
+      statusLoading: false,
       gpus,
       metrics: polledMetrics,
       launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
@@ -181,7 +192,14 @@ async function fetchStatusNow() {
       lease: snapshot.lease,
       lastEventAt: Date.now(),
     });
+    return;
   }
+
+  emitIfChanged({
+    ...snapshot,
+    statusLoading: false,
+    lastEventAt: Date.now(),
+  });
 }
 
 function resetForControllerSwitch() {
@@ -215,6 +233,7 @@ function start() {
       emitIfChanged({
         ...snapshot,
         status: { running, process, inference_port, launching },
+        statusLoading: false,
         metrics: previousProcessKey === nextProcessKey ? snapshot.metrics : null,
         launchProgress: reconcileLaunchProgress(snapshot.launchProgress, { process, launching }),
         lastEventAt: now,
@@ -285,6 +304,7 @@ function start() {
 
       emitIfChanged({
         status: snapshot.status,
+        statusLoading: snapshot.statusLoading,
         gpus: snapshot.gpus,
         metrics: snapshot.metrics,
         launchProgress: snapshot.launchProgress,
