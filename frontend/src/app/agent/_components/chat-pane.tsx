@@ -59,6 +59,7 @@ import {
   ChatMessage,
   ChatPaneHandle,
   EventBlock,
+  cleanSessionTitle,
   formatTokenCount,
   newId,
   QueuedMessage,
@@ -135,6 +136,7 @@ type Props = {
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
+  showHeader?: boolean;
 };
 type FileMentionRow = {
   id: string;
@@ -186,6 +188,7 @@ export function ChatPane({
   rightPanelOpen,
   onToggleRightPanel,
   onRegisterHandle,
+  showHeader = true,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -344,7 +347,7 @@ export function ChatPane({
     [activeTab?.id, activeTab?.piSessionId, paneId],
   );
   const sessionPrefTitle = sessionPrefKeys.reduce((title, key) => {
-    const nextTitle = sessionPrefs[key]?.title?.trim();
+    const nextTitle = cleanSessionTitle(sessionPrefs[key]?.title);
     return nextTitle || title;
   }, "");
   // Rule: if the visible session is empty (no rendered messages, no input,
@@ -359,7 +362,7 @@ export function ChatPane({
     !activeTab || (activeTab.messages.length === 0 && !activeTab.input.trim() && !running);
   const displayedSessionTitle = sessionLooksEmpty
     ? ""
-    : sessionPrefTitle || activeTab?.title?.trim() || "";
+    : sessionPrefTitle || cleanSessionTitle(activeTab?.title) || "";
   const sessionPinned = sessionPrefKeys.some((key) => Boolean(sessionPrefs[key]?.pinned));
   const patchActiveSessionPrefs = useCallback(
     (patch: { title?: string; pinned?: boolean }) => {
@@ -381,7 +384,7 @@ export function ChatPane({
   const renameActiveSession = useCallback(
     (nextTitle: string) => {
       if (!activeTab) return;
-      const trimmed = nextTitle.trim();
+      const trimmed = cleanSessionTitle(nextTitle);
       if (!trimmed || trimmed === displayedSessionTitle) return;
       onRenameSession(activeTab.id, trimmed);
       patchActiveSessionPrefs({ title: trimmed });
@@ -903,18 +906,20 @@ export function ChatPane({
       data-pane-id={paneId}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
     >
-      <ChatPaneHeader
-        title={displayedSessionTitle}
-        pinned={sessionPinned}
-        rightPanelOpen={rightPanelOpen}
-        canFork={Boolean(onForkSession)}
-        canClose={Boolean(onClose)}
-        onTogglePinned={togglePinnedSession}
-        onRename={renameActiveSession}
-        onFork={onForkSession}
-        onClose={onClose}
-        onToggleRightPanel={onToggleRightPanel}
-      />
+      {showHeader ? (
+        <ChatPaneHeader
+          title={displayedSessionTitle}
+          pinned={sessionPinned}
+          rightPanelOpen={rightPanelOpen}
+          canFork={Boolean(onForkSession)}
+          canClose={Boolean(onClose)}
+          onTogglePinned={togglePinnedSession}
+          onRename={renameActiveSession}
+          onFork={onForkSession}
+          onClose={onClose}
+          onToggleRightPanel={onToggleRightPanel}
+        />
+      ) : null}
       {activeTab?.error ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
           {activeTab.error}
@@ -983,7 +988,7 @@ export function ChatPane({
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] bg-(--composer) shadow-none transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
+          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-2xl border border-(--border)/20 bg-(--composer) shadow-[0_2px_12px_rgba(0,0,0,0.15)] transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
         >
           {" "}
           {composerDragActive ? (
@@ -1249,7 +1254,7 @@ export function ChatPane({
                     ? `Steer ${modelName}…`
                     : `Message ${modelName}`
             }
-            className="min-h-[34px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2 text-[13px] leading-6 tracking-normal text-(--fg) outline-none [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] placeholder:text-(--dim)"
+            className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[14px] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}

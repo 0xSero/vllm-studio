@@ -72,20 +72,25 @@ export function Timeline({
       <div data-timeline-list className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
         {visibleMessages.map((message, index) => {
           const isLast = index === visibleMessages.length - 1;
+          const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
+          const isGrouped = message.role === prevRole;
           return (
             <div
               key={message.id}
-              className={`pb-4 [overflow-anchor:none] ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_220px]"}`}
+              className={`[overflow-anchor:none] ${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""} ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_220px]"}`}
             >
               <MemoMessage message={message} />
             </div>
           );
         })}
         {running ? (
-          <div className="border-t border-(--border) py-4 [overflow-anchor:none]">
-            <div className="flex items-center gap-2 text-[13px] leading-5 text-(--dim)">
-              <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-(--dim)" />
-              <span className="animate-pulse">Pi is {statusLabel ?? "running"}…</span>
+          <div className="pt-6 pb-4 [overflow-anchor:none]">
+            <div className="flex items-center gap-2.5 text-[13px] leading-5 text-(--dim)">
+              <span className="relative inline-flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--accent)/40 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-(--accent)/60" />
+              </span>
+              <span className="animate-pulse">Thinking…</span>
             </div>
           </div>
         ) : null}

@@ -99,14 +99,14 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-lg border border-white/[0.06] bg-[#242424] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="flex h-8 items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-2.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+    <div className="assistant-code-block group my-4 overflow-hidden rounded-xl border border-(--border)/40 bg-[#1e1e1e]">
+      <div className="flex h-9 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
+        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3 py-2.5 text-[12px] leading-5">
+      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-4 py-3 text-[12.5px] leading-[1.7]">
         <code className={codeClassName} dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -138,14 +138,14 @@ const components: Components = {
   ),
   p: ({ node: _n, ...props }) => (
     <p
-      className="my-2.5 max-w-full break-words text-[14px] leading-6 tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
+      className="my-3 max-w-full break-words text-[14px] leading-[1.7] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
       {...props}
     />
   ),
   ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-5" {...props} />,
   ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
   li: ({ node: _n, ...props }) => (
-    <li className="text-[14px] leading-6 tracking-normal" {...props} />
+    <li className="text-[14px] leading-[1.7] tracking-normal" {...props} />
   ),
   code: ({ node: _n, className, children, ...props }) => {
     const isBlock = typeof className === "string" && /\blanguage-/.test(className);
@@ -158,7 +158,7 @@ const components: Components = {
     }
     return (
       <code
-        className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 [overflow-wrap:anywhere]"
+        className="rounded-md bg-(--surface-2)/60 px-[5px] py-[1px] font-mono text-[12.5px] leading-[18px] text-(--fg)/85 [overflow-wrap:anywhere]"
         {...props}
       >
         {children}
