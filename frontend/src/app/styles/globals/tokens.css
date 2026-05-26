@@ -30,6 +30,9 @@
   --hl2: #404040;
   --hl3: #616161;
   --err: #b34040;
+  /* Reference accent — the one sanctioned spot of color, used by file/URL
+     chips inside chat content so references read as actionable. */
+  --link: #2f6fdb;
 
   /* Density / dimensions */
   --sidebar-w: 250px;
@@ -78,6 +81,9 @@
   --hl2: #414141;
   --hl3: #303030;
   --err: #a85050;
+  /* Muted blue for reference chips — visible against the dark ladder without
+     screaming. */
+  --link: #6ea8fe;
 
   --composer-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
 }

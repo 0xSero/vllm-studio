@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ExternalLink, FileText } from "lucide-react";
 import { highlightFenced } from "@/lib/agent/highlight-cache";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import { useTools } from "@/lib/agent/tools/context";
@@ -99,14 +100,14 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-4 overflow-hidden rounded-xl border border-(--border)/40 bg-[#1e1e1e]">
-      <div className="flex h-9 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border)/40 bg-[#1e1e1e]">
+      <div className="flex h-8 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-4 py-3 text-[12.5px] leading-[1.7]">
+      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3.5 py-2.5 text-[12px] leading-[1.6]">
         <code className={codeClassName} dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -117,35 +118,35 @@ FencedCodeBlock.displayName = "FencedCodeBlock";
 const components: Components = {
   h1: ({ node: _n, ...props }) => (
     <h1
-      className="mb-3 mt-5 text-[24px] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-2 mt-5 text-[18px] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h2: ({ node: _n, ...props }) => (
     <h2
-      className="mb-2 mt-5 text-[18px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-4 text-[15px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h3: ({ node: _n, ...props }) => (
     <h3
-      className="mb-2 mt-4 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-3.5 text-[14px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h4: ({ node: _n, ...props }) => (
-    <h4 className="mb-1.5 mt-3 text-[14px] font-medium leading-snug text-(--fg)" {...props} />
+    <h4 className="mb-1 mt-3 text-[13px] font-semibold leading-snug text-(--fg)" {...props} />
   ),
   p: ({ node: _n, ...props }) => (
     <p
-      className="my-3 max-w-full break-words text-[14px] leading-[1.7] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
+      className="my-2.5 max-w-full break-words text-[13px] leading-[1.6] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
       {...props}
     />
   ),
   ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-5" {...props} />,
   ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
   li: ({ node: _n, ...props }) => (
-    <li className="text-[14px] leading-[1.7] tracking-normal" {...props} />
+    <li className="text-[13px] leading-[1.6] tracking-normal" {...props} />
   ),
   code: ({ node: _n, className, children, ...props }) => {
     const isBlock = typeof className === "string" && /\blanguage-/.test(className);
@@ -188,27 +189,14 @@ const components: Components = {
   ),
   hr: ({ node: _n, ...props }) => <hr className="my-3 border-(--border)" {...props} />,
   table: ({ node: _n, ...props }) => (
-    <div className="my-2 max-w-full overflow-x-hidden">
-      <table
-        className="w-full table-fixed border-collapse border border-(--border) text-xs"
-        {...props}
-      />
+    <div className="my-3 max-w-full overflow-x-auto">
+      <table {...props} />
     </div>
   ),
-  thead: ({ node: _n, ...props }) => <thead className="bg-(--surface)" {...props} />,
-  tr: ({ node: _n, ...props }) => <tr className="border-b border-(--border)" {...props} />,
-  th: ({ node: _n, ...props }) => (
-    <th
-      className="break-words border border-(--border) px-2 py-1 text-left font-medium text-(--fg) [overflow-wrap:anywhere]"
-      {...props}
-    />
-  ),
-  td: ({ node: _n, ...props }) => (
-    <td
-      className="break-words border border-(--border) px-2 py-1 text-(--fg) [overflow-wrap:anywhere]"
-      {...props}
-    />
-  ),
+  thead: ({ node: _n, ...props }) => <thead {...props} />,
+  tr: ({ node: _n, ...props }) => <tr {...props} />,
+  th: ({ node: _n, ...props }) => <th {...props} />,
+  td: ({ node: _n, ...props }) => <td {...props} />,
 };
 
 // The remark/rehype plugin lists are constant. Hoisted out of render so the
@@ -240,43 +228,50 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
           <button
             type="button"
             onClick={() => tools.requestFileOpen(value)}
-            className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 hover:bg-(--hover) [overflow-wrap:anywhere]"
-            title="Open file"
+            className="chat-ref-chip"
+            title={`Open ${value}`}
           >
-            {children}
+            <FileText className="chat-ref-chip-icon" aria-hidden />
+            <span className="chat-ref-chip-label">{children}</span>
           </button>
         );
       }
+      return <code {...props}>{children}</code>;
+    },
+    a: ({ node: _n, href, children, ...props }) => {
+      const fileHref = typeof href === "string" && isFileReference(href);
       return (
-        <code
-          className="rounded-md border border-white/[0.06] bg-(--surface-3) px-1.5 py-0.5 font-mono text-[12px] leading-[18px] text-(--fg)/85 [overflow-wrap:anywhere]"
+        <a
           {...props}
+          href={href}
+          target={fileHref ? undefined : "_blank"}
+          rel={fileHref ? undefined : "noreferrer noopener"}
+          onClick={(event) => {
+            if (!href) return;
+            if (isFileReference(href)) {
+              event.preventDefault();
+              tools.requestFileOpen(href);
+              return;
+            }
+            const next = normalizeBrowserInput(href, "");
+            if (!next) return;
+            event.preventDefault();
+            tools.setComputerOpen(true);
+            tools.setComputerTab("browser");
+            tools.setBrowserUrl(next, next);
+          }}
+          className="chat-ref-chip"
+          title={href}
         >
-          {children}
-        </code>
+          {fileHref ? (
+            <FileText className="chat-ref-chip-icon" aria-hidden />
+          ) : (
+            <ExternalLink className="chat-ref-chip-icon" aria-hidden />
+          )}
+          <span className="chat-ref-chip-label">{children}</span>
+        </a>
       );
     },
-    a: ({ node: _n, href, ...props }) => (
-      <a
-        {...props}
-        href={href}
-        onClick={(event) => {
-          if (!href) return;
-          if (isFileReference(href)) {
-            event.preventDefault();
-            tools.requestFileOpen(href);
-            return;
-          }
-          const next = normalizeBrowserInput(href, "");
-          if (!next) return;
-          event.preventDefault();
-          tools.setComputerOpen(true);
-          tools.setComputerTab("browser");
-          tools.setBrowserUrl(next, next);
-        }}
-        className="text-(--accent) underline underline-offset-2 hover:opacity-80"
-      />
-    ),
   };
 }
 
@@ -295,7 +290,7 @@ function AssistantMarkdownInner({ text }: { text: string }) {
     [tools.requestFileOpen, tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
   );
   return (
-    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[13px] leading-[22px] tracking-normal text-(--fg) [overflow-wrap:anywhere]">
+    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[13px] leading-[20px] tracking-normal [overflow-wrap:anywhere]">
       <MarkdownErrorBoundary
         fallback={
           <pre className="max-w-full whitespace-pre-wrap break-words text-[13px] leading-[22px] tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">

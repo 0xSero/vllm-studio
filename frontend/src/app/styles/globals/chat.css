@@ -47,18 +47,19 @@
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --codex-chat-font-size: 13px;
-  --codex-chat-line-height: 22px;
+  --codex-chat-line-height: 20px;
   --codex-chat-code-font-size: 12px;
   --codex-chat-font-weight: 430;
 }
 
 .chat-markdown {
-  /* Codex desktop typography values: system UI, 13px chat, 12px code, 430 weight. */
+  /* Codex desktop typography values: system UI, 13px chat, 12px code, 430 weight.
+     Body sits a touch below full --fg so it reads calmer than headings. */
   font-family: var(--codex-chat-font-family);
   font-size: var(--codex-chat-font-size);
   line-height: var(--codex-chat-line-height);
   font-weight: var(--codex-chat-font-weight);
-  color: color-mix(in srgb, var(--fg) 88%, transparent);
+  color: color-mix(in srgb, var(--fg) 82%, transparent);
   letter-spacing: 0;
 }
 
@@ -95,7 +96,7 @@
 }
 
 .chat-markdown p {
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.55rem;
 }
 
 .chat-markdown p:last-child {
@@ -104,12 +105,12 @@
 
 .chat-markdown ul,
 .chat-markdown ol {
-  margin-bottom: 0.7rem;
-  padding-left: 1.25rem;
+  margin-bottom: 0.55rem;
+  padding-left: 1.2rem;
 }
 
 .chat-markdown li {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
 }
 
 .chat-markdown h1,
@@ -123,28 +124,35 @@
 }
 
 .chat-markdown h1 {
-  font-size: 24px;
-  margin: 1.25rem 0 0.75rem;
+  font-size: 18px;
+  margin: 1rem 0 0.5rem;
   padding-bottom: 0;
   border-bottom: 0;
 }
 
 .chat-markdown h2 {
-  font-size: 18px;
-  margin: 1.25rem 0 0.5rem;
+  font-size: 15px;
+  margin: 0.9rem 0 0.4rem;
   padding-bottom: 0;
   border-bottom: 0;
 }
 
 .chat-markdown h3 {
-  font-size: 16px;
-  margin: 1rem 0 0.4rem;
+  font-size: 14px;
+  margin: 0.8rem 0 0.3rem;
 }
 
 .chat-markdown h4 {
-  font-size: 14px;
-  margin: 0.75rem 0 0.35rem;
-  color: color-mix(in srgb, var(--fg) 88%, transparent);
+  font-size: 13px;
+  margin: 0.65rem 0 0.3rem;
+  color: var(--fg);
+}
+
+.chat-markdown h1:first-child,
+.chat-markdown h2:first-child,
+.chat-markdown h3:first-child,
+.chat-markdown h4:first-child {
+  margin-top: 0;
 }
 
 .chat-markdown hr {
@@ -157,65 +165,103 @@
   color: color-mix(in srgb, var(--fg) 94%, transparent);
 }
 
+/* Reference chips — file paths and external links render as compact, themed
+   chips with a leading icon so they read as actionable inside prose. Scoped
+   with two classes so they outrank the bare `.chat-markdown a` reset. */
 .chat-markdown a {
-  color: var(--hl2);
-  text-decoration: none;
-  background: color-mix(in srgb, var(--hl2) 10%, transparent);
-  padding: 1px 4px;
-  border-radius: 4px;
-  transition: background 0.15s ease;
-}
-
-.chat-markdown a:hover {
-  background: color-mix(in srgb, var(--hl2) 20%, transparent);
+  color: var(--link, #6ea8fe);
   text-decoration: none;
 }
 
-.chat-markdown table {
-  width: 100%;
-  border-collapse: collapse;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  border-radius: 0.45rem;
+.chat-markdown .chat-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  max-width: 100%;
+  vertical-align: baseline;
+  margin: 0 1px;
+  padding: 0.5px 6px 0.5px 5px;
+  border-radius: 6px;
+  font-family:
+    var(--codex-chat-mono-font-family), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 450;
+  color: var(--link, #6ea8fe);
+  background: color-mix(in srgb, var(--link, #6ea8fe) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--link, #6ea8fe) 22%, transparent);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.13s ease,
+    border-color 0.13s ease;
+}
+
+.chat-markdown .chat-ref-chip:hover {
+  background: color-mix(in srgb, var(--link, #6ea8fe) 18%, transparent);
+  border-color: color-mix(in srgb, var(--link, #6ea8fe) 36%, transparent);
+}
+
+.chat-markdown .chat-ref-chip-icon {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  opacity: 0.85;
+}
+
+.chat-markdown .chat-ref-chip-label {
+  min-width: 0;
   overflow: hidden;
-  margin: 0.65rem 0;
-  font-size: 0.82rem;
-  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-markdown thead {
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
+/* Tables — rounded, rule-separated (no grid lines), zebra-striped body.
+   `separate` borders + spacing:0 so the border-radius actually clips. The
+   wrapper handles horizontal scroll for wide tables. */
+.chat-markdown table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0.5rem 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
 }
 
-.chat-markdown tbody {
-  border-top: 1px solid var(--border);
-}
-
-.chat-markdown tbody tr {
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-}
-
-.chat-markdown tbody tr:last-child {
-  border-bottom: none;
-}
-
-.chat-markdown tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--fg) 2.5%, transparent);
+.chat-markdown thead th {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-bottom: 1px solid var(--border);
 }
 
 .chat-markdown th {
   text-align: left;
-  font-size: 0.68rem;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.45rem 0.8rem;
-  color: color-mix(in srgb, var(--fg) 48%, var(--dim));
+  letter-spacing: 0.05em;
+  padding: 0.42rem 0.72rem;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .chat-markdown td {
-  padding: 0.45rem 0.8rem;
-  color: var(--fg);
+  padding: 0.4rem 0.72rem;
+  color: color-mix(in srgb, var(--fg) 84%, transparent);
   vertical-align: top;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.chat-markdown tbody tr:first-child td {
+  border-top: 0;
+}
+
+.chat-markdown tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
 }
 
 .chat-markdown img {

@@ -107,7 +107,7 @@ function SessionPaneBlockRouterInner({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
     return (
       <article className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-(--surface-2)/70 px-4 py-2.5 text-[14px] leading-[1.6] tracking-normal text-(--fg)">
+        <div className="max-w-[80%] rounded-2xl bg-(--surface-2)/70 px-3.5 py-2 text-[13px] leading-[1.55] tracking-normal text-(--fg)/95">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
             <div className="mt-2 grid gap-2">
