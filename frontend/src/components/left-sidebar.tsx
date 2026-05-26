@@ -10,10 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
-  BarChart3,
+  Activity,
   ChevronLeft,
   ChevronRight,
-  Database,
+  Cpu,
   HardDrive,
   Search as SearchIcon,
   Server,
@@ -44,15 +44,15 @@ type ActiveSessionDetail = {
 };
 
 const tabs = [
-  { href: "/", label: "Status", icon: BarChart3 },
-  { href: "/usage", label: "Usage", icon: Database },
+  { href: "/", label: "Status", icon: Activity },
+  { href: "/usage", label: "Usage", icon: Cpu },
   { href: "/recipes", label: "Models", icon: HardDrive },
   { href: "/server", label: "Server", icon: Server },
 ];
 
-const SIDEBAR_MIN_WIDTH = 160;
-const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_DEFAULT_WIDTH = 204;
+const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MAX_WIDTH = 340;
+const SIDEBAR_DEFAULT_WIDTH = 248;
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
@@ -243,15 +243,17 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mb-1 flex h-7 items-center gap-2 rounded-md px-1.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="mb-2 flex h-8 items-center gap-2.5 rounded-lg px-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="flex-1 truncate text-left text-[12px]">Search</span>
-                  <kbd className="px-1 py-0.5 text-[10px] font-mono text-(--dim)">⌘K</kbd>
+                  <SearchIcon className="h-[18px] w-[18px] shrink-0" />
+                  <span className="flex-1 truncate text-left text-[13px]">Search</span>
+                  <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-(--dim)/70 bg-(--surface) rounded-md border border-(--border)/40">
+                    ⌘K
+                  </kbd>
                 </button>
 
-                <div className="mb-1 mt-3 px-1.5 text-[11px] font-medium text-(--dim)">
+                <div className="mb-1 mt-4 px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -271,12 +273,15 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 <Link
                   href="/settings"
                   title="Settings"
-                  className={`flex h-7 shrink-0 items-center gap-2 rounded-md px-1.5 text-(--fg) transition-colors ${
-                    isRouteActive(pathname, "/settings") ? "bg-(--hover)" : "hover:bg-(--hover)"
+                  className={`group relative flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-(--fg) transition-colors ${
+                    isRouteActive(pathname, "/settings") ? "bg-(--active)" : "hover:bg-(--hover)"
                   }`}
                 >
-                  <Settings className="h-4 w-4 shrink-0" />
-                  <span className="whitespace-nowrap text-[12px] font-medium">Settings</span>
+                  {isRouteActive(pathname, "/settings") ? (
+                    <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
+                  ) : null}
+                  <Settings className="h-[18px] w-[18px] shrink-0" />
+                  <span className="whitespace-nowrap text-[13px] font-medium">Settings</span>
                 </Link>
               </div>
             </>
@@ -429,13 +434,16 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`h-7 flex items-center gap-2 rounded-md px-1.5 transition-colors shrink-0 ${
-        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      className={`group relative flex h-8 items-center gap-2.5 rounded-lg px-2 transition-colors shrink-0 ${
+        active ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
       }`}
     >
-      <Icon className="w-4 h-4 shrink-0" />
+      {active ? (
+        <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
+      ) : null}
+      <Icon className="w-[18px] h-[18px] shrink-0" />
       <span
-        className={`text-[12px] font-medium whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[13px] font-medium whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >

@@ -49,6 +49,7 @@ import {
   type SessionPref,
   type SessionPrefs,
 } from "@/lib/agent/session/prefs";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 import { isChatsProject, type Project as ProjectEntry } from "@/lib/agent/projects/types";
 type SessionSummary = {
   id: string;
@@ -146,7 +147,7 @@ export function triggerAddProjectFlow() {
 }
 export function rememberAgentSessionNavTitle(sessionId: string | null | undefined, title: string) {
   if (typeof window === "undefined" || !sessionId) return;
-  const trimmed = title.trim();
+  const trimmed = cleanSessionTitle(title);
   if (!trimmed || trimmed === "Loading session") return;
   try {
     window.sessionStorage.setItem(`${SESSION_NAV_TITLE_PREFIX}${sessionId}`, trimmed);
@@ -158,7 +159,7 @@ export function consumeAgentSessionNavTitle(sessionId: string | null | undefined
   if (typeof window === "undefined" || !sessionId) return undefined;
   const key = `${SESSION_NAV_TITLE_PREFIX}${sessionId}`;
   try {
-    const title = window.sessionStorage.getItem(key)?.trim() || undefined;
+    const title = cleanSessionTitle(window.sessionStorage.getItem(key)) || undefined;
     window.sessionStorage.removeItem(key);
     return title;
   } catch {
@@ -457,7 +458,7 @@ function ProjectDirectoryPickerModal({
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col pb-1">
-          <div className="mt-4 flex h-6 items-center px-1.5 text-[10.5px] font-medium text-(--dim)">
+          <div className="mt-5 flex h-6 items-center px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
             Pinned
           </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -566,7 +567,7 @@ function SidebarSectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="group mt-4 flex h-6 items-center justify-between px-1.5 text-[10.5px] font-medium text-(--dim)">
+    <div className="group mt-5 flex h-6 items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
       <button
         type="button"
         onClick={onToggle}
@@ -616,28 +617,28 @@ function ProjectRow({
   };
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-6 items-center rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
+      <div className="group relative flex h-7 items-center rounded-lg pl-2 pr-1.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)">
         {" "}
         <button
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-0 pr-8 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
         >
           {icon === "chat" ? (
-            <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+            <ChatIcon className="h-4 w-4 shrink-0 text-(--dim)" />
           ) : (
-            <span className="relative h-3.5 w-3.5 shrink-0 text-(--dim)">
+            <span className="relative h-4 w-4 shrink-0 text-(--dim)">
               {" "}
               <Folder
-                className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-80"}`}
+                className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-80"}`}
               />
               <FolderOpen
-                className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-100 opacity-80" : "scale-90 opacity-0"}`}
+                className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-100 opacity-80" : "scale-90 opacity-0"}`}
               />{" "}
             </span>
           )}
-          <span className="truncate text-[12px] font-medium text-(--fg)">{project.name}</span>{" "}
+          <span className="truncate text-[13px] font-medium text-(--fg)">{project.name}</span>{" "}
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
@@ -1057,14 +1058,15 @@ function ActiveSessionRow({
   session: ActiveAgentSession;
   pref: SessionPref;
 }) {
-  const label = pref.title || session.title || "Current session";
+  const label =
+    cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-[26px] items-center gap-1 rounded-md pl-1.5 pr-1 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`;
+  const rowClass = `group relative flex h-7 items-center gap-1.5 rounded-lg pl-2 pr-1 transition-colors ${isActive ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`;
   return (
     <SessionNavRow
       pref={pref}
       label={label}
-      initialDraft={pref.title ?? session.title ?? ""}
+      initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.title)}
       age={relativeAge(session.startedAt ?? session.updatedAt)}
       rowClass={rowClass}
       href={
@@ -1086,7 +1088,7 @@ function ActiveSessionRow({
             detail: {
               paneId: session.paneId,
               tabId: session.tabId,
-              title: trimmed || session.title,
+              title: cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label,
             },
           }),
         );
@@ -1109,15 +1111,18 @@ function SessionRow({
   session: SessionSummary;
   pref: SessionPref;
 }) {
-  const label = pref.title || session.firstUserMessage || "Untitled session";
+  const label =
+    cleanSessionTitle(pref.title) ||
+    cleanSessionTitle(session.firstUserMessage) ||
+    "Untitled session";
   return (
     <SessionNavRow
       pref={pref}
       label={label}
-      initialDraft={pref.title ?? session.firstUserMessage ?? ""}
+      initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
       age={relativeAge(session.startedAt)}
-      rowClass="group relative flex h-[26px] items-center gap-1 rounded-md pl-1.5 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-      renameRowClass="flex h-[26px] items-center gap-1 rounded-md bg-(--surface)/60 pl-1.5 pr-1"
+      rowClass="group relative flex h-7 items-center gap-1.5 rounded-lg pl-2 pr-1 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+      renameRowClass="flex h-7 items-center gap-1.5 rounded-lg bg-(--surface)/60 pl-2 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
