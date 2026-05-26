@@ -10,13 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Activity,
+  Gauge,
   ChevronLeft,
   ChevronRight,
-  Cpu,
+  Microchip,
   HardDrive,
   Search as SearchIcon,
-  Server,
+  Globe,
   Settings,
   PanelLeftClose,
   Menu,
@@ -44,10 +44,10 @@ type ActiveSessionDetail = {
 };
 
 const tabs = [
-  { href: "/", label: "Status", icon: Activity },
-  { href: "/usage", label: "Usage", icon: Cpu },
+  { href: "/", label: "Status", icon: Gauge },
+  { href: "/usage", label: "Usage", icon: Microchip },
   { href: "/recipes", label: "Models", icon: HardDrive },
-  { href: "/server", label: "Server", icon: Server },
+  { href: "/server", label: "Server", icon: Globe },
 ];
 
 const SIDEBAR_MIN_WIDTH = 180;
@@ -239,21 +239,21 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
               </div>
 
               {/* Primary nav */}
-              <nav className="flex-1 min-h-0 flex flex-col px-1 py-1 overflow-y-auto overflow-x-hidden">
+              <nav className="flex-1 min-h-0 flex flex-col px-1 py-0.5 overflow-y-auto overflow-x-hidden">
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mb-2 flex h-8 items-center gap-2.5 rounded-lg px-2 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="mb-1.5 flex h-7 items-center gap-2.5 rounded-md px-2 text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/90"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-[18px] w-[18px] shrink-0" />
-                  <span className="flex-1 truncate text-left text-[13px]">Search</span>
-                  <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-(--dim)/70 bg-(--surface) rounded-md border border-(--border)/40">
+                  <SearchIcon className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
+                  <span className="flex-1 truncate text-left text-[13px] font-normal">Search</span>
+                  <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-(--dim)/50 bg-transparent rounded border border-(--border)/30">
                     ⌘K
                   </kbd>
                 </button>
 
-                <div className="mb-1 mt-4 px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
+                <div className="mb-0.5 mt-3 px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-(--dim)/60">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -269,19 +269,16 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 <ProjectsNavSection expanded={isExpanded} />
               </nav>
 
-              <div className="shrink-0 px-1 py-3">
+              <div className="shrink-0 px-1 py-2">
                 <Link
                   href="/settings"
                   title="Settings"
-                  className={`group relative flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-(--fg) transition-colors ${
-                    isRouteActive(pathname, "/settings") ? "bg-(--active)" : "hover:bg-(--hover)"
+                  className={`group relative flex h-7 shrink-0 items-center gap-2.5 rounded-md px-2 text-(--dim)/80 transition-colors hover:bg-(--hover) hover:text-(--fg)/90 ${
+                    isRouteActive(pathname, "/settings") ? "bg-(--hover) text-(--fg)" : ""
                   }`}
                 >
-                  {isRouteActive(pathname, "/settings") ? (
-                    <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
-                  ) : null}
-                  <Settings className="h-[18px] w-[18px] shrink-0" />
-                  <span className="whitespace-nowrap text-[13px] font-medium">Settings</span>
+                  <Settings className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
+                  <span className="whitespace-nowrap text-[13px] font-normal">Settings</span>
                 </Link>
               </div>
             </>
@@ -395,7 +392,7 @@ function NavItemMobile({
 }: {
   href: string;
   label: string;
-  Icon: React.ComponentType<{ className?: string }>;
+  Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   active: boolean;
   onClick: () => void;
 }) {
@@ -426,7 +423,7 @@ function NavItemDesktop({
 }: {
   href: string;
   label: string;
-  Icon: React.ComponentType<{ className?: string }>;
+  Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   active: boolean;
   expanded: boolean;
 }) {
@@ -434,16 +431,15 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`group relative flex h-8 items-center gap-2.5 rounded-lg px-2 transition-colors shrink-0 ${
-        active ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      className={`group relative flex h-7 items-center gap-2.5 rounded-md px-2 transition-colors shrink-0 ${
+        active
+          ? "bg-(--hover) text-(--fg)"
+          : "text-(--dim)/80 hover:bg-(--hover) hover:text-(--fg)/90"
       }`}
     >
-      {active ? (
-        <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
-      ) : null}
-      <Icon className="w-[18px] h-[18px] shrink-0" />
+      <Icon className="w-[15px] h-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
       <span
-        className={`text-[13px] font-medium whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[13px] font-normal whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >

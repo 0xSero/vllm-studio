@@ -106,7 +106,17 @@ export function formatTokenCount(tokens: number): string {
 }
 
 export function sessionTitleFromPrompt(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, 48) || "New session";
+  return cleanSessionTitle(text.replace(/\s+/g, " ").trim().slice(0, 48)) || "New session";
+}
+
+export function isPlaceholderSessionTitle(value: string | null | undefined): boolean {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  return Boolean(normalized && /^(?:\.{3}|…)+$/.test(normalized));
+}
+
+export function cleanSessionTitle(value: string | null | undefined): string {
+  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+  return normalized && !isPlaceholderSessionTitle(normalized) ? normalized : "";
 }
 
 export function visibleUserTextFromPi(text: string): string {

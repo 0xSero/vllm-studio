@@ -36,7 +36,7 @@ type RowProps = {
 };
 
 const pillDotClasses: Record<StatusTone, string> = {
-  default: "bg-(--dim)/50",
+  default: "bg-(--dim)",
   good: "bg-(--hl2)",
   warning: "bg-(--hl3)",
   danger: "bg-(--err)",
@@ -44,11 +44,11 @@ const pillDotClasses: Record<StatusTone, string> = {
 };
 
 const pillTextClasses: Record<StatusTone, string> = {
-  default: "text-(--dim)/60",
-  good: "text-(--hl2)/80",
-  warning: "text-(--hl3)/80",
-  danger: "text-(--err)/80",
-  info: "text-(--hl1)/80",
+  default: "text-(--dim)",
+  good: "text-(--hl2)",
+  warning: "text-(--hl3)",
+  danger: "text-(--err)",
+  info: "text-(--hl1)",
 };
 
 export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
@@ -66,7 +66,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   const activeLabel = sections.find((section) => section.id === activeSection)?.label ?? title;
   return (
     <main className="min-h-full overflow-y-auto overflow-x-hidden bg-(--bg) text-(--fg)">
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,760px)] lg:gap-10 lg:py-8">
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,640px)] lg:gap-10 lg:py-8">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
             <h1 className="text-[17px] font-semibold tracking-[-0.01em] text-(--fg)">{title}</h1>
@@ -74,7 +74,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
               type="button"
               onClick={onReload}
               disabled={loading}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--dim)/60 transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:opacity-50"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:opacity-50"
               aria-label={refreshLabel}
               title={refreshLabel}
             >
@@ -93,7 +93,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
                     key={section.id}
                     type="button"
                     onClick={() => onSelectSection(section.id)}
-                    className={`group grid h-8 grid-cols-[18px_1fr] items-center gap-2.5 rounded-md px-2.5 text-left text-[12px] transition-colors lg:w-full ${active ? "bg-(--hover) text-(--fg)" : "text-(--dim)/70 hover:bg-(--hover) hover:text-(--fg)"}`}
+                    className={`group grid h-8 grid-cols-[18px_1fr] items-center gap-2.5 rounded-md px-2.5 text-left text-[12px] transition-colors lg:w-full ${active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"}`}
                     title={section.description}
                   >
                     <span className="flex h-4 w-4 items-center justify-center opacity-80">
@@ -107,18 +107,16 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
           </nav>
         </aside>
         <section className="min-w-0 pb-10">
-          <div className="mb-6 flex min-h-8 items-center justify-between gap-3">
+          <div className="mb-5 flex min-h-8 items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-(--dim)/50">
-                {eyebrow}
-              </div>
-              <h2 className="mt-1 truncate text-[22px] font-medium tracking-[-0.02em] text-(--fg)">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-(--dim)">{eyebrow}</div>
+              <h2 className="mt-1 truncate text-[20px] font-medium tracking-[-0.02em] text-(--fg)">
                 {activeLabel}
               </h2>
             </div>
-            <span className="shrink-0 text-[11px] text-(--dim)/50">{status}</span>
+            <span className="shrink-0 text-[11px] text-(--dim)">{status}</span>
           </div>
-          <div className="space-y-8">{children}</div>
+          <div className="space-y-0">{children}</div>
         </section>
       </div>
     </main>
@@ -137,19 +135,17 @@ export function SettingsGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+    <section>
+      <div className="flex items-center justify-between gap-3 px-4 py-2">
         <div>
-          <h3 className="text-[14px] font-medium tracking-[-0.01em] text-(--fg)">{title}</h3>
+          <h3 className="text-[13px] font-medium tracking-[-0.01em] text-(--fg)">{title}</h3>
           {description ? (
-            <p className="mt-0.5 text-[12px] leading-relaxed text-(--dim)/50">{description}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-(--dim)">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <div className="divide-y divide-(--border)/[0.06] overflow-hidden rounded-xl border border-(--border)/[0.08] bg-(--surface)/[0.25]">
-        {children}
-      </div>
+      <div className="divide-y divide-(--border)">{children}</div>
     </section>
   );
 }
@@ -164,13 +160,13 @@ export function SettingsRow({
   children,
 }: RowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-normal text-(--fg)/90">{label}</div>
+        <div className="text-[13px] text-(--fg)">{label}</div>
         {description ? (
-          <div className="mt-0.5 text-[12px] leading-relaxed text-(--dim)/50">{description}</div>
+          <div className="mt-0.5 text-[11px] leading-relaxed text-(--dim)">{description}</div>
         ) : null}
-        {children ? <div className="mt-2">{children}</div> : null}
+        {children ? <div className="mt-1.5">{children}</div> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {control ?? value ?? null}
@@ -192,7 +188,7 @@ export function SettingsValue({
 }) {
   return (
     <div
-      className={`text-[13px] ${mono ? "font-mono text-[12px]" : ""} ${dim ? "text-(--dim)/60" : "text-(--fg)/70"}`}
+      className={`text-[13px] ${mono ? "font-mono text-[12px]" : ""} ${dim ? "text-(--dim)" : "text-(--fg)/80"}`}
       title={typeof children === "string" ? children : undefined}
     >
       {children || "Not set"}
@@ -236,15 +232,15 @@ export function SettingsButton({
     tone === "primary"
       ? "bg-(--fg)/90 text-(--bg) hover:bg-(--fg)"
       : tone === "danger"
-        ? "text-(--err)/70 hover:text-(--err) hover:bg-(--err)/10"
-        : "text-(--dim)/60 hover:text-(--fg)/80 hover:bg-(--hover)";
+        ? "text-(--err) hover:bg-(--err)/10"
+        : "text-(--dim) hover:text-(--fg) hover:bg-(--hover)";
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex h-[30px] items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-normal transition-colors disabled:pointer-events-none disabled:opacity-45 ${classes}`}
+      className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[11px] font-normal transition-colors disabled:pointer-events-none disabled:opacity-45 ${classes}`}
     >
       {children}
     </button>
@@ -273,11 +269,11 @@ export function SettingsInput({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       placeholder={placeholder}
-      className={`h-9 w-full rounded-lg border border-(--border)/[0.08] bg-(--surface-2)/40 px-3 text-[13px] text-(--fg)/80 outline-none transition placeholder:text-(--dim)/40 focus:border-(--accent)/30 focus:bg-(--surface-2)/60 ${className}`}
+      className={`h-7 w-full rounded-md border border-(--border) bg-(--surface) px-2.5 text-[13px] text-(--fg) outline-none transition placeholder:text-(--dim)/50 focus:border-(--accent)/30 ${className}`}
     />
   );
 }
 
 export function EmptySafeNotice({ children }: { children: ReactNode }) {
-  return <div className="py-1 text-[12px] leading-relaxed text-(--dim)/55">{children}</div>;
+  return <div className="py-1 text-[12px] leading-relaxed text-(--dim)">{children}</div>;
 }

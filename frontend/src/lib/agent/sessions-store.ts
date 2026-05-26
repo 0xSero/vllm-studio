@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { resolveDataDir } from "@/lib/data-dir";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 
 export type SessionSummary = {
   id: string;
@@ -124,7 +125,9 @@ async function readSessionSummary(
     const userTurn = userTurnFromEvent(event);
     if (userTurn.isUser) {
       turnCount += 1;
-      if (!firstUserMessage && userTurn.text) firstUserMessage = userTurn.text.slice(0, 120);
+      if (!firstUserMessage && userTurn.text) {
+        firstUserMessage = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
+      }
     }
   }
 

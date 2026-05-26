@@ -141,13 +141,15 @@ export function AgentBrowserPanel({
         onMouseDown={startComputerResize}
         className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--accent)/20"
       />
-      <ComputerHeader
-        tab={tools.computer.tab}
-        openTabs={tools.computer.tabs}
-        onSelectTab={tools.setComputerTab}
-        onCloseTab={tools.closeComputerTab}
-        onShowLauncher={() => tools.setComputerTab("tools")}
-      />
+      {tools.computer.tab !== "side-chat" ? (
+        <ComputerHeader
+          tab={tools.computer.tab}
+          openTabs={tools.computer.tabs}
+          onSelectTab={tools.setComputerTab}
+          onCloseTab={tools.closeComputerTab}
+          onShowLauncher={() => tools.setComputerTab("tools")}
+        />
+      ) : null}
 
       {tools.computer.tab === "status" ? (
         <ComputerStatusPanel
@@ -189,6 +191,7 @@ export function AgentBrowserPanel({
           onClose={closeSideChat}
           rightPanelOpen
           onToggleRightPanel={() => tools.setComputerOpen(false)}
+          showHeader={false}
         />
       ) : tools.computer.tab === "browser" ? (
         <AgentBrowser

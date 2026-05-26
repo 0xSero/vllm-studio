@@ -48,6 +48,13 @@ export const createProcessManager = (
   logger: Logger,
   eventManager?: EventManager
 ): ProcessManager => {
+  type ProcessTableEntry = {
+    pid: number;
+    ppid: number;
+    stat: string;
+    command: string;
+  };
+
   /**
    * Locate the inference process by port.
    * @param port - Port to match.
@@ -208,6 +215,78 @@ export const createProcessManager = (
     }
   };
 
+  const listProcessTable = (): ProcessTableEntry[] => {
+    try {
+      const result = spawnSync("ps", ["-eo", "pid=,ppid=,stat=,args="]);
+      if (result.status !== 0) {
+        return [];
+      }
+      const output = result.stdout.toString("utf-8").trim();
+      if (!output) {
+        return [];
+      }
+      return output
+        .split("\n")
+        .map((line): ProcessTableEntry | null => {
+          const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+          if (!match) {
+            return null;
+          }
+          const command = match[4] ?? "";
+          return {
+            pid: Number(match[1]),
+            ppid: Number(match[2]),
+            stat: match[3] ?? "",
+            command,
+          };
+        })
+        .filter((entry): entry is ProcessTableEntry => entry !== null && entry.pid > 0);
+    } catch {
+      return [];
+    }
+  };
+
+  const isOrphanedInferenceWorker = (entry: ProcessTableEntry): boolean => {
+    if (entry.ppid !== 1 || entry.stat.includes("Z")) {
+      return false;
+    }
+    return entry.command.includes("VLLM::Worker");
+  };
+
+  const cleanupOrphanedInferenceWorkers = async (reason: string): Promise<number> => {
+    const workers = listProcessTable().filter(isOrphanedInferenceWorker);
+    if (workers.length === 0) {
+      return 0;
+    }
+
+    for (const worker of workers) {
+      logger.warn("Killing orphaned inference worker", {
+        pid: worker.pid,
+        reason,
+        command: worker.command,
+      });
+      sendSignal(worker.pid, "SIGTERM");
+    }
+
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline && workers.some((worker) => pidExists(worker.pid))) {
+      await delayTimeout(200);
+    }
+
+    for (const worker of workers) {
+      if (pidExists(worker.pid)) {
+        logger.warn("Force killing orphaned inference worker", {
+          pid: worker.pid,
+          reason,
+          command: worker.command,
+        });
+        sendSignal(worker.pid, "SIGKILL");
+      }
+    }
+
+    return workers.length;
+  };
+
   /**
    * Launch an inference backend for a recipe.
    * @param recipe - Recipe data.
@@ -238,6 +317,8 @@ export const createProcessManager = (
         log_file: primaryLogPathFor(config.data_dir, updatedRecipe.id),
       };
     }
+
+    await cleanupOrphanedInferenceWorkers("before-launch");
 
     const logFile = primaryLogPathFor(config.data_dir, updatedRecipe.id);
     // Best-effort retention to prevent unbounded growth over long-running installs.
@@ -369,9 +450,11 @@ export const createProcessManager = (
   const evictModel = async (force: boolean): Promise<number | null> => {
     const current = await findInferenceProcess(config.inference_port);
     if (!current) {
+      await cleanupOrphanedInferenceWorkers("evict-without-active-process");
       return null;
     }
     await killProcess(current.pid, force);
+    await cleanupOrphanedInferenceWorkers("after-evict");
     return current.pid;
   };
 

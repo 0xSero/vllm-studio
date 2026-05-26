@@ -1,5 +1,10 @@
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
-import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
+import {
+  cleanSessionTitle,
+  makeFreshTab,
+  newPaneId,
+  newRuntimeId,
+} from "@/lib/agent/session/helpers";
 import { findPaneByPiSessionId } from "@/lib/agent/sessions/selectors";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
@@ -279,7 +284,7 @@ function computeActiveSessionBroadcast(
       tabId: tab.id,
       piSessionId: tab.piSessionId,
       modelId: tab.modelId ?? state.selectedModel,
-      title: tab.title,
+      title: cleanSessionTitle(tab.title) || "Current session",
       status: tab.status,
       active: paneId === state.focusedPaneId,
       startedAt: tab.startedAt,
@@ -309,7 +314,7 @@ function storedSessionsKey(state: WorkspaceState): string {
   const entries: Array<{ id: string; title: string; cwd?: string }> = [];
   for (const tab of state.sessions.values()) {
     if (!tab.piSessionId) continue;
-    entries.push({ id: tab.piSessionId, title: tab.title, cwd: tab.cwd });
+    entries.push({ id: tab.piSessionId, title: cleanSessionTitle(tab.title), cwd: tab.cwd });
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
   return JSON.stringify(entries);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 import { safeJson } from "@/lib/agent/safe-json";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
 import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
@@ -261,7 +262,8 @@ export default function AgentSessionsPage() {
                   const running = activeByPiId.has(session.id);
                   const status = activeByPiId.get(session.id)?.status ?? "idle";
                   const label =
-                    session.firstUserMessage?.trim() || `Session ${session.id.slice(0, 8)}`;
+                    cleanSessionTitle(session.firstUserMessage) ||
+                    `Session ${session.id.slice(0, 8)}`;
                   return (
                     <tr
                       key={session.id}

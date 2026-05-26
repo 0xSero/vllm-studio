@@ -1,4 +1,5 @@
 import type { ComposerPluginRef, ComposerSkillRef } from "./composer-context";
+import { cleanSessionTitle } from "./session/helpers";
 
 export type ActiveAgentSessionSnapshot = {
   projectId: string;
@@ -89,7 +90,7 @@ function resolveMergeTarget(
 }
 
 function preferText(value: string, fallback: string): string {
-  return value || fallback;
+  return cleanSessionTitle(value) || cleanSessionTitle(fallback) || fallback;
 }
 
 function preferDefined<T>(value: T | undefined, fallback: T): T {
