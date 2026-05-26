@@ -48,7 +48,7 @@ export function AppearanceSettings() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <SettingsGroup
         title="Typography"
         description="Global font decisions stay compact and code-native."
@@ -99,20 +99,21 @@ export function AppearanceSettings() {
           label="Search themes"
           description="Filter the library while keeping useful fallback rows visible."
           control={
-            <SettingsInput
-              value={query}
-              placeholder="Search by name, group, or description"
-              onChange={setQuery}
-            />
-          }
-          actions={
-            query ? (
-              <SettingsButton onClick={() => setQuery("")} title="Clear theme search">
-                <X className="h-3 w-3" />
-              </SettingsButton>
-            ) : (
-              <Search className="h-3.5 w-3.5 text-(--dim)" />
-            )
+            <div className="flex items-center gap-2">
+              <SettingsInput
+                value={query}
+                placeholder="Search by name, group, or description"
+                onChange={setQuery}
+                className="w-64"
+              />
+              {query ? (
+                <SettingsButton onClick={() => setQuery("")} title="Clear theme search">
+                  <X className="h-3 w-3" />
+                </SettingsButton>
+              ) : (
+                <Search className="h-3.5 w-3.5 text-(--dim)" />
+              )}
+            </div>
           }
           status={<StatusPill>{filteredThemes.length || THEMES.length} shown</StatusPill>}
         />
@@ -229,7 +230,7 @@ function SegmentedOptions({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap gap-1.5">
+    <div className="flex min-w-0 flex-wrap gap-1">
       {options.map((option) => {
         const active = option.id === value;
         return (
@@ -237,10 +238,10 @@ function SegmentedOptions({
             key={option.id}
             type="button"
             onClick={() => onChange(option.id)}
-            className={`h-7 px-1.5 text-[11px] font-medium transition-colors ${
+            className={`h-7 rounded-md px-2.5 text-[12px] font-normal transition-colors ${
               active
-                ? "text-(--fg) underline decoration-(--dim) underline-offset-4"
-                : "text-(--dim) hover:text-(--fg)"
+                ? "bg-(--hover) text-(--fg)"
+                : "text-(--dim)/60 hover:text-(--fg)/80 hover:bg-(--hover)"
             }`}
           >
             {option.label}

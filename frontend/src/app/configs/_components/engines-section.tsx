@@ -59,7 +59,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
   const hasRows = hasHydratedEngineRows(engineRows);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <SettingsGroup
         title="Inference engines"
         description="Codex-style status rows instead of install cards; each row keeps an action or a fallback."
@@ -332,7 +332,7 @@ function EngineStatus({
 function JobMessage({ job }: { job: EngineJob }) {
   return (
     <div
-      className={`space-y-1 text-[11px] ${job.status === "error" ? "text-(--err)" : "text-(--dim)"}`}
+      className={`space-y-1 text-[12px] ${job.status === "error" ? "text-(--err)/80" : "text-(--dim)/60"}`}
     >
       <p>{job.message}</p>
       {job.command ? <p className="truncate font-mono">{job.command}</p> : null}
@@ -345,16 +345,19 @@ function JobMessage({ job }: { job: EngineJob }) {
 
 function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
   return (
-    <div className="grid gap-1.5 border-t border-(--border)/30 pt-2 text-[11px] text-(--dim)">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
+    <div className="grid gap-1.5 border-t border-(--border)/[0.06] pt-3 text-[12px] text-(--dim)/60">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
         <span>current {update.currentVersion ?? "unknown"}</span>
         <span>target {update.targetVersion}</span>
         <span>{update.restartRequired ? "restart required" : "no restart"}</span>
       </div>
-      <div className="font-mono">{update.packageSpec}</div>
+      <div className="font-mono text-[11px]">{update.packageSpec}</div>
       <div className="flex flex-wrap gap-1">
         {update.changes.map((change) => (
-          <span key={change} className="rounded border border-(--border)/60 px-1.5 py-[1px]">
+          <span
+            key={change}
+            className="rounded border border-(--border)/[0.08] px-1.5 py-[1px] text-[11px]"
+          >
             {change}
           </span>
         ))}
@@ -363,7 +366,7 @@ function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]
         href={update.releaseNotesUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="w-fit text-(--accent) hover:underline"
+        className="w-fit text-[12px] text-(--accent)/80 hover:underline"
       >
         release notes
       </a>

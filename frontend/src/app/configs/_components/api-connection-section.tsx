@@ -142,10 +142,10 @@ export function ApiConnectionSection({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <SettingsGroup
         title="Controllers"
-        description="Every controller is saved in one list. Switch active with the radio button — nothing else changes."
+        description="Every controller is saved in one list. Switch active with the radio button."
         actions={
           <ApiStatus
             status={connectionStatus}
@@ -154,106 +154,106 @@ export function ApiConnectionSection({
           />
         }
       >
-        <div className="flex flex-col divide-y divide-(--border)/40">
-          {entries.length === 0 ? (
-            <div className="px-1 py-3 text-[12px] text-(--dim)">
-              No controllers yet. Add one below.
-            </div>
-          ) : (
-            entries.map((entry, index) => (
-              <ControllerListRow
-                key={entry.id}
-                entry={entry}
-                index={index}
-                active={entry.id === activeId}
-                revealed={Boolean(revealed[entry.id])}
-                onToggleReveal={() => toggleReveal(entry.id)}
-                onActivate={() => activate(entry)}
-                onCommit={(next) => {
-                  // Persist + (if active) refresh the active settings only
-                  // when the user finishes editing the field, not on every
-                  // keystroke. This avoids re-rendering / re-keying the
-                  // input and POSTing /api/settings per character.
-                  const updated = entries.slice();
-                  updated[index] = { ...next, id: entry.id };
-                  persist(updated);
-                  const urlChanged = normalizeControllerUrl(next.url) !== entry.id;
-                  if (entry.id === activeId && urlChanged) {
-                    const url = normalizeControllerUrl(next.url);
-                    activate({ ...next, url, id: url });
-                  } else if (entry.id === activeId && next.apiKey !== entry.apiKey) {
-                    activate({ ...next, id: entry.id });
-                  }
-                }}
-                onRemove={() => {
-                  const remaining = entries.filter((row) => row.id !== entry.id);
-                  persist(remaining);
-                  if (entry.id === activeId && remaining[0]) activate(remaining[0]);
-                }}
-              />
-            ))
-          )}
-          <div className="grid min-w-0 grid-cols-1 gap-2 pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,0.9fr)_auto]">
-            <SettingsInput
-              value={draft.name ?? ""}
-              placeholder="Name (e.g. homelab)"
-              onChange={(name) => setDraft((current) => ({ ...current, name }))}
-            />
-            <SettingsInput
-              value={draft.url}
-              placeholder="http://192.168.1.70:8080"
-              onChange={(url) => setDraft((current) => ({ ...current, url }))}
-            />
-            <div className="relative">
-              <SettingsInput
-                type={revealed.__draft ? "text" : "password"}
-                value={draft.apiKey ?? ""}
-                placeholder="API key optional"
-                onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
-                className="pr-7"
-              />
-              <button
-                type="button"
-                onClick={() => toggleReveal("__draft")}
-                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-                aria-label={revealed.__draft ? "Hide API key" : "Reveal API key"}
-              >
-                {revealed.__draft ? (
-                  <EyeOff className="pointer-events-none h-3.5 w-3.5" />
-                ) : (
-                  <Eye className="pointer-events-none h-3.5 w-3.5" />
-                )}
-              </button>
-            </div>
-            <SettingsButton
-              onClick={() => {
-                const url = normalizeControllerUrl(draft.url);
-                if (!url) return;
-                const exists = entries.find((entry) => entry.id === url);
-                if (exists) return;
-                persist([
-                  ...entries,
-                  {
-                    id: url,
-                    url,
-                    apiKey: draft.apiKey?.trim() || undefined,
-                    name: draft.name?.trim() || undefined,
-                  },
-                ]);
-                setDraft({ url: "" });
-              }}
-              title="Add controller"
-            >
-              <Plus className="h-3 w-3" />
-              Add
-            </SettingsButton>
+        {entries.length === 0 ? (
+          <div className="px-4 py-3.5 text-[12px] text-(--dim)">
+            No controllers yet. Add one below.
           </div>
+        ) : (
+          entries.map((entry, index) => (
+            <ControllerListRow
+              key={entry.id}
+              entry={entry}
+              index={index}
+              active={entry.id === activeId}
+              revealed={Boolean(revealed[entry.id])}
+              onToggleReveal={() => toggleReveal(entry.id)}
+              onActivate={() => activate(entry)}
+              onCommit={(next) => {
+                const updated = entries.slice();
+                updated[index] = { ...next, id: entry.id };
+                persist(updated);
+                const urlChanged = normalizeControllerUrl(next.url) !== entry.id;
+                if (entry.id === activeId && urlChanged) {
+                  const url = normalizeControllerUrl(next.url);
+                  activate({ ...next, url, id: url });
+                } else if (entry.id === activeId && next.apiKey !== entry.apiKey) {
+                  activate({ ...next, id: entry.id });
+                }
+              }}
+              onRemove={() => {
+                const remaining = entries.filter((row) => row.id !== entry.id);
+                persist(remaining);
+                if (entry.id === activeId && remaining[0]) activate(remaining[0]);
+              }}
+            />
+          ))
+        )}
+        <div className="flex items-center gap-2 px-4 py-3.5">
+          <SettingsInput
+            value={draft.name ?? ""}
+            placeholder="Name (e.g. homelab)"
+            onChange={(name) => setDraft((current) => ({ ...current, name }))}
+            className="w-32"
+          />
+          <SettingsInput
+            value={draft.url}
+            placeholder="http://192.168.1.70:8080"
+            onChange={(url) => setDraft((current) => ({ ...current, url }))}
+            className="flex-1"
+          />
+          <div className="relative w-40">
+            <SettingsInput
+              type={revealed.__draft ? "text" : "password"}
+              value={draft.apiKey ?? ""}
+              placeholder="API key optional"
+              onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
+              className="pr-7"
+            />
+            <button
+              type="button"
+              onClick={() => toggleReveal("__draft")}
+              className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+              aria-label={revealed.__draft ? "Hide API key" : "Reveal API key"}
+            >
+              {revealed.__draft ? (
+                <EyeOff className="pointer-events-none h-3.5 w-3.5" />
+              ) : (
+                <Eye className="pointer-events-none h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+          <SettingsButton
+            onClick={() => {
+              const url = normalizeControllerUrl(draft.url);
+              if (!url) return;
+              const exists = entries.find((entry) => entry.id === url);
+              if (exists) return;
+              persist([
+                ...entries,
+                {
+                  id: url,
+                  url,
+                  apiKey: draft.apiKey?.trim() || undefined,
+                  name: draft.name?.trim() || undefined,
+                },
+              ]);
+              setDraft({ url: "" });
+            }}
+            title="Add controller"
+          >
+            <Plus className="h-3 w-3" />
+            Add
+          </SettingsButton>
         </div>
+      </SettingsGroup>
 
+      <SettingsGroup
+        title="Connection"
+        description="Fast status probe against the active controller."
+      >
         <SettingsRow
           label="Active connection check"
-          description="Fast status probe against the controller marked active above."
-          value={<SettingsValue dim>{statusMessage || "Ready to test"}</SettingsValue>}
+          description={statusMessage || "Ready to test"}
           actions={
             <>
               <SettingsButton onClick={onTestConnection} disabled={testing || apiSettingsLoading}>
@@ -293,6 +293,7 @@ export function ApiConnectionSection({
               value={apiSettings.voiceUrl}
               placeholder="https://voice.example.com"
               onChange={(voiceUrl) => onApiSettingsChange({ ...apiSettings, voiceUrl })}
+              className="w-64"
             />
           }
           status={
@@ -309,6 +310,7 @@ export function ApiConnectionSection({
               value={apiSettings.voiceModel}
               placeholder="whisper-large-v3-turbo"
               onChange={(voiceModel) => onApiSettingsChange({ ...apiSettings, voiceModel })}
+              className="w-64"
             />
           }
           status={<StatusPill>{apiSettings.voiceModel ? "ready" : "default"}</StatusPill>}
@@ -337,9 +339,6 @@ function ControllerListRow({
   onCommit: (entry: ControllerEntry) => void;
   onRemove: () => void;
 }) {
-  // Local editing buffer. Parent keys this row by `entry.id`, so an
-  // identity-changing edit (URL change) remounts and reseeds. Other
-  // commits flow through `commit` below.
   const [draft, setDraft] = useState<ControllerEntry>(entry);
   const commit = (next: ControllerEntry) => {
     if (next.name === entry.name && next.url === entry.url && next.apiKey === entry.apiKey) {
@@ -348,15 +347,11 @@ function ControllerListRow({
     onCommit(next);
   };
   return (
-    <div
-      className={`grid min-w-0 grid-cols-1 items-center gap-2 py-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,0.9fr)_auto] ${
-        active ? "bg-(--accent)/5" : ""
-      }`}
-    >
+    <div className={`flex items-center gap-2 px-4 py-3 ${active ? "bg-(--accent)/[0.03]" : ""}`}>
       <button
         type="button"
         onClick={onActivate}
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
           active
             ? "border-(--accent) text-(--accent)"
             : "border-(--border) text-(--dim) hover:text-(--fg)"
@@ -365,9 +360,9 @@ function ControllerListRow({
         aria-pressed={active}
       >
         {active ? (
-          <CircleDot className="h-3.5 w-3.5" />
+          <CircleDot className="h-3 w-3" />
         ) : (
-          <span className="h-2 w-2 rounded-full bg-current" />
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
         )}
       </button>
       <SettingsInput
@@ -375,14 +370,16 @@ function ControllerListRow({
         placeholder={`Controller ${index + 1}`}
         onChange={(name) => setDraft((current) => ({ ...current, name }))}
         onBlur={() => commit(draft)}
+        className="w-28"
       />
       <SettingsInput
         value={draft.url}
         placeholder="http://host:port"
         onChange={(url) => setDraft((current) => ({ ...current, url }))}
         onBlur={() => commit(draft)}
+        className="flex-1"
       />
-      <div className="relative">
+      <div className="relative w-36">
         <SettingsInput
           type={revealed ? "text" : "password"}
           value={draft.apiKey ?? ""}

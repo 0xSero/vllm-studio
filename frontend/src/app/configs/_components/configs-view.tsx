@@ -11,6 +11,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-configs";
 import { ApiConnectionSection } from "./api-connection-section";
 import { AppearanceSettings } from "./appearance-settings";
@@ -154,15 +155,9 @@ export function ConfigsView({
         />
       ) : null}
       {activeSection === "system" ? (
-        <div className="space-y-5">
-          {" "}
+        <div className="space-y-8">
           <EnginesSection runtime={data?.runtime ?? null} />
-          <ServicesSettings
-            data={data}
-            apiSettings={apiSettings}
-            loading={loading}
-            error={error}
-          />{" "}
+          <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
           <SystemSettings
             data={data}
             compatibilityReport={compatibilityReport}
@@ -503,7 +498,9 @@ function ArchivedChatsSettings() {
           return (
             <SettingsRow
               key={id}
-              label={pref.title || session?.firstUserMessage || id}
+              label={
+                cleanSessionTitle(pref.title) || cleanSessionTitle(session?.firstUserMessage) || id
+              }
               description={
                 session?.projectPath ||
                 "Session metadata will hydrate when its project is available."
@@ -512,7 +509,7 @@ function ArchivedChatsSettings() {
               status={<StatusPill tone="info">archived</StatusPill>}
               actions={<SettingsButton onClick={() => unarchive(id)}>Restore</SettingsButton>}
             >
-              <div className="text-[11px] text-(--dim)">
+              <div className="text-[12px] text-(--dim)/55">
                 {" "}
                 {session?.projectName ? `${session.projectName} · ` : ""}
                 {session?.updatedAt ?? "no timestamp"}{" "}
