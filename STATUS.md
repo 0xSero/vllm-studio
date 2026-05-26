@@ -6,12 +6,10 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Add persistent controller request observability storage for method, path, status, success, duration, and error details.
-- [x] Add controller HTTP middleware that records every completed or failed route request.
-- [x] Surface controller route observability under `/usage`.
-- [x] Add integration coverage proving controller route calls are persisted and reflected in `/usage`.
-- [x] Validate controller observability slice.
-- [x] Commit, push, and release this slice.
+- [x] Audit package scripts in root, frontend, controller, and CLI.
+- [x] Remove stale or duplicate package commands and root package metadata.
+- [x] Validate package script cleanup.
+- [x] Commit this slice.
 
 ## Backlog
 
@@ -25,7 +23,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments.
-- [ ] Audit package scripts and remove irrelevant commands.
+- [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages.
 
 ## Constraints

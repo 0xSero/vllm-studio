@@ -164,9 +164,8 @@ The CLI uses `VLLM_STUDIO_URL`, defaulting to `http://localhost:8080`.
 Common checks:
 
 ```bash
-npm --prefix frontend run check:quality
-bun --cwd controller run check
-bun --cwd cli run check
+npm run check
+npm run test:e2e
 ```
 
-The configured pre-push hook runs the frontend quality gate before pushing.
+`npm run check` runs the frontend production quality gate plus controller and CLI typechecks. The configured pre-push hook runs the frontend quality gate before pushing.

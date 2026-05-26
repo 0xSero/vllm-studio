@@ -12,7 +12,6 @@
     "test:integration": "bun test ../tests/controller/integration",
     "typecheck": "tsc --noEmit",
     "standards": "bun scripts/controller-standards-audit.ts",
-    "prepare": "cd ../.. && husky controller/.husky",
     "check": "knip && jscpd src && depcheck --ignores=\"swagger-ui-dist,lint-staged\" --skip-missing",
     "check:fix": "knip --fix"
   },
