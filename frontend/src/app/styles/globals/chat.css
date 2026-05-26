@@ -220,8 +220,7 @@
    `separate` borders + spacing:0 so the border-radius actually clips. The
    wrapper handles horizontal scroll for wide tables. */
 .chat-markdown table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid var(--border);
@@ -253,6 +252,7 @@
   padding: 0.4rem 0.72rem;
   color: color-mix(in srgb, var(--fg) 84%, transparent);
   vertical-align: top;
+  overflow-wrap: anywhere;
   border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 

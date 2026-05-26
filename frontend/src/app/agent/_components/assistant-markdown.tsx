@@ -188,15 +188,13 @@ const components: Components = {
     <blockquote className="my-2 border-l-2 border-(--border) pl-3 italic text-(--dim)" {...props} />
   ),
   hr: ({ node: _n, ...props }) => <hr className="my-3 border-(--border)" {...props} />,
+  // Cells/rows are styled entirely via `.chat-markdown` in chat.css; only the
+  // scroll wrapper needs a component override.
   table: ({ node: _n, ...props }) => (
     <div className="my-3 max-w-full overflow-x-auto">
       <table {...props} />
     </div>
   ),
-  thead: ({ node: _n, ...props }) => <thead {...props} />,
-  tr: ({ node: _n, ...props }) => <tr {...props} />,
-  th: ({ node: _n, ...props }) => <th {...props} />,
-  td: ({ node: _n, ...props }) => <td {...props} />,
 };
 
 // The remark/rehype plugin lists are constant. Hoisted out of render so the
