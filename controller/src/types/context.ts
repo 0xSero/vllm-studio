@@ -11,6 +11,7 @@ import type { LifetimeMetricsStore, PeakMetricsStore } from "../modules/system/m
 import type { RecipeStore } from "../modules/models/recipes/recipe-store";
 import type { InferenceRequestStore } from "../stores/inference-request-store";
 import type { ControllerSettingsStore } from "../stores/controller-settings-store";
+import type { ControllerRequestStore } from "../stores/controller-request-store";
 
 /**
  * Application-wide dependency container.
@@ -32,5 +33,6 @@ export interface AppContext {
     lifetimeMetricsStore: LifetimeMetricsStore;
     inferenceRequestStore: InferenceRequestStore;
     controllerSettingsStore: ControllerSettingsStore;
+    controllerRequestStore: ControllerRequestStore;
   };
 }

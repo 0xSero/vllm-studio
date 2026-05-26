@@ -112,4 +112,62 @@ describe("controller route contracts", () => {
     expect(response.status).toBe(400);
     expect(body.detail).toBe("model is required");
   });
+
+  test("usage includes persisted controller route observability", async () => {
+    const app = await createTestApp();
+
+    await app.request("/status");
+    await app.request("/v1/models");
+    await app.request("/controllers/route/status?target=file:///etc/passwd");
+    await app.request("/vram-calculator", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ context_length: 0 }),
+    });
+
+    const response = await app.request("/usage");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.controller.totals).toMatchObject({
+      total_requests: 4,
+      successful_requests: 2,
+      failed_requests: 2,
+    });
+    expect(body.controller.by_path).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "GET",
+          path: "/status",
+          requests: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/v1/models",
+          requests: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/controllers/route/status",
+          requests: 1,
+          failed: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/vram-calculator",
+          requests: 1,
+          failed: 1,
+        }),
+      ]),
+    );
+    expect(body.controller.recent_errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/vram-calculator", status: 400 }),
+        expect.objectContaining({
+          path: "/controllers/route/status",
+          status: 400,
+        }),
+      ]),
+    );
+  });
 });

@@ -35,11 +35,17 @@ export const registerUsageRoutes = (app: Hono, context: AppContext): void => {
     try {
       const knownModels = await collectKnownModels(context);
       const usage = context.stores.inferenceRequestStore.aggregate(knownModels);
-      if (usage) return ctx.json(usage);
-      return ctx.json(emptyResponse());
+      const response = usage ?? emptyResponse();
+      return ctx.json({
+        ...response,
+        controller: context.stores.controllerRequestStore.aggregate(),
+      });
     } catch (error) {
       context.logger.error(`[Usage] Error fetching usage stats: ${(error as Error).message}`);
-      return ctx.json(emptyResponse());
+      return ctx.json({
+        ...emptyResponse(),
+        controller: context.stores.controllerRequestStore.aggregate(),
+      });
     }
   });
 
@@ -52,9 +58,7 @@ export const registerUsageRoutes = (app: Hono, context: AppContext): void => {
       if (usage) return ctx.json(usage);
       return ctx.json(emptyResponse());
     } catch (error) {
-      context.logger.error(
-        `[Usage] Error fetching pi-sessions usage: ${(error as Error).message}`
-      );
+      context.logger.error(`[Usage] Error fetching pi-sessions usage: ${(error as Error).message}`);
       return ctx.json(emptyResponse());
     }
   });

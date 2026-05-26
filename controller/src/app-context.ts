@@ -16,6 +16,7 @@ import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
+import { ControllerRequestStore } from "./stores/controller-request-store";
 
 /**
  * Create the application dependency container.
@@ -33,6 +34,7 @@ export const createAppContext = (): AppContext => {
   const lifetimeMetricsStore = new LifetimeMetricsStore(dbPath);
   const inferenceRequestStore = new InferenceRequestStore(dbPath);
   const controllerSettingsStore = new ControllerSettingsStore(dbPath);
+  const controllerRequestStore = new ControllerRequestStore(dbPath);
   const eventManager = createEventManager();
   const logger = createLogger(resolveLogLevel("info"), {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
@@ -72,6 +74,7 @@ export const createAppContext = (): AppContext => {
       lifetimeMetricsStore,
       inferenceRequestStore,
       controllerSettingsStore,
+      controllerRequestStore,
     },
   } satisfies AppContext;
 

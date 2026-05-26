@@ -16,6 +16,7 @@ import {
   createMutatingAuthMiddleware,
   createMutatingRateLimitMiddleware,
 } from "./security-middleware";
+import { createControllerRequestObservabilityMiddleware } from "./observability-middleware";
 
 /**
  * Create the Hono application.
@@ -50,6 +51,7 @@ export const createApp = (context: AppContext): Hono => {
     await next();
   });
 
+  app.use("*", createControllerRequestObservabilityMiddleware(context));
   app.use("*", createMutatingRateLimitMiddleware(context));
   app.use("*", createMutatingAuthMiddleware(context));
 
