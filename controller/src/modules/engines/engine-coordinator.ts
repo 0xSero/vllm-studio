@@ -120,6 +120,7 @@ interface CoordinatorDeps { config: Config;
         } }
  try {
         const { fetchLocal } = await import("../../http/local-fetch"); const response = await fetchLocal(this.deps.config.inference_port, "/health", {
+          host: this.deps.config.inference_host,
           timeoutMs: 5000, });
         if (response.status === 200) { return { ready: true };
         } } catch {

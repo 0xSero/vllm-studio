@@ -13,6 +13,7 @@ export interface Config {
   port: number;
   api_key?: string;
   cors_origins?: string[];
+  inference_host: string;
   inference_port: number;
 
   data_dir: string;
@@ -105,6 +106,7 @@ export const createConfig = (): Config => {
     VLLM_STUDIO_API_KEY: z.string().optional(),
     VLLM_STUDIO_ALLOW_UNAUTHENTICATED: z.string().optional(),
     VLLM_STUDIO_CORS_ORIGINS: z.string().optional(),
+    VLLM_STUDIO_INFERENCE_HOST: z.string().default("localhost"),
     VLLM_STUDIO_INFERENCE_PORT: z.coerce.number().int().positive().default(8000),
 
     VLLM_STUDIO_DATA_DIR: z.string().default(defaultDataDirectory),
@@ -128,6 +130,7 @@ export const createConfig = (): Config => {
   const config: Config = {
     host,
     port: parsed.VLLM_STUDIO_PORT,
+    inference_host: parsed.VLLM_STUDIO_INFERENCE_HOST.trim() || "localhost",
     inference_port: parsed.VLLM_STUDIO_INFERENCE_PORT,
 
     data_dir: resolve(parsed.VLLM_STUDIO_DATA_DIR),
