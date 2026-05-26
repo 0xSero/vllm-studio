@@ -134,18 +134,22 @@ export function SettingsGroup({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  // macOS-style inset grouped list: a small label above an elevated card, with
+  // the explanatory text dropped to a footnote beneath it.
   return (
-    <section>
-      <div className="flex items-center justify-between gap-3 px-4 py-2">
-        <div>
-          <h3 className="text-[13px] font-medium tracking-[-0.01em] text-(--fg)">{title}</h3>
-          {description ? (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-(--dim)">{description}</p>
-          ) : null}
+    <section className="mb-6 last:mb-0">
+      {title || actions ? (
+        <div className="mb-1.5 flex items-end justify-between gap-3 px-3.5">
+          <h3 className="text-[12px] font-semibold tracking-[-0.005em] text-(--dim)">{title}</h3>
+          {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
+      ) : null}
+      <div className="overflow-hidden rounded-[10px] border border-(--border) bg-(--surface) [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:left-3.5 [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--separator) [&>*]:relative">
+        {children}
       </div>
-      <div className="divide-y divide-(--border)">{children}</div>
+      {description ? (
+        <p className="mt-1.5 px-3.5 text-[11px] leading-relaxed text-(--dim)">{description}</p>
+      ) : null}
     </section>
   );
 }
@@ -159,8 +163,10 @@ export function SettingsRow({
   actions,
   children,
 }: RowProps) {
+  // Left-inset hairline dividers are drawn by the parent card (SettingsGroup)
+  // so every child — rows and custom controls alike — is separated uniformly.
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+    <div className="flex min-h-[40px] items-center justify-between gap-4 px-3.5 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="text-[13px] text-(--fg)">{label}</div>
         {description ? (
@@ -269,11 +275,11 @@ export function SettingsInput({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       placeholder={placeholder}
-      className={`h-7 w-full rounded-md border border-(--border) bg-(--surface) px-2.5 text-[13px] text-(--fg) outline-none transition placeholder:text-(--dim)/50 focus:border-(--accent)/30 ${className}`}
+      className={`h-7 w-full rounded-md border border-(--separator) bg-(--bg) px-2.5 text-[13px] text-(--fg) outline-none transition placeholder:text-(--dim)/50 focus:border-(--accent)/40 ${className}`}
     />
   );
 }
 
 export function EmptySafeNotice({ children }: { children: ReactNode }) {
-  return <div className="py-1 text-[12px] leading-relaxed text-(--dim)">{children}</div>;
+  return <div className="px-3.5 py-2.5 text-[12px] leading-relaxed text-(--dim)">{children}</div>;
 }
