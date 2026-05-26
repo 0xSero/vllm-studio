@@ -72,6 +72,46 @@ function contentPartAt(
   return null;
 }
 
+function contentPartLooksReasoning(part: Record<string, unknown> | null | undefined): boolean {
+  const type = typeof part?.type === "string" ? part.type.toLowerCase() : "";
+  return (
+    type === "thinking" ||
+    type === "reasoning" ||
+    typeof part?.thinking === "string" ||
+    typeof part?.reasoning === "string" ||
+    typeof part?.reasoning_content === "string"
+  );
+}
+
+function messageUpdateLooksReasoning(
+  assistantMessageEvent: Record<string, unknown>,
+  event: Record<string, unknown>,
+): boolean {
+  return (
+    contentPartLooksReasoning(asRecord(assistantMessageEvent.partial)) ||
+    contentPartLooksReasoning(contentPartAt(event.message, assistantMessageEvent.contentIndex)) ||
+    contentPartLooksReasoning(
+      contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),
+    )
+  );
+}
+
+function deltaKindFromMessageUpdate(
+  assistantMessageEvent: Record<string, unknown> | undefined,
+  event: Record<string, unknown>,
+): "text" | "thinking" | null {
+  if (!assistantMessageEvent || typeof assistantMessageEvent.delta !== "string") return null;
+  if (
+    assistantMessageEvent.type === "thinking_delta" ||
+    assistantMessageEvent.type === "reasoning_delta" ||
+    assistantMessageEvent.type === "reasoning_text_delta"
+  ) {
+    return "thinking";
+  }
+  if (assistantMessageEvent.type !== "text_delta") return null;
+  return messageUpdateLooksReasoning(assistantMessageEvent, event) ? "thinking" : "text";
+}
+
 export function toolCallSnapshotFromUpdate(
   assistantMessageEvent: Record<string, unknown> | undefined,
   message?: unknown,
@@ -142,16 +182,9 @@ function applyMessageUpdateToBlocks(
   makeId: MakeBlockId,
 ): AssistantBlock[] | null {
   const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
-  if (ame?.type === "text_delta" && typeof ame.delta === "string") {
-    return appendDelta(blocks, "text", ame.delta, makeId);
-  }
-  if (
-    (ame?.type === "thinking_delta" ||
-      ame?.type === "reasoning_delta" ||
-      ame?.type === "reasoning_text_delta") &&
-    typeof ame.delta === "string"
-  ) {
-    return appendDelta(blocks, "thinking", ame.delta, makeId);
+  const deltaKind = deltaKindFromMessageUpdate(ame, event);
+  if (deltaKind && typeof ame?.delta === "string") {
+    return appendDelta(blocks, deltaKind, ame.delta, makeId);
   }
   if (ame?.type === "toolcall_start") return applyToolCallStart(blocks, ame, event);
   if (ame?.type === "toolcall_delta") return applyToolCallDelta(blocks, ame, event);

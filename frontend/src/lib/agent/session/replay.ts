@@ -36,32 +36,41 @@ const toolArgs = (part: Record<string, unknown>): Record<string, unknown> | unde
     ? (part.arguments as Record<string, unknown>)
     : undefined;
 
-function blockFromContentPart(part: Record<string, unknown>): AssistantBlock | null {
-  if (part.type === "text" && typeof part.text === "string") {
-    return { kind: "text", id: newId("text"), text: part.text };
+function blockFromContentPart(part: Record<string, unknown>): AssistantBlock[] {
+  if (part.type === "text") {
+    const reasoningText = typeof part.reasoning_content === "string" ? part.reasoning_content : "";
+    const text = typeof part.text === "string" ? part.text : "";
+    return [
+      ...(reasoningText
+        ? [{ kind: "thinking" as const, id: newId("thinking"), text: reasoningText }]
+        : []),
+      ...(text ? [{ kind: "text" as const, id: newId("text"), text }] : []),
+    ];
   }
   if (part.type === "thinking" && typeof part.thinking === "string") {
-    return { kind: "thinking", id: newId("thinking"), text: part.thinking };
+    return [{ kind: "thinking", id: newId("thinking"), text: part.thinking }];
   }
   if (part.type === "reasoning") {
     const text = [part.reasoning, part.thinking, part.text].find(
       (value): value is string => typeof value === "string",
     );
-    return text ? { kind: "thinking", id: newId("thinking"), text } : null;
+    return text ? [{ kind: "thinking", id: newId("thinking"), text }] : [];
   }
-  if (part.type !== "toolCall") return null;
+  if (part.type !== "toolCall") return [];
 
   const args = toolArgs(part);
   const argsText = JSON.stringify(part.arguments ?? {}, null, 2);
-  return {
-    kind: "tool",
-    id: typeof part.id === "string" ? part.id : newId("tool"),
-    name: typeof part.name === "string" ? part.name : "tool",
-    status: "running",
-    argsText,
-    args,
-    text: argsText,
-  };
+  return [
+    {
+      kind: "tool",
+      id: typeof part.id === "string" ? part.id : newId("tool"),
+      name: typeof part.name === "string" ? part.name : "tool",
+      status: "running",
+      argsText,
+      args,
+      text: argsText,
+    },
+  ];
 }
 
 function blocksFromMessageContent(
@@ -71,10 +80,7 @@ function blocksFromMessageContent(
     return content ? [{ kind: "text", id: newId("text"), text: content }] : [];
   }
   if (!isRecordArray(content)) return [];
-  return content.flatMap((part) => {
-    const block = blockFromContentPart(part);
-    return block ? [block] : [];
-  });
+  return content.flatMap(blockFromContentPart);
 }
 
 const messageTextFromBlocks = (blocks: AssistantBlock[]): string =>
