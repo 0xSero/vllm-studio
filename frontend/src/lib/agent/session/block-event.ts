@@ -145,7 +145,12 @@ function applyMessageUpdateToBlocks(
   if (ame?.type === "text_delta" && typeof ame.delta === "string") {
     return appendDelta(blocks, "text", ame.delta, makeId);
   }
-  if (ame?.type === "thinking_delta" && typeof ame.delta === "string") {
+  if (
+    (ame?.type === "thinking_delta" ||
+      ame?.type === "reasoning_delta" ||
+      ame?.type === "reasoning_text_delta") &&
+    typeof ame.delta === "string"
+  ) {
     return appendDelta(blocks, "thinking", ame.delta, makeId);
   }
   if (ame?.type === "toolcall_start") return applyToolCallStart(blocks, ame, event);

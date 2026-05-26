@@ -49,7 +49,7 @@ export function Timeline({
 
   if (emptyPrompt) {
     return (
-      <div className="flex min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2">
+      <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
         <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-1">
           <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
             <p className="max-w-[680px]">
@@ -67,7 +67,7 @@ export function Timeline({
     <div
       ref={scrollerRef}
       data-timeline-scroller
-      className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
+      className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
     >
       <div data-timeline-list className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
         {visibleMessages.map((message, index) => {

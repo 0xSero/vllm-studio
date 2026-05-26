@@ -121,11 +121,25 @@ export function useTimelineScrollEffects({
       if (rafId != null) return;
       rafId = window.requestAnimationFrame(evaluate);
     };
+    const restickIfAtBottom = () => {
+      if (stickRef.current) return;
+      window.requestAnimationFrame(() => {
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX;
+        if (!atBottom) return;
+        stickRef.current = true;
+        onChangeRef.current?.(true);
+        scrollToBottom();
+      });
+    };
     const markUserScrollIntent = () => {
       userScrollIntentUntil = performance.now() + USER_SCROLL_INTENT_MS;
     };
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) markUserScrollIntent();
+      if (event.deltaY < 0) {
+        markUserScrollIntent();
+        return;
+      }
+      if (event.deltaY > 0) restickIfAtBottom();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.target !== el) return;
@@ -140,6 +154,10 @@ export function useTimelineScrollEffects({
     const onKeyDown = (event: KeyboardEvent) => {
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
         markUserScrollIntent();
+        return;
+      }
+      if (["ArrowDown", "PageDown", "End"].includes(event.key)) {
+        restickIfAtBottom();
       }
     };
 

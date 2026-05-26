@@ -49,6 +49,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.agent-workspace {
+  background-color: var(--agent-bg);
+  background-image: none;
+}
+
 /* Links default to inherited color so UI chrome (sidebar, settings, nav,
    tabs, etc.) is not painted with --hl1 blue. Markdown/content links opt in
    via their own Tailwind color classes (e.g. text-(--accent)). */

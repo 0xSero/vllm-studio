@@ -25,6 +25,7 @@ type ReplayState = {
   pendingAssistantId: string | null;
   title: string | null;
   startedAt: string | null;
+  modelId: string | null;
 };
 
 const isRecordArray = (value: unknown): value is Array<Record<string, unknown>> =>
@@ -41,6 +42,12 @@ function blockFromContentPart(part: Record<string, unknown>): AssistantBlock | n
   }
   if (part.type === "thinking" && typeof part.thinking === "string") {
     return { kind: "thinking", id: newId("thinking"), text: part.thinking };
+  }
+  if (part.type === "reasoning") {
+    const text = [part.reasoning, part.thinking, part.text].find(
+      (value): value is string => typeof value === "string",
+    );
+    return text ? { kind: "thinking", id: newId("thinking"), text } : null;
   }
   if (part.type !== "toolCall") return null;
 
@@ -217,8 +224,18 @@ const applyAssistantPiEvent = (state: ReplayState, event: Record<string, unknown
 };
 
 const applySessionStart = (state: ReplayState, event: Record<string, unknown>): void => {
-  if (state.startedAt || event.type !== "session" || typeof event.timestamp !== "string") return;
-  state.startedAt = event.timestamp;
+  if (event.type === "session") {
+    if (!state.startedAt && typeof event.timestamp === "string") state.startedAt = event.timestamp;
+    if (!state.modelId && typeof event.modelId === "string") state.modelId = event.modelId;
+    if (!state.modelId && typeof event.model === "string") state.modelId = event.model;
+    if (!state.modelId && typeof event.model_id === "string") state.modelId = event.model_id;
+    return;
+  }
+
+  if (event.type === "model_change") {
+    if (typeof event.modelId === "string") state.modelId = event.modelId;
+    if (typeof event.model === "string") state.modelId = event.model;
+  }
 };
 
 // ----- full session replay -----
@@ -227,12 +244,14 @@ export function replaySessionEvents(events: Record<string, unknown>[]): {
   messages: ChatMessage[];
   title: string | null;
   startedAt: string | null;
+  modelId: string | null;
 } {
   const state: ReplayState = {
     messages: [],
     pendingAssistantId: null,
     title: null,
     startedAt: null,
+    modelId: null,
   };
 
   for (const event of events) {
@@ -241,5 +260,10 @@ export function replaySessionEvents(events: Record<string, unknown>[]): {
     applyAssistantPiEvent(state, event);
   }
 
-  return { messages: state.messages, title: state.title, startedAt: state.startedAt };
+  return {
+    messages: state.messages,
+    title: state.title,
+    startedAt: state.startedAt,
+    modelId: state.modelId,
+  };
 }

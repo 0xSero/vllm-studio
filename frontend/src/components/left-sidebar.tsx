@@ -173,7 +173,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       {!isExpanded ? (
         <button
           onClick={() => setDesktopSidebarPinnedOpen(true)}
-          className="fixed left-3 top-3 z-50 hidden h-8 w-8 items-center justify-center rounded-md bg-(--bg)/70 text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg) md:flex"
+          className="fixed left-3 top-3 z-50 hidden h-8 w-8 items-center justify-center rounded-md bg-(--sidebar-bg)/70 text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg) md:flex"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
@@ -181,7 +181,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         </button>
       ) : null}
       <aside
-        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--rail) flex-col shrink-0 z-40 overflow-hidden ${
+        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${
           sidebarResizing ? "" : "transition-[width] duration-150 ease-out"
         } ${isExpanded ? "" : "w-0 border-r-0"}`}
         style={{
@@ -209,7 +209,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
           {isExpanded ? (
             <>
               {/* Header with window controls + nav arrows */}
-              <div className="sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between px-1.5 bg-(--rail)">
+              <div className="sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between px-1.5 bg-(--sidebar-bg)">
                 <button
                   onClick={() => setDesktopSidebarPinnedOpen(false)}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
@@ -318,7 +318,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       />
 
       {/* Main content */}
-      <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--bg) md:pt-0">
+      <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0">
         {children}
       </main>
     </div>

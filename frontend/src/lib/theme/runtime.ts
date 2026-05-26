@@ -108,14 +108,6 @@ export function applyFontSizeToDocument(fontSizeId: FontSizeId): FontSizeId {
   return nextSize.id;
 }
 
-export function getCurrentThemeMode(): "light" | "dark" | "system" {
-  if (typeof document === "undefined") return "dark";
-  const attr = document.documentElement.getAttribute("data-theme");
-  if (attr?.startsWith("omlx-light")) return "light";
-  if (attr?.startsWith("omlx-dark")) return "dark";
-  return "system";
-}
-
 export function applyTokensToDocument(tokens: ThemeTokens): void {
   if (typeof document === "undefined") return;
   setThemeTokens(tokens);

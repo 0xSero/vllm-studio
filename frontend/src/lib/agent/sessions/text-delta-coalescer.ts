@@ -133,7 +133,13 @@ export function textDeltaFromPiEvent(event: Record<string, unknown>): DeltaEvent
   const delta = assistantMessageEvent?.delta;
   if (typeof delta !== "string" || !delta) return null;
   if (assistantMessageEvent.type === "text_delta") return { kind: "text", delta };
-  if (assistantMessageEvent.type === "thinking_delta") return { kind: "thinking", delta };
+  if (
+    assistantMessageEvent.type === "thinking_delta" ||
+    assistantMessageEvent.type === "reasoning_delta" ||
+    assistantMessageEvent.type === "reasoning_text_delta"
+  ) {
+    return { kind: "thinking", delta };
+  }
   return null;
 }
 

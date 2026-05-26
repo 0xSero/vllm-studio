@@ -99,12 +99,16 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
     this.activePromptCount = 0;
     this.lastError = null;
 
-    const { providerId, modelId: backendModelId } = resolvePiModelSelection(modelId);
     const { models, agentDir } = await refreshPiModels();
-    const selectedModel = models.find((model) => model.id === modelId);
+    const selectedModel = models.find(
+      (model) => model.id === modelId || model.rawId === modelId || model.name === modelId,
+    );
     if (!selectedModel) {
       throw new Error(`Model '${modelId}' is not available from /v1/models.`);
     }
+    const resolvedSelection = resolvePiModelSelection(selectedModel.id);
+    const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
+    const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
 
     const sessionOptions = await buildAgentSessionOptions({ options });
     applyRuntimeEnvInjections(sessionOptions.envInjections);

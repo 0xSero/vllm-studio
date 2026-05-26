@@ -26,6 +26,7 @@ export type RuntimeStatus = {
   active?: boolean;
   running?: boolean;
   piSessionId?: string | null;
+  modelId?: string | null;
   eventSeq?: number;
   events?: RuntimeLoggedEvent[];
   contextUsage?: RuntimeContextUsage | null;
@@ -46,6 +47,7 @@ export async function loadRuntimeStatus(
         active?: boolean;
         running?: boolean;
         piSessionId?: string | null;
+        modelId?: string | null;
         eventSeq?: number;
         contextUsage?: RuntimeContextUsage | null;
       };

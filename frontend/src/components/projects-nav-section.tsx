@@ -617,7 +617,7 @@ function ProjectRow({
   };
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim)/55 transition-colors hover:bg-(--hover) hover:text-(--fg)/75">
+      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/80">
         {" "}
         <button
           type="button"
@@ -626,9 +626,9 @@ function ProjectRow({
           className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
         >
           {icon === "chat" ? (
-            <ChatIcon className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-65" />
+            <ChatIcon className="h-3.5 w-3.5 shrink-0 opacity-55 transition-opacity group-hover:opacity-75" />
           ) : (
-            <span className="relative h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-65">
+            <span className="relative h-3.5 w-3.5 shrink-0 opacity-55 transition-opacity group-hover:opacity-75">
               {" "}
               <Folder
                 className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-100"}`}
@@ -638,7 +638,7 @@ function ProjectRow({
               />{" "}
             </span>
           )}
-          <span className="truncate text-[13px] font-normal text-(--dim)/90 transition-colors group-hover:text-(--fg)/78">
+          <span className="truncate text-[13px] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
             {project.name}
           </span>{" "}
           {!project.exists ? (

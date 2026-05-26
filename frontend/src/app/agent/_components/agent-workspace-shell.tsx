@@ -66,7 +66,7 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
   const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
   return (
-    <div className="agent-workspace flex h-full min-h-0 w-full flex-col bg-(--bg) text-(--fg) md:h-[100dvh]">
+    <div className="agent-workspace flex h-full min-h-0 w-full flex-col bg-(--agent-bg) text-(--fg) md:h-[100dvh]">
       <div className="flex min-h-0 flex-1">
         <section className="relative flex min-w-0 flex-1 flex-col">
           <WorkspaceTopBar
@@ -221,7 +221,7 @@ function selectWorkspacePaneView(
   if (!pane) return null;
   const session = activeSession(state, paneId);
   const project = projects.resolveProject(session);
-  const modelId = session?.modelId ?? state.selectedModel;
+  const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
   const gitSummary = projects.gitSummary(project?.path);
   return {
     paneId,
@@ -238,6 +238,32 @@ function selectWorkspacePaneView(
     canClose: collectLeaves(state.layout).length > 1,
     isFocused: state.focusedPaneId === paneId,
   };
+}
+
+function resolvePaneModelId(
+  sessionModelId: string | undefined,
+  selectedModelId: string,
+  models: AgentModel[],
+): string {
+  const candidates = [sessionModelId, selectedModelId].filter((value): value is string =>
+    Boolean(value?.trim()),
+  );
+  for (const candidate of candidates) {
+    const exact = models.find((model) => model.id === candidate);
+    if (exact) return exact.id;
+    const alias = models.find(
+      (model) =>
+        model.rawId === candidate || model.name === candidate || model.id.endsWith(`/${candidate}`),
+    );
+    if (alias) return alias.id;
+  }
+  return (
+    selectedModelId ||
+    sessionModelId ||
+    models.find((model) => model.active)?.id ||
+    models[0]?.id ||
+    ""
+  );
 }
 
 function renderWorkspacePane({
@@ -257,7 +283,7 @@ function renderWorkspacePane({
       paneId={view.paneId}
       runtimeSessionId={view.pane.runtimeSessionId}
       modelId={view.modelId}
-      modelName={view.model?.name ?? null}
+      modelName={view.model?.name ?? view.modelId ?? null}
       modelsLoading={state.modelsLoading}
       contextWindow={view.model?.contextWindow ?? 0}
       cwd={view.cwd}
@@ -310,9 +336,10 @@ function ModelPicker({
   const [open, setOpen] = useState(false);
   const controllerLabel = useActiveControllerLabel();
   const active = models.find((model) => model.id === selectedModel) || null;
+  const fallbackLabel = selectedModel || "";
   const triggerLabel = loading
-    ? "Loading…"
-    : active?.name || (models.length === 0 ? "No models" : "Select model");
+    ? active?.name || fallbackLabel || "Loading…"
+    : active?.name || fallbackLabel || (models.length === 0 ? "No models" : "Select model");
   const disabled = loading || models.length === 0;
 
   return (

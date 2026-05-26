@@ -904,7 +904,7 @@ export function ChatPane({
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--bg)"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--agent-bg)"
     >
       {showHeader ? (
         <ChatPaneHeader
@@ -936,7 +936,7 @@ export function ChatPane({
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-(--bg) px-6 pb-1.5 pt-2">
+      <form onSubmit={sendMessage} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
         {visibleQueueItems.length > 0 ? (
           <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
             <button

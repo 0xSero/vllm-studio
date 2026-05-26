@@ -545,7 +545,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           events,
           runtimeActive ? runtimeStatus?.events : [],
         );
-        const { messages, title, startedAt } = replaySessionEvents(replayEvents);
+        const {
+          messages,
+          title,
+          startedAt,
+          modelId: replayModelId,
+        } = replaySessionEvents(replayEvents);
         const tokenStats = [...replayEvents]
           .reverse()
           .map(usageFromEvent)
@@ -556,7 +561,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           messages,
           piSessionId,
           cwd: session.cwd || cwd,
-          modelId: session.modelId || modelId,
+          modelId: session.modelId || replayModelId || runtimeStatus?.modelId || modelId,
           title: title ?? session.title,
           startedAt: startedAt ?? session.startedAt,
           tokenStats: tokenStats ?? session.tokenStats,
