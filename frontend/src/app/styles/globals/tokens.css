@@ -59,13 +59,13 @@
   /* Codex-inspired gray ladder, quieter than the original app.
      Ladder: #0d0d0d #121212 #181818 #212121 #282828 #303030
              #414141 #5d5d5d #8a8a8a #afafaf #d6d6d6 */
-  --bg: #0d0d0d;
+  --bg: #121212;
   --fg: #e0e0e0;
   --dim: #888888;
   --surface: #181818;
   --surface-2: #212121;
   --surface-3: #282828;
-  --rail: #121212;
+  --rail: #0d0d0d;
 
   --border: rgba(255, 255, 255, 0.06);
   --separator: rgba(255, 255, 255, 0.09);

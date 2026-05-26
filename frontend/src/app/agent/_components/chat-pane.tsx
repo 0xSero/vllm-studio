@@ -1374,7 +1374,7 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="relative z-20 mx-auto mt-0.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
+        <div className="relative z-20 mx-auto mt-2.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <div className="min-w-0 max-w-[42%] shrink overflow-visible">
