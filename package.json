@@ -7,6 +7,8 @@
     "release:notes:week": "node scripts/release-statement.mjs --since '1 week ago'",
     "release:check-commits": "node scripts/check-conventional-commits.mjs --range origin/main..HEAD",
     "setup:git-hooks": "git config core.hooksPath .githooks && chmod +x .githooks/*",
+    "test:controller:integration": "cd controller && bun run test:integration",
+    "test:frontend:e2e": "npm --prefix frontend run test:e2e",
     "frontend:lint": "npm --prefix frontend run lint",
     "frontend:typecheck": "npm --prefix frontend run typecheck",
     "frontend:check": "npm --prefix frontend run check:quality",

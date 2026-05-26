@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,6 +8,7 @@
     "start": "node scripts/start-standalone.mjs",
     "start:next": "next start",
     "test": "tsx --test scripts/test-build-agent-session-options.ts",
+    "test:e2e": "tsx --test ../tests/frontend/e2e/*.test.ts",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",

@@ -6,23 +6,23 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Confirm project instructions and current git state.
-- [x] Confirm Droid CLI is available.
-- [x] Rewrite top-level and module README files with clear architecture, prerequisites, controller deployment, controller connection, agent, and module links.
-- [x] Remove the requested stale local directories: `work/`, `docs/`, and `test-results/`.
-- [x] Validate documentation-only changes.
+- [x] Add the requested `tests/frontend/e2e`, `tests/controller/integration`, and `tests/controller/e2e` directories.
+- [x] Add frontend agent regression tests for session reconnect hydration, active session merging, split idempotence, queue/follow-up drain, compaction event rendering, and skill mention context.
+- [x] Add controller integration route-contract tests for status, mock model listing, controller proxy validation, and structured vram-calculator errors.
+- [x] Add package scripts for the new focused test suites.
+- [x] Validate the new test slice.
 - [x] Commit, push, and release this slice.
 
 ## Backlog
 
-- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills.
+- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, splitting, queue/follow-up, compacting, and skills; browser screenshot coverage, forking, extension UI, and file tagging remain.
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
-- [ ] Add controller integration and e2e tests for all active controller flows.
+- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts; full active-flow coverage remains.
 - [ ] Add controller observability for success, failure, error, path, and function-call tracking.
 - [ ] Surface observability data in `/usage` and validate it end to end.
-- [ ] Deploy controller to Pop!_OS after killing the old controller from this device.
+- [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments.
 - [ ] Audit package scripts and remove irrelevant commands.

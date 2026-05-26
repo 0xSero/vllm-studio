@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\"",
+    "test:integration": "bun test ../tests/controller/integration",
     "typecheck": "tsc --noEmit",
     "standards": "bun scripts/controller-standards-audit.ts",
     "prepare": "cd ../.. && husky controller/.husky",
