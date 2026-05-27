@@ -1857,6 +1857,52 @@ describe("controller route contracts", () => {
     );
   });
 
+  test("usage still returns controller observability when inference aggregation fails", async () => {
+    const [{ createAppContext }, { createApp }] = await Promise.all([
+      import("../../../controller/src/app-context"),
+      import("../../../controller/src/http/app"),
+    ]);
+    const context = createAppContext();
+    const aggregate = context.stores.inferenceRequestStore.aggregate.bind(
+      context.stores.inferenceRequestStore,
+    );
+    context.stores.inferenceRequestStore.aggregate = () => {
+      throw new Error("forced aggregate failure");
+    };
+    const app = createApp(context);
+
+    await app.request("/status");
+
+    const response = await app.request("/usage");
+    const body = await response.json();
+
+    context.stores.inferenceRequestStore.aggregate = aggregate;
+
+    expect(response.status).toBe(200);
+    expect(body.totals).toMatchObject({
+      total_requests: 0,
+      successful_requests: 0,
+      failed_requests: 0,
+    });
+    expect(body.controller.totals).toMatchObject({
+      total_requests: 1,
+      successful_requests: 1,
+      failed_requests: 0,
+      success_rate: 100,
+    });
+    expect(body.controller.by_path).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "GET",
+          path: "/status",
+          requests: 1,
+          successful: 1,
+          failed: 0,
+        }),
+      ]),
+    );
+  });
+
   test("controller observability persists normalized raw rows for every route action", async () => {
     const app = await createTestApp();
 
