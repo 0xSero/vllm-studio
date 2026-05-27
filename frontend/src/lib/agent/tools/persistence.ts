@@ -1,6 +1,3 @@
-// Storage keys and read/write helpers for tool UI state. The shape of the
-// keys matches the historical ones so existing localStorage data still loads.
-
 import type { BrowserState, ComputerState, ComputerTab } from "./types";
 
 export const BROWSER_TOOL_KEY = "vllm-studio.agent.browserToolEnabled";
@@ -105,12 +102,9 @@ function remove(key: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(key);
-  } catch {
-    // Ignore.
-  }
+  } catch {}
 }
 
-/** One-shot migrations that clean up older formats. Safe to call repeatedly. */
 export function migrateToolStorage(): void {
   if (!read(BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY)) {
     write(BROWSER_TOOL_KEY, "0");
