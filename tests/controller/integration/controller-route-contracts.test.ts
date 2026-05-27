@@ -249,6 +249,110 @@ describe("controller route contracts", () => {
     );
   });
 
+  test("HuggingFace model search route normalizes list and exact-match results", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://huggingface.co/api/models?")) {
+        const params = new URL(url).searchParams;
+        expect(params.get("search")).toBe("owner/model");
+        expect(params.get("filter")).toBe("text-generation");
+        expect(params.get("sort")).toBe("downloads");
+        expect(params.get("limit")).toBe("3");
+        return new Response(
+          JSON.stringify([
+            {
+              id: "skip/model",
+              downloads: 1,
+              likes: 0,
+              private: false,
+              tags: [],
+            },
+            {
+              id: "other/model",
+              downloads: "12",
+              likes: "3",
+              private: false,
+              tags: ["text-generation"],
+            },
+            {
+              modelId: "owner/model",
+              downloads: 5,
+              likes: 2,
+              private: false,
+              tags: ["duplicate"],
+            },
+          ]),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url === "https://huggingface.co/api/models/owner/model") {
+        return new Response(
+          JSON.stringify({
+            _id: "exact-id",
+            modelId: "owner/model",
+            downloads: 99,
+            likes: 7,
+            private: false,
+            tags: ["exact"],
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ detail: "unexpected URL" }), { status: 500 });
+    };
+
+    try {
+      const app = await createTestApp();
+      const response = await app.request(
+        "/v1/huggingface/models?search=owner/model&filter=text-generation&sort=downloads&limit=2&offset=1",
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(requestedUrls).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("https://huggingface.co/api/models?"),
+          "https://huggingface.co/api/models/owner/model",
+        ]),
+      );
+      expect(body).toEqual([
+        expect.objectContaining({
+          _id: "exact-id",
+          modelId: "owner/model",
+          downloads: 99,
+          likes: 7,
+          private: false,
+          tags: ["exact"],
+        }),
+        expect.objectContaining({
+          _id: "other/model",
+          modelId: "other/model",
+          downloads: 12,
+          likes: 3,
+          private: false,
+          tags: ["text-generation"],
+        }),
+      ]);
+
+      const rows = readControllerRequestRows();
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "GET",
+            path: "/v1/huggingface/models",
+            status: 200,
+            success: 1,
+          }),
+        ]),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("invalid controller proxy targets fail before any upstream request is made", async () => {
     const app = await createTestApp();
     const response = await app.request(
