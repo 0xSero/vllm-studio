@@ -313,7 +313,6 @@ export const createProcessManager = (
       }
       let spawnError: string | null = null;
 
-      // Use pipes to capture stdout/stderr for forwarding
       const child = spawn(entry, command.slice(1), {
         stdio: ["ignore", "pipe", "pipe"],
         env,
@@ -324,7 +323,6 @@ export const createProcessManager = (
         spawnError = String(error);
       });
 
-      // Create log file stream
       let logStream: WriteStream | null = null;
       try {
         logStream = createWriteStream(logFile, { flags: "a" });
@@ -334,7 +332,6 @@ export const createProcessManager = (
         });
       }
 
-      // Forward stdout to log file and event manager
       if (child.stdout) {
         const rl = createInterface({
           input: child.stdout,
@@ -350,7 +347,6 @@ export const createProcessManager = (
         });
       }
 
-      // Forward stderr to log file and event manager
       if (child.stderr) {
         const rl = createInterface({
           input: child.stderr,
@@ -366,7 +362,6 @@ export const createProcessManager = (
         });
       }
 
-      // Close log stream when process exits
       child.on("exit", () => {
         if (logStream) {
           logStream.end();
