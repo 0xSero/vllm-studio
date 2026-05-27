@@ -1,8 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { getApiKey } from "@/lib/api-key";
 import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
 import { resolveControllerEventsBaseUrl } from "@/lib/backend-config";
@@ -43,27 +42,43 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     ? `${apiBaseUrl}/events?api_key=${encodeURIComponent(apiKey)}`
     : `${apiBaseUrl}/events`;
 
-  useLegacyEffect(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-    const es = new EventSource(sseUrl);
-    eventSourceRef.current = es;
+  const subscribeControllerEvents = useCallback(
+    (_notify: () => void) => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+      const es = new EventSource(sseUrl);
+      eventSourceRef.current = es;
 
-    for (const type of CONTROLLER_EVENT_TYPES) {
-      es.addEventListener(type, (event) => handleMessage(event as MessageEvent));
-    }
+      for (const type of CONTROLLER_EVENT_TYPES) {
+        es.addEventListener(type, (event) => handleMessage(event as MessageEvent));
+      }
 
-    es.onmessage = (event) => handleMessage(event as MessageEvent);
+      es.onmessage = (event) => handleMessage(event as MessageEvent);
 
-    return () => {
-      es.close();
-    };
-  }, [backendRevision, handleMessage, sseUrl]);
+      return () => {
+        es.close();
+      };
+    },
+    [backendRevision, handleMessage, sseUrl],
+  );
 
-  useLegacyEffect(() => {
+  const subscribeBackendChanges = useCallback((_notify: () => void) => {
     const reconnect = () => setBackendRevision((value) => value + 1);
     window.addEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
     return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
   }, []);
+
+  useSyncExternalStore(
+    subscribeControllerEvents,
+    getControllerEventsSnapshot,
+    getControllerEventsSnapshot,
+  );
+  useSyncExternalStore(
+    subscribeBackendChanges,
+    getControllerEventsSnapshot,
+    getControllerEventsSnapshot,
+  );
 }
+
+const getControllerEventsSnapshot = (): number => 0;
