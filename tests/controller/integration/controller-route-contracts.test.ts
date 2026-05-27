@@ -320,6 +320,167 @@ describe("controller route contracts", () => {
     expect(rows.every((row) => row.success === 1)).toBe(true);
   });
 
+  test("studio operational routes expose storage contracts and validate model file actions", async () => {
+    const modelsDir = process.env.VLLM_STUDIO_MODELS_DIR;
+    if (!modelsDir) throw new Error("VLLM_STUDIO_MODELS_DIR is required for tests");
+    const modelPath = join(modelsDir, "studio-route-model");
+    const targetRoot = join(modelsDir, "archive");
+    const movedModelPath = join(targetRoot, "studio-route-model");
+    mkdirSync(modelPath, { recursive: true });
+    writeFileSync(
+      join(modelPath, "config.json"),
+      JSON.stringify({
+        architectures: ["RouteTestForCausalLM"],
+        max_position_embeddings: 4096,
+      }),
+      "utf8",
+    );
+    writeFileSync(join(modelPath, "model.safetensors"), "test", "utf8");
+    const app = await createTestApp();
+
+    const diagnosticsResponse = await app.request("/studio/diagnostics");
+    const diagnosticsBody = await diagnosticsResponse.json();
+    expect(diagnosticsResponse.status).toBe(200);
+    expect(diagnosticsBody).toMatchObject({
+      app_version: expect.any(String),
+      platform: expect.any(String),
+      arch: expect.any(String),
+      release: expect.any(String),
+      cpu_cores: expect.any(Number),
+      config: {
+        host: "127.0.0.1",
+        port: 18080,
+        inference_port: 65534,
+        api_key_configured: false,
+        models_dir: modelsDir,
+        data_dir: tempDir,
+        db_path: join(tempDir, "controller.db"),
+      },
+    });
+    expect(Array.isArray(diagnosticsBody.gpus)).toBe(true);
+    expect(Array.isArray(diagnosticsBody.disks)).toBe(true);
+
+    const storageResponse = await app.request("/studio/storage");
+    const storageBody = await storageResponse.json();
+    expect(storageResponse.status).toBe(200);
+    expect(storageBody).toMatchObject({
+      models_dir: modelsDir,
+      model_count: 1,
+      model_bytes: 4,
+      disk: { path: modelsDir },
+    });
+
+    const recommendationsResponse = await app.request("/studio/recommendations");
+    const recommendationsBody = await recommendationsResponse.json();
+    expect(recommendationsResponse.status).toBe(200);
+    expect(Array.isArray(recommendationsBody.recommendations)).toBe(true);
+    expect(typeof recommendationsBody.max_vram_gb).toBe("number");
+
+    const providerModelsResponse = await app.request("/studio/provider-models");
+    const providerModelsBody = await providerModelsResponse.json();
+    expect(providerModelsResponse.status).toBe(200);
+    expect(providerModelsBody).toEqual({ providers: [] });
+
+    const missingDeletePathResponse = await app.request("/studio/models/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const missingDeletePathBody = await missingDeletePathResponse.json();
+    expect(missingDeletePathResponse.status).toBe(400);
+    expect(missingDeletePathBody).toEqual({ detail: "path is required" });
+
+    const outsideDeletePathResponse = await app.request("/studio/models/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: tempDir }),
+    });
+    const outsideDeletePathBody = await outsideDeletePathResponse.json();
+    expect(outsideDeletePathResponse.status).toBe(400);
+    expect(outsideDeletePathBody).toEqual({ detail: "path must be inside models_dir" });
+
+    const missingMovePathResponse = await app.request("/studio/models/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const missingMovePathBody = await missingMovePathResponse.json();
+    expect(missingMovePathResponse.status).toBe(400);
+    expect(missingMovePathBody).toEqual({ detail: "source_path and target_root are required" });
+
+    const moveResponse = await app.request("/studio/models/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source_path: modelPath, target_root: targetRoot }),
+    });
+    const moveBody = await moveResponse.json();
+    expect(moveResponse.status).toBe(200);
+    expect(moveBody).toEqual({ success: true, target: movedModelPath });
+
+    const deleteResponse = await app.request("/studio/models/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: movedModelPath }),
+    });
+    const deleteBody = await deleteResponse.json();
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteBody).toEqual({ success: true });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/diagnostics",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/storage",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/recommendations",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/provider-models",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/models/delete",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/models/delete",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/models/move",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/models/move",
+          status: 200,
+          success: 1,
+        }),
+      ]),
+    );
+  }, 15_000);
+
   test("recipe CRUD routes persist success and not-found observability", async () => {
     const app = await createTestApp();
     const recipePayload = {
