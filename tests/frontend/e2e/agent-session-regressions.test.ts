@@ -360,6 +360,7 @@ test("text deltas stay visible answer text when partial history already has reas
     assistantMessageEvent: {
       type: "text_delta",
       delta: "Here is the final answer.",
+      contentIndex: 0,
       partial: {
         role: "assistant",
         reasoning_content: "I should inspect this first.",
@@ -383,6 +384,24 @@ test("text deltas stay visible answer text when partial history already has reas
   assert.deepEqual(textDeltaFromPiEvent(event), {
     kind: "text",
     delta: "Here is the final answer.",
+  });
+});
+
+test("explicit reasoning deltas render under reasoning", () => {
+  const event = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "reasoning_delta",
+      delta: "I should inspect this first.",
+    },
+  };
+
+  const blocks = applyAssistantPiEventToBlocks([], event);
+  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.text, "I should inspect this first.");
+  assert.deepEqual(textDeltaFromPiEvent(event), {
+    kind: "thinking",
+    delta: "I should inspect this first.",
   });
 });
 

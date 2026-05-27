@@ -140,10 +140,7 @@ export function textDeltaFromPiEvent(event: Record<string, unknown>): DeltaEvent
     return { kind: "thinking", delta };
   }
   if (assistantMessageEvent.type === "text_delta") {
-    return {
-      kind: messageUpdateLooksReasoning(assistantMessageEvent, event) ? "thinking" : "text",
-      delta,
-    };
+    return { kind: "text", delta };
   }
   return null;
 }
@@ -180,40 +177,6 @@ function syntheticDeltaEvent(
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-}
-
-function contentPartAt(
-  messageLike: unknown,
-  contentIndex: unknown,
-): Record<string, unknown> | undefined {
-  const message = asRecord(messageLike);
-  const content = Array.isArray(message?.content) ? message.content : null;
-  if (!content) return undefined;
-  if (typeof contentIndex === "number") return asRecord(content[contentIndex]);
-  return undefined;
-}
-
-function contentPartLooksReasoning(part: Record<string, unknown> | undefined): boolean {
-  const type = typeof part?.type === "string" ? part.type.toLowerCase() : "";
-  return (
-    type === "thinking" ||
-    type === "reasoning" ||
-    typeof part?.thinking === "string" ||
-    typeof part?.reasoning === "string" ||
-    typeof part?.reasoning_content === "string"
-  );
-}
-
-function messageUpdateLooksReasoning(
-  assistantMessageEvent: Record<string, unknown>,
-  event: Record<string, unknown>,
-): boolean {
-  return (
-    contentPartLooksReasoning(contentPartAt(event.message, assistantMessageEvent.contentIndex)) ||
-    contentPartLooksReasoning(
-      contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),
-    )
-  );
 }
 
 function defaultScheduleFrame(callback: () => void): FrameToken {

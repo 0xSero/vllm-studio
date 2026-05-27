@@ -68,32 +68,8 @@ function contentPartAt(
   return null;
 }
 
-function contentPartLooksReasoning(part: Record<string, unknown> | null | undefined): boolean {
-  const type = typeof part?.type === "string" ? part.type.toLowerCase() : "";
-  return (
-    type === "thinking" ||
-    type === "reasoning" ||
-    typeof part?.thinking === "string" ||
-    typeof part?.reasoning === "string" ||
-    typeof part?.reasoning_content === "string"
-  );
-}
-
-function messageUpdateLooksReasoning(
-  assistantMessageEvent: Record<string, unknown>,
-  event: Record<string, unknown>,
-): boolean {
-  return (
-    contentPartLooksReasoning(contentPartAt(event.message, assistantMessageEvent.contentIndex)) ||
-    contentPartLooksReasoning(
-      contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),
-    )
-  );
-}
-
 function deltaKindFromMessageUpdate(
   assistantMessageEvent: Record<string, unknown> | undefined,
-  event: Record<string, unknown>,
 ): "text" | "thinking" | null {
   if (!assistantMessageEvent || typeof assistantMessageEvent.delta !== "string") return null;
   if (
@@ -104,7 +80,7 @@ function deltaKindFromMessageUpdate(
     return "thinking";
   }
   if (assistantMessageEvent.type !== "text_delta") return null;
-  return messageUpdateLooksReasoning(assistantMessageEvent, event) ? "thinking" : "text";
+  return "text";
 }
 
 export function toolCallSnapshotFromUpdate(
@@ -177,7 +153,7 @@ function applyMessageUpdateToBlocks(
   makeId: MakeBlockId,
 ): AssistantBlock[] | null {
   const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
-  const deltaKind = deltaKindFromMessageUpdate(ame, event);
+  const deltaKind = deltaKindFromMessageUpdate(ame);
   if (deltaKind && typeof ame?.delta === "string") {
     return appendDelta(blocks, deltaKind, ame.delta, makeId);
   }
