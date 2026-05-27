@@ -35,7 +35,6 @@ const readRocmVersion = (): string | null => {
         return readFileSync(overridden, "utf-8").trim() || null;
       }
     } catch {
-      // ignore
     }
   }
 
@@ -52,7 +51,6 @@ const readRocmVersion = (): string | null => {
       }
     }
   } catch {
-    // ignore
   }
 
   for (const filePath of candidates) {
@@ -62,7 +60,6 @@ const readRocmVersion = (): string | null => {
         if (content) return content;
       }
     } catch {
-      // ignore
     }
   }
 
