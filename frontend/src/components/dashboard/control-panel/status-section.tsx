@@ -47,12 +47,10 @@ export function StatusSection({
   onViewAll,
 }: StatusSectionProps) {
   const modelName =
-    isStatusLoading && !currentProcess
-      ? "Checking controller"
-      : currentRecipe?.name ||
-        currentProcess?.served_model_name ||
-        currentProcess?.model_path?.split("/").pop() ||
-        "No model loaded";
+    currentRecipe?.name ||
+    currentProcess?.served_model_name ||
+    currentProcess?.model_path?.split("/").pop() ||
+    "No model loaded";
   const modelSampleKey =
     currentProcess?.served_model_name || currentProcess?.model_path || currentRecipe?.id || "idle";
   const isRunning = !!currentProcess;
@@ -169,10 +167,10 @@ export function StatusSection({
   const statusLine = (
     <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.04em]">
       <StatusDot running={isRunning} loading={isStatusLoading} />
-      <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">
-        {isStatusLoading ? "Checking" : isRunning ? "Active" : "Standby"}
+      <span className="inline-block w-[5.75rem] font-medium uppercase tracking-[0.14em] text-(--dim)">
+        {isRunning ? "Active" : "Standby"}
       </span>
-      {isStatusLoading ? <Tag>loading</Tag> : !isConnected ? <Tag tone="err">offline</Tag> : null}
+      {!isConnected && !isStatusLoading ? <Tag tone="err">offline</Tag> : null}
       {backend && <Tag>{backend}</Tag>}
       {displayPlatformKind && <Tag>{displayPlatformKind}</Tag>}
       {displayPort && (
