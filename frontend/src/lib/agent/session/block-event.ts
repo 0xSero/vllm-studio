@@ -8,8 +8,6 @@ import type { AssistantBlock, ToolBlock } from "./types";
 
 export type MakeBlockId = (prefix: string) => string;
 
-// ----- block mutation primitives -----
-
 export function appendDelta(
   blocks: AssistantBlock[],
   kind: "text" | "thinking",
@@ -48,8 +46,6 @@ export function appendEventBlock(
   if (last?.kind === "event" && last.text === text) return blocks;
   return [...blocks, { kind: "event", id: makeId("event"), text }];
 }
-
-// ----- streaming tool-call extraction helpers -----
 
 export type StreamingToolCallSnapshot = {
   id: string;
