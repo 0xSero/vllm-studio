@@ -45,8 +45,6 @@ export type RecipePayload =
   & Pick<RecipeBase, "id" | "name" | "model_path">
   & Partial<Omit<RecipeBase, "id" | "name" | "model_path">>;
 
-// ── Downloads ────────────────────────────────────────────────────────────────
-
 export type DownloadStatus =
   | "queued"
   | "downloading"
