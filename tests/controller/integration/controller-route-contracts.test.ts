@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -419,6 +419,120 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "POST",
           path: "/runtime/jobs",
+          status: 400,
+          success: 0,
+        }),
+      ]),
+    );
+  });
+
+  test("monitoring and log routes persist operational observability", async () => {
+    const logsDir = join(tempDir, "logs");
+    mkdirSync(logsDir, { recursive: true });
+    writeFileSync(join(logsDir, "vllm_route-test.log"), "first line\nsecond line\n", "utf8");
+    const app = await createTestApp();
+
+    const prometheusResponse = await app.request("/metrics");
+    const prometheusText = await prometheusResponse.text();
+    expect(prometheusResponse.status).toBe(200);
+    expect(prometheusResponse.headers.get("content-type")).toContain("text/plain");
+    expect(prometheusText).toContain("vllm_studio");
+
+    const currentMetricsResponse = await app.request("/v1/metrics/vllm");
+    const currentMetricsBody = await currentMetricsResponse.json();
+    expect(currentMetricsResponse.status).toBe(200);
+    expect(currentMetricsBody).toMatchObject({
+      model_id: null,
+      model_path: null,
+      served_model_name: null,
+    });
+
+    const peakMetricsResponse = await app.request("/peak-metrics");
+    const peakMetricsBody = await peakMetricsResponse.json();
+    expect(peakMetricsResponse.status).toBe(200);
+    expect(peakMetricsBody).toEqual({ metrics: [] });
+
+    const missingPeakResponse = await app.request("/peak-metrics?model_id=missing-model");
+    const missingPeakBody = await missingPeakResponse.json();
+    expect(missingPeakResponse.status).toBe(200);
+    expect(missingPeakBody).toEqual({ error: "No metrics for this model" });
+
+    const lifetimeResponse = await app.request("/lifetime-metrics");
+    const lifetimeBody = await lifetimeResponse.json();
+    expect(lifetimeResponse.status).toBe(200);
+    expect(lifetimeBody).toMatchObject({
+      tokens_total: 0,
+      requests_total: 0,
+      energy_wh: 0,
+      current_power_watts: 0,
+    });
+
+    const logsResponse = await app.request("/logs");
+    const logsBody = await logsResponse.json();
+    expect(logsResponse.status).toBe(200);
+    expect(logsBody.sessions).toEqual([
+      expect.objectContaining({
+        id: "route-test",
+        recipe_id: "route-test",
+        model: "route-test",
+        status: "stopped",
+      }),
+    ]);
+
+    const logResponse = await app.request("/logs/route-test?limit=1");
+    const logBody = await logResponse.json();
+    expect(logResponse.status).toBe(200);
+    expect(logBody).toEqual({
+      id: "route-test",
+      logs: ["second line"],
+      content: "second line",
+    });
+
+    const missingLogResponse = await app.request("/logs/missing-log");
+    const missingLogBody = await missingLogResponse.json();
+    expect(missingLogResponse.status).toBe(404);
+    expect(missingLogBody).toEqual({ detail: "Log not found" });
+
+    const controllerDeleteResponse = await app.request("/logs/controller", {
+      method: "DELETE",
+    });
+    const controllerDeleteBody = await controllerDeleteResponse.json();
+    expect(controllerDeleteResponse.status).toBe(400);
+    expect(controllerDeleteBody).toEqual({ detail: "controller logs cannot be deleted via API" });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: "/metrics", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/v1/metrics/vllm",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({ method: "GET", path: "/peak-metrics", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/lifetime-metrics",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({ method: "GET", path: "/logs", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/logs/route-test",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/logs/missing-log",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "DELETE",
+          path: "/logs/controller",
           status: 400,
           success: 0,
         }),
