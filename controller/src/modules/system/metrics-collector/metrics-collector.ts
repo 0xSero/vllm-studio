@@ -114,11 +114,6 @@ const positiveOrUndefined = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-/**
- * Start background metrics collection.
- * @param context - App context.
- * @returns Stop function.
- */
 interface SessionPeaks {
   prompt_throughput: number;
   generation_throughput: number;
@@ -181,11 +176,6 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
   let sessionPeaks: SessionPeaks = emptyPeaks();
   let metricsUnavailableUntil = 0;
 
-  /**
-   * Scrape Prometheus metrics from vLLM.
-   * @param port - Inference port.
-   * @returns Metrics map.
-   */
   const scrapeVllmMetrics = async (port: number): Promise<Record<string, number>> => {
     try {
       if (Date.now() < metricsUnavailableUntil) {
@@ -222,10 +212,6 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
     }
   };
 
-  /**
-   * Execute a single metrics collection cycle.
-   * @returns Promise resolving after the cycle.
-   */
   const collect = async (): Promise<void> => {
     try {
       const current = await context.processManager.findInferenceProcess(
