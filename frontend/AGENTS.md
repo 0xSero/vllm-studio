@@ -12,9 +12,7 @@ This addendum introduces commit hygiene rules for agent execution.
 ### Required turn-close flow
 
 1. `git add <files-changed-this-turn>`
-2. Run pre-commit checks against staged files:
-   - Preferred (if present): `./.husky/pre-commit`
-   - Fallback: `npx lint-staged --config .lintstagedrc.json`
+2. Run pre-commit checks against staged files: `npm run precommit`
 3. If checks fail, fix issues and rerun checks.
 4. Commit: `git commit -m "micro: <concise change summary>"`
 5. Report commit SHA and hook/check output in the handoff.
