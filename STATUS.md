@@ -6,8 +6,8 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect controller proxy route coverage gaps.
-- [x] Add deterministic integration coverage for successful `/controllers/route/*` forwarding and observability.
+- [x] Inspect controller proxy mutating-route coverage gaps.
+- [x] Add deterministic integration coverage for `/controllers/route/*` POST body forwarding, upstream status propagation, and observability.
 - [x] Validate controller integration slice.
 - [x] Commit this slice.
 

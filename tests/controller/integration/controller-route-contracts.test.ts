@@ -431,6 +431,75 @@ describe("controller route contracts", () => {
     }
   });
 
+  test("controller proxy forwards mutating request bodies and upstream statuses", async () => {
+    const upstreamRequests: Array<{
+      path: string;
+      method: string;
+      contentType: string | null;
+      body: unknown;
+    }> = [];
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        upstreamRequests.push({
+          path: url.pathname,
+          method: request.method,
+          contentType: request.headers.get("content-type"),
+          body: await request.json(),
+        });
+        return Response.json(
+          {
+            accepted: true,
+            received: upstreamRequests.at(-1)?.body,
+          },
+          { status: 202 },
+        );
+      },
+    });
+
+    try {
+      const app = await createTestApp();
+      const target = `http://127.0.0.1:${upstream.port}`;
+      const payload = { model: "mock-model", messages: [{ role: "user", content: "hi" }] };
+      const response = await app.request(
+        `/controllers/route/v1/chat/completions?target=${encodeURIComponent(target)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(response.headers.get("x-vllm-routed-controller")).toBe(target);
+      expect(body).toEqual({ accepted: true, received: payload });
+      expect(upstreamRequests).toEqual([
+        {
+          path: "/v1/chat/completions",
+          method: "POST",
+          contentType: "application/json",
+          body: payload,
+        },
+      ]);
+
+      const rows = readControllerRequestRows();
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "POST",
+            path: "/controllers/route/v1/chat/completions",
+            status: 202,
+            success: 1,
+          }),
+        ]),
+      );
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test("vram calculator rejects malformed requests with structured errors", async () => {
     const app = await createTestApp();
     const response = await app.request("/vram-calculator", {
