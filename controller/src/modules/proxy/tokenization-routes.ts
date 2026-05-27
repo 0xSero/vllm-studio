@@ -2,11 +2,6 @@ import type { Hono } from "hono";
 import type { AppContext } from "../../types/context";
 import { fetchInference } from "../../services/inference/inference-client";
 
-/**
- * Register tokenization and title routes.
- * @param app - Hono app.
- * @param context - App context.
- */
 export const registerTokenizationRoutes = (app: Hono, context: AppContext): void => {
   app.post("/v1/tokenize", async (ctx) => {
     const current = await context.processManager.findInferenceProcess(
