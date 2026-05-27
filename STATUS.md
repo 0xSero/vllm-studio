@@ -9,7 +9,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [x] Inspect controller `/usage` route observability aggregation fields.
 - [x] Add integration coverage for status buckets, latency summary, and recent activity.
 - [x] Validate controller usage aggregation coverage slice.
-- [ ] Commit this slice.
+- [x] Commit this slice.
 
 ## Backlog
 
