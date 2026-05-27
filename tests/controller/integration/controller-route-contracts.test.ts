@@ -721,6 +721,81 @@ describe("controller route contracts", () => {
     );
   });
 
+  test("audio routes reject invalid requests with structured observable errors", async () => {
+    const app = await createTestApp();
+
+    const missingFileForm = new FormData();
+    missingFileForm.set("model", "missing-stt-model");
+    const missingFileResponse = await app.request("/v1/audio/transcriptions", {
+      method: "POST",
+      body: missingFileForm,
+    });
+    const missingFileBody = await missingFileResponse.json();
+    expect(missingFileResponse.status).toBe(400);
+    expect(missingFileBody).toEqual({
+      code: "file_missing",
+      error: "Multipart field 'file' is required",
+    });
+
+    const missingInputResponse = await app.request("/v1/audio/speech", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "missing-tts-model" }),
+    });
+    const missingInputBody = await missingInputResponse.json();
+    expect(missingInputResponse.status).toBe(400);
+    expect(missingInputBody).toEqual({
+      code: "input_missing",
+      error: "input is required and cannot be empty",
+    });
+
+    const unsupportedFormatResponse = await app.request("/v1/audio/speech", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: "Say hello",
+        model: "missing-tts-model",
+        response_format: "mp3",
+      }),
+    });
+    const unsupportedFormatBody = await unsupportedFormatResponse.json();
+    expect(unsupportedFormatResponse.status).toBe(400);
+    expect(unsupportedFormatBody).toEqual({
+      code: "unsupported_response_format",
+      error: "Only response_format='wav' is supported",
+    });
+
+    const missingModelResponse = await app.request("/v1/audio/speech", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: "Say hello" }),
+    });
+    const missingModelBody = await missingModelResponse.json();
+    expect(missingModelResponse.status).toBe(400);
+    expect(missingModelBody).toEqual({
+      code: "model_missing",
+      error: "No TTS model provided. Set model field or VLLM_STUDIO_TTS_MODEL.",
+    });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/audio/transcriptions",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/audio/speech",
+          status: 400,
+          success: 0,
+        }),
+      ]),
+    );
+  });
+
   test("usage includes persisted controller route observability", async () => {
     const app = await createTestApp();
 
