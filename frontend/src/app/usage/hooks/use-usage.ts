@@ -1,11 +1,10 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "../lib/normalize-usage-stats";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 function normalizePeakNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -61,9 +60,15 @@ export function useUsage(source: UsageSource = "provider") {
     }
   }, [source]);
 
-  useLegacyEffect(() => {
-    loadStats();
-  }, [loadStats]);
+  const subscribeUsageStats = useCallback(
+    (_notify: () => void) => {
+      void loadStats();
+      return () => {};
+    },
+    [loadStats],
+  );
+
+  useSyncExternalStore(subscribeUsageStats, getUsageSnapshot, getUsageSnapshot);
 
   const dailyByModel = useMemo(() => {
     if (!stats || !stats.daily_by_model || !Array.isArray(stats.daily_by_model)) {
@@ -176,3 +181,5 @@ export function useUsage(source: UsageSource = "provider") {
     toggleRow,
   };
 }
+
+const getUsageSnapshot = (): number => 0;
