@@ -20,11 +20,6 @@ import {
   tailFileLines,
 } from "../../core/log-files";
 
-/**
- * Register log and SSE routes.
- * @param app - Hono app.
- * @param context - App context.
- */
 export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
   let lastCleanupAt = 0;
 
@@ -35,11 +30,6 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
     cleanupLogFiles(context.config.data_dir, getLogCleanupDefaultsFromEnvironment());
   };
 
-  /**
-   * Resolve log file path for a session id.
-   * @param sessionId - Session identifier.
-   * @returns Path to log file.
-   */
   const assertSafeSessionId = (sessionId: string): string => {
     const safe = sanitizeLogSessionId(sessionId);
     if (!safe) throw badRequest("Invalid log session id");
