@@ -691,6 +691,23 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "compat.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "config.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+      ]),
+    );
   }, 15_000);
 
   test("studio settings and provider CRUD routes persist observable contracts", async () => {

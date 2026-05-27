@@ -65,7 +65,9 @@ export const registerSystemRoutes = (app: Hono, context: AppContext): void => {
   });
 
   app.get("/compat", async (ctx) => {
-    const known = await context.processManager.findInferenceProcess(context.config.inference_port);
+    const known = await observeControllerFunction(context, "compat.findInferenceProcess", () =>
+      context.processManager.findInferenceProcess(context.config.inference_port)
+    );
     const runtime = await getSystemRuntimeInfo(context.config, known);
     const portOpen = await checkService(
       SYSTEM_SERVICE_CHECK_HOST,
@@ -221,8 +223,8 @@ export const registerSystemRoutes = (app: Hono, context: AppContext): void => {
       description: "Controller service (Bun/Hono)",
     });
 
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(context, "config.findInferenceProcess", () =>
+      context.processManager.findInferenceProcess(context.config.inference_port)
     );
     const inferenceStatus = current ? "running" : "stopped";
 
