@@ -5,7 +5,6 @@ import { useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
 import type { LaunchStage } from "@/lib/types";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 
@@ -185,12 +184,9 @@ function start() {
 }
 
 export function useSidebarStatus(): SidebarStatusSnapshot {
-  useLegacyEffect(() => {
-    start();
-  }, []);
-
   const snap = useSyncExternalStore(
     (onStoreChange) => {
+      start();
       listeners.add(onStoreChange);
       return () => listeners.delete(onStoreChange);
     },

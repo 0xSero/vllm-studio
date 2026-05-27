@@ -6,8 +6,8 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect remaining agent browser and workspace navigation effect modules.
-- [x] Replace agent browser and workspace URL navigation effects with `useSyncExternalStore`.
+- [x] Inspect controller/model polling hooks.
+- [x] Replace downloads polling, model lifecycle recipe hydration, and sidebar status bootstrap with `useSyncExternalStore`.
 - [x] Verify touched files no longer reference effect hooks.
 - [x] Validate useEffect-removal slice.
 - [x] Commit this slice.
@@ -25,7 +25,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slice removes empty/generated JSDoc blocks from controller source and tooling; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
-- [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages. Current slices remove effect usage from click-outside, pane-grid drag tracking, git diff loading, localhost browser scanning, active canvas selection, canvas hydration, browser-event toggling, plugin panel loading, tools catalogue loading, workspace hydration, agent browser events, and workspace URL navigation; broader direct effect and `useLegacyEffect` cleanup remains.
+- [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages. Current slices remove effect usage from click-outside, pane-grid drag tracking, git diff loading, localhost browser scanning, active canvas selection, canvas hydration, browser-event toggling, plugin panel loading, tools catalogue loading, workspace hydration, agent browser events, workspace URL navigation, downloads polling, model recipe hydration, and sidebar status bootstrapping; broader direct effect and `useLegacyEffect` cleanup remains.
 
 ## Constraints
 
