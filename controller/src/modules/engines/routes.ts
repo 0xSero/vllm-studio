@@ -83,8 +83,6 @@ const parseRuntimeJobBody = async (ctx: {
 export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   const launchAbortControllers = new Map<string, AbortController>();
 
-  // ── Recipe CRUD (from lifecycle-routes) ──
-
   app.get("/recipes", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
     const current = await context.engineService.getCurrentProcess();
@@ -140,8 +138,6 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     );
     return ctx.json({ success: true });
   });
-
-  // ── Launch / Evict / Cancel (from lifecycle-routes) ──
 
   app.post("/launch/:recipeId", async (ctx) => {
     const recipeId = ctx.req.param("recipeId");
@@ -238,8 +234,6 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     return ctx.json({ ready: false, elapsed: timeout, error: "Timeout waiting for backend" });
   });
 
-  // ── Downloads (from downloads/routes) ──
-
   app.get("/studio/downloads", async (ctx) => {
     const downloads = context.engineService.listDownloads();
     return ctx.json({ downloads });
@@ -292,8 +286,6 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     const download = context.engineService.cancelDownload(id);
     return ctx.json({ download });
   });
-
-  // ── Runtime info (from runtime-routes) ──
 
   app.get("/runtime/targets", async (ctx) => {
     const current = await context.engineService.getCurrentProcess();
@@ -394,8 +386,6 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     const smiTool = resolveRocmSmiTool();
     return ctx.json(getRocmInfo(smiTool));
   });
-
-  // ── Runtime upgrade ──
 
   app.post("/runtime/vllm/upgrade", async (ctx) => {
     const body = await parseRuntimeJobBody(ctx);
