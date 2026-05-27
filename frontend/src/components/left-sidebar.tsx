@@ -6,6 +6,7 @@ import {
   useCallback,
   useRef,
   useState,
+  useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -29,7 +30,6 @@ import { useAppStore } from "@/store";
 import { ProjectsNavSection } from "@/components/projects-nav-section";
 import { SessionsCommand } from "@/components/sessions-command";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 type ActiveSessionDetail = {
   projectId: string;
@@ -93,17 +93,19 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
-  useLegacyEffect(() => {
-    if (!mobileMenuOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mobileMenuOpen]);
+  const subscribeMobileMenuEscape = useCallback(
+    (_notify: () => void) => {
+      if (!mobileMenuOpen) return () => {};
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setMobileMenuOpen(false);
+      };
+      document.addEventListener("keydown", onKeyDown);
+      return () => document.removeEventListener("keydown", onKeyDown);
+    },
+    [mobileMenuOpen],
+  );
 
-  // Global Cmd/Ctrl+K opens the session search palette.
-  useLegacyEffect(() => {
+  const subscribeSearchHotkey = useCallback((_notify: () => void) => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -114,9 +116,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Mirror active sessions broadcast by the agent workspace so the palette
-  // can show what's running even when the user is on a non-agent route.
-  useLegacyEffect(() => {
+  const subscribeActiveSessions = useCallback((_notify: () => void) => {
     const onActive = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveSessionDetail[] }>).detail;
       setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);
@@ -125,12 +125,16 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
   }, []);
 
-  useLegacyEffect(
-    () => () => {
+  const subscribeResizeCleanup = useCallback((_notify: () => void) => {
+    return () => {
       resizeCleanupRef.current?.();
-    },
-    [],
-  );
+    };
+  }, []);
+
+  useSyncExternalStore(subscribeMobileMenuEscape, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
+  useSyncExternalStore(subscribeSearchHotkey, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
+  useSyncExternalStore(subscribeActiveSessions, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
+  useSyncExternalStore(subscribeResizeCleanup, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
 
   const startSidebarResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -448,3 +452,5 @@ function NavItemDesktop({
     </Link>
   );
 }
+
+const getLeftSidebarSnapshot = (): number => 0;
