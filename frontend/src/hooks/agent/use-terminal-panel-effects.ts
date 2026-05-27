@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useCallback, useSyncExternalStore, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/lib/agent/contracts/terminal";
@@ -37,6 +37,8 @@ type FallbackSession = {
   previousCwd: string | null;
 };
 
+const getTerminalPanelSnapshot = (): number => 0;
+
 export function useTerminalPanelEffects({
   containerRef,
   cwd,
@@ -46,7 +48,7 @@ export function useTerminalPanelEffects({
   cwd: string | null;
   stateRef: RefObject<TerminalRefs>;
 }): void {
-  useEffect(() => {
+  const subscribeTerminal = useCallback(() => {
     const refs = stateRef.current;
     refs.disposed = false;
     refs.input = "";
@@ -155,6 +157,8 @@ export function useTerminalPanelEffects({
       refs.fit = null;
     };
   }, [containerRef, cwd, stateRef]);
+
+  useSyncExternalStore(subscribeTerminal, getTerminalPanelSnapshot, getTerminalPanelSnapshot);
 }
 
 async function bootPty(
