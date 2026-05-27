@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import type { BrowserEventsSubscription } from "@/lib/agent/workspace/effects";
 
 export function useBrowserEventsEffects({
@@ -8,8 +8,15 @@ export function useBrowserEventsEffects({
   browserEvents: BrowserEventsSubscription;
   enabled: boolean;
 }) {
-  useEffect(() => {
-    browserEvents.setEnabled(enabled);
-    return () => browserEvents.setEnabled(false);
-  }, [browserEvents, enabled]);
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      browserEvents.setEnabled(enabled);
+      return () => browserEvents.setEnabled(false);
+    },
+    [browserEvents, enabled],
+  );
+
+  useSyncExternalStore(subscribe, getBrowserEventsSnapshot, getBrowserEventsSnapshot);
 }
+
+const getBrowserEventsSnapshot = (): number => 0;
