@@ -21,8 +21,6 @@ export const createToolCallStream = (
   let visibleContentBuffer = "";
   let toolCallsFound = false;
   let usageTracked = false;
-  let thinkCarry = "";
-  let inThink = false;
   let emittedLines = 0;
   let downstreamClosed = false;
   let firstTokenTracked = false;
@@ -131,61 +129,79 @@ export const createToolCallStream = (
     return text;
   };
 
-  const rewriteThinkDelta = (
-    deltaText: string,
-    defaultToReasoning = false
-  ): { content: string; reasoningAppend: string } => {
-    const combined = thinkCarry + (deltaText ?? "");
-    const combinedLower = combined.toLowerCase();
-    let carryIndex = combined.length;
-    let index = 0;
-    let contentOut = "";
-    let reasoningOut = "";
-
-    while (index < carryIndex) {
-      const remainingLower = combinedLower.slice(index);
-
-      if (combined[index] === "<") {
-        const thinkTag = isThinkingTag(remainingLower);
-        if (thinkTag?.kind === "open") {
-          inThink = true;
-          index += thinkTag.length;
-          continue;
-        }
-        if (thinkTag?.kind === "close") {
-          if (!inThink) {
-            const before = contentOut.trim();
-            if (before) {
-              reasoningOut += contentOut;
-              contentOut = "";
-            }
-          }
-          inThink = false;
-          index += thinkTag.length;
-          continue;
-        }
-        if (thinkingTagPrefixIsPartial(remainingLower)) {
-          carryIndex = index;
-          break;
-        }
-      }
-
-      const ch = combined[index] ?? "";
-      if (inThink || defaultToReasoning) {
-        reasoningOut += ch;
-      } else {
-        contentOut += ch;
-      }
-      index += 1;
-    }
-
-    thinkCarry = carryIndex < combined.length ? combined.slice(carryIndex) : "";
+  const createThinkRewriter = () => {
+    let inThink = false;
+    let thinkCarry = "";
 
     return {
-      content: contentOut,
-      reasoningAppend: reasoningOut,
+      inThink(): boolean {
+        return inThink;
+      },
+      drainCarry(): string {
+        const tail = thinkCarry;
+        thinkCarry = "";
+        return tail;
+      },
+      rewrite(
+        deltaText: string,
+        defaultToReasoning = false,
+      ): { content: string; reasoningAppend: string } {
+        const combined = thinkCarry + (deltaText ?? "");
+        const combinedLower = combined.toLowerCase();
+        let carryIndex = combined.length;
+        let index = 0;
+        let contentOut = "";
+        let reasoningOut = "";
+
+        while (index < carryIndex) {
+          const remainingLower = combinedLower.slice(index);
+
+          if (combined[index] === "<") {
+            const thinkTag = isThinkingTag(remainingLower);
+            if (thinkTag?.kind === "open") {
+              inThink = true;
+              index += thinkTag.length;
+              continue;
+            }
+            if (thinkTag?.kind === "close") {
+              if (!inThink) {
+                const before = contentOut.trim();
+                if (before) {
+                  reasoningOut += contentOut;
+                  contentOut = "";
+                }
+              }
+              inThink = false;
+              index += thinkTag.length;
+              continue;
+            }
+            if (thinkingTagPrefixIsPartial(remainingLower)) {
+              carryIndex = index;
+              break;
+            }
+          }
+
+          const ch = combined[index] ?? "";
+          if (inThink || defaultToReasoning) {
+            reasoningOut += ch;
+          } else {
+            contentOut += ch;
+          }
+          index += 1;
+        }
+
+        thinkCarry = carryIndex < combined.length ? combined.slice(carryIndex) : "";
+
+        return {
+          content: contentOut,
+          reasoningAppend: reasoningOut,
+        };
+      },
     };
   };
+
+  const contentThink = createThinkRewriter();
+  const reasoningThink = createThinkRewriter();
 
   const enqueueLine = (
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -229,12 +245,11 @@ export const createToolCallStream = (
   };
 
   const flushThinkCarry = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
-    if (!thinkCarry) return;
-    const tail = thinkCarry;
-    thinkCarry = "";
+    const tail = contentThink.drainCarry();
+    if (!tail) return;
     const carryLooksLikeThink = thinkingTagPrefixIsPartial(tail.trim());
     const chunk =
-      inThink || carryLooksLikeThink
+      contentThink.inThink() || carryLooksLikeThink
         ? buildFlushChunk({ reasoning_content: stripToolXmlDelta(tail) })
         : buildFlushChunk({ content: stripToolXmlDelta(tail) });
     if (chunk) enqueueLine(controller, chunk);
@@ -367,7 +382,7 @@ export const createToolCallStream = (
             let reasoningFromContent = "";
             if (content) {
               visibleContentBuffer += content;
-              const rewritten = rewriteThinkDelta(content, hasActiveToolCalls);
+              const rewritten = contentThink.rewrite(content, hasActiveToolCalls);
               const cleanedContent = stripToolXmlDelta(rewritten.content);
               if (cleanedContent) {
                 delta["content"] = cleanedContent;
@@ -380,7 +395,7 @@ export const createToolCallStream = (
             }
 
             if (reasoningRaw) {
-              const rewrittenReasoning = rewriteThinkDelta(reasoningRaw, true);
+              const rewrittenReasoning = reasoningThink.rewrite(reasoningRaw, true);
               reasoning = rewrittenReasoning.reasoningAppend;
             }
 
