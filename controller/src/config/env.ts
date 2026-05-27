@@ -4,9 +4,6 @@ import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 
-/**
- * Runtime configuration for the controller.
- */
 export interface Config {
   host: string;
   port: number;
@@ -27,10 +24,6 @@ export interface Config {
   providers: ProviderConfig[];
 }
 
-/**
- * Load the closest .env file from current or parent directories.
- * @returns The loaded .env path or undefined.
- */
 export const loadDotEnvironment = (): string | undefined => {
   const candidates = [
     resolve(process.cwd(), ".env"),
@@ -45,10 +38,6 @@ export const loadDotEnvironment = (): string | undefined => {
   return envPath;
 };
 
-/**
- * Create a validated runtime configuration from environment variables.
- * @returns Validated configuration object.
- */
 export const createConfig = (): Config => {
   loadDotEnvironment();
 

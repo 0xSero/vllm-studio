@@ -17,10 +17,6 @@ import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
 
-/**
- * Create the application dependency container.
- * @returns AppContext instance.
- */
 export const createAppContext = (): AppContext => {
   const config = createConfig();
 

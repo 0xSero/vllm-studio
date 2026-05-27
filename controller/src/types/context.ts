@@ -13,9 +13,6 @@ import type { InferenceRequestStore } from "../stores/inference-request-store";
 import type { ControllerSettingsStore } from "../stores/controller-settings-store";
 import type { ControllerRequestStore } from "../stores/controller-request-store";
 
-/**
- * Application-wide dependency container.
- */
 export interface AppContext {
   config: Config;
   logger: Logger;
