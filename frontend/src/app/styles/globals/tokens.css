@@ -1,4 +1,4 @@
-/* CRITICAL — theme system
+/* Theme system
 
    Single source of truth for the visual language. Every component reads from
    these CSS variables; no hardcoded colors, radii, or row heights live in
