@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Layers, RefreshCw, Save, X } from "lucide-react";
 import api from "@/lib/api";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
@@ -16,7 +16,6 @@ import {
 import { RecipeModalTabBar } from "./recipe-modal-tab-bar";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 import { RecipeModalTabContent } from "./tabs/tab-content";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function RecipeModal({
   recipe,
@@ -57,24 +56,29 @@ export function RecipeModal({
   const isLlamacpp = backend === "llamacpp";
   const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
 
-  useLegacyEffect(() => {
-    if (!isLlamacpp) return;
-    if (llamaConfigHelp) return;
+  const subscribeLlamaConfigHelp = useCallback(
+    (_notify: () => void) => {
+      if (!isLlamacpp) return () => {};
+      if (llamaConfigHelp) return () => {};
 
-    let cancelled = false;
-    api
-      .getLlamacppRuntimeConfig()
-      .then((result) => {
-        if (!cancelled) setLlamaConfigHelp(result);
-      })
-      .catch((error) => {
-        if (!cancelled) setLlamaConfigHelp({ config: null, error: (error as Error).message });
-      });
+      let cancelled = false;
+      api
+        .getLlamacppRuntimeConfig()
+        .then((result) => {
+          if (!cancelled) setLlamaConfigHelp(result);
+        })
+        .catch((error) => {
+          if (!cancelled) setLlamaConfigHelp({ config: null, error: (error as Error).message });
+        });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [isLlamacpp, llamaConfigHelp]);
+      return () => {
+        cancelled = true;
+      };
+    },
+    [isLlamacpp, llamaConfigHelp],
+  );
+
+  useSyncExternalStore(subscribeLlamaConfigHelp, getRecipeModalSnapshot, getRecipeModalSnapshot);
 
   const getExtraArgValueForKeyLocal = (key: string): unknown => {
     return getExtraArgValueForKey(recipe.extra_args ?? {}, key);
@@ -265,3 +269,5 @@ export function RecipeModal({
     </div>
   );
 }
+
+const getRecipeModalSnapshot = (): number => 0;
