@@ -36,14 +36,8 @@ export interface LaunchState {
    */
   setLaunchingRecipeId: (recipeId: string | null) => void;
 
-  /**
-   * Read current launch machine state.
-   */
   getState: () => LaunchStateSnapshot;
 
-  /**
-   * Apply typed state transition.
-   */
   transition: (event: LaunchStateEvent) => void;
 
   /**
@@ -77,10 +71,6 @@ const reducer = (state: LaunchStateSnapshot, event: LaunchStateEvent): LaunchSta
   }
 };
 
-/**
- * Create a launch state tracker.
- * @returns LaunchState instance.
- */
 export const createLaunchState = (): LaunchState => {
   const machine: StateMachineContainer<LaunchStateSnapshot, LaunchStateEvent, undefined, never> =
     createStateMachine<LaunchStateSnapshot, LaunchStateEvent, undefined, never>({
