@@ -128,10 +128,6 @@ export class DownloadManager {
     }
   }
 
-  /**
-   *
-   * @param id
-   */
   public pause(id: string): ModelDownload {
     const download = this.store.get(id);
     if (!download) {
@@ -145,11 +141,6 @@ export class DownloadManager {
     return download;
   }
 
-  /**
-   *
-   * @param id
-   * @param hfToken
-   */
   public resume(id: string, hfToken: string | null = null): ModelDownload {
     const download = this.store.get(id);
     if (!download) {
@@ -167,10 +158,6 @@ export class DownloadManager {
     return download;
   }
 
-  /**
-   *
-   * @param id
-   */
   public cancel(id: string): ModelDownload {
     const download = this.store.get(id);
     if (!download) {
@@ -184,10 +171,6 @@ export class DownloadManager {
     return download;
   }
 
-  /**
-   *
-   * @param id
-   */
   private abortActive(id: string): void {
     const active = this.active.get(id);
     if (active) {
@@ -196,11 +179,6 @@ export class DownloadManager {
     }
   }
 
-  /**
-   *
-   * @param id
-   * @param hfToken
-   */
   private async runDownload(id: string, hfToken: string | null): Promise<void> {
     const download = this.store.get(id);
     if (!download || download.status === "completed" || download.status === "canceled") {
@@ -269,13 +247,6 @@ export class DownloadManager {
     }
   }
 
-  /**
-   *
-   * @param download
-   * @param file
-   * @param controller
-   * @param hfToken
-   */
   private async downloadFile(
     download: ModelDownload,
     file: DownloadFileInfo,
@@ -390,11 +361,6 @@ export class DownloadManager {
     this.publishProgress(currentDownload, file);
   }
 
-  /**
-   *
-   * @param download
-   * @param file
-   */
   private persistFileUpdate(download: ModelDownload, file: DownloadFileInfo): ModelDownload {
     const latest = this.store.get(download.id) ?? download;
     const updatedFiles = latest.files.map((entry) =>
@@ -411,11 +377,6 @@ export class DownloadManager {
     return updated;
   }
 
-  /**
-   *
-   * @param download
-   * @param file
-   */
   private publishProgress(download: ModelDownload, file: DownloadFileInfo): void {
     const payload = {
       id: download.id,
@@ -433,11 +394,6 @@ export class DownloadManager {
     void this.eventManager.publish(new Event(CONTROLLER_EVENTS.DOWNLOAD_PROGRESS, payload));
   }
 
-  /**
-   *
-   * @param download
-   * @param status
-   */
   private publishState(download: ModelDownload, status: DownloadStatus): void {
     const payload = {
       id: download.id,
