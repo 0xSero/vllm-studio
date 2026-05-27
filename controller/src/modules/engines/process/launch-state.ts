@@ -26,23 +26,14 @@ export type LaunchStateEvent =
     };
 
 export interface LaunchState {
-  /**
-   * Backward-compatible recipe-id getter.
-   */
   getLaunchingRecipeId: () => string | null;
 
-  /**
-   * Backward-compatible recipe-id setter.
-   */
   setLaunchingRecipeId: (recipeId: string | null) => void;
 
   getState: () => LaunchStateSnapshot;
 
   transition: (event: LaunchStateEvent) => void;
 
-  /**
-   * Typed helpers preserved for direct intent-based updates.
-   */
   markLaunching: (recipeId: string) => void;
   markPreempting: (recipeId: string) => void;
   markIdle: () => void;
