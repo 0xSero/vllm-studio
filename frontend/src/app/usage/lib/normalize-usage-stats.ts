@@ -1,5 +1,3 @@
-// CRITICAL
-
 import type { UsageStats } from "@/lib/types";
 
 type UnknownRecord = Record<string, unknown>;

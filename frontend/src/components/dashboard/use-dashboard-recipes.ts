@@ -1,4 +1,3 @@
-// CRITICAL
 import { useCallback, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";

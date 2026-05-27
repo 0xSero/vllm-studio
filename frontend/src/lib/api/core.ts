@@ -1,4 +1,3 @@
-// CRITICAL
 import { getApiKey } from "../api-key";
 import { clearStoredBackendUrl, getStoredBackendUrl } from "../backend-url";
 import { delay } from "../async";

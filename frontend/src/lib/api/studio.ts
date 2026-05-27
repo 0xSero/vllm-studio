@@ -1,4 +1,3 @@
-// CRITICAL
 import type {
   ModelDownload,
   EngineJob,

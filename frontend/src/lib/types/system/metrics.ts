@@ -1,4 +1,3 @@
-// CRITICAL
 /**
  * GPU + VRAM + metrics types.
  */

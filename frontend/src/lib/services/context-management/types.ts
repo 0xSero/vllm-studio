@@ -1,4 +1,3 @@
-// CRITICAL
 import type { IService } from "../types";
 
 export interface ContextConfig {

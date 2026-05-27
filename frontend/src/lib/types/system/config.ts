@@ -1,4 +1,3 @@
-// CRITICAL
 /**
  * System configuration and runtime types.
  */

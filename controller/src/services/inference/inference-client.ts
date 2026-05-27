@@ -1,4 +1,3 @@
-// CRITICAL
 import type { AppContext } from "../../types/context";
 import { buildLocalUrl, fetchLocal, type LocalFetchOptions } from "../../http/local-fetch";
 

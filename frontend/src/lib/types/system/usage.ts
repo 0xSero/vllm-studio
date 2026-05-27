@@ -1,4 +1,3 @@
-// CRITICAL
 export interface ControllerUsageStats {
   totals: {
     total_requests: number;

@@ -1,4 +1,3 @@
-// CRITICAL
 import { Hono } from "hono";
 import { swaggerUI } from "@hono/swagger-ui";
 import { cors } from "hono/cors";

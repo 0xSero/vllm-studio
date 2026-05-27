@@ -1,4 +1,3 @@
-// CRITICAL
 import type { Hono } from "hono";
 import { spawn, spawnSync } from "node:child_process";
 import { unlinkSync } from "node:fs";

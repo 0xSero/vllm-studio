@@ -1,4 +1,3 @@
-// CRITICAL
 import type {
   CompatibilityCheck,
   CompatibilityReport,

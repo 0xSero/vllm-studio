@@ -1,4 +1,3 @@
-// CRITICAL
 // Frontend uses extensive barrel exports (index.ts) which knip doesn't handle well.
 // This config is deliberately lenient to avoid false positives.
 const config = {

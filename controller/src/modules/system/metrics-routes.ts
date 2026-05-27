@@ -1,4 +1,3 @@
-// CRITICAL
 import type { Hono } from "hono";
 import { performance } from "node:perf_hooks";
 import type { AppContext } from "../../types/context";

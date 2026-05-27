@@ -1,4 +1,3 @@
-// CRITICAL
 export default {
   entry: ["src/main.ts", "scripts/**/*.ts"],
   project: ["src/**/*.ts", "scripts/**/*.ts"],

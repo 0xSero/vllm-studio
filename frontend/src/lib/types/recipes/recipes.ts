@@ -1,4 +1,3 @@
-// CRITICAL
 /**
  * Recipe types (model launch configuration).
  */

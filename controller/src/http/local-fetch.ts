@@ -1,4 +1,3 @@
-// CRITICAL
 export type LocalFetchOptions = RequestInit & { host?: string; timeoutMs?: number };
 
 const normalizePath = (path: string): string => {

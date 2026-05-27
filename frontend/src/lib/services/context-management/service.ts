@@ -1,4 +1,3 @@
-// CRITICAL
 /**
  * Context Management Service
  * Handles token estimation, compaction, and context management
@@ -137,9 +136,7 @@ export class ContextManagementService implements IContextManagementService {
     "compactionHistory" | "lastCompaction" | "totalCompactions" | "totalTokensCompacted"
   > {
     const systemPromptTokens = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
-    const toolsTokens = tools?.length
-      ? this.estimateTokens(safeJsonStringify(tools, ""))
-      : 0;
+    const toolsTokens = tools?.length ? this.estimateTokens(safeJsonStringify(tools, "")) : 0;
     const conversationTokens = this.calculateMessageTokens(messages);
     const currentTokens = systemPromptTokens + toolsTokens + conversationTokens;
     const utilization = maxContext > 0 ? currentTokens / maxContext : 0;

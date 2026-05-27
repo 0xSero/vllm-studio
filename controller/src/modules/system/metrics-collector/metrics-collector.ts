@@ -1,4 +1,3 @@
-// CRITICAL
 import type { AppContext } from "../../../types/context";
 import { getGpuInfo } from "../platform/gpu";
 import { getSystemRuntimeInfo } from "../../engines/runtimes/runtime-info";

@@ -6,10 +6,9 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect runtime/download route behavior for isolated integration coverage.
-- [x] Add download, runtime target, and runtime job validation route coverage.
-- [x] Validate those success and failure paths are persisted in controller observability rows.
-- [x] Validate controller runtime coverage slice.
+- [x] Inspect generated header comments across repo.
+- [x] Remove exact non-informative `// CRITICAL` headers without changing behavior.
+- [x] Validate typechecks for touched modules.
 - [x] Commit this slice.
 
 ## Backlog
@@ -23,7 +22,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, `/usage` status, latency, recent-activity, and error aggregation is integration-tested, and the frontend normalization boundary preserves controller observability; frontend visual rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
-- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slice removes empty/generated JSDoc blocks from controller source and tooling; broader file-by-file audit remains open.
+- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling and exact non-informative `// CRITICAL` headers; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [x] Replace every React effect hook with appropriate alternatives and validate there are zero remaining frontend source usages.
 

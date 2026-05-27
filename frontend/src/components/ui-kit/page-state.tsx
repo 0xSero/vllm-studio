@@ -1,4 +1,3 @@
-// CRITICAL
 import type { ReactNode } from "react";
 
 type PageStateArgs<T> = {

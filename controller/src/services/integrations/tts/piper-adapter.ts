@@ -1,4 +1,3 @@
-// CRITICAL
 import { existsSync } from "node:fs";
 import { resolveBinary } from "../../../core/command";
 import { runCliCommand } from "../cli/cli-runner";

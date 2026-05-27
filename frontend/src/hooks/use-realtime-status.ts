@@ -1,4 +1,3 @@
-// CRITICAL
 import { useMemo } from "react";
 import { useRealtimeStatusStore } from "./realtime-status-store";
 

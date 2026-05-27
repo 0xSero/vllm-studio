@@ -1,4 +1,3 @@
-// CRITICAL
 import { spawnSync } from "node:child_process";
 import type { Recipe } from "../../models/types";
 import type { Backend } from "../../shared/recipe-types";

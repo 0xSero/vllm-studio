@@ -1,4 +1,3 @@
-// CRITICAL
 "use client";
 
 import { ArrowUpCircle, RefreshCw } from "lucide-react";

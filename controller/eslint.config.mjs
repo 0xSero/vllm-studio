@@ -1,4 +1,3 @@
-// CRITICAL
 import jsdoc from "eslint-plugin-jsdoc";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "@typescript-eslint/eslint-plugin";

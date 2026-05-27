@@ -1,4 +1,3 @@
-// CRITICAL
 //
 // Single source of truth for the user-data directory.
 //

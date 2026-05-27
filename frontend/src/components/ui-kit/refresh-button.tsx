@@ -1,4 +1,3 @@
-// CRITICAL
 import { RefreshCw } from "lucide-react";
 import type { ButtonHTMLAttributes } from "react";
 

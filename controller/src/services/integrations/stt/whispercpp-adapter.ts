@@ -1,4 +1,3 @@
-// CRITICAL
 import { resolveBinary } from "../../../core/command";
 import { runCliCommand } from "../cli/cli-runner";
 import type { SttTranscriptionRequest, SttTranscriptionResult } from "./types";

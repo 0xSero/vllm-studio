@@ -1,4 +1,3 @@
-// CRITICAL
 import { AsyncLock, AsyncQueue } from "../../core/async";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
 

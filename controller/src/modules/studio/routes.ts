@@ -1,4 +1,3 @@
-// CRITICAL
 import type { Hono } from "hono";
 import { cpus, freemem, totalmem, platform, arch, release } from "node:os";
 import {

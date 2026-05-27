@@ -1,4 +1,3 @@
-// CRITICAL
 import { performance } from "node:perf_hooks";
 import type { Hono } from "hono";
 import { HttpStatus, notFound, serviceUnavailable } from "../../core/errors";

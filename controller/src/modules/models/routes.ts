@@ -1,4 +1,3 @@
-// CRITICAL
 import type { Hono } from "hono";
 import { basename, dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";

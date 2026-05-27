@@ -1,4 +1,3 @@
-// CRITICAL
 "use client";
 
 import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";

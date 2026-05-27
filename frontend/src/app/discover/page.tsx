@@ -1,4 +1,3 @@
-// CRITICAL
 "use client";
 
 import { DiscoverView } from "./_components/discover-view";

@@ -1,4 +1,3 @@
-// CRITICAL
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AppContext } from "./types/context";

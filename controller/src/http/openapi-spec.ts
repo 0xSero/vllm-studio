@@ -1,4 +1,3 @@
-// CRITICAL
 import type { AppContext } from "../types/context";
 
 export const createOpenApiSpec = (context: AppContext): Record<string, unknown> => ({

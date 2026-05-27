@@ -1,4 +1,3 @@
-// CRITICAL
 import { resolve, sep } from "node:path";
 import type { Config } from "../../../config/env";
 

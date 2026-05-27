@@ -1,4 +1,3 @@
-// CRITICAL
 /**
  * Formatting utilities for display purposes
  */

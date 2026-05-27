@@ -1,4 +1,3 @@
-// CRITICAL
 "use client";
 
 import { Info, Server } from "lucide-react";

@@ -1,4 +1,3 @@
-// CRITICAL
 import type { DownloadFileInfo } from "../types";
 import { matchesAny } from "./download-globs";
 

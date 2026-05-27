@@ -1,4 +1,3 @@
-// CRITICAL
 import type { RecipeEditor } from "@/lib/types";
 import { normalizeExtraArgKey, prepareRecipeForSave } from "./recipe-utils";
 
@@ -120,7 +119,8 @@ const appendLlamacppArgsToCommand = (
 
 export const generateCommand = (recipe: RecipeEditor): string => {
   const payload = prepareRecipeForSave(recipe);
-  const commandOverride = payload.extra_args?.["launch_command"] ?? payload.extra_args?.["custom_command"];
+  const commandOverride =
+    payload.extra_args?.["launch_command"] ?? payload.extra_args?.["custom_command"];
   if (typeof commandOverride === "string" && commandOverride.trim()) {
     return commandOverride;
   }

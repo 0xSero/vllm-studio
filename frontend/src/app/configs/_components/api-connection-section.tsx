@@ -1,4 +1,3 @@
-// CRITICAL
 import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Check,

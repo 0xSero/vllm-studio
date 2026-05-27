@@ -1,4 +1,3 @@
-// CRITICAL
 import type { Hono } from "hono";
 import type { AppContext } from "../../types/context";
 import { fetchInference } from "../../services/inference/inference-client";

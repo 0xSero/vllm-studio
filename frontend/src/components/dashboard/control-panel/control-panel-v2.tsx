@@ -1,4 +1,3 @@
-// CRITICAL
 "use client";
 
 import { useCallback, useState, useSyncExternalStore } from "react";

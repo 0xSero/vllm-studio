@@ -1,4 +1,3 @@
-// CRITICAL
 export default {
   entry: ['src/main.ts'],
   project: ['src/**/*.ts'],
