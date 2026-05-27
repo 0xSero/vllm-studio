@@ -6,9 +6,9 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect package scripts for duplicate or stale command aliases.
-- [x] Remove one duplicate frontend cleanup alias while keeping canonical gates intact.
-- [x] Validate package integrity and frontend quality gate.
+- [x] Inspect remaining annotated `// CRITICAL` headers.
+- [x] Remove stale migration/header labels while preserving meaningful explanatory comments.
+- [x] Validate controller and frontend typechecks.
 - [x] Commit this slice.
 
 ## Backlog
@@ -22,7 +22,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, `/usage` status, latency, recent-activity, and error aggregation is integration-tested, and the frontend normalization boundary preserves controller observability; frontend visual rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
-- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling and exact non-informative `// CRITICAL` headers; broader file-by-file audit remains open.
+- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling, exact non-informative `// CRITICAL` headers, and stale annotated `CRITICAL` migration labels; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slices remove stale root frontend metadata/dependencies, duplicate frontend quality/cleanup aliases, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [x] Replace every React effect hook with appropriate alternatives and validate there are zero remaining frontend source usages.
 

@@ -1,4 +1,3 @@
-// CRITICAL — copied from lifecycle/runtime/runtime-info.ts
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type {

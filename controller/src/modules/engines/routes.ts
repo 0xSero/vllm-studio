@@ -1,4 +1,3 @@
-// CRITICAL — Engines module routes
 import type { Hono } from "hono";
 import type { AppContext } from "../../types/context";
 import { delay } from "../../core/async";

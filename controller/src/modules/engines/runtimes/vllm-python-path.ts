@@ -1,4 +1,3 @@
-// CRITICAL — copied from lifecycle/runtime/vllm-python-path.ts
 import { existsSync } from "node:fs";
 import { DEFAULT_CANONICAL_PYTHON_PATH } from "../configs";
 
