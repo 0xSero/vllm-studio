@@ -19,7 +19,7 @@ All notable changes to this project are documented in this file.
 - Switching active controller previously dropped other controllers from the list — now the full list is preserved across switches.
 - Controller inputs no longer trigger per-keystroke storage events / `/api/settings` POSTs; rows commit on blur only.
 - Agent model picker re-fetches models when the active backend URL or API key changes (was only loading on initial hydrate).
-- Connection settings now use `useSyncExternalStore` instead of `useEffect`-driven sync to keep the dashboard tab row and settings list in lockstep.
+- Connection settings now use `useSyncExternalStore` instead of render-triggered sync to keep the dashboard tab row and settings list in lockstep.
 
 ### Refactors
 
@@ -37,7 +37,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- Refactored the agent workspace into typed store, controller, persistence, effect, hook, and panel boundaries with useEffect budget guards.
+- Refactored the agent workspace into typed store, controller, persistence, lifecycle, hook, and panel boundaries with React effect-hook budget guards.
 - performance-simplifications: enable SGLang metrics by default for controller launches and command previews.
 - performance-simplifications: expose live metrics snapshots through the controller polling endpoint.
 - performance-simplifications: render dashboard logs verbatim and support container-backed log sessions.

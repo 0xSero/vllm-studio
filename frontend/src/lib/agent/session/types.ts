@@ -1,9 +1,9 @@
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
 
 // Imperative handle exposed by ChatPane so the workspace can replay a past
-// pi session into the focused pane without going through useEffect-driven
-// prop plumbing. The workspace calls this directly from event/click handlers
-// so the control flow is auditable in one place.
+// pi session into the focused pane without prop-plumbing indirection. The
+// workspace calls this directly from event/click handlers so the control flow
+// is auditable in one place.
 export type ChatPaneHandle = {
   loadAndReplay: (piSessionId: string) => Promise<void>;
   compact: () => Promise<void>;

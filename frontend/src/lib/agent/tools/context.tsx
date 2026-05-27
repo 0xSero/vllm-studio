@@ -128,8 +128,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
 
   // Discover the workspace-global plugin / skill catalogue once on mount.
-  // The actual side effect lives in `use-tools-catalogue-effects.ts` — the
-  // only sanctioned home for `useEffect` in this codebase.
+  // The lifecycle bridge lives in `use-tools-catalogue-effects.ts`.
   useToolsCatalogueEffects({
     onLoaded: ({ plugins, skills, promptTemplates, extensions }) => {
       setPluginCatalogue(plugins);
