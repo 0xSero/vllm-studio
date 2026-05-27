@@ -6,10 +6,10 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inventory source comments and stale-comment markers.
-- [x] Remove empty/generated JSDoc blocks from controller source and tooling.
-- [x] Validate there are no remaining empty JSDoc blocks in source/tooling.
-- [x] Validate comment-audit slice.
+- [x] Inventory current `useEffect`, `useLayoutEffect`, and `useLegacyEffect` usages.
+- [x] Replace click-outside and session-drag-active listener effects with `useSyncExternalStore`.
+- [x] Verify touched files no longer reference effect hooks.
+- [x] Validate useEffect-removal slice.
 - [x] Commit this slice.
 
 ## Backlog
@@ -25,7 +25,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slice removes empty/generated JSDoc blocks from controller source and tooling; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
-- [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages.
+- [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages. Current slice removes effect usage from click-outside and pane-grid drag tracking; broader direct effect and `useLegacyEffect` cleanup remains.
 
 ## Constraints
 
