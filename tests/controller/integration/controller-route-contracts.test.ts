@@ -19,6 +19,7 @@ const ENV_KEYS = [
   "VLLM_STUDIO_RUNTIME_SKIP_DOCKER",
   "VLLM_STUDIO_RUNTIME_SKIP_SYSTEM",
   "VLLM_STUDIO_LLAMA_BIN",
+  "PI_CODING_AGENT_DIR",
 ] as const;
 
 let envSnapshot: EnvSnapshot;
@@ -51,6 +52,7 @@ beforeEach(() => {
     VLLM_STUDIO_MOCK_MODEL_ID: "mock-model",
     VLLM_STUDIO_RUNTIME_SKIP_DOCKER: "1",
     VLLM_STUDIO_RUNTIME_SKIP_SYSTEM: "1",
+    PI_CODING_AGENT_DIR: join(tempDir, "pi-agent"),
   });
   delete process.env.VLLM_STUDIO_API_KEY;
 });
@@ -1901,6 +1903,74 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+  });
+
+  test("pi-sessions usage route aggregates Pi JSONL session usage", async () => {
+    const piDir = process.env.PI_CODING_AGENT_DIR;
+    if (!piDir) throw new Error("PI_CODING_AGENT_DIR is required for tests");
+    const sessionDir = join(piDir, "sessions", "personal");
+    mkdirSync(sessionDir, { recursive: true });
+    const timestamp = new Date().toISOString();
+    writeFileSync(
+      join(sessionDir, "session.jsonl"),
+      [
+        JSON.stringify({ type: "session", id: "pi-session-1" }),
+        JSON.stringify({ type: "model_change", modelId: "deepseek-v4-flash" }),
+        JSON.stringify({
+          type: "message",
+          timestamp,
+          message: {
+            role: "assistant",
+            timestamp,
+            usage: {
+              input: 11,
+              output: 7,
+              totalTokens: 18,
+              cacheRead: 5,
+              cacheWrite: 3,
+            },
+          },
+        }),
+      ].join("\n"),
+      "utf8",
+    );
+    const app = await createTestApp();
+
+    const response = await app.request("/usage/pi-sessions");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.totals).toMatchObject({
+      total_tokens: 18,
+      prompt_tokens: 11,
+      completion_tokens: 7,
+      total_requests: 1,
+      successful_requests: 1,
+      failed_requests: 0,
+      unique_sessions: 1,
+    });
+    expect(body.cache).toMatchObject({
+      hits: 1,
+      misses: 1,
+      hit_tokens: 5,
+      miss_tokens: 3,
+      hit_rate: 50,
+    });
+    expect(body.recent_activity).toMatchObject({
+      last_hour_requests: 1,
+      last_24h_requests: 1,
+      last_24h_tokens: 18,
+    });
+    expect(body.by_model).toEqual([
+      expect.objectContaining({
+        model: "deepseek-v4-flash",
+        requests: 1,
+        total_tokens: 18,
+        prompt_tokens: 11,
+        completion_tokens: 7,
+        success_rate: 100,
+      }),
+    ]);
   });
 
   test("controller observability persists normalized raw rows for every route action", async () => {
