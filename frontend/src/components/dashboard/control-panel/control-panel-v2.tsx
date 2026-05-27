@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
@@ -19,7 +19,6 @@ import {
   type SavedController,
 } from "@/lib/controllers";
 import type { GPU, ProcessInfo } from "@/lib/types";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 const CONTROLLER_POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;
 
@@ -71,7 +70,7 @@ function ControllerMatrix() {
   const [controllers, setControllers] = useState<SavedController[]>([]);
   const [snapshots, setSnapshots] = useState<ControllerSnapshot[]>([]);
 
-  useLegacyEffect(() => {
+  const subscribeControllers = useCallback((_notify: () => void) => {
     const load = () => {
       const saved = loadSavedControllers();
       const byUrl = new Map<string, SavedController>();
@@ -82,15 +81,11 @@ function ControllerMatrix() {
         byUrl.set(url, { ...controller, url });
       }
       if (activeUrl && !byUrl.has(activeUrl)) byUrl.set(activeUrl, { url: activeUrl });
-      // If nothing is saved yet, fall back to a synthesized primary so a
-      // brand new install still shows *something*.
       if (byUrl.size === 0) {
         const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
         if (primary) byUrl.set(primary, { url: primary });
       }
       const next = [...byUrl.values()];
-      // Wipe stale snapshots so phantom rows from previous lists don't
-      // linger until the next poll cycle finishes.
       setSnapshots((current) =>
         current.filter((snapshot) => byUrl.has(normalizeControllerUrl(snapshot.url))),
       );
@@ -107,22 +102,36 @@ function ControllerMatrix() {
     };
   }, []);
 
-  useLegacyEffect(() => {
-    if (controllers.length === 0) return;
-    let cancelled = false;
-    const poll = async () => {
-      const next = await Promise.all(
-        controllers.map((controller, index) => pollController(controller, index)),
-      );
-      if (!cancelled) setSnapshots(next);
-    };
-    void poll();
-    const interval = window.setInterval(() => void poll(), 5_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [controllers]);
+  const subscribeControllerPolling = useCallback(
+    (_notify: () => void) => {
+      if (controllers.length === 0) return () => {};
+      let cancelled = false;
+      const poll = async () => {
+        const next = await Promise.all(
+          controllers.map((controller, index) => pollController(controller, index)),
+        );
+        if (!cancelled) setSnapshots(next);
+      };
+      void poll();
+      const interval = window.setInterval(() => void poll(), 5_000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(interval);
+      };
+    },
+    [controllers],
+  );
+
+  useSyncExternalStore(
+    subscribeControllers,
+    getControllerMatrixSnapshot,
+    getControllerMatrixSnapshot,
+  );
+  useSyncExternalStore(
+    subscribeControllerPolling,
+    getControllerMatrixSnapshot,
+    getControllerMatrixSnapshot,
+  );
 
   if (controllers.length <= 1) return null;
   const rows = snapshots.length ? snapshots : controllers.map(pendingController);
@@ -305,3 +314,5 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
 function trimLogLine(line: string): string {
   return line.replace(/^\[[^\]]+\]\s*/, "").slice(0, 180);
 }
+
+const getControllerMatrixSnapshot = (): number => 0;

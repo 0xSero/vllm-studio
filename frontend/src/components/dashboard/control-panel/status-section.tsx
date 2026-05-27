@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Info, Moon, Square, Sun } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/components/model-stop-confirm";
@@ -9,7 +9,6 @@ import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
 import type { GPU, Metrics, ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
 import { toGB, toGBFromMB } from "@/lib/formatters";
 import { useAppStore } from "@/store";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 interface StatusSectionProps {
   currentProcess: ProcessInfo | null;
@@ -737,14 +736,19 @@ function ModelsDropdown({
   const [filter, setFilter] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
 
-  useLegacyEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  const subscribeOutsideClick = useCallback(
+    (_notify: () => void) => {
+      if (!open) return () => {};
+      const handler = (e: MouseEvent) => {
+        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    },
+    [open],
+  );
+
+  useSyncExternalStore(subscribeOutsideClick, getModelsDropdownSnapshot, getModelsDropdownSnapshot);
 
   const q = filter.toLowerCase();
   const filtered = q
@@ -835,3 +839,5 @@ function ModelsDropdown({
     </div>
   );
 }
+
+const getModelsDropdownSnapshot = (): number => 0;

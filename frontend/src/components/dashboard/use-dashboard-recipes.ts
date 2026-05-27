@@ -1,8 +1,7 @@
 // CRITICAL
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
@@ -109,36 +108,64 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     }
   }, [currentProcess, refreshLogs]);
 
-  useLegacyEffect(() => {
-    reload();
-  }, [reload]);
-
-  useLegacyEffect(() => {
-    const handler = () => {
+  const subscribeRecipeReload = useCallback(
+    (_notify: () => void) => {
       void reload();
-    };
-    window.addEventListener("vllm:recipe-event", handler as EventListener);
-    return () => {
-      window.removeEventListener("vllm:recipe-event", handler as EventListener);
-    };
-  }, [reload]);
+      return () => {};
+    },
+    [reload],
+  );
 
-  useLegacyEffect(() => {
-    if (!currentProcess) return;
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled) return;
-      await refreshLogs(currentRecipe);
-    };
-    void poll();
-    const interval = window.setInterval(() => {
+  const subscribeRecipeEvents = useCallback(
+    (_notify: () => void) => {
+      const handler = () => {
+        void reload();
+      };
+      window.addEventListener("vllm:recipe-event", handler as EventListener);
+      return () => {
+        window.removeEventListener("vllm:recipe-event", handler as EventListener);
+      };
+    },
+    [reload],
+  );
+
+  const subscribeRecipeLogPolling = useCallback(
+    (_notify: () => void) => {
+      if (!currentProcess) return () => {};
+      let cancelled = false;
+      const poll = async () => {
+        if (cancelled) return;
+        await refreshLogs(currentRecipe);
+      };
       void poll();
-    }, 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [currentProcess, currentRecipe, refreshLogs]);
+      const interval = window.setInterval(() => {
+        void poll();
+      }, 4000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(interval);
+      };
+    },
+    [currentProcess, currentRecipe, refreshLogs],
+  );
+
+  useSyncExternalStore(
+    subscribeRecipeReload,
+    getDashboardRecipesSnapshot,
+    getDashboardRecipesSnapshot,
+  );
+  useSyncExternalStore(
+    subscribeRecipeEvents,
+    getDashboardRecipesSnapshot,
+    getDashboardRecipesSnapshot,
+  );
+  useSyncExternalStore(
+    subscribeRecipeLogPolling,
+    getDashboardRecipesSnapshot,
+    getDashboardRecipesSnapshot,
+  );
 
   return { recipes, currentRecipe, logs, loading, reload };
 }
+
+const getDashboardRecipesSnapshot = (): number => 0;
