@@ -6,10 +6,10 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect proxy and tokenization route contracts.
-- [x] Add no-live-model tokenization, title fallback, and invalid chat JSON integration coverage.
+- [x] Inspect current controller routes and coverage gaps.
+- [x] Add system introspection route integration coverage for `/gpus`, `/compat`, `/config`, `/api/spec`, and `/api/docs`.
 - [x] Validate those success and failure paths are persisted in controller observability rows.
-- [x] Validate controller proxy/tokenization coverage slice.
+- [x] Validate controller system-introspection coverage slice.
 - [x] Commit this slice.
 
 ## Backlog
@@ -18,7 +18,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support. Initial controller-level settings/provider route coverage exists; frontend settings e2e and MLX support remain.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
-- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts, raw observability persistence, studio settings/provider CRUD, recipe CRUD, runtime/download validation routes, monitoring/log route contracts, and proxy/tokenization fallback contracts; full active-flow coverage remains.
+- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts, raw observability persistence, system introspection routes, studio settings/provider CRUD, recipe CRUD, runtime/download validation routes, monitoring/log route contracts, and proxy/tokenization fallback contracts; full active-flow coverage remains.
 - [ ] Add controller observability for success, failure, error, path, and function-call tracking. Initial persistent HTTP route observability exists and raw rows are integration-tested; per-function call tracking remains.
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, `/usage` status, latency, recent-activity, and error aggregation is integration-tested, and the frontend normalization boundary preserves controller observability; frontend visual rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.

@@ -146,6 +146,89 @@ describe("controller route contracts", () => {
     expect(body.detail).toBe("model is required");
   });
 
+  test("system introspection routes expose stable contracts and observability", async () => {
+    const app = await createTestApp();
+
+    const gpusResponse = await app.request("/gpus");
+    const gpusBody = await gpusResponse.json();
+    expect(gpusResponse.status).toBe(200);
+    expect(typeof gpusBody.count).toBe("number");
+    expect(Array.isArray(gpusBody.gpus)).toBe(true);
+    expect(gpusBody.count).toBe(gpusBody.gpus.length);
+
+    const compatResponse = await app.request("/compat");
+    const compatBody = await compatResponse.json();
+    expect(compatResponse.status).toBe(200);
+    expect(compatBody.platform).toEqual(
+      expect.objectContaining({ kind: expect.any(String) }),
+    );
+    expect(compatBody.gpu_monitoring).toEqual(
+      expect.objectContaining({ available: expect.any(Boolean) }),
+    );
+    expect(compatBody.backends).toEqual(expect.any(Object));
+    expect(Array.isArray(compatBody.checks)).toBe(true);
+
+    const configResponse = await app.request("/config");
+    const configBody = await configResponse.json();
+    expect(configResponse.status).toBe(200);
+    expect(configBody.config).toMatchObject({
+      host: "127.0.0.1",
+      port: 18080,
+      inference_port: 65534,
+      api_key_configured: false,
+      models_dir: process.env.VLLM_STUDIO_MODELS_DIR,
+      data_dir: tempDir,
+      db_path: join(tempDir, "controller.db"),
+    });
+    expect(configBody.services).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Controller", status: "running" }),
+        expect.objectContaining({ name: "vLLM/SGLang", status: "stopped" }),
+        expect.objectContaining({ name: "Prometheus" }),
+        expect.objectContaining({ name: "Frontend" }),
+      ]),
+    );
+    expect(configBody.environment).toEqual(
+      expect.objectContaining({
+        controller_url: expect.any(String),
+        inference_url: expect.any(String),
+        frontend_url: expect.any(String),
+      }),
+    );
+    expect(configBody.runtime).toEqual(expect.any(Object));
+
+    const specResponse = await app.request("/api/spec");
+    const specBody = await specResponse.json();
+    expect(specResponse.status).toBe(200);
+    expect(specBody).toMatchObject({
+      openapi: "3.1.0",
+      info: { title: "vLLM Studio API" },
+    });
+    expect(specBody.paths).toEqual(
+      expect.objectContaining({
+        "/status": expect.any(Object),
+        "/config": expect.any(Object),
+        "/compat": expect.any(Object),
+      }),
+    );
+
+    const docsResponse = await app.request("/api/docs");
+    const docsText = await docsResponse.text();
+    expect(docsResponse.status).toBe(200);
+    expect(docsText).toContain("/api/spec");
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: "/gpus", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/compat", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/config", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/api/spec", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/api/docs", status: 200, success: 1 }),
+      ]),
+    );
+  }, 15_000);
+
   test("studio settings and provider CRUD routes persist observable contracts", async () => {
     const app = await createTestApp();
 
