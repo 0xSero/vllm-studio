@@ -1,8 +1,3 @@
-// Read-side helpers for code that needs to peek at sessions through the
-// workspace state. The `sessions` map is the source of truth — panes only
-// store the visible session id — so all "give me the session of pane X" reads
-// go through these.
-
 import type { PaneId, WorkspaceState } from "@/lib/agent/workspace/types";
 import type { Session, SessionId } from "./types";
 
@@ -32,7 +27,6 @@ export function findPaneByPiSessionId(
   return null;
 }
 
-/** All session ids referenced by any pane. Useful for pruning the sessions map. */
 export function referencedSessionIds(state: WorkspaceState): Set<SessionId> {
   const ids = new Set<SessionId>();
   for (const pane of state.panesById.values()) {
