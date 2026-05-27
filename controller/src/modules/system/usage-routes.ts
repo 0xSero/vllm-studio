@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { observeControllerFunction } from "../../core/function-observability";
 import type { AppContext } from "../../types/context";
 import { getUsageFromPiSessions } from "./usage/pi-sessions";
 import { emptyResponse } from "./usage/usage-utilities";
@@ -32,8 +33,14 @@ const collectKnownModels = async (context: AppContext): Promise<Set<string>> => 
 export const registerUsageRoutes = (app: Hono, context: AppContext): void => {
   app.get("/usage", async (ctx) => {
     try {
-      const knownModels = await collectKnownModels(context);
-      const usage = context.stores.inferenceRequestStore.aggregate(knownModels);
+      const knownModels = await observeControllerFunction(context, "usage.collectKnownModels", () =>
+        collectKnownModels(context)
+      );
+      const usage = await observeControllerFunction(
+        context,
+        "usage.aggregateInferenceRequests",
+        () => context.stores.inferenceRequestStore.aggregate(knownModels)
+      );
       const response = usage ?? emptyResponse();
       return ctx.json({
         ...response,

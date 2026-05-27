@@ -36,6 +36,33 @@ export interface ControllerUsageStats {
     error_message: string | null;
     created_at: string;
   }>;
+  function_calls?: {
+    totals: {
+      total_calls: number;
+      successful_calls: number;
+      failed_calls: number;
+      success_rate: number;
+    };
+    latency: {
+      avg_ms: number | null;
+      max_ms: number | null;
+    };
+    by_function: Array<{
+      function_name: string;
+      calls: number;
+      successful: number;
+      failed: number;
+      success_rate: number;
+      avg_duration_ms: number | null;
+      max_duration_ms: number | null;
+    }>;
+    recent_errors: Array<{
+      function_name: string;
+      error_class: string | null;
+      error_message: string | null;
+      created_at: string;
+    }>;
+  };
 }
 
 export interface UsageStats {

@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,6 +41,14 @@ type ControllerRequestRow = {
   error_class: string | null;
   error_message: string | null;
   user_agent: string | null;
+};
+
+type ControllerFunctionCallRow = {
+  function_name: string;
+  duration_ms: number;
+  success: number;
+  error_class: string | null;
+  error_message: string | null;
 };
 
 beforeEach(() => {
@@ -94,6 +108,23 @@ function readControllerRequestRows(): ControllerRequestRow[] {
   }
 }
 
+function readControllerFunctionCallRows(): ControllerFunctionCallRow[] {
+  const dbPath = process.env.VLLM_STUDIO_DB_PATH;
+  if (!dbPath) throw new Error("VLLM_STUDIO_DB_PATH is required for tests");
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    return db
+      .query<ControllerFunctionCallRow, []>(
+        `SELECT function_name, duration_ms, success, error_class, error_message
+         FROM controller_function_calls
+         ORDER BY id ASC`,
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+}
+
 describe("controller route contracts", () => {
   test("status route reports no active runtime on an isolated test port", async () => {
     const app = await createTestApp();
@@ -128,7 +159,8 @@ describe("controller route contracts", () => {
 
   test("model catalog routes expose recipe-backed model details and discovery metadata", async () => {
     const modelsDir = process.env.VLLM_STUDIO_MODELS_DIR;
-    if (!modelsDir) throw new Error("VLLM_STUDIO_MODELS_DIR is required for tests");
+    if (!modelsDir)
+      throw new Error("VLLM_STUDIO_MODELS_DIR is required for tests");
     const modelPath = join(modelsDir, "catalog-route-model");
     mkdirSync(modelPath, { recursive: true });
     writeFileSync(
@@ -156,7 +188,10 @@ describe("controller route contracts", () => {
     });
     const createRecipeBody = await createRecipeResponse.json();
     expect(createRecipeResponse.status).toBe(200);
-    expect(createRecipeBody).toEqual({ success: true, id: "catalog-route-recipe" });
+    expect(createRecipeBody).toEqual({
+      success: true,
+      id: "catalog-route-recipe",
+    });
 
     const modelsResponse = await app.request("/v1/models");
     const modelsBody = await modelsResponse.json();
@@ -305,7 +340,9 @@ describe("controller route contracts", () => {
           { headers: { "content-type": "application/json" } },
         );
       }
-      return new Response(JSON.stringify({ detail: "unexpected URL" }), { status: 500 });
+      return new Response(JSON.stringify({ detail: "unexpected URL" }), {
+        status: 500,
+      });
     };
 
     try {
@@ -464,7 +501,10 @@ describe("controller route contracts", () => {
     try {
       const app = await createTestApp();
       const target = `http://127.0.0.1:${upstream.port}`;
-      const payload = { model: "mock-model", messages: [{ role: "user", content: "hi" }] };
+      const payload = {
+        model: "mock-model",
+        messages: [{ role: "user", content: "hi" }],
+      };
       const response = await app.request(
         `/controllers/route/v1/chat/completions?target=${encodeURIComponent(target)}`,
         {
@@ -553,7 +593,10 @@ describe("controller route contracts", () => {
     expect(configBody.services).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "Controller", status: "running" }),
-        expect.objectContaining({ name: "Inference runtime", status: "stopped" }),
+        expect.objectContaining({
+          name: "Inference runtime",
+          status: "stopped",
+        }),
         expect.objectContaining({ name: "Prometheus" }),
         expect.objectContaining({ name: "Frontend" }),
       ]),
@@ -590,11 +633,36 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/gpus", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/compat", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/config", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/api/spec", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/api/docs", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/gpus",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/compat",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/config",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/api/spec",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/api/docs",
+          status: 200,
+          success: 1,
+        }),
       ]),
     );
   }, 15_000);
@@ -605,7 +673,9 @@ describe("controller route contracts", () => {
     const settingsResponse = await app.request("/studio/settings");
     const settingsBody = await settingsResponse.json();
     expect(settingsResponse.status).toBe(200);
-    expect(settingsBody.effective.models_dir).toBe(process.env.VLLM_STUDIO_MODELS_DIR);
+    expect(settingsBody.effective.models_dir).toBe(
+      process.env.VLLM_STUDIO_MODELS_DIR,
+    );
 
     const settingsUpdateResponse = await app.request("/studio/settings", {
       method: "POST",
@@ -646,15 +716,18 @@ describe("controller route contracts", () => {
     });
     expect(createProviderBody.provider.api_key).toBeUndefined();
 
-    const updateProviderResponse = await app.request("/studio/providers/local", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "Local Provider Updated",
-        base_url: "http://127.0.0.1:9000",
-        enabled: false,
-      }),
-    });
+    const updateProviderResponse = await app.request(
+      "/studio/providers/local",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Local Provider Updated",
+          base_url: "http://127.0.0.1:9000",
+          enabled: false,
+        }),
+      },
+    );
     const updateProviderBody = await updateProviderResponse.json();
     expect(updateProviderResponse.status).toBe(200);
     expect(updateProviderBody.provider).toMatchObject({
@@ -665,9 +738,12 @@ describe("controller route contracts", () => {
       has_api_key: true,
     });
 
-    const deleteProviderResponse = await app.request("/studio/providers/local", {
-      method: "DELETE",
-    });
+    const deleteProviderResponse = await app.request(
+      "/studio/providers/local",
+      {
+        method: "DELETE",
+      },
+    );
     const deleteProviderBody = await deleteProviderResponse.json();
     expect(deleteProviderResponse.status).toBe(200);
     expect(deleteProviderBody).toEqual({ success: true });
@@ -675,11 +751,31 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/studio/settings", status: 200 }),
-        expect.objectContaining({ method: "POST", path: "/studio/settings", status: 200 }),
-        expect.objectContaining({ method: "GET", path: "/studio/providers", status: 200 }),
-        expect.objectContaining({ method: "POST", path: "/studio/providers", status: 200 }),
-        expect.objectContaining({ method: "PUT", path: "/studio/providers/local", status: 200 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/settings",
+          status: 200,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/settings",
+          status: 200,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/providers",
+          status: 200,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/providers",
+          status: 200,
+        }),
+        expect.objectContaining({
+          method: "PUT",
+          path: "/studio/providers/local",
+          status: 200,
+        }),
         expect.objectContaining({
           method: "DELETE",
           path: "/studio/providers/local",
@@ -692,7 +788,8 @@ describe("controller route contracts", () => {
 
   test("studio operational routes expose storage contracts and validate model file actions", async () => {
     const modelsDir = process.env.VLLM_STUDIO_MODELS_DIR;
-    if (!modelsDir) throw new Error("VLLM_STUDIO_MODELS_DIR is required for tests");
+    if (!modelsDir)
+      throw new Error("VLLM_STUDIO_MODELS_DIR is required for tests");
     const modelPath = join(modelsDir, "studio-route-model");
     const targetRoot = join(modelsDir, "archive");
     const movedModelPath = join(targetRoot, "studio-route-model");
@@ -740,7 +837,9 @@ describe("controller route contracts", () => {
       disk: { path: modelsDir },
     });
 
-    const recommendationsResponse = await app.request("/studio/recommendations");
+    const recommendationsResponse = await app.request(
+      "/studio/recommendations",
+    );
     const recommendationsBody = await recommendationsResponse.json();
     expect(recommendationsResponse.status).toBe(200);
     expect(Array.isArray(recommendationsBody.recommendations)).toBe(true);
@@ -751,23 +850,31 @@ describe("controller route contracts", () => {
     expect(providerModelsResponse.status).toBe(200);
     expect(providerModelsBody).toEqual({ providers: [] });
 
-    const missingDeletePathResponse = await app.request("/studio/models/delete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const missingDeletePathResponse = await app.request(
+      "/studio/models/delete",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
     const missingDeletePathBody = await missingDeletePathResponse.json();
     expect(missingDeletePathResponse.status).toBe(400);
     expect(missingDeletePathBody).toEqual({ detail: "path is required" });
 
-    const outsideDeletePathResponse = await app.request("/studio/models/delete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: tempDir }),
-    });
+    const outsideDeletePathResponse = await app.request(
+      "/studio/models/delete",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: tempDir }),
+      },
+    );
     const outsideDeletePathBody = await outsideDeletePathResponse.json();
     expect(outsideDeletePathResponse.status).toBe(400);
-    expect(outsideDeletePathBody).toEqual({ detail: "path must be inside models_dir" });
+    expect(outsideDeletePathBody).toEqual({
+      detail: "path must be inside models_dir",
+    });
 
     const missingMovePathResponse = await app.request("/studio/models/move", {
       method: "POST",
@@ -776,7 +883,9 @@ describe("controller route contracts", () => {
     });
     const missingMovePathBody = await missingMovePathResponse.json();
     expect(missingMovePathResponse.status).toBe(400);
-    expect(missingMovePathBody).toEqual({ detail: "source_path and target_root are required" });
+    expect(missingMovePathBody).toEqual({
+      detail: "source_path and target_root are required",
+    });
 
     const moveResponse = await app.request("/studio/models/move", {
       method: "POST",
@@ -936,8 +1045,18 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "POST", path: "/recipes", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/recipes", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/recipes",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/recipes",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/recipes/route-test-recipe",
@@ -976,12 +1095,17 @@ describe("controller route contracts", () => {
     expect(missingLaunchResponse.status).toBe(404);
     expect(missingLaunchBody).toEqual({ detail: "Recipe not found" });
 
-    const missingCancelResponse = await app.request("/launch/missing-recipe/cancel", {
-      method: "POST",
-    });
+    const missingCancelResponse = await app.request(
+      "/launch/missing-recipe/cancel",
+      {
+        method: "POST",
+      },
+    );
     const missingCancelBody = await missingCancelResponse.json();
     expect(missingCancelResponse.status).toBe(404);
-    expect(missingCancelBody).toEqual({ detail: "No launch in progress for missing-recipe" });
+    expect(missingCancelBody).toEqual({
+      detail: "No launch in progress for missing-recipe",
+    });
 
     const evictResponse = await app.request("/evict", { method: "POST" });
     const evictBody = await evictResponse.json();
@@ -1036,7 +1160,9 @@ describe("controller route contracts", () => {
     expect(downloadsResponse.status).toBe(200);
     expect(downloadsBody).toEqual({ downloads: [] });
 
-    const missingDownloadResponse = await app.request("/studio/downloads/missing-download");
+    const missingDownloadResponse = await app.request(
+      "/studio/downloads/missing-download",
+    );
     const missingDownloadBody = await missingDownloadResponse.json();
     expect(missingDownloadResponse.status).toBe(404);
     expect(missingDownloadBody).toEqual({ detail: "Download not found" });
@@ -1051,11 +1177,14 @@ describe("controller route contracts", () => {
     expect(invalidDownloadBody).toEqual({ detail: "model_id is required" });
 
     for (const action of ["pause", "resume", "cancel"]) {
-      const response = await app.request(`/studio/downloads/missing-download/${action}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      const response = await app.request(
+        `/studio/downloads/missing-download/${action}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
       const body = await response.json();
       expect(response.status).toBe(404);
       expect(body).toEqual({ detail: "Download not found" });
@@ -1066,7 +1195,9 @@ describe("controller route contracts", () => {
     expect(runtimeTargetsResponse.status).toBe(200);
     expect(Array.isArray(runtimeTargetsBody.targets)).toBe(true);
 
-    const missingTargetResponse = await app.request("/runtime/targets/missing-target");
+    const missingTargetResponse = await app.request(
+      "/runtime/targets/missing-target",
+    );
     const missingTargetBody = await missingTargetResponse.json();
     expect(missingTargetResponse.status).toBe(404);
     expect(missingTargetBody).toEqual({ detail: "Runtime target not found" });
@@ -1085,7 +1216,8 @@ describe("controller route contracts", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ backend: "unknown", type: "update" }),
     });
-    const invalidRuntimeBackendBody = await invalidRuntimeBackendResponse.json();
+    const invalidRuntimeBackendBody =
+      await invalidRuntimeBackendResponse.json();
     expect(invalidRuntimeBackendResponse.status).toBe(400);
     expect(invalidRuntimeBackendBody).toEqual({ detail: "Invalid backend" });
 
@@ -1094,14 +1226,19 @@ describe("controller route contracts", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ backend: "vllm", type: "restart" }),
     });
-    const invalidRuntimeJobTypeBody = await invalidRuntimeJobTypeResponse.json();
+    const invalidRuntimeJobTypeBody =
+      await invalidRuntimeJobTypeResponse.json();
     expect(invalidRuntimeJobTypeResponse.status).toBe(400);
     expect(invalidRuntimeJobTypeBody).toEqual({ detail: "Invalid job type" });
 
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/studio/downloads", status: 200 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/downloads",
+          status: 200,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/studio/downloads/missing-download",
@@ -1132,7 +1269,11 @@ describe("controller route contracts", () => {
           status: 404,
           success: 0,
         }),
-        expect.objectContaining({ method: "GET", path: "/runtime/targets", status: 200 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/targets",
+          status: 200,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/runtime/targets/missing-target",
@@ -1155,8 +1296,8 @@ describe("controller route contracts", () => {
       llamaBin,
       [
         "#!/usr/bin/env sh",
-        "if [ \"$1\" = \"--version\" ]; then echo 'llama-server test runtime'; exit 0; fi",
-        "if [ \"$1\" = \"--help\" ]; then echo 'usage: llama-server-test'; exit 0; fi",
+        'if [ "$1" = "--version" ]; then echo \'llama-server test runtime\'; exit 0; fi',
+        'if [ "$1" = "--help" ]; then echo \'usage: llama-server-test\'; exit 0; fi',
         "exit 0",
         "",
       ].join("\n"),
@@ -1169,8 +1310,8 @@ describe("controller route contracts", () => {
       mlxPython,
       [
         "#!/usr/bin/env sh",
-        "if [ \"$1\" = \"--version\" ]; then echo 'Python 3.12.0'; exit 0; fi",
-        "if [ \"$1\" = \"-c\" ]; then echo '{\"version\":\"0.24.0\",\"python\":\"'\"$0\"'\"}'; exit 0; fi",
+        'if [ "$1" = "--version" ]; then echo \'Python 3.12.0\'; exit 0; fi',
+        'if [ "$1" = "-c" ]; then echo \'{"version":"0.24.0","python":"\'"$0"\'"}\'; exit 0; fi',
         "exit 0",
         "",
       ].join("\n"),
@@ -1202,7 +1343,8 @@ describe("controller route contracts", () => {
       }),
       health: { status: "ok" },
     });
-    if (!target) throw new Error("Expected configured llama.cpp runtime target");
+    if (!target)
+      throw new Error("Expected configured llama.cpp runtime target");
 
     const mlxTarget = targetsBody.targets.find(
       (candidate: Record<string, unknown>) =>
@@ -1238,14 +1380,19 @@ describe("controller route contracts", () => {
       health: { status: "ok" },
     });
 
-    const healthResponse = await app.request(`/runtime/targets/${targetId}/health`);
+    const healthResponse = await app.request(
+      `/runtime/targets/${targetId}/health`,
+    );
     const healthBody = await healthResponse.json();
     expect(healthResponse.status).toBe(200);
     expect(healthBody).toEqual({ health: { status: "ok" } });
 
-    const selectResponse = await app.request(`/runtime/targets/${targetId}/select`, {
-      method: "POST",
-    });
+    const selectResponse = await app.request(
+      `/runtime/targets/${targetId}/select`,
+      {
+        method: "POST",
+      },
+    );
     const selectBody = await selectResponse.json();
     expect(selectResponse.status).toBe(200);
     expect(selectBody.target).toMatchObject({
@@ -1258,7 +1405,9 @@ describe("controller route contracts", () => {
     const refreshedBody = await refreshedResponse.json();
     expect(refreshedResponse.status).toBe(200);
     expect(
-      refreshedBody.targets.find((candidate: Record<string, unknown>) => candidate["id"] === targetId),
+      refreshedBody.targets.find(
+        (candidate: Record<string, unknown>) => candidate["id"] === targetId,
+      ),
     ).toMatchObject({ active: true });
 
     const mlxResponse = await app.request("/runtime/mlx");
@@ -1321,9 +1470,12 @@ describe("controller route contracts", () => {
     expect(missingJobResponse.status).toBe(404);
     expect(missingJobBody).toEqual({ detail: "Runtime job not found" });
 
-    const missingCancelResponse = await app.request("/runtime/jobs/missing-job/cancel", {
-      method: "POST",
-    });
+    const missingCancelResponse = await app.request(
+      "/runtime/jobs/missing-job/cancel",
+      {
+        method: "POST",
+      },
+    );
     const missingCancelBody = await missingCancelResponse.json();
     expect(missingCancelResponse.status).toBe(404);
     expect(missingCancelBody).toEqual({ detail: "Runtime job not found" });
@@ -1335,7 +1487,9 @@ describe("controller route contracts", () => {
     });
     const invalidArgsBody = await invalidArgsResponse.json();
     expect(invalidArgsResponse.status).toBe(400);
-    expect(invalidArgsBody).toEqual({ detail: "args must be an array of strings" });
+    expect(invalidArgsBody).toEqual({
+      detail: "args must be an array of strings",
+    });
 
     for (const route of [
       "/runtime/sglang/upgrade",
@@ -1366,7 +1520,12 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/runtime/jobs", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/jobs",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/runtime/jobs/missing-job",
@@ -1435,9 +1594,15 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(vllmBody.version === null || typeof vllmBody.version === "string").toBe(true);
-    expect(vllmBody.python_path === null || typeof vllmBody.python_path === "string").toBe(true);
-    expect(vllmBody.vllm_bin === null || typeof vllmBody.vllm_bin === "string").toBe(true);
+    expect(
+      vllmBody.version === null || typeof vllmBody.version === "string",
+    ).toBe(true);
+    expect(
+      vllmBody.python_path === null || typeof vllmBody.python_path === "string",
+    ).toBe(true);
+    expect(
+      vllmBody.vllm_bin === null || typeof vllmBody.vllm_bin === "string",
+    ).toBe(true);
 
     const sglangResponse = await app.request("/runtime/sglang");
     const sglangBody = await sglangResponse.json();
@@ -1446,10 +1611,13 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(sglangBody.version === null || typeof sglangBody.version === "string").toBe(true);
-    expect(sglangBody.python_path === null || typeof sglangBody.python_path === "string").toBe(
-      true,
-    );
+    expect(
+      sglangBody.version === null || typeof sglangBody.version === "string",
+    ).toBe(true);
+    expect(
+      sglangBody.python_path === null ||
+        typeof sglangBody.python_path === "string",
+    ).toBe(true);
 
     const llamaResponse = await app.request("/runtime/llamacpp");
     const llamaBody = await llamaResponse.json();
@@ -1458,8 +1626,13 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(llamaBody.version === null || typeof llamaBody.version === "string").toBe(true);
-    expect(llamaBody.binary_path === null || typeof llamaBody.binary_path === "string").toBe(true);
+    expect(
+      llamaBody.version === null || typeof llamaBody.version === "string",
+    ).toBe(true);
+    expect(
+      llamaBody.binary_path === null ||
+        typeof llamaBody.binary_path === "string",
+    ).toBe(true);
 
     const mlxResponse = await app.request("/runtime/mlx");
     const mlxBody = await mlxResponse.json();
@@ -1468,8 +1641,12 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(mlxBody.version === null || typeof mlxBody.version === "string").toBe(true);
-    expect(mlxBody.python_path === null || typeof mlxBody.python_path === "string").toBe(true);
+    expect(
+      mlxBody.version === null || typeof mlxBody.version === "string",
+    ).toBe(true);
+    expect(
+      mlxBody.python_path === null || typeof mlxBody.python_path === "string",
+    ).toBe(true);
 
     const exllamav3Response = await app.request("/runtime/exllamav3");
     const exllamav3Body = await exllamav3Response.json();
@@ -1478,12 +1655,14 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(exllamav3Body.version === null || typeof exllamav3Body.version === "string").toBe(
-      true,
-    );
-    expect(exllamav3Body.binary_path === null || typeof exllamav3Body.binary_path === "string").toBe(
-      true,
-    );
+    expect(
+      exllamav3Body.version === null ||
+        typeof exllamav3Body.version === "string",
+    ).toBe(true);
+    expect(
+      exllamav3Body.binary_path === null ||
+        typeof exllamav3Body.binary_path === "string",
+    ).toBe(true);
 
     const cudaResponse = await app.request("/runtime/cuda");
     const cudaBody = await cudaResponse.json();
@@ -1491,10 +1670,14 @@ describe("controller route contracts", () => {
     expect(cudaBody).toMatchObject({
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(cudaBody.driver_version === null || typeof cudaBody.driver_version === "string").toBe(
-      true,
-    );
-    expect(cudaBody.cuda_version === null || typeof cudaBody.cuda_version === "string").toBe(true);
+    expect(
+      cudaBody.driver_version === null ||
+        typeof cudaBody.driver_version === "string",
+    ).toBe(true);
+    expect(
+      cudaBody.cuda_version === null ||
+        typeof cudaBody.cuda_version === "string",
+    ).toBe(true);
 
     const rocmResponse = await app.request("/runtime/rocm");
     const rocmBody = await rocmResponse.json();
@@ -1503,14 +1686,26 @@ describe("controller route contracts", () => {
       gpu_arch: expect.any(Array),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(rocmBody.rocm_version === null || typeof rocmBody.rocm_version === "string").toBe(true);
-    expect(rocmBody.hip_version === null || typeof rocmBody.hip_version === "string").toBe(true);
-    expect(rocmBody.smi_tool === null || typeof rocmBody.smi_tool === "string").toBe(true);
+    expect(
+      rocmBody.rocm_version === null ||
+        typeof rocmBody.rocm_version === "string",
+    ).toBe(true);
+    expect(
+      rocmBody.hip_version === null || typeof rocmBody.hip_version === "string",
+    ).toBe(true);
+    expect(
+      rocmBody.smi_tool === null || typeof rocmBody.smi_tool === "string",
+    ).toBe(true);
 
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/runtime/vllm", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/vllm",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/runtime/sglang",
@@ -1535,8 +1730,18 @@ describe("controller route contracts", () => {
           status: 200,
           success: 1,
         }),
-        expect.objectContaining({ method: "GET", path: "/runtime/cuda", status: 200, success: 1 }),
-        expect.objectContaining({ method: "GET", path: "/runtime/rocm", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/cuda",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/rocm",
+          status: 200,
+          success: 1,
+        }),
       ]),
     );
   }, 20_000);
@@ -1544,13 +1749,19 @@ describe("controller route contracts", () => {
   test("monitoring and log routes persist operational observability", async () => {
     const logsDir = join(tempDir, "logs");
     mkdirSync(logsDir, { recursive: true });
-    writeFileSync(join(logsDir, "vllm_route-test.log"), "first line\nsecond line\n", "utf8");
+    writeFileSync(
+      join(logsDir, "vllm_route-test.log"),
+      "first line\nsecond line\n",
+      "utf8",
+    );
     const app = await createTestApp();
 
     const prometheusResponse = await app.request("/metrics");
     const prometheusText = await prometheusResponse.text();
     expect(prometheusResponse.status).toBe(200);
-    expect(prometheusResponse.headers.get("content-type")).toContain("text/plain");
+    expect(prometheusResponse.headers.get("content-type")).toContain(
+      "text/plain",
+    );
     expect(prometheusText).toContain("vllm_studio");
 
     const currentMetricsResponse = await app.request("/v1/metrics/vllm");
@@ -1567,7 +1778,9 @@ describe("controller route contracts", () => {
     expect(peakMetricsResponse.status).toBe(200);
     expect(peakMetricsBody).toEqual({ metrics: [] });
 
-    const missingPeakResponse = await app.request("/peak-metrics?model_id=missing-model");
+    const missingPeakResponse = await app.request(
+      "/peak-metrics?model_id=missing-model",
+    );
     const missingPeakBody = await missingPeakResponse.json();
     expect(missingPeakResponse.status).toBe(200);
     expect(missingPeakBody).toEqual({ error: "No metrics for this model" });
@@ -1621,7 +1834,9 @@ describe("controller route contracts", () => {
     });
     const controllerDeleteBody = await controllerDeleteResponse.json();
     expect(controllerDeleteResponse.status).toBe(400);
-    expect(controllerDeleteBody).toEqual({ detail: "controller logs cannot be deleted via API" });
+    expect(controllerDeleteBody).toEqual({
+      detail: "controller logs cannot be deleted via API",
+    });
 
     const eventStatsResponse = await app.request("/events/stats");
     const eventStatsBody = await eventStatsResponse.json();
@@ -1635,14 +1850,24 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "GET", path: "/metrics", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/metrics",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/v1/metrics/vllm",
           status: 200,
           success: 1,
         }),
-        expect.objectContaining({ method: "GET", path: "/peak-metrics", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/peak-metrics",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/lifetime-metrics",
@@ -1655,7 +1880,12 @@ describe("controller route contracts", () => {
           status: 200,
           success: 1,
         }),
-        expect.objectContaining({ method: "GET", path: "/logs", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/logs",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "GET",
           path: "/logs/route-test",
@@ -1712,19 +1942,28 @@ describe("controller route contracts", () => {
     });
     const countTokensBody = await countTokensResponse.json();
     expect(countTokensResponse.status).toBe(200);
-    expect(countTokensBody).toEqual({ error: "No model running", num_tokens: 0 });
-
-    const chatTokenizeResponse = await app.request("/v1/tokenize-chat-completions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "mock-model",
-        messages: [{ role: "user", content: "hello world" }],
-      }),
+    expect(countTokensBody).toEqual({
+      error: "No model running",
+      num_tokens: 0,
     });
+
+    const chatTokenizeResponse = await app.request(
+      "/v1/tokenize-chat-completions",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "mock-model",
+          messages: [{ role: "user", content: "hello world" }],
+        }),
+      },
+    );
     const chatTokenizeBody = await chatTokenizeResponse.json();
     expect(chatTokenizeResponse.status).toBe(200);
-    expect(chatTokenizeBody).toEqual({ error: "No model running", input_tokens: 0 });
+    expect(chatTokenizeBody).toEqual({
+      error: "No model running",
+      input_tokens: 0,
+    });
 
     const titleResponse = await app.request("/api/title", {
       method: "POST",
@@ -1771,7 +2010,12 @@ describe("controller route contracts", () => {
           status: 200,
           success: 1,
         }),
-        expect.objectContaining({ method: "POST", path: "/api/title", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/api/title",
+          status: 200,
+          success: 1,
+        }),
         expect.objectContaining({
           method: "POST",
           path: "/v1/chat/completions",
@@ -1927,6 +2171,52 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+    expect(body.controller.function_calls.totals).toMatchObject({
+      total_calls: 2,
+      successful_calls: 2,
+      failed_calls: 0,
+      success_rate: 100,
+    });
+    expect(
+      body.controller.function_calls.latency.avg_ms,
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      body.controller.function_calls.latency.max_ms,
+    ).toBeGreaterThanOrEqual(0);
+    expect(body.controller.function_calls.by_function).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "usage.collectKnownModels",
+          calls: 1,
+          successful: 1,
+          failed: 0,
+        }),
+        expect.objectContaining({
+          function_name: "usage.aggregateInferenceRequests",
+          calls: 1,
+          successful: 1,
+          failed: 0,
+        }),
+      ]),
+    );
+
+    const functionRows = readControllerFunctionCallRows();
+    expect(functionRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "usage.collectKnownModels",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "usage.aggregateInferenceRequests",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+      ]),
+    );
   });
 
   test("usage still returns controller observability when inference aggregation fails", async () => {
@@ -1970,6 +2260,39 @@ describe("controller route contracts", () => {
           requests: 1,
           successful: 1,
           failed: 0,
+        }),
+      ]),
+    );
+    expect(body.controller.function_calls.totals).toMatchObject({
+      total_calls: 2,
+      successful_calls: 1,
+      failed_calls: 1,
+      success_rate: 50,
+    });
+    expect(body.controller.function_calls.recent_errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "usage.aggregateInferenceRequests",
+          error_class: "Error",
+          error_message: "forced aggregate failure",
+        }),
+      ]),
+    );
+
+    const functionRows = readControllerFunctionCallRows();
+    expect(functionRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "usage.collectKnownModels",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "usage.aggregateInferenceRequests",
+          success: 0,
+          error_class: "Error",
+          error_message: "forced aggregate failure",
         }),
       ]),
     );

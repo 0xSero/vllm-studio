@@ -5,7 +5,11 @@ import type { UsageStats } from "@/lib/types";
 
 test("usage normalization preserves controller observability payload", () => {
   const normalized = normalizeUsageStats({
-    totals: { total_requests: "4", successful_requests: "2", failed_requests: "2" },
+    totals: {
+      total_requests: "4",
+      successful_requests: "2",
+      failed_requests: "2",
+    },
     controller: {
       totals: {
         total_requests: "4",
@@ -42,6 +46,34 @@ test("usage normalization preserves controller observability payload", () => {
           created_at: "2026-05-26T12:00:00.000Z",
         },
       ],
+      function_calls: {
+        totals: {
+          total_calls: "2",
+          successful_calls: "1",
+          failed_calls: "1",
+          success_rate: "50",
+        },
+        latency: { avg_ms: "5.5", max_ms: "8" },
+        by_function: [
+          {
+            function_name: "usage.aggregateInferenceRequests",
+            calls: "1",
+            successful: "0",
+            failed: "1",
+            success_rate: "0",
+            avg_duration_ms: "8",
+            max_duration_ms: "8",
+          },
+        ],
+        recent_errors: [
+          {
+            function_name: "usage.aggregateInferenceRequests",
+            error_class: "Error",
+            error_message: "forced aggregate failure",
+            created_at: "2026-05-26T12:00:01.000Z",
+          },
+        ],
+      },
     },
   } as unknown as UsageStats);
 
@@ -61,7 +93,9 @@ test("usage normalization preserves controller observability payload", () => {
     last_24h_requests: 4,
     last_24h_failed_requests: 2,
   });
-  assert.deepEqual(normalized.controller?.by_status, [{ status: 400, requests: 2 }]);
+  assert.deepEqual(normalized.controller?.by_status, [
+    { status: 400, requests: 2 },
+  ]);
   assert.deepEqual(normalized.controller?.by_path[0], {
     method: "POST",
     path: "/vram-calculator",
@@ -79,6 +113,31 @@ test("usage normalization preserves controller observability payload", () => {
     error_class: null,
     error_message: "model is required",
     created_at: "2026-05-26T12:00:00.000Z",
+  });
+  assert.deepEqual(normalized.controller?.function_calls?.totals, {
+    total_calls: 2,
+    successful_calls: 1,
+    failed_calls: 1,
+    success_rate: 50,
+  });
+  assert.deepEqual(normalized.controller?.function_calls?.latency, {
+    avg_ms: 5.5,
+    max_ms: 8,
+  });
+  assert.deepEqual(normalized.controller?.function_calls?.by_function[0], {
+    function_name: "usage.aggregateInferenceRequests",
+    calls: 1,
+    successful: 0,
+    failed: 1,
+    success_rate: 0,
+    avg_duration_ms: 8,
+    max_duration_ms: 8,
+  });
+  assert.deepEqual(normalized.controller?.function_calls?.recent_errors[0], {
+    function_name: "usage.aggregateInferenceRequests",
+    error_class: "Error",
+    error_message: "forced aggregate failure",
+    created_at: "2026-05-26T12:00:01.000Z",
   });
 });
 

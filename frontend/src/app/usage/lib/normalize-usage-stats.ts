@@ -32,6 +32,9 @@ function normalizeControllerUsage(value: unknown): UsageStats["controller"] {
   const totals = record(controller.totals);
   const latency = record(controller.latency);
   const recent = record(controller.recent_activity);
+  const functionCalls = record(controller.function_calls);
+  const functionTotals = record(functionCalls.totals);
+  const functionLatency = record(functionCalls.latency);
 
   return {
     totals: {
@@ -71,6 +74,36 @@ function normalizeControllerUsage(value: unknown): UsageStats["controller"] {
       error_message: text(error.error_message, "") || null,
       created_at: text(error.created_at, ""),
     })),
+    function_calls:
+      Object.keys(functionCalls).length === 0
+        ? undefined
+        : {
+            totals: {
+              total_calls: num(functionTotals.total_calls),
+              successful_calls: num(functionTotals.successful_calls),
+              failed_calls: num(functionTotals.failed_calls),
+              success_rate: num(functionTotals.success_rate),
+            },
+            latency: {
+              avg_ms: nullableNum(functionLatency.avg_ms),
+              max_ms: nullableNum(functionLatency.max_ms),
+            },
+            by_function: array(functionCalls.by_function).map((entry) => ({
+              function_name: text(entry.function_name, ""),
+              calls: num(entry.calls),
+              successful: num(entry.successful),
+              failed: num(entry.failed),
+              success_rate: num(entry.success_rate),
+              avg_duration_ms: nullableNum(entry.avg_duration_ms),
+              max_duration_ms: nullableNum(entry.max_duration_ms),
+            })),
+            recent_errors: array(functionCalls.recent_errors).map((error) => ({
+              function_name: text(error.function_name, ""),
+              error_class: text(error.error_class, "") || null,
+              error_message: text(error.error_message, "") || null,
+              created_at: text(error.created_at, ""),
+            })),
+          },
   };
 }
 

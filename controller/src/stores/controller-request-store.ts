@@ -12,6 +12,14 @@ export interface ControllerRequestRecord {
   user_agent?: string | null;
 }
 
+export interface ControllerFunctionCallRecord {
+  function_name: string;
+  duration_ms: number;
+  success: boolean;
+  error_class?: string | null;
+  error_message?: string | null;
+}
+
 type NumberRow = Record<string, number | string | null>;
 
 const toFiniteNumber = (value: unknown): number => {
@@ -57,6 +65,23 @@ export class ControllerRequestStore {
     this.db.run(
       `CREATE INDEX IF NOT EXISTS idx_controller_requests_status_created ON controller_requests(status, created_at)`
     );
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS controller_function_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        function_name TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        success INTEGER NOT NULL,
+        error_class TEXT,
+        error_message TEXT
+      )
+    `);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_created_at ON controller_function_calls(created_at)`
+    );
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_name_created ON controller_function_calls(function_name, created_at)`
+    );
   }
 
   public record(record: ControllerRequestRecord): void {
@@ -76,6 +101,23 @@ export class ControllerRequestStore {
         record.error_class ?? null,
         record.error_message ?? null,
         record.user_agent ?? null
+      );
+  }
+
+  public recordFunctionCall(record: ControllerFunctionCallRecord): void {
+    const durationMs = Math.max(0, Math.round(record.duration_ms));
+    this.db
+      .query(
+        `INSERT INTO controller_function_calls (
+           function_name, duration_ms, success, error_class, error_message
+         ) VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.function_name,
+        durationMs,
+        record.success ? 1 : 0,
+        record.error_class ?? null,
+        record.error_message ?? null
       );
   }
 
@@ -150,6 +192,51 @@ export class ControllerRequestStore {
       )
       .get() as NumberRow | null;
 
+    const functionTotals = this.db
+      .query<NumberRow, []>(
+        `SELECT
+           COUNT(*) as total_calls,
+           COALESCE(SUM(success), 0) as successful_calls,
+           COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_calls,
+           AVG(duration_ms) as avg_duration_ms,
+           MAX(duration_ms) as max_duration_ms
+         FROM controller_function_calls`
+      )
+      .get() as NumberRow | null;
+
+    const byFunction = this.db
+      .query<NumberRow, []>(
+        `SELECT
+           function_name,
+           COUNT(*) as calls,
+           COALESCE(SUM(success), 0) as successful,
+           COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed,
+           AVG(duration_ms) as avg_duration_ms,
+           MAX(duration_ms) as max_duration_ms
+         FROM controller_function_calls
+         GROUP BY function_name
+         ORDER BY calls DESC, function_name ASC
+         LIMIT 50`
+      )
+      .all() as NumberRow[];
+
+    const functionErrors = this.db
+      .query<NumberRow, []>(
+        `SELECT
+           function_name,
+           error_class,
+           error_message,
+           created_at
+         FROM controller_function_calls
+         WHERE success = 0
+         ORDER BY created_at DESC
+         LIMIT 25`
+      )
+      .all() as NumberRow[];
+
+    const totalFunctionCalls = toFiniteNumber(functionTotals?.["total_calls"]);
+    const successfulFunctionCalls = toFiniteNumber(functionTotals?.["successful_calls"]);
+
     return {
       totals: {
         total_requests: totalRequests,
@@ -192,6 +279,39 @@ export class ControllerRequestStore {
         error_message: row["error_message"] ? String(row["error_message"]) : null,
         created_at: String(row["created_at"] ?? ""),
       })),
+      function_calls: {
+        totals: {
+          total_calls: totalFunctionCalls,
+          successful_calls: successfulFunctionCalls,
+          failed_calls: toFiniteNumber(functionTotals?.["failed_calls"]),
+          success_rate: totalFunctionCalls
+            ? (successfulFunctionCalls / totalFunctionCalls) * 100
+            : 0,
+        },
+        latency: {
+          avg_ms: toNullableNumber(functionTotals?.["avg_duration_ms"]),
+          max_ms: toNullableNumber(functionTotals?.["max_duration_ms"]),
+        },
+        by_function: byFunction.map((row) => {
+          const calls = toFiniteNumber(row["calls"]);
+          const successful = toFiniteNumber(row["successful"]);
+          return {
+            function_name: String(row["function_name"] ?? ""),
+            calls,
+            successful,
+            failed: toFiniteNumber(row["failed"]),
+            success_rate: calls ? (successful / calls) * 100 : 0,
+            avg_duration_ms: toNullableNumber(row["avg_duration_ms"]),
+            max_duration_ms: toNullableNumber(row["max_duration_ms"]),
+          };
+        }),
+        recent_errors: functionErrors.map((row) => ({
+          function_name: String(row["function_name"] ?? ""),
+          error_class: row["error_class"] ? String(row["error_class"]) : null,
+          error_message: row["error_message"] ? String(row["error_message"]) : null,
+          created_at: String(row["created_at"] ?? ""),
+        })),
+      },
     };
   }
 }
