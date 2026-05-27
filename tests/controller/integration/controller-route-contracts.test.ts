@@ -233,6 +233,121 @@ describe("controller route contracts", () => {
     expect(rows.every((row) => row.success === 1)).toBe(true);
   });
 
+  test("recipe CRUD routes persist success and not-found observability", async () => {
+    const app = await createTestApp();
+    const recipePayload = {
+      id: "route-test-recipe",
+      name: "Route Test Recipe",
+      model_path: join(tempDir, "models", "route-test-model"),
+      backend: "vllm",
+      served_model_name: "route-test-model",
+      tensor_parallel_size: 2,
+      max_model_len: 8192,
+      gpu_memory_utilization: 0.75,
+      unknown_runtime_flag: "--example",
+    };
+
+    const createResponse = await app.request("/recipes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(recipePayload),
+    });
+    const createBody = await createResponse.json();
+    expect(createResponse.status).toBe(200);
+    expect(createBody).toEqual({ success: true, id: "route-test-recipe" });
+
+    const listResponse = await app.request("/recipes");
+    const listBody = await listResponse.json();
+    expect(listResponse.status).toBe(200);
+    expect(listBody).toEqual([
+      expect.objectContaining({
+        id: "route-test-recipe",
+        name: "Route Test Recipe",
+        backend: "vllm",
+        served_model_name: "route-test-model",
+        tensor_parallel_size: 2,
+        max_model_len: 8192,
+        status: "stopped",
+        extra_args: { unknown_runtime_flag: "--example" },
+      }),
+    ]);
+
+    const getResponse = await app.request("/recipes/route-test-recipe");
+    const getBody = await getResponse.json();
+    expect(getResponse.status).toBe(200);
+    expect(getBody).toMatchObject({
+      id: "route-test-recipe",
+      name: "Route Test Recipe",
+      gpu_memory_utilization: 0.75,
+    });
+
+    const updateResponse = await app.request("/recipes/route-test-recipe", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...recipePayload,
+        name: "Updated Route Test Recipe",
+        max_num_seqs: 16,
+      }),
+    });
+    const updateBody = await updateResponse.json();
+    expect(updateResponse.status).toBe(200);
+    expect(updateBody).toEqual({ success: true, id: "route-test-recipe" });
+
+    const updatedResponse = await app.request("/recipes/route-test-recipe");
+    const updatedBody = await updatedResponse.json();
+    expect(updatedResponse.status).toBe(200);
+    expect(updatedBody).toMatchObject({
+      id: "route-test-recipe",
+      name: "Updated Route Test Recipe",
+      max_num_seqs: 16,
+    });
+
+    const deleteResponse = await app.request("/recipes/route-test-recipe", {
+      method: "DELETE",
+    });
+    const deleteBody = await deleteResponse.json();
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteBody).toEqual({ success: true });
+
+    const missingResponse = await app.request("/recipes/route-test-recipe");
+    const missingBody = await missingResponse.json();
+    expect(missingResponse.status).toBe(404);
+    expect(missingBody).toEqual({ detail: "Recipe not found" });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "POST", path: "/recipes", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/recipes", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/recipes/route-test-recipe",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "PUT",
+          path: "/recipes/route-test-recipe",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "DELETE",
+          path: "/recipes/route-test-recipe",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/recipes/route-test-recipe",
+          status: 404,
+          success: 0,
+        }),
+      ]),
+    );
+  });
+
   test("usage includes persisted controller route observability", async () => {
     const app = await createTestApp();
 
