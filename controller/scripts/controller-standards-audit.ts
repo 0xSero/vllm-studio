@@ -43,10 +43,7 @@ if (fs.existsSync(MODULES_DIR)) {
 
 const kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 
-/**
- *
- * @param dir
- */
+/** Scan a source directory and collect structural or documentation findings. */
 function scanDirectory(dir: string): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const directFiles = entries.filter((entry) => entry.isFile());
@@ -101,10 +98,7 @@ function scanDirectory(dir: string): void {
   }
 }
 
-/**
- *
- * @param filePath
- */
+/** Check exported functions for a nearby JSDoc block. */
 function checkFunctionDocs(filePath: string): void {
   const lines = fs.readFileSync(filePath, "utf8").split("\n");
   for (let index = 0; index < lines.length; index++) {
@@ -169,9 +163,6 @@ function checkFunctionDocs(filePath: string): void {
   }
 }
 
-/**
- *
- */
 function evaluateModuleContracts(): void {
   for (const moduleDir of moduleDirectories) {
     const hasRequiredFiles = new Set<string>();
@@ -199,9 +190,6 @@ function evaluateModuleContracts(): void {
   }
 }
 
-/**
- *
- */
 function printSummary(): void {
   const errors = findings.filter((f) => f.level === "error");
   const warnings = findings.filter((f) => f.level === "warning");
@@ -228,9 +216,6 @@ function printSummary(): void {
   }
 }
 
-/**
- *
- */
 function run(): number {
   if (!fs.existsSync(SRC_DIR)) {
     console.error("ERROR: src directory not found");

@@ -1,4 +1,3 @@
-// CRITICAL
 import {
   accessSync,
   constants,
@@ -41,13 +40,6 @@ const toTimestamp = (): string => new Date().toISOString();
 export class DownloadManager {
   private readonly active = new Map<string, ActiveDownload>();
 
-  /**
-   *
-   * @param config
-   * @param store
-   * @param eventManager
-   * @param logger
-   */
   public constructor(
     private readonly config: Config,
     private readonly store: DownloadStore,
@@ -72,25 +64,14 @@ export class DownloadManager {
     }
   }
 
-  /**
-   *
-   */
   public list(): ModelDownload[] {
     return this.store.list();
   }
 
-  /**
-   *
-   * @param id
-   */
   public get(id: string): ModelDownload | null {
     return this.store.get(id);
   }
 
-  /**
-   *
-   * @param request
-   */
   public async start(request: DownloadRequest): Promise<ModelDownload> {
     const modelId = request.model_id?.trim();
     if (!modelId) {

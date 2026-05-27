@@ -6,9 +6,10 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Audit package scripts in root, frontend, controller, and CLI.
-- [x] Remove stale or duplicate package commands and root package metadata.
-- [x] Validate package script cleanup.
+- [x] Inventory source comments and stale-comment markers.
+- [x] Remove empty/generated JSDoc blocks from controller source and tooling.
+- [x] Validate there are no remaining empty JSDoc blocks in source/tooling.
+- [x] Validate comment-audit slice.
 - [x] Commit this slice.
 
 ## Backlog
@@ -22,7 +23,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced and integration-tested; frontend usage rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
-- [ ] Audit comments across the repo and delete stale or irrelevant comments.
+- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slice removes empty/generated JSDoc blocks from controller source and tooling; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [ ] Replace every `useEffect` with appropriate alternatives and validate there are zero remaining `useEffect` usages.
 
