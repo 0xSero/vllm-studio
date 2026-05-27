@@ -45,11 +45,8 @@ export type ToolsContextValue = {
   browser: BrowserState;
   computer: ComputerState;
   fileOpenRequest: FileOpenRequest | null;
-  /** Workspace-global plugin catalogue (loaded once on mount). */
   pluginCatalogue: ComposerPluginRef[];
-  /** Workspace-global skill catalogue (loaded once on mount). */
   skillCatalogue: ComposerSkillRef[];
-  /** Workspace-global prompt-template catalogue (loaded once on mount). */
   promptTemplateCatalogue: ComposerPromptTemplateRef[];
   /**
    * Workspace-global Pi extension catalogue (installed packages + auto-
@@ -57,9 +54,7 @@ export type ToolsContextValue = {
    * `/plugins` slash menu or the plugins panel.
    */
   extensionCatalogue: ComposerExtensionRef[];
-  /** Force a re-fetch of the extension catalogue (e.g. after install/toggle). */
   refreshExtensionCatalogue: () => Promise<void>;
-  /** Per-session selection — empty for sessions that haven't picked tools yet. */
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
   setBrowserEnabled: (enabled: boolean) => void;
   toggleBrowser: () => void;
@@ -73,7 +68,6 @@ export type ToolsContextValue = {
   setCanvasEnabled: (enabled: boolean) => void;
   toggleCanvas: () => void;
   setCanvasText: (text: string) => void;
-  /** Tell the canvas store which session is currently focused so reads/writes are per-session. */
   setActiveCanvasSession: (sessionId: SessionId | null) => void;
   requestFileOpen: (path: string) => void;
   /**
@@ -81,7 +75,6 @@ export type ToolsContextValue = {
    * when a session is closed / pruned).
    */
   setSelection: (sessionId: SessionId, selection: ToolSelection | null) => void;
-  /** Hydrate the selection map from a persisted snapshot (e.g. on workspace boot). */
   hydrateSelections: (entries: Iterable<[SessionId, ToolSelection]>) => void;
 };
 
