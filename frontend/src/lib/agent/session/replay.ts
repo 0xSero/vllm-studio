@@ -18,6 +18,7 @@ type ReplayPiMessage = {
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;
+  stopReason?: string;
 };
 
 type ReplayState = {
@@ -36,10 +37,17 @@ const toolArgs = (part: Record<string, unknown>): Record<string, unknown> | unde
     ? (part.arguments as Record<string, unknown>)
     : undefined;
 
-function blockFromContentPart(part: Record<string, unknown>): AssistantBlock[] {
+function blockFromContentPart(
+  part: Record<string, unknown>,
+  options: { textAsThinking?: boolean } = {},
+): AssistantBlock[] {
   if (part.type === "text") {
     const reasoningText = typeof part.reasoning_content === "string" ? part.reasoning_content : "";
     const text = typeof part.text === "string" ? part.text : "";
+    if (options.textAsThinking) {
+      const combined = [reasoningText, text].filter(Boolean).join("\n");
+      return combined ? [{ kind: "thinking", id: newId("thinking"), text: combined }] : [];
+    }
     return [
       ...(reasoningText
         ? [{ kind: "thinking" as const, id: newId("thinking"), text: reasoningText }]
@@ -75,12 +83,19 @@ function blockFromContentPart(part: Record<string, unknown>): AssistantBlock[] {
 
 function blocksFromMessageContent(
   content: string | Array<Record<string, unknown>> | undefined,
+  options: { stopReason?: string } = {},
 ): AssistantBlock[] {
   if (typeof content === "string") {
     return content ? [{ kind: "text", id: newId("text"), text: content }] : [];
   }
   if (!isRecordArray(content)) return [];
-  return content.flatMap(blockFromContentPart);
+  const firstToolCallIndex = content.findIndex((part) => part.type === "toolCall");
+  const movePreToolTextToThinking = options.stopReason === "toolUse" && firstToolCallIndex > -1;
+  return content.flatMap((part, index) =>
+    blockFromContentPart(part, {
+      textAsThinking: movePreToolTextToThinking && index < firstToolCallIndex,
+    }),
+  );
 }
 
 const messageTextFromBlocks = (blocks: AssistantBlock[]): string =>
@@ -158,7 +173,7 @@ const appendAssistantMessage = (
 ): boolean => {
   if (message.role !== "assistant") return false;
 
-  const blocks = blocksFromMessageContent(message.content);
+  const blocks = blocksFromMessageContent(message.content, { stopReason: message.stopReason });
   const text = messageTextFromBlocks(blocks);
   if (pendingAssistantCanReceive(state, eventType, blocks) && state.pendingAssistantId) {
     patchMessage(state, state.pendingAssistantId, (current) => ({ ...current, text, blocks }));

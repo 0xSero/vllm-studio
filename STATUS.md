@@ -6,10 +6,12 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect frontend settings e2e coverage gaps.
-- [x] Add settings API route coverage for masked secrets, partial updates, and invalid URLs.
-- [x] Validate frontend e2e/settings checks.
-- [x] Commit this slice.
+- [x] Trace the live DeepSeek/Pi session JSONL to verify whether the bad text is stored as content or reasoning.
+- [x] Reproduce the provider stream shape and confirm native tool-call narration arrives as `delta.content`.
+- [x] Move native tool-call narration into `reasoning_content` in the controller stream.
+- [x] Normalize replay of existing tool-use sessions so old narration renders under reasoning.
+- [x] Validate frontend and focused controller regressions.
+- [ ] Commit this slice.
 
 ## Backlog
 
@@ -17,7 +19,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support. Initial controller-level settings/provider route coverage, frontend engine-row e2e coverage, saved-controller settings coverage, API settings persistence/route/voice routing coverage, llama.cpp direct target support, initial MLX runtime/recipe support, and module README coverage exist; broader frontend settings e2e and MLX launch hardening remain.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
-- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts, raw observability persistence, controller proxy success/failure paths, model catalog/discovery routes, HuggingFace discovery normalization, system introspection routes, studio settings/provider CRUD, Studio operational routes, recipe CRUD, lifecycle control routes, runtime/download validation routes, download control error routes, runtime target selection/health routes, runtime backend metadata routes, runtime job validation/config routes, monitoring/log/log-stream/benchmark route contracts, proxy/tokenization fallback contracts, and audio validation contracts; full active-flow coverage remains.
+- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts, raw observability persistence, controller proxy success/failure paths, model catalog/discovery routes, HuggingFace discovery normalization, system introspection routes, studio settings/provider CRUD, Studio operational routes, recipe CRUD, lifecycle control routes, runtime/download validation routes, download control error routes, runtime target selection/health routes, runtime backend metadata routes, runtime job validation/config routes, monitoring/events/log/log-stream/benchmark route contracts, proxy/tokenization fallback contracts, and audio validation contracts; full active-flow coverage remains.
 - [ ] Add controller observability for success, failure, error, path, and function-call tracking. Initial persistent HTTP route observability exists and raw rows are integration-tested; `/status` records process lookup function calls; `/compat` and `/config` record system introspection process lookup function calls; `/v1/models` and `/v1/models/:modelId` record model process lookup function calls; tokenization/count-token proxy routes record process lookup function calls; `/metrics`, `/v1/metrics/vllm`, `/benchmark`, and `/logs` record operational process lookup function calls; runtime target, runtime job, and backend metadata routes record current-process function calls; `/recipes` records recipe-list current-process function calls; `/usage` records collect-known-models and inference-aggregate function calls; `/usage/pi-sessions` records Pi session aggregation function calls; broader per-function instrumentation remains.
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, `/usage` status, latency, recent-activity, error aggregation, function-call aggregation, inference-aggregate fallback behavior, and `/usage/pi-sessions` JSONL/function-call aggregation are integration-tested, and the frontend normalization boundary preserves controller observability; frontend visual rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.

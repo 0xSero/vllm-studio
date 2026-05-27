@@ -83,12 +83,17 @@ afterEach(async () => {
 });
 
 async function createTestApp() {
+  const { app } = await createTestHarness();
+  return app;
+}
+
+async function createTestHarness() {
   const [{ createAppContext }, { createApp }] = await Promise.all([
     import("../../../controller/src/app-context"),
     import("../../../controller/src/http/app"),
   ]);
   const context = createAppContext();
-  return createApp(context);
+  return { app: createApp(context), context };
 }
 
 function readControllerRequestRows(): ControllerRequestRow[] {
@@ -125,7 +130,63 @@ function readControllerFunctionCallRows(): ControllerFunctionCallRow[] {
   }
 }
 
+async function collectSseJson(stream: ReadableStream<Uint8Array>) {
+  const text = await new Response(stream).text();
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
+}
+
 describe("controller route contracts", () => {
+  test("stream proxy moves native tool-call narration into reasoning_content", async () => {
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    content: "Let me inspect the file first.",
+                    tool_calls: [
+                      {
+                        id: "call-read",
+                        index: 0,
+                        type: "function",
+                        function: { name: "read", arguments: "{}" },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
+    const firstEvent = events[0] as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    const delta = firstEvent.choices?.[0]?.delta;
+
+    expect(delta?.content).toBeUndefined();
+    expect(delta?.reasoning_content).toBe("Let me inspect the file first.");
+    expect(delta?.tool_calls).toEqual([
+      expect.objectContaining({ id: "call-read" }),
+    ]);
+  });
+
   test("status route reports no active runtime on an isolated test port", async () => {
     const app = await createTestApp();
     const response = await app.request("/status");
@@ -1906,7 +1967,7 @@ describe("controller route contracts", () => {
       "first line\nsecond line\n",
       "utf8",
     );
-    const app = await createTestApp();
+    const { app, context } = await createTestHarness();
 
     const prometheusResponse = await app.request("/metrics");
     const prometheusText = await prometheusResponse.text();
@@ -2020,6 +2081,31 @@ describe("controller route contracts", () => {
       channels: {},
       total_subscribers: 0,
     });
+
+    const eventsController = new AbortController();
+    const eventsResponse = await app.request("/events", {
+      signal: eventsController.signal,
+    });
+    expect(eventsResponse.status).toBe(200);
+    expect(eventsResponse.headers.get("content-type")).toContain(
+      "text/event-stream",
+    );
+    const eventsReader = eventsResponse.body?.getReader();
+    expect(eventsReader).toBeDefined();
+    const eventsRead = eventsReader!.read();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await context.eventManager.publishStatus({
+      running: false,
+      source: "route-contract-test",
+    });
+    const eventsChunk = await eventsRead;
+    expect(eventsChunk.done).toBe(false);
+    const eventsText = new TextDecoder().decode(eventsChunk.value);
+    expect(eventsText).toContain("event: status");
+    expect(eventsText).toContain('"running":false');
+    expect(eventsText).toContain('"source":"route-contract-test"');
+    eventsController.abort();
+    await eventsReader!.cancel();
 
     const rows = readControllerRequestRows();
     expect(rows).toEqual(

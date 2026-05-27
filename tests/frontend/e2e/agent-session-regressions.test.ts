@@ -10,6 +10,7 @@ import {
   selectedContextPrompt,
 } from "@/lib/agent/composer-context";
 import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
+import { replaySessionEvents } from "@/lib/agent/session/replay";
 import { drainQueuedTurnAfterAgentEnd } from "@/lib/agent/sessions/queue-drain";
 import type { Session } from "@/lib/agent/sessions/types";
 import { reducer } from "@/lib/agent/workspace/reducer";
@@ -350,6 +351,46 @@ test("compaction events render as assistant event blocks", () => {
     blocks[0]?.text,
     "Compacted the current plan and selected skills.",
   );
+});
+
+test("replayed tool-use narration renders as reasoning, not visible answer text", () => {
+  const { messages } = replaySessionEvents([
+    {
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "inspect the project" }],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "text",
+            text: "Now I need to inspect the package files before answering.",
+          },
+          {
+            type: "toolCall",
+            id: "call-read",
+            name: "read",
+            arguments: { path: "/workspace/package.json" },
+          },
+        ],
+      },
+    },
+  ]);
+
+  const assistant = messages.find((message) => message.role === "assistant");
+  assert.equal(assistant?.text, "");
+  assert.equal(assistant?.blocks?.[0]?.kind, "thinking");
+  assert.match(
+    assistant?.blocks?.[0]?.text ?? "",
+    /inspect the package files/,
+  );
+  assert.equal(assistant?.blocks?.[1]?.kind, "tool");
 });
 
 test("skill mentions and selected skill context survive composer prompt construction", () => {
