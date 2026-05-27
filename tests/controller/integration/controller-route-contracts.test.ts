@@ -155,6 +155,20 @@ describe("controller route contracts", () => {
                   index: 0,
                   delta: {
                     content: "Let me inspect the file first.",
+                    tool_calls: null,
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
                     tool_calls: [
                       {
                         id: "call-read",
@@ -182,7 +196,10 @@ describe("controller route contracts", () => {
 
     expect(delta?.content).toBeUndefined();
     expect(delta?.reasoning_content).toBe("Let me inspect the file first.");
-    expect(delta?.tool_calls).toEqual([
+    const toolEvent = events[1] as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    expect(toolEvent.choices?.[0]?.delta?.tool_calls).toEqual([
       expect.objectContaining({ id: "call-read" }),
     ]);
   });
