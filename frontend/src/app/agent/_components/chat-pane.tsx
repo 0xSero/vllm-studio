@@ -146,9 +146,7 @@ type FileMentionRow = {
   source: string;
 };
 type ExtensionRowState = ComposerExtensionRef & {
-  /** Resolved on/off state after layering the per-turn override on top of `enabled`. */
   effectiveEnabled: boolean;
-  /** Whether the current selection carries a per-turn override for this extension. */
   hasTurnOverride: boolean;
 };
 
@@ -716,7 +714,6 @@ export function ChatPane({
       if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
-      // Dismiss any open mention picker on submit so it doesn't linger.
       setMention(null);
       composerSubmitInFlightRef.current = true;
       try {
@@ -1696,10 +1693,6 @@ const LOADED_TAB_META: Record<
     classes: "border-red-500/30 bg-red-500/10 text-red-300",
   },
 };
-
-// ---------------------------------------------------------------------------
-// Mention picker chrome
-// ---------------------------------------------------------------------------
 
 const MENTION_KIND_META: Record<
   "plugin" | "skill" | "promptTemplate" | "extension",
