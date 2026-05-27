@@ -88,7 +88,9 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
 
   app.get("/recipes", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(context, "recipes.list.getCurrentProcess", () =>
+      context.engineService.getCurrentProcess()
+    );
     const launchingRecipe = context.engineService.getCurrentRecipe();
     const launchingId = launchingRecipe?.id ?? null;
     const result = recipes.map((recipe) => {
@@ -381,19 +383,31 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   });
 
   app.get("/runtime/sglang", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.backend.sglang.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const target = await getDefaultRuntimeTarget(context.config, "sglang", current);
     return ctx.json(runtimeTargetToBackendInfo(target));
   });
 
   app.get("/runtime/llamacpp", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.backend.llamacpp.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const target = await getDefaultRuntimeTarget(context.config, "llamacpp", current);
     return ctx.json(runtimeTargetToBackendInfo(target));
   });
 
   app.get("/runtime/mlx", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.backend.mlx.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     return ctx.json(getMlxRuntimeInfo(context.config, current));
   });
 
