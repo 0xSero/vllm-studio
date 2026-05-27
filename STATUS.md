@@ -6,14 +6,14 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect Pi session usage aggregation route.
-- [x] Add controller integration coverage for `/usage/pi-sessions` aggregation.
-- [x] Validate Pi session usage aggregation slice.
+- [x] Inspect Pi runtime multi-controller model refresh path.
+- [x] Add frontend e2e coverage for Pi multi-controller model refresh.
+- [x] Validate Pi multi-controller model refresh slice.
 - [x] Commit this slice.
 
 ## Backlog
 
-- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, active-session model metadata merge, splitting, queue/follow-up, compacting, skills, file tagging, Pi extension override persistence, and tab forking; browser screenshot coverage and extension UI remain.
+- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, active-session model metadata merge, Pi multi-controller model refresh, splitting, queue/follow-up, compacting, skills, file tagging, Pi extension override persistence, and tab forking; browser screenshot coverage and extension UI remain.
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support. Initial controller-level settings/provider route coverage exists; frontend settings e2e and MLX support remain.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.

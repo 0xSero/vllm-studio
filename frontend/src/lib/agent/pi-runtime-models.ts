@@ -4,7 +4,6 @@ import path from "node:path";
 import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
 import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "./models";
-import { normalizeBackendUrl } from "./pi-runtime-helpers";
 
 const PROVIDER_ID = "vllm-studio";
 
@@ -51,6 +50,10 @@ function providerIdForController(controller: PiControllerConfig, index: number):
 
 function qualifyModelId(providerId: string, rawId: string): string {
   return providerId === PROVIDER_ID ? rawId : `${providerId}/${rawId}`;
+}
+
+function normalizeBackendUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
 }
 
 function normalizeControllerInput(input: PiControllerModelsRequest): PiControllerConfig | null {

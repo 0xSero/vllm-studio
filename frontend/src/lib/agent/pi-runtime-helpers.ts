@@ -80,10 +80,6 @@ export type AgentSessionOptions = {
   envInjections: Record<string, string>;
 };
 
-export function normalizeBackendUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
-}
-
 function resolveDefaultAgentCwd(): string {
   if (process.env.VLLM_STUDIO_AGENT_CWD) return process.env.VLLM_STUDIO_AGENT_CWD;
 
