@@ -16,7 +16,6 @@
     "depcheck": "depcheck --ignores=\"@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,husky,jscpd,knip,lint-staged,rehype-highlight,concurrently,cross-env,electron-builder,madge,tsx\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
     "analyze": "ANALYZE=true next build",
     "prepare": "cd .. && git rev-parse --git-dir >/dev/null 2>&1 && npm run setup:git-hooks || true",
-    "check": "knip && jscpd src && npm run depcheck",
     "check:deadcode": "knip",
     "check:dupes": "jscpd src",
     "check:cleanup": "npm run check:deadcode && npm run check:dupes && npm run depcheck",

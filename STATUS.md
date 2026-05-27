@@ -6,9 +6,9 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect generated header comments across repo.
-- [x] Remove exact non-informative `// CRITICAL` headers without changing behavior.
-- [x] Validate typechecks for touched modules.
+- [x] Inspect package scripts for duplicate or stale command aliases.
+- [x] Remove one duplicate frontend cleanup alias while keeping canonical gates intact.
+- [x] Validate package integrity and frontend quality gate.
 - [x] Commit this slice.
 
 ## Backlog
@@ -23,7 +23,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling and exact non-informative `// CRITICAL` headers; broader file-by-file audit remains open.
-- [ ] Audit package scripts and remove irrelevant commands. Current slice removes stale root frontend metadata/dependencies, duplicate frontend quality alias, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
+- [ ] Audit package scripts and remove irrelevant commands. Current slices remove stale root frontend metadata/dependencies, duplicate frontend quality/cleanup aliases, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [x] Replace every React effect hook with appropriate alternatives and validate there are zero remaining frontend source usages.
 
 ## Constraints
