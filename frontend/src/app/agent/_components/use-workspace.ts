@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { safeJson } from "@/lib/agent/safe-json";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/lib/agent/tools/persistence";
 import { createInitialState, reducer } from "@/lib/agent/workspace/store";
@@ -14,7 +21,6 @@ import {
 } from "@/lib/agent/workspace/effects";
 import { useWorkspaceHydrationEffects } from "@/hooks/agent/use-workspace-hydration-effects";
 import { useBrowserEventsEffects } from "@/hooks/agent/use-browser-events-effects";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import type {
   AgentModel,
   PaneId,
@@ -314,36 +320,41 @@ export function useWorkspace(): UseWorkspaceResult {
 
   useBrowserEventsEffects({ browserEvents, enabled: tools.browser.enabled });
 
-  // Re-fetch the model list whenever the active controller (backend URL or
-  // api key) changes. The control panel persists this to localStorage and
-  // fires a `storage` event on changes; we listen for it here so the agent's
-  // model picker always reflects whichever controller is currently primary.
-  useLegacyEffect(() => {
-    if (typeof window === "undefined") return;
-    const reload = () => {
-      dispatch({ type: "setModelsLoading", loading: true });
-      dispatch({ type: "setError", error: "" });
-      void loadAgentModelsPayload()
-        .then((models) => {
-          dispatch({ type: "setModels", models: models.models ?? [] });
-        })
-        .catch((error) => {
-          dispatch({
-            type: "setError",
-            error: error instanceof Error ? error.message : String(error),
-          });
-          dispatch({ type: "setModels", models: [] });
-        })
-        .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
-    };
-    const onStorage = (event: StorageEvent | Event) => {
-      const key = (event as StorageEvent).key;
-      if (key && key !== "vllmstudio_backend_url" && key !== "vllm-studio.controllers") return;
-      reload();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [dispatch]);
+  const subscribeWorkspaceModelStorage = useCallback(
+    (_notify: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const reload = () => {
+        dispatch({ type: "setModelsLoading", loading: true });
+        dispatch({ type: "setError", error: "" });
+        void loadAgentModelsPayload()
+          .then((models) => {
+            dispatch({ type: "setModels", models: models.models ?? [] });
+          })
+          .catch((error) => {
+            dispatch({
+              type: "setError",
+              error: error instanceof Error ? error.message : String(error),
+            });
+            dispatch({ type: "setModels", models: [] });
+          })
+          .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
+      };
+      const onStorage = (event: StorageEvent | Event) => {
+        const key = (event as StorageEvent).key;
+        if (key && key !== "vllmstudio_backend_url" && key !== "vllm-studio.controllers") return;
+        reload();
+      };
+      window.addEventListener("storage", onStorage);
+      return () => window.removeEventListener("storage", onStorage);
+    },
+    [dispatch],
+  );
+
+  useSyncExternalStore(
+    subscribeWorkspaceModelStorage,
+    getWorkspaceModelStorageSnapshot,
+    getWorkspaceModelStorageSnapshot,
+  );
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
@@ -500,3 +511,5 @@ export function useWorkspace(): UseWorkspaceResult {
 
   return { state, dispatch, handles };
 }
+
+const getWorkspaceModelStorageSnapshot = (): number => 0;

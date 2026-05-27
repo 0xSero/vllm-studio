@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type {
@@ -12,7 +12,6 @@ import type {
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
 import { buildStarterRecipe } from "./setup-helpers";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -72,9 +71,15 @@ export function useSetup() {
     }
   }, []);
 
-  useLegacyEffect(() => {
-    void loadSetupData();
-  }, [loadSetupData]);
+  const subscribeSetupData = useCallback(
+    (_notify: () => void) => {
+      void loadSetupData();
+      return () => {};
+    },
+    [loadSetupData],
+  );
+
+  useSyncExternalStore(subscribeSetupData, getSetupSnapshot, getSetupSnapshot);
 
   const saveSettings = useCallback(async () => {
     if (!modelsDir.trim()) {
@@ -280,3 +285,5 @@ export function useSetup() {
     skipSetup,
   };
 }
+
+const getSetupSnapshot = (): number => 0;
