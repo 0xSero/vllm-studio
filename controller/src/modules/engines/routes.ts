@@ -78,11 +78,6 @@ const parseRuntimeJobBody = async (ctx: {
   };
 };
 
-/**
- * Register engines module routes.
- * @param app - Hono application to register routes on.
- * @param context - Application dependency container.
- */
 export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   const launchAbortControllers = new Map<string, AbortController>();
 

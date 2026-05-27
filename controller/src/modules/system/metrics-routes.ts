@@ -179,11 +179,6 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   };
 };
 
-/**
- * Register monitoring routes.
- * @param app - Hono app.
- * @param context - App context.
- */
 export const registerMonitoringRoutes = (app: Hono, context: AppContext): void => {
   app.get("/metrics", async (_ctx) => {
     const current = await observeControllerFunction(

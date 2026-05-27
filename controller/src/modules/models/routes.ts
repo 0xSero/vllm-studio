@@ -29,10 +29,6 @@ import { notFound } from "../../core/errors";
 import { observeControllerFunction } from "../../core/function-observability";
 import { fetchInference } from "../../services/inference/inference-client";
 
-/**
- * Check if mock inference mode is enabled via environment variable.
- * @returns True if mock inference is enabled.
- */
 function isMockInferenceEnabled(): boolean {
   const raw = process.env["VLLM_STUDIO_MOCK_INFERENCE"];
   if (!raw) return false;
@@ -40,11 +36,6 @@ function isMockInferenceEnabled(): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
-/**
- * Register model-related routes.
- * @param app - Hono app.
- * @param context - App context.
- */
 export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
   app.get("/v1/models", async (ctx) => {
     const recipes = context.stores.recipeStore.list();

@@ -111,11 +111,6 @@ const parseUiPreferencesUpdate = (value: unknown): Record<string, string> | null
   return clean;
 };
 
-/**
- * Register studio routes.
- * @param app - Hono app.
- * @param context - App context.
- */
 export const registerStudioRoutes = (app: Hono, context: AppContext): void => {
   const buildSettingsPayload = (): {
     config_path: string;
