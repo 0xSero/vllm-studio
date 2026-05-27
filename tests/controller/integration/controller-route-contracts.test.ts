@@ -1423,6 +1423,14 @@ describe("controller route contracts", () => {
       current_power_watts: 0,
     });
 
+    const benchmarkResponse = await app.request(
+      "/benchmark?prompt_tokens=20&max_tokens=4",
+      { method: "POST" },
+    );
+    const benchmarkBody = await benchmarkResponse.json();
+    expect(benchmarkResponse.status).toBe(200);
+    expect(benchmarkBody).toEqual({ error: "No model running" });
+
     const logsResponse = await app.request("/logs");
     const logsBody = await logsResponse.json();
     expect(logsResponse.status).toBe(200);
@@ -1456,6 +1464,15 @@ describe("controller route contracts", () => {
     expect(controllerDeleteResponse.status).toBe(400);
     expect(controllerDeleteBody).toEqual({ detail: "controller logs cannot be deleted via API" });
 
+    const eventStatsResponse = await app.request("/events/stats");
+    const eventStatsBody = await eventStatsResponse.json();
+    expect(eventStatsResponse.status).toBe(200);
+    expect(eventStatsBody).toEqual({
+      total_events_published: 0,
+      channels: {},
+      total_subscribers: 0,
+    });
+
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
@@ -1470,6 +1487,12 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "GET",
           path: "/lifetime-metrics",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/benchmark",
           status: 200,
           success: 1,
         }),
@@ -1491,6 +1514,12 @@ describe("controller route contracts", () => {
           path: "/logs/controller",
           status: 400,
           success: 0,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/events/stats",
+          status: 200,
+          success: 1,
         }),
       ]),
     );
