@@ -1,8 +1,3 @@
-/**
- * Context Management Service
- * Handles token estimation, compaction, and context management
- */
-
 import { safeJsonStringify } from "@/lib/safe-json";
 import type {
   IContextManagementService,
@@ -23,17 +18,11 @@ export class ContextManagementService implements IContextManagementService {
     this.config = config;
   }
 
-  /**
-   * Estimate tokens for text (rough approximation: ~4 chars per token)
-   */
   estimateTokens(text: string): number {
     if (!text) return 0;
     return Math.ceil(text.length / 4);
   }
 
-  /**
-   * Calculate total tokens for messages
-   */
   calculateMessageTokens(messages: ContextMessage[]): number {
     return messages.reduce((total, msg) => {
       const content =
@@ -42,9 +31,6 @@ export class ContextManagementService implements IContextManagementService {
     }, 0);
   }
 
-  /**
-   * Compact messages using specified strategy
-   */
   compactMessages(
     messages: ContextMessage[],
     maxContext: number,
@@ -100,9 +86,6 @@ export class ContextManagementService implements IContextManagementService {
     return { messages: result.messages, event };
   }
 
-  /**
-   * Get utilization level for color coding
-   */
   getUtilizationLevel(utilization: number): UtilizationLevel {
     if (utilization < 0.5) return "low";
     if (utilization < 0.75) return "medium";
@@ -110,9 +93,6 @@ export class ContextManagementService implements IContextManagementService {
     return "critical";
   }
 
-  /**
-   * Format token count for display
-   */
   formatTokenCount(tokens: number): string {
     if (tokens >= 1000000) {
       return `${(tokens / 1000000).toFixed(1)}M`;
@@ -123,9 +103,6 @@ export class ContextManagementService implements IContextManagementService {
     return tokens.toString();
   }
 
-  /**
-   * Calculate context stats
-   */
   calculateStats(
     messages: ContextMessage[],
     maxContext: number,
@@ -160,9 +137,6 @@ export class ContextManagementService implements IContextManagementService {
     };
   }
 
-  /**
-   * Compact using sliding window strategy
-   */
   private compactSlidingWindow(messages: ContextMessage[], targetTokens: number): CompactionResult {
     const preserveRecent = this.config.preserveRecentMessages;
 
@@ -193,9 +167,6 @@ export class ContextManagementService implements IContextManagementService {
     };
   }
 
-  /**
-   * Compact by truncating oldest
-   */
   private compactTruncate(messages: ContextMessage[], targetTokens: number): CompactionResult {
     const preserveRecent = this.config.preserveRecentMessages;
     let currentTokens = this.calculateMessageTokens(messages);
@@ -213,9 +184,6 @@ export class ContextManagementService implements IContextManagementService {
     };
   }
 
-  /**
-   * Create a summary message from compacted messages
-   */
   private createSummaryMessage(removedMessages: ContextMessage[]): ContextMessage {
     const summary = removedMessages
       .filter((m) => m.role !== "system")
