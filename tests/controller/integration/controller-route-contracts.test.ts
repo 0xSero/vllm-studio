@@ -16,6 +16,8 @@ const ENV_KEYS = [
   "VLLM_STUDIO_MOCK_INFERENCE",
   "VLLM_STUDIO_MOCK_MODEL_ID",
   "VLLM_STUDIO_API_KEY",
+  "VLLM_STUDIO_RUNTIME_SKIP_DOCKER",
+  "VLLM_STUDIO_RUNTIME_SKIP_SYSTEM",
 ] as const;
 
 let envSnapshot: EnvSnapshot;
@@ -46,6 +48,8 @@ beforeEach(() => {
     VLLM_STUDIO_INFERENCE_PORT: "65534",
     VLLM_STUDIO_MOCK_INFERENCE: "true",
     VLLM_STUDIO_MOCK_MODEL_ID: "mock-model",
+    VLLM_STUDIO_RUNTIME_SKIP_DOCKER: "1",
+    VLLM_STUDIO_RUNTIME_SKIP_SYSTEM: "1",
   });
   delete process.env.VLLM_STUDIO_API_KEY;
 });
@@ -342,6 +346,80 @@ describe("controller route contracts", () => {
           method: "GET",
           path: "/recipes/route-test-recipe",
           status: 404,
+          success: 0,
+        }),
+      ]),
+    );
+  });
+
+  test("runtime and download validation routes persist observable outcomes", async () => {
+    const app = await createTestApp();
+
+    const downloadsResponse = await app.request("/studio/downloads");
+    const downloadsBody = await downloadsResponse.json();
+    expect(downloadsResponse.status).toBe(200);
+    expect(downloadsBody).toEqual({ downloads: [] });
+
+    const missingDownloadResponse = await app.request("/studio/downloads/missing-download");
+    const missingDownloadBody = await missingDownloadResponse.json();
+    expect(missingDownloadResponse.status).toBe(404);
+    expect(missingDownloadBody).toEqual({ detail: "Download not found" });
+
+    const invalidDownloadResponse = await app.request("/studio/downloads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision: "main" }),
+    });
+    const invalidDownloadBody = await invalidDownloadResponse.json();
+    expect(invalidDownloadResponse.status).toBe(400);
+    expect(invalidDownloadBody).toEqual({ detail: "model_id is required" });
+
+    const runtimeTargetsResponse = await app.request("/runtime/targets");
+    const runtimeTargetsBody = await runtimeTargetsResponse.json();
+    expect(runtimeTargetsResponse.status).toBe(200);
+    expect(Array.isArray(runtimeTargetsBody.targets)).toBe(true);
+
+    const missingTargetResponse = await app.request("/runtime/targets/missing-target");
+    const missingTargetBody = await missingTargetResponse.json();
+    expect(missingTargetResponse.status).toBe(404);
+    expect(missingTargetBody).toEqual({ detail: "Runtime target not found" });
+
+    const invalidRuntimeJobResponse = await app.request("/runtime/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "update" }),
+    });
+    const invalidRuntimeJobBody = await invalidRuntimeJobResponse.json();
+    expect(invalidRuntimeJobResponse.status).toBe(400);
+    expect(invalidRuntimeJobBody).toEqual({ detail: "backend is required" });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: "/studio/downloads", status: 200 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/studio/downloads/missing-download",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/downloads",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({ method: "GET", path: "/runtime/targets", status: 200 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/targets/missing-target",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/jobs",
+          status: 400,
           success: 0,
         }),
       ]),
