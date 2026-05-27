@@ -1,8 +1,6 @@
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import type { QueuedMessage, RuntimeLoggedEvent, SessionTab, TokenStats } from "./types";
 
-// ----- id / time -----
-
 export function randomIdSegment(length: number): string {
   const cryptoApi = globalThis.crypto;
   if (cryptoApi?.randomUUID) {
@@ -34,8 +32,6 @@ export function nowLabel(): string {
     new Date(),
   );
 }
-
-// ----- generic event helpers -----
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -146,11 +142,7 @@ export function messageText(
     .join(separator);
 }
 
-// ----- SSE parsing -----
-
 export { parseAgentTurnSsePayload } from "@/lib/agent/contracts/turn";
-
-// ----- runtime status / control helpers -----
 
 export function runtimeStatusLooksActive(status: {
   active?: boolean;
@@ -194,8 +186,6 @@ export function replayCursorAfterRuntimeHydration(
   // rendered deltas and duplicate visible assistant content after navigation.
   return runtimeActive ? runtimeEventSeq : undefined;
 }
-
-// ----- queue helpers -----
 
 export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
   return queue.filter((item) => item.mode === "follow_up");
@@ -279,8 +269,6 @@ export function removeDeliveredQueuedMessage(
   return [...queue.slice(0, index), ...queue.slice(index + 1)];
 }
 
-// ----- canonical + runtime event merge -----
-
 function eventKey(event: Record<string, unknown>): string {
   try {
     return JSON.stringify(event);
@@ -308,8 +296,6 @@ export function mergeCanonicalAndRuntimeEvents(
     .forEach((entry) => push(entry.event as Record<string, unknown>));
   return merged;
 }
-
-// ----- fresh tab factory -----
 
 export function makeFreshTab(): SessionTab {
   return {
