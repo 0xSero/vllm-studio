@@ -1,7 +1,7 @@
 // CRITICAL
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowUpCircle, Check, Loader2, Settings, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
@@ -14,7 +14,6 @@ import {
   StatusPill,
   type StatusTone,
 } from "@/components/settings-primitives";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 import {
   ENGINE_META,
   hasHydratedEngineRows,
@@ -49,11 +48,16 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     setJobs(jobPayload.jobs);
   }, []);
 
-  useLegacyEffect(() => {
-    void Promise.resolve().then(refreshRuntimeJobs);
-    const timer = setInterval(() => void refreshRuntimeJobs(), 2500);
-    return () => clearInterval(timer);
-  }, [refreshRuntimeJobs]);
+  const subscribeRuntimeJobs = useCallback(
+    (_notify: () => void) => {
+      void Promise.resolve().then(refreshRuntimeJobs);
+      const timer = setInterval(() => void refreshRuntimeJobs(), 2500);
+      return () => clearInterval(timer);
+    },
+    [refreshRuntimeJobs],
+  );
+
+  useSyncExternalStore(subscribeRuntimeJobs, getEnginesSectionSnapshot, getEnginesSectionSnapshot);
 
   const engineRows = useMemo(() => resolveEngineRowsView(targets, backends), [backends, targets]);
   const hasRows = hasHydratedEngineRows(engineRows);
@@ -83,6 +87,8 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     </div>
   );
 }
+
+const getEnginesSectionSnapshot = (): number => 0;
 
 function HydrationStatus({ hasRows }: { hasRows: boolean }) {
   return (

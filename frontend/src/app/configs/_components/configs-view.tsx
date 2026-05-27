@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Archive,
   Cable,
@@ -32,7 +32,6 @@ import {
 } from "@/components/settings-primitives";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
 import { SESSION_PREFS_KEY } from "@/lib/agent/workspace/store";
-import { useLegacyEffect } from "@/hooks/agent/use-legacy-effects";
 interface ConfigsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -105,8 +104,8 @@ export function ConfigsView({
     const hash = window.location.hash.replace("#", "");
     return normalizeSectionId(hash) ?? "connection";
   });
-  useLegacyEffect(() => {
-    if (typeof window === "undefined") return;
+  const subscribeHashSection = useCallback((_notify: () => void) => {
+    if (typeof window === "undefined") return () => {};
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
       const normalized = normalizeSectionId(hash);
@@ -115,6 +114,8 @@ export function ConfigsView({
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useSyncExternalStore(subscribeHashSection, getConfigsViewSnapshot, getConfigsViewSnapshot);
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
     if (typeof window !== "undefined") {
@@ -461,12 +462,15 @@ function ArchivedChatsSettings() {
     }
   });
   const [sessions, setSessions] = useState<Session[]>([]);
-  useLegacyEffect(() => {
+  const subscribeArchivedSessions = useCallback((_notify: () => void) => {
     void fetch("/api/agent/sessions/all?since=365d", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ sessions?: Session[] }>)
       .then((payload) => setSessions(payload.sessions ?? []))
       .catch(() => setSessions([]));
+    return () => {};
   }, []);
+
+  useSyncExternalStore(subscribeArchivedSessions, getConfigsViewSnapshot, getConfigsViewSnapshot);
   const archivedIds = Object.entries(prefs)
     .filter(([, pref]) => pref.hidden)
     .map(([id]) => id);
@@ -578,9 +582,12 @@ function PluginsSettings() {
         setMarketplaces([]);
         setValidation({ browserUseAvailable: false, computerUseAvailable: false });
       });
-  useLegacyEffect(() => {
+  const subscribePlugins = useCallback((_notify: () => void) => {
     void loadPlugins();
+    return () => {};
   }, []);
+
+  useSyncExternalStore(subscribePlugins, getConfigsViewSnapshot, getConfigsViewSnapshot);
   const setPluginEnabled = (plugin: Plugin, enabled: boolean) => {
     setSavingPlugin(plugin.id);
     void fetch("/api/agent/plugins", {
@@ -840,12 +847,15 @@ function pluginLocation(plugin: { enabled: boolean; source?: string; path: strin
 function SkillsSettings() {
   type Skill = { id: string; name: string; source: string; path: string };
   const [skills, setSkills] = useState<Skill[]>([]);
-  useLegacyEffect(() => {
+  const subscribeSkills = useCallback((_notify: () => void) => {
     void fetch("/api/agent/skills", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ skills?: Skill[] }>)
       .then((payload) => setSkills(payload.skills ?? []))
       .catch(() => setSkills([]));
+    return () => {};
   }, []);
+
+  useSyncExternalStore(subscribeSkills, getConfigsViewSnapshot, getConfigsViewSnapshot);
   return (
     <SettingsGroup
       title="Skills"
@@ -881,12 +891,15 @@ function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
   const [checks, setChecks] = useState<Check[]>([]);
   const controllerStatus = useSidebarStatus();
-  useLegacyEffect(() => {
+  const subscribeSetupChecks = useCallback((_notify: () => void) => {
     void fetch("/api/agent/setup-checks", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ checks?: Check[] }>)
       .then((payload) => setChecks(payload.checks ?? []))
       .catch(() => setChecks([]));
+    return () => {};
   }, []);
+
+  useSyncExternalStore(subscribeSetupChecks, getConfigsViewSnapshot, getConfigsViewSnapshot);
   const controllerCheck: Check = {
     id: "controller",
     label: "Controller connection",
@@ -975,3 +988,5 @@ function severityTone(severity: CompatibilityCheck["severity"]): StatusTone {
   if (severity === "warn") return "warning";
   return "info";
 }
+
+const getConfigsViewSnapshot = (): number => 0;
