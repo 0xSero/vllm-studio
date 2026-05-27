@@ -6,16 +6,15 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect timeline scroll lifecycle hooks and call site.
-- [x] Replace stick/ref sync, scroll listener registration, and sticky scroll writes with render-time refs and `useSyncExternalStore`.
-- [x] Remove stale source comments that referenced direct effect hooks.
-- [x] Verify frontend source has zero direct effect-hook invocations.
-- [x] Validate React effect-hook removal slice.
+- [x] Inspect frontend e2e coverage and agent composer/file-tagging seams.
+- [x] Add e2e coverage for file tagging into project-file attachments.
+- [x] Add e2e coverage for Pi extension slash selection, search, override sanitization, and persistence.
+- [x] Validate frontend e2e coverage slice.
 - [x] Commit this slice.
 
 ## Backlog
 
-- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, splitting, queue/follow-up, compacting, and skills; browser screenshot coverage, forking, extension UI, and file tagging remain.
+- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, splitting, queue/follow-up, compacting, skills, file tagging, and Pi extension override persistence; browser screenshot coverage, forking, and extension UI remain.
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
