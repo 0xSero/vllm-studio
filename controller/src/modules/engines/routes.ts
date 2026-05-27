@@ -272,6 +272,7 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
 
   app.post("/studio/downloads/:downloadId/pause", async (ctx) => {
     const id = ctx.req.param("downloadId");
+    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
     const download = context.engineService.pauseDownload(id);
     return ctx.json({ download });
   });
@@ -280,12 +281,14 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
     const body = await ctx.req.json().catch(() => ({}));
     const token = resolveHfToken(ctx, body);
     const id = ctx.req.param("downloadId");
+    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
     const download = context.engineService.resumeDownload(id, token);
     return ctx.json({ download });
   });
 
   app.post("/studio/downloads/:downloadId/cancel", async (ctx) => {
     const id = ctx.req.param("downloadId");
+    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
     const download = context.engineService.cancelDownload(id);
     return ctx.json({ download });
   });

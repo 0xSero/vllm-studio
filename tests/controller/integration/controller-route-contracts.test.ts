@@ -1047,6 +1047,17 @@ describe("controller route contracts", () => {
     expect(invalidDownloadResponse.status).toBe(400);
     expect(invalidDownloadBody).toEqual({ detail: "model_id is required" });
 
+    for (const action of ["pause", "resume", "cancel"]) {
+      const response = await app.request(`/studio/downloads/missing-download/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await response.json();
+      expect(response.status).toBe(404);
+      expect(body).toEqual({ detail: "Download not found" });
+    }
+
     const runtimeTargetsResponse = await app.request("/runtime/targets");
     const runtimeTargetsBody = await runtimeTargetsResponse.json();
     expect(runtimeTargetsResponse.status).toBe(200);
@@ -1098,6 +1109,24 @@ describe("controller route contracts", () => {
           method: "POST",
           path: "/studio/downloads",
           status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/downloads/missing-download/pause",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/downloads/missing-download/resume",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/studio/downloads/missing-download/cancel",
+          status: 404,
           success: 0,
         }),
         expect.objectContaining({ method: "GET", path: "/runtime/targets", status: 200 }),
