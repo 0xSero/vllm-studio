@@ -69,7 +69,6 @@ function withSessions(state: WorkspaceState, sessions: SessionsMap): WorkspaceSt
   return state.sessions === sessions ? state : { ...state, sessions };
 }
 
-/** Remove sessions from the map that aren't referenced by any pane anymore. */
 function pruneOrphanSessions(state: WorkspaceState): WorkspaceState {
   return withSessions(state, pruneSessions(state.sessions, referencedSessionIds(state)));
 }
