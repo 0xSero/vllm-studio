@@ -1,4 +1,3 @@
-import jsdoc from "eslint-plugin-jsdoc";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
@@ -20,7 +19,6 @@ const config = [
     },
     plugins: {
       "@typescript-eslint": tseslint,
-      jsdoc,
       unicorn,
     },
     rules: {
@@ -36,23 +34,6 @@ const config = [
       "@typescript-eslint/no-inferrable-types": "off",
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
-      "jsdoc/require-jsdoc": [
-        "error",
-        {
-          require: {
-            FunctionDeclaration: true,
-            MethodDefinition: true,
-            ClassDeclaration: true,
-            ArrowFunctionExpression: false,
-            FunctionExpression: false,
-          },
-        },
-      ],
-      "jsdoc/require-returns": "off",
-      "jsdoc/require-param": "error",
-      "jsdoc/require-description": "off",
-      "jsdoc/check-param-names": "error",
-      "jsdoc/check-tag-names": "error",
       "unicorn/consistent-function-scoping": "off",
       "unicorn/no-null": "off",
       "unicorn/prevent-abbreviations": [
