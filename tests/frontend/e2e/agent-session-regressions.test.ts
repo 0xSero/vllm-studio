@@ -174,6 +174,87 @@ test("splitting a session is idempotent when navigating to an already open pi se
   assert.equal(navigatedAgain.panesById.has("p-third"), false);
 });
 
+test("forking a tab into a split pane copies session content with fresh identity", () => {
+  const state = makeState(
+    makeSession("s-main", {
+      projectId: "personal",
+      cwd: "/workspace/personal",
+      modelId: "deepseek-v4-flash",
+      piSessionId: "pi-source",
+      title: "Source session",
+      messages: [
+        { id: "u1", role: "user", text: "build a thing" },
+        { id: "a1", role: "assistant", text: "working" },
+      ],
+      queue: [{ id: "q1", mode: "follow_up", text: "continue" }],
+      status: "running",
+    }),
+  );
+
+  const forked = reducer(state, {
+    type: "splitTab",
+    sourcePaneId: "p-main",
+    sourceTabId: "s-main",
+    newPaneId: "p-fork",
+    runtimeSessionId: "rt-fork-pane",
+    tab: makeSession("s-fork", { runtimeSessionId: "rt-fork-session" }),
+  });
+
+  assert.deepEqual(collectLeaves(forked.layout), ["p-main", "p-fork"]);
+  assert.equal(forked.focusedPaneId, "p-fork");
+  assert.equal(forked.panesById.get("p-main")?.sessionId, "s-main");
+  assert.equal(forked.panesById.get("p-fork")?.sessionId, "s-fork");
+
+  const source = forked.sessions.get("s-main");
+  const copy = forked.sessions.get("s-fork");
+  assert.equal(copy?.id, "s-fork");
+  assert.equal(copy?.runtimeSessionId, "rt-fork-session");
+  assert.equal(copy?.piSessionId, "pi-source");
+  assert.equal(copy?.projectId, source?.projectId);
+  assert.equal(copy?.cwd, source?.cwd);
+  assert.equal(copy?.modelId, source?.modelId);
+  assert.deepEqual(copy?.messages, source?.messages);
+  assert.deepEqual(copy?.queue, source?.queue);
+});
+
+test("forking while already split replaces the sibling pane instead of adding a third", () => {
+  const split = reducer(
+    makeState(
+      makeSession("s-main", {
+        title: "Main",
+        messages: [{ id: "u1", role: "user", text: "hi" }],
+      }),
+    ),
+    {
+      type: "splitTab",
+      sourcePaneId: "p-main",
+      sourceTabId: "s-main",
+      newPaneId: "p-side",
+      runtimeSessionId: "rt-side-pane",
+      tab: makeSession("s-side", { runtimeSessionId: "rt-side-session" }),
+    },
+  );
+
+  const forkedAgain = reducer(split, {
+    type: "splitTab",
+    sourcePaneId: "p-side",
+    sourceTabId: "s-side",
+    newPaneId: "p-third",
+    runtimeSessionId: "rt-third-pane",
+    tab: makeSession("s-third", { runtimeSessionId: "rt-third-session" }),
+  });
+
+  assert.deepEqual(collectLeaves(forkedAgain.layout), ["p-main", "p-side"]);
+  assert.equal(forkedAgain.focusedPaneId, "p-main");
+  assert.equal(forkedAgain.panesById.has("p-third"), false);
+  assert.equal(forkedAgain.panesById.get("p-main")?.sessionId, "s-third");
+  assert.equal(forkedAgain.sessions.has("s-main"), false);
+  assert.equal(
+    forkedAgain.sessions.get("s-third")?.runtimeSessionId,
+    "rt-third-session",
+  );
+});
+
 test("follow-up queue drains after agent end while steer messages stay out of the next turn", async () => {
   let session = makeSession("s-main", {
     queue: [

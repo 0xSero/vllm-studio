@@ -6,15 +6,15 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect frontend e2e coverage and agent composer/file-tagging seams.
-- [x] Add e2e coverage for file tagging into project-file attachments.
-- [x] Add e2e coverage for Pi extension slash selection, search, override sanitization, and persistence.
+- [x] Inspect frontend e2e coverage and workspace tab-forking behavior.
+- [x] Add e2e coverage for forking a tab into a split pane with fresh identity.
+- [x] Add e2e coverage for forking while already split replacing the sibling pane instead of adding a third pane.
 - [x] Validate frontend e2e coverage slice.
 - [x] Commit this slice.
 
 ## Backlog
 
-- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, splitting, queue/follow-up, compacting, skills, file tagging, and Pi extension override persistence; browser screenshot coverage, forking, and extension UI remain.
+- [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, splitting, queue/follow-up, compacting, skills, file tagging, Pi extension override persistence, and tab forking; browser screenshot coverage and extension UI remain.
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
