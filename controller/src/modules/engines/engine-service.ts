@@ -1,4 +1,3 @@
-// Types needed by EngineService are defined below
 import type { Recipe, ProcessInfo } from "../models/types";
 import type { ModelDownload } from "../shared/recipe-types";
 
@@ -57,18 +56,15 @@ export interface SetActiveRecipeOptions {
  * All consumers (HTTP routes, other modules, tests) use this interface.
  */
 export interface EngineService {
-  // Lifecycle
   setActiveRecipe(
     recipe: Recipe | null,
     options?: SetActiveRecipeOptions
   ): Promise<SetActiveRecipeResult>;
   ensureActive(recipe: Recipe, options?: EnsureActiveOptions): Promise<EnsureActiveResult>;
 
-  // State queries
   getCurrentRecipe(): Recipe | null;
   getCurrentProcess(): Promise<ProcessInfo | null>;
 
-  // Downloads
   startDownload(request: DownloadRequest): Promise<ModelDownload>;
   pauseDownload(downloadId: string): ModelDownload;
   resumeDownload(downloadId: string, hfToken?: string | null): ModelDownload;
@@ -76,6 +72,5 @@ export interface EngineService {
   listDownloads(): ModelDownload[];
   getDownload(downloadId: string): ModelDownload | null;
 
-  // HuggingFace
   searchHuggingFace(query: string, hfToken?: string | null): Promise<HfModel[]>;
 }
