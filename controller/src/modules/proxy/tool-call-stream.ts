@@ -341,8 +341,8 @@ export const createToolCallStream = (
               | undefined;
             if (!delta) continue;
             const toolCalls = delta["tool_calls"];
-            const hasToolCallField = "tool_calls" in delta;
-            if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+            const hasActiveToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+            if (hasActiveToolCalls) {
               toolCallsFound = true;
               trackFirstToken();
             }
@@ -367,7 +367,7 @@ export const createToolCallStream = (
             let reasoningFromContent = "";
             if (content) {
               visibleContentBuffer += content;
-              const rewritten = rewriteThinkDelta(content, hasToolCallField);
+              const rewritten = rewriteThinkDelta(content, hasActiveToolCalls);
               const cleanedContent = stripToolXmlDelta(rewritten.content);
               if (cleanedContent) {
                 delta["content"] = cleanedContent;

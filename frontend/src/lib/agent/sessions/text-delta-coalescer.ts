@@ -190,10 +190,6 @@ function contentPartAt(
   const content = Array.isArray(message?.content) ? message.content : null;
   if (!content) return undefined;
   if (typeof contentIndex === "number") return asRecord(content[contentIndex]);
-  for (let idx = content.length - 1; idx >= 0; idx -= 1) {
-    const part = asRecord(content[idx]);
-    if (part?.type === "thinking" || part?.type === "reasoning") return part;
-  }
   return undefined;
 }
 
@@ -213,7 +209,6 @@ function messageUpdateLooksReasoning(
   event: Record<string, unknown>,
 ): boolean {
   return (
-    contentPartLooksReasoning(asRecord(assistantMessageEvent.partial)) ||
     contentPartLooksReasoning(contentPartAt(event.message, assistantMessageEvent.contentIndex)) ||
     contentPartLooksReasoning(
       contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),

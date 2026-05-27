@@ -140,7 +140,7 @@ async function collectSseJson(stream: ReadableStream<Uint8Array>) {
 }
 
 describe("controller route contracts", () => {
-  test("stream proxy moves native tool-call narration into reasoning_content", async () => {
+  test("stream proxy keeps content with null tool_calls as answer text", async () => {
     const { createToolCallStream } = await import(
       "../../../controller/src/modules/proxy/tool-call-stream"
     );
@@ -194,14 +194,59 @@ describe("controller route contracts", () => {
     };
     const delta = firstEvent.choices?.[0]?.delta;
 
-    expect(delta?.content).toBeUndefined();
-    expect(delta?.reasoning_content).toBe("Let me inspect the file first.");
+    expect(delta?.content).toBe("Let me inspect the file first.");
+    expect(delta?.reasoning_content).toBeUndefined();
     const toolEvent = events[1] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
     expect(toolEvent.choices?.[0]?.delta?.tool_calls).toEqual([
       expect.objectContaining({ id: "call-read" }),
     ]);
+  });
+
+  test("stream proxy moves same-delta native tool-call narration into reasoning_content", async () => {
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    content: "Let me inspect the file first.",
+                    tool_calls: [
+                      {
+                        id: "call-read",
+                        index: 0,
+                        type: "function",
+                        function: { name: "read", arguments: "{}" },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
+    const firstEvent = events[0] as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    const delta = firstEvent.choices?.[0]?.delta;
+
+    expect(delta?.content).toBeUndefined();
+    expect(delta?.reasoning_content).toBe("Let me inspect the file first.");
+    expect(delta?.tool_calls).toEqual([expect.objectContaining({ id: "call-read" })]);
   });
 
   test("status route reports no active runtime on an isolated test port", async () => {

@@ -84,7 +84,6 @@ function messageUpdateLooksReasoning(
   event: Record<string, unknown>,
 ): boolean {
   return (
-    contentPartLooksReasoning(asRecord(assistantMessageEvent.partial)) ||
     contentPartLooksReasoning(contentPartAt(event.message, assistantMessageEvent.contentIndex)) ||
     contentPartLooksReasoning(
       contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),

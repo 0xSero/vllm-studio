@@ -12,6 +12,7 @@ import {
 import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
 import { replaySessionEvents } from "@/lib/agent/session/replay";
 import { drainQueuedTurnAfterAgentEnd } from "@/lib/agent/sessions/queue-drain";
+import { textDeltaFromPiEvent } from "@/lib/agent/sessions/text-delta-coalescer";
 import type { Session } from "@/lib/agent/sessions/types";
 import { reducer } from "@/lib/agent/workspace/reducer";
 import type { WorkspaceState } from "@/lib/agent/workspace/types";
@@ -351,6 +352,38 @@ test("compaction events render as assistant event blocks", () => {
     blocks[0]?.text,
     "Compacted the current plan and selected skills.",
   );
+});
+
+test("text deltas stay visible answer text when partial history already has reasoning", () => {
+  const event = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Here is the final answer.",
+      partial: {
+        role: "assistant",
+        reasoning_content: "I should inspect this first.",
+        content: [
+          {
+            type: "reasoning",
+            reasoning_content: "I should inspect this first.",
+          },
+          {
+            type: "text",
+            text: "Here is the final answer.",
+          },
+        ],
+      },
+    },
+  };
+
+  const blocks = applyAssistantPiEventToBlocks([], event);
+  assert.equal(blocks?.[0]?.kind, "text");
+  assert.equal(blocks?.[0]?.text, "Here is the final answer.");
+  assert.deepEqual(textDeltaFromPiEvent(event), {
+    kind: "text",
+    delta: "Here is the final answer.",
+  });
 });
 
 test("replayed tool-use narration renders as reasoning, not visible answer text", () => {
