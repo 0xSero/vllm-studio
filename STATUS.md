@@ -6,10 +6,10 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect engine lifecycle route contracts.
-- [x] Add missing launch/cancel, no-op evict, and zero-timeout wait-ready coverage without starting a model.
-- [x] Validate those success and failure paths are persisted in controller observability rows.
-- [x] Validate controller lifecycle control coverage slice.
+- [x] Inspect stale controller lifecycle comments.
+- [x] Remove generated duplicate JSDoc blocks from `controller/src/modules/engines/engine-coordinator.ts` without logic changes.
+- [x] Validate no generated JSDoc remnants remain in that file.
+- [x] Validate controller comment cleanup slice.
 - [x] Commit this slice.
 
 ## Backlog
@@ -23,7 +23,7 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, `/usage` status, latency, recent-activity, and error aggregation is integration-tested, and the frontend normalization boundary preserves controller observability; frontend visual rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
-- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling, exact non-informative `// CRITICAL` headers, and stale annotated `CRITICAL` migration labels; broader file-by-file audit remains open.
+- [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slices remove empty/generated JSDoc blocks from controller source/tooling, exact non-informative `// CRITICAL` headers, stale annotated `CRITICAL` migration labels, and generated lifecycle JSDoc noise from the engine coordinator; broader file-by-file audit remains open.
 - [ ] Audit package scripts and remove irrelevant commands. Current slices remove stale root frontend metadata/dependencies, duplicate frontend quality/cleanup aliases, and broken nested Husky prepare scripts; deeper command pruning remains open as features are removed.
 - [x] Replace every React effect hook with appropriate alternatives and validate there are zero remaining frontend source usages.
 
