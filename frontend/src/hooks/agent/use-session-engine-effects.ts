@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useCallback, useSyncExternalStore, type RefObject } from "react";
 
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 import { loadRuntimeStatus, subscribeRuntimeEvents } from "@/lib/agent/sessions/api";
@@ -15,12 +15,14 @@ type PiEventBatch = {
 
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
+const getSessionEngineSnapshot = (): number => 0;
+
 export function useSessionEngineBatchCleanupEffect({
   piEventBatchesRef,
 }: {
   piEventBatchesRef: RefObject<Map<SessionId, PiEventBatch>>;
 }): void {
-  useEffect(
+  const subscribeBatchCleanup = useCallback(
     () => () => {
       for (const batch of piEventBatchesRef.current.values()) {
         if (batch.timer) clearTimeout(batch.timer);
@@ -29,6 +31,8 @@ export function useSessionEngineBatchCleanupEffect({
     },
     [piEventBatchesRef],
   );
+
+  useSyncExternalStore(subscribeBatchCleanup, getSessionEngineSnapshot, getSessionEngineSnapshot);
 }
 
 export function useSessionEngineTextDeltaCleanupEffect({
@@ -36,12 +40,18 @@ export function useSessionEngineTextDeltaCleanupEffect({
 }: {
   textDeltaCoalescerRef: RefObject<TextDeltaCoalescer | null>;
 }): void {
-  useEffect(
+  const subscribeTextDeltaCleanup = useCallback(
     () => () => {
       textDeltaCoalescerRef.current?.flushAll();
       textDeltaCoalescerRef.current?.dispose();
     },
     [textDeltaCoalescerRef],
+  );
+
+  useSyncExternalStore(
+    subscribeTextDeltaCleanup,
+    getSessionEngineSnapshot,
+    getSessionEngineSnapshot,
   );
 }
 
@@ -50,7 +60,7 @@ export function useSessionEnginePromptStreamCleanupEffect({
 }: {
   promptStreamControllersRef: RefObject<Map<string, AbortController>>;
 }): void {
-  useEffect(
+  const subscribePromptStreamCleanup = useCallback(
     () => () => {
       for (const controller of promptStreamControllersRef.current.values()) {
         controller.abort();
@@ -58,6 +68,12 @@ export function useSessionEnginePromptStreamCleanupEffect({
       promptStreamControllersRef.current.clear();
     },
     [promptStreamControllersRef],
+  );
+
+  useSyncExternalStore(
+    subscribePromptStreamCleanup,
+    getSessionEngineSnapshot,
+    getSessionEngineSnapshot,
   );
 }
 
@@ -88,10 +104,10 @@ export function useSessionEngineRuntimeResumeEffect({
   tabsRef: RefObject<Session[]>;
   updateSession: UpdateSession;
 }): void {
-  useEffect(() => {
-    if (!sessionId || !runtime) return;
-    if (localStreamRef.current.has(sessionId)) return;
-    if (hasRuntimePromptStream(runtime)) return;
+  const subscribeRuntimeResume = useCallback(() => {
+    if (!sessionId || !runtime) return () => undefined;
+    if (localStreamRef.current.has(sessionId)) return () => undefined;
+    if (hasRuntimePromptStream(runtime)) return () => undefined;
 
     const sub = subscribeResumeRuntimeSession({
       after,
@@ -122,4 +138,6 @@ export function useSessionEngineRuntimeResumeEffect({
     tabsRef,
     updateSession,
   ]);
+
+  useSyncExternalStore(subscribeRuntimeResume, getSessionEngineSnapshot, getSessionEngineSnapshot);
 }
