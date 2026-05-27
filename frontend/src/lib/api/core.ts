@@ -456,9 +456,7 @@ export function createApiCore(params: {
       const onAbort = () => {
         try {
           void reader.cancel();
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       };
       if (signal.aborted) {
         onAbort();
@@ -513,9 +511,7 @@ export function createApiCore(params: {
       const onAbort = () => {
         try {
           void reader.cancel();
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       };
       if (signal.aborted) {
         onAbort();
@@ -527,7 +523,6 @@ export function createApiCore(params: {
     return { runId, stream: parseSseStream(reader, signal) };
   };
 
-  /** Poll the controller health endpoint. Returns true if reachable. */
   const healthPoll = async (timeoutMs = 5_000): Promise<boolean> => {
     try {
       const url = buildUrl("/health");
