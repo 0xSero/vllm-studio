@@ -8,7 +8,6 @@ type PageStateArgs<T> = {
   onLoad?: () => void | Promise<void>;
 };
 
-/** Renders a compact shared loading / error / empty state, or null once data is ready. */
 export function PageState<T>({
   loading,
   data,
