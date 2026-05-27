@@ -31,7 +31,6 @@ export type Session = {
   input: string;
   tokenStats?: TokenStats;
   usedSkills?: ComposerSkillRef[];
-  /** SDK-reported context usage, refreshed when we poll runtime status. */
   contextUsage?: RuntimeContextUsage | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
