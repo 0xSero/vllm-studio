@@ -6,10 +6,9 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect frontend e2e coverage and workspace tab-forking behavior.
-- [x] Add e2e coverage for forking a tab into a split pane with fresh identity.
-- [x] Add e2e coverage for forking while already split replacing the sibling pane instead of adding a third pane.
-- [x] Validate frontend e2e coverage slice.
+- [x] Inspect controller integration coverage and route observability persistence.
+- [x] Add integration coverage proving raw controller request rows persist method, normalized path, status, success flag, duration, and user-agent fields.
+- [x] Validate controller observability coverage slice.
 - [x] Commit this slice.
 
 ## Backlog
@@ -18,9 +17,9 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 - [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
-- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts; full active-flow coverage remains.
-- [ ] Add controller observability for success, failure, error, path, and function-call tracking. Initial persistent HTTP route observability exists; per-function call tracking remains.
-- [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced and integration-tested; frontend usage rendering and full API-route coverage remain.
+- [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts and raw observability persistence; full active-flow coverage remains.
+- [ ] Add controller observability for success, failure, error, path, and function-call tracking. Initial persistent HTTP route observability exists and raw rows are integration-tested; per-function call tracking remains.
+- [ ] Surface observability data in `/usage` and validate it end to end. Initial route observability is surfaced, raw persistence is integration-tested, and `/usage` aggregation is integration-tested; frontend usage rendering and full API-route coverage remain.
 - [ ] Deploy controller to Pop!\_OS after killing the old controller from this device.
 - [ ] Test every API route against controller observability rows and `/usage`.
 - [ ] Audit comments across the repo and delete stale or irrelevant comments. Current slice removes empty/generated JSDoc blocks from controller source and tooling; broader file-by-file audit remains open.

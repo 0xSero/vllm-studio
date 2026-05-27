@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +20,17 @@ const ENV_KEYS = [
 
 let envSnapshot: EnvSnapshot;
 let tempDir: string;
+
+type ControllerRequestRow = {
+  method: string;
+  path: string;
+  status: number;
+  duration_ms: number;
+  success: number;
+  error_class: string | null;
+  error_message: string | null;
+  user_agent: string | null;
+};
 
 beforeEach(() => {
   envSnapshot = Object.fromEntries(
@@ -55,6 +67,23 @@ async function createTestApp() {
   ]);
   const context = createAppContext();
   return createApp(context);
+}
+
+function readControllerRequestRows(): ControllerRequestRow[] {
+  const dbPath = process.env.VLLM_STUDIO_DB_PATH;
+  if (!dbPath) throw new Error("VLLM_STUDIO_DB_PATH is required for tests");
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    return db
+      .query<ControllerRequestRow, []>(
+        `SELECT method, path, status, duration_ms, success, error_class, error_message, user_agent
+         FROM controller_requests
+         ORDER BY id ASC`,
+      )
+      .all();
+  } finally {
+    db.close();
+  }
 }
 
 describe("controller route contracts", () => {
@@ -169,5 +198,53 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+  });
+
+  test("controller observability persists normalized raw rows for every route action", async () => {
+    const app = await createTestApp();
+
+    await app.request("/status?ignored=1", {
+      headers: { "user-agent": "controller-integration-test/1.0" },
+    });
+    await app.request("/missing-route");
+    await app.request("/vram-calculator", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "controller-integration-test/1.0",
+      },
+      body: JSON.stringify({ context_length: 0 }),
+    });
+
+    const rows = readControllerRequestRows();
+
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({
+      method: "GET",
+      path: "/status",
+      status: 200,
+      success: 1,
+      error_class: null,
+      error_message: null,
+      user_agent: "controller-integration-test/1.0",
+    });
+    expect(rows[0].duration_ms).toBeGreaterThanOrEqual(0);
+    expect(rows[1]).toMatchObject({
+      method: "GET",
+      path: "/missing-route",
+      status: 404,
+      success: 0,
+      error_class: null,
+      error_message: null,
+    });
+    expect(rows[2]).toMatchObject({
+      method: "POST",
+      path: "/vram-calculator",
+      status: 400,
+      success: 0,
+      error_class: null,
+      error_message: null,
+      user_agent: "controller-integration-test/1.0",
+    });
   });
 });
