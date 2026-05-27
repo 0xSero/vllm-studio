@@ -797,6 +797,83 @@ describe("controller route contracts", () => {
     );
   });
 
+  test("runtime job lookup and config routes expose safe contracts without starting jobs", async () => {
+    const app = await createTestApp();
+
+    const jobsResponse = await app.request("/runtime/jobs");
+    const jobsBody = await jobsResponse.json();
+    expect(jobsResponse.status).toBe(200);
+    expect(jobsBody).toEqual({ jobs: [] });
+
+    const missingJobResponse = await app.request("/runtime/jobs/missing-job");
+    const missingJobBody = await missingJobResponse.json();
+    expect(missingJobResponse.status).toBe(404);
+    expect(missingJobBody).toEqual({ detail: "Runtime job not found" });
+
+    const missingCancelResponse = await app.request("/runtime/jobs/missing-job/cancel", {
+      method: "POST",
+    });
+    const missingCancelBody = await missingCancelResponse.json();
+    expect(missingCancelResponse.status).toBe(404);
+    expect(missingCancelBody).toEqual({ detail: "Runtime job not found" });
+
+    const invalidArgsResponse = await app.request("/runtime/vllm/upgrade", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ args: ["--dry-run", 42] }),
+    });
+    const invalidArgsBody = await invalidArgsResponse.json();
+    expect(invalidArgsResponse.status).toBe(400);
+    expect(invalidArgsBody).toEqual({ detail: "args must be an array of strings" });
+
+    const vllmConfigResponse = await app.request("/runtime/vllm/config");
+    const vllmConfigBody = await vllmConfigResponse.json();
+    expect(vllmConfigResponse.status).toBe(200);
+    expect(vllmConfigBody).toEqual(expect.any(Object));
+
+    const llamaConfigResponse = await app.request("/runtime/llamacpp/config");
+    const llamaConfigBody = await llamaConfigResponse.json();
+    expect(llamaConfigResponse.status).toBe(200);
+    expect(llamaConfigBody).toEqual(expect.any(Object));
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: "/runtime/jobs", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/jobs/missing-job",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/jobs/missing-job/cancel",
+          status: 404,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/vllm/upgrade",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/vllm/config",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/llamacpp/config",
+          status: 200,
+          success: 1,
+        }),
+      ]),
+    );
+  }, 15_000);
+
   test("monitoring and log routes persist operational observability", async () => {
     const logsDir = join(tempDir, "logs");
     mkdirSync(logsDir, { recursive: true });
