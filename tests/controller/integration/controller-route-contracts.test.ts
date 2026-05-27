@@ -1331,6 +1331,23 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "runtime.targets.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "runtime.target.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+      ]),
+    );
   });
 
   test("runtime target selection and health routes persist observable outcomes", async () => {
@@ -1495,6 +1512,35 @@ describe("controller route contracts", () => {
           path: "/runtime/mlx",
           status: 200,
           success: 1,
+        }),
+      ]),
+    );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "runtime.targets.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "runtime.target.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "runtime.target.health.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "runtime.target.select.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
         }),
       ]),
     );

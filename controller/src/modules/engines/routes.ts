@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import type { AppContext } from "../../types/context";
 import { delay } from "../../core/async";
 import { HttpStatus, badRequest, notFound, serviceUnavailable } from "../../core/errors";
+import { observeControllerFunction } from "../../core/function-observability";
 import { parseRecipe } from "../models/recipes/recipe-serializer";
 import { Event } from "../system/event-manager";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
@@ -290,27 +291,43 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   });
 
   app.get("/runtime/targets", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.targets.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const targets = await getRuntimeTargets(context.config, current);
     return ctx.json({ targets });
   });
 
   app.get("/runtime/targets/:targetId", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.target.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ target });
   });
 
   app.post("/runtime/targets/:targetId/select", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.target.select.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const target = await selectRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ target });
   });
 
   app.get("/runtime/targets/:targetId/health", async (ctx) => {
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(
+      context,
+      "runtime.target.health.getCurrentProcess",
+      () => context.engineService.getCurrentProcess()
+    );
     const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ health: target.health });
