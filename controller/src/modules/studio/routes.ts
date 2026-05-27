@@ -321,8 +321,6 @@ export const registerStudioRoutes = (app: Hono, context: AppContext): void => {
     return ctx.json({ success: true, target });
   });
 
-  // --- Provider CRUD ---
-
   app.get("/studio/providers", async (ctx) => {
     const providers = context.config.providers.map((p) => ({
       id: p.id,
