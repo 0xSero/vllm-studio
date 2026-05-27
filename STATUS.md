@@ -6,8 +6,8 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect safe runtime job validation coverage gaps.
-- [x] Add integration coverage for invalid `/runtime/jobs` backend and job type contracts.
+- [x] Inspect runtime upgrade validation coverage gaps.
+- [x] Add integration coverage for invalid args on `sglang`, `llamacpp`, `cuda`, and `rocm` upgrade routes.
 - [x] Validate controller integration slice.
 - [x] Commit this slice.
 

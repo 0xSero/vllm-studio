@@ -1252,6 +1252,22 @@ describe("controller route contracts", () => {
     expect(invalidArgsResponse.status).toBe(400);
     expect(invalidArgsBody).toEqual({ detail: "args must be an array of strings" });
 
+    for (const route of [
+      "/runtime/sglang/upgrade",
+      "/runtime/llamacpp/upgrade",
+      "/runtime/cuda/upgrade",
+      "/runtime/rocm/upgrade",
+    ]) {
+      const response = await app.request(route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ args: ["--dry-run", 42] }),
+      });
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body).toEqual({ detail: "args must be an array of strings" });
+    }
+
     const vllmConfigResponse = await app.request("/runtime/vllm/config");
     const vllmConfigBody = await vllmConfigResponse.json();
     expect(vllmConfigResponse.status).toBe(200);
@@ -1281,6 +1297,30 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "POST",
           path: "/runtime/vllm/upgrade",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/sglang/upgrade",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/llamacpp/upgrade",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/cuda/upgrade",
+          status: 400,
+          success: 0,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/runtime/rocm/upgrade",
           status: 400,
           success: 0,
         }),
