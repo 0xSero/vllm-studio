@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { performance } from "node:perf_hooks";
+import { observeControllerFunction } from "../../core/function-observability";
 import type { AppContext } from "../../types/context";
 import { getGpuInfo } from "./platform/gpu";
 import { fetchInference } from "../../services/inference/inference-client";
@@ -58,7 +59,11 @@ const buildModelKeys = (modelId: string, modelPath: string | null | undefined): 
 };
 
 const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, unknown>> => {
-  const current = await context.processManager.findInferenceProcess(context.config.inference_port);
+  const current = await observeControllerFunction(
+    context,
+    "metrics.current.findInferenceProcess",
+    () => context.processManager.findInferenceProcess(context.config.inference_port)
+  );
   const gpus = getGpuInfo();
   const lifetimeData = context.stores.lifetimeMetricsStore.getAll();
   const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
@@ -181,8 +186,10 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
  */
 export const registerMonitoringRoutes = (app: Hono, context: AppContext): void => {
   app.get("/metrics", async (_ctx) => {
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "metrics.prometheus.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (current) {
       context.metrics.updateActiveModel(
@@ -247,8 +254,8 @@ export const registerMonitoringRoutes = (app: Hono, context: AppContext): void =
   app.post("/benchmark", async (ctx) => {
     const promptTokens = Number(ctx.req.query("prompt_tokens") ?? 1000);
     const maxTokens = Number(ctx.req.query("max_tokens") ?? 100);
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(context, "benchmark.findInferenceProcess", () =>
+      context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (!current) {
       return ctx.json({ error: "No model running" });

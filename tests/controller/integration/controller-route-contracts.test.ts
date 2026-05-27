@@ -1959,6 +1959,24 @@ describe("controller route contracts", () => {
     expect(readControllerFunctionCallRows()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          function_name: "metrics.prometheus.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "metrics.current.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "benchmark.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
           function_name: "logs.findInferenceProcess",
           success: 1,
           error_class: null,
