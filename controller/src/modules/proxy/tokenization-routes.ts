@@ -1,11 +1,12 @@
 import type { Hono } from "hono";
+import { observeControllerFunction } from "../../core/function-observability";
 import type { AppContext } from "../../types/context";
 import { fetchInference } from "../../services/inference/inference-client";
 
 export const registerTokenizationRoutes = (app: Hono, context: AppContext): void => {
   app.post("/v1/tokenize", async (ctx) => {
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(context, "tokenize.findInferenceProcess", () =>
+      context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (!current) {
       return ctx.json({ error: "No model running", num_tokens: 0 });
@@ -32,8 +33,10 @@ export const registerTokenizationRoutes = (app: Hono, context: AppContext): void
   });
 
   app.post("/v1/detokenize", async (ctx) => {
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "detokenize.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (!current) {
       return ctx.json({ error: "No model running", text: "" });
@@ -60,8 +63,10 @@ export const registerTokenizationRoutes = (app: Hono, context: AppContext): void
   });
 
   app.post("/v1/count-tokens", async (ctx) => {
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "countTokens.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (!current) {
       return ctx.json({ error: "No model running", num_tokens: 0 });
@@ -93,8 +98,10 @@ export const registerTokenizationRoutes = (app: Hono, context: AppContext): void
   });
 
   app.post("/v1/tokenize-chat-completions", async (ctx) => {
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "tokenizeChatCompletions.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     if (!current) {
       return ctx.json({ error: "No model running", input_tokens: 0 });
