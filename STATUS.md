@@ -6,15 +6,15 @@ Clean up vLLM Studio without changing runtime functionality or UI unless a later
 
 ## Current Turn
 
-- [x] Inspect controller route coverage for remaining active flow gaps.
-- [x] Add integration coverage for log SSE replay streams and their observability rows.
-- [x] Validate controller integration checks.
+- [x] Inspect frontend settings e2e coverage gaps.
+- [x] Add settings API route coverage for masked secrets, partial updates, and invalid URLs.
+- [x] Validate frontend e2e/settings checks.
 - [x] Commit this slice.
 
 ## Backlog
 
 - [ ] Add frontend e2e coverage for agent flows: splitting, leaving and reconnecting sessions, forking, compacting, pi-extensions, tagging files, and skills. Initial regression coverage exists for reconnect, active-session model metadata merge, Pi multi-controller model refresh, splitting, queue/follow-up, compacting, skills, file tagging, Pi extension override persistence, and tab forking; browser screenshot coverage and extension UI remain.
-- [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support. Initial controller-level settings/provider route coverage, frontend engine-row e2e coverage, saved-controller settings coverage, API settings persistence/voice routing coverage, llama.cpp direct target support, initial MLX runtime/recipe support, and module README coverage exist; broader frontend settings e2e and MLX launch hardening remain.
+- [ ] Add settings e2e coverage and implement direct MLX and llama.cpp support. Initial controller-level settings/provider route coverage, frontend engine-row e2e coverage, saved-controller settings coverage, API settings persistence/route/voice routing coverage, llama.cpp direct target support, initial MLX runtime/recipe support, and module README coverage exist; broader frontend settings e2e and MLX launch hardening remain.
 - [ ] Improve venv management experience.
 - [ ] Clean controller dead paths and unused complexity based on code and logs.
 - [ ] Add controller integration and e2e tests for all active controller flows. Initial integration smoke coverage exists for core route contracts, raw observability persistence, controller proxy success/failure paths, model catalog/discovery routes, HuggingFace discovery normalization, system introspection routes, studio settings/provider CRUD, Studio operational routes, recipe CRUD, lifecycle control routes, runtime/download validation routes, download control error routes, runtime target selection/health routes, runtime backend metadata routes, runtime job validation/config routes, monitoring/log/log-stream/benchmark route contracts, proxy/tokenization fallback contracts, and audio validation contracts; full active-flow coverage remains.
