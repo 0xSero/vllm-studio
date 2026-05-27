@@ -365,6 +365,72 @@ describe("controller route contracts", () => {
     expect(body.detail).toBe("target must be an http(s) controller URL");
   });
 
+  test("controller proxy forwards successful requests and records observability", async () => {
+    const upstreamRequests: Array<{
+      path: string;
+      search: string;
+      method: string;
+      authorization: string | null;
+    }> = [];
+    const upstream = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url);
+        upstreamRequests.push({
+          path: url.pathname,
+          search: url.search,
+          method: request.method,
+          authorization: request.headers.get("authorization"),
+        });
+        return Response.json({
+          ok: true,
+          path: url.pathname,
+          params: Object.fromEntries(url.searchParams.entries()),
+        });
+      },
+    });
+
+    try {
+      const app = await createTestApp();
+      const target = `http://127.0.0.1:${upstream.port}`;
+      const response = await app.request(
+        `/controllers/route/v1/models?target=${encodeURIComponent(target)}&limit=2`,
+        { headers: { authorization: "Bearer proxy-test" } },
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-vllm-routed-controller")).toBe(target);
+      expect(body).toEqual({
+        ok: true,
+        path: "/v1/models",
+        params: { limit: "2" },
+      });
+      expect(upstreamRequests).toEqual([
+        {
+          path: "/v1/models",
+          search: "?limit=2",
+          method: "GET",
+          authorization: "Bearer proxy-test",
+        },
+      ]);
+
+      const rows = readControllerRequestRows();
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "GET",
+            path: "/controllers/route/v1/models",
+            status: 200,
+            success: 1,
+          }),
+        ]),
+      );
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test("vram calculator rejects malformed requests with structured errors", async () => {
     const app = await createTestApp();
     const response = await app.request("/vram-calculator", {
