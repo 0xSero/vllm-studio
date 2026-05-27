@@ -191,6 +191,7 @@ export function ChatPane({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerSubmitInFlightRef = useRef(false);
+  const controlSubmitInFlightRef = useRef(false);
   // Track the height we last *applied* to the composer textarea so we can
   // skip the "height: auto" reset on every keystroke. Resetting to auto
   // collapses the textarea for one paint before the new scrollHeight is
@@ -705,7 +706,6 @@ export function ChatPane({
   const sendMessage = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
-      if (composerSubmitInFlightRef.current) return;
       if (!activeTab) return;
       // Only block while a prompt is actively starting up; a "loading"
       // status means we're hydrating prior session history and the user
@@ -713,23 +713,29 @@ export function ChatPane({
       // canonical-session replay leaves the composer permanently locked.
       if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      // When the UI shows a live turn, the form's primary action is
+      // "Steer" — always honor that intent and let the server decide
+      // whether to steer (turn in flight) or treat it as a fresh prompt
+      // (turn already settled). The prompt stream can stay open for minutes,
+      // so control sends use their own short-lived guard.
+      if (running) {
+        if (controlSubmitInFlightRef.current) return;
+        if (!text || !modelId || readingAttachments) return;
+        setMention(null);
+        controlSubmitInFlightRef.current = true;
+        try {
+          await queueAndSendControl("steer", text, activeTab, runtime);
+        } finally {
+          controlSubmitInFlightRef.current = false;
+        }
+        return;
+      }
+      if (composerSubmitInFlightRef.current) return;
       if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
       setMention(null);
       composerSubmitInFlightRef.current = true;
       try {
-        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-        // When the UI shows a live turn, the form's primary action is
-        // "Steer" — always honor that intent and let the server decide
-        // whether to steer (turn in flight) or treat it as a fresh prompt
-        // (turn already settled). The previous accepts-control gate
-        // silently demoted explicit steers to brand-new prompts whenever
-        // the runtime's `active` snapshot lagged the UI, which made the
-        // Steer button look like a no-op.
-        if (running) {
-          if (!text) return;
-          await queueAndSendControl("steer", text, activeTab, runtime);
-          return;
-        }
         await submitPrompt(text, activeTab.id);
       } finally {
         composerSubmitInFlightRef.current = false;
@@ -747,24 +753,30 @@ export function ChatPane({
     ],
   );
   const queueMessage = useCallback(async () => {
-    if (composerSubmitInFlightRef.current) return;
     if (!activeTab) return;
     const text = activeTab.input.trim();
     if (!text || !modelId) return;
+    // Queue follows the same contract as Steer: trust the user's
+    // explicit intent and let the server route follow_up vs. fresh
+    // prompt based on the live runtime state. The prompt stream can still be
+    // in flight here, so follow-up controls must not share its in-flight guard.
+    if (running) {
+      if (controlSubmitInFlightRef.current) return;
+      setMention(null);
+      controlSubmitInFlightRef.current = true;
+      try {
+        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+        await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
+      } finally {
+        controlSubmitInFlightRef.current = false;
+      }
+      return;
+    }
+    if (composerSubmitInFlightRef.current) return;
     setMention(null);
     composerSubmitInFlightRef.current = true;
     try {
-      // Queue follows the same contract as Steer: trust the user's
-      // explicit intent and let the server route follow_up vs. fresh
-      // prompt based on the live runtime state. The old client-side
-      // accepts-control fallback silently turned Queue clicks into
-      // ordinary prompts when the status snapshot was stale.
-      if (!running) {
-        await submitPrompt(text, activeTab.id);
-        return;
-      }
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
+      await submitPrompt(text, activeTab.id);
     } finally {
       composerSubmitInFlightRef.current = false;
     }
