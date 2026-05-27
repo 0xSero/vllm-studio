@@ -14,6 +14,7 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/lib/agent/composer-context";
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 
 export type RuntimeContextUsage = {
   tokens: number | null;
@@ -169,7 +170,10 @@ export async function submitTurnStream(
       if (!line) continue;
       const payload = parseAgentTurnSsePayload(line);
       if (options.signal?.aborted) break;
-      if (payload) onPayload(payload);
+      if (payload) {
+        traceAgentReasoning("client.sse.payload", payload);
+        onPayload(payload);
+      }
     }
   }
 }

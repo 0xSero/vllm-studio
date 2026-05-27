@@ -9,6 +9,7 @@ import type {
   ThinkingBlock,
   ToolBlock,
 } from "@/lib/agent/session";
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import { AssistantMarkdown } from "../assistant-markdown";
 import { ToolBlockView } from "./tool-block-view";
 import {
@@ -133,6 +134,7 @@ const EMPTY_BLOCKS: AssistantBlock[] = [];
 // assistant actually mutates a block.
 const AssistantBlocks = memo(function AssistantBlocks({ blocks }: { blocks: AssistantBlock[] }) {
   const routedBlocks = useMemo(() => groupAssistantBlocks(blocks), [blocks]);
+  traceAgentReasoning("render.blocks", { blocks, routedBlocks });
 
   return (
     <article className="min-w-0">

@@ -360,7 +360,7 @@ test("text deltas stay visible answer text when partial history already has reas
     assistantMessageEvent: {
       type: "text_delta",
       delta: "Here is the final answer.",
-      contentIndex: 0,
+      contentIndex: 1,
       partial: {
         role: "assistant",
         reasoning_content: "I should inspect this first.",
@@ -387,6 +387,56 @@ test("text deltas stay visible answer text when partial history already has reas
   });
 });
 
+test("text deltas with an explicit reasoning content part render under reasoning", () => {
+  const event = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "I should inspect this first.",
+      partial: {
+        type: "reasoning",
+        reasoning_content: "I should inspect this first.",
+      },
+    },
+  };
+
+  const blocks = applyAssistantPiEventToBlocks([], event);
+  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.text, "I should inspect this first.");
+  assert.deepEqual(textDeltaFromPiEvent(event), {
+    kind: "thinking",
+    delta: "I should inspect this first.",
+  });
+});
+
+test("text deltas indexed to a reasoning content part render under reasoning", () => {
+  const event = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "I should inspect this first.",
+      contentIndex: 0,
+      partial: {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            reasoning_content: "I should inspect this first.",
+          },
+        ],
+      },
+    },
+  };
+
+  const blocks = applyAssistantPiEventToBlocks([], event);
+  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.text, "I should inspect this first.");
+  assert.deepEqual(textDeltaFromPiEvent(event), {
+    kind: "thinking",
+    delta: "I should inspect this first.",
+  });
+});
+
 test("explicit reasoning deltas render under reasoning", () => {
   const event = {
     type: "message_update",
@@ -403,6 +453,41 @@ test("explicit reasoning deltas render under reasoning", () => {
     kind: "thinking",
     delta: "I should inspect this first.",
   });
+});
+
+test("live pre-tool text is promoted to reasoning when a tool call starts", () => {
+  const textEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Let me inspect that first.",
+      contentIndex: 0,
+      partial: {
+        role: "assistant",
+        content: [{ type: "text", text: "Let me inspect that first." }],
+      },
+    },
+  };
+  const toolEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "toolcall_start",
+      contentIndex: 1,
+      toolCall: {
+        id: "call-read",
+        name: "read",
+        arguments: { path: "/workspace/package.json" },
+      },
+    },
+  };
+
+  const textBlocks = applyAssistantPiEventToBlocks([], textEvent) ?? [];
+  assert.equal(textBlocks[0]?.kind, "text");
+
+  const blocks = applyAssistantPiEventToBlocks(textBlocks, toolEvent);
+  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.text, "Let me inspect that first.");
+  assert.equal(blocks?.[1]?.kind, "tool");
 });
 
 test("replayed tool-use narration renders as reasoning, not visible answer text", () => {

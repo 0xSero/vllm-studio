@@ -1,3 +1,4 @@
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { SessionId } from "./types";
 
 type TextDeltaKind = "text" | "thinking";
@@ -82,6 +83,13 @@ export function createTextDeltaCoalescer({
   ) => {
     const deltaEvent = textDeltaFromPiEvent(event);
     if (!deltaEvent) return false;
+    traceAgentReasoning("coalescer.enqueue", {
+      sessionId,
+      assistantId,
+      kind: deltaEvent.kind,
+      delta: deltaEvent.delta,
+      event,
+    });
 
     const existing = pending.get(sessionId);
     if (existing && bufferAssistantId(existing) !== assistantId) {
@@ -140,7 +148,16 @@ export function textDeltaFromPiEvent(event: Record<string, unknown>): DeltaEvent
     return { kind: "thinking", delta };
   }
   if (assistantMessageEvent.type === "text_delta") {
-    return { kind: "text", delta };
+    const kind = messageUpdateLooksReasoning(assistantMessageEvent, event) ? "thinking" : "text";
+    traceAgentReasoning("coalescer.classify", {
+      kind,
+      assistantMessageEventType: assistantMessageEvent.type,
+      contentIndex: assistantMessageEvent.contentIndex,
+      delta,
+      partial: assistantMessageEvent.partial,
+      event,
+    });
+    return { kind, delta };
   }
   return null;
 }
@@ -177,6 +194,50 @@ function syntheticDeltaEvent(
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function partialContentPart(
+  assistantMessageEvent: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const partial = asRecord(assistantMessageEvent.partial);
+  if (!partial || Array.isArray(partial.content) || "role" in partial) return undefined;
+  return partial;
+}
+
+function exactContentPartAt(
+  messageLike: unknown,
+  contentIndex: unknown,
+): Record<string, unknown> | undefined {
+  if (typeof contentIndex !== "number") return undefined;
+  const message = asRecord(messageLike);
+  const content = Array.isArray(message?.content) ? message.content : null;
+  return content ? asRecord(content[contentIndex]) : undefined;
+}
+
+function contentPartLooksReasoning(part: Record<string, unknown> | undefined): boolean {
+  const type = typeof part?.type === "string" ? part.type.toLowerCase() : "";
+  return (
+    type === "thinking" ||
+    type === "reasoning" ||
+    typeof part?.thinking === "string" ||
+    typeof part?.reasoning === "string" ||
+    typeof part?.reasoning_content === "string"
+  );
+}
+
+function messageUpdateLooksReasoning(
+  assistantMessageEvent: Record<string, unknown>,
+  event: Record<string, unknown>,
+): boolean {
+  return (
+    contentPartLooksReasoning(partialContentPart(assistantMessageEvent)) ||
+    contentPartLooksReasoning(
+      exactContentPartAt(event.message, assistantMessageEvent.contentIndex),
+    ) ||
+    contentPartLooksReasoning(
+      exactContentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),
+    )
+  );
 }
 
 function defaultScheduleFrame(callback: () => void): FrameToken {

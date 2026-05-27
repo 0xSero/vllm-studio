@@ -33,6 +33,7 @@ import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { Session, SessionId, SessionStatus } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import * as api from "./api";
 import {
   resolveResumeRuntimeTarget,
@@ -442,6 +443,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             } else if (payload.type === "pi") {
               if (!shouldApplyRuntimeSeq(sessionId, payload.seq)) return;
               const piEvent = payload.event;
+              traceAgentReasoning("engine.pi", {
+                sessionId,
+                assistantId,
+                seq: payload.seq,
+                event: piEvent,
+              });
               const eventId = piSessionIdFromEvent(piEvent);
               if (eventId) {
                 updateSession(sessionId, (session) => ({ ...session, piSessionId: eventId }));

@@ -4,6 +4,7 @@ import {
   extractToolText,
   newId,
 } from "@/lib/agent/session/helpers";
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { AssistantBlock, ToolBlock } from "./types";
 
 export type MakeBlockId = (prefix: string) => string;
@@ -47,6 +48,16 @@ export function appendEventBlock(
   return [...blocks, { kind: "event", id: makeId("event"), text }];
 }
 
+function promotePendingTextToThinking(blocks: AssistantBlock[]): AssistantBlock[] {
+  let changed = false;
+  const next = blocks.map((block): AssistantBlock => {
+    if (block.kind !== "text" || !block.text.trim()) return block;
+    changed = true;
+    return { kind: "thinking", id: block.id, text: block.text };
+  });
+  return changed ? next : blocks;
+}
+
 export type StreamingToolCallSnapshot = {
   id: string;
   name: string;
@@ -68,8 +79,53 @@ function contentPartAt(
   return null;
 }
 
+function exactContentPartAt(
+  messageLike: unknown,
+  contentIndex: unknown,
+): Record<string, unknown> | null {
+  if (typeof contentIndex !== "number") return null;
+  const message = asRecord(messageLike);
+  const content = Array.isArray(message?.content) ? message.content : null;
+  return content ? asRecord(content[contentIndex]) : null;
+}
+
+function partialContentPart(
+  assistantMessageEvent: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const partial = asRecord(assistantMessageEvent.partial);
+  if (!partial || Array.isArray(partial.content) || "role" in partial) return null;
+  return partial;
+}
+
+function contentPartLooksReasoning(part: Record<string, unknown> | null | undefined): boolean {
+  const type = typeof part?.type === "string" ? part.type.toLowerCase() : "";
+  return (
+    type === "thinking" ||
+    type === "reasoning" ||
+    typeof part?.thinking === "string" ||
+    typeof part?.reasoning === "string" ||
+    typeof part?.reasoning_content === "string"
+  );
+}
+
+function messageUpdateLooksReasoning(
+  assistantMessageEvent: Record<string, unknown>,
+  event: Record<string, unknown>,
+): boolean {
+  return (
+    contentPartLooksReasoning(partialContentPart(assistantMessageEvent)) ||
+    contentPartLooksReasoning(
+      exactContentPartAt(event.message, assistantMessageEvent.contentIndex),
+    ) ||
+    contentPartLooksReasoning(
+      exactContentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex),
+    )
+  );
+}
+
 function deltaKindFromMessageUpdate(
   assistantMessageEvent: Record<string, unknown> | undefined,
+  event: Record<string, unknown>,
 ): "text" | "thinking" | null {
   if (!assistantMessageEvent || typeof assistantMessageEvent.delta !== "string") return null;
   if (
@@ -80,7 +136,7 @@ function deltaKindFromMessageUpdate(
     return "thinking";
   }
   if (assistantMessageEvent.type !== "text_delta") return null;
-  return "text";
+  return messageUpdateLooksReasoning(assistantMessageEvent, event) ? "thinking" : "text";
 }
 
 export function toolCallSnapshotFromUpdate(
@@ -135,7 +191,7 @@ export function applyAssistantPiEventToBlocks(
     const id = String(event.toolCallId || makeId("tool"));
     const name = String(event.toolName || "tool");
     return upsertTool(
-      blocks,
+      promotePendingTextToThinking(blocks),
       id,
       (existing) => existing,
       () => toolBlock(id, name),
@@ -153,8 +209,16 @@ function applyMessageUpdateToBlocks(
   makeId: MakeBlockId,
 ): AssistantBlock[] | null {
   const ame = event.assistantMessageEvent as Record<string, unknown> | undefined;
-  const deltaKind = deltaKindFromMessageUpdate(ame);
+  const deltaKind = deltaKindFromMessageUpdate(ame, event);
   if (deltaKind && typeof ame?.delta === "string") {
+    traceAgentReasoning("block-event.delta", {
+      deltaKind,
+      eventType: event.type,
+      assistantMessageEventType: ame.type,
+      contentIndex: ame.contentIndex,
+      delta: ame.delta,
+      partial: ame.partial,
+    });
     return appendDelta(blocks, deltaKind, ame.delta, makeId);
   }
   if (ame?.type === "toolcall_start") return applyToolCallStart(blocks, ame, event);
@@ -170,8 +234,9 @@ function applyToolCallStart(
 ): AssistantBlock[] | null {
   const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
   if (!snapshot) return null;
+  const baseBlocks = promotePendingTextToThinking(blocks);
   return upsertTool(
-    blocks,
+    baseBlocks,
     snapshot.id,
     (existing) => ({
       ...existing,
@@ -194,8 +259,9 @@ function applyToolCallDelta(
   const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
   const delta = toolCallDeltaFromUpdate(ame);
   if (!snapshot || (!delta && !snapshot.args)) return null;
+  const baseBlocks = promotePendingTextToThinking(blocks);
   return upsertTool(
-    blocks,
+    baseBlocks,
     snapshot.id,
     (existing) => ({
       ...existing,

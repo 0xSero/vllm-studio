@@ -10,6 +10,7 @@ import {
   usageFromEvent,
   visibleUserTextFromPi,
 } from "@/lib/agent/session";
+import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { Session, SessionId } from "./types";
 
 type MutableRef<T> = { current: T };
@@ -49,8 +50,16 @@ export function applyPiEventToSession(
   }
 
   if (!assistantPiEventAffectsBlocks(event)) return;
+  traceAgentReasoning("pi-event-applier.before", { sessionId, assistantId, event });
   deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (msg) => {
     const blocks = applyAssistantPiEventToBlocks(msg.blocks ?? [], event);
+    traceAgentReasoning("pi-event-applier.after", {
+      sessionId,
+      assistantId,
+      event,
+      beforeBlocks: msg.blocks ?? [],
+      afterBlocks: blocks,
+    });
     return blocks ? { ...msg, blocks } : msg;
   });
 }
