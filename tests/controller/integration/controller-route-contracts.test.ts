@@ -1066,6 +1066,24 @@ describe("controller route contracts", () => {
     expect(invalidRuntimeJobResponse.status).toBe(400);
     expect(invalidRuntimeJobBody).toEqual({ detail: "backend is required" });
 
+    const invalidRuntimeBackendResponse = await app.request("/runtime/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ backend: "unknown", type: "update" }),
+    });
+    const invalidRuntimeBackendBody = await invalidRuntimeBackendResponse.json();
+    expect(invalidRuntimeBackendResponse.status).toBe(400);
+    expect(invalidRuntimeBackendBody).toEqual({ detail: "Invalid backend" });
+
+    const invalidRuntimeJobTypeResponse = await app.request("/runtime/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ backend: "vllm", type: "restart" }),
+    });
+    const invalidRuntimeJobTypeBody = await invalidRuntimeJobTypeResponse.json();
+    expect(invalidRuntimeJobTypeResponse.status).toBe(400);
+    expect(invalidRuntimeJobTypeBody).toEqual({ detail: "Invalid job type" });
+
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
