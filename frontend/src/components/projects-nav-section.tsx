@@ -309,10 +309,7 @@ function ProjectDirectoryPickerModal({
     </UiModal>
   );
 }
-/** * Collapsible PROJECTS section in the top-level left sidebar. Each project is
- * a folder; expanding it fetches and lists the recent sessions inside. *
- * Hidden when the sidebar is collapsed to its icon rail (caller decides via * `expanded`).
- */ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
+export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const chatProject = projects.find(isChatsProject) ?? null;
@@ -706,7 +703,7 @@ function ProjectSessions({
   project: ProjectEntry;
   activeSessions: ActiveAgentSession[];
   prefs: SessionPrefs;
-  /** Session ids already rendered elsewhere in the sidebar (e.g. Pinned). */ excludedIds: ReadonlySet<string>;
+  excludedIds: ReadonlySet<string>;
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1185,7 +1182,6 @@ function SessionMenuItem({ onClick, children }: { onClick: () => void; children:
   );
 }
 
-/** The "+" affordance in the sidebar (Chats header + each project row). */
 function NewChatPlusButton({
   projectId,
   label,
