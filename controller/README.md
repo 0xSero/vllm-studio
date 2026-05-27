@@ -5,6 +5,7 @@
 ## What It Does
 
 - Launches and evicts model-serving runtimes through recipes.
+- Discovers and selects runtime targets for vLLM, SGLang, llama.cpp, and MLX.
 - Proxies OpenAI-compatible model, chat, audio, and tokenization requests.
 - Streams controller/runtime events over SSE.
 - Tracks GPU/system status, logs, downloads, usage, controller settings, and persisted runtime state.
@@ -18,6 +19,7 @@
 - SQLite-backed local stores.
 - `prom-client` metrics.
 - Swagger UI from `@hono/swagger-ui`.
+- Runtime probes for Python, Docker, `llama-server`, and MLX Python environments.
 
 ## Architecture
 
@@ -33,6 +35,7 @@ flowchart TB
     App --> Audio["modules/audio"]
 
     Engines --> Runtime["runtime process coordination"]
+    Engines --> Targets["runtime target discovery"]
     Models --> Recipes["recipe and model discovery"]
     Proxy --> Inference["OpenAI-compatible inference client"]
     System --> Metrics["metrics, logs, usage, events"]
@@ -43,7 +46,9 @@ flowchart TB
 ## Prerequisites
 
 - Bun 1.x.
-- Optional NVIDIA/CUDA stack for local GPU model serving.
+- Optional NVIDIA/CUDA stack for CUDA model serving.
+- Optional Apple Silicon plus `mlx-lm` for MLX model serving.
+- Optional `llama-server` binary for llama.cpp/GGUF model serving.
 - Optional Docker/Compose infrastructure depending on deployment mode.
 
 ## Common Commands
@@ -68,6 +73,11 @@ bun run check
 - `POST /v1/chat/completions`
 - `GET /v1/studio/models`
 - `GET /studio/downloads`
+- `GET /runtime/targets`
+- `GET /runtime/vllm`
+- `GET /runtime/sglang`
+- `GET /runtime/llamacpp`
+- `GET /runtime/mlx`
 
 Route registration starts in `src/http/app.ts`.
 
@@ -77,12 +87,20 @@ Configuration parsing lives in `src/config/env.ts`. Runtime state is stored unde
 
 Use `.env.local` for machine-specific secrets and deployment values.
 
+Runtime-related environment variables include:
+
+- `VLLM_STUDIO_SGLANG_PYTHON`: preferred SGLang Python executable.
+- `VLLM_STUDIO_LLAMA_BIN`: preferred llama.cpp `llama-server` executable.
+- `VLLM_STUDIO_MLX_PYTHON`: preferred Python executable containing `mlx-lm`.
+- `VLLM_STUDIO_RUNTIME_SKIP_SYSTEM`: skip system Python/binary discovery when set to `1`.
+- `VLLM_STUDIO_RUNTIME_SKIP_DOCKER`: skip Docker image/container discovery when set to `1`.
+
 ## Where To Look
 
 - `src/main.ts`: server boot.
 - `src/app-context.ts`: shared controller dependencies.
 - `src/http/app.ts`: HTTP app and route mounting.
-- `src/modules/engines/`: lifecycle, recipes, downloads, runtime process management.
+- `src/modules/engines/`: lifecycle, recipes, downloads, runtime process management, and runtime target discovery.
 - `src/modules/proxy/`: OpenAI-compatible proxy and inference accounting.
 - `src/modules/system/`: metrics, logs, usage, events, and platform state.
 - `src/stores/`: SQLite helpers and persisted stores.

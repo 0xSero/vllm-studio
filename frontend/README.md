@@ -7,6 +7,7 @@
 - Renders the main web and desktop UI.
 - Connects to one or more controllers.
 - Hosts `/agent`, including session navigation, Pi agent integration, skills, extensions, terminal/browser panes, and local file surfaces.
+- Surfaces controller runtime targets for vLLM, SGLang, llama.cpp, and MLX in Settings.
 - Provides API routes that bridge the UI to controller and local desktop/runtime capabilities.
 - Builds the Electron shell and production desktop artifacts.
 
@@ -42,6 +43,8 @@ flowchart TB
 
     UI --> APIs
     APIs --> Controller["Controller API"]
+    Settings --> Targets["Runtime targets"]
+    Targets --> Controller
     Agent --> Pi["Pi coding agent SDK"]
     Desktop["desktop/ Electron main process"] --> UI
 ```
@@ -95,12 +98,15 @@ Controller URL resolution is implemented in `src/lib/backend-config.ts`. Common 
 
 When no URL is configured, the frontend falls back to `http://localhost:8080`. Saved controller settings are managed through the app settings surface.
 
+Settings also renders controller-provided runtime targets. The target rows come from `/runtime/targets` and include direct Python or binary targets for vLLM, SGLang, llama.cpp, and MLX when the controller can discover them.
+
 ## Where To Look
 
 - `src/app/agent/`: agent workspace routes and components.
 - `src/app/api/agent/`: local agent/session/browser/runtime API routes.
 - `src/app/api/proxy/`: controller proxy route.
 - `src/app/settings/`: settings UI.
+- `src/app/configs/_components/engines-section*`: runtime target rows and settings models.
 - `src/app/usage/`: usage UI.
 - `src/lib/backend-config.ts`: controller URL selection.
 - `src/components/ui-kit/README.md`: shared frontend UI primitives.

@@ -7,6 +7,7 @@
 - Reads status and GPU information from a controller.
 - Lists recipes and configuration.
 - Launches and evicts models.
+- Uses controller APIs, so runtime support follows the connected controller: vLLM, SGLang, llama.cpp, MLX, and configured recipe command overrides.
 - Provides an interactive terminal UI and headless commands.
 
 ## What Is In Use
@@ -24,6 +25,7 @@ flowchart LR
     CLI --> TUI["interactive TUI mode"]
     Headless --> API["controller HTTP API"]
     TUI --> API
+    API --> Runtime["controller-managed runtimes"]
 ```
 
 ## Prerequisites
@@ -54,6 +56,8 @@ bun src/main.ts
 ## Configuration
 
 - `VLLM_STUDIO_URL`: controller base URL. Defaults to `http://localhost:8080`.
+
+The CLI does not discover local runtimes itself. It asks the connected controller for status, recipes, model lifecycle actions, and metrics.
 
 ## Development
 

@@ -172,7 +172,7 @@ export const buildCompatibilityReport = (args: {
       message: "No inference runtime backends appear to be installed.",
       evidence: null,
       suggested_fix:
-        "Install at least one backend runtime (vLLM, SGLang, llama.cpp, or ExLLaMA v3), then restart the controller.",
+        "Install at least one backend runtime (vLLM, SGLang, llama.cpp, MLX, or ExLLaMA v3), then restart the controller.",
     });
   }
 

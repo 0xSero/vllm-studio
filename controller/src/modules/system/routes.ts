@@ -226,12 +226,12 @@ export const registerSystemRoutes = (app: Hono, context: AppContext): void => {
     const inferenceStatus = current ? "running" : "stopped";
 
     services.push({
-      name: "vLLM/SGLang",
+      name: "Inference runtime",
       port: context.config.inference_port,
       internal_port: context.config.inference_port,
       protocol: "http",
       status: inferenceStatus,
-      description: "Inference backend (vLLM, SGLang, or llama.cpp)",
+      description: "Inference backend (vLLM, SGLang, llama.cpp, or MLX)",
     });
 
     const redisReachable = await checkService("localhost", 6379);

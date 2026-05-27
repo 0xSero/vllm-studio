@@ -553,7 +553,7 @@ describe("controller route contracts", () => {
     expect(configBody.services).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "Controller", status: "running" }),
-        expect.objectContaining({ name: "vLLM/SGLang", status: "stopped" }),
+        expect.objectContaining({ name: "Inference runtime", status: "stopped" }),
         expect.objectContaining({ name: "Prometheus" }),
         expect.objectContaining({ name: "Frontend" }),
       ]),

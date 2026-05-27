@@ -20,7 +20,9 @@ You can run one controller locally or connect the frontend to a remote controlle
 - macOS or Linux for local development.
 - Node.js 20+ and npm for the frontend and desktop build.
 - Bun 1.x for the controller and CLI.
-- Optional NVIDIA GPU stack for local model serving: NVIDIA driver, CUDA-compatible runtime, and whichever serving backend your recipe uses.
+- Optional NVIDIA GPU stack for CUDA model serving: NVIDIA driver, CUDA-compatible runtime, and whichever serving backend your recipe uses.
+- Optional Apple Silicon stack for MLX recipes: macOS on Apple Silicon and a Python environment with `mlx-lm`.
+- Optional llama.cpp binary for GGUF recipes: a runnable `llama-server` on `PATH` or configured through `VLLM_STUDIO_LLAMA_BIN`.
 - Optional Docker if you run infrastructure through `docker-compose.yml`.
 - SSH access plus `.env.local` deployment variables when deploying to the remote GPU host.
 
@@ -44,7 +46,7 @@ flowchart LR
     Frontend --> Controller
 
     Controller --> Runtime["Inference runtime process"]
-    Runtime --> Backends["vLLM / SGLang / llama.cpp-compatible recipes"]
+    Runtime --> Backends["vLLM / SGLang / llama.cpp / MLX recipes"]
     Controller --> Data["Local data directory"]
     Controller --> Events["SSE status and runtime events"]
     Frontend --> Agent["Pi coding agent runtime"]
@@ -85,7 +87,7 @@ flowchart TB
 ## Repository Modules
 
 - [`frontend/`](frontend/README.md): Next.js app, Electron desktop shell, agent UI, settings, usage, and browser-facing API routes.
-- [`controller/`](controller/README.md): Bun/Hono controller API for lifecycle, proxying, metrics, logs, downloads, and settings.
+- [`controller/`](controller/README.md): Bun/Hono controller API for lifecycle, runtime targets, proxying, metrics, logs, downloads, and settings.
 - [`cli/`](cli/README.md): Bun CLI for checking and operating a controller from a terminal.
 - [`scripts/`](scripts/): repo-level operational scripts, including remote deployment and daemon helpers.
 - [`data/`](data/): local runtime data. Treat generated contents as machine-local state.
@@ -158,6 +160,18 @@ Common environment variables:
 If none are provided, frontend code falls back to `http://localhost:8080`. Controller management and switching is available from the app settings surface.
 
 The CLI uses `VLLM_STUDIO_URL`, defaulting to `http://localhost:8080`.
+
+## Runtime Backends
+
+Recipes can launch through the controller runtime layer. The currently wired backend families are:
+
+- `vllm`: vLLM server recipes through a configured, discovered, system, Docker, or bundled runtime target.
+- `sglang`: SGLang launch-server recipes through configured or discovered Python targets.
+- `llamacpp`: llama.cpp `llama-server` recipes for GGUF models.
+- `mlx`: MLX `mlx_lm.server` recipes for Apple Silicon environments.
+- `exllamav3`: ExLlama v3 through an explicit command override.
+
+Runtime target discovery is surfaced in Settings, and selected targets are persisted in the controller data directory.
 
 ## Validation
 
