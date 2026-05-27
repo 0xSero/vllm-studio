@@ -540,6 +540,104 @@ describe("controller route contracts", () => {
     );
   });
 
+  test("proxy tokenization routes preserve fallbacks and observability without a live model", async () => {
+    const app = await createTestApp();
+
+    const tokenizeResponse = await app.request("/v1/tokenize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mock-model", prompt: "hello world" }),
+    });
+    const tokenizeBody = await tokenizeResponse.json();
+    expect(tokenizeResponse.status).toBe(200);
+    expect(tokenizeBody).toEqual({ error: "No model running", num_tokens: 0 });
+
+    const detokenizeResponse = await app.request("/v1/detokenize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mock-model", tokens: [1, 2, 3] }),
+    });
+    const detokenizeBody = await detokenizeResponse.json();
+    expect(detokenizeResponse.status).toBe(200);
+    expect(detokenizeBody).toEqual({ error: "No model running", text: "" });
+
+    const countTokensResponse = await app.request("/v1/count-tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mock-model", text: "hello world" }),
+    });
+    const countTokensBody = await countTokensResponse.json();
+    expect(countTokensResponse.status).toBe(200);
+    expect(countTokensBody).toEqual({ error: "No model running", num_tokens: 0 });
+
+    const chatTokenizeResponse = await app.request("/v1/tokenize-chat-completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "mock-model",
+        messages: [{ role: "user", content: "hello world" }],
+      }),
+    });
+    const chatTokenizeBody = await chatTokenizeResponse.json();
+    expect(chatTokenizeResponse.status).toBe(200);
+    expect(chatTokenizeBody).toEqual({ error: "No model running", input_tokens: 0 });
+
+    const titleResponse = await app.request("/api/title", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ user: "Name this thread" }),
+    });
+    const titleBody = await titleResponse.json();
+    expect(titleResponse.status).toBe(200);
+    expect(titleBody).toEqual({ title: "New Chat" });
+
+    const invalidChatResponse = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    const invalidChatBody = await invalidChatResponse.json();
+    expect(invalidChatResponse.status).toBe(400);
+    expect(invalidChatBody).toEqual({ detail: "Invalid JSON body" });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/tokenize",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/detokenize",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/count-tokens",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/tokenize-chat-completions",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({ method: "POST", path: "/api/title", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/chat/completions",
+          status: 400,
+          success: 0,
+        }),
+      ]),
+    );
+  });
+
   test("usage includes persisted controller route observability", async () => {
     const app = await createTestApp();
 
