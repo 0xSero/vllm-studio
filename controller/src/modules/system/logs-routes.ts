@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import type { AppContext } from "../../types/context";
 import { badRequest, notFound } from "../../core/errors";
+import { observeControllerFunction } from "../../core/function-observability";
 import { streamAsyncStrings, buildSseHeaders } from "../../http/sse";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
 import { Event } from "./event-manager";
@@ -90,8 +91,7 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
     const close = (): void => {
       try {
         child.kill("SIGTERM");
-      } catch {
-      }
+      } catch {}
     };
     signal.addEventListener("abort", close, { once: true });
     try {
@@ -108,8 +108,8 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
 
   app.get("/logs", async (ctx) => {
     maybeCleanup();
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(context, "logs.findInferenceProcess", () =>
+      context.processManager.findInferenceProcess(context.config.inference_port)
     );
     const entries = listLogFiles(context.config.data_dir);
     type LogSessionRow = {
@@ -185,8 +185,7 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
       try {
         unlinkSync(path);
         deleted = true;
-      } catch {
-      }
+      } catch {}
     }
     if (!deleted) {
       throw notFound("Log not found");

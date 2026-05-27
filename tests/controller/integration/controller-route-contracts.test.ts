@@ -1955,6 +1955,17 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "logs.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+      ]),
+    );
   });
 
   test("proxy tokenization routes preserve fallbacks and observability without a live model", async () => {
