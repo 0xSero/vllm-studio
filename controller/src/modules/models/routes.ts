@@ -26,6 +26,7 @@ interface OpenAIModelList {
 }
 import { buildModelInfo, discoverModelDirectories } from "./model-browser";
 import { notFound } from "../../core/errors";
+import { observeControllerFunction } from "../../core/function-observability";
 import { fetchInference } from "../../services/inference/inference-client";
 
 /**
@@ -47,8 +48,10 @@ function isMockInferenceEnabled(): boolean {
 export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
   app.get("/v1/models", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "models.list.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     let activeModelData: { data?: Array<{ max_model_len?: number }> } | null = null;
     if (current) {
@@ -134,8 +137,10 @@ export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
       throw notFound("Model not found");
     }
 
-    const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+    const current = await observeControllerFunction(
+      context,
+      "models.detail.findInferenceProcess",
+      () => context.processManager.findInferenceProcess(context.config.inference_port)
     );
     let isActive = false;
     let maxModelLength = recipe.max_model_len;

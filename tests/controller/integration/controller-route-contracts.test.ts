@@ -295,6 +295,23 @@ describe("controller route contracts", () => {
         }),
       ]),
     );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "models.list.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "models.detail.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+      ]),
+    );
   });
 
   test("HuggingFace model search route normalizes list and exact-match results", async () => {
@@ -2181,8 +2198,8 @@ describe("controller route contracts", () => {
       ]),
     );
     expect(body.controller.function_calls.totals).toMatchObject({
-      total_calls: 3,
-      successful_calls: 3,
+      total_calls: 4,
+      successful_calls: 4,
       failed_calls: 0,
       success_rate: 100,
     });
@@ -2196,6 +2213,12 @@ describe("controller route contracts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           function_name: "status.findInferenceProcess",
+          calls: 1,
+          successful: 1,
+          failed: 0,
+        }),
+        expect.objectContaining({
+          function_name: "models.list.findInferenceProcess",
           calls: 1,
           successful: 1,
           failed: 0,
@@ -2220,6 +2243,12 @@ describe("controller route contracts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           function_name: "status.findInferenceProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
+        }),
+        expect.objectContaining({
+          function_name: "models.list.findInferenceProcess",
           success: 1,
           error_class: null,
           error_message: null,
