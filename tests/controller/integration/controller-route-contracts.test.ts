@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,6 +18,7 @@ const ENV_KEYS = [
   "VLLM_STUDIO_API_KEY",
   "VLLM_STUDIO_RUNTIME_SKIP_DOCKER",
   "VLLM_STUDIO_RUNTIME_SKIP_SYSTEM",
+  "VLLM_STUDIO_LLAMA_BIN",
 ] as const;
 
 let envSnapshot: EnvSnapshot;
@@ -958,6 +959,112 @@ describe("controller route contracts", () => {
           path: "/runtime/jobs",
           status: 400,
           success: 0,
+        }),
+      ]),
+    );
+  });
+
+  test("runtime target selection and health routes persist observable outcomes", async () => {
+    const llamaBin = join(tempDir, "llama-server-test");
+    writeFileSync(
+      llamaBin,
+      [
+        "#!/usr/bin/env sh",
+        "if [ \"$1\" = \"--version\" ]; then echo 'llama-server test runtime'; exit 0; fi",
+        "if [ \"$1\" = \"--help\" ]; then echo 'usage: llama-server-test'; exit 0; fi",
+        "exit 0",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    chmodSync(llamaBin, 0o755);
+    process.env.VLLM_STUDIO_LLAMA_BIN = llamaBin;
+    const app = await createTestApp();
+
+    const targetsResponse = await app.request("/runtime/targets");
+    const targetsBody = await targetsResponse.json();
+    expect(targetsResponse.status).toBe(200);
+    const target = targetsBody.targets.find(
+      (candidate: Record<string, unknown>) =>
+        candidate["backend"] === "llamacpp" &&
+        candidate["source"] === "configured" &&
+        candidate["binaryPath"] === llamaBin,
+    );
+    expect(target).toMatchObject({
+      backend: "llamacpp",
+      kind: "binary",
+      source: "configured",
+      installed: true,
+      active: false,
+      binaryPath: llamaBin,
+      capabilities: expect.objectContaining({
+        canLaunch: true,
+        canInspectOptions: true,
+      }),
+      health: { status: "ok" },
+    });
+    if (!target) throw new Error("Expected configured llama.cpp runtime target");
+
+    const targetId = String(target.id);
+    const targetResponse = await app.request(`/runtime/targets/${targetId}`);
+    const targetBody = await targetResponse.json();
+    expect(targetResponse.status).toBe(200);
+    expect(targetBody.target).toMatchObject({
+      id: targetId,
+      backend: "llamacpp",
+      binaryPath: llamaBin,
+      health: { status: "ok" },
+    });
+
+    const healthResponse = await app.request(`/runtime/targets/${targetId}/health`);
+    const healthBody = await healthResponse.json();
+    expect(healthResponse.status).toBe(200);
+    expect(healthBody).toEqual({ health: { status: "ok" } });
+
+    const selectResponse = await app.request(`/runtime/targets/${targetId}/select`, {
+      method: "POST",
+    });
+    const selectBody = await selectResponse.json();
+    expect(selectResponse.status).toBe(200);
+    expect(selectBody.target).toMatchObject({
+      id: targetId,
+      active: true,
+      backend: "llamacpp",
+    });
+
+    const refreshedResponse = await app.request("/runtime/targets");
+    const refreshedBody = await refreshedResponse.json();
+    expect(refreshedResponse.status).toBe(200);
+    expect(
+      refreshedBody.targets.find((candidate: Record<string, unknown>) => candidate["id"] === targetId),
+    ).toMatchObject({ active: true });
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/targets",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: `/runtime/targets/${targetId}`,
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: `/runtime/targets/${targetId}/health`,
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: `/runtime/targets/${targetId}/select`,
+          status: 200,
+          success: 1,
         }),
       ]),
     );
