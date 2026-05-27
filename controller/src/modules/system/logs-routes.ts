@@ -91,7 +91,6 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
       try {
         child.kill("SIGTERM");
       } catch {
-        // ignore
       }
     };
     signal.addEventListener("abort", close, { once: true });
@@ -187,7 +186,6 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
         unlinkSync(path);
         deleted = true;
       } catch {
-        // ignore
       }
     }
     if (!deleted) {
