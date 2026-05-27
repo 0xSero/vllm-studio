@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { consumeAgentSessionNavTitle } from "@/components/projects-nav-section";
 import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
 import type { ProjectsContextValue } from "@/lib/agent/projects/context";
@@ -57,7 +57,15 @@ export function useAgentWorkspaceNavigationEffects({
   searchParams,
   dispatch,
 }: WorkspaceNavigationDeps): void {
-  useEffect(() => {
-    requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-  }, [lastHandledNavKey, projects, searchParams, dispatch]);
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
+      return () => {};
+    },
+    [lastHandledNavKey, projects, searchParams, dispatch],
+  );
+
+  useSyncExternalStore(subscribe, getWorkspaceNavigationSnapshot, getWorkspaceNavigationSnapshot);
 }
+
+const getWorkspaceNavigationSnapshot = (): number => 0;
