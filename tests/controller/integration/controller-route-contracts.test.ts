@@ -1040,6 +1040,106 @@ describe("controller route contracts", () => {
     );
   }, 15_000);
 
+  test("runtime backend metadata routes expose host-shaped contracts and observability", async () => {
+    const app = await createTestApp();
+
+    const vllmResponse = await app.request("/runtime/vllm");
+    const vllmBody = await vllmResponse.json();
+    expect(vllmResponse.status).toBe(200);
+    expect(vllmBody).toMatchObject({
+      installed: expect.any(Boolean),
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(vllmBody.version === null || typeof vllmBody.version === "string").toBe(true);
+    expect(vllmBody.python_path === null || typeof vllmBody.python_path === "string").toBe(true);
+    expect(vllmBody.vllm_bin === null || typeof vllmBody.vllm_bin === "string").toBe(true);
+
+    const sglangResponse = await app.request("/runtime/sglang");
+    const sglangBody = await sglangResponse.json();
+    expect(sglangResponse.status).toBe(200);
+    expect(sglangBody).toMatchObject({
+      installed: expect.any(Boolean),
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(sglangBody.version === null || typeof sglangBody.version === "string").toBe(true);
+    expect(sglangBody.python_path === null || typeof sglangBody.python_path === "string").toBe(
+      true,
+    );
+
+    const llamaResponse = await app.request("/runtime/llamacpp");
+    const llamaBody = await llamaResponse.json();
+    expect(llamaResponse.status).toBe(200);
+    expect(llamaBody).toMatchObject({
+      installed: expect.any(Boolean),
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(llamaBody.version === null || typeof llamaBody.version === "string").toBe(true);
+    expect(llamaBody.binary_path === null || typeof llamaBody.binary_path === "string").toBe(true);
+
+    const exllamav3Response = await app.request("/runtime/exllamav3");
+    const exllamav3Body = await exllamav3Response.json();
+    expect(exllamav3Response.status).toBe(200);
+    expect(exllamav3Body).toMatchObject({
+      installed: expect.any(Boolean),
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(exllamav3Body.version === null || typeof exllamav3Body.version === "string").toBe(
+      true,
+    );
+    expect(exllamav3Body.binary_path === null || typeof exllamav3Body.binary_path === "string").toBe(
+      true,
+    );
+
+    const cudaResponse = await app.request("/runtime/cuda");
+    const cudaBody = await cudaResponse.json();
+    expect(cudaResponse.status).toBe(200);
+    expect(cudaBody).toMatchObject({
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(cudaBody.driver_version === null || typeof cudaBody.driver_version === "string").toBe(
+      true,
+    );
+    expect(cudaBody.cuda_version === null || typeof cudaBody.cuda_version === "string").toBe(true);
+
+    const rocmResponse = await app.request("/runtime/rocm");
+    const rocmBody = await rocmResponse.json();
+    expect(rocmResponse.status).toBe(200);
+    expect(rocmBody).toMatchObject({
+      gpu_arch: expect.any(Array),
+      upgrade_command_available: expect.any(Boolean),
+    });
+    expect(rocmBody.rocm_version === null || typeof rocmBody.rocm_version === "string").toBe(true);
+    expect(rocmBody.hip_version === null || typeof rocmBody.hip_version === "string").toBe(true);
+    expect(rocmBody.smi_tool === null || typeof rocmBody.smi_tool === "string").toBe(true);
+
+    const rows = readControllerRequestRows();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: "/runtime/vllm", status: 200, success: 1 }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/sglang",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/llamacpp",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/runtime/exllamav3",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({ method: "GET", path: "/runtime/cuda", status: 200, success: 1 }),
+        expect.objectContaining({ method: "GET", path: "/runtime/rocm", status: 200, success: 1 }),
+      ]),
+    );
+  }, 20_000);
+
   test("monitoring and log routes persist operational observability", async () => {
     const logsDir = join(tempDir, "logs");
     mkdirSync(logsDir, { recursive: true });
