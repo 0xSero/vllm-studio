@@ -2364,6 +2364,17 @@ describe("controller route contracts", () => {
         success_rate: 100,
       }),
     ]);
+
+    const functionRows = readControllerFunctionCallRows();
+    expect(functionRows).toEqual([
+      expect.objectContaining({
+        function_name: "usage.aggregatePiSessions",
+        success: 1,
+        error_class: null,
+        error_message: null,
+      }),
+    ]);
+    expect(functionRows[0].duration_ms).toBeGreaterThanOrEqual(0);
   });
 
   test("controller observability persists normalized raw rows for every route action", async () => {
