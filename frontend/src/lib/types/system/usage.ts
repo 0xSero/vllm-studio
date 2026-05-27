@@ -1,7 +1,43 @@
 // CRITICAL
-/**
- * Usage analytics types.
- */
+export interface ControllerUsageStats {
+  totals: {
+    total_requests: number;
+    successful_requests: number;
+    failed_requests: number;
+    success_rate: number;
+  };
+  latency: {
+    avg_ms: number | null;
+    max_ms: number | null;
+  };
+  recent_activity: {
+    last_hour_requests: number;
+    last_24h_requests: number;
+    last_24h_failed_requests: number;
+  };
+  by_path: Array<{
+    method: string;
+    path: string;
+    requests: number;
+    successful: number;
+    failed: number;
+    success_rate: number;
+    avg_duration_ms: number | null;
+    max_duration_ms: number | null;
+  }>;
+  by_status: Array<{
+    status: number;
+    requests: number;
+  }>;
+  recent_errors: Array<{
+    method: string;
+    path: string;
+    status: number;
+    error_class: string | null;
+    error_message: string | null;
+    created_at: string;
+  }>;
+}
 
 export interface UsageStats {
   totals: {
@@ -118,6 +154,7 @@ export interface UsageStats {
     successful: number;
     tokens: number;
   }>;
+  controller?: ControllerUsageStats;
 }
 
 export type SortField = "model" | "requests" | "tokens" | "success" | "latency" | "ttft" | "speed";
