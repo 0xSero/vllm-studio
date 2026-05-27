@@ -25,9 +25,6 @@ import {
   buildProcessTree,
 } from "./process-utilities";
 
-/**
- * Controller process manager.
- */
 export interface ProcessManager {
   findInferenceProcess: (port: number) => Promise<ProcessInfo | null>;
   launchModel: (recipe: Recipe) => Promise<LaunchResult>;
@@ -35,13 +32,6 @@ export interface ProcessManager {
   killProcess: (pid: number, force: boolean) => Promise<boolean>;
 }
 
-/**
- * Create a process manager.
- * @param config - Runtime config.
- * @param logger - Logger instance.
- * @param eventManager - Event manager for log forwarding.
- * @returns Process manager.
- */
 export const createProcessManager = (
   config: Config,
   logger: Logger,
@@ -54,11 +44,6 @@ export const createProcessManager = (
     command: string;
   };
 
-  /**
-   * Locate the inference process by port.
-   * @param port - Port to match.
-   * @returns Process info or null.
-   */
   const findInferenceProcess = async (port: number): Promise<ProcessInfo | null> => {
     const processes = listProcesses();
     for (const proc of processes) {
@@ -102,12 +87,6 @@ export const createProcessManager = (
     return null;
   };
 
-  /**
-   * Kill a process and its children.
-   * @param pid - Process id.
-   * @param force - Force kill if true.
-   * @returns True on success.
-   */
   const killProcess = async (pid: number, force: boolean): Promise<boolean> => {
     if (!pidExists(pid)) {
       return true;
@@ -286,11 +265,6 @@ export const createProcessManager = (
     return workers.length;
   };
 
-  /**
-   * Launch an inference backend for a recipe.
-   * @param recipe - Recipe data.
-   * @returns Launch result.
-   */
   const launchModel = async (recipe: Recipe): Promise<LaunchResult> => {
     const updatedRecipe: Recipe = {
       ...recipe,
@@ -441,11 +415,6 @@ export const createProcessManager = (
     }
   };
 
-  /**
-   * Evict the running inference process.
-   * @param force - Force kill if true.
-   * @returns Evicted pid or null.
-   */
   const evictModel = async (force: boolean): Promise<number | null> => {
     const current = await findInferenceProcess(config.inference_port);
     if (!current) {
