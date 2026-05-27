@@ -1976,6 +1976,28 @@ describe("controller route contracts", () => {
       content: "second line",
     });
 
+    const streamController = new AbortController();
+    const logStreamResponse = await app.request(
+      "/logs/route-test/stream?tail=1",
+      {
+        signal: streamController.signal,
+      },
+    );
+    expect(logStreamResponse.status).toBe(200);
+    expect(logStreamResponse.headers.get("content-type")).toContain(
+      "text/event-stream",
+    );
+    const logStreamReader = logStreamResponse.body?.getReader();
+    expect(logStreamReader).toBeDefined();
+    const logStreamChunk = await logStreamReader!.read();
+    expect(logStreamChunk.done).toBe(false);
+    const logStreamText = new TextDecoder().decode(logStreamChunk.value);
+    expect(logStreamText).toContain("event: log");
+    expect(logStreamText).toContain('"session_id":"route-test"');
+    expect(logStreamText).toContain('"line":"second line"');
+    streamController.abort();
+    await logStreamReader!.cancel();
+
     const missingLogResponse = await app.request("/logs/missing-log");
     const missingLogBody = await missingLogResponse.json();
     expect(missingLogResponse.status).toBe(404);
@@ -2041,6 +2063,12 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "GET",
           path: "/logs/route-test",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/logs/route-test/stream",
           status: 200,
           success: 1,
         }),
