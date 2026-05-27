@@ -1580,6 +1580,18 @@ describe("controller route contracts", () => {
     expect(missingCancelResponse.status).toBe(404);
     expect(missingCancelBody).toEqual({ detail: "Runtime job not found" });
 
+    const mlxJobResponse = await app.request("/runtime/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ backend: "mlx", type: "update" }),
+    });
+    const mlxJobBody = await mlxJobResponse.json();
+    expect(mlxJobResponse.status).toBe(200);
+    expect(mlxJobBody.job).toMatchObject({
+      backend: "mlx",
+      type: "update",
+    });
+
     const invalidArgsResponse = await app.request("/runtime/vllm/upgrade", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1640,6 +1652,12 @@ describe("controller route contracts", () => {
         }),
         expect.objectContaining({
           method: "POST",
+          path: "/runtime/jobs",
+          status: 200,
+          success: 1,
+        }),
+        expect.objectContaining({
+          method: "POST",
           path: "/runtime/vllm/upgrade",
           status: 400,
           success: 0,
@@ -1679,6 +1697,17 @@ describe("controller route contracts", () => {
           path: "/runtime/llamacpp/config",
           status: 200,
           success: 1,
+        }),
+      ]),
+    );
+
+    expect(readControllerFunctionCallRows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          function_name: "runtime.jobs.getCurrentProcess",
+          success: 1,
+          error_class: null,
+          error_message: null,
         }),
       ]),
     );

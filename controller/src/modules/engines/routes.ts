@@ -338,7 +338,9 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
   app.post("/runtime/jobs", async (ctx) => {
     const body = await parseRuntimeJobBody(ctx);
     if (!body.backend) throw badRequest("backend is required");
-    const current = await context.engineService.getCurrentProcess();
+    const current = await observeControllerFunction(context, "runtime.jobs.getCurrentProcess", () =>
+      context.engineService.getCurrentProcess()
+    );
     const job = createEngineJob(context.config, {
       backend: body.backend,
       type: body.type ?? "update",
