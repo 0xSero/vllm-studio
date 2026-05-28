@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PageState } from "@/components/ui-kit/page-state";
-import { RefreshButton } from "@/components/ui-kit/refresh-button";
+import { AppPage, PageState, RefreshButton, Tabs } from "@/ui";
 import { DailyUsageChart } from "./_components/daily-usage-chart";
 import { ModelPerformanceTable } from "./_components/model-performance-table";
 import { PerformanceDetails } from "./_components/performance-details";
@@ -41,7 +40,7 @@ export default function UsagePage() {
     error,
     onLoad: loadStats,
   });
-  if (pageStateRender) return <div className="min-h-full bg-(--bg)">{pageStateRender}</div>;
+  if (pageStateRender) return <AppPage>{pageStateRender}</AppPage>;
 
   if (!stats) return null;
 
@@ -54,30 +53,19 @@ export default function UsagePage() {
   const cacheRate = Number(cache.hit_rate ?? 0);
 
   return (
-    <div className="min-h-full overflow-y-auto bg-(--bg) text-(--fg)">
+    <AppPage>
       <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 2xl:px-10">
         <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--border)/35 pb-2">
           <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.16em] text-(--dim)">
             source
           </span>
-          {TABS.map((entry) => {
-            const active = entry.id === tab;
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => setTab(entry.id)}
-                className={`h-7 rounded-md px-2 text-[11px] transition-colors ${
-                  active
-                    ? "bg-(--active) text-(--fg)"
-                    : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-                }`}
-                title={entry.sublabel}
-              >
-                {entry.label}
-              </button>
-            );
-          })}
+          <Tabs
+            variant="pill"
+            items={TABS}
+            activeTab={tab}
+            onSelectTab={setTab}
+            className="[&_button]:h-7 [&_button]:px-2 [&_button]:py-0 [&_button]:text-[11px]"
+          />
         </div>
 
         <section className="px-2 pt-2 pb-5">
@@ -152,7 +140,7 @@ export default function UsagePage() {
           {SecondaryMetrics(safeStats)}
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }
 

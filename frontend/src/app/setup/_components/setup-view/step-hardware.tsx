@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, Cpu, DownloadCloud, HardDrive, Loader2 } from "lucide-react";
+import { Button, Card, Checkbox } from "@/ui";
 import type { StudioDiagnostics, VllmUpgradeResult } from "@/lib/types";
 import { buildHardwareSummary, buildUpgradeMessage } from "./step-hardware-model";
 
@@ -26,7 +27,7 @@ export function StepHardware({
 
   return (
     <div className="grid gap-6">
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 space-y-4">
+      <Card padding="lg" className="space-y-4">
         <div className="flex items-center gap-3">
           <Cpu className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Hardware Check</h2>
@@ -49,9 +50,9 @@ export function StepHardware({
             <div>{hardware.vram}</div>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 space-y-4">
+      <Card padding="lg" className="space-y-4">
         <div className="flex items-center gap-3">
           <HardDrive className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Runtime</h2>
@@ -60,41 +61,37 @@ export function StepHardware({
         {upgradeMessage && (
           <div className={`text-xs ${upgradeMessage.toneClassName}`}>{upgradeMessage.text}</div>
         )}
-        <label className="flex items-start gap-3 rounded-lg border border-(--surface) bg-(--surface)/40 px-4 py-3 text-sm text-(--dim)">
-          <input
-            type="checkbox"
-            checked={hardwareConfirmed}
-            onChange={(event) => setHardwareConfirmed(event.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-(--border) bg-(--bg)"
-          />
-          <span>
-            I confirmed this hardware summary matches the device I am onboarding, and I want vLLM
-            Studio to continue using these detected capabilities.
-          </span>
-        </label>
+        <Checkbox
+          checked={hardwareConfirmed}
+          onChange={setHardwareConfirmed}
+          className="rounded-lg border border-(--ui-border) bg-(--ui-surface)/40 px-4 py-3"
+          label="I confirmed this hardware summary matches the device I am onboarding, and I want vLLM Studio to continue using these detected capabilities."
+          labelClassName="font-normal"
+        />
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="secondary"
             onClick={upgradeRuntime}
             disabled={upgrading}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-(--surface) text-sm hover:bg-(--surface) disabled:opacity-60"
+            icon={
+              upgrading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <DownloadCloud className="h-4 w-4" />
+              )
+            }
           >
-            {upgrading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <DownloadCloud className="h-4 w-4" />
-            )}
             Install / Upgrade vLLM
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={continueFromHardware}
             disabled={!hardwareConfirmed}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-(--hl1) text-white text-sm hover:opacity-90 disabled:opacity-50"
+            icon={<ChevronRight className="h-4 w-4" />}
           >
             Continue
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

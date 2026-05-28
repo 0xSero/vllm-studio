@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, ChevronRight, HardDrive, Pause, Play, XCircle } from "lucide-react";
+import { Button, Card } from "@/ui";
 import type { ModelDownload } from "@/lib/types";
 import { formatBytes, progressPercent } from "./utils";
 
@@ -25,7 +26,7 @@ export function StepDownload({
 }) {
   return (
     <div className="space-y-5">
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6">
+      <Card padding="lg">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-(--dim) uppercase tracking-wider">Download</div>
@@ -53,40 +54,43 @@ export function StepDownload({
             )}
             <div className="flex items-center gap-3">
               {activeDownload.status === "downloading" && (
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => pauseDownload(activeDownload.id)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--surface) text-xs"
+                  icon={<Pause className="h-3.5 w-3.5" />}
                 >
-                  <Pause className="h-3.5 w-3.5" />
                   Pause
-                </button>
+                </Button>
               )}
               {(activeDownload.status === "paused" || activeDownload.status === "failed") && (
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => resumeDownload(activeDownload.id)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--surface) text-xs"
+                  icon={<Play className="h-3.5 w-3.5" />}
                 >
-                  <Play className="h-3.5 w-3.5" />
                   Resume
-                </button>
+                </Button>
               )}
               {activeDownload.status !== "completed" && (
-                <button
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={() => cancelDownload(activeDownload.id)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--surface) text-xs text-(--err)"
+                  icon={<XCircle className="h-3.5 w-3.5" />}
                 >
-                  <XCircle className="h-3.5 w-3.5" />
                   Cancel
-                </button>
+                </Button>
               )}
             </div>
           </div>
         ) : (
           <div className="text-sm text-(--dim) mt-4">No active download yet.</div>
         )}
-      </div>
+      </Card>
 
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 flex items-center justify-between">
+      <Card padding="lg" className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-(--dim)">
           {activeDownload?.status === "completed" ? (
             <>
@@ -100,15 +104,14 @@ export function StepDownload({
             </>
           )}
         </div>
-        <button
+        <Button
           onClick={continueToLaunch}
           disabled={activeDownload?.status !== "completed"}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-(--hl1) text-white text-sm font-medium disabled:opacity-50"
+          icon={<ChevronRight className="h-4 w-4" />}
         >
           Continue to Launch
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
+        </Button>
+      </Card>
 
       {downloads.length > 1 && (
         <div className="text-xs text-(--dim)">

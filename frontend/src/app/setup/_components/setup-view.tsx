@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { Alert, AppPage, Button, Card } from "@/ui";
 import type {
   ModelDownload,
   ModelRecommendation,
@@ -107,19 +108,16 @@ export function SetupView({
   skipSetup,
 }: SetupViewProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-(--bg) via-(--bg) to-(--surface) text-(--fg)">
+    <AppPage className="min-h-screen">
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="text-sm text-(--dim) uppercase tracking-wider">Setup Wizard</div>
             <h1 className="text-2xl font-semibold">vLLM Studio Desktop</h1>
           </div>
-          <button
-            onClick={skipSetup}
-            className="px-3 py-1.5 text-xs text-(--dim) border border-(--surface) rounded-lg hover:text-(--fg) hover:border-(--border)"
-          >
+          <Button variant="secondary" size="sm" onClick={skipSetup}>
             Skip for now
-          </button>
+          </Button>
         </div>
 
         <div className="flex items-center gap-3 mb-8">
@@ -127,17 +125,16 @@ export function SetupView({
         </div>
 
         {loading && (
-          <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 flex items-center gap-3">
+          <Card padding="lg" className="flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-(--dim)" />
             <span className="text-sm text-(--dim)">Preparing your setup...</span>
-          </div>
+          </Card>
         )}
 
         {error && (
-          <div className="bg-(--err)/10 border border-(--err)/30 rounded-lg p-4 mb-6 text-sm text-(--err) flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
+          <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
             {error}
-          </div>
+          </Alert>
         )}
 
         {!loading && step === 0 && (
@@ -208,6 +205,6 @@ export function SetupView({
           />
         )}
       </div>
-    </div>
+    </AppPage>
   );
 }

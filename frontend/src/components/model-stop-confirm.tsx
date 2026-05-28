@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { LoaderCircle, Square, TriangleAlert, X } from "lucide-react";
-import { Button, UiModal, UiModalHeader } from "@/components/ui-kit";
+import { Button, UiModal, UiModalHeader } from "@/ui";
 
 type StopTriggerArgs = {
   open: () => void;

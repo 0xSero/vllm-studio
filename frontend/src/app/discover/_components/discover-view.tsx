@@ -1,4 +1,5 @@
 import type { HuggingFaceModel, ModelDownload, ModelRecommendation } from "@/lib/types";
+import { Card, StatusPill } from "@/ui";
 import { SORT_OPTIONS, TASKS } from "./config";
 import { DiscoverHeader } from "./discover/discover-header";
 import { DiscoverSearchToolbar } from "./discover/discover-search-toolbar";
@@ -144,7 +145,7 @@ export function DiscoverView({
           <DiscoverSortChips sort={sort} sortOptions={SORT_OPTIONS} onSortChange={onSortChange} />
 
           {recommendations.length > 0 && (
-            <div className="mb-4 p-4 bg-(--surface) border border-(--border) rounded-lg">
+            <Card padding="md" className="mb-4">
               <div className="flex items-baseline justify-between gap-3 mb-2">
                 <h3 className="text-sm font-semibold text-(--fg)">VRAM-aware Recommendations</h3>
                 <div className="text-xs text-(--dim)">
@@ -176,16 +177,17 @@ export function DiscoverView({
                       <div className="text-xs text-(--dim) truncate">{rec.description}</div>
                     </div>
                     {typeof rec.min_vram_gb === "number" && (
-                      <div
-                        className={
-                          "shrink-0 text-xs px-2 py-1 rounded-md border " +
-                          (effectiveVramGb === 0 || rec.min_vram_gb <= effectiveVramGb
-                            ? "text-(--hl2) border-(--hl2)/30 bg-(--hl2)/10"
-                            : "text-(--err) border-(--err)/30 bg-(--err)/10")
+                      <StatusPill
+                        tone={
+                          effectiveVramGb === 0 || rec.min_vram_gb <= effectiveVramGb
+                            ? "good"
+                            : "danger"
                         }
+                        variant="badge"
+                        className="shrink-0"
                       >
                         min {Math.round(rec.min_vram_gb)} GB
-                      </div>
+                      </StatusPill>
                     )}
                   </div>
                 ))}
@@ -195,7 +197,7 @@ export function DiscoverView({
                   </div>
                 )}
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Results */}

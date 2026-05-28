@@ -14,6 +14,7 @@ import {
   Pause,
   Play,
 } from "lucide-react";
+import { Button, StatusPill, TCell, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatNumber } from "@/lib/formatters";
 import { resolveModelRowView, type ModelRowDownloadAction } from "./model-row-model";
@@ -63,14 +64,16 @@ export const ModelRow = memo(function ModelRow({
   );
 
   return (
-    <tr className={view.rowClasses}>
-      <td className="px-4 py-3">
+    <TRow className={view.rowClasses}>
+      <TCell className="px-4 py-3">
         <div className={`flex items-center gap-2 ${child ? "pl-5" : ""}`}>
           {view.hasVariants && !child && (
-            <button
+            <Button
+              variant="icon"
+              size="sm"
               type="button"
               onClick={onToggleExpand}
-              className="p-1 rounded hover:bg-(--surface) transition-colors shrink-0"
+              className="shrink-0"
               title={expanded ? "Collapse variants" : "Expand variants"}
             >
               {expanded ? (
@@ -78,14 +81,16 @@ export const ModelRow = memo(function ModelRow({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5 text-(--dim)" />
               )}
-            </button>
+            </Button>
           )}
           <div className="text-sm font-medium text-(--fg) truncate max-w-xs" title={model.modelId}>
             {model.modelId}
           </div>
-          <button
+          <Button
+            variant="icon"
+            size="sm"
             onClick={() => onCopyModelId(model.modelId)}
-            className="p-1 hover:bg-(--surface) rounded transition-colors shrink-0"
+            className="shrink-0"
             title="Copy model ID"
           >
             {copied ? (
@@ -93,40 +98,40 @@ export const ModelRow = memo(function ModelRow({
             ) : (
               <Copy className="h-3 w-3 text-(--dim)" />
             )}
-          </button>
+          </Button>
         </div>
         {view.variantLabel && (
           <div className="text-[11px] text-(--dim) mt-1 pl-7">{view.variantLabel}</div>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <span className="px-2 py-1 bg-(--surface) border border-(--border) rounded text-xs text-(--fg)">
+      </TCell>
+      <TCell className="px-4 py-3">
+        <StatusPill tone="default" variant="badge">
           {view.provider}
-        </span>
-      </td>
-      <td className="px-4 py-3">
+        </StatusPill>
+      </TCell>
+      <TCell className="px-4 py-3">
         {model.pipeline_tag ? (
-          <span className="px-2 py-1 bg-(--surface) border border-(--border) rounded text-xs text-(--dim)">
+          <StatusPill tone="default" variant="badge">
             {model.pipeline_tag}
-          </span>
+          </StatusPill>
         ) : (
           <span className="text-xs text-(--dim)">—</span>
         )}
-      </td>
-      <td className="px-4 py-3">
+      </TCell>
+      <TCell className="px-4 py-3">
         <div className="flex flex-wrap gap-1">{renderQuantizations(view.quantizations)}</div>
-      </td>
-      <td className="px-4 py-3">
+      </TCell>
+      <TCell className="px-4 py-3">
         {isLocal ? (
-          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-(--hl2)/20 text-(--hl2) border border-(--hl2)/30">
+          <StatusPill tone="good" variant="badge">
             <CheckCircle2 className="h-3 w-3 mr-1" />
             Local
-          </span>
+          </StatusPill>
         ) : (
           <span className="text-xs text-(--dim)">—</span>
         )}
-      </td>
-      <td className="px-4 py-3 text-right">
+      </TCell>
+      <TCell align="right" className="px-4 py-3">
         <div className="flex items-center justify-end gap-4 text-xs text-(--dim)">
           <div className="flex items-center gap-1" title="Downloads">
             <Download className="h-3.5 w-3.5" />
@@ -137,27 +142,27 @@ export const ModelRow = memo(function ModelRow({
             <span>{formatNumber(model.likes)}</span>
           </div>
         </div>
-      </td>
-      <td className="px-4 py-3 text-right">
+      </TCell>
+      <TCell align="right" className="px-4 py-3">
         <a
           href={view.modelUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="p-1.5 hover:bg-(--surface) rounded transition-colors inline-block text-(--hl1) hover:text-(--hl1)"
+          className="inline-block rounded p-1.5 text-(--ui-info) transition-colors hover:bg-(--ui-hover)"
           title="View on Hugging Face"
         >
           <ExternalLink className="h-4 w-4" />
         </a>
-      </td>
-      <td className="px-4 py-3 text-right">
+      </TCell>
+      <TCell align="right" className="px-4 py-3">
         <DownloadAction
           action={view.downloadAction}
           onPauseDownload={onPauseDownload}
           onResumeDownload={onResumeDownload}
           onStartDownload={onStartDownload}
         />
-      </td>
-    </tr>
+      </TCell>
+    </TRow>
   );
 });
 
@@ -166,12 +171,9 @@ function renderQuantizations(quantizations: string[]) {
     return <span className="text-xs text-(--dim)">—</span>;
   }
   return quantizations.map((quantization) => (
-    <span
-      key={quantization}
-      className="px-2 py-1 bg-(--hl3)/20 text-(--hl3) border border-(--hl3)/30 rounded text-xs font-medium"
-    >
+    <StatusPill tone="warning" variant="badge" key={quantization}>
       {quantization}
-    </span>
+    </StatusPill>
   ));
 }
 
@@ -188,45 +190,51 @@ function DownloadAction({
 }) {
   if (action.kind === "ready") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-(--hl2)">
+      <StatusPill tone="good" variant="badge">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Ready
-      </span>
+      </StatusPill>
     );
   }
   if (action.kind === "starting") {
-    return <span className="text-xs text-(--dim)">Starting…</span>;
+    return (
+      <StatusPill tone="default" variant="badge">
+        Starting...
+      </StatusPill>
+    );
   }
   if (action.kind === "download") {
     return (
-      <button
+      <Button
+        size="sm"
         onClick={() => onStartDownload({ model_id: action.modelId })}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-(--hl1) text-white text-xs font-medium hover:opacity-90"
+        icon={<DownloadCloud className="h-3.5 w-3.5" />}
       >
-        <DownloadCloud className="h-3.5 w-3.5" />
         Download
-      </button>
+      </Button>
     );
   }
   return (
     <div className="flex items-center justify-end gap-2">
       {action.canPause && (
-        <button
+        <Button
+          variant="icon"
+          size="sm"
           onClick={() => onPauseDownload(action.downloadId)}
-          className="p-1.5 rounded-lg border border-(--border) hover:bg-(--surface)"
           title="Pause download"
         >
           <Pause className="h-4 w-4" />
-        </button>
+        </Button>
       )}
       {action.canResume && (
-        <button
+        <Button
+          variant="icon"
+          size="sm"
           onClick={() => onResumeDownload(action.downloadId)}
-          className="p-1.5 rounded-lg border border-(--border) hover:bg-(--surface)"
           title="Resume download"
         >
           <Play className="h-4 w-4" />
-        </button>
+        </Button>
       )}
       {action.label && (
         <span

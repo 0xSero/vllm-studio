@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Loader2, Rocket } from "lucide-react";
+import { Button, Card } from "@/ui";
 
 export function StepLaunch({
   selectedModel,
@@ -17,7 +18,7 @@ export function StepLaunch({
 }) {
   return (
     <div className="space-y-6">
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 space-y-4">
+      <Card padding="lg" className="space-y-4">
         <div className="flex items-center gap-3">
           <Rocket className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Configure and Launch</h2>
@@ -44,19 +45,20 @@ export function StepLaunch({
             <span>{launchError}</span>
           </div>
         )}
-        <button
+        <Button
           onClick={configureAndLaunch}
           disabled={configuringRecipe}
-          className="inline-flex items-center gap-2 rounded-lg bg-(--hl1) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          icon={
+            configuringRecipe ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Rocket className="h-4 w-4" />
+            )
+          }
         >
-          {configuringRecipe ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Rocket className="h-4 w-4" />
-          )}
           {configuringRecipe ? "Launching..." : "Configure & Launch"}
-        </button>
-      </div>
+        </Button>
+      </Card>
     </div>
   );
 }

@@ -61,6 +61,7 @@ import {
   EventBlock,
   cleanSessionTitle,
   formatTokenCount,
+  isPlaceholderSessionTitle,
   newId,
   QueuedMessage,
   SessionTab,
@@ -715,7 +716,7 @@ export function ChatPane({
       const text = activeTab.input.trim();
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
       if (running) {
-        if (!text || readingAttachments) return;
+        if (!text || isPlaceholderSessionTitle(text) || readingAttachments) return;
         if (!modelId) {
           updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
           return;
@@ -729,7 +730,12 @@ export function ChatPane({
         }
         return;
       }
-      if ((!text && attachments.length === 0) || readingAttachments) return;
+      if (
+        ((!text || isPlaceholderSessionTitle(text)) && attachments.length === 0) ||
+        readingAttachments
+      ) {
+        return;
+      }
       if (!modelId) {
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
         return;
@@ -757,7 +763,7 @@ export function ChatPane({
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
-    if (!text) return;
+    if (!text || isPlaceholderSessionTitle(text)) return;
     if (!modelId) {
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
       return;
@@ -1010,7 +1016,7 @@ export function ChatPane({
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
           onDrop={handleComposerDrop}
-          className={`mx-auto max-w-[var(--composer-w)] overflow-visible rounded-2xl border border-(--border)/20 bg-(--composer) shadow-[0_2px_12px_rgba(0,0,0,0.15)] transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
+          className={`mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-2xl border border-(--border)/20 bg-(--sidebar-bg) transition-colors ${composerDragActive ? "outline outline-1 outline-(--accent)/50" : ""}`}
         >
           {" "}
           {composerDragActive ? (
@@ -1267,15 +1273,7 @@ export function ChatPane({
                 }
               }
             }}
-            placeholder={
-              !modelName && modelsLoading
-                ? "Loading models…"
-                : !modelName
-                  ? "No models available"
-                  : running
-                    ? `Steer ${modelName}…`
-                    : `Message ${modelName}`
-            }
+            placeholder=""
             className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[14px] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
@@ -1393,7 +1391,7 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="relative z-20 mx-auto mt-2.5 flex max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
+        <div className="relative z-20 mx-auto mt-2.5 flex w-full max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
           {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <div className="min-w-0 max-w-[42%] shrink overflow-visible">

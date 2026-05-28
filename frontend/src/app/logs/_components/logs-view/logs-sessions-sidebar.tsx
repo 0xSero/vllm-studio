@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, Trash2 } from "lucide-react";
+import { Button, SearchInput, StatusPill } from "@/ui";
 import type { LogSession } from "@/lib/types";
 
 export function LogsSessionsSidebar({
@@ -27,16 +28,7 @@ export function LogsSessionsSidebar({
   formatDateTime: (dateValue: string) => string;
 }) {
   const renderFilter = () => (
-    <div className="relative">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-(--dim)" />
-      <input
-        type="text"
-        value={filter}
-        onChange={(event) => onFilterChange(event.target.value)}
-        placeholder="Filter..."
-        className="w-full pl-9 pr-3 py-2 bg-(--surface) border border-(--border) rounded-lg text-sm text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--accent)"
-      />
-    </div>
+    <SearchInput value={filter} onChange={onFilterChange} placeholder="Filter..." />
   );
 
   const renderSessionRow = (session: LogSession) => (
@@ -63,18 +55,14 @@ export function LogsSessionsSidebar({
           </div>
           <div className="text-[11px] text-(--dim) mt-1">{formatDateTime(session.created_at)}</div>
           {session.backend && (
-            <span
-              className={`inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] ${
-                session.backend === "vllm"
-                  ? "bg-(--hl1)/10 text-(--hl1)"
-                  : "bg-(--hl1)/10 text-(--hl1)"
-              }`}
-            >
+            <StatusPill tone="info" variant="badge" className="mt-1.5">
               {session.backend}
-            </span>
+            </StatusPill>
           )}
         </div>
-        <button
+        <Button
+          variant="icon"
+          size="sm"
           disabled={session.id === "controller"}
           onClick={(event) => {
             event.stopPropagation();
@@ -85,7 +73,7 @@ export function LogsSessionsSidebar({
           }`}
         >
           <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -131,12 +119,9 @@ export function LogsSessionsSidebar({
             <h1 className="text-sm font-medium text-(--dim) uppercase tracking-wider">
               Log Sessions
             </h1>
-            <button
-              onClick={() => onSidebarToggle(false)}
-              className="p-1 hover:bg-(--surface) rounded"
-            >
+            <Button variant="icon" size="sm" onClick={() => onSidebarToggle(false)}>
               <ChevronLeft className="h-4 w-4 text-(--dim)" />
-            </button>
+            </Button>
           </div>
           {renderFilter()}
         </div>

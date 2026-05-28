@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircle,
 } from "lucide-react";
+import { Button, Card } from "@/ui";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -35,7 +36,7 @@ export function StepBenchmark({
 
   return (
     <div className="space-y-6">
-      <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 space-y-4">
+      <Card padding="lg" className="space-y-4">
         <div className="flex items-center gap-3">
           <Activity className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Benchmark the Running Model</h2>
@@ -44,18 +45,19 @@ export function StepBenchmark({
           The model is ready. Run one explicit benchmark pass to confirm the device can serve real
           traffic before you drop into chat.
         </p>
-        <button
+        <Button
           onClick={runSetupBenchmark}
           disabled={benchmarking}
-          className="inline-flex items-center gap-2 rounded-lg bg-(--hl1) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          icon={
+            benchmarking ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Activity className="h-4 w-4" />
+            )
+          }
         >
-          {benchmarking ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Activity className="h-4 w-4" />
-          )}
           {benchmarking ? "Benchmarking..." : "Run Benchmark"}
-        </button>
+        </Button>
 
         {benchmarkResult && (
           <div className="space-y-3 rounded-lg border border-(--hl2)/30 bg-(--hl2)/10 p-4">
@@ -90,25 +92,21 @@ export function StepBenchmark({
             <span>{benchmarkError}</span>
           </div>
         )}
-      </div>
+      </Card>
 
       {hasAttemptedBenchmark && (
-        <div className="bg-(--bg) border border-(--surface) rounded-lg p-6 flex flex-wrap items-center gap-3">
-          <button
-            onClick={openChat}
-            className="inline-flex items-center gap-2 rounded-lg bg-(--hl1) px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
-            <MessageCircle className="h-4 w-4" />
+        <Card padding="lg" className="flex flex-wrap items-center gap-3">
+          <Button onClick={openChat} icon={<MessageCircle className="h-4 w-4" />}>
             Open Chat
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             onClick={openDashboard}
-            className="inline-flex items-center gap-2 rounded-lg border border-(--surface) px-4 py-2 text-sm text-(--fg) hover:bg-(--surface)"
+            icon={<LayoutDashboard className="h-4 w-4" />}
           >
-            <LayoutDashboard className="h-4 w-4" />
             Open Dashboard
-          </button>
-        </div>
+          </Button>
+        </Card>
       )}
     </div>
   );

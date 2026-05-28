@@ -12,7 +12,7 @@ import {
   SettingsValue,
   StatusPill,
   type StatusTone,
-} from "@/components/settings-primitives";
+} from "@/ui";
 import {
   ENGINE_META,
   hasHydratedEngineRows,

@@ -1,8 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { StatusPill, type UiTone } from "./status";
+import { cx } from "./utils";
 
-export type ModelStatusTone = "default" | "good" | "warning" | "danger" | "info";
+export type ModelStatusTone = UiTone;
 
 type ModelRowProps = {
   label: string;
@@ -12,14 +14,6 @@ type ModelRowProps = {
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
-};
-
-const statusClasses: Record<ModelStatusTone, string> = {
-  default: "bg-(--surface) text-(--dim)",
-  good: "bg-(--hl2)/10 text-(--hl2)",
-  warning: "bg-(--hl3)/10 text-(--hl3)",
-  danger: "bg-(--err)/10 text-(--err)",
-  info: "bg-(--hl1)/10 text-(--hl1)",
 };
 
 export function ModelSection({
@@ -35,14 +29,16 @@ export function ModelSection({
 }) {
   return (
     <section className="min-w-0">
-      <div className="flex min-h-9 items-end justify-between gap-4 border-b border-(--border)/75 pb-2">
+      <div className="flex min-h-9 items-end justify-between gap-4 border-b border-(--ui-border)/75 pb-2">
         <div className="min-w-0">
-          <h3 className="text-[12px] font-medium text-(--fg)">{title}</h3>
-          {description ? <p className="mt-0.5 text-[11px] text-(--dim)">{description}</p> : null}
+          <h3 className="text-[12px] font-medium text-(--ui-fg)">{title}</h3>
+          {description ? (
+            <p className="mt-0.5 text-[11px] text-(--ui-muted)">{description}</p>
+          ) : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <div className="divide-y divide-(--border)/55">{children}</div>
+      <div className="divide-y divide-(--ui-border)/55">{children}</div>
     </section>
   );
 }
@@ -57,14 +53,14 @@ export function ModelRow({
   children,
 }: ModelRowProps) {
   return (
-    <div className="my-1 rounded-md bg-(--surface)/70 px-2 py-3">
+    <div className="my-1 rounded-md bg-(--ui-surface)/70 px-2 py-3">
       <div className="grid min-h-7 grid-cols-1 gap-2 md:grid-cols-[minmax(150px,0.44fr)_minmax(0,1fr)] md:items-center md:gap-5">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-medium text-(--fg)" title={label}>
+          <div className="truncate text-[12px] font-medium text-(--ui-fg)" title={label}>
             {label}
           </div>
           {description ? (
-            <div className="mt-0.5 truncate text-[11px] text-(--dim)" title={description}>
+            <div className="mt-0.5 truncate text-[11px] text-(--ui-muted)" title={description}>
               {description}
             </div>
           ) : null}
@@ -93,7 +89,11 @@ export function ModelValue({
 }) {
   return (
     <div
-      className={`truncate text-[12px] ${mono ? "font-mono" : ""} ${dim ? "text-(--dim)" : "text-(--fg)"}`}
+      className={cx(
+        "truncate text-[12px]",
+        mono ? "font-mono" : "",
+        dim ? "text-(--ui-muted)" : "text-(--ui-fg)",
+      )}
       title={typeof children === "string" ? children : undefined}
     >
       {children || "Not set"}
@@ -109,11 +109,9 @@ export function ModelStatus({
   children: ReactNode;
 }) {
   return (
-    <span
-      className={`inline-flex h-5 items-center rounded-[5px] px-1.5 text-[10px] font-medium ${statusClasses[tone]}`}
-    >
+    <StatusPill tone={tone} variant="badge">
       {children}
-    </span>
+    </StatusPill>
   );
 }
 
@@ -134,17 +132,20 @@ export function ModelButton({
 }) {
   const classes =
     tone === "primary"
-      ? "bg-(--surface) text-(--fg) hover:bg-(--surface-2)"
+      ? "bg-(--ui-surface) text-(--ui-fg) hover:bg-(--ui-surface-2)"
       : tone === "danger"
-        ? "text-(--err) hover:bg-(--err)/10"
-        : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)";
+        ? "text-(--ui-danger) hover:bg-(--ui-danger)/10"
+        : "text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg)";
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45 ${classes}`}
+      className={cx(
+        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+        classes,
+      )}
     >
       {children}
     </button>
@@ -170,7 +171,10 @@ export function ModelInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={`h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[12px] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60 ${className}`}
+      className={cx(
+        "h-7 w-full rounded-md border border-transparent bg-(--ui-surface) px-2.5 text-[12px] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/65 focus:bg-(--ui-bg) focus:ring-1 focus:ring-(--ui-info)/60",
+        className,
+      )}
     />
   );
 }

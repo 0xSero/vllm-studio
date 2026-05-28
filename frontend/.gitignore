@@ -28,9 +28,6 @@
 # local data (api settings, etc)
 /data/
 
-# local-only scratch ui module (generated/experimental)
-/src/ui/
-
 # debug
 npm-debug.log*
 yarn-debug.log*

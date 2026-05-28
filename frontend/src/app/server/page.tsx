@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
+import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
 import { useLogs } from "@/app/logs/hooks/use-logs";
 import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import { getStoredBackendUrl } from "@/lib/backend-url";
@@ -30,7 +31,7 @@ export default function ServerPage() {
   const docsUrl = `${backendUrl}/api/docs`;
 
   return (
-    <main className="flex h-full min-h-0 flex-col bg-(--bg) text-(--fg)">
+    <AppPage className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className="border-b border-(--border) px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -41,14 +42,15 @@ export default function ServerPage() {
           <div className="flex items-center gap-2">
             <HealthPill label="controller" ok={status.online} />
             <HealthPill label="inference" ok={status.inferenceOnline} />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => (selectedSession ? loadLogContent(selectedSession) : undefined)}
-              className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-xs text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+              icon={<RefreshCw className={`h-3.5 w-3.5 ${loadingContent ? "animate-spin" : ""}`} />}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loadingContent ? "animate-spin" : ""}`} />
               Refresh
-            </button>
+            </Button>
           </div>
         </div>
       </header>
@@ -59,18 +61,20 @@ export default function ServerPage() {
             Server Health
           </div>
           <dl className="space-y-2 text-xs">
-            <InfoRow label="Controller" value={status.online ? "online" : "offline"} />
-            <InfoRow label="Inference" value={status.activityLine} />
-            <InfoRow label="Model" value={status.model ?? "none"} />
+            <KeyValueRow label="Controller" value={status.online ? "online" : "offline"} />
+            <KeyValueRow label="Inference" value={status.activityLine} />
+            <KeyValueRow label="Model" value={status.model ?? "none"} />
           </dl>
-          <div className="mt-5 flex gap-1">
-            <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
-              Server Logs
-            </TabButton>
-            <TabButton active={tab === "docs"} onClick={() => setTab("docs")}>
-              API Docs
-            </TabButton>
-          </div>
+          <Tabs
+            variant="pill"
+            className="mt-5"
+            items={[
+              { id: "logs", label: "Server Logs" },
+              { id: "docs", label: "API Docs" },
+            ]}
+            activeTab={tab}
+            onSelectTab={setTab}
+          />
           <div className="mt-3 max-h-[42vh] overflow-y-auto">
             {filteredSessions.map((session) => (
               <button
@@ -100,14 +104,13 @@ export default function ServerPage() {
                 <div className="truncate font-mono text-xs text-(--dim)">
                   {selectedSession ?? "select a log stream"}
                 </div>
-                <label className="flex items-center gap-1.5 text-[11px] text-(--dim)">
-                  <input
-                    type="checkbox"
-                    checked={autoScroll}
-                    onChange={(event) => setAutoScroll(event.target.checked)}
-                  />
-                  auto-scroll
-                </label>
+                <Checkbox
+                  checked={autoScroll}
+                  onChange={setAutoScroll}
+                  label="auto-scroll"
+                  className="items-center text-[11px]"
+                  labelClassName="text-[11px] font-normal"
+                />
               </div>
               <div
                 ref={logRef}
@@ -144,52 +147,14 @@ export default function ServerPage() {
           )}
         </div>
       </section>
-    </main>
+    </AppPage>
   );
 }
 
 function HealthPill({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <span
-      className={`inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[10px] ${
-        ok
-          ? "border-(--hl2)/35 bg-(--hl2)/10 text-(--hl2)"
-          : "border-(--err)/35 bg-(--err)/10 text-(--err)"
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-(--hl2)" : "bg-(--err)"}`} />
+    <StatusPill tone={ok ? "good" : "danger"} variant="badge">
       {label}
-    </span>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-(--dim)">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-mono">{value}</dd>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-7 rounded-md px-2 text-[11px] ${
-        active ? "bg-(--active) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-      }`}
-    >
-      {children}
-    </button>
+    </StatusPill>
   );
 }

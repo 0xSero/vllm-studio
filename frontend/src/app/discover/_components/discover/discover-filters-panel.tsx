@@ -1,4 +1,5 @@
 import { QUANTIZATION_TAGS } from "../config";
+import { Button, Card, Select } from "@/ui";
 
 export function DiscoverFiltersPanel({
   showFilters,
@@ -41,71 +42,47 @@ export function DiscoverFiltersPanel({
   };
 
   return (
-    <div className="mb-4 p-4 bg-(--surface) border border-(--border) rounded-lg">
+    <Card padding="md" className="mb-4">
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-xs text-(--dim) mb-1.5">Task</label>
-          <select
-            value={task}
-            onChange={(event) => onTaskChange(event.target.value)}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm text-(--fg) focus:outline-none focus:border-(--hl1)"
-          >
-            {tasks.map((taskOption) => (
-              <option key={taskOption.value} value={taskOption.value}>
-                {taskOption.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          label="Task"
+          value={task}
+          onChange={(event) => onTaskChange(event.target.value)}
+          options={tasks}
+        />
 
-        <div>
-          <label className="block text-xs text-(--dim) mb-1.5">Provider</label>
-          <select
-            value={providerFilter}
-            onChange={(event) => onProviderFilterChange(event.target.value)}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm text-(--fg) focus:outline-none focus:border-(--hl1)"
-          >
-            <option value="">All Providers</option>
-            {providers.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          label="Provider"
+          value={providerFilter}
+          onChange={(event) => onProviderFilterChange(event.target.value)}
+          options={[
+            { value: "", label: "All Providers" },
+            ...providers.map((provider) => ({ value: provider, label: provider })),
+          ]}
+        />
 
-        <div>
-          <label className="block text-xs text-(--dim) mb-1.5">Library</label>
-          <select
-            value={library}
-            onChange={(event) => onLibraryChange(event.target.value)}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm text-(--fg) focus:outline-none focus:border-(--hl1)"
-          >
-            <option value="">All Libraries</option>
-            <option value="transformers">Transformers</option>
-            <option value="pytorch">PyTorch</option>
-            <option value="safetensors">Safetensors</option>
-            <option value="gguf">GGUF</option>
-            <option value="exl2">EXL2</option>
-            <option value="awq">AWQ</option>
-            <option value="gptq">GPTQ</option>
-          </select>
-        </div>
+        <Select
+          label="Library"
+          value={library}
+          onChange={(event) => onLibraryChange(event.target.value)}
+          options={[
+            { value: "", label: "All Libraries" },
+            { value: "transformers", label: "Transformers" },
+            { value: "pytorch", label: "PyTorch" },
+            { value: "safetensors", label: "Safetensors" },
+            { value: "gguf", label: "GGUF" },
+            { value: "exl2", label: "EXL2" },
+            { value: "awq", label: "AWQ" },
+            { value: "gptq", label: "GPTQ" },
+          ]}
+        />
 
-        <div>
-          <label className="block text-xs text-(--dim) mb-1.5">Sort By</label>
-          <select
-            value={sort}
-            onChange={(event) => onSortChange(event.target.value)}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-lg text-sm text-(--fg) focus:outline-none focus:border-(--hl1)"
-          >
-            {sortOptions.map((sortOption) => (
-              <option key={sortOption.value} value={sortOption.value}>
-                {sortOption.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          label="Sort By"
+          value={sort}
+          onChange={(event) => onSortChange(event.target.value)}
+          options={sortOptions}
+        />
       </div>
 
       <div className="mt-4">
@@ -115,32 +92,23 @@ export function DiscoverFiltersPanel({
             const tag = quant.toUpperCase();
             const active = excludedQuantizations.includes(tag);
             return (
-              <button
+              <Button
                 key={tag}
-                type="button"
+                variant={active ? "danger" : "secondary"}
+                size="sm"
                 onClick={() => toggleQuant(tag)}
-                className={
-                  "px-2.5 py-1 rounded-md border text-xs transition-colors " +
-                  (active
-                    ? "bg-(--err)/10 border-(--err)/30 text-(--err)"
-                    : "bg-(--bg) border-(--border) text-(--dim) hover:text-(--fg)")
-                }
               >
                 {tag}
-              </button>
+              </Button>
             );
           })}
           {excludedQuantizations.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onExcludedQuantizationsChange([])}
-              className="px-2.5 py-1 rounded-md border text-xs bg-(--bg) border-(--border) text-(--dim) hover:text-(--fg)"
-            >
+            <Button variant="secondary" size="sm" onClick={() => onExcludedQuantizationsChange([])}>
               Clear
-            </button>
+            </Button>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

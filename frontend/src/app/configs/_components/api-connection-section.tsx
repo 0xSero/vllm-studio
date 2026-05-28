@@ -29,7 +29,7 @@ import {
   SettingsValue,
   StatusPill,
   type StatusTone,
-} from "@/components/settings-primitives";
+} from "@/ui";
 
 type ControllerEntry = SavedController & { id: string };
 

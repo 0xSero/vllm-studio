@@ -3,6 +3,7 @@
 import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";
 import { Fragment } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Table, TBody, TCell, THead, TH, TRow } from "@/ui";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
 import { getModelColor } from "@/lib/colors";
 import {
@@ -43,186 +44,188 @@ export function ModelPerformanceTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto border-b border-(--border)/40">
-        <table className="w-full text-left text-[12px]">
-          <thead>
-            <tr className="border-b border-(--border)/40">
-              <th className="w-6 px-2 py-2" />
-              <SortHeader
-                field="model"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("model")}
-              >
-                Model
-              </SortHeader>
-              <SortHeader
-                field="requests"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("requests")}
-                align="right"
-              >
-                Requests
-              </SortHeader>
-              <SortHeader
-                field="tokens"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("tokens")}
-                align="right"
-              >
-                Tokens
-              </SortHeader>
-              <SortHeader
-                field="success"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("success")}
-                align="right"
-              >
-                Success
-              </SortHeader>
-              <SortHeader
-                field="latency"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("latency")}
-                align="right"
-              >
-                Latency
-              </SortHeader>
-              <SortHeader
-                field="ttft"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("ttft")}
-                align="right"
-              >
-                TTFT
-              </SortHeader>
-              <SortHeader
-                field="speed"
-                currentField={sortField}
-                direction={sortDirection}
-                onClick={() => handleSort("speed")}
-                align="right"
-              >
-                Speed
-              </SortHeader>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedModels.map((model) => {
-              const peak = peakMetrics.get(model.model);
-              const isExpanded = expandedRows.has(model.model);
-              const modelColor = getModelColor(model.model);
+      <Table
+        bordered={false}
+        className="border-b border-(--border)/40"
+        tableClassName="text-[12px]"
+      >
+        <THead className="bg-transparent">
+          <TRow className="border-b border-(--border)/40 hover:bg-transparent">
+            <TH className="w-6 px-2 py-2" />
+            <SortHeader
+              field="model"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("model")}
+            >
+              Model
+            </SortHeader>
+            <SortHeader
+              field="requests"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("requests")}
+              align="right"
+            >
+              Requests
+            </SortHeader>
+            <SortHeader
+              field="tokens"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("tokens")}
+              align="right"
+            >
+              Tokens
+            </SortHeader>
+            <SortHeader
+              field="success"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("success")}
+              align="right"
+            >
+              Success
+            </SortHeader>
+            <SortHeader
+              field="latency"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("latency")}
+              align="right"
+            >
+              Latency
+            </SortHeader>
+            <SortHeader
+              field="ttft"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("ttft")}
+              align="right"
+            >
+              TTFT
+            </SortHeader>
+            <SortHeader
+              field="speed"
+              currentField={sortField}
+              direction={sortDirection}
+              onClick={() => handleSort("speed")}
+              align="right"
+            >
+              Speed
+            </SortHeader>
+          </TRow>
+        </THead>
+        <TBody className="divide-y-0">
+          {sortedModels.map((model) => {
+            const peak = peakMetrics.get(model.model);
+            const isExpanded = expandedRows.has(model.model);
+            const modelColor = getModelColor(model.model);
 
-              return (
-                <Fragment key={model.model}>
-                  <tr
-                    className={`cursor-pointer border-b border-(--border)/25 transition-colors hover:bg-(--hover) ${
-                      isExpanded ? "bg-(--hover)" : ""
-                    }`}
-                    onClick={() => toggleRow(model.model)}
-                  >
-                    <td className="px-2 py-2">
-                      {isExpanded ? (
-                        <ChevronDown className="h-3 w-3 text-(--dim)" />
-                      ) : (
-                        <ChevronUp className="h-3 w-3 rotate-[-90deg] text-(--dim)" />
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-1 shrink-0" style={{ backgroundColor: modelColor }} />
-                        <div
-                          className="max-w-[150px] truncate font-mono text-[11.5px] text-(--fg) sm:max-w-[240px]"
-                          title={model.model}
-                        >
-                          {modelDisplayName(model.model)}
-                        </div>
+            return (
+              <Fragment key={model.model}>
+                <TRow
+                  className={`cursor-pointer border-b border-(--border)/25 transition-colors hover:bg-(--hover) ${
+                    isExpanded ? "bg-(--hover)" : ""
+                  }`}
+                  onClick={() => toggleRow(model.model)}
+                >
+                  <TCell className="px-2 py-2">
+                    {isExpanded ? (
+                      <ChevronDown className="h-3 w-3 text-(--dim)" />
+                    ) : (
+                      <ChevronUp className="h-3 w-3 rotate-[-90deg] text-(--dim)" />
+                    )}
+                  </TCell>
+                  <TCell className="px-2 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-1 shrink-0" style={{ backgroundColor: modelColor }} />
+                      <div
+                        className="max-w-[150px] truncate font-mono text-[11.5px] text-(--fg) sm:max-w-[240px]"
+                        title={model.model}
+                      >
+                        {modelDisplayName(model.model)}
                       </div>
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-(--dim)">
-                      {formatNumber(model.requests)}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-(--dim)">
-                      {formatNumber(model.total_tokens)}
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      <StatusPill value={model.success_rate} type="success" />
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      <StatusPill value={model.avg_latency_ms} type="latency" />
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-(--dim)">
-                      {formatDurationOrUnavailable(model.avg_ttft_ms)}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono">
-                      {renderSpeedDisplay(resolveSpeedDisplay(model, peak))}
-                    </td>
-                  </tr>
-                  {isExpanded ? (
-                    <tr className="border-b border-(--border)/25">
-                      <td colSpan={8} className="px-2 py-3">
-                        <dl className="grid grid-cols-2 border-y border-(--border)/40 py-3 sm:grid-cols-4">
+                    </div>
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
+                    {formatNumber(model.requests)}
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
+                    {formatNumber(model.total_tokens)}
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2">
+                    <StatusPill value={model.success_rate} type="success" />
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2">
+                    <StatusPill value={model.avg_latency_ms} type="latency" />
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
+                    {formatDurationOrUnavailable(model.avg_ttft_ms)}
+                  </TCell>
+                  <TCell align="right" className="px-2 py-2 font-mono">
+                    {renderSpeedDisplay(resolveSpeedDisplay(model, peak))}
+                  </TCell>
+                </TRow>
+                {isExpanded ? (
+                  <TRow className="border-b border-(--border)/25 hover:bg-transparent">
+                    <TCell colSpan={8} className="px-2 py-3">
+                      <dl className="grid grid-cols-2 border-y border-(--border)/40 py-3 sm:grid-cols-4">
+                        <ExpandedCell
+                          label="prompt tokens"
+                          value={formatNumber(model.prompt_tokens)}
+                        />
+                        <ExpandedCell
+                          label="completion tokens"
+                          value={formatNumber(model.completion_tokens)}
+                        />
+                        <ExpandedCell
+                          label="avg tokens/req"
+                          value={formatNumber(model.avg_tokens)}
+                        />
+                        <ExpandedCell
+                          label="p50 latency"
+                          value={formatDurationOrUnavailable(model.p50_latency_ms)}
+                        />
+                        {peak?.prefill_tps ? (
                           <ExpandedCell
-                            label="prompt tokens"
-                            value={formatNumber(model.prompt_tokens)}
+                            label="peak prefill"
+                            value={`${peak.prefill_tps.toFixed(1)} t/s`}
                           />
+                        ) : null}
+                        {peak?.generation_tps ? (
                           <ExpandedCell
-                            label="completion tokens"
-                            value={formatNumber(model.completion_tokens)}
+                            label="peak generation"
+                            value={`${peak.generation_tps.toFixed(1)} t/s`}
                           />
+                        ) : null}
+                        {peak?.ttft_ms ? (
                           <ExpandedCell
-                            label="avg tokens/req"
-                            value={formatNumber(model.avg_tokens)}
+                            label="best ttft"
+                            value={`${Math.round(peak.ttft_ms)} ms`}
                           />
+                        ) : null}
+                        {peak?.best_session_prefill_tps ? (
                           <ExpandedCell
-                            label="p50 latency"
-                            value={formatDurationOrUnavailable(model.p50_latency_ms)}
+                            label="session max prefill"
+                            value={`${peak.best_session_prefill_tps.toFixed(1)} t/s`}
                           />
-                          {peak?.prefill_tps ? (
-                            <ExpandedCell
-                              label="peak prefill"
-                              value={`${peak.prefill_tps.toFixed(1)} t/s`}
-                            />
-                          ) : null}
-                          {peak?.generation_tps ? (
-                            <ExpandedCell
-                              label="peak generation"
-                              value={`${peak.generation_tps.toFixed(1)} t/s`}
-                            />
-                          ) : null}
-                          {peak?.ttft_ms ? (
-                            <ExpandedCell
-                              label="best ttft"
-                              value={`${Math.round(peak.ttft_ms)} ms`}
-                            />
-                          ) : null}
-                          {peak?.best_session_prefill_tps ? (
-                            <ExpandedCell
-                              label="session max prefill"
-                              value={`${peak.best_session_prefill_tps.toFixed(1)} t/s`}
-                            />
-                          ) : null}
-                          {peak?.best_session_generation_tps ? (
-                            <ExpandedCell
-                              label="session max generation"
-                              value={`${peak.best_session_generation_tps.toFixed(1)} t/s`}
-                            />
-                          ) : null}
-                        </dl>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                        ) : null}
+                        {peak?.best_session_generation_tps ? (
+                          <ExpandedCell
+                            label="session max generation"
+                            value={`${peak.best_session_generation_tps.toFixed(1)} t/s`}
+                          />
+                        ) : null}
+                      </dl>
+                    </TCell>
+                  </TRow>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </TBody>
+      </Table>
     </section>
   );
 }

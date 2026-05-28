@@ -175,14 +175,16 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       {!isExpanded ? (
-        <button
-          onClick={() => setDesktopSidebarPinnedOpen(true)}
-          className="fixed left-3 top-3 z-50 hidden h-8 w-8 items-center justify-center rounded-md bg-(--sidebar-bg)/70 text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg) md:flex"
-          title="Expand sidebar"
-          aria-label="Expand sidebar"
-        >
-          <PanelLeftOpen className="h-5 w-5" />
-        </button>
+        <div className="fixed left-0 top-0 z-50 hidden h-11 w-10 items-center justify-center md:flex">
+          <button
+            onClick={() => setDesktopSidebarPinnedOpen(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)"
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        </div>
       ) : null}
       <aside
         className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${

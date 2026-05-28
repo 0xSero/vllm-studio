@@ -2,14 +2,7 @@
 
 import { Plus, Search, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
-import {
-  ModelButton,
-  ModelInput,
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "./model-page-primitives";
+import { ModelButton, ModelInput, ModelRow, ModelSection, ModelStatus, ModelValue } from "@/ui";
 import type { RecipesTableProps } from "./types";
 import { RecipesTable } from "./recipes-table";
 

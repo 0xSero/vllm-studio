@@ -1,4 +1,5 @@
 import { Pause, Play, XCircle } from "lucide-react";
+import { Button, Card } from "@/ui";
 import type { ModelDownload } from "@/lib/types";
 
 const renderDownloadStatus = (download: ModelDownload) => {
@@ -40,7 +41,7 @@ export function DiscoverDownloadQueue({
   if (downloads.length === 0) return null;
 
   return (
-    <div className="mb-5 border border-(--border) rounded-lg bg-(--surface) p-4">
+    <Card padding="md" className="mb-5">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-medium">Download Queue</div>
         <div className="text-xs text-(--dim)">{downloads.length} active</div>
@@ -54,36 +55,40 @@ export function DiscoverDownloadQueue({
             </div>
             <div className="flex items-center gap-2">
               {download.status === "downloading" && (
-                <button
+                <Button
+                  variant="icon"
+                  size="sm"
                   onClick={() => onPauseDownload(download.id)}
-                  className="p-2 rounded-lg border border-(--border) hover:bg-(--surface)"
                   title="Pause"
                 >
                   <Pause className="h-4 w-4" />
-                </button>
+                </Button>
               )}
               {(download.status === "paused" || download.status === "failed") && (
-                <button
+                <Button
+                  variant="icon"
+                  size="sm"
                   onClick={() => onResumeDownload(download.id)}
-                  className="p-2 rounded-lg border border-(--border) hover:bg-(--surface)"
                   title="Resume"
                 >
                   <Play className="h-4 w-4" />
-                </button>
+                </Button>
               )}
               {download.status !== "completed" && download.status !== "canceled" && (
-                <button
+                <Button
+                  variant="icon"
+                  size="sm"
                   onClick={() => onCancelDownload(download.id)}
-                  className="p-2 rounded-lg border border-(--border) hover:bg-(--surface) text-(--err)"
+                  className="text-(--ui-danger)"
                   title="Cancel"
                 >
                   <XCircle className="h-4 w-4" />
-                </button>
+                </Button>
               )}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

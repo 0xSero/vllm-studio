@@ -10,13 +10,6 @@ import {
   Paintbrush,
   ServerCog,
 } from "lucide-react";
-import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
-import { cleanSessionTitle } from "@/lib/agent/session/helpers";
-import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-configs";
-import { ApiConnectionSection } from "./api-connection-section";
-import { AppearanceSettings } from "./appearance-settings";
-import { EnginesSection } from "./engines-section";
-import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import {
   EmptySafeNotice,
   SettingsButton,
@@ -29,7 +22,14 @@ import {
   type SettingsSectionDef,
   type SettingsSectionId,
   type StatusTone,
-} from "@/components/settings-primitives";
+} from "@/ui";
+import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
+import type { ApiConnectionSettings, ConnectionStatus } from "../hooks/use-configs";
+import { ApiConnectionSection } from "./api-connection-section";
+import { AppearanceSettings } from "./appearance-settings";
+import { EnginesSection } from "./engines-section";
+import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
 interface ConfigsViewProps {
   data: ConfigData | null;

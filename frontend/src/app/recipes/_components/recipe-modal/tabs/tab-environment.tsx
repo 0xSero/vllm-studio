@@ -1,6 +1,7 @@
 "use client";
 
 import { Code, Plus, Terminal, Variable } from "lucide-react";
+import { Button, Card, FormSection, Input, Textarea } from "@/ui";
 import type { RecipeEditor } from "@/lib/types";
 
 export function RecipeModalTabEnvironment({
@@ -33,23 +34,15 @@ export function RecipeModalTabEnvironment({
   return (
     <div className="space-y-5">
       {!isLlamacpp && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-            <Terminal className="w-4 h-4 text-(--accent)" />
-            <span className="text-sm font-medium">Runtime Configuration</span>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Python Path</label>
-            <input
-              type="text"
-              value={recipe.python_path || ""}
-              onChange={(e) => onChange({ ...recipe, python_path: e.target.value || undefined })}
-              placeholder="/usr/bin/python or venv/bin/python"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
-            />
-          </div>
-        </div>
+        <FormSection icon={<Terminal className="h-4 w-4" />} title="Runtime Configuration">
+          <Input
+            label="Python Path"
+            type="text"
+            value={recipe.python_path || ""}
+            onChange={(e) => onChange({ ...recipe, python_path: e.target.value || undefined })}
+            placeholder="/usr/bin/python or venv/bin/python"
+          />
+        </FormSection>
       )}
       {isLlamacpp && (
         <p className="text-xs text-(--dim)">
@@ -59,76 +52,67 @@ export function RecipeModalTabEnvironment({
       )}
 
       {/* Environment Variables */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between text-(--fg) pb-2 border-b border-(--border)/50">
-          <div className="flex items-center gap-2">
-            <Variable className="w-4 h-4 text-(--accent)" />
-            <span className="text-sm font-medium">Environment Variables</span>
-          </div>
-          <button
+      <FormSection
+        icon={<Variable className="h-4 w-4" />}
+        title="Environment Variables"
+        className="space-y-3"
+      >
+        <div className="-mt-12 flex justify-end">
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={onAddEnvVar}
-            className="flex items-center gap-1 px-3 py-1.5 bg-(--border) hover:bg-(--surface) rounded-md text-xs transition-colors"
+            icon={<Plus className="h-3 w-3" />}
           >
-            <Plus className="w-3 h-3" />
             Add
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-2">
           {envVarEntries.map((entry, index) => (
             <div key={`${entry.key}-${index}`} className="grid grid-cols-[1fr,1fr,auto] gap-2">
-              <input
+              <Input
                 type="text"
                 value={entry.key}
                 onChange={(e) => onChangeEnvVar(index, "key", e.target.value)}
                 placeholder="KEY"
-                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm font-mono focus:outline-none focus:border-(--accent)"
+                className="font-mono"
               />
-              <input
+              <Input
                 type="text"
                 value={entry.value}
                 onChange={(e) => onChangeEnvVar(index, "value", e.target.value)}
                 placeholder="value"
-                className="px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
-              <button
-                type="button"
-                onClick={() => onRemoveEnvVar(index)}
-                className="px-3 py-2 bg-(--surface) hover:bg-(--border) rounded-md text-xs transition-colors"
-              >
+              <Button variant="secondary" type="button" onClick={() => onRemoveEnvVar(index)}>
                 Remove
-              </button>
+              </Button>
             </div>
           ))}
         </div>
-      </div>
+      </FormSection>
 
       {/* Extra Args */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Code className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Extra CLI Arguments</span>
-        </div>
-
-        <div className="bg-(--bg) border border-(--border) rounded-md overflow-hidden">
+      <FormSection icon={<Code className="h-4 w-4" />} title="Extra CLI Arguments">
+        <Card padding="sm" className="overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 bg-(--surface) border-b border-(--border)">
             <span className="text-xs text-(--dim)">JSON Editor</span>
             {extraArgsError && <span className="text-xs text-(--err)">Invalid JSON</span>}
           </div>
-          <textarea
+          <Textarea
             value={extraArgsText}
             onChange={(e) => onExtraArgsChange(e.target.value)}
             rows={10}
             spellCheck={false}
-            className="w-full px-3 py-2 bg-transparent border-0 text-xs font-mono focus:outline-none resize-none"
+            className="border-0 bg-transparent px-3 py-2 font-mono text-xs"
             placeholder='{\"custom-flag\": true}'
           />
-        </div>
+        </Card>
         <p className="text-xs text-(--dim)">
           Extra arguments are passed directly to the CLI. These override form fields.
         </p>
-      </div>
+      </FormSection>
 
       {isLlamacpp && (
         <details className="bg-(--bg) border border-(--border) rounded-md overflow-hidden">

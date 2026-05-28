@@ -130,7 +130,7 @@ export function AgentBrowserPanel({
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--bg)"
+      className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--agent-bg)"
       ref={registerComputerAside}
       style={{ width: `${tools.computer.width}px`, minWidth: "max(280px, 25%)", maxWidth: "65%" }}
     >
@@ -413,7 +413,7 @@ function ComputerLauncherPanel({
     },
   ] as const;
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-5 py-7">
+    <section className="min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-5 py-7">
       <div className="mx-auto flex max-w-[30rem] flex-col gap-3">
         {cards.map((card) => {
           const Icon = card.icon;

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, Download, Menu, RefreshCw } from "lucide-react";
+import { Button, Checkbox, SearchInput } from "@/ui";
 import type { LogSession } from "@/lib/types";
 import { LogsSessionsSidebar } from "./logs-view/logs-sessions-sidebar";
 
@@ -87,60 +88,54 @@ export function LogsView({
             {/* Header */}
             <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-(--border) gap-2">
               <div className="flex items-center gap-2 text-sm min-w-0 flex-1">
-                <button
+                <Button
+                  variant="icon"
+                  size="sm"
                   onClick={() => onSidebarToggle(true)}
-                  className="md:hidden p-1 hover:bg-(--surface) rounded flex-shrink-0"
+                  className="shrink-0 md:hidden"
                 >
                   <Menu className="h-4 w-4 text-(--dim)" />
-                </button>
+                </Button>
                 <ChevronRight className="h-3.5 w-3.5 text-(--dim) hidden sm:block flex-shrink-0" />
                 <span className="text-(--fg) font-mono truncate text-xs sm:text-sm">
                   {selectedSession}
                 </span>
               </div>
               <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                <label className="hidden sm:flex items-center gap-1.5 text-[11px] text-(--dim) cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoRefresh}
-                    onChange={(event) => onAutoRefreshChange(event.target.checked)}
-                    className="rounded border-(--border) bg-(--surface) text-(--hl2) focus:ring-0 focus:ring-offset-0"
-                  />
-                  Auto-refresh
-                </label>
-                <label className="hidden sm:flex items-center gap-1.5 text-[11px] text-(--dim) cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoScroll}
-                    onChange={(event) => onAutoScrollChange(event.target.checked)}
-                    className="rounded border-(--border) bg-(--surface) text-(--hl2) focus:ring-0 focus:ring-offset-0"
-                  />
-                  Auto-scroll
-                </label>
-                <div className="w-px h-4 bg-(--border) hidden sm:block" />
-                <input
-                  type="text"
-                  value={contentFilter}
-                  onChange={(event) => onContentFilterChange(event.target.value)}
-                  placeholder="Filter..."
-                  className="px-2.5 py-1.5 text-xs bg-(--surface) border border-(--border) rounded text-(--fg) placeholder-(--dim)/50 focus:outline-none focus:border-(--accent) w-24 sm:w-40"
+                <Checkbox
+                  checked={autoRefresh}
+                  onChange={onAutoRefreshChange}
+                  label="Auto-refresh"
+                  className="hidden items-center sm:flex"
+                  labelClassName="text-[11px] font-normal"
                 />
-                <button
+                <Checkbox
+                  checked={autoScroll}
+                  onChange={onAutoScrollChange}
+                  label="Auto-scroll"
+                  className="hidden items-center sm:flex"
+                  labelClassName="text-[11px] font-normal"
+                />
+                <div className="w-px h-4 bg-(--border) hidden sm:block" />
+                <SearchInput
+                  value={contentFilter}
+                  onChange={onContentFilterChange}
+                  placeholder="Filter..."
+                  className="w-28 sm:w-44 [&_input]:py-1.5 [&_input]:text-xs"
+                />
+                <Button
+                  variant="icon"
+                  size="sm"
                   onClick={() => selectedSession && onLoadLogContent(selectedSession)}
-                  className="p-1.5 hover:bg-(--surface) rounded transition-colors"
                   title="Refresh"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 text-(--dim) ${loadingContent ? "animate-spin" : ""}`}
                   />
-                </button>
-                <button
-                  onClick={onDownloadLog}
-                  className="p-1.5 hover:bg-(--surface) rounded transition-colors"
-                  title="Download"
-                >
+                </Button>
+                <Button variant="icon" size="sm" onClick={onDownloadLog} title="Download">
                   <Download className="h-3.5 w-3.5 text-(--dim)" />
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -165,13 +160,10 @@ export function LogsView({
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <button
-              onClick={() => onSidebarToggle(true)}
-              className="md:hidden flex items-center gap-2 px-4 py-2 bg-(--border) rounded-lg text-(--fg) text-sm"
-            >
+            <Button variant="secondary" onClick={() => onSidebarToggle(true)} className="md:hidden">
               <Menu className="h-4 w-4" />
               View Sessions
-            </button>
+            </Button>
             <div className="text-center text-(--dim)">
               <p className="text-sm">Select a log session to view</p>
             </div>

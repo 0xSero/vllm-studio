@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Download, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { Table, TBody, THead, TH, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { normalizeModelId } from "../utils";
 import { ModelRow } from "./discover-results/model-row";
@@ -111,79 +112,63 @@ export function DiscoverResults({
         {providerFilter && ` from ${providerFilter}`}
       </div>
 
-      <div className="border border-(--border) rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-(--surface) border-b border-(--border)">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Model
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Provider
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Task
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Quantization
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Stats
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-(--dim) uppercase tracking-wider w-8"></th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-(--dim) uppercase tracking-wider">
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-(--border)">
-            {groupedModels.map((group) => {
-              const expanded = expandedGroupKeys.includes(group.key);
-              return (
-                <Fragment key={group.key}>
-                  <ModelRow
-                    model={group.lead}
-                    copied={copiedId === group.lead.modelId}
-                    isLocal={isModelLocal(group.lead.modelId)}
-                    activeDownload={getDownloadForModel(group.lead.modelId)}
-                    isStarting={startingModelIds.has(group.lead.modelId)}
-                    onCopyModelId={onCopyModelId}
-                    onStartDownload={onStartDownload}
-                    onPauseDownload={onPauseDownload}
-                    onResumeDownload={onResumeDownload}
-                    variantCount={group.variants.length}
-                    expanded={expanded}
-                    onToggleExpand={
-                      group.variants.length > 1 ? () => toggleGroup(group.key) : undefined
-                    }
-                  />
-                  {expanded &&
-                    group.variants
-                      .slice(1)
-                      .map((model) => (
-                        <ModelRow
-                          key={model._id}
-                          model={model}
-                          copied={copiedId === model.modelId}
-                          isLocal={isModelLocal(model.modelId)}
-                          activeDownload={getDownloadForModel(model.modelId)}
-                          isStarting={startingModelIds.has(model.modelId)}
-                          onCopyModelId={onCopyModelId}
-                          onStartDownload={onStartDownload}
-                          onPauseDownload={onPauseDownload}
-                          onResumeDownload={onResumeDownload}
-                          child
-                        />
-                      ))}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Table>
+        <THead>
+          <TRow className="hover:bg-transparent">
+            <TH>Model</TH>
+            <TH>Provider</TH>
+            <TH>Task</TH>
+            <TH>Quantization</TH>
+            <TH>Status</TH>
+            <TH align="right">Stats</TH>
+            <TH align="right" className="w-8" />
+            <TH align="right">Action</TH>
+          </TRow>
+        </THead>
+        <TBody>
+          {groupedModels.map((group) => {
+            const expanded = expandedGroupKeys.includes(group.key);
+            return (
+              <Fragment key={group.key}>
+                <ModelRow
+                  model={group.lead}
+                  copied={copiedId === group.lead.modelId}
+                  isLocal={isModelLocal(group.lead.modelId)}
+                  activeDownload={getDownloadForModel(group.lead.modelId)}
+                  isStarting={startingModelIds.has(group.lead.modelId)}
+                  onCopyModelId={onCopyModelId}
+                  onStartDownload={onStartDownload}
+                  onPauseDownload={onPauseDownload}
+                  onResumeDownload={onResumeDownload}
+                  variantCount={group.variants.length}
+                  expanded={expanded}
+                  onToggleExpand={
+                    group.variants.length > 1 ? () => toggleGroup(group.key) : undefined
+                  }
+                />
+                {expanded &&
+                  group.variants
+                    .slice(1)
+                    .map((model) => (
+                      <ModelRow
+                        key={model._id}
+                        model={model}
+                        copied={copiedId === model.modelId}
+                        isLocal={isModelLocal(model.modelId)}
+                        activeDownload={getDownloadForModel(model.modelId)}
+                        isStarting={startingModelIds.has(model.modelId)}
+                        onCopyModelId={onCopyModelId}
+                        onStartDownload={onStartDownload}
+                        onPauseDownload={onPauseDownload}
+                        onResumeDownload={onResumeDownload}
+                        child
+                      />
+                    ))}
+              </Fragment>
+            );
+          })}
+        </TBody>
+      </Table>
 
       {hasMore && (
         <div className="mt-6 text-center">

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Layers, RefreshCw, Save, X } from "lucide-react";
+import { Button, StatusPill } from "@/ui";
 import api from "@/lib/api";
 import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
 import { formatBackendLabel } from "../../recipe-labels";
@@ -167,30 +168,31 @@ export function RecipeModal({
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col border-l border-(--border) bg-(--bg)"
+      className="relative flex shrink-0 flex-col border-l border-(--ui-border) bg-(--ui-bg)"
       style={{ width: "720px", minWidth: "min(420px, 40%)", maxWidth: "min(820px, 65%)" }}
     >
       {/* Header — matches chat sidepanel ComputerHeader (h-9, text-[11px]) */}
-      <div className="relative flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-2 text-[11px]">
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--surface)">
-          <Layers className="h-3 w-3 text-(--accent)/70" />
+      <div className="relative flex h-9 shrink-0 items-center gap-2 border-b border-(--ui-border) px-2 text-[11px]">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--ui-surface)">
+          <Layers className="h-3 w-3 text-(--ui-accent)/70" />
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate font-medium text-(--fg)/85">
+          <span className="truncate font-medium text-(--ui-fg)/85">
             {recipe.id ? "Edit recipe" : "New recipe"}
           </span>
-          <span className="shrink-0 rounded-[5px] bg-(--surface) px-1.5 py-0.5 text-[10px] font-medium text-(--accent)/80">
+          <StatusPill tone="info" variant="badge" className="shrink-0">
             {formatBackendLabel(recipe.backend)}
-          </span>
+          </StatusPill>
         </div>
-        <button
+        <Button
+          variant="icon"
+          size="sm"
           onClick={onClose}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim)/65 transition-colors hover:bg-(--hover) hover:text-(--fg)/75"
           aria-label="Close recipe drawer"
           title="Close"
         >
           <X className="h-3 w-3" />
-        </button>
+        </Button>
       </div>
 
       <RecipeModalTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
@@ -221,20 +223,17 @@ export function RecipeModal({
       </div>
 
       {/* Footer */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--bg) px-2 text-[11px]">
-        <div className="min-w-0 truncate text-(--dim)/75">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-t border-(--ui-border) bg-(--ui-bg) px-2 text-[11px]">
+        <div className="min-w-0 truncate text-(--ui-muted)/75">
           {recipe.id ? `Editing ${recipe.name}` : "Creating new recipe"}
-          {extraArgsError && <span className="ml-3 text-(--err)">Extra args has errors</span>}
+          {extraArgsError && <span className="ml-3 text-(--ui-danger)">Extra args has errors</span>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="inline-flex h-7 items-center rounded-md px-2 text-[11px] text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)/85 disabled:opacity-50"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            size="sm"
             onClick={onSave}
             disabled={
               saving ||
@@ -242,20 +241,12 @@ export function RecipeModal({
               !(recipe.name ?? "").trim() ||
               !(recipe.model_path ?? "").trim()
             }
-            className="inline-flex h-7 items-center gap-1.5 rounded-md bg-(--surface) px-2.5 text-[11px] font-medium text-(--fg)/85 transition-colors hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-50"
+            icon={
+              saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />
+            }
           >
-            {saving ? (
-              <>
-                <RefreshCw className="h-3 w-3 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              <>
-                <Save className="h-3 w-3" />
-                Save recipe
-              </>
-            )}
-          </button>
+            {saving ? "Saving..." : "Save recipe"}
+          </Button>
         </div>
       </div>
     </aside>

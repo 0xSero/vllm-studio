@@ -302,7 +302,7 @@ function renderWorkspacePane({
       browserToolEnabled={view.isFocused && tools.browser.enabled}
       onToggleBrowserTool={() => {
         tools.setComputerTab("browser");
-        if (!tools.browser.enabled) tools.setBrowserEnabled(true);
+        tools.setBrowserEnabled(!tools.browser.enabled);
       }}
       canvasEnabled={view.isFocused && tools.computer.canvasEnabled}
       onToggleCanvas={tools.toggleCanvas}

@@ -23,8 +23,8 @@
 
   --hover: rgba(0, 0, 0, 0.04);
   --active: rgba(0, 0, 0, 0.07);
-  --composer: #f5f5f5;
-  --composer-footer: #f7f7f7;
+  --composer: var(--sidebar-bg);
+  --composer-footer: var(--sidebar-bg);
 
   /* Accents — pulled from the gray ramp, extremely quiet */
   --accent: #1a1a1a;
@@ -43,7 +43,7 @@
   --row-h-sm: 24px;
   --row-radius: 8px;
   --thread-w: 720px;
-  --composer-w: 760px;
+  --composer-w: 680px;
   --composer-radius: 14px;
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
 
@@ -54,12 +54,56 @@
 
   --app-height: 100vh;
   --app-font-size: 16px;
+
+  /* UI adapter tokens
+     Shared components under src/ui read through this layer. If we adopt
+     shadcn, Radix, or another library later, the library theme can be wired
+     here without forcing every page to change class names. */
+  --ui-bg: var(--bg);
+  --ui-fg: var(--fg);
+  --ui-muted: var(--dim);
+  --ui-surface: var(--surface);
+  --ui-surface-2: var(--surface-2);
+  --ui-surface-3: var(--surface-3);
+  --ui-border: var(--border);
+  --ui-separator: var(--separator);
+  --ui-hover: var(--hover);
+  --ui-active: var(--active);
+  --ui-accent: var(--accent);
+  --ui-info: var(--hl1);
+  --ui-success: var(--hl2);
+  --ui-warning: var(--hl3);
+  --ui-danger: var(--err);
+  --ui-radius: var(--row-radius);
+  --ui-radius-sm: 6px;
+  --ui-radius-lg: 10px;
+  --ui-control-h: 28px;
+
+  /* Compatibility names used by common React UI libraries. */
+  --background: var(--ui-bg);
+  --foreground: var(--ui-fg);
+  --card: var(--ui-surface);
+  --card-foreground: var(--ui-fg);
+  --popover: var(--ui-surface);
+  --popover-foreground: var(--ui-fg);
+  --primary: var(--ui-accent);
+  --primary-foreground: var(--ui-bg);
+  --secondary: var(--ui-surface-2);
+  --secondary-foreground: var(--ui-fg);
+  --muted: var(--ui-surface);
+  --muted-foreground: var(--ui-muted);
+  --accent-foreground: var(--ui-bg);
+  --destructive: var(--ui-danger);
+  --destructive-foreground: var(--ui-bg);
+  --input: var(--ui-separator);
+  --ring: color-mix(in srgb, var(--ui-accent) 40%, transparent);
+  --radius: var(--ui-radius);
 }
 
 @media (min-width: 1024px) {
   :root {
     --thread-w: 40vw;
-    --composer-w: 40vw;
+    --composer-w: 680px;
   }
 }
 
@@ -83,8 +127,8 @@
 
   --hover: rgba(255, 255, 255, 0.05);
   --active: rgba(255, 255, 255, 0.08);
-  --composer: #171717;
-  --composer-footer: #141414;
+  --composer: var(--sidebar-bg);
+  --composer-footer: var(--sidebar-bg);
 
   /* Accents — grayscale only, no colored noise */
   --accent: #d6d6d6;

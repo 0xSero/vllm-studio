@@ -119,6 +119,17 @@ function focusedBrowserSessionId(state: WorkspaceState): string | null {
   return activeSession?.runtimeSessionId || pane.runtimeSessionId || null;
 }
 
+function browserSessionIsKnown(state: WorkspaceState, sessionId: string): boolean {
+  if (!sessionId) return false;
+  for (const pane of state.panesById.values()) {
+    if (pane.runtimeSessionId === sessionId) return true;
+  }
+  for (const session of state.sessions.values()) {
+    if (session.runtimeSessionId === sessionId) return true;
+  }
+  return false;
+}
+
 function postBrowserResult(id: string, result: BrowserCommandResult) {
   return fetch("/api/agent/browser/result", {
     method: "POST",
@@ -143,7 +154,7 @@ function createBrowserEvents(
     verb: string,
     payload: Record<string, unknown>,
   ) => Promise<BrowserCommandResult>,
-  focusedSessionId: () => string | null,
+  resolveSession: (sessionId: string) => { focused: string | null; known: boolean },
 ): BrowserEventsSubscription {
   let source: EventSource | null = null;
   let enabled = false;
@@ -164,12 +175,14 @@ function createBrowserEvents(
         if (typeof event.data !== "string") return;
         const command = parseBrowserCommand(event.data);
         if (!command || typeof fetch !== "function") return;
-        const focused = focusedSessionId();
-        if (command.sessionId && command.sessionId !== focused) {
+        const session = command.sessionId
+          ? resolveSession(command.sessionId)
+          : { focused: null, known: true };
+        if (command.sessionId && !session.known) {
           void postBrowserResult(command.id, {
             ok: false,
-            error: focused
-              ? `Browser is connected to the focused session (${focused}); focus the requesting session to run browser_${command.verb}.`
+            error: session.focused
+              ? `Browser is connected to ${session.focused}; the requesting session ${command.sessionId} is no longer open.`
               : `Browser is not connected to the requesting session (${command.sessionId}).`,
           });
           return;
@@ -270,9 +283,10 @@ export function useWorkspace(): UseWorkspaceResult {
   const controller = useMemo(() => {
     let browserEvents: BrowserEventsSubscription | null = null;
     const getBrowserEvents = () => {
-      browserEvents ??= createBrowserEvents(runBrowserCommand, () =>
-        focusedBrowserSessionId(stateRef.current),
-      );
+      browserEvents ??= createBrowserEvents(runBrowserCommand, (sessionId) => ({
+        focused: focusedBrowserSessionId(stateRef.current),
+        known: browserSessionIsKnown(stateRef.current, sessionId),
+      }));
       return browserEvents;
     };
     const makeDeps = (workspaceDispatch: WorkspaceDispatch): WorkspaceEffectDeps | null => {

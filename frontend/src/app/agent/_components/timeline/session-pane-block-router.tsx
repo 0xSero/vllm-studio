@@ -138,9 +138,7 @@ const AssistantBlocks = memo(function AssistantBlocks({ blocks }: { blocks: Assi
 
   return (
     <article className="min-w-0">
-      {routedBlocks.length === 0 ? (
-        <div className="text-[10.4px] leading-[16.8px] text-(--dim)">…</div>
-      ) : (
+      {routedBlocks.length === 0 ? null : (
         <div className="flex flex-col gap-3.5">
           {routedBlocks.map((item) => {
             if (item.kind === "activity-group") {

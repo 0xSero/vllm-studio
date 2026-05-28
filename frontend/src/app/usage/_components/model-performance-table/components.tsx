@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { SortDirection, SortField } from "@/lib/types";
 import { formatDurationOrUnavailable } from "@/lib/formatters";
+import { TH } from "@/ui";
 
 export function SortHeader({
   field,
@@ -22,7 +23,8 @@ export function SortHeader({
   const isActive = currentField === field;
 
   return (
-    <th
+    <TH
+      align={align}
       className={`cursor-pointer select-none px-3 py-2 font-mono text-[10px] font-normal uppercase tracking-[0.14em] text-(--dim) transition-colors hover:text-(--fg) ${
         align === "right" ? "text-right" : "text-left"
       }`}
@@ -32,7 +34,7 @@ export function SortHeader({
         {children}
         {isActive && <span>{direction === "asc" ? "↑" : "↓"}</span>}
       </div>
-    </th>
+    </TH>
   );
 }
 

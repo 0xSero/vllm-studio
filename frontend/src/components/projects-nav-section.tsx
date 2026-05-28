@@ -21,7 +21,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@/components/icons";
-import { Button, UiModal, UiModalHeader } from "@/components/ui-kit";
+import { Button, UiModal, UiModalHeader } from "@/ui";
 import { safeJson } from "@/lib/agent/safe-json";
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
 import {

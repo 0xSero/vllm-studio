@@ -23,7 +23,7 @@ import {
   ModelValue,
   ModelStatus,
   type ModelStatusTone,
-} from "./model-page-primitives";
+} from "@/ui";
 import { extractProvider, extractQuantizations } from "@/app/discover/_components/utils";
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
