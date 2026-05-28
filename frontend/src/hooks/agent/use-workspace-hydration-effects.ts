@@ -9,6 +9,16 @@ import {
 import { loadInitialFromStorage } from "@/lib/agent/workspace/persistence";
 import { loadPersistedActiveAgentSessions } from "@/lib/agent/workspace/store";
 
+function currentSearchParams(): URLSearchParams {
+  return typeof window === "undefined"
+    ? new URLSearchParams()
+    : new URLSearchParams(window.location.search);
+}
+
+function shouldRestoreWorkspace(params: URLSearchParams): boolean {
+  return params.get("restore") === "1";
+}
+
 export function useWorkspaceHydrationEffects({
   dispatch,
   projectsRef,
@@ -20,12 +30,16 @@ export function useWorkspaceHydrationEffects({
 }): void {
   const subscribe = useCallback(
     (_notify: () => void) => {
-      const { workspace, selections } = loadInitialFromStorage(window.localStorage);
-      dispatch({ type: "hydrate", state: workspace });
+      const params = currentSearchParams();
+      const restoreWorkspace = shouldRestoreWorkspace(params);
+      const { workspace, selections } = restoreWorkspace
+        ? loadInitialFromStorage(window.localStorage)
+        : { workspace: {}, selections: new Map() };
+      dispatch({ type: "hydrate", state: workspace, hydrated: !restoreWorkspace });
       if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
 
       if (projectsRef.current.loaded) {
-        const snapshots = loadPersistedActiveAgentSessions();
+        const snapshots = restoreWorkspace ? loadPersistedActiveAgentSessions() : [];
         dispatch({
           type: "hydrateActiveSessions",
           snapshots,

@@ -187,11 +187,13 @@ export function subscribeWorkspaceWindowEvents(
       isRecord(detail) && Array.isArray(detail.projects) ? (detail.projects as Project[]) : [];
     const params =
       typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const restoreWorkspace = params?.get("restore") === "1";
     dispatch({
       type: "hydrateActiveSessions",
-      snapshots: loadPersistedActiveAgentSessions(),
+      snapshots: restoreWorkspace ? loadPersistedActiveAgentSessions() : [],
       projects,
-      hasExplicitSessionNav: Boolean(params?.get("session") || params?.get("new")),
+      hasExplicitSessionNav:
+        !restoreWorkspace || Boolean(params?.get("session") || params?.get("new")),
     });
   };
 
