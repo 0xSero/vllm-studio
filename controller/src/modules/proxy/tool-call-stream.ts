@@ -129,7 +129,16 @@ export const createToolCallStream = (
     return text;
   };
 
-  const createThinkRewriter = () => {
+  type ThinkRewriter = {
+    inThink: () => boolean;
+    drainCarry: () => string;
+    rewrite: (
+      deltaText: string,
+      defaultToReasoning?: boolean,
+    ) => { content: string; reasoningAppend: string; closeSeenWithoutOpen?: boolean };
+  };
+
+  const createThinkRewriter = (): ThinkRewriter => {
     let inThink = false;
     let thinkCarry = "";
     let seenOpen = false;
@@ -391,11 +400,8 @@ export const createToolCallStream = (
             let reasoningFromContent = "";
             if (content) {
               visibleContentBuffer += content;
-              const rewritten = contentThink.rewrite(content, hasActiveToolCalls);
+              const rewritten = contentThink.rewrite(content, false);
 
-              // Close tag without prior open tag (DeepSeek-style: `...`
-              // with no preceding `...`). Flush the accumulated visible
-              // buffer as reasoning so it renders in the thinking area.
               if (rewritten.closeSeenWithoutOpen && visibleContentBuffer) {
                 reasoning = stripToolXmlDelta(visibleContentBuffer);
                 visibleContentBuffer = "";

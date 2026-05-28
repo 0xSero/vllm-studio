@@ -204,7 +204,7 @@ describe("controller route contracts", () => {
     ]);
   });
 
-  test("stream proxy moves same-delta native tool-call narration into reasoning_content", async () => {
+  test("stream proxy keeps same-delta content visible when tool_calls are present", async () => {
     const { createToolCallStream } = await import(
       "../../../controller/src/modules/proxy/tool-call-stream"
     );
@@ -244,8 +244,8 @@ describe("controller route contracts", () => {
     };
     const delta = firstEvent.choices?.[0]?.delta;
 
-    expect(delta?.content).toBeUndefined();
-    expect(delta?.reasoning_content).toBe("Let me inspect the file first.");
+    expect(delta?.content).toBe("Let me inspect the file first.");
+    expect(delta?.reasoning_content).toBeUndefined();
     expect(delta?.tool_calls).toEqual([expect.objectContaining({ id: "call-read" })]);
   });
 
