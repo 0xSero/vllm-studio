@@ -245,6 +245,7 @@ export function openNewSessionInFocusedPane(
       title: freshTitle,
       error: "",
       status: "idle",
+      modelId: existing.modelId || state.selectedModel || undefined,
       ...(payload.project ? { projectId: payload.project.id, cwd: payload.project.path } : {}),
     };
     const sessions = patchSessionInMap(state.sessions, existing.id, starterPatch);
@@ -258,6 +259,7 @@ export function openNewSessionInFocusedPane(
     ...payload.tab,
     projectId: payload.project?.id,
     cwd: payload.project?.path,
+    modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
   if (payload.mode === "split") {
     return openSessionAdjacentToFocusedPane(

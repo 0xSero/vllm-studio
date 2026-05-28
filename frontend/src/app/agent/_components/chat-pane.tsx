@@ -707,21 +707,15 @@ export function ChatPane({
     async (event: FormEvent) => {
       event.preventDefault();
       if (!activeTab) return;
-      // Only block while a prompt is actively starting up; a "loading"
-      // status means we're hydrating prior session history and the user
-      // must still be able to send. Without this, a stuck/never-resolving
-      // canonical-session replay leaves the composer permanently locked.
-      if (activeTab.status === "starting") return;
       const text = activeTab.input.trim();
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      // When the UI shows a live turn, the form's primary action is
-      // "Steer" — always honor that intent and let the server decide
-      // whether to steer (turn in flight) or treat it as a fresh prompt
-      // (turn already settled). The prompt stream can stay open for minutes,
-      // so control sends use their own short-lived guard.
       if (running) {
         if (controlSubmitInFlightRef.current) return;
-        if (!text || !modelId || readingAttachments) return;
+        if (!text || readingAttachments) return;
+        if (!modelId) {
+          updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
+          return;
+        }
         setMention(null);
         controlSubmitInFlightRef.current = true;
         try {
@@ -732,7 +726,11 @@ export function ChatPane({
         return;
       }
       if (composerSubmitInFlightRef.current) return;
-      if ((!text && attachments.length === 0) || !modelId || readingAttachments) return;
+      if ((!text && attachments.length === 0) || readingAttachments) return;
+      if (!modelId) {
+        updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
+        return;
+      }
       setMention(null);
       composerSubmitInFlightRef.current = true;
       try {
@@ -750,6 +748,7 @@ export function ChatPane({
       running,
       runtimeSessionId,
       submitPrompt,
+      updateTab,
     ],
   );
   const queueMessage = useCallback(async () => {
@@ -1364,10 +1363,7 @@ export function ChatPane({
                 <button
                   type="submit"
                   disabled={
-                    (!activeTab?.input.trim() && attachments.length === 0) ||
-                    !modelId ||
-                    readingAttachments ||
-                    activeTab?.status === "starting"
+                    (!activeTab?.input.trim() && attachments.length === 0) || readingAttachments
                   }
                   className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/85 hover:text-(--fg)/85 disabled:opacity-30"
                   aria-label="Send"
