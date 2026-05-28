@@ -952,7 +952,7 @@ function SessionNavRow({
           draggable
           onClick={onRememberTitle}
           onDragStart={onDragStart}
-          className="flex min-w-0 flex-1 items-center gap-1 pr-5"
+          className="flex min-w-0 flex-1 items-center gap-1"
           {...openProps}
         >
           {" "}
@@ -965,14 +965,14 @@ function SessionNavRow({
           onDragStart={onDragStart}
           onClick={onOpen}
           aria-label={label}
-          className="flex min-w-0 flex-1 items-center gap-1 pr-5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 text-left"
           {...openProps}
         >
           {" "}
           {content}
         </button>
       )}
-      <div ref={menuRef} className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
+      <div ref={menuRef} className="absolute right-1 top-1/2 z-20 -translate-y-1/2 shrink-0">
         {" "}
         <button
           type="button"
@@ -981,8 +981,10 @@ function SessionNavRow({
             event.stopPropagation();
             setMenuOpen((value) => !value);
           }}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg) ${
-            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md bg-(--hover)/95 text-(--dim) shadow-[0_0_14px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-[opacity,color] hover:text-(--fg) ${
+            menuOpen
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
           }`}
           aria-label="Session options"
           title="Session options"
@@ -1062,7 +1064,7 @@ function ActiveSessionRow({
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isActive = session.active === true;
-  const rowClass = `group relative flex h-6 items-center rounded-md pl-2 pr-1 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--hover) hover:text-(--fg)/95"}`;
+  const rowClass = `group relative flex h-6 items-center rounded-md pl-3 pr-0 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--hover) hover:text-(--fg)/95"}`;
   return (
     <SessionNavRow
       pref={pref}
@@ -1122,8 +1124,8 @@ function SessionRow({
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
       age={relativeAge(session.startedAt)}
-      rowClass="group relative flex h-6 items-center rounded-md pl-2 pr-1 text-(--fg)/72 transition-colors hover:bg-(--hover) hover:text-(--fg)/95"
-      renameRowClass="flex h-6 items-center rounded-md bg-(--surface)/40 pl-2 pr-1"
+      rowClass="group relative flex h-6 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--hover) hover:text-(--fg)/95"
+      renameRowClass="flex h-6 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onRememberTitle={() => rememberAgentSessionNavTitle(session.id, label)}
@@ -1161,7 +1163,7 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`absolute left-1 top-1/2 z-10 inline-flex h-5 w-5 shrink-0 -translate-y-1/2 scale-90 items-center justify-center rounded-md bg-(--hover)/95 opacity-0 shadow-[0_0_14px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-[opacity,transform,color] duration-300 ease-out hover:text-(--fg) group-hover:scale-100 group-hover:opacity-100 focus-visible:scale-100 focus-visible:opacity-100 disabled:opacity-20 ${pinned ? "text-(--accent)" : "text-(--fg)/78"}`}
+      className={`pointer-events-none absolute left-1.5 top-1/2 z-20 inline-flex h-5 w-5 shrink-0 -translate-y-1/2 scale-90 items-center justify-center rounded-md bg-(--hover)/95 opacity-0 shadow-[0_0_14px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-[opacity,transform,color] duration-300 ease-out hover:text-(--fg) group-hover:pointer-events-auto group-hover:scale-100 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:scale-100 focus-visible:opacity-100 disabled:opacity-20 ${pinned ? "text-(--accent)" : "text-(--fg)/78"}`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}
