@@ -387,7 +387,7 @@ test("text deltas stay visible answer text when partial history already has reas
   });
 });
 
-test("text deltas with an explicit reasoning content part render under reasoning", () => {
+test("text deltas always render as visible text regardless of partial reasoning shape", () => {
   const event = {
     type: "message_update",
     assistantMessageEvent: {
@@ -401,15 +401,15 @@ test("text deltas with an explicit reasoning content part render under reasoning
   };
 
   const blocks = applyAssistantPiEventToBlocks([], event);
-  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.kind, "text");
   assert.equal(blocks?.[0]?.text, "I should inspect this first.");
   assert.deepEqual(textDeltaFromPiEvent(event), {
-    kind: "thinking",
+    kind: "text",
     delta: "I should inspect this first.",
   });
 });
 
-test("text deltas indexed to a reasoning content part render under reasoning", () => {
+test("text deltas indexed to a reasoning content part still render as visible text", () => {
   const event = {
     type: "message_update",
     assistantMessageEvent: {
@@ -429,10 +429,10 @@ test("text deltas indexed to a reasoning content part render under reasoning", (
   };
 
   const blocks = applyAssistantPiEventToBlocks([], event);
-  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.kind, "text");
   assert.equal(blocks?.[0]?.text, "I should inspect this first.");
   assert.deepEqual(textDeltaFromPiEvent(event), {
-    kind: "thinking",
+    kind: "text",
     delta: "I should inspect this first.",
   });
 });
@@ -455,7 +455,7 @@ test("explicit reasoning deltas render under reasoning", () => {
   });
 });
 
-test("live pre-tool text is promoted to reasoning when a tool call starts", () => {
+test("live pre-tool text stays visible when a tool call follows", () => {
   const textEvent = {
     type: "message_update",
     assistantMessageEvent: {
@@ -485,8 +485,67 @@ test("live pre-tool text is promoted to reasoning when a tool call starts", () =
   assert.equal(textBlocks[0]?.kind, "text");
 
   const blocks = applyAssistantPiEventToBlocks(textBlocks, toolEvent);
-  assert.equal(blocks?.[0]?.kind, "thinking");
+  assert.equal(blocks?.[0]?.kind, "text");
   assert.equal(blocks?.[0]?.text, "Let me inspect that first.");
+  assert.equal(blocks?.[1]?.kind, "tool");
+});
+
+test("reasoning then content then tool keeps blocks in [thinking, text, tool] order", () => {
+  const reasoningEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "reasoning_delta",
+      delta: "Internal reasoning before the answer.",
+    },
+  };
+  const textEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Here is the answer.",
+    },
+  };
+  const toolEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "toolcall_start",
+      toolCall: {
+        id: "call-read",
+        name: "read",
+        arguments: { path: "/workspace/file.txt" },
+      },
+    },
+  };
+
+  const afterReasoning = applyAssistantPiEventToBlocks([], reasoningEvent) ?? [];
+  const afterText = applyAssistantPiEventToBlocks(afterReasoning, textEvent) ?? [];
+  const blocks = applyAssistantPiEventToBlocks(afterText, toolEvent) ?? [];
+
+  assert.equal(blocks[0]?.kind, "thinking");
+  assert.equal(blocks[0]?.text, "Internal reasoning before the answer.");
+  assert.equal(blocks[1]?.kind, "text");
+  assert.equal(blocks[1]?.text, "Here is the answer.");
+  assert.equal(blocks[2]?.kind, "tool");
+});
+
+test("tool_execution_start does not bury visible text into thinking", () => {
+  const textBlocks =
+    applyAssistantPiEventToBlocks([], {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: "I'll run a quick check.",
+      },
+    }) ?? [];
+
+  const blocks = applyAssistantPiEventToBlocks(textBlocks, {
+    type: "tool_execution_start",
+    toolCallId: "call-bash",
+    toolName: "bash",
+  });
+
+  assert.equal(blocks?.[0]?.kind, "text");
+  assert.equal(blocks?.[0]?.text, "I'll run a quick check.");
   assert.equal(blocks?.[1]?.kind, "tool");
 });
 
