@@ -4,15 +4,30 @@ import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
 } from "@/lib/agent/active-sessions";
+import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
 import {
   detectComposerMention,
   selectedContextInstructions,
   selectedContextPrompt,
 } from "@/lib/agent/composer-context";
+import { piStatusFromEvents } from "@/lib/agent/pi-runtime-state";
 import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
+import {
+  runtimeStatusLooksActive,
+  statusAfterControlPhase,
+} from "@/lib/agent/session/helpers";
 import { replaySessionEvents } from "@/lib/agent/session/replay";
+import {
+  applyPiEventToSession,
+  type PiEventApplierDeps,
+} from "@/lib/agent/sessions/pi-event-applier";
 import { drainQueuedTurnAfterAgentEnd } from "@/lib/agent/sessions/queue-drain";
-import { textDeltaFromPiEvent } from "@/lib/agent/sessions/text-delta-coalescer";
+import {
+  createTextDeltaCoalescer,
+  textDeltaFromPiEvent,
+} from "@/lib/agent/sessions/text-delta-coalescer";
+import { isEmptyStarterSession } from "@/lib/agent/sessions/store";
+import { beginSessionSubmit, endSessionSubmit } from "@/lib/agent/sessions/submit-guard";
 import type { Session } from "@/lib/agent/sessions/types";
 import { reducer } from "@/lib/agent/workspace/reducer";
 import type { WorkspaceState } from "@/lib/agent/workspace/types";
@@ -49,6 +64,133 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     lastHandledNavKey: "",
   };
 }
+
+function makePiEventApplierHarness(
+  initialSession: Session,
+  assistantId = "a-main",
+): { deps: PiEventApplierDeps; session: () => Session } {
+  let session = initialSession;
+  const tabsRef = { current: [session] };
+  const sync = () => {
+    tabsRef.current = [session];
+  };
+  const deps: PiEventApplierDeps = {
+    liveAssistantIdsRef: {
+      current: new Map([[initialSession.id, assistantId]]),
+    },
+    patchAssistant: (sessionId, targetAssistantId, patch) => {
+      if (sessionId !== session.id) return;
+      session = {
+        ...session,
+        messages: session.messages.map((message) =>
+          message.id === targetAssistantId ? patch(message) : message,
+        ),
+      };
+      sync();
+    },
+    tabsRef,
+    updateSession: (sessionId, patch) => {
+      if (sessionId !== session.id) return;
+      session = patch(session);
+      sync();
+    },
+  };
+  return { deps, session: () => session };
+}
+
+test("new chat url navigation replaces the focused chat with a fresh runtime", () => {
+  const oldSession = makeSession("s-old", {
+    runtimeSessionId: "rt-old",
+    piSessionId: "pi-old",
+    title: "Old debugging chat",
+    status: "running",
+    startedAt: "2026-05-28T12:00:00.000Z",
+    activeAssistantId: "a-old",
+    lastEventSeq: 12,
+    input: "draft stuck on old chat",
+  });
+  const freshSession = makeSession("s-fresh", {
+    runtimeSessionId: "rt-fresh",
+    title: "New session",
+  });
+  const state: WorkspaceState = {
+    ...makeState(oldSession),
+    selectedModel: "model-a",
+  };
+
+  const next = reducer(state, {
+    type: "urlNavRequested",
+    key: "project-a||1|",
+    project: null,
+    newSession: true,
+    paneId: "p-url-new",
+    runtimeSessionId: "rt-url-new",
+    tab: freshSession,
+  });
+
+  const pane = next.panesById.get("p-main");
+  assert.equal(pane?.sessionId, "s-fresh");
+  assert.equal(pane?.runtimeSessionId, "rt-fresh");
+  assert.equal(next.sessions.has("s-old"), false);
+  const active = next.sessions.get("s-fresh");
+  assert.equal(active?.title, "New session");
+  assert.equal(active?.piSessionId, null);
+  assert.equal(active?.status, "idle");
+  assert.equal(active?.input, "");
+  assert.equal(active?.modelId, "model-a");
+});
+
+test("empty starter reuse clears stale title and transient runtime metadata", () => {
+  const starter = makeSession("s-starter", {
+    title: "Old chat title",
+    status: "done",
+    error: "old error",
+    tokenStats: { read: 1, write: 2, current: 3 },
+    contextUsage: { tokens: 3, contextWindow: 10, percent: 30, shouldCompact: false },
+    usedSkills: [{ id: "skill-old", name: "Old skill" }],
+  });
+
+  assert.equal(isEmptyStarterSession(starter), true);
+
+  const next = reducer(makeState(starter), {
+    type: "openNewSession",
+    tab: makeSession("s-fresh"),
+    paneId: "p-new",
+    runtimeSessionId: "rt-new",
+    mode: "replace",
+  });
+
+  const active = next.sessions.get(next.panesById.get("p-main")?.sessionId ?? "");
+  assert.equal(active?.id, "s-starter");
+  assert.equal(active?.title, "New session");
+  assert.equal(active?.status, "idle");
+  assert.equal(active?.error, "");
+  assert.equal(active?.tokenStats, undefined);
+  assert.equal(active?.contextUsage, null);
+  assert.equal(active?.usedSkills, undefined);
+});
+
+test("empty starter detection rejects cleared live sessions", () => {
+  const clearedLive = makeSession("s-cleared-live", {
+    status: "running",
+    startedAt: "2026-05-28T12:00:00.000Z",
+    activeAssistantId: "a-old",
+    lastEventSeq: 9,
+    queue: [{ id: "q-old", mode: "follow_up", text: "later", sent: true }],
+  });
+
+  assert.equal(isEmptyStarterSession(clearedLive), false);
+});
+
+test("session submit guards block duplicate sends only within the same session", () => {
+  const guard = new Set<string>();
+
+  assert.equal(beginSessionSubmit(guard, "s-old"), true);
+  assert.equal(beginSessionSubmit(guard, "s-old"), false);
+  assert.equal(beginSessionSubmit(guard, "s-new"), true);
+  endSessionSubmit(guard, "s-old");
+  assert.equal(beginSessionSubmit(guard, "s-old"), true);
+});
 
 test("agent session navigation restores active SDK sessions with skills and model selection", () => {
   const state = makeState();
@@ -160,6 +302,78 @@ test("agent session merge preserves model metadata when active snapshots absorb 
   assert.equal(merged[0]?.active, true);
   assert.equal(merged[0]?.modelId, "deepseek-v4-flash");
   assert.equal(merged[0]?.title, "Live with model");
+});
+
+test("completed runtime remains running but not active after the prompt promise settles", () => {
+  const status = piStatusFromEvents({
+    running: true,
+    activePromptCount: 0,
+    modelId: "deepseek-v4-flash",
+    cwd: "/workspace",
+    piSessionId: "pi-done",
+    agentDir: "/tmp/pi",
+    eventSeq: 3,
+    lastError: null,
+    eventLog: [
+      {
+        seq: 3,
+        event: {
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "done" },
+        },
+      },
+    ],
+  });
+
+  assert.equal(status.running, true);
+  assert.equal(status.active, false);
+  assert.equal(runtimeStatusLooksActive(status), false);
+});
+
+test("runtime status stays active while a prompt is in flight", () => {
+  const status = piStatusFromEvents({
+    running: true,
+    activePromptCount: 1,
+    modelId: "deepseek-v4-flash",
+    cwd: "/workspace",
+    piSessionId: "pi-live",
+    agentDir: "/tmp/pi",
+    eventSeq: 2,
+    lastError: null,
+    eventLog: [
+      {
+        seq: 2,
+        event: {
+          type: "message_update",
+          assistantMessageEvent: { type: "reasoning_delta", delta: "thinking" },
+        },
+      },
+    ],
+  });
+
+  assert.equal(status.active, true);
+  assert.equal(runtimeStatusLooksActive(status), true);
+});
+
+test("control routing uses active turn state, not runtime process existence", () => {
+  assert.equal(
+    controlTargetHasActiveTurn({ active: true, running: true }),
+    true,
+  );
+  assert.equal(
+    controlTargetHasActiveTurn({ active: false, running: true }),
+    false,
+  );
+});
+
+test("control status returns idle when a stale control is promoted to a prompt", () => {
+  assert.equal(statusAfterControlPhase("idle", "starting"), "starting");
+  assert.equal(statusAfterControlPhase("starting", "running"), "running");
+  assert.equal(statusAfterControlPhase("running", "done"), "idle");
+  assert.equal(
+    statusAfterControlPhase("running", "done", { queuedControlAccepted: true }),
+    "running",
+  );
 });
 
 test("splitting a session is idempotent when navigating to an already open pi session", () => {
@@ -455,6 +669,52 @@ test("explicit reasoning deltas render under reasoning", () => {
   });
 });
 
+test("text delta coalescer preserves alternating text and reasoning order", () => {
+  const applied: Record<string, unknown>[] = [];
+  const coalescer = createTextDeltaCoalescer({
+    applyPiEvent: (_sessionId, _assistantId, event) => {
+      applied.push(event);
+    },
+    scheduleFrame: () => ({ cancel: () => {} }),
+  });
+
+  const event = (type: string, delta: string) => ({
+    type: "message_update",
+    assistantMessageEvent: { type, delta },
+  });
+
+  coalescer.enqueuePiEvent(
+    "s-main",
+    "a-main",
+    event("text_delta", "Visible A."),
+  );
+  coalescer.enqueuePiEvent(
+    "s-main",
+    "a-main",
+    event("reasoning_delta", "Thinking B."),
+  );
+  coalescer.enqueuePiEvent(
+    "s-main",
+    "a-main",
+    event("text_delta", "Visible C."),
+  );
+  coalescer.flushNow("s-main");
+
+  assert.deepEqual(
+    applied.map((entry) => {
+      const ame = entry.assistantMessageEvent as
+        | Record<string, unknown>
+        | undefined;
+      return { type: ame?.type, delta: ame?.delta };
+    }),
+    [
+      { type: "text_delta", delta: "Visible A." },
+      { type: "thinking_delta", delta: "Thinking B." },
+      { type: "text_delta", delta: "Visible C." },
+    ],
+  );
+});
+
 test("live pre-tool text stays visible when a tool call follows", () => {
   const textEvent = {
     type: "message_update",
@@ -517,8 +777,10 @@ test("reasoning then content then tool keeps blocks in [thinking, text, tool] or
     },
   };
 
-  const afterReasoning = applyAssistantPiEventToBlocks([], reasoningEvent) ?? [];
-  const afterText = applyAssistantPiEventToBlocks(afterReasoning, textEvent) ?? [];
+  const afterReasoning =
+    applyAssistantPiEventToBlocks([], reasoningEvent) ?? [];
+  const afterText =
+    applyAssistantPiEventToBlocks(afterReasoning, textEvent) ?? [];
   const blocks = applyAssistantPiEventToBlocks(afterText, toolEvent) ?? [];
 
   assert.equal(blocks[0]?.kind, "thinking");
@@ -526,6 +788,44 @@ test("reasoning then content then tool keeps blocks in [thinking, text, tool] or
   assert.equal(blocks[1]?.kind, "text");
   assert.equal(blocks[1]?.text, "Here is the answer.");
   assert.equal(blocks[2]?.kind, "tool");
+});
+
+test("late reasoning deltas move before visible text without splitting the answer", () => {
+  const textStart = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Spec",
+    },
+  };
+  const reasoningEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "reasoning_delta",
+      delta: "The model reasoned before answering.",
+    },
+  };
+  const textRest = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "ulative decoding optimizes inference latency.",
+    },
+  };
+
+  const afterStart = applyAssistantPiEventToBlocks([], textStart) ?? [];
+  const afterReasoning =
+    applyAssistantPiEventToBlocks(afterStart, reasoningEvent) ?? [];
+  const blocks = applyAssistantPiEventToBlocks(afterReasoning, textRest) ?? [];
+
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0]?.kind, "thinking");
+  assert.equal(blocks[0]?.text, "The model reasoned before answering.");
+  assert.equal(blocks[1]?.kind, "text");
+  assert.equal(
+    blocks[1]?.text,
+    "Speculative decoding optimizes inference latency.",
+  );
 });
 
 test("tool_execution_start does not bury visible text into thinking", () => {
@@ -582,11 +882,186 @@ test("replayed tool-use narration renders as reasoning, not visible answer text"
   const assistant = messages.find((message) => message.role === "assistant");
   assert.equal(assistant?.text, "");
   assert.equal(assistant?.blocks?.[0]?.kind, "thinking");
-  assert.match(
-    assistant?.blocks?.[0]?.text ?? "",
-    /inspect the package files/,
-  );
+  assert.match(assistant?.blocks?.[0]?.text ?? "", /inspect the package files/);
   assert.equal(assistant?.blocks?.[1]?.kind, "tool");
+});
+
+test("replay patches streamed assistant final messages instead of duplicating them", () => {
+  const { messages } = replaySessionEvents([
+    {
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "inspect the project" }],
+      },
+    },
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: "I will inspect first.",
+      },
+    },
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        toolCall: {
+          id: "call-read",
+          name: "read",
+          arguments: { path: "/workspace/package.json" },
+        },
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        stopReason: "toolUse",
+        content: [
+          { type: "text", text: "I will inspect first." },
+          {
+            type: "toolCall",
+            id: "call-read",
+            name: "read",
+            arguments: { path: "/workspace/package.json" },
+          },
+        ],
+      },
+    },
+  ]);
+
+  const assistantMessages = messages.filter(
+    (message) => message.role === "assistant",
+  );
+  assert.equal(assistantMessages.length, 1);
+  assert.equal(assistantMessages[0]?.blocks?.[0]?.kind, "thinking");
+  assert.equal(assistantMessages[0]?.blocks?.[1]?.kind, "tool");
+});
+
+test("live final assistant messages hydrate placeholders when no deltas streamed", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "define kv cache" },
+        {
+          id: "a-main",
+          role: "assistant",
+          text: "",
+          blocks: [{ kind: "text", id: "text-loading", text: "…" }],
+        },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "A KV cache stores prior attention keys and values so generation can reuse them.",
+        },
+      ],
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  assert.equal(
+    assistant?.text,
+    "A KV cache stores prior attention keys and values so generation can reuse them.",
+  );
+  assert.equal(assistant?.blocks?.[0]?.kind, "text");
+  assert.equal(
+    assistant?.blocks?.[0]?.text,
+    "A KV cache stores prior attention keys and values so generation can reuse them.",
+  );
+});
+
+test("live final assistant messages do not duplicate streamed blocks", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "explain attention" },
+        {
+          id: "a-main",
+          role: "assistant",
+          text: "",
+          blocks: [{ kind: "text", id: "text-1", text: "Already streamed." }],
+        },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Already streamed." }],
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  assert.equal(assistant?.blocks?.length, 1);
+  assert.equal(assistant?.blocks?.[0]?.kind, "text");
+  assert.equal(assistant?.blocks?.[0]?.text, "Already streamed.");
+});
+
+test("live final assistant messages reconcile partial streamed text", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "define speculative decoding" },
+        {
+          id: "a-main",
+          role: "assistant",
+          text: "",
+          blocks: [{ kind: "text", id: "text-1", text: "Spec" }],
+        },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "Speculative decoding optimizes inference latency.",
+        },
+        {
+          type: "thinking",
+          thinking:
+            "The model reasoned before answering, even if the final payload listed it second.",
+        },
+      ],
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  assert.equal(assistant?.blocks?.length, 2);
+  assert.equal(assistant?.blocks?.[0]?.kind, "thinking");
+  assert.equal(
+    assistant?.blocks?.[0]?.text,
+    "The model reasoned before answering, even if the final payload listed it second.",
+  );
+  assert.equal(assistant?.blocks?.[1]?.kind, "text");
+  assert.equal(
+    assistant?.blocks?.[1]?.text,
+    "Speculative decoding optimizes inference latency.",
+  );
 });
 
 test("skill mentions and selected skill context survive composer prompt construction", () => {

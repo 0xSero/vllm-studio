@@ -1,4 +1,3 @@
-import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import type { QueuedMessage, RuntimeLoggedEvent, SessionTab, TokenStats } from "./types";
 
 export function randomIdSegment(length: number): string {
@@ -144,16 +143,8 @@ export function messageText(
 
 export { parseAgentTurnSsePayload } from "@/lib/agent/contracts/turn";
 
-export function runtimeStatusLooksActive(status: {
-  active?: boolean;
-  running?: boolean;
-  events?: RuntimeLoggedEvent[];
-}): boolean {
-  if (status.active) return true;
-  if (!status.running) return false;
-  const lastEvent = [...(status.events ?? [])].reverse().find((entry) => entry.event);
-  if (!lastEvent) return true;
-  return !isAgentEndEvent(lastEvent.event ?? {}) && lastEvent.event?.type !== "process_exit";
+export function runtimeStatusLooksActive(status: { active?: boolean }): boolean {
+  return status.active === true;
 }
 
 export function runtimeStatusAcceptsControl(
@@ -168,11 +159,16 @@ export function runtimeStatusAcceptsControl(
 export function statusAfterControlPhase(
   current: SessionTab["status"],
   phase?: string,
+  options: { queuedControlAccepted?: boolean } = {},
 ): SessionTab["status"] {
-  // A steer/follow_up request has its own short SSE stream. Its final "done"
-  // only means the control message was accepted; the original Pi turn is still
-  // running on the owning stream. Do not mark the UI idle here.
-  if (phase === "done" || phase === "queued") return "running";
+  if (phase === "starting" || phase === "running") return phase;
+  // A true steer/follow_up request has its own short SSE stream. Its final
+  // "done" only means the control message was accepted; the original Pi turn
+  // is still running on the owning stream. If the server promoted a stale
+  // control request to a normal prompt, there is no "queued" phase and "done"
+  // really means the streamed prompt has completed.
+  if (phase === "queued") return "running";
+  if (phase === "done") return options.queuedControlAccepted ? "running" : "idle";
   return current;
 }
 

@@ -278,6 +278,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       };
       try {
         let controlError = "";
+        let queuedControlAccepted = false;
         const controller = new AbortController();
         await api.submitTurnStream(
           {
@@ -299,10 +300,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             if (controller.signal.aborted) return;
             if (payload.type === "error") controlError = payload.error;
             if (payload.type === "status") {
+              if (payload.phase === "queued") queuedControlAccepted = true;
               updateSession(sessionId, (session) => ({
                 ...session,
                 piSessionId: payload.piSessionId || session.piSessionId,
-                status: statusAfterControlPhase(session.status, payload.phase),
+                status: statusAfterControlPhase(session.status, payload.phase, {
+                  queuedControlAccepted,
+                }),
               }));
             }
             if (payload.type === "pi") {

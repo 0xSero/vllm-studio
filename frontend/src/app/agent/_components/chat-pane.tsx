@@ -71,6 +71,11 @@ import {
   visibleQueuedMessages,
 } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
+import {
+  beginSessionSubmit,
+  endSessionSubmit,
+  type SessionSubmitGuard,
+} from "@/lib/agent/sessions/submit-guard";
 import { copySessionPref, patchSessionPref } from "@/lib/agent/session/prefs";
 import { useTools } from "@/lib/agent/tools/context";
 import {
@@ -190,8 +195,8 @@ export function ChatPane({
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const composerSubmitInFlightRef = useRef(false);
-  const controlSubmitInFlightRef = useRef(false);
+  const composerSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
+  const controlSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   // Track the height we last *applied* to the composer textarea so we can
   // skip the "height: auto" reset on every keystroke. Resetting to auto
   // collapses the textarea for one paint before the new scrollHeight is
@@ -710,33 +715,31 @@ export function ChatPane({
       const text = activeTab.input.trim();
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
       if (running) {
-        if (controlSubmitInFlightRef.current) return;
         if (!text || readingAttachments) return;
         if (!modelId) {
           updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
           return;
         }
+        if (!beginSessionSubmit(controlSubmitInFlightRef.current, activeTab.id)) return;
         setMention(null);
-        controlSubmitInFlightRef.current = true;
         try {
           await queueAndSendControl("steer", text, activeTab, runtime);
         } finally {
-          controlSubmitInFlightRef.current = false;
+          endSessionSubmit(controlSubmitInFlightRef.current, activeTab.id);
         }
         return;
       }
-      if (composerSubmitInFlightRef.current) return;
       if ((!text && attachments.length === 0) || readingAttachments) return;
       if (!modelId) {
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
         return;
       }
+      if (!beginSessionSubmit(composerSubmitInFlightRef.current, activeTab.id)) return;
       setMention(null);
-      composerSubmitInFlightRef.current = true;
       try {
         await submitPrompt(text, activeTab.id);
       } finally {
-        composerSubmitInFlightRef.current = false;
+        endSessionSubmit(composerSubmitInFlightRef.current, activeTab.id);
       }
     },
     [
@@ -754,32 +757,43 @@ export function ChatPane({
   const queueMessage = useCallback(async () => {
     if (!activeTab) return;
     const text = activeTab.input.trim();
-    if (!text || !modelId) return;
+    if (!text) return;
+    if (!modelId) {
+      updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
+      return;
+    }
     // Queue follows the same contract as Steer: trust the user's
     // explicit intent and let the server route follow_up vs. fresh
     // prompt based on the live runtime state. The prompt stream can still be
     // in flight here, so follow-up controls must not share its in-flight guard.
     if (running) {
-      if (controlSubmitInFlightRef.current) return;
+      if (!beginSessionSubmit(controlSubmitInFlightRef.current, activeTab.id)) return;
       setMention(null);
-      controlSubmitInFlightRef.current = true;
       try {
         const runtime = activeTab.runtimeSessionId || runtimeSessionId;
         await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
       } finally {
-        controlSubmitInFlightRef.current = false;
+        endSessionSubmit(controlSubmitInFlightRef.current, activeTab.id);
       }
       return;
     }
-    if (composerSubmitInFlightRef.current) return;
+    if (!beginSessionSubmit(composerSubmitInFlightRef.current, activeTab.id)) return;
     setMention(null);
-    composerSubmitInFlightRef.current = true;
     try {
       await submitPrompt(text, activeTab.id);
     } finally {
-      composerSubmitInFlightRef.current = false;
+      endSessionSubmit(composerSubmitInFlightRef.current, activeTab.id);
     }
-  }, [activeTab, cwd, modelId, queueAndSendControl, running, runtimeSessionId, submitPrompt]);
+  }, [
+    activeTab,
+    cwd,
+    modelId,
+    queueAndSendControl,
+    running,
+    runtimeSessionId,
+    submitPrompt,
+    updateTab,
+  ]);
   const removeQueued = useCallback(
     (queueId: string) => {
       if (!activeTab) return;

@@ -9,10 +9,15 @@ export interface StreamUsage {
   cache_write_tokens?: number;
 }
 
+export interface ToolCallStreamOptions {
+  bufferImplicitReasoningContent?: boolean;
+}
+
 export const createToolCallStream = (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onUsage?: (usage: StreamUsage) => void,
-  onFirstToken?: () => void
+  onFirstToken?: () => void,
+  options: ToolCallStreamOptions = {}
 ): ReadableStream<Uint8Array> => {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -132,16 +137,23 @@ export const createToolCallStream = (
   type ThinkRewriter = {
     inThink: () => boolean;
     drainCarry: () => string;
+    drainPendingContent: () => string;
     rewrite: (
       deltaText: string,
-      defaultToReasoning?: boolean,
-    ) => { content: string; reasoningAppend: string; closeSeenWithoutOpen?: boolean };
+      defaultToReasoning?: boolean
+    ) => { content: string; reasoningAppend: string };
   };
 
-  const createThinkRewriter = (): ThinkRewriter => {
+  const createThinkRewriter = (
+    settings: {
+      bufferImplicitReasoningContent?: boolean;
+    } = {}
+  ): ThinkRewriter => {
     let inThink = false;
     let thinkCarry = "";
+    let pendingImplicitContent = "";
     let seenOpen = false;
+    let resolvedImplicitPrefix = false;
 
     return {
       inThink(): boolean {
@@ -152,17 +164,21 @@ export const createToolCallStream = (
         thinkCarry = "";
         return tail;
       },
+      drainPendingContent(): string {
+        const pending = pendingImplicitContent;
+        pendingImplicitContent = "";
+        return pending;
+      },
       rewrite(
         deltaText: string,
-        defaultToReasoning = false,
-      ): { content: string; reasoningAppend: string; closeSeenWithoutOpen?: boolean } {
+        defaultToReasoning = false
+      ): { content: string; reasoningAppend: string } {
         const combined = thinkCarry + (deltaText ?? "");
         const combinedLower = combined.toLowerCase();
         let carryIndex = combined.length;
         let index = 0;
         let contentOut = "";
         let reasoningOut = "";
-        let closeSeenWithoutOpen = false;
 
         while (index < carryIndex) {
           const remainingLower = combinedLower.slice(index);
@@ -170,6 +186,10 @@ export const createToolCallStream = (
           if (combined[index] === "<") {
             const thinkTag = isThinkingTag(remainingLower);
             if (thinkTag?.kind === "open") {
+              if (pendingImplicitContent) {
+                contentOut += pendingImplicitContent;
+                pendingImplicitContent = "";
+              }
               inThink = true;
               seenOpen = true;
               index += thinkTag.length;
@@ -179,9 +199,15 @@ export const createToolCallStream = (
               if (!inThink) {
                 // Close tag without an opening tag: model uses implicit
                 // thinking (e.g. DeepSeek sends `...` with no `...`).
-                // Signal to the caller that all accumulated visible content
-                // should be reclassified as reasoning.
-                closeSeenWithoutOpen = !seenOpen;
+                if (
+                  settings.bufferImplicitReasoningContent &&
+                  !seenOpen &&
+                  !resolvedImplicitPrefix
+                ) {
+                  reasoningOut += pendingImplicitContent;
+                  pendingImplicitContent = "";
+                  resolvedImplicitPrefix = true;
+                }
                 const before = contentOut.trim();
                 if (before) {
                   reasoningOut += contentOut;
@@ -201,6 +227,12 @@ export const createToolCallStream = (
           const ch = combined[index] ?? "";
           if (inThink || defaultToReasoning) {
             reasoningOut += ch;
+          } else if (
+            settings.bufferImplicitReasoningContent &&
+            !seenOpen &&
+            !resolvedImplicitPrefix
+          ) {
+            pendingImplicitContent += ch;
           } else {
             contentOut += ch;
           }
@@ -212,13 +244,14 @@ export const createToolCallStream = (
         return {
           content: contentOut,
           reasoningAppend: reasoningOut,
-          ...(closeSeenWithoutOpen ? { closeSeenWithoutOpen } : {}),
         };
       },
     };
   };
 
-  const contentThink = createThinkRewriter();
+  const contentThink = createThinkRewriter({
+    bufferImplicitReasoningContent: Boolean(options.bufferImplicitReasoningContent),
+  });
   const reasoningThink = createThinkRewriter();
 
   const enqueueLine = (
@@ -262,7 +295,19 @@ export const createToolCallStream = (
     return `data: ${JSON.stringify({ id: `chatcmpl-${randomUUID().slice(0, 8)}`, choices: [{ index: 0, delta }] })}`;
   };
 
+  const emitVisibleContent = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    content: string
+  ): void => {
+    if (!content) return;
+    visibleContentBuffer += content;
+    const cleaned = stripToolXmlDelta(content);
+    const chunk = buildFlushChunk({ content: cleaned });
+    if (chunk) enqueueLine(controller, chunk);
+  };
+
   const flushThinkCarry = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
+    emitVisibleContent(controller, contentThink.drainPendingContent());
     const tail = contentThink.drainCarry();
     if (!tail) return;
     const carryLooksLikeThink = thinkingTagPrefixIsPartial(tail.trim());
@@ -341,8 +386,8 @@ export const createToolCallStream = (
 
         const data = dataLines.join("\n").trim();
         if (data === "[DONE]") {
-          maybeInjectToolCalls(controller);
           flushThinkCarry(controller);
+          maybeInjectToolCalls(controller);
           for (const outLine of otherLines) {
             enqueueLine(controller, outLine);
           }
@@ -399,17 +444,12 @@ export const createToolCallStream = (
             let reasoning = "";
             let reasoningFromContent = "";
             if (content) {
-              visibleContentBuffer += content;
               const rewritten = contentThink.rewrite(content, false);
-
-              if (rewritten.closeSeenWithoutOpen && visibleContentBuffer) {
-                reasoning = stripToolXmlDelta(visibleContentBuffer);
-                visibleContentBuffer = "";
+              if (rewritten.content) {
+                visibleContentBuffer += rewritten.content;
               }
-
               const cleanedContent = stripToolXmlDelta(rewritten.content);
               if (cleanedContent) {
-                visibleContentBuffer += cleanedContent;
                 delta["content"] = cleanedContent;
               } else if ("content" in delta) {
                 delete delta["content"];
@@ -476,8 +516,8 @@ export const createToolCallStream = (
               flushEvent(pendingEventLines);
               pendingEventLines = [];
             }
-            maybeInjectToolCalls(controller);
             flushThinkCarry(controller);
+            maybeInjectToolCalls(controller);
             try {
               controller.close();
             } catch {}

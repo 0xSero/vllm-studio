@@ -36,5 +36,17 @@ export function pruneSessions(
 }
 
 export function isEmptyStarterSession(session: Session): boolean {
-  return !session.piSessionId && session.messages.length === 0 && !session.input.trim();
+  const hasQueuedWork = (session.queue?.length ?? 0) > 0;
+  const isLiveStatus =
+    session.status === "starting" || session.status === "running" || session.status === "loading";
+  return (
+    !session.piSessionId &&
+    session.messages.length === 0 &&
+    !session.input.trim() &&
+    !session.startedAt &&
+    !session.activeAssistantId &&
+    session.lastEventSeq === undefined &&
+    !hasQueuedWork &&
+    !isLiveStatus
+  );
 }

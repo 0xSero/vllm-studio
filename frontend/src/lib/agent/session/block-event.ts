@@ -15,14 +15,56 @@ export function appendDelta(
   delta: string,
   makeId: MakeBlockId = newId,
 ): AssistantBlock[] {
-  const last = blocks[blocks.length - 1];
-  if (last && last.kind === kind) {
-    if (last.text.startsWith(delta)) return blocks;
-    const append = delta.startsWith(last.text) ? delta.slice(last.text.length) : delta;
-    if (!append) return blocks;
-    return [...blocks.slice(0, -1), { ...last, text: last.text + append }];
+  const idx = lastBlockIndex(blocks, kind);
+  const next =
+    idx === -1
+      ? [...blocks, { kind, id: makeId(kind), text: delta }]
+      : appendToTextLikeBlock(blocks, idx, delta);
+  return normalizeReasoningBeforeVisibleText(next);
+}
+
+function lastBlockIndex(blocks: AssistantBlock[], kind: "text" | "thinking"): number {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index]?.kind === kind) return index;
   }
-  return [...blocks, { kind, id: makeId(kind), text: delta }];
+  return -1;
+}
+
+function appendToTextLikeBlock(
+  blocks: AssistantBlock[],
+  index: number,
+  delta: string,
+): AssistantBlock[] {
+  const block = blocks[index];
+  if (!block || (block.kind !== "text" && block.kind !== "thinking")) return blocks;
+  if (block.text.startsWith(delta)) return blocks;
+  const append = delta.startsWith(block.text) ? delta.slice(block.text.length) : delta;
+  if (!append) return blocks;
+  const next = blocks.slice();
+  next[index] = { ...block, text: block.text + append };
+  return next;
+}
+
+function normalizeReasoningBeforeVisibleText(blocks: AssistantBlock[]): AssistantBlock[] {
+  const firstToolIndex = blocks.findIndex((block) => block.kind === "tool");
+  const prefix = firstToolIndex === -1 ? blocks : blocks.slice(0, firstToolIndex);
+  const suffix = firstToolIndex === -1 ? [] : blocks.slice(firstToolIndex);
+  const thinking = mergeTextLikeBlocks(prefix.filter((block) => block.kind === "thinking"));
+  const text = mergeTextLikeBlocks(prefix.filter((block) => block.kind === "text"));
+  const other = prefix.filter((block) => block.kind !== "thinking" && block.kind !== "text");
+  return [...thinking, ...text, ...other, ...suffix];
+}
+
+function mergeTextLikeBlocks(blocks: AssistantBlock[]): AssistantBlock[] {
+  const [first, ...rest] = blocks;
+  if (!first || (first.kind !== "text" && first.kind !== "thinking")) return blocks;
+  return [
+    rest.reduce(
+      (merged, block) =>
+        block.kind === first.kind ? { ...merged, text: merged.text + block.text } : merged,
+      first,
+    ),
+  ];
 }
 
 export function upsertTool(

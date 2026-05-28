@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { listSessions } from "@/lib/agent/sessions-store";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
 import { parseAgentTurnRequest } from "@/lib/agent/contracts/turn";
+import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,12 +82,11 @@ export async function POST(request: NextRequest) {
         const session = resolved.session;
         const existingStatus = session.status;
         const promptAlreadyActive = existingStatus.active === true;
-        const controlTargetRunning =
-          existingStatus.active === true || existingStatus.running === true;
+        const controlTargetActive = controlTargetHasActiveTurn(existingStatus);
         const effectivePiSessionId =
           mode === "prompt"
             ? piSessionId
-            : controlTargetRunning
+            : controlTargetActive
               ? (existingStatus.piSessionId ?? piSessionId)
               : piSessionId;
         sse(
@@ -94,11 +94,10 @@ export async function POST(request: NextRequest) {
           { type: "status", phase: "starting", sessionId: resolved.sessionId, modelId, cwd },
           isOpen,
         );
-        // Control turns are keyed to the Pi process, not to this HTTP stream's
-        // ownership bit. The original prompt stream can detach while Pi keeps
-        // running; if we fall back to `prompt` in that window, steer/queue looks
-        // accepted in the UI but never reaches the active model turn.
-        const ownsPromptStream = mode === "prompt" || !controlTargetRunning;
+        // Control turns are keyed to an active Pi turn, not just to a live
+        // runtime process. A completed session can keep its runtime around for
+        // reuse; late steer/queue controls must become normal streamed prompts.
+        const ownsPromptStream = mode === "prompt" || !controlTargetActive;
         const effectiveStreamingBehavior =
           mode === "prompt" && promptAlreadyActive
             ? (streamingBehavior ?? "steer")

@@ -136,14 +136,16 @@ async function collectSseJson(stream: ReadableStream<Uint8Array>) {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
-    .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
+    .map(
+      (line) =>
+        JSON.parse(line.slice("data: ".length)) as Record<string, unknown>,
+    );
 }
 
 describe("controller route contracts", () => {
   test("stream proxy keeps content with null tool_calls as answer text", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -188,7 +190,9 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader()),
+    );
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -205,9 +209,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy keeps same-delta content visible when tool_calls are present", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -238,7 +241,9 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader()),
+    );
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -246,7 +251,148 @@ describe("controller route contracts", () => {
 
     expect(delta?.content).toBe("Let me inspect the file first.");
     expect(delta?.reasoning_content).toBeUndefined();
-    expect(delta?.tool_calls).toEqual([expect.objectContaining({ id: "call-read" })]);
+    expect(delta?.tool_calls).toEqual([
+      expect.objectContaining({ id: "call-read" }),
+    ]);
+  });
+
+  test("stream proxy splits implicit thinking close tags without duplicating answer text", async () => {
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    content:
+                      "I should inspect this first. </think>Here is the answer.",
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader()),
+    );
+    const firstEvent = events[0] as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    const delta = firstEvent.choices?.[0]?.delta;
+
+    expect(delta?.content).toBe("Here is the answer.");
+    expect(delta?.reasoning_content).toBe("I should inspect this first. ");
+    expect(String(delta?.reasoning_content)).not.toContain("</think>");
+    expect(String(delta?.reasoning_content)).not.toContain(
+      "Here is the answer.",
+    );
+  });
+
+  test("stream proxy buffers split implicit thinking until the close tag arrives", async () => {
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const content of [
+          "I should inspect ",
+          "this first. </think>",
+          "Here is the answer.",
+        ]) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content },
+                  },
+                ],
+              })}\n\n`,
+            ),
+          );
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader(), undefined, undefined, {
+        bufferImplicitReasoningContent: true,
+      }),
+    );
+    const deltas = events.map((event) => {
+      const choices = event["choices"] as
+        | Array<{ delta?: Record<string, unknown> }>
+        | undefined;
+      return choices?.[0]?.delta ?? {};
+    });
+
+    expect(deltas).toEqual([
+      {},
+      { reasoning_content: "I should inspect this first. " },
+      { content: "Here is the answer." },
+    ]);
+  });
+
+  test("stream proxy still extracts XML tool calls after stripping visible content", async () => {
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    content:
+                      '<tool_call>{"name":"read","arguments":{"path":"package.json"}}</tool_call>',
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader()),
+    );
+    const toolEvent = events.find((event) => {
+      const choices = event["choices"];
+      if (!Array.isArray(choices)) return false;
+      const firstChoice = choices[0] as
+        | { delta?: Record<string, unknown> }
+        | undefined;
+      return Array.isArray(firstChoice?.delta?.tool_calls);
+    }) as { choices?: Array<{ delta?: Record<string, unknown> }> } | undefined;
+
+    expect(toolEvent?.choices?.[0]?.delta?.tool_calls).toEqual([
+      expect.objectContaining({
+        type: "function",
+        function: expect.objectContaining({
+          name: "read",
+          arguments: JSON.stringify({ path: "package.json" }),
+        }),
+      }),
+    ]);
   });
 
   test("status route reports no active runtime on an isolated test port", async () => {

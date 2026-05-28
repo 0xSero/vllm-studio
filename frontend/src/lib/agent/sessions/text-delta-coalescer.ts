@@ -32,12 +32,12 @@ type KindBuffer = {
   delta: string;
   event: Record<string, unknown>;
   firstSeq: number;
+  kind: TextDeltaKind;
 };
 
 type SessionBuffer = {
+  entries: KindBuffer[];
   frame: FrameToken | null;
-  thinking?: KindBuffer;
-  text?: KindBuffer;
 };
 
 type DeltaEvent = {
@@ -96,18 +96,30 @@ export function createTextDeltaCoalescer({
       flushNow(sessionId);
     }
 
-    const buffer = pending.get(sessionId) ?? { frame: null };
-    const current = buffer[deltaEvent.kind];
+    const buffer = pending.get(sessionId) ?? { entries: [], frame: null };
+    const current = buffer.entries.at(-1);
     if (current) {
-      current.delta += deltaEvent.delta;
-      current.event = event;
+      if (current.kind === deltaEvent.kind) {
+        current.delta += deltaEvent.delta;
+        current.event = event;
+      } else {
+        buffer.entries.push({
+          assistantId,
+          delta: deltaEvent.delta,
+          event,
+          firstSeq: sequence,
+          kind: deltaEvent.kind,
+        });
+        sequence += 1;
+      }
     } else {
-      buffer[deltaEvent.kind] = {
+      buffer.entries.push({
         assistantId,
         delta: deltaEvent.delta,
         event,
         firstSeq: sequence,
-      };
+        kind: deltaEvent.kind,
+      });
       sequence += 1;
     }
     pending.set(sessionId, buffer);
@@ -160,17 +172,15 @@ export function textDeltaFromPiEvent(event: Record<string, unknown>): DeltaEvent
 }
 
 function orderedEntries(buffer: SessionBuffer): KindBuffer[] {
-  return [buffer.text, buffer.thinking]
-    .filter((entry): entry is KindBuffer => Boolean(entry))
-    .sort((a, b) => a.firstSeq - b.firstSeq);
+  return buffer.entries.slice().sort((a, b) => a.firstSeq - b.firstSeq);
 }
 
 function bufferAssistantId(buffer: SessionBuffer): string | undefined {
-  return buffer.text?.assistantId ?? buffer.thinking?.assistantId;
+  return buffer.entries[0]?.assistantId;
 }
 
 function eventTypeForKind(entry: KindBuffer): "text_delta" | "thinking_delta" {
-  return textDeltaFromPiEvent(entry.event)?.kind === "thinking" ? "thinking_delta" : "text_delta";
+  return entry.kind === "thinking" ? "thinking_delta" : "text_delta";
 }
 
 function syntheticDeltaEvent(
