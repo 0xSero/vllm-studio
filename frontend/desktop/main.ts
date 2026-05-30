@@ -23,6 +23,27 @@ import {
 let appState: DesktopAppState = "starting";
 let mainWindow: BrowserWindow | null = null;
 let frontendServer: ServerHandle | undefined;
+let restartingFrontend = false;
+let frontendHealthTimer: NodeJS.Timeout | undefined;
+let frontendHealthFailures = 0;
+let restartAttempts = 0;
+let lastRestartAt = 0;
+const expectedFrontendStopPids = new Set<number>();
+
+const HEALTH_CHECK_INTERVAL_MS = 5_000;
+const HEALTH_CHECK_TIMEOUT_MS = 4_000;
+const HEALTH_FAILURE_THRESHOLD = 5;
+const RESTART_BACKOFF_STEP_MS = 1_000;
+const RESTART_BACKOFF_MAX_MS = 15_000;
+const RESTART_BACKOFF_WINDOW_MS = 60_000;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Read the latest app state without control-flow narrowing so it can be
+// re-checked after an `await` (e.g. shutdown started during restart backoff).
+function isAppStopping(): boolean {
+  return appState === "stopping";
+}
 
 async function processMemorySummary(): Promise<string> {
   try {
@@ -34,8 +55,9 @@ async function processMemorySummary(): Promise<string> {
 
 async function bootstrap(): Promise<void> {
   if (!frontendServer) {
-    frontendServer = await startFrontendServer();
+    frontendServer = await startFrontendServer({ onExit: handleFrontendServerExit });
     registerNavigationPolicy(new URL(frontendServer.runtime.url).origin);
+    startFrontendHealthMonitor();
   }
   if (!mainWindow) {
     mainWindow = createMainWindow(frontendServer.runtime.url);
@@ -48,6 +70,115 @@ async function bootstrap(): Promise<void> {
   log.info(
     `Desktop ready (mode=${frontendServer.runtime.mode}, url=${frontendServer.runtime.url})`,
   );
+}
+
+function stopFrontendHealthMonitor(): void {
+  if (!frontendHealthTimer) return;
+  clearInterval(frontendHealthTimer);
+  frontendHealthTimer = undefined;
+  frontendHealthFailures = 0;
+}
+
+function startFrontendHealthMonitor(): void {
+  stopFrontendHealthMonitor();
+  frontendHealthTimer = setInterval(() => {
+    void checkFrontendHealth();
+  }, HEALTH_CHECK_INTERVAL_MS);
+}
+
+async function checkFrontendHealth(): Promise<void> {
+  if (!frontendServer || restartingFrontend || appState === "stopping") return;
+  if (frontendServer.runtime.mode !== "embedded-standalone") return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${frontendServer.runtime.url}/api/desktop-health`, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { "cache-control": "no-cache" },
+    });
+    // Any HTTP answer means the Node server is alive and serving; only a
+    // transport-level failure (process dead/hung) counts as unhealthy.
+    if (response.status > 0) {
+      frontendHealthFailures = 0;
+      return;
+    }
+    frontendHealthFailures += 1;
+  } catch {
+    frontendHealthFailures += 1;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (frontendHealthFailures < HEALTH_FAILURE_THRESHOLD || !frontendServer) return;
+  const stalledServer = frontendServer;
+  frontendHealthFailures = 0;
+  log.error(`Embedded frontend health check failed; restarting ${stalledServer.runtime.url}`);
+  const pid = stalledServer.process?.pid;
+  if (pid) {
+    expectedFrontendStopPids.add(pid);
+    setTimeout(() => expectedFrontendStopPids.delete(pid), 30_000);
+  }
+  await stopFrontendServer(stalledServer);
+  if (frontendServer === stalledServer) frontendServer = undefined;
+  await restartFrontendServer(stalledServer.runtime.port);
+}
+
+function handleFrontendServerExit(details: {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  pid?: number;
+}) {
+  if (appState === "stopping") return;
+  if (details.pid && expectedFrontendStopPids.delete(details.pid)) return;
+  if (frontendServer?.process && frontendServer.process.pid !== details.pid) return;
+
+  const previousRuntime = frontendServer?.runtime;
+  frontendServer = undefined;
+  log.error(
+    `Embedded frontend stopped unexpectedly code=${details.code ?? "null"} signal=${details.signal ?? "null"}`,
+  );
+  void restartFrontendServer(previousRuntime?.port);
+}
+
+async function restartFrontendServer(port?: number): Promise<void> {
+  if (restartingFrontend || appState === "stopping") return;
+  restartingFrontend = true;
+  appState = "starting";
+  try {
+    const now = Date.now();
+    restartAttempts = now - lastRestartAt < RESTART_BACKOFF_WINDOW_MS ? restartAttempts + 1 : 1;
+    lastRestartAt = now;
+    const backoffMs = Math.min(
+      RESTART_BACKOFF_MAX_MS,
+      (restartAttempts - 1) * RESTART_BACKOFF_STEP_MS,
+    );
+    if (backoffMs > 0) {
+      log.warn(`Embedded frontend restart backoff ${backoffMs}ms (attempt ${restartAttempts})`);
+      await delay(backoffMs);
+      if (isAppStopping()) return;
+    }
+    frontendServer = await startFrontendServer({ port, onExit: handleFrontendServerExit });
+    startFrontendHealthMonitor();
+    const nextUrl = frontendServer.runtime.url;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await mainWindow.loadURL(nextUrl);
+    } else {
+      mainWindow = createMainWindow(nextUrl);
+      mainWindow.on("closed", () => {
+        mainWindow = null;
+      });
+    }
+    appState = "ready";
+    log.info(`Embedded frontend restarted (mode=${frontendServer.runtime.mode}, url=${nextUrl})`);
+  } catch (error) {
+    log.error(
+      `Failed to restart embedded frontend: ${error instanceof Error ? error.stack : String(error)}`,
+    );
+  } finally {
+    restartingFrontend = false;
+  }
 }
 
 function registerIpcHandlers(): void {
@@ -159,6 +290,7 @@ function registerIpcHandlers(): void {
 async function shutdown(): Promise<void> {
   if (appState === "stopping") return;
   appState = "stopping";
+  stopFrontendHealthMonitor();
   killAllPtys();
   await stopFrontendServer(frontendServer);
   frontendServer = undefined;

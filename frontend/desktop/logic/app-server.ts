@@ -5,15 +5,54 @@ import { fork, type ChildProcess } from "node:child_process";
 import { DESKTOP_CONFIG, resolveStandaloneBaseDir, resolveStaticAssetsSource } from "../configs";
 import type { DesktopServerRuntime } from "../types";
 import { log } from "../helpers/logger";
-import { allocatePort } from "../helpers/ports";
+import { resolveStablePort } from "../helpers/ports";
 
 interface ServerHandle {
   runtime: DesktopServerRuntime;
   process?: ChildProcess;
 }
 
+type ServerExitDetails = {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  pid?: number;
+};
+
+type StartFrontendServerOptions = {
+  port?: number;
+  onExit?: (details: ServerExitDetails) => void;
+};
+
 function embeddedServerPidPath(): string {
   return path.join(DESKTOP_CONFIG.userDataDir, "embedded-frontend.pid");
+}
+
+function embeddedServerPortPath(): string {
+  return path.join(DESKTOP_CONFIG.userDataDir, "embedded-frontend.port");
+}
+
+/**
+ * The embedded server's origin (http://127.0.0.1:<port>) is the storage key for
+ * all renderer state (selected controller, API key, sessions). Persisting the
+ * port keeps that origin stable across launches and restarts so state survives.
+ */
+function readPersistedPort(): number | undefined {
+  try {
+    const raw = readFileSync(embeddedServerPortPath(), "utf8").trim();
+    const port = Number(raw);
+    return Number.isInteger(port) && port > 1024 && port <= 65535 ? port : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistPort(port: number): void {
+  try {
+    mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
+    writeFileSync(embeddedServerPortPath(), String(port));
+  } catch {
+    // Non-fatal: a fresh port will be chosen next launch.
+  }
 }
 
 function writeEmbeddedServerPid(pid: number | undefined): void {
@@ -88,7 +127,9 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
   throw new Error(`Timed out waiting for embedded frontend server: ${url}`);
 }
 
-export async function startFrontendServer(): Promise<ServerHandle> {
+export async function startFrontendServer(
+  options: StartFrontendServerOptions = {},
+): Promise<ServerHandle> {
   if (process.env.VLLM_STUDIO_DESKTOP_DEV_SERVER_URL) {
     const runtime: DesktopServerRuntime = {
       mode: "dev-server",
@@ -123,7 +164,8 @@ export async function startFrontendServer(): Promise<ServerHandle> {
     copyDirectory(publicDir, targetPublicDir);
   }
 
-  const port = await allocatePort();
+  const port = await resolveStablePort(options.port ?? readPersistedPort());
+  persistPort(port);
   const url = `http://127.0.0.1:${port}`;
 
   log.info(`Starting embedded frontend server from ${serverScript} on ${url}`);
@@ -131,6 +173,10 @@ export async function startFrontendServer(): Promise<ServerHandle> {
   const child = fork(serverScript, {
     cwd: serverRoot,
     stdio: "pipe",
+    // Own process group so stray SIGINT/SIGTERM delivered to Electron's group
+    // can't terminate the Next server (it catches those and exits 0). We still
+    // hold the handle and stop it explicitly via the pid.
+    detached: true,
     env: {
       ...process.env,
       NODE_ENV: "production",
@@ -169,6 +215,7 @@ export async function startFrontendServer(): Promise<ServerHandle> {
       // pid file already gone
     }
     log.warn(`Embedded frontend exited code=${code ?? "null"} signal=${signal ?? "null"}`);
+    options.onExit?.({ code, signal, pid: child.pid });
   });
 
   process.once("exit", () => {
@@ -188,9 +235,10 @@ export async function startFrontendServer(): Promise<ServerHandle> {
 }
 
 export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
-  if (!handle?.process || handle.process.killed) return;
+  if (!handle?.process) return;
 
   const child = handle.process;
+  const pid = child.pid;
   try {
     if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
       rmSync(embeddedServerPidPath(), { force: true });
@@ -202,7 +250,13 @@ export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
 
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
+      if (pid && isProcessAlive(pid)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
       resolve();
     }, 5_000);
 
