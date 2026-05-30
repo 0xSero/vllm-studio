@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import type { AppContext } from "../../types/context";
 import { badRequest, notFound } from "../../core/errors";
 import { observeControllerFunction } from "../../core/function-observability";
-import { streamAsyncStrings, buildSseHeaders } from "../../http/sse";
+import { streamAsyncStrings, buildSseHeaders, withSseHeartbeat } from "../../http/sse";
 import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
 import { Event } from "./event-manager";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
@@ -196,11 +196,15 @@ export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
   app.get("/events", async (ctx) => {
     const signal = ctx.req.raw.signal;
     const stream = streamAsyncStrings(
-      (async function* (): AsyncGenerator<string> {
-        for await (const event of context.eventManager.subscribe("default", signal)) {
-          yield event.toSse();
-        }
-      })()
+      withSseHeartbeat(
+        (async function* (): AsyncGenerator<string> {
+          for await (const event of context.eventManager.subscribe("default", signal)) {
+            yield event.toSse();
+          }
+        })(),
+        15_000,
+        signal
+      )
     );
     return new Response(stream, {
       headers: buildSseHeaders(),
