@@ -66,6 +66,25 @@ const listeners = new Set<() => void>();
 let started = false;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
+let pollFailureStreak = 0;
+let pollBackoffUntil = 0;
+
+const POLL_BASE_INTERVAL_MS = 5_000;
+const POLL_MAX_BACKOFF_MS = 30_000;
+
+function notePollOutcome(connected: boolean) {
+  if (connected) {
+    pollFailureStreak = 0;
+    pollBackoffUntil = 0;
+    return;
+  }
+  pollFailureStreak = Math.min(pollFailureStreak + 1, 6);
+  const backoff = Math.min(
+    POLL_MAX_BACKOFF_MS,
+    POLL_BASE_INTERVAL_MS * 2 ** (pollFailureStreak - 1),
+  );
+  pollBackoffUntil = Date.now() + backoff;
+}
 
 function processKey(process: ProcessInfo | null | undefined): string {
   if (!process) return "";
@@ -145,6 +164,7 @@ async function fetchStatusNow() {
   ]);
 
   const status = statusResult.status === "fulfilled" ? statusResult.value : null;
+  notePollOutcome(statusResult.status === "fulfilled");
   const compatibility =
     compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null;
   const gpus =
@@ -223,6 +243,9 @@ function start() {
     const now = Date.now();
 
     if (type === "status") {
+      // A live status event means the selected backend is reachable; clear any
+      // poll backoff so a recovered connection resumes fast polling.
+      notePollOutcome(true);
       const running = Boolean(data["running"] ?? data["process"]);
       const process = (data["process"] ?? null) as ProcessInfo | null;
       const inference_port = Number(data["inference_port"] ?? 8000);
@@ -323,9 +346,11 @@ function start() {
   // Initial fetch + polling fallback in case SSE is blocked.
   void fetchStatusNow();
   pollInterval = setInterval(() => {
-    if (Date.now() - snapshot.lastEventAt < 10_000) return;
+    const now = Date.now();
+    if (now - snapshot.lastEventAt < 10_000) return;
+    if (now < pollBackoffUntil) return;
     void fetchStatusNow();
-  }, 5000);
+  }, POLL_BASE_INTERVAL_MS);
 
   const onVisibility = () => {
     if (document.visibilityState === "visible") {

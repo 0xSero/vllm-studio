@@ -267,6 +267,10 @@ export function createApiCore(params: {
     const storedBackendUrl = backendUrlOverride?.trim() || getStoredBackendUrl();
     if (useProxy && storedBackendUrl) {
       headers["X-Backend-Url"] = storedBackendUrl;
+      // An explicitly selected controller is sticky: never let the proxy
+      // silently fall back to the default and clear the selection just because
+      // the chosen controller is momentarily unreachable.
+      headers["X-Backend-Strict"] = "1";
     }
 
     const storedKey = apiKeyOverride?.trim() || getApiKey();
