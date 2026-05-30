@@ -4,6 +4,8 @@ import { getUpstreamTimeoutMs } from "./proxy-timeouts";
 
 const OVERRIDE_ALLOWLIST_ENV_KEY = "VLLM_STUDIO_PROXY_OVERRIDE_ALLOWLIST";
 const PROXY_ACCESS_LOGS_ENABLED = process.env.VLLM_STUDIO_PROXY_ACCESS_LOGS === "true";
+const PROXY_ERROR_LOG_THROTTLE_MS = 30_000;
+const proxyErrorLogTimes = new Map<string, number>();
 
 export async function GET(
   request: NextRequest,
@@ -138,6 +140,76 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+/**
+ * Distinguishes a transiently dropped/stale connection (worth one retry with a
+ * fresh socket) from a definitive failure like a clean connection refusal or
+ * DNS error (where retrying just doubles the load on a down backend).
+ */
+function isRetriableConnectionError(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  const code = (error as { cause?: { code?: string } } | undefined)?.cause?.code;
+  if (code) {
+    return (
+      code === "ECONNRESET" ||
+      code === "EPIPE" ||
+      code === "ETIMEDOUT" ||
+      code === "UND_ERR_SOCKET" ||
+      code === "UND_ERR_CONNECT_TIMEOUT"
+    );
+  }
+  // undici sometimes surfaces a stale keep-alive socket as a bare "fetch failed"
+  // TypeError with no cause code; a single retry typically gets a fresh socket.
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return message.includes("fetch failed") || message.includes("terminated");
+}
+
+function proxyLogKey(method: string, path: string[], error: unknown): string {
+  const message = error instanceof Error ? `${error.name}:${error.message}` : String(error);
+  return `${method}:${path.join("/")}:${message.slice(0, 120)}`;
+}
+
+function shouldLogProxyError(method: string, path: string[], error: unknown): boolean {
+  const key = proxyLogKey(method, path, error);
+  const now = Date.now();
+  const previous = proxyErrorLogTimes.get(key) ?? 0;
+  if (now - previous < PROXY_ERROR_LOG_THROTTLE_MS) return false;
+  proxyErrorLogTimes.set(key, now);
+  return true;
+}
+
+function proxyResponseStream(
+  body: ReadableStream<Uint8Array>,
+  context: {
+    client: { ip: string; country: string };
+    method: string;
+    path: string[];
+  },
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (shouldLogProxyError(context.method, context.path, error)) {
+          console.warn(
+            `[PROXY STREAM CLOSED] ip=${context.client.ip} | country=${context.client.country} | method=${context.method} | path=/${context.path.join("/")} | error=${String(error)}`,
+          );
+        }
+        controller.close();
+      }
+    },
+    cancel(reason) {
+      void reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
+
 function shouldFallbackFromResponse(response: Response): boolean {
   if (response.ok) return false;
   if (response.status !== 404) return false;
@@ -154,11 +226,18 @@ async function fetchWithOptionalFallback(
     method: string;
     path: string[];
     overrideUsed: boolean;
+    strictOverride: boolean;
   },
 ): Promise<{ response: Response; usedFallback: boolean }> {
-  const canFallback = Boolean(context.overrideUsed && fallbackUrl && fallbackUrl !== primaryUrl);
+  const canFallback = Boolean(
+    context.overrideUsed && !context.strictOverride && fallbackUrl && fallbackUrl !== primaryUrl,
+  );
 
-  const fetchWithTimeout = async (url: string): Promise<Response> => {
+  // Idempotent reads may retry once on a dropped/stale connection so a single
+  // bad keep-alive socket doesn't surface to the user as a disconnect.
+  const maxConnectionAttempts = context.method === "GET" || context.method === "HEAD" ? 2 : 1;
+
+  const fetchOnce = async (url: string): Promise<Response> => {
     const controller = new AbortController();
     const timeoutMs = getUpstreamTimeoutMs(context.path);
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -167,6 +246,23 @@ async function fetchWithOptionalFallback(
     } finally {
       clearTimeout(timeoutId);
     }
+  };
+
+  const fetchWithTimeout = async (url: string): Promise<Response> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxConnectionAttempts; attempt++) {
+      try {
+        return await fetchOnce(url);
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxConnectionAttempts - 1 && isRetriableConnectionError(error)) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
   };
 
   try {
@@ -195,6 +291,7 @@ async function handleRequest(request: NextRequest, method: string, path: string[
     // Get dynamic settings
     const settings = await getApiSettings();
     const overrideHeaderUrl = normalizeBackendUrl(request.headers.get("x-backend-url"));
+    const strictOverride = request.headers.get("x-backend-strict") === "1";
     const overrideCookieUrl = normalizeBackendUrl(
       request.cookies.get("vllmstudio_backend_url")?.value ?? null,
     );
@@ -284,6 +381,7 @@ async function handleRequest(request: NextRequest, method: string, path: string[
         method,
         path,
         overrideUsed: Boolean(overrideUrl),
+        strictOverride,
       },
     );
 
@@ -292,18 +390,25 @@ async function handleRequest(request: NextRequest, method: string, path: string[
 
     if (contentType.includes("text/event-stream") && response.body) {
       const runId = response.headers.get("x-run-id");
-      return new NextResponse(response.body, {
-        status: response.status,
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": response.headers.get("cache-control") || "no-cache",
-          ...(invalidateOverride ? { "X-Backend-Override-Invalid": "1" } : {}),
-          ...(invalidateOverride
-            ? { "Set-Cookie": "vllmstudio_backend_url=; Path=/; Max-Age=0; SameSite=Lax" }
-            : {}),
-          ...(runId ? { "X-Run-Id": runId } : {}),
+      return new NextResponse(
+        proxyResponseStream(response.body, {
+          client,
+          method,
+          path,
+        }),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": response.headers.get("cache-control") || "no-cache",
+            ...(invalidateOverride ? { "X-Backend-Override-Invalid": "1" } : {}),
+            ...(invalidateOverride
+              ? { "Set-Cookie": "vllmstudio_backend_url=; Path=/; Max-Age=0; SameSite=Lax" }
+              : {}),
+            ...(runId ? { "X-Run-Id": runId } : {}),
+          },
         },
-      });
+      );
     }
 
     const data = await response.text();
@@ -319,9 +424,11 @@ async function handleRequest(request: NextRequest, method: string, path: string[
     });
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(
-      `[PROXY ERROR] ip=${client.ip} | country=${client.country} | method=${method} | path=/${path.join("/")} | duration=${duration}ms | error=${String(error)}`,
-    );
+    if (shouldLogProxyError(method, path, error)) {
+      console.error(
+        `[PROXY ERROR] ip=${client.ip} | country=${client.country} | method=${method} | path=/${path.join("/")} | duration=${duration}ms | error=${String(error)}`,
+      );
+    }
     if (isAbortError(error)) {
       return NextResponse.json({ error: "Backend request timed out" }, { status: 504 });
     }
