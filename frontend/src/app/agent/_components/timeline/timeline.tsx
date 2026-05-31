@@ -15,10 +15,10 @@ type TimelineProps = {
 };
 
 const MemoMessage = memo(
-  function MemoMessage({ message }: { message: ChatMessage }) {
-    return <MessageView message={message} />;
+  function MemoMessage({ message, live }: { message: ChatMessage; live: boolean }) {
+    return <MessageView message={message} live={live} />;
   },
-  (prev, next) => prev.message === next.message,
+  (prev, next) => prev.message === next.message && prev.live === next.live,
 );
 
 export function Timeline({
@@ -50,7 +50,7 @@ export function Timeline({
   if (emptyPrompt) {
     return (
       <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
-        <div className="mx-auto flex w-full max-w-[var(--thread-w)] flex-1">
+        <div className="agent-thread-shell mx-auto flex flex-1">
           <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
             <p className="max-w-[680px]">
               A dream is something you build for yourself.
@@ -69,7 +69,7 @@ export function Timeline({
       data-timeline-scroller
       className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
     >
-      <div data-timeline-list className="mx-auto flex w-full max-w-[var(--thread-w)] flex-col">
+      <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
         {visibleMessages.map((message, index) => {
           const isLast = index === visibleMessages.length - 1;
           const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
@@ -79,7 +79,7 @@ export function Timeline({
               key={message.id}
               className={`[overflow-anchor:none] ${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""} ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_220px]"}`}
             >
-              <MemoMessage message={message} />
+              <MemoMessage message={message} live={isLast && running} />
             </div>
           );
         })}

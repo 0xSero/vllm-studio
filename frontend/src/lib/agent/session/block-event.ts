@@ -15,7 +15,7 @@ export function appendDelta(
   delta: string,
   makeId: MakeBlockId = newId,
 ): AssistantBlock[] {
-  const idx = lastBlockIndex(blocks, kind);
+  const idx = trailingBlockIndex(blocks, kind);
   const next =
     idx === -1
       ? [...blocks, { kind, id: makeId(kind), text: delta }]
@@ -23,11 +23,9 @@ export function appendDelta(
   return normalizeReasoningBeforeVisibleText(next);
 }
 
-function lastBlockIndex(blocks: AssistantBlock[], kind: "text" | "thinking"): number {
-  for (let index = blocks.length - 1; index >= 0; index -= 1) {
-    if (blocks[index]?.kind === kind) return index;
-  }
-  return -1;
+function trailingBlockIndex(blocks: AssistantBlock[], kind: "text" | "thinking"): number {
+  const index = blocks.length - 1;
+  return blocks[index]?.kind === kind ? index : -1;
 }
 
 function appendToTextLikeBlock(
@@ -80,6 +78,57 @@ export function upsertTool(
   return next;
 }
 
+function upsertToolForActivity(
+  blocks: AssistantBlock[],
+  toolCallId: string,
+  patch: (tool: ToolBlock) => ToolBlock,
+  fallback: () => ToolBlock,
+): AssistantBlock[] {
+  const hasTool = blocks.some((block) => block.kind === "tool" && block.id === toolCallId);
+  return upsertTool(
+    hasTool ? blocks : convertTrailingTextToThinking(blocks),
+    toolCallId,
+    patch,
+    fallback,
+  );
+}
+
+function convertTrailingTextToThinking(blocks: AssistantBlock[]): AssistantBlock[] {
+  let start = blocks.length;
+  while (start > 0 && blocks[start - 1]?.kind === "text") {
+    start -= 1;
+  }
+  if (start === blocks.length) return blocks;
+
+  const next = blocks.slice();
+  for (let index = start; index < next.length; index += 1) {
+    const block = next[index];
+    if (block?.kind === "text") {
+      next[index] = { kind: "thinking", id: block.id, text: block.text };
+    }
+  }
+  return normalizeReasoningBeforeVisibleText(next);
+}
+
+// When a turn ends, no tool can still be executing. Any block left "running"
+// either completed without us seeing its tool_execution_end (e.g. the live
+// stream was cut) or belonged to an LLM call that errored before the tool ran.
+// Settle them so the UI never shows a perpetual "running" badge after the turn.
+export function finalizeRunningToolBlocks(
+  blocks: AssistantBlock[],
+  status: "done" | "error" = "done",
+): AssistantBlock[] {
+  let changed = false;
+  const next = blocks.map((block) => {
+    if (block.kind === "tool" && block.status === "running") {
+      changed = true;
+      return { ...block, status };
+    }
+    return block;
+  });
+  return changed ? next : blocks;
+}
+
 export function appendEventBlock(
   blocks: AssistantBlock[],
   text: string,
@@ -95,6 +144,18 @@ export type StreamingToolCallSnapshot = {
   name: string;
   args?: Record<string, unknown>;
 };
+
+function parseToolArgs(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value);
+  if (record) return record;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return asRecord(parsed) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function contentPartAt(
   messageLike: unknown,
@@ -141,7 +202,7 @@ export function toolCallSnapshotFromUpdate(
   if (!id) return null;
   const nameValue = part?.name ?? assistantMessageEvent.toolName;
   const name = typeof nameValue === "string" && nameValue.trim() ? nameValue.trim() : "tool";
-  const args = asRecord(part?.arguments) ?? undefined;
+  const args = parseToolArgs(part?.arguments);
   return { id, name, args };
 }
 
@@ -177,7 +238,7 @@ export function applyAssistantPiEventToBlocks(
   if (event.type === "tool_execution_start") {
     const id = String(event.toolCallId || makeId("tool"));
     const name = String(event.toolName || "tool");
-    return upsertTool(
+    return upsertToolForActivity(
       blocks,
       id,
       (existing) => existing,
@@ -220,7 +281,7 @@ function applyToolCallStart(
 ): AssistantBlock[] | null {
   const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
   if (!snapshot) return null;
-  return upsertTool(
+  return upsertToolForActivity(
     blocks,
     snapshot.id,
     (existing) => ({
@@ -244,22 +305,27 @@ function applyToolCallDelta(
   const snapshot = toolCallSnapshotFromUpdate(ame, event.message);
   const delta = toolCallDeltaFromUpdate(ame);
   if (!snapshot || (!delta && !snapshot.args)) return null;
-  return upsertTool(
+  return upsertToolForActivity(
     blocks,
     snapshot.id,
-    (existing) => ({
-      ...existing,
-      name: snapshot.name || existing.name,
-      args: snapshot.args ?? existing.args,
-      argsText: delta
+    (existing) => {
+      const argsText = delta
         ? (existing.argsText ?? "") + delta
-        : existing.argsText || stringifyToolArgs(snapshot.args),
-    }),
-    () =>
-      toolBlock(snapshot.id, snapshot.name, {
-        argsText: delta || stringifyToolArgs(snapshot.args) || "",
+        : existing.argsText || stringifyToolArgs(snapshot.args);
+      return {
+        ...existing,
+        name: snapshot.name || existing.name,
+        args: snapshot.args ?? existing.args,
+        argsText,
+      };
+    },
+    () => {
+      const argsText = delta || stringifyToolArgs(snapshot.args) || "";
+      return toolBlock(snapshot.id, snapshot.name, {
+        argsText,
         args: snapshot.args,
-      }),
+      });
+    },
   );
 }
 
@@ -272,12 +338,13 @@ function applyToolCallEnd(
   if (!toolCall) return null;
   const id = toolCall.id || makeId("tool");
   const name = toolCall.name || "tool";
-  const argsText = JSON.stringify(toolCall.arguments ?? {}, null, 2);
-  const argsObj =
-    toolCall.arguments && typeof toolCall.arguments === "object"
-      ? (toolCall.arguments as Record<string, unknown>)
-      : undefined;
-  return upsertTool(
+  const argsObj = parseToolArgs(toolCall.arguments);
+  const argsText = argsObj
+    ? JSON.stringify(argsObj, null, 2)
+    : typeof toolCall.arguments === "string" && toolCall.arguments.trim()
+      ? toolCall.arguments
+      : "{}";
+  return upsertToolForActivity(
     blocks,
     id,
     (existing) => ({

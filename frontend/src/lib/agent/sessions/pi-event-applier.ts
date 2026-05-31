@@ -4,6 +4,7 @@ import {
   asRecord,
   blocksFromMessageContent,
   blocksFromTurnSnapshots,
+  finalizeRunningToolBlocks,
   messageTextFromBlocks,
   type AssistantBlock,
   type ChatMessage,
@@ -59,11 +60,14 @@ export function applyPiEventToSession(
   // snapshots (NOT from token deltas). This owns message_start/update/end.
   if (applyAssistantSnapshotEvent(deps, sessionId, assistantId, event)) return;
 
-  // Turn finished: blocks are settled, drop the transient per-call snapshots.
+  // Turn finished: settle any still-"running" tool badges and drop the
+  // transient per-call snapshots.
   if (isAgentEndEvent(event)) {
-    deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (msg) =>
-      msg.streamCalls ? { ...msg, streamCalls: undefined } : msg,
-    );
+    deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (msg) => ({
+      ...msg,
+      blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
+      streamCalls: undefined,
+    }));
     return;
   }
 
@@ -111,9 +115,15 @@ function applyAssistantSnapshotEvent(
     ? (message.content as Array<Record<string, unknown>>)
     : [];
 
+  const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
+  const callFailed = type === "message_end" && (stopReason === "error" || stopReason === "aborted");
+
   deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (current) => {
     const streamCalls = nextStreamCalls(current.streamCalls, type, content);
-    const blocks = mergeExistingToolState(current.blocks ?? [], blocksFromTurnSnapshots(streamCalls));
+    let blocks = mergeExistingToolState(current.blocks ?? [], blocksFromTurnSnapshots(streamCalls));
+    // An LLM call that errored/aborted will never execute the tools it declared
+    // — settle them now instead of leaving a perpetual "running" badge.
+    if (callFailed) blocks = finalizeRunningToolBlocks(blocks, "error");
     return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
   });
   return true;
