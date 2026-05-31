@@ -35,11 +35,14 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
   let reasoningGroup: ThinkingBlock[] = [];
   let toolGroup: ToolBlock[] = [];
 
+  // Positional ids keep React keys stable across streaming frames: blocks only
+  // ever append (their ids are derived from call+content index), so the routed
+  // sequence is a stable growing prefix and these positional ids never churn.
   const flushReasoningSegment = () => {
     if (reasoningGroup.length === 0) return;
     activitySegments.push({
       kind: "reasoning",
-      id: `reasoning-${reasoningGroup[0]?.id ?? routed.length}`,
+      id: `reasoning-${activitySegments.length}`,
       blocks: reasoningGroup,
     });
     reasoningGroup = [];
@@ -49,7 +52,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (toolGroup.length === 0) return;
     activitySegments.push({
       kind: "tools",
-      id: `tools-${toolGroup[0]?.id ?? routed.length}`,
+      id: `tools-${activitySegments.length}`,
       blocks: toolGroup,
     });
     toolGroup = [];
@@ -61,7 +64,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (activitySegments.length === 0) return;
     routed.push({
       kind: "activity-group",
-      id: `activity-${activitySegments[0]?.id ?? routed.length}`,
+      id: `activity-${routed.length}`,
       segments: activitySegments.splice(0),
     });
   };
@@ -164,7 +167,7 @@ function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachme
   if (attachment.previewKind === "image" && attachment.previewUrl) {
     return (
       <figure
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40"
+        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
         title={title}
       >
         <img
@@ -181,7 +184,7 @@ function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachme
   if (attachment.previewKind === "video" && attachment.previewUrl) {
     return (
       <figure
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40"
+        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
         title={title}
       >
         <video src={attachment.previewUrl} className="max-h-72 w-full" controls />
@@ -194,7 +197,7 @@ function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachme
   if (attachment.previewKind === "pdf" && attachment.previewUrl) {
     return (
       <div
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40"
+        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
         title={title}
       >
         <iframe

@@ -81,6 +81,7 @@ function applyRuntimeStatusPayload(
   deps.updateSession(deps.sessionId, (session) => ({
     ...session,
     piSessionId: payload.session?.piSessionId || session.piSessionId,
+    contextUsage: payload.session?.contextUsage ?? session.contextUsage ?? null,
     status: idle ? "idle" : "running",
     activeAssistantId: idle ? undefined : session.activeAssistantId,
   }));
@@ -143,14 +144,23 @@ async function reconcileRuntimeLiveness(
 ): Promise<void> {
   const status = await deps.api.loadRuntimeStatus(deps.runtime, deps.piSessionId);
   if (isClosed()) return;
-  if (status?.active) {
+  // Inconclusive probe (network blip / proxy idle-timeout / transient 5xx):
+  // loadRuntimeStatus returns null only on error. Do NOT tear down or mark the
+  // session idle — pi is almost certainly still running. Keep the current
+  // status and let the native EventSource keep auto-reconnecting. A genuinely
+  // finished runtime is caught by the definitive `active: false` branch below
+  // and by the 5s reconcile poll.
+  if (!status) return;
+  if (status.active) {
     deps.updateSession(deps.sessionId, (session) => ({
       ...session,
       piSessionId: status.piSessionId || session.piSessionId,
+      contextUsage: status.contextUsage ?? session.contextUsage ?? null,
       status: "running",
     }));
     return;
   }
+  // Definitively idle — the runtime reported it is no longer active.
   sub.close();
   deps.flushPiEvents?.(deps.sessionId);
   deps.updateSession(deps.sessionId, (session) =>

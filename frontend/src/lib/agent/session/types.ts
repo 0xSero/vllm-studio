@@ -50,6 +50,10 @@ export type ChatMessage = {
   attachments?: ChatMessageAttachment[];
   skills?: ComposerSkillRef[];
   blocks?: AssistantBlock[];
+  // Transient streaming state: one accumulated pi content snapshot per LLM call
+  // of the in-flight turn. `blocks` are rebuilt from this each frame. Cleared
+  // when the turn ends; not meant for persistence.
+  streamCalls?: Array<Array<Record<string, unknown>>>;
   timestamp?: string;
 };
 

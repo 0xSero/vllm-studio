@@ -1,8 +1,6 @@
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { SessionId } from "./types";
 
-type TextDeltaKind = "text" | "thinking";
-
 type ApplyPiEvent = (
   sessionId: SessionId,
   assistantId: string,
@@ -27,24 +25,18 @@ export type TextDeltaCoalescer = {
   dispose: () => void;
 };
 
-type KindBuffer = {
+type PendingSnapshot = {
   assistantId: string;
-  delta: string;
   event: Record<string, unknown>;
-  firstSeq: number;
-  kind: TextDeltaKind;
-};
-
-type SessionBuffer = {
-  entries: KindBuffer[];
   frame: FrameToken | null;
 };
 
-type DeltaEvent = {
-  delta: string;
-  kind: TextDeltaKind;
-};
-
+// Coalesces assistant streaming updates to at most one render per animation
+// frame. Each pi `message_update` carries the FULL accumulated message snapshot,
+// so superseded snapshots can be dropped losslessly — we keep only the latest
+// per session and apply it on the next frame. Every non-`message_update` event
+// (call boundaries, tool execution, agent_end) is left for the caller to flush
+// the pending snapshot and apply immediately, preserving event order.
 export function createTextDeltaCoalescer({
   applyPiEvent,
   scheduleFrame = defaultScheduleFrame,
@@ -52,27 +44,20 @@ export function createTextDeltaCoalescer({
   applyPiEvent: ApplyPiEvent;
   scheduleFrame?: ScheduleFrame;
 }): TextDeltaCoalescer {
-  const pending = new Map<SessionId, SessionBuffer>();
-  let sequence = 0;
+  const pending = new Map<SessionId, PendingSnapshot>();
 
   const flushNow = (sessionId: SessionId) => {
-    const buffer = pending.get(sessionId);
-    if (!buffer) return;
-    buffer.frame?.cancel();
+    const snapshot = pending.get(sessionId);
+    if (!snapshot) return;
+    snapshot.frame?.cancel();
     pending.delete(sessionId);
-
-    for (const entry of orderedEntries(buffer)) {
-      applyPiEvent(
-        sessionId,
-        entry.assistantId,
-        syntheticDeltaEvent(entry.event, entry.delta, eventTypeForKind(entry)),
-      );
-    }
+    applyPiEvent(sessionId, snapshot.assistantId, snapshot.event);
   };
 
-  const scheduleSessionFlush = (sessionId: SessionId, buffer: SessionBuffer) => {
-    if (buffer.frame) return;
-    buffer.frame = scheduleFrame(() => flushNow(sessionId));
+  const scheduleSessionFlush = (sessionId: SessionId) => {
+    const snapshot = pending.get(sessionId);
+    if (!snapshot || snapshot.frame) return;
+    snapshot.frame = scheduleFrame(() => flushNow(sessionId));
   };
 
   const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (
@@ -81,53 +66,16 @@ export function createTextDeltaCoalescer({
     event,
     options = {},
   ) => {
-    const deltaEvent = textDeltaFromPiEvent(event);
-    if (!deltaEvent) return false;
-    traceAgentReasoning("coalescer.enqueue", {
-      sessionId,
-      assistantId,
-      kind: deltaEvent.kind,
-      delta: deltaEvent.delta,
-      event,
-    });
-
+    if (event.type !== "message_update") return false;
     const existing = pending.get(sessionId);
-    if (existing && bufferAssistantId(existing) !== assistantId) {
-      flushNow(sessionId);
-    }
-
-    const buffer = pending.get(sessionId) ?? { entries: [], frame: null };
-    const current = buffer.entries.at(-1);
-    if (current) {
-      if (current.kind === deltaEvent.kind) {
-        current.delta += deltaEvent.delta;
-        current.event = event;
-      } else {
-        buffer.entries.push({
-          assistantId,
-          delta: deltaEvent.delta,
-          event,
-          firstSeq: sequence,
-          kind: deltaEvent.kind,
-        });
-        sequence += 1;
-      }
-    } else {
-      buffer.entries.push({
-        assistantId,
-        delta: deltaEvent.delta,
-        event,
-        firstSeq: sequence,
-        kind: deltaEvent.kind,
-      });
-      sequence += 1;
-    }
-    pending.set(sessionId, buffer);
-
+    if (existing && existing.assistantId !== assistantId) flushNow(sessionId);
+    const carriedFrame = pending.get(sessionId)?.frame ?? null;
+    pending.set(sessionId, { assistantId, event, frame: carriedFrame });
+    traceAgentReasoning("coalescer.snapshot", { sessionId, assistantId, type: event.type });
     if (options.flushNow) {
       flushNow(sessionId);
     } else {
-      scheduleSessionFlush(sessionId, buffer);
+      scheduleSessionFlush(sessionId);
     }
     return true;
   };
@@ -141,66 +89,10 @@ export function createTextDeltaCoalescer({
     flushNow,
     flushAll,
     dispose: () => {
-      for (const buffer of pending.values()) buffer.frame?.cancel();
+      for (const snapshot of pending.values()) snapshot.frame?.cancel();
       pending.clear();
     },
   };
-}
-
-export function textDeltaFromPiEvent(event: Record<string, unknown>): DeltaEvent | null {
-  if (event.type !== "message_update") return null;
-  const assistantMessageEvent = asRecord(event.assistantMessageEvent);
-  const delta = assistantMessageEvent?.delta;
-  if (typeof delta !== "string" || !delta) return null;
-  if (
-    assistantMessageEvent.type === "thinking_delta" ||
-    assistantMessageEvent.type === "reasoning_delta" ||
-    assistantMessageEvent.type === "reasoning_text_delta"
-  ) {
-    return { kind: "thinking", delta };
-  }
-  if (assistantMessageEvent.type === "text_delta") {
-    traceAgentReasoning("coalescer.classify", {
-      kind: "text",
-      assistantMessageEventType: assistantMessageEvent.type,
-      contentIndex: assistantMessageEvent.contentIndex,
-      delta,
-    });
-    return { kind: "text", delta };
-  }
-  return null;
-}
-
-function orderedEntries(buffer: SessionBuffer): KindBuffer[] {
-  return buffer.entries.slice().sort((a, b) => a.firstSeq - b.firstSeq);
-}
-
-function bufferAssistantId(buffer: SessionBuffer): string | undefined {
-  return buffer.entries[0]?.assistantId;
-}
-
-function eventTypeForKind(entry: KindBuffer): "text_delta" | "thinking_delta" {
-  return entry.kind === "thinking" ? "thinking_delta" : "text_delta";
-}
-
-function syntheticDeltaEvent(
-  event: Record<string, unknown>,
-  delta: string,
-  type: "text_delta" | "thinking_delta",
-): Record<string, unknown> {
-  return {
-    ...event,
-    type: "message_update",
-    assistantMessageEvent: {
-      ...asRecord(event.assistantMessageEvent),
-      type,
-      delta,
-    },
-  };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 }
 
 function defaultScheduleFrame(callback: () => void): FrameToken {
