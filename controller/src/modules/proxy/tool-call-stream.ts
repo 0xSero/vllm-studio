@@ -13,6 +13,16 @@ export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
 
+const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"] as const;
+
+const firstReasoningDelta = (delta: Record<string, unknown>): string => {
+  for (const field of REASONING_FIELDS) {
+    const value = delta[field];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return "";
+};
+
 export const createToolCallStream = (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onUsage?: (usage: StreamUsage) => void,
@@ -81,12 +91,6 @@ export const createToolCallStream = (
     }
 
     return false;
-  };
-
-  const isThinkingTag = (suffix: string): { kind: "open" | "close"; length: number } | null => {
-    const match = getThinkingTagLength(suffix);
-    if (!match) return null;
-    return match;
   };
 
   const stripToolXmlDelta = (text: string): string => {
@@ -184,7 +188,7 @@ export const createToolCallStream = (
           const remainingLower = combinedLower.slice(index);
 
           if (combined[index] === "<") {
-            const thinkTag = isThinkingTag(remainingLower);
+            const thinkTag = getThinkingTagLength(remainingLower);
             if (thinkTag?.kind === "open") {
               if (pendingImplicitContent) {
                 contentOut += pendingImplicitContent;
@@ -267,6 +271,16 @@ export const createToolCallStream = (
       void tearDownUpstream();
     }
   };
+  // Terminate each synthesized `data:` line with a blank line so the SSE parser
+  // dispatches it as its own event; without it, an injected chunk followed by
+  // `data: [DONE]` concatenates to `{...}\n[DONE]` and fails JSON.parse.
+  const enqueueDataEvent = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    dataLine: string
+  ): void => {
+    enqueueLine(controller, dataLine);
+    enqueueLine(controller, "");
+  };
 
   const buildToolCallChunk = (toolCalls: ToolCall[]): string => {
     const payload = {
@@ -303,7 +317,7 @@ export const createToolCallStream = (
     visibleContentBuffer += content;
     const cleaned = stripToolXmlDelta(content);
     const chunk = buildFlushChunk({ content: cleaned });
-    if (chunk) enqueueLine(controller, chunk);
+    if (chunk) enqueueDataEvent(controller, chunk);
   };
 
   const flushThinkCarry = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
@@ -315,7 +329,7 @@ export const createToolCallStream = (
       contentThink.inThink() || carryLooksLikeThink
         ? buildFlushChunk({ reasoning_content: stripToolXmlDelta(tail) })
         : buildFlushChunk({ content: stripToolXmlDelta(tail) });
-    if (chunk) enqueueLine(controller, chunk);
+    if (chunk) enqueueDataEvent(controller, chunk);
   };
 
   const parseUsage = (data: Record<string, unknown>): void => {
@@ -351,7 +365,7 @@ export const createToolCallStream = (
     if (toolCallsFound || !visibleContentBuffer) return;
     const parsed = parseToolCallsFromContent(visibleContentBuffer);
     if (parsed.length > 0) {
-      enqueueLine(controller, buildToolCallChunk(parsed));
+      enqueueDataEvent(controller, buildToolCallChunk(parsed));
       toolCallsFound = true;
     }
   };
@@ -391,7 +405,7 @@ export const createToolCallStream = (
           for (const outLine of otherLines) {
             enqueueLine(controller, outLine);
           }
-          enqueueLine(controller, "data: [DONE]");
+          enqueueDataEvent(controller, "data: [DONE]");
           return;
         }
 
@@ -431,15 +445,15 @@ export const createToolCallStream = (
               rawContent,
               !hasDelta
             );
-            const reasoningRaw =
-              typeof delta["reasoning_content"] === "string"
-                ? normalizeTextDelta(
-                    reasoningHistory,
-                    `${choiceIndex}:reasoning`,
-                    String(delta["reasoning_content"]),
-                    !hasDelta
-                  )
-                : "";
+            const rawReasoning = firstReasoningDelta(delta);
+            const reasoningRaw = rawReasoning
+              ? normalizeTextDelta(
+                  reasoningHistory,
+                  `${choiceIndex}:reasoning`,
+                  rawReasoning,
+                  !hasDelta
+                )
+              : "";
             if (content || reasoningRaw) trackFirstToken();
             let reasoning = "";
             let reasoningFromContent = "";
@@ -470,16 +484,18 @@ export const createToolCallStream = (
 
             if (reasoning) {
               delta["reasoning_content"] = stripToolXmlDelta(reasoning);
-            } else if ("reasoning_content" in delta) {
+            } else if (REASONING_FIELDS.some((field) => field in delta)) {
               delete delta["reasoning_content"];
             }
+            delete delta["reasoning"];
+            delete delta["reasoning_text"];
           }
         }
 
         for (const outLine of otherLines) {
           enqueueLine(controller, outLine);
         }
-        enqueueLine(controller, `data: ${JSON.stringify(parsed)}`);
+        enqueueDataEvent(controller, `data: ${JSON.stringify(parsed)}`);
       };
 
       if (downstreamClosed) {
