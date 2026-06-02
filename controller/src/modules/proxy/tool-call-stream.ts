@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { parseToolCallsFromContent, type ToolCall } from "./tool-call-parser";
+import { REASONING_FIELDS, firstReasoningField } from "./reasoning-fields";
 
 export interface StreamUsage {
   prompt_tokens: number;
@@ -12,16 +13,6 @@ export interface StreamUsage {
 export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
-
-const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"] as const;
-
-const firstReasoningDelta = (delta: Record<string, unknown>): string => {
-  for (const field of REASONING_FIELDS) {
-    const value = delta[field];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return "";
-};
 
 export const createToolCallStream = (
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -445,7 +436,7 @@ export const createToolCallStream = (
               rawContent,
               !hasDelta
             );
-            const rawReasoning = firstReasoningDelta(delta);
+            const rawReasoning = firstReasoningField(delta);
             const reasoningRaw = rawReasoning
               ? normalizeTextDelta(
                   reasoningHistory,

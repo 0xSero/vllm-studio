@@ -10,7 +10,7 @@ import { fetchInference } from "../../services/inference/inference-client";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 import { getLlamacppConfigHelp } from "./runtimes/llamacpp-runtime";
-import { getExllamav3RuntimeInfo, getCudaInfo, getMlxRuntimeInfo } from "./runtimes/runtime-info";
+import { getCudaInfo, getMlxRuntimeInfo } from "./runtimes/runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
 import {
   getDefaultRuntimeTarget,
@@ -406,11 +406,6 @@ export const registerEngineRoutes = (app: Hono, context: AppContext): void => {
       () => context.engineService.getCurrentProcess()
     );
     return ctx.json(getMlxRuntimeInfo(context.config, current));
-  });
-
-  app.get("/runtime/exllamav3", async (ctx) => {
-    const info = getExllamav3RuntimeInfo(context.config);
-    return ctx.json(info);
   });
 
   app.get("/runtime/cuda", async (ctx) => {

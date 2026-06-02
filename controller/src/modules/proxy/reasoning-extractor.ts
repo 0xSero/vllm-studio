@@ -1,4 +1,5 @@
 import { parseToolCallsFromContent } from "./tool-call-parser";
+import { firstReasoningField } from "./reasoning-fields";
 
 const stripToolCallXmlBlocks = (text: string): string => {
   if (!text) return "";
@@ -126,8 +127,7 @@ const extractThinkBlocks = (text: string): { cleaned: string; extracted: string[
 
 export const normalizeReasoningAndContentInMessage = (message: Record<string, unknown>): void => {
   const contentRaw = typeof message["content"] === "string" ? String(message["content"]) : "";
-  const reasoningRaw =
-    typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : "";
+  const reasoningRaw = firstReasoningField(message);
 
   const contentThink = extractThinkBlocks(contentRaw);
   const reasoningThink = extractThinkBlocks(reasoningRaw);
@@ -139,7 +139,7 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
   const nextContent = contentThink.cleaned;
 
   if (nextContent !== contentRaw) message["content"] = nextContent;
-  if (nextReasoning !== reasoningRaw) message["reasoning_content"] = nextReasoning;
+  if (message["reasoning_content"] !== nextReasoning) message["reasoning_content"] = nextReasoning;
 
   const strippedContent = stripToolCallXmlBlocks(
     typeof message["content"] === "string" ? String(message["content"]) : ""
@@ -153,6 +153,8 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
   } else {
     delete message["reasoning_content"];
   }
+  delete message["reasoning"];
+  delete message["reasoning_text"];
 };
 
 export const normalizeToolCallsInMessage = (message: Record<string, unknown>): boolean => {

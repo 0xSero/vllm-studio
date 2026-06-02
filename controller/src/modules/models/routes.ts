@@ -15,6 +15,7 @@ interface OpenAIModelInfo {
   owned_by: string;
   active: boolean;
   max_model_len?: number | null;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -34,6 +35,14 @@ function isMockInferenceEnabled(): boolean {
   if (!raw) return false;
   const normalized = String(raw).trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function recipeMetadata(recipe: Recipe): Record<string, unknown> | undefined {
+  const metadata = recipe.extra_args?.["metadata"];
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  return metadata as Record<string, unknown>;
 }
 
 export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
@@ -79,6 +88,7 @@ export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
         }
       }
       const modelId = recipe.served_model_name ?? recipe.id;
+      const metadata = recipeMetadata(recipe);
       models.push({
         id: modelId,
         object: "model",
@@ -86,6 +96,7 @@ export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
         owned_by: "vllm-studio",
         active: isActive,
         max_model_len: maxModelLength,
+        ...(metadata ? { metadata } : {}),
       });
     }
 

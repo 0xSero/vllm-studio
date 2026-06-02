@@ -38,7 +38,7 @@ export const createApp = (context: AppContext): Hono => {
   );
 
   app.use("*", async (ctx, next) => {
-    const skip = new Set(["/metrics", "/events", "/status", "/api/docs", "/api/spec"]);
+    const skip = new Set(["/health", "/metrics", "/events", "/status", "/api/docs", "/api/spec"]);
     if (!skip.has(ctx.req.path)) {
       context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
     }
@@ -55,6 +55,8 @@ export const createApp = (context: AppContext): Hono => {
   registerStudioRoutes(app, context);
   registerAudioRoutes(app, context);
   registerAllProxyRoutes(app, context);
+
+  app.get("/health", (ctx) => ctx.json({ status: "ok" }));
 
   app.all("/controllers/route/*", async (ctx) => {
     const target = ctx.req.query("target") || ctx.req.header("x-vllm-target-controller") || "";

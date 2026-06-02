@@ -58,8 +58,17 @@ export const createProcessManager = (
         continue;
       }
       let modelPath = extractFlag(proc.args, "--model") || extractFlag(proc.args, "--model-path");
-      if (!modelPath && (backend === "llamacpp" || backend === "exllamav3")) {
+      if (!modelPath && backend === "llamacpp") {
         modelPath = extractFlag(proc.args, "-m");
+      }
+      if (!modelPath && backend === "sglang") {
+        const launchServerIndex = proc.args.findIndex(
+          (argument) => argument === "sglang.launch_server"
+        );
+        const candidate = launchServerIndex >= 0 ? proc.args[launchServerIndex + 1] : undefined;
+        if (candidate && !candidate.startsWith("-")) {
+          modelPath = candidate;
+        }
       }
       const servedModelName =
         extractFlag(proc.args, "--served-model-name") ||

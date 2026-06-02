@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseJsonWithRepair } from "@earendil-works/pi-ai";
 
 export interface ToolCall {
   index: number;
@@ -7,12 +8,13 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-export const createToolCallId = (): string =>
-  `call_${randomUUID().replace(/-/g, "").slice(0, 9)}`;
+export const createToolCallId = (): string => `call_${randomUUID().replace(/-/g, "").slice(0, 9)}`;
 
-const safeJsonParse = (value: string): unknown | null => {
+const parseJsonCandidate = (value: string): unknown | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
   try {
-    return JSON.parse(value);
+    return parseJsonWithRepair(trimmed);
   } catch {
     return null;
   }
@@ -45,7 +47,7 @@ const parseParameterBlocks = (block: string): Record<string, unknown> | null => 
     const rawValue = String(match[2] ?? "").trim();
     const parsed =
       rawValue && (rawValue.startsWith("{") || rawValue.startsWith("["))
-        ? safeJsonParse(rawValue)
+        ? parseJsonCandidate(rawValue)
         : null;
     args[name] = parsed ?? rawValue;
   }
@@ -141,7 +143,7 @@ export const parseToolCallsFromContent = (content: string): ToolCall[] => {
     const argsMatch = block.match(/<arguments>([\s\S]*?)<\/arguments>/i);
     let args: unknown = argsMatch ? String(argsMatch[1] ?? "").trim() : null;
     if (typeof args === "string" && args) {
-      const parsed = safeJsonParse(args);
+      const parsed = parseJsonCandidate(args);
       args = parsed ?? args;
     } else {
       args = parseParameterBlocks(block);
@@ -149,7 +151,7 @@ export const parseToolCallsFromContent = (content: string): ToolCall[] => {
 
     if (!toolName) {
       const jsonCandidate = block.match(/\{[\s\S]*\}/);
-      const parsed = jsonCandidate ? safeJsonParse(jsonCandidate[0]) : null;
+      const parsed = jsonCandidate ? parseJsonCandidate(jsonCandidate[0]) : null;
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         const name = String((parsed as Record<string, unknown>)["name"] ?? "").trim();
         const argumentsValue = (parsed as Record<string, unknown>)["arguments"];
@@ -170,7 +172,7 @@ export const parseToolCallsFromContent = (content: string): ToolCall[] => {
       const name = String(match[1] ?? "").trim();
       const argsStart = (match.index ?? 0) + match[0].length;
       const argsRaw = extractBalancedValue(content.slice(argsStart), 0) ?? "";
-      const parsedArguments = argsRaw ? (safeJsonParse(argsRaw) ?? argsRaw) : {};
+      const parsedArguments = argsRaw ? (parseJsonCandidate(argsRaw) ?? argsRaw) : {};
       if (name) {
         toolCalls.push(buildToolCall(name, parsedArguments, toolCalls.length));
       }

@@ -144,8 +144,9 @@ async function collectSseJson(stream: ReadableStream<Uint8Array>) {
 
 describe("controller route contracts", () => {
   test("stream proxy keeps content with null tool_calls as answer text", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -209,8 +210,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy keeps same-delta content visible when tool_calls are present", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -257,8 +259,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy splits implicit thinking close tags without duplicating answer text", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -299,8 +302,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy buffers split implicit thinking until the close tag arrives", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -346,9 +350,65 @@ describe("controller route contracts", () => {
     ]);
   });
 
+  test("stream proxy normalizes openai-compatible reasoning aliases", async () => {
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    reasoning: "I should inspect this first.",
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    const events = await collectSseJson(
+      createToolCallStream(upstream.getReader()),
+    );
+    const firstEvent = events[0] as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    const delta = firstEvent.choices?.[0]?.delta;
+
+    expect(delta?.reasoning_content).toBe("I should inspect this first.");
+    expect(delta?.reasoning).toBeUndefined();
+  });
+
+  test("message normalizer maps reasoning aliases to reasoning_content", async () => {
+    const { normalizeReasoningAndContentInMessage } = await import(
+      "../../../controller/src/modules/proxy/reasoning-extractor"
+    );
+    const message: Record<string, unknown> = {
+      role: "assistant",
+      content: "pong",
+      reasoning: "The answer should be pong.",
+    };
+
+    normalizeReasoningAndContentInMessage(message);
+
+    expect(message["content"]).toBe("pong");
+    expect(message["reasoning_content"]).toBe("The answer should be pong.");
+    expect(message["reasoning"]).toBeUndefined();
+  });
+
   test("stream proxy still extracts XML tool calls after stripping visible content", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -393,6 +453,22 @@ describe("controller route contracts", () => {
         }),
       }),
     ]);
+  });
+
+  test("tool XML parser repairs malformed JSON arguments through pi-ai", async () => {
+    const { parseToolCallsFromContent } = await import(
+      "../../../controller/src/modules/proxy/tool-call-parser"
+    );
+
+    const [call] = parseToolCallsFromContent(
+      `<tool_call><function=write_file><arguments>{"content":"hello
+world"}</arguments></tool_call>`,
+    );
+
+    expect(call?.function.name).toBe("write_file");
+    expect(JSON.parse(call?.function.arguments ?? "{}")).toEqual({
+      content: "hello\nworld",
+    });
   });
 
   test("status route reports no active runtime on an isolated test port", async () => {
@@ -2046,22 +2122,6 @@ describe("controller route contracts", () => {
       mlxBody.python_path === null || typeof mlxBody.python_path === "string",
     ).toBe(true);
 
-    const exllamav3Response = await app.request("/runtime/exllamav3");
-    const exllamav3Body = await exllamav3Response.json();
-    expect(exllamav3Response.status).toBe(200);
-    expect(exllamav3Body).toMatchObject({
-      installed: expect.any(Boolean),
-      upgrade_command_available: expect.any(Boolean),
-    });
-    expect(
-      exllamav3Body.version === null ||
-        typeof exllamav3Body.version === "string",
-    ).toBe(true);
-    expect(
-      exllamav3Body.binary_path === null ||
-        typeof exllamav3Body.binary_path === "string",
-    ).toBe(true);
-
     const cudaResponse = await app.request("/runtime/cuda");
     const cudaBody = await cudaResponse.json();
     expect(cudaResponse.status).toBe(200);
@@ -2119,12 +2179,6 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "GET",
           path: "/runtime/mlx",
-          status: 200,
-          success: 1,
-        }),
-        expect.objectContaining({
-          method: "GET",
-          path: "/runtime/exllamav3",
           status: 200,
           success: 1,
         }),

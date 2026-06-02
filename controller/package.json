@@ -16,6 +16,7 @@
     "check:fix": "knip --fix"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.75.5",
     "@hono/swagger-ui": "^0.5.3",
     "dotenv": "16.6.1",
     "hono": "4.6.12",

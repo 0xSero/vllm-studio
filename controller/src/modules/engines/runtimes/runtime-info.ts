@@ -96,7 +96,6 @@ const computeSystemRuntimeInfo = async (
       sglang: sglangInfo,
       llamacpp: llamaInfo,
       mlx: mlxInfo,
-      exllamav3: getExllamav3RuntimeInfo(config),
     },
   };
 };
@@ -264,31 +263,6 @@ const parseLlamaVersion = (output: string): string | null => {
   if (match) return match[1]?.trim() ?? null;
   const fallback = output.split("\n")[0]?.trim();
   return fallback || null;
-};
-
-const resolveExllamav3Binary = (config: Config): string | null => {
-  const template = config.exllamav3_command?.trim();
-  if (!template) return null;
-  const parsed = splitCommand(template);
-  const executable = parsed[0];
-  if (!executable) return null;
-  return resolveBinary(executable) ?? (existsSync(executable) ? resolve(executable) : null);
-};
-
-export const getExllamav3RuntimeInfo = (config: Config): RuntimeBackendInfo => {
-  const binary = resolveExllamav3Binary(config);
-  if (!binary)
-    return { installed: false, version: null, binary_path: null, upgrade_command_available: false };
-  const versionResult = runCommand(binary, ["--version"]);
-  let version = parseLlamaVersion(versionResult.stdout) ?? parseLlamaVersion(versionResult.stderr);
-  let installed = versionResult.status === 0;
-  if (!installed) {
-    const helpResult = runCommand(binary, ["--help"]);
-    installed = helpResult.status === 0;
-    version =
-      version ?? parseLlamaVersion(helpResult.stdout) ?? parseLlamaVersion(helpResult.stderr);
-  }
-  return { installed, version, binary_path: binary, upgrade_command_available: false };
 };
 
 export const getLlamacppRuntimeInfo = (config: Config): RuntimeBackendInfo => {
