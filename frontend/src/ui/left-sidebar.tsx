@@ -253,13 +253,13 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Search sessions (⌘K)"
                 >
                   <SearchIcon className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="flex-1 truncate text-left text-[13px] font-normal">Search</span>
-                  <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-(--dim)/50 bg-transparent rounded border border-(--border)/30">
+                  <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal">Search</span>
+                  <kbd className="px-1.5 py-0.5 text-[length:var(--fs-xs)] font-mono text-(--dim)/50 bg-transparent rounded border border-(--border)/30">
                     ⌘K
                   </kbd>
                 </button>
 
-                <div className="mb-0.5 mt-3 px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-(--dim)/60">
+                <div className="mb-0.5 mt-3 px-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--dim)/60">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -284,7 +284,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   }`}
                 >
                   <Settings className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="whitespace-nowrap text-[13px] font-normal">Settings</span>
+                  <span className="whitespace-nowrap text-[length:var(--fs-base)] font-normal">Settings</span>
                 </Link>
               </div>
             </>
@@ -295,7 +295,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
       <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
-          <span className="truncate text-[13px] font-semibold tracking-tight text-(--fg)">
+          <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
             Status
           </span>
         </Link>
@@ -361,7 +361,7 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-          <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-(--dim)">
+          <div className="mb-2 px-2 text-[length:var(--fs-xs)] font-semibold uppercase tracking-[0.18em] text-(--dim)">
             Navigation
           </div>
           {tabs.map((tab) => (
@@ -445,7 +445,7 @@ function NavItemDesktop({
     >
       <Icon className="w-[15px] h-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
       <span
-        className={`text-[13px] font-normal whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[length:var(--fs-base)] font-normal whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >

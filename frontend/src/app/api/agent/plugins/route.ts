@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { discoverPlugins } from "@/lib/agent/plugin-discovery";
+import { discoverPluginsAsync } from "@/lib/agent/plugins";
 import { buildPluginsResponse } from "@/lib/agent/plugin-response";
 import {
   addCodexMarketplace,
@@ -13,8 +14,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const includeDisabled = request.nextUrl.searchParams.get("includeDisabled") === "1";
+  // Hybrid discovery: disk asset rows + best-effort live Codex app-server
+  // catalog overlay. Degrades to disk-only if the app-server is unreachable.
+  const plugins = await discoverPluginsAsync();
   return NextResponse.json({
-    ...buildPluginsResponse(discoverPlugins(), { includeDisabled }),
+    ...buildPluginsResponse(plugins, { includeDisabled }),
     marketplaces: readCodexMarketplaces(),
   });
 }

@@ -53,7 +53,7 @@ export function LogsSessionsSidebar({
           <div className="text-sm font-medium text-(--fg) truncate">
             {session.model || session.id}
           </div>
-          <div className="text-[11px] text-(--dim) mt-1">{formatDateTime(session.created_at)}</div>
+          <div className="text-[length:var(--fs-sm)] text-(--dim) mt-1">{formatDateTime(session.created_at)}</div>
           {session.backend && (
             <StatusPill tone="info" variant="badge" className="mt-1.5">
               {session.backend}
@@ -104,7 +104,7 @@ export function LogsSessionsSidebar({
           {renderFilter()}
         </div>
         <div className="flex-1 overflow-y-auto">{renderSessions()}</div>
-        <div className="p-3 border-t border-(--border) text-[11px] text-(--dim)">
+        <div className="p-3 border-t border-(--border) text-[length:var(--fs-sm)] text-(--dim)">
           {sessions.length} session{sessions.length !== 1 ? "s" : ""}
         </div>
       </div>
@@ -126,7 +126,7 @@ export function LogsSessionsSidebar({
           {renderFilter()}
         </div>
         <div className="flex-1 overflow-y-auto">{renderSessions()}</div>
-        <div className="p-3 border-t border-(--border) text-[11px] text-(--dim)">
+        <div className="p-3 border-t border-(--border) text-[length:var(--fs-sm)] text-(--dim)">
           {sessions.length} session{sessions.length !== 1 ? "s" : ""}
         </div>
       </div>

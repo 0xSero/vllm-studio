@@ -101,7 +101,7 @@ export const ModelRow = memo(function ModelRow({
           </Button>
         </div>
         {view.variantLabel && (
-          <div className="text-[11px] text-(--dim) mt-1 pl-7">{view.variantLabel}</div>
+          <div className="text-[length:var(--fs-sm)] text-(--dim) mt-1 pl-7">{view.variantLabel}</div>
         )}
       </TCell>
       <TCell className="px-4 py-3">

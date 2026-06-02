@@ -154,7 +154,7 @@ export function ApiConnectionSection({
         }
       >
         {entries.length === 0 ? (
-          <div className="px-4 py-3.5 text-[12px] text-(--dim)">
+          <div className="px-4 py-3.5 text-[length:var(--fs-md)] text-(--dim)">
             No controllers yet. Add one below.
           </div>
         ) : (

@@ -155,11 +155,11 @@ export default function AgentSessionsPage() {
       <div className="mx-auto max-w-[1280px] px-6 py-8">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
-            <div className="text-[10px] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
+            <div className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
               Agent
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sessions</h1>
-            <p className="mt-1 text-[13px] text-(--dim)">
+            <p className="mt-1 text-[length:var(--fs-base)] text-(--dim)">
               Every conversation with the agent across every project. Search, filter, and jump into
               any one of them.
             </p>
@@ -175,7 +175,7 @@ export default function AgentSessionsPage() {
             <button
               type="button"
               onClick={() => void reload()}
-              className="inline-flex h-8 items-center gap-2 rounded-md bg-(--surface) px-3 text-[12px] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
+              className="inline-flex h-8 items-center gap-2 rounded-md bg-(--surface) px-3 text-[length:var(--fs-md)] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
               title="Refresh"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -191,9 +191,9 @@ export default function AgentSessionsPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search by prompt, project, model…"
-              className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-(--dim)"
+              className="flex-1 bg-transparent text-[length:var(--fs-base)] outline-none placeholder:text-(--dim)"
             />
-            <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5 text-[10px] text-(--dim)">
+            <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-xs)] text-(--dim)">
               ⌘K
             </kbd>
           </div>
@@ -217,8 +217,8 @@ export default function AgentSessionsPage() {
         </div>
 
         <div className="mt-4 overflow-hidden rounded-lg bg-(--surface)">
-          <table className="w-full text-left text-[13px]">
-            <thead className="bg-(--surface-2) text-[10px] uppercase tracking-[0.14em] text-(--dim)">
+          <table className="w-full text-left text-[length:var(--fs-base)]">
+            <thead className="bg-(--surface-2) text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--dim)">
               <tr>
                 <th className="w-10 px-3 py-2"></th>
                 <th className="px-3 py-2">Title</th>
@@ -251,13 +251,13 @@ export default function AgentSessionsPage() {
             <tbody>
               {sessions === null ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-[12px] text-(--dim)">
+                  <td colSpan={6} className="px-3 py-8 text-center text-[length:var(--fs-md)] text-(--dim)">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-[12px] text-(--dim)">
+                  <td colSpan={6} className="px-3 py-10 text-center text-[length:var(--fs-md)] text-(--dim)">
                     No sessions match these filters.
                   </td>
                 </tr>
@@ -291,7 +291,7 @@ export default function AgentSessionsPage() {
                           {label}
                         </Link>
                         {running ? (
-                          <span className="ml-2 text-[10px] text-(--dim)">{status}</span>
+                          <span className="ml-2 text-[length:var(--fs-xs)] text-(--dim)">{status}</span>
                         ) : null}
                       </td>
                       <td className="px-3 py-2 text-(--dim)">
@@ -300,7 +300,7 @@ export default function AgentSessionsPage() {
                           {session.projectName}
                         </span>
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11.5px] text-(--dim)">
+                      <td className="px-3 py-2 font-mono text-[length:var(--fs-sm)] text-(--dim)">
                         {session.modelId ?? "—"}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-(--dim)">
@@ -334,11 +334,11 @@ function SummaryChip({
 }) {
   return (
     <div
-      className={`flex h-9 items-center gap-2 rounded-md px-3 text-[12px] ${
+      className={`flex h-9 items-center gap-2 rounded-md px-3 text-[length:var(--fs-md)] ${
         accent ? "bg-(--hl2)/15 text-(--fg)" : "bg-(--surface) text-(--dim)"
       }`}
     >
-      <span className="uppercase tracking-[var(--section-tracking)] text-[10px]">{label}</span>
+      <span className="uppercase tracking-[var(--section-tracking)] text-[length:var(--fs-xs)]">{label}</span>
       <span className="font-mono tabular-nums text-(--fg)">{value}</span>
     </div>
   );
@@ -362,7 +362,7 @@ function FilterPills<T extends string>({
             key={option.id}
             type="button"
             onClick={() => onChange(option.id)}
-            className={`h-7 rounded px-3 text-[12px] transition-colors ${
+            className={`h-7 rounded px-3 text-[length:var(--fs-md)] transition-colors ${
               active ? "bg-(--bg) text-(--fg) shadow-sm" : "text-(--dim) hover:text-(--fg)"
             }`}
           >
@@ -384,12 +384,12 @@ function ProjectSelect({
   options: Array<{ id: string; name: string }>;
 }) {
   return (
-    <label className="flex h-9 items-center gap-2 rounded-md bg-(--surface) px-3 text-[12px] text-(--dim)">
+    <label className="flex h-9 items-center gap-2 rounded-md bg-(--surface) px-3 text-[length:var(--fs-md)] text-(--dim)">
       <Folder className="h-3.5 w-3.5" />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="bg-transparent text-[12.5px] text-(--fg) outline-none"
+        className="bg-transparent text-[length:var(--fs-md)] text-(--fg) outline-none"
       >
         {options.map((option) => (
           <option key={option.id} value={option.id}>

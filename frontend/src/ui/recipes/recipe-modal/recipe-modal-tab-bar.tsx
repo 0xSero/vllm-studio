@@ -21,13 +21,13 @@ export function RecipeModalTabBar({
   onSelectTab: (tab: RecipeModalTabId) => void;
 }) {
   return (
-    <div className="relative flex min-h-9 shrink-0 items-center gap-1 border-b border-(--ui-border) px-1.5 py-1 text-[11px]">
+    <div className="relative flex min-h-9 shrink-0 items-center gap-1 border-b border-(--ui-border) px-1.5 py-1 text-[length:var(--fs-sm)]">
       <Tabs
         variant="pill"
         items={tabDefinitions}
         activeTab={activeTab}
         onSelectTab={onSelectTab}
-        className="min-w-0 flex-1 text-[11px] [&_button]:h-7 [&_button]:rounded-md [&_button]:px-2 [&_button]:py-0 [&_button]:text-[11px]"
+        className="min-w-0 flex-1 text-[length:var(--fs-sm)] [&_button]:h-7 [&_button]:rounded-md [&_button]:px-2 [&_button]:py-0 [&_button]:text-[length:var(--fs-sm)]"
       />
     </div>
   );

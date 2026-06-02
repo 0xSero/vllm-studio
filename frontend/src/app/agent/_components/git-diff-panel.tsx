@@ -130,7 +130,7 @@ function GitWorkflowBar({
   if (!payload?.isRepo) return null;
   const dirty = (payload.status?.length ?? 0) > 0;
   return (
-    <div className="grid gap-2 border-b border-(--border) bg-(--surface)/35 p-2 text-[11px] text-(--dim)">
+    <div className="grid gap-2 border-b border-(--border) bg-(--surface)/35 p-2 text-[length:var(--fs-sm)] text-(--dim)">
       <div className="flex flex-wrap items-center gap-2">
         <RefSelect
           refs={payload.refs ?? []}
@@ -292,7 +292,7 @@ function EmptyDiffPanel({ loading, status }: { loading: boolean; status: string[
     <div className="p-4 text-xs text-(--dim)">
       {loading ? "Loading diff…" : "No unstaged tracked-file changes."}
       {status.length > 0 ? (
-        <pre className="mt-3 overflow-auto rounded border border-(--border) bg-(--surface) p-2 font-mono text-[11px] text-(--fg)">
+        <pre className="mt-3 overflow-auto rounded border border-(--border) bg-(--surface) p-2 font-mono text-[length:var(--fs-sm)] text-(--fg)">
           {status.join("\n")}
         </pre>
       ) : null}
@@ -310,7 +310,7 @@ function DiffFileList({
   onViewMode: (mode: "unified" | "side-by-side" | "stacked") => void;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[11px] leading-5">
+    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[length:var(--fs-sm)] leading-5">
       <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--bg)/95 py-1">
         <DiffModeButton active={viewMode === "unified"} onClick={() => onViewMode("unified")}>
           Unified
@@ -337,7 +337,7 @@ function DiffFileList({
               title={file.path}
             >
               <span className="min-w-0 flex-1 truncate">{file.path}</span>
-              <span className="shrink-0 font-mono text-[10px]">
+              <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
                 <span className="text-emerald-400">+{file.additions}</span>{" "}
                 <span className="text-red-400">-{file.deletions}</span>
               </span>
@@ -369,7 +369,7 @@ function DiffModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`h-6 rounded px-2 text-[10px] ${
+      className={`h-6 rounded px-2 text-[length:var(--fs-xs)] ${
         active ? "bg-(--surface) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
       }`}
     >
@@ -421,7 +421,7 @@ function StackedDiff({ file }: { file: DiffFile }) {
   return (
     <div className="grid gap-2 p-2">
       <div className="rounded border border-red-500/20">
-        <div className="border-b border-red-500/20 px-2 py-1 text-[10px] uppercase tracking-wide text-red-300">
+        <div className="border-b border-red-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-red-300">
           Before
         </div>
         {oldLines.map((line, index) => (
@@ -429,7 +429,7 @@ function StackedDiff({ file }: { file: DiffFile }) {
         ))}
       </div>
       <div className="rounded border border-emerald-500/20">
-        <div className="border-b border-emerald-500/20 px-2 py-1 text-[10px] uppercase tracking-wide text-emerald-300">
+        <div className="border-b border-emerald-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-emerald-300">
           After
         </div>
         {newLines.map((line, index) => (

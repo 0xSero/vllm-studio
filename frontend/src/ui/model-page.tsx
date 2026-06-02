@@ -31,9 +31,9 @@ export function ModelSection({
     <section className="min-w-0">
       <div className="flex min-h-9 items-end justify-between gap-4 border-b border-(--ui-border)/75 pb-2">
         <div className="min-w-0">
-          <h3 className="text-[12px] font-medium text-(--ui-fg)">{title}</h3>
+          <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">{title}</h3>
           {description ? (
-            <p className="mt-0.5 text-[11px] text-(--ui-muted)">{description}</p>
+            <p className="mt-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
@@ -56,11 +56,11 @@ export function ModelRow({
     <div className="group px-1 py-2.5 transition-colors hover:bg-(--ui-hover)/35">
       <div className="grid min-h-7 grid-cols-1 gap-2 md:grid-cols-[minmax(150px,0.44fr)_minmax(0,1fr)] md:items-center md:gap-5">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-medium text-(--ui-fg)" title={label}>
+          <div className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)" title={label}>
             {label}
           </div>
           {description ? (
-            <div className="mt-0.5 truncate text-[11px] text-(--ui-muted)" title={description}>
+            <div className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)" title={description}>
               {description}
             </div>
           ) : null}
@@ -90,7 +90,7 @@ export function ModelValue({
   return (
     <div
       className={cx(
-        "truncate text-[12px]",
+        "truncate text-[length:var(--fs-md)]",
         mono ? "font-mono" : "",
         dim ? "text-(--ui-muted)" : "text-(--ui-fg)",
       )}
@@ -109,7 +109,7 @@ export function ModelStatus({
   children: ReactNode;
 }) {
   return (
-    <StatusPill tone={tone} variant="dot" className="text-[10px]">
+    <StatusPill tone={tone} variant="dot" className="text-[length:var(--fs-xs)]">
       {children}
     </StatusPill>
   );
@@ -143,7 +143,7 @@ export function ModelButton({
       disabled={disabled}
       title={title}
       className={cx(
-        "inline-flex h-6 items-center justify-center gap-1.5 rounded-md px-1.5 text-[11px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex h-6 items-center justify-center gap-1.5 rounded-md px-1.5 text-[length:var(--fs-sm)] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
         classes,
       )}
     >
@@ -172,7 +172,7 @@ export function ModelInput({
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
       className={cx(
-        "h-7 w-full rounded-md border border-transparent bg-(--ui-surface) px-2.5 text-[12px] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/65 focus:bg-(--ui-bg) focus:ring-1 focus:ring-(--ui-info)/60",
+        "h-7 w-full rounded-md border border-transparent bg-(--ui-surface) px-2.5 text-[length:var(--fs-md)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/65 focus:bg-(--ui-bg) focus:ring-1 focus:ring-(--ui-info)/60",
         className,
       )}
     />

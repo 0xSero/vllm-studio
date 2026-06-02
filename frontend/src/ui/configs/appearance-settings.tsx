@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "lucide-react";
 import { useAppStore } from "@/store";
 import {
   FONT_FAMILY_OPTIONS,
@@ -11,13 +11,31 @@ import {
   type ThemeMeta,
   type ThemeTokens,
 } from "@/lib/themes";
-import { applyTokensToDocument } from "@/lib/theme/runtime";
+import { applyTokensToDocument, applyUiControl } from "@/lib/theme/runtime";
+import {
+  ColorField,
+  ListGroup,
+  ListRow,
+  SegmentedControl,
+  type SegmentedItem,
+  Slider,
+} from "@/ui";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
 const CUSTOM_THEME_TOKEN_KEY = "vllm-studio.customThemeTokens";
+const LIGHT_THEME_ID = "omlx-light";
+const DARK_THEME_ID = "omlx-dark";
+
+type ThemeMode = "light" | "dark" | "system";
+
+const MODE_ITEMS: SegmentedItem<ThemeMode>[] = [
+  { id: "light", label: "Light", icon: <Sun className="h-3.5 w-3.5" /> },
+  { id: "dark", label: "Dark", icon: <Moon className="h-3.5 w-3.5" /> },
+  { id: "system", label: "System", icon: <Laptop className="h-3.5 w-3.5" /> },
+];
 
 function readCustomTokens(): ThemeTokens | null {
   if (typeof window === "undefined") return null;
@@ -45,18 +63,33 @@ function matchesQuery(theme: ThemeMeta, query: string): boolean {
   );
 }
 
-/* Convert any CSS color to 6-digit hex for the native color input */
-function toHex6(value: string): string {
-  const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) return "#000000";
-  ctx.fillStyle = value;
-  const computed = ctx.fillStyle;
-  return computed.startsWith("#") && computed.length === 7 ? computed : computed;
+function isLightTheme(theme: ThemeMeta): boolean {
+  const bg = theme.tokens.bg;
+  const hslLightness = /hsl\([^,]+,[^,]+,\s*([\d.]+)%/i.exec(bg);
+  if (hslLightness) return Number(hslLightness[1]) > 50;
+  if (typeof document !== "undefined") {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = bg;
+      const hex = ctx.fillStyle as string;
+      const n = Number.parseInt(hex.slice(1), 16);
+      if (Number.isFinite(n)) {
+        const r = (n >> 16) & 255;
+        const g = (n >> 8) & 255;
+        const b = n & 255;
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+      }
+    }
+  }
+  return false;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Swatches                                                          */
-/* ------------------------------------------------------------------ */
+function readVar(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
   return (
@@ -64,73 +97,10 @@ function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
       {theme.swatches.map((color, i) => (
         <span
           key={i}
-          className="h-3 w-3 rounded-sm border border-(--border)"
+          className="h-3.5 w-3.5 rounded-[var(--rad-2xs)] border border-(--ui-border)"
           style={{ backgroundColor: color }}
         />
       ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Live color picker row                                             */
-/* ------------------------------------------------------------------ */
-
-function TokenColorRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [text, setText] = useState(value);
-  const [hex, setHex] = useState(() => toHex6(value));
-
-  // Sync local edit state when the incoming value changes (render-phase
-  // adjustment — the React-sanctioned alternative to a syncing effect).
-  const [prevValue, setPrevValue] = useState(value);
-  if (value !== prevValue) {
-    setPrevValue(value);
-    setText(value);
-    setHex(toHex6(value));
-  }
-
-  const handleText = (v: string) => {
-    setText(v);
-    onChange(v);
-    try {
-      setHex(toHex6(v));
-    } catch {
-      /* ignore invalid */
-    }
-  };
-
-  const handleHex = (v: string) => {
-    setHex(v);
-    setText(v);
-    onChange(v);
-  };
-
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-1.5">
-      <span className="font-mono text-[11px] text-(--dim)">--{label}</span>
-      <div className="flex items-center gap-2">
-        <div className="relative h-6 w-16 overflow-hidden rounded border border-(--border)">
-          <input
-            type="color"
-            value={hex}
-            onChange={(e) => handleHex(e.target.value)}
-            className="absolute -top-2 -left-2 h-12 w-20 cursor-pointer border-0 p-0"
-          />
-        </div>
-        <input
-          value={text}
-          onChange={(e) => handleText(e.target.value)}
-          className="h-6 w-36 rounded border border-(--border) bg-transparent px-2 text-right text-[11px] font-mono text-(--fg) outline-none focus:border-(--accent)/30"
-        />
-      </div>
     </div>
   );
 }
@@ -150,16 +120,24 @@ export function AppearanceSettings() {
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(["Classic"]));
 
-  const sizeMap: Record<string, number> = {
-    sm: 14,
-    md: 16,
-    lg: 17,
-    xl: 18,
-    "2xl": 20,
-  };
+  const sizeMap: Record<string, number> = { sm: 14, md: 16, lg: 17, xl: 18, "2xl": 20 };
   const [uiFontSize, setUiFontSize] = useState(sizeMap[fontSizeId] ?? 16);
 
+  // Master scale knobs — drive the canonical CSS vars the whole UI derives from.
+  const [uiScale, setUiScale] = useState(() => readVar("--ui-scale", 1));
+  const [radiusBase, setRadiusBase] = useState(() => readVar("--radius-base", 8));
+  const setScale = (value: number) => {
+    setUiScale(value);
+    applyUiControl("--ui-scale", String(value));
+  };
+  const setRadius = (value: number) => {
+    setRadiusBase(value);
+    applyUiControl("--radius-base", `${value}px`);
+  };
+
   const currentTheme = THEME_BY_ID.get(themeId) ?? THEMES[0];
+
+  const [mode, setMode] = useState<ThemeMode>(() => (isLightTheme(currentTheme) ? "light" : "dark"));
 
   const groups = useMemo(() => {
     const map = new Map<string, ThemeMeta[]>();
@@ -190,22 +168,16 @@ export function AppearanceSettings() {
     setFontSizeId(closest as typeof fontSizeId);
   };
 
-  const fontFamily =
-    FONT_FAMILY_OPTIONS.find((f) => f.id === fontFamilyId) ?? FONT_FAMILY_OPTIONS[0];
-
-  /* ---------------------------------------------------------------- */
-  /*  Live custom token editor                                         */
-  /* ---------------------------------------------------------------- */
+  /* ---- live custom token editor (reuses the existing apply pipeline) ---- */
 
   const baseTokens = currentTheme.tokens;
   const [customTokens, setCustomTokens] = useState<ThemeTokens>(
     () => readCustomTokens() ?? baseTokens,
   );
-  const [showCustom, setShowCustom] = useState(false);
   const [isCustomActive, setIsCustomActive] = useState(false);
 
-  // Reset custom token edits when the active theme changes (render-phase
-  // adjustment — the React-sanctioned alternative to a syncing effect).
+  // Reset edits when the active theme changes (render-phase sync — the
+  // React-sanctioned alternative to a syncing effect).
   const [prevThemeId, setPrevThemeId] = useState(themeId);
   if (themeId !== prevThemeId) {
     setPrevThemeId(themeId);
@@ -230,13 +202,30 @@ export function AppearanceSettings() {
     setIsCustomActive(false);
   };
 
-  const tokenKeys: Array<keyof ThemeTokens> = [
-    "bg",
-    "fg",
+  const applyMode = (next: ThemeMode) => {
+    setMode(next);
+    if (next === "light") setThemeId(LIGHT_THEME_ID);
+    else if (next === "dark") setThemeId(DARK_THEME_ID);
+    else {
+      const prefersDark =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setThemeId(prefersDark ? DARK_THEME_ID : LIGHT_THEME_ID);
+    }
+    setIsCustomActive(false);
+  };
+
+  const editorTokens: Array<{ key: keyof ThemeTokens; label: string; description?: string }> = [
+    { key: "accent", label: "Accent", description: "Buttons, links, highlights" },
+    { key: "bg", label: "Background" },
+    { key: "fg", label: "Foreground", description: "Primary text" },
+    { key: "surface", label: "Surface", description: "Cards & panels" },
+  ];
+
+  const advancedTokens: Array<keyof ThemeTokens> = [
     "dim",
     "border",
-    "surface",
-    "accent",
     "hl1",
     "hl2",
     "hl3",
@@ -244,194 +233,239 @@ export function AppearanceSettings() {
   ];
 
   /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
-  /* ---------------------------------------------------------------- */
 
   return (
-    <div className="mx-auto max-w-[640px] space-y-0">
-      {/* Search */}
-      <div className="flex items-center gap-2 px-4 py-3">
-        <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search themes"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--fg) placeholder:text-(--dim)/50 outline-none"
-        />
-        {query ? (
-          <button onClick={() => setQuery("")} className="shrink-0 text-(--dim) hover:text-(--fg)">
-            <X className="h-3 w-3" />
-          </button>
-        ) : null}
-      </div>
-
-      <div className="h-px bg-(--border)" />
-
-      {/* Active theme */}
-      <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-        <div className="min-w-0">
-          <div className="text-[13px] text-(--fg)">
-            {isCustomActive ? `${currentTheme.name} (edited)` : currentTheme.name}
-          </div>
-          <div className="text-[11px] text-(--dim)">
-            {isCustomActive ? "Live custom tokens active" : currentTheme.description}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ThemeSwatches theme={currentTheme} />
-          <span className="inline-flex items-center gap-1 text-[11px] text-(--hl2)">
-            <Check className="h-3 w-3" />
-            active
-          </span>
-        </div>
-      </div>
-
-      <div className="h-px bg-(--border)" />
-
-      {/* Theme groups */}
-      {groups.length === 0 ? (
-        <div className="px-4 py-3 text-[13px] text-(--dim)">No themes match your search.</div>
-      ) : (
-        groups.map(([group, themes]) => {
-          const expanded = expandedGroups.has(group);
-          return (
-            <div key={group}>
-              <button
-                type="button"
-                onClick={() => toggleGroup(group)}
-                className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-(--hover)"
-              >
-                <span className="text-[12px] font-medium text-(--fg)">{group}</span>
-                <span className="flex items-center gap-1.5 text-[11px] text-(--dim)">
-                  {themes.length}
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
-                  />
-                </span>
-              </button>
-              {expanded
-                ? themes.map((theme) => {
-                    const active = theme.id === themeId;
-                    return (
-                      <button
-                        key={theme.id}
-                        type="button"
-                        onClick={() => {
-                          setThemeId(theme.id);
-                          setIsCustomActive(false);
-                        }}
-                        className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left transition-colors ${active ? "bg-(--hover)" : "hover:bg-(--hover)"}`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-[13px] text-(--fg)">{theme.name}</div>
-                          <div className="truncate text-[11px] text-(--dim)">
-                            {theme.description}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <ThemeSwatches theme={theme} />
-                          {active && !isCustomActive ? (
-                            <Check className="h-3.5 w-3.5 text-(--hl2)" />
-                          ) : null}
-                        </div>
-                      </button>
-                    );
-                  })
-                : null}
-              <div className="h-px bg-(--border)" />
-            </div>
-          );
-        })
-      )}
-
-      <div className="h-px bg-(--border)" />
-
-      {/* Font family */}
-      <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-        <span className="text-[13px] text-(--fg)">Font family</span>
-        <div className="relative">
-          <select
-            value={fontFamilyId}
-            onChange={(e) => setFontFamilyId(e.target.value as FontFamilyId)}
-            className="h-7 appearance-none rounded-md border border-(--border) bg-(--surface) pl-7 pr-6 text-[12px] text-(--fg) outline-none focus:border-(--accent)/30"
-          >
-            {FONT_FAMILY_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-(--dim)">
-            Aa
-          </span>
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-(--dim)" />
-        </div>
-      </div>
-
-      <div className="h-px bg-(--border)" />
-
-      {/* Font size */}
-      <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-        <div>
-          <div className="text-[13px] text-(--fg)">UI font size</div>
-          <div className="text-[11px] text-(--dim)">Base size for the vLLM Studio UI</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={10}
-            max={24}
-            value={uiFontSize}
-            onChange={(e) => handleFontSizeChange(Number(e.target.value))}
-            className="h-7 w-16 rounded-md border border-(--border) bg-transparent px-2 text-right text-[12px] text-(--fg) outline-none focus:border-(--accent)/30"
-          />
-          <span className="text-[11px] text-(--dim)">px</span>
-        </div>
-      </div>
-
-      <div className="h-px bg-(--border)" />
-
-      {/* Custom tokens — live color editor */}
-      <button
-        type="button"
-        onClick={() => setShowCustom((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-(--hover)"
+    <div className="space-y-1">
+      {/* Theme + mode */}
+      <ListGroup
+        title="Theme"
+        description="Use light, dark, or match your system."
+        actions={<SegmentedControl items={MODE_ITEMS} value={mode} onChange={applyMode} size="sm" />}
       >
-        <div>
-          <div className="text-[13px] text-(--fg)">Custom tokens</div>
-          <div className="text-[11px] text-(--dim)">
-            Edit colours live — changes apply immediately
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {isCustomActive ? <span className="text-[10px] text-(--hl2)">edited</span> : null}
-          <ChevronDown
-            className={`h-3.5 w-3.5 text-(--dim) transition-transform ${showCustom ? "" : "-rotate-90"}`}
-          />
-        </div>
-      </button>
+        <ListRow
+          label="Active theme"
+          description={isCustomActive ? "Live custom tokens active" : currentTheme.description}
+          control={
+            <div className="flex items-center gap-2.5">
+              <span className="text-[length:var(--fs-md)] text-(--ui-fg)">
+                {currentTheme.name}
+                {isCustomActive ? " · edited" : ""}
+              </span>
+              <ThemeSwatches theme={currentTheme} />
+              <span className="inline-flex items-center gap-1 text-[length:var(--fs-sm)] text-(--ui-success)">
+                <Check className="h-3 w-3" />
+                active
+              </span>
+            </div>
+          }
+        />
+      </ListGroup>
 
-      {showCustom ? (
-        <div className="pb-2">
-          {tokenKeys.map((key) => (
-            <TokenColorRow
-              key={key}
-              label={key}
-              value={customTokens[key]}
-              onChange={(v) => patchToken(key, v)}
-            />
-          ))}
-          <div className="flex items-center justify-end gap-2 px-4 pt-2">
+      {/* Theme editor — color fields */}
+      <ListGroup
+        title="Theme editor"
+        actions={
+          isCustomActive ? (
             <button
               type="button"
               onClick={resetTokens}
-              className="h-7 rounded-md px-2.5 text-[11px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg)"
             >
-              Reset to theme
+              <RotateCcw className="h-3 w-3" />
+              Reset
             </button>
+          ) : undefined
+        }
+      >
+        {editorTokens.map((row) => (
+          <ListRow
+            key={row.key}
+            label={row.label}
+            description={row.description}
+            control={
+              <ColorField value={customTokens[row.key]} onChange={(v) => patchToken(row.key, v)} />
+            }
+          />
+        ))}
+      </ListGroup>
+
+      {/* Advanced tokens */}
+      <ListGroup title="Advanced tokens" collapsible defaultOpen={false}>
+        {advancedTokens.map((key) => (
+          <ListRow
+            key={key}
+            label={`--${key}`}
+            control={<ColorField value={customTokens[key]} onChange={(v) => patchToken(key, v)} />}
+          />
+        ))}
+      </ListGroup>
+
+      {/* Typography */}
+      <ListGroup title="Typography">
+        <ListRow
+          label="Font family"
+          control={
+            <div className="relative w-full max-w-[184px]">
+              <select
+                value={fontFamilyId}
+                onChange={(e) => setFontFamilyId(e.target.value as FontFamilyId)}
+                className="h-7 w-full appearance-none rounded-md border border-(--ui-border) bg-(--ui-bg) pl-7 pr-7 text-[length:var(--fs-md)] text-(--ui-fg) outline-none focus:border-(--ui-accent)/40"
+              >
+                {FONT_FAMILY_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+                Aa
+              </span>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-(--ui-muted)" />
+            </div>
+          }
+        />
+        <ListRow
+          label="UI font size"
+          description="Base size for the vLLM Studio UI"
+          control={
+            <div className="flex w-full items-center gap-3">
+              <Slider
+                value={uiFontSize}
+                min={12}
+                max={20}
+                onChange={handleFontSizeChange}
+                aria-label="UI font size"
+              />
+              <span className="w-9 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
+                {uiFontSize}px
+              </span>
+            </div>
+          }
+        />
+      </ListGroup>
+
+      {/* Sizing & shape — master scales that resize the whole UI uniformly */}
+      <ListGroup
+        title="Sizing & shape"
+        description="Master scales — each resizes the entire UI uniformly."
+      >
+        <ListRow
+          label="UI scale"
+          description="Scales every text size at once"
+          control={
+            <div className="flex w-full items-center gap-3">
+              <Slider
+                value={uiScale}
+                min={0.8}
+                max={1.3}
+                step={0.05}
+                onChange={setScale}
+                aria-label="UI scale"
+              />
+              <span className="w-10 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
+                {Math.round(uiScale * 100)}%
+              </span>
+            </div>
+          }
+        />
+        <ListRow
+          label="Corner radius"
+          description="Roundness of cards, buttons, inputs"
+          control={
+            <div className="flex w-full items-center gap-3">
+              <Slider
+                value={radiusBase}
+                min={0}
+                max={16}
+                step={1}
+                onChange={setRadius}
+                aria-label="Corner radius"
+              />
+              <span className="w-10 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
+                {radiusBase}px
+              </span>
+            </div>
+          }
+        />
+      </ListGroup>
+
+      {/* Theme library */}
+      <ListGroup title="Theme library" collapsible defaultOpen={false}>
+        <div>
+          <div className="flex items-center gap-2 px-3.5 py-2.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-(--ui-muted)" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search themes"
+              className="min-w-0 flex-1 bg-transparent text-[length:var(--fs-base)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="shrink-0 text-(--ui-muted) hover:text-(--ui-fg)"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : null}
           </div>
+          {groups.length === 0 ? (
+            <div className="px-3.5 py-2.5 text-[length:var(--fs-base)] text-(--ui-muted)">
+              No themes match your search.
+            </div>
+          ) : (
+            groups.map(([group, themes]) => {
+              const expanded = expandedGroups.has(group);
+              return (
+                <div key={group} className="border-t border-(--ui-separator)">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group)}
+                    className="flex w-full items-center justify-between px-3.5 py-2 text-left hover:bg-(--ui-hover)"
+                  >
+                    <span className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">{group}</span>
+                    <span className="flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
+                      {themes.length}
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
+                      />
+                    </span>
+                  </button>
+                  {expanded
+                    ? themes.map((theme) => {
+                        const active = theme.id === themeId;
+                        return (
+                          <button
+                            key={theme.id}
+                            type="button"
+                            onClick={() => setThemeId(theme.id)}
+                            className={`flex w-full items-center justify-between gap-4 px-3.5 py-2 text-left transition-colors ${
+                              active ? "bg-(--ui-hover)" : "hover:bg-(--ui-hover)"
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[length:var(--fs-base)] text-(--ui-fg)">{theme.name}</div>
+                              <div className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
+                                {theme.description}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <ThemeSwatches theme={theme} />
+                              {active && !isCustomActive ? (
+                                <Check className="h-3.5 w-3.5 text-(--ui-success)" />
+                              ) : null}
+                            </div>
+                          </button>
+                        );
+                      })
+                    : null}
+                </div>
+              );
+            })
+          )}
         </div>
-      ) : null}
+      </ListGroup>
     </div>
   );
 }

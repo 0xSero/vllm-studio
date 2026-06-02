@@ -69,10 +69,14 @@ export function StatusSection({
   }, 0);
   const fallbackPowerLimit = gpus.reduce((sum, g) => sum + (g.power_limit || 0), 0);
 
-  const totalPower = firstPositive(metrics?.current_power_watts, fallbackTotalPower);
-  const totalMemUsed = firstPositive(metrics?.vram_used_gb, fallbackTotalMemUsed);
-  const vramCapacity = firstPositive(metrics?.vram_capacity_gb, fallbackMemCapacity);
-  const powerLimit = firstPositive(metrics?.power_limit_watts, fallbackPowerLimit);
+  // Prefer the live per-GPU sums (the /gpus snapshot is always fresh) over the
+  // metrics snapshot, which can lag or carry a stale idle reading (e.g. VRAM
+  // showing 0.1G while a model is resident). Metrics stay as the fallback when
+  // no GPU data is available so the top strip always agrees with the GPU rows.
+  const totalPower = firstPositive(fallbackTotalPower, metrics?.current_power_watts);
+  const totalMemUsed = firstPositive(fallbackTotalMemUsed, metrics?.vram_used_gb);
+  const vramCapacity = firstPositive(fallbackMemCapacity, metrics?.vram_capacity_gb);
+  const powerLimit = firstPositive(fallbackPowerLimit, metrics?.power_limit_watts);
 
   const peakGenTps = firstPositive(
     metrics?.session_peak_generation_tps,
@@ -165,7 +169,7 @@ export function StatusSection({
   );
 
   const statusLine = (
-    <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.04em]">
+    <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)] tracking-[0.04em]">
       <StatusDot running={isRunning} loading={isStatusLoading} />
       <span className="inline-block w-[5.75rem] font-medium uppercase tracking-[0.14em] text-(--dim)">
         {isRunning ? "Active" : "Standby"}
@@ -174,7 +178,7 @@ export function StatusSection({
       {backend && <Tag>{backend}</Tag>}
       {displayPlatformKind && <Tag>{displayPlatformKind}</Tag>}
       {displayPort && (
-        <span className="font-mono text-[10px] tabular-nums text-(--dim)/70">:{displayPort}</span>
+        <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">:{displayPort}</span>
       )}
     </div>
   );
@@ -185,7 +189,7 @@ export function StatusSection({
         <div className="min-w-0 flex-1">
           {statusLine}
           <h1
-            className="mt-1.5 truncate text-[22px] font-semibold leading-tight tracking-[-0.01em] text-(--fg)"
+            className="mt-1.5 truncate text-[length:var(--fs-3xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg)"
             title={modelName || ""}
           >
             {modelName}
@@ -221,7 +225,7 @@ export function StatusSection({
         <CompactMetric label="Power" value={ratioMetric(totalPower, powerLimit, "W")} />
       </dl>
 
-      <dl className="mt-3 grid gap-2 font-mono text-[10.5px] text-(--dim) sm:grid-cols-4">
+      <dl className="mt-3 grid gap-2 font-mono text-[length:var(--fs-xs)] text-(--dim) sm:grid-cols-4">
         <RuntimeMetric label="total tokens" value={tokenTotalMetric(metrics)} />
         <RuntimeMetric label="prompt tokens" value={tokenMetric(metrics?.prompt_tokens_total)} />
         <RuntimeMetric
@@ -445,10 +449,10 @@ function TrendPanel({
   return (
     <div className="min-w-0">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-(--dim)/75">
+        <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--dim)/75">
           {label}
         </span>
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-(--dim)/45">
+        <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] text-(--dim)/45">
           {meta}
         </span>
       </div>
@@ -549,7 +553,7 @@ function MetricColumn({
 
   return (
     <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 sm:pr-4 sm:pl-5 last:border-r-0 [container-type:inline-size]">
-      <div className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+      <div className="truncate text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
         {label}
       </div>
       <div className="mt-2 flex min-w-0 items-baseline gap-1.5 font-mono tabular-nums">
@@ -559,10 +563,10 @@ function MetricColumn({
         >
           {displayValue}
         </span>
-        {value ? <span className="shrink-0 text-[11px] text-(--dim)">{unit}</span> : null}
+        {value ? <span className="shrink-0 text-[length:var(--fs-sm)] text-(--dim)">{unit}</span> : null}
       </div>
       {detail ? (
-        <div className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] tabular-nums text-(--dim)">
+        <div className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)">
           <span className="truncate">{detail}</span>
           {detailTitle ? (
             <Info
@@ -583,7 +587,7 @@ function CompactMetric({ label, value }: { label: string; value: string | null }
 
   return (
     <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-1.5 pl-2 font-mono tabular-nums first:pl-0 sm:pr-3 sm:pl-4 last:border-r-0 [container-type:inline-size]">
-      <div className="truncate text-[9px] uppercase tracking-[0.1em] text-(--dim)">{label}</div>
+      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-[0.1em] text-(--dim)">{label}</div>
       <div
         className={`mt-3 overflow-hidden whitespace-nowrap leading-none text-(--fg)/90 ${compactMetricSizeClass(displayValue)}`}
         title={displayValue}
@@ -622,20 +626,20 @@ function HeroStat({
   return (
     <div className="min-w-0 border-t border-(--border)/40 pt-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+        <span className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
           {label}
         </span>
         {detail ? (
-          <span className="font-mono text-[10.5px] tabular-nums text-(--dim)">{detail}</span>
+          <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)">{detail}</span>
         ) : null}
       </div>
       <div className="mt-1.5 flex items-baseline gap-2">
         <span
-          className={`font-mono text-[34px] font-medium leading-none tabular-nums ${idle ? "text-(--dim)/60" : "text-(--fg)"}`}
+          className={`font-mono text-[length:var(--fs-display)] font-medium leading-none tabular-nums ${idle ? "text-(--dim)/60" : "text-(--fg)"}`}
         >
           {idle ? "0" : value}
         </span>
-        {!idle ? <span className="font-mono text-[11px] text-(--dim)">{unit}</span> : null}
+        {!idle ? <span className="font-mono text-[length:var(--fs-sm)] text-(--dim)">{unit}</span> : null}
       </div>
     </div>
   );
@@ -656,7 +660,7 @@ function Pair({ value, unit }: { value: string | null; unit: string }) {
 function Inline({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-(--dim)/70">
+      <span className="text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.14em] text-(--dim)/70">
         {label}
       </span>
       <span className="inline-flex items-baseline gap-1">{children}</span>
@@ -677,7 +681,7 @@ function Tag({ tone, children }: { tone?: "err"; children: React.ReactNode }) {
     tone === "err" ? "border-(--err)/60 text-(--err)" : "border-(--border)/70 text-(--dim)";
   return (
     <span
-      className={`border px-1.5 py-[1px] font-mono text-[9px] uppercase tracking-[0.14em] ${cls}`}
+      className={`border px-1.5 py-[1px] font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] ${cls}`}
     >
       {children}
     </span>
@@ -699,7 +703,7 @@ function ActionBtn({
     <button
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className={`h-7 rounded-[3px] border px-2.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${danger ? "border-(--err)/40 text-(--err) hover:bg-(--err)/10" : "border-(--border)/70 text-(--dim) hover:border-(--border) hover:bg-(--fg)/5 hover:text-(--fg)"}`}
+      className={`h-7 rounded-[var(--rad-2xs)] border px-2.5 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${danger ? "border-(--err)/40 text-(--err) hover:bg-(--err)/10" : "border-(--border)/70 text-(--dim) hover:border-(--border) hover:bg-(--fg)/5 hover:text-(--fg)"}`}
     >
       {label}
     </button>
@@ -757,12 +761,12 @@ function ModelsDropdown({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="h-7 rounded-[3px] border border-(--border)/70 px-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-(--fg) hover:border-(--border) hover:bg-(--fg)/5"
+        className="h-7 rounded-[var(--rad-2xs)] border border-(--border)/70 px-2.5 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--fg) hover:border-(--border) hover:bg-(--fg)/5"
       >
         Models ▾
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-[22rem] rounded-[4px] border border-(--border) bg-(--surface) shadow-lg">
+        <div className="absolute right-0 z-30 mt-1 w-[22rem] rounded-[var(--rad-xs)] border border-(--border) bg-(--surface) shadow-lg">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-(--border)">
             <input
               autoFocus
@@ -778,7 +782,7 @@ function ModelsDropdown({
                   setOpen(false);
                   onNewRecipe();
                 }}
-                className="border-l border-(--border) px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
+                className="border-l border-(--border) px-2.5 py-1.5 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
               >
                 + new
               </button>
@@ -786,7 +790,7 @@ function ModelsDropdown({
           </div>
           <div className="max-h-[18rem] overflow-auto">
             {visible.length === 0 && (
-              <div className="px-2.5 py-2 font-mono text-[10.5px] text-(--dim)">
+              <div className="px-2.5 py-2 font-mono text-[length:var(--fs-xs)] text-(--dim)">
                 No models found.
               </div>
             )}
@@ -811,7 +815,7 @@ function ModelsDropdown({
                     {r.name}
                   </span>
                   {running && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-(--dim)">
+                  <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)">
                     tp{r.tp || r.tensor_parallel_size}
                   </span>
                 </button>
@@ -824,7 +828,7 @@ function ModelsDropdown({
                 setOpen(false);
                 onViewAll();
               }}
-              className="block w-full border-t border-(--border) px-2.5 py-1.5 text-left font-mono text-[10px] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
+              className="block w-full border-t border-(--border) px-2.5 py-1.5 text-left font-mono text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
             >
               {filter
                 ? `${filtered.length - visible.length} more →`

@@ -1,7 +1,15 @@
 "use client";
 
 import { Info, Server } from "lucide-react";
-import type { ModelInfo, RecipeEditor } from "@/lib/types";
+import { FormField, FormSection, Input, SegmentedControl, Select, type SegmentedItem } from "@/ui";
+import type { Backend, ModelInfo, RecipeEditor } from "@/lib/types";
+
+const BACKENDS: SegmentedItem<Backend>[] = [
+  { id: "vllm", label: "vLLM" },
+  { id: "sglang", label: "SGLang" },
+  { id: "llamacpp", label: "llama.cpp" },
+  { id: "mlx", label: "MLX" },
+];
 
 export function RecipeModalTabGeneral({
   recipe,
@@ -14,38 +22,30 @@ export function RecipeModalTabGeneral({
   availableModels: ModelInfo[];
   modelServedNames: Record<string, string>;
 }) {
-  return (
-    <div className="space-y-5">
-      {/* Basic Info */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Info className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Basic Information</span>
-        </div>
+  const isCustomPath =
+    !!recipe.model_path && !availableModels.some((m) => m.path === recipe.model_path);
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) uppercase tracking-wider mb-2">
-            Recipe Name <span className="text-(--accent)">*</span>
-          </label>
-          <input
-            type="text"
+  return (
+    <div className="space-y-6">
+      <FormSection icon={<Info className="h-4 w-4" />} title="Basic Information">
+        <FormField label="Recipe Name" required>
+          <Input
             value={recipe.name ?? ""}
             onChange={(e) => onChange({ ...recipe, name: e.target.value })}
             placeholder="e.g., Llama 3.1 8B Instruct"
-            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) uppercase tracking-wider mb-2">
-            Model Path <span className="text-(--accent)">*</span>
-          </label>
-          <select
+        <FormField
+          label="Model Path"
+          required
+          description={isCustomPath ? `Custom path: ${recipe.model_path}` : undefined}
+        >
+          <Select
             value={recipe.model_path ?? ""}
             onChange={(e) => onChange({ ...recipe, model_path: e.target.value })}
-            className="w-full px-3 py-2.5 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent) focus:ring-1 focus:ring-(--accent)/20 transition-all"
+            placeholder="Select a model…"
           >
-            <option value="">Select a model...</option>
             {availableModels.map((model) => {
               const servedName = modelServedNames[model.path];
               return (
@@ -54,72 +54,44 @@ export function RecipeModalTabGeneral({
                 </option>
               );
             })}
-          </select>
-          {recipe.model_path && !availableModels.some((m) => m.path === recipe.model_path) && (
-            <p className="mt-1.5 text-xs text-(--dim)">Custom: {recipe.model_path}</p>
-          )}
-        </div>
-      </div>
+          </Select>
+        </FormField>
+      </FormSection>
 
-      {/* Server Config */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Server className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Server Configuration</span>
-        </div>
+      <FormSection icon={<Server className="h-4 w-4" />} title="Server Configuration">
+        <FormField label="Backend">
+          <SegmentedControl
+            items={BACKENDS}
+            value={recipe.backend ?? "vllm"}
+            onChange={(id) => onChange({ ...recipe, backend: id })}
+          />
+        </FormField>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Backend</label>
-            <select
-              value={recipe.backend ?? "vllm"}
-              onChange={(e) =>
-                onChange({ ...recipe, backend: e.target.value as RecipeEditor["backend"] })
-              }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
-            >
-              <option value="vllm">vLLM</option>
-              <option value="sglang">SGLang</option>
-              <option value="llamacpp">llama.cpp</option>
-              <option value="mlx">MLX</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Host</label>
-            <input
-              type="text"
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Host">
+            <Input
               value={recipe.host ?? "0.0.0.0"}
               onChange={(e) => onChange({ ...recipe, host: e.target.value || undefined })}
               placeholder="0.0.0.0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Port</label>
-            <input
+          </FormField>
+          <FormField label="Port">
+            <Input
               type="number"
               value={recipe.port ?? 8000}
               onChange={(e) => onChange({ ...recipe, port: Number(e.target.value) })}
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
+          </FormField>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">
-            Served Model Name (Optional)
-          </label>
-          <input
-            type="text"
+        <FormField label="Served Model Name" description="Optional — the name exposed in the API.">
+          <Input
             value={recipe.served_model_name || ""}
-            onChange={(e) =>
-              onChange({ ...recipe, served_model_name: e.target.value || undefined })
-            }
-            placeholder="Custom name exposed in API"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
+            onChange={(e) => onChange({ ...recipe, served_model_name: e.target.value || undefined })}
+            placeholder="e.g. deepseek-v4-flash"
           />
-        </div>
-      </div>
+        </FormField>
+      </FormSection>
     </div>
   );
 }

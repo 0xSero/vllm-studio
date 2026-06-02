@@ -111,7 +111,7 @@ export function ArchivedChatsSettings() {
                 </SettingsButton>
               }
             >
-              <div className="text-[12px] text-(--dim)/55">
+              <div className="text-[length:var(--fs-md)] text-(--dim)/55">
                 {" "}
                 {session.projectName ? `${session.projectName} · ` : ""}
                 {session.archivedAt ? `archived ${session.archivedAt}` : session.updatedAt}{" "}

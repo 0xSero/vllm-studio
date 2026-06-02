@@ -204,15 +204,15 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
               setHighlight(0);
             }}
             placeholder="Search every session by prompt, project, or model…"
-            className="flex-1 bg-transparent text-[14px] text-(--fg) outline-none placeholder:text-(--dim)"
+            className="flex-1 bg-transparent text-[length:var(--fs-lg)] text-(--fg) outline-none placeholder:text-(--dim)"
           />
-          <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5 text-[10px] text-(--dim)">esc</kbd>
+          <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-xs)] text-(--dim)">esc</kbd>
         </div>
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
           {sessions === null ? (
-            <div className="px-4 py-6 text-[12px] text-(--dim)">Loading sessions…</div>
+            <div className="px-4 py-6 text-[length:var(--fs-md)] text-(--dim)">Loading sessions…</div>
           ) : totalRows === 0 ? (
-            <div className="px-4 py-8 text-center text-[12px] text-(--dim)">
+            <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--dim)">
               No sessions match “{query}”.
             </div>
           ) : (
@@ -227,7 +227,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
                     type="button"
                     onMouseEnter={() => setHighlight(i)}
                     onClick={() => commit(i)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[13px] transition-colors ${
+                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
                       active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
                     }`}
                   >
@@ -238,7 +238,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
                     <span className="min-w-0 flex-1 truncate text-(--fg)">
                       {cleanSessionTitle(session.title) || "Current session"}
                     </span>
-                    <span className="shrink-0 truncate text-[11px] text-(--dim)">
+                    <span className="shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
                       {session.status}
                     </span>
                   </button>
@@ -258,7 +258,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
                     type="button"
                     onMouseEnter={() => setHighlight(i)}
                     onClick={() => commit(i)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[13px] transition-colors ${
+                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
                       active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
                     }`}
                   >
@@ -271,11 +271,11 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
                       <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
                     )}
                     <span className="min-w-0 flex-1 truncate text-(--fg)">{label}</span>
-                    <span className="inline-flex items-center gap-1 shrink-0 truncate text-[11px] text-(--dim)">
+                    <span className="inline-flex items-center gap-1 shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
                       <Folder className="h-3 w-3" />
                       {session.projectName}
                     </span>
-                    <span className="w-12 shrink-0 text-right text-[11px] text-(--dim)">
+                    <span className="w-12 shrink-0 text-right text-[length:var(--fs-sm)] text-(--dim)">
                       {formatRelative(session.updatedAt)}
                     </span>
                   </button>
@@ -284,7 +284,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
             </>
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-(--separator) px-4 py-2 text-[11px] text-(--dim)">
+        <div className="flex items-center justify-between border-t border-(--separator) px-4 py-2 text-[length:var(--fs-sm)] text-(--dim)">
           <span>
             {totalRows} result{totalRows === 1 ? "" : "s"}
           </span>
@@ -305,7 +305,7 @@ const getSessionsCommandSnapshot = (): number => 0;
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="px-4 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
+    <div className="px-4 pb-1 pt-3 text-[length:var(--fs-xs)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
       {children}
     </div>
   );

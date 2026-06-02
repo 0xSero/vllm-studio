@@ -23,6 +23,7 @@ import type { Session } from "@/lib/agent/sessions/types";
 import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
 import type { AgentModel } from "@/lib/agent/workspace/types";
 import { AgentBrowser, type AgentBrowserHandle } from "./agent-browser";
+import { CanvasPanel } from "./canvas-panel";
 import { ChatPane } from "./chat-pane";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
@@ -297,7 +298,7 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    <div className="relative flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-1.5 text-[11px]">
+    <div className="relative flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-1.5 text-[length:var(--fs-sm)]">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
@@ -430,45 +431,12 @@ function ComputerLauncherPanel({
               }`}
             >
               <Icon className="mb-3 h-5 w-5 text-(--dim)/70 transition-colors group-hover:text-(--fg)/75" />
-              <span className="text-[15px] font-semibold tracking-tight">{card.title}</span>
-              <span className="mt-1.5 text-[13px] text-(--dim)">{card.description}</span>
+              <span className="text-[length:var(--fs-lg)] font-semibold tracking-tight">{card.title}</span>
+              <span className="mt-1.5 text-[length:var(--fs-base)] text-(--dim)">{card.description}</span>
             </button>
           );
         })}
       </div>
-    </section>
-  );
-}
-
-function CanvasPanel() {
-  const tools = useTools();
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-xs">
-        <Code2 className="h-3.5 w-3.5 text-(--accent)/70" />
-        <span className="font-medium text-(--fg)">Canvas</span>
-        <span className="min-w-0 flex-1 truncate text-[11px] text-(--dim)">
-          Shared scratchboard for the human and model
-        </span>
-        <button
-          type="button"
-          onClick={tools.toggleCanvas}
-          className={`h-6 rounded px-2 text-[11px] ${
-            tools.computer.canvasEnabled
-              ? "bg-(--accent)/15 text-(--accent)/75"
-              : "bg-(--surface) text-(--dim)/75 hover:text-(--fg)/75"
-          }`}
-        >
-          {tools.computer.canvasEnabled ? "On" : "Off"}
-        </button>
-      </div>
-      <textarea
-        value={tools.computer.canvasText}
-        onChange={(event) => tools.setCanvasText(event.target.value)}
-        placeholder="Scratch notes, live plan, links, state, or anything the model should keep in view..."
-        className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-[12px] leading-6 text-(--fg) outline-none placeholder:text-(--dim)"
-        spellCheck={false}
-      />
     </section>
   );
 }

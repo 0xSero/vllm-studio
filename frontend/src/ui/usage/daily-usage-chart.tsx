@@ -47,10 +47,10 @@ export function DailyUsageChart(
   return (
     <section className="px-2 pt-2 pb-5">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
           Daily usage
         </div>
-        <div className="flex items-center gap-3 font-mono text-[10.5px] text-(--dim)">
+        <div className="flex items-center gap-3 font-mono text-[length:var(--fs-xs)] text-(--dim)">
           <span>{chartDates.length} days</span>
           <span className="text-(--border)">·</span>
           <span>
@@ -138,10 +138,10 @@ export function DailyUsageChart(
                       );
                     })()}
               </div>
-              <div className="w-full truncate text-center font-mono text-[10px] text-(--dim)">
+              <div className="w-full truncate text-center font-mono text-[length:var(--fs-xs)] text-(--dim)">
                 {formatDate(date)}
               </div>
-              <div className="font-mono text-[9px] tabular-nums text-(--dim)/60">
+              <div className="font-mono text-[length:var(--fs-2xs)] tabular-nums text-(--dim)/60">
                 {dateData?.requests || 0} req
               </div>
             </div>
@@ -161,7 +161,7 @@ export function DailyUsageChart(
                   style={{ backgroundColor: getModelColor(model) }}
                 />
                 <span
-                  className="max-w-[120px] truncate font-mono text-[10.5px] text-(--dim)"
+                  className="max-w-[120px] truncate font-mono text-[length:var(--fs-xs)] text-(--dim)"
                   title={model}
                 >
                   {model.split("/").pop()}
@@ -170,7 +170,7 @@ export function DailyUsageChart(
             );
           })}
           {modelsForChart.length > 8 ? (
-            <span className="font-mono text-[10.5px] text-(--dim)/60">
+            <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)/60">
               +{modelsForChart.length - 8} more
             </span>
           ) : null}
@@ -189,10 +189,10 @@ export function DailyUsageChart(
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>
-      <dd className="mt-1 font-mono text-[16px] leading-none tabular-nums text-(--fg)">{value}</dd>
+      <dd className="mt-1 font-mono text-[length:var(--fs-xl)] leading-none tabular-nums text-(--fg)">{value}</dd>
     </div>
   );
 }

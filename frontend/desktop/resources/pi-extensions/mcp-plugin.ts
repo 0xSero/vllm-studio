@@ -117,10 +117,13 @@ class McpClient {
     baseDir: string,
     readonly onFailure?: (message: string) => void,
   ) {
+    // Resolve cwd "." (or any relative cwd) against the .mcp.json's own dir, then
+    // resolve a relative command against that cwd. computer-use ships
+    // command "./Codex Computer Use.app/.../SkyComputerUseClient" with cwd "."
+    // so it only launches once both are anchored to the config dir. Bare PATH
+    // executables (e.g. "node", no separator) and absolute commands stay as-is.
     const cwd = path.resolve(baseDir, config.cwd || ".");
-    const command = config.command?.startsWith(".")
-      ? path.resolve(cwd, config.command)
-      : (config.command ?? "");
+    const command = resolveServerCommand(config.command ?? "", cwd);
     this.transport = usesJsonLineMcp(name, command, config.args) ? "jsonl" : "headers";
     this.child = spawn(command, config.args ?? [], {
       cwd,
@@ -279,6 +282,21 @@ class McpClient {
     if (message.error) pending.reject(new Error(message.error.message || `${this.name} MCP error`));
     else pending.resolve(message.result);
   }
+}
+
+// Resolve a server command string against the MCP config's directory. Absolute
+// paths pass through. Explicitly-relative ("./", "../") or path-bearing commands
+// (contain a separator, e.g. "Codex Computer Use.app/.../SkyComputerUseClient")
+// resolve against `cwd`. A bare token with no separator ("node", "uvx") is a
+// PATH lookup and is left untouched for the OS to resolve.
+function resolveServerCommand(command: string, cwd: string): string {
+  if (!command || path.isAbsolute(command)) return command;
+  const isPathLike =
+    command.startsWith("./") ||
+    command.startsWith("../") ||
+    command.includes("/") ||
+    command.includes(path.sep);
+  return isPathLike ? path.resolve(cwd, command) : command;
 }
 
 function usesJsonLineMcp(serverName: string, command: string, args: string[] | undefined): boolean {

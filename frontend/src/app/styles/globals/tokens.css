@@ -41,19 +41,58 @@
   --sidebar-w-collapsed: 48px;
   --row-h: 28px;
   --row-h-sm: 24px;
-  --row-radius: 8px;
+  --row-radius: var(--rad-md);
   --composer-w: 560px;
   --thread-w: 532px;
   --composer-radius: 14px;
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
 
   /* Typography */
-  --text-nav: 16px;
-  --text-section: 13px;
+  --text-nav: var(--fs-xl);
+  --text-section: var(--fs-base);
   --section-tracking: 0.16em;
 
   --app-height: 100vh;
   --app-font-size: 16px;
+
+  /* ──────────────────────────────────────────────────────────────────────
+     Canonical scale — the master knobs the Appearance editor controls.
+     Type / radius / weight all derive from these via calc(), so a handful of
+     values re-theme the whole app uniformly. Defaults reproduce today's look
+     (scale 1, radius 8px, …); the editor overrides them at runtime.
+     ────────────────────────────────────────────────────────────────────── */
+  --ui-scale: 1; /* master text-size multiplier — scales the entire type ramp */
+  --leading: 1.5; /* base line-height */
+  --leading-tight: 1.25;
+  --weight-normal: 450;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --radius-base: 8px; /* master corner radius — the radius ramp scales from it */
+  --border-width: 1px;
+  --space-base: 4px; /* base spacing unit */
+
+  /* Type ramp — fixed steps × --ui-scale. Arbitrary text-[Npx] literals snap to
+     the nearest step; @theme maps Tailwind text-* to the same scale. */
+  --fs-2xs: calc(9px * var(--ui-scale));
+  --fs-xs: calc(10px * var(--ui-scale));
+  --fs-sm: calc(11px * var(--ui-scale));
+  --fs-md: calc(12px * var(--ui-scale));
+  --fs-base: calc(13px * var(--ui-scale));
+  --fs-lg: calc(14px * var(--ui-scale));
+  --fs-xl: calc(16px * var(--ui-scale));
+  --fs-2xl: calc(18px * var(--ui-scale));
+  --fs-3xl: calc(20px * var(--ui-scale));
+  --fs-4xl: calc(24px * var(--ui-scale));
+  --fs-display: calc(34px * var(--ui-scale));
+
+  /* Radius ramp — proportional to --radius-base */
+  --rad-2xs: calc(var(--radius-base) * 0.25);
+  --rad-xs: calc(var(--radius-base) * 0.5);
+  --rad-sm: calc(var(--radius-base) * 0.75);
+  --rad-md: var(--radius-base);
+  --rad-lg: calc(var(--radius-base) * 1.3);
+  --rad-xl: calc(var(--radius-base) * 1.75);
+  --rad-full: 9999px;
 
   /* UI adapter tokens
      Shared components under src/ui read through this layer. If we adopt
@@ -75,8 +114,8 @@
   --ui-warning: var(--hl3);
   --ui-danger: var(--err);
   --ui-radius: var(--row-radius);
-  --ui-radius-sm: 6px;
-  --ui-radius-lg: 10px;
+  --ui-radius-sm: var(--rad-sm);
+  --ui-radius-lg: var(--rad-lg);
   --ui-control-h: 28px;
 
   /* Compatibility names used by common React UI libraries. */
@@ -155,6 +194,29 @@
   --color-separator: var(--separator);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Type scale: Tailwind text-* read the themed ramp. Values equal Tailwind's
+     own defaults × --ui-scale, so semantic sizes don't shift until the knob moves. */
+  --text-2xs: calc(10px * var(--ui-scale));
+  --text-xs: calc(12px * var(--ui-scale));
+  --text-sm: calc(14px * var(--ui-scale));
+  --text-base: calc(16px * var(--ui-scale));
+  --text-lg: calc(18px * var(--ui-scale));
+  --text-xl: calc(20px * var(--ui-scale));
+  --text-2xl: calc(24px * var(--ui-scale));
+  --text-3xl: calc(30px * var(--ui-scale));
+
+  /* Radius scale: Tailwind rounded-* read the themed ramp. */
+  --radius-sm: var(--rad-sm);
+  --radius-md: var(--rad-md);
+  --radius-lg: var(--rad-lg);
+  --radius-xl: var(--rad-xl);
+
+  /* Weights */
+  --font-weight-normal: var(--weight-normal);
+  --font-weight-medium: var(--weight-medium);
+  --font-weight-semibold: var(--weight-strong);
+  --font-weight-bold: var(--weight-strong);
 }
 
 .dark hr,

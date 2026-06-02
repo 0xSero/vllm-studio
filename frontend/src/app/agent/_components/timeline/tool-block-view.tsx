@@ -106,7 +106,7 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
 function ToolStatus({ status }: { status: ToolBlock["status"] }) {
   if (status === "running") {
     return (
-      <span className="inline-flex items-center gap-1 text-[9.6px] text-(--accent)">
+      <span className="inline-flex items-center gap-1 text-[length:var(--fs-xs)] text-(--accent)">
         <Loader2 className="h-3 w-3 animate-spin" />
         running
       </span>
@@ -114,7 +114,7 @@ function ToolStatus({ status }: { status: ToolBlock["status"] }) {
   }
   if (status === "error") {
     return (
-      <span className="inline-flex items-center gap-1 text-[9.6px] text-(--err)">
+      <span className="inline-flex items-center gap-1 text-[length:var(--fs-xs)] text-(--err)">
         <AlertTriangle className="h-3 w-3" />
         error
       </span>
@@ -142,11 +142,11 @@ function ToolSummary({
           {meta.icon}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="shrink-0 truncate text-[10.4px] font-medium leading-4 text-(--fg)/90">
+          <span className="shrink-0 truncate text-[length:var(--fs-xs)] font-medium leading-4 text-(--fg)/90">
             {meta.label}
           </span>
           {meta.detail ? (
-            <span className="min-w-0 flex-1 truncate text-[10.4px] leading-4 text-(--dim)">
+            <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] leading-4 text-(--dim)">
               {meta.detail}
             </span>
           ) : null}
@@ -160,7 +160,7 @@ function ToolSummary({
 
 function ToolOutput({ children }: { children: ReactNode }) {
   return (
-    <pre className="max-h-[320px] max-w-full overflow-auto whitespace-pre font-mono text-[9.6px] leading-4 text-(--fg)/70">
+    <pre className="max-h-[320px] max-w-full overflow-auto whitespace-pre font-mono text-[length:var(--fs-xs)] leading-4 text-(--fg)/70">
       {children}
     </pre>
   );
@@ -179,7 +179,7 @@ function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   }, [body, lang]);
 
   const className =
-    "max-h-[420px] max-w-full overflow-auto rounded-lg border border-(--border)/50 bg-(--surface)/35 p-3 font-mono text-[9.6px] leading-4 text-(--fg)";
+    "max-h-[420px] max-w-full overflow-auto rounded-lg border border-(--border)/50 bg-(--surface)/35 p-3 font-mono text-[length:var(--fs-xs)] leading-4 text-(--fg)";
 
   if (highlighted === null) {
     return <pre className={className}>{body}</pre>;
@@ -239,13 +239,13 @@ function FileWritePreview({
 
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em] text-(--dim)">
+      <div className="mb-1 flex items-center justify-between gap-2 text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--dim)">
         <span>{sourceLang || "source"}</span>
         {isHtml ? (
           <button
             type="button"
             onClick={() => setShowPreview((value) => !value)}
-            className="rounded-md px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+            className="rounded-md px-1.5 py-0.5 text-[length:var(--fs-xs)] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           >
             {showPreview ? "Source" : "Preview"}
           </button>
@@ -263,7 +263,7 @@ function FileWritePreview({
         <HighlightedToolSource body={body} lang={sourceLang} />
       )}
       {block.resultText ? (
-        <div className="mt-1 font-mono text-[10px] text-(--dim)">
+        <div className="mt-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
           <ToolOutput>{block.resultText}</ToolOutput>
         </div>
       ) : null}
@@ -284,7 +284,7 @@ function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }
   const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-(--dim)">diff</div>
+      <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--dim)">diff</div>
       <HighlightedToolSource body={diffText} lang="diff" />
     </ToolSummary>
   );

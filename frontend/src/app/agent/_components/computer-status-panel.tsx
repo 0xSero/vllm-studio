@@ -95,7 +95,7 @@ export function ComputerStatusPanel({
             type="button"
             onClick={() => void compactFocusedSession()}
             disabled={compactDisabled}
-            className={`inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] ${
+            className={`inline-flex h-6 items-center gap-1 rounded px-2 text-[length:var(--fs-sm)] ${
               shouldCompact
                 ? "text-(--accent) ring-1 ring-(--accent)/40"
                 : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
@@ -154,12 +154,12 @@ function usedSkillsForSession(session: Session | null): ComposerSkillRef[] {
 function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-(--dim)">
+      <div className="mb-2 flex items-center gap-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
         <span>Skills · session</span>
         <span className="font-mono normal-case tracking-normal">{skills.length}</span>
       </div>
       {skills.length === 0 ? (
-        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[10.5px] text-(--dim)">
+        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[length:var(--fs-xs)] text-(--dim)">
           No skills used in this session yet.
         </div>
       ) : (
@@ -167,12 +167,12 @@ function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
           {skills.map((skill) => (
             <li
               key={skill.id || skill.path || skill.name}
-              className="flex min-w-0 items-center gap-2 py-0.5 text-[11px]"
+              className="flex min-w-0 items-center gap-2 py-0.5 text-[length:var(--fs-sm)]"
               title={skill.path}
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/75" />
               <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{skill.name}</span>
-              <span className="shrink-0 truncate text-[10px] text-(--dim)">
+              <span className="shrink-0 truncate text-[length:var(--fs-xs)] text-(--dim)">
                 {skill.source ?? "skill"}
               </span>
             </li>
@@ -204,7 +204,7 @@ function ActivePluginsSection({ focusedSession }: { focusedSession: Session | nu
   );
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-(--dim)">
+      <div className="mb-2 flex items-center gap-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
         <span>Pi plugins · active</span>
         <span className="font-mono normal-case tracking-normal">{active.length}</span>
         <button
@@ -213,13 +213,13 @@ function ActivePluginsSection({ focusedSession }: { focusedSession: Session | nu
             tools.setComputerTab("plugins");
             tools.setComputerOpen(true);
           }}
-          className="ml-auto h-5 rounded px-1.5 text-[10px] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="ml-auto h-5 rounded px-1.5 text-[length:var(--fs-xs)] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         >
           Manage
         </button>
       </div>
       {active.length === 0 ? (
-        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[10.5px] text-(--dim)">
+        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[length:var(--fs-xs)] text-(--dim)">
           No Pi extensions enabled. Type <span className="font-mono">/plugins</span> in the composer
           or install one from the panel.
         </div>
@@ -228,12 +228,12 @@ function ActivePluginsSection({ focusedSession }: { focusedSession: Session | nu
           {active.map((ext) => (
             <li
               key={ext.id}
-              className="flex min-w-0 items-center gap-2 py-0.5 text-[11px]"
+              className="flex min-w-0 items-center gap-2 py-0.5 text-[length:var(--fs-sm)]"
               title={ext.path}
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent)/70" />
               <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{ext.name}</span>
-              <span className="shrink-0 font-mono text-[9px] uppercase text-(--dim)">
+              <span className="shrink-0 font-mono text-[length:var(--fs-2xs)] uppercase text-(--dim)">
                 {ext.scope}
               </span>
             </li>
@@ -282,14 +282,14 @@ function CanvasPeek() {
         <button
           type="button"
           onClick={() => tools.setComputerTab("canvas")}
-          className="ml-auto h-6 rounded px-2 text-[11px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="ml-auto h-6 rounded px-2 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         >
           Open
         </button>
         <button
           type="button"
           onClick={tools.toggleCanvas}
-          className={`h-6 rounded px-2 text-[11px] ${
+          className={`h-6 rounded px-2 text-[length:var(--fs-sm)] ${
             tools.computer.canvasEnabled
               ? "bg-(--accent)/15 text-(--accent)"
               : "bg-(--bg) text-(--dim) hover:text-(--fg)"
@@ -298,7 +298,7 @@ function CanvasPeek() {
           {tools.computer.canvasEnabled ? "On" : "Off"}
         </button>
       </div>
-      <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[11px] leading-5 text-(--dim)">
+      <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[length:var(--fs-sm)] leading-5 text-(--dim)">
         {tools.computer.canvasText.trim() || "No canvas notes yet."}
       </div>
     </div>
@@ -308,8 +308,8 @@ function CanvasPeek() {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[9px] uppercase tracking-wide text-(--dim)">{label}</div>
-      <div className="mt-1 truncate text-[13px] text-(--fg)">{value}</div>
+      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">{label}</div>
+      <div className="mt-1 truncate text-[length:var(--fs-base)] text-(--fg)">{value}</div>
     </div>
   );
 }
@@ -317,7 +317,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function StatusSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 text-[10px] uppercase tracking-wide text-(--dim)">{title}</div>
+      <div className="mb-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">{title}</div>
       <div className="grid gap-1">{children}</div>
     </div>
   );
@@ -326,8 +326,8 @@ function StatusSection({ title, children }: { title: string; children: ReactNode
 function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] gap-3 py-0.5">
-      <span className="text-[10px] text-(--dim)">{label}</span>
-      <span className="min-w-0 truncate text-right font-mono text-[11px] text-(--fg)" title={value}>
+      <span className="text-[length:var(--fs-xs)] text-(--dim)">{label}</span>
+      <span className="min-w-0 truncate text-right font-mono text-[length:var(--fs-sm)] text-(--fg)" title={value}>
         {value}
       </span>
     </div>
@@ -337,7 +337,7 @@ function StatusRow({ label, value }: { label: string; value: string }) {
 function StatusActionRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] items-center gap-3 py-0.5">
-      <span className="text-[10px] text-(--dim)">{label}</span>
+      <span className="text-[length:var(--fs-xs)] text-(--dim)">{label}</span>
       <span className="flex min-w-0 justify-end">{children}</span>
     </div>
   );

@@ -67,7 +67,7 @@ function CodeBlockCopyButton({ code }: { code: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="shrink-0 rounded px-1 text-[10px] text-(--dim) hover:text-(--fg)"
+      className="shrink-0 rounded px-1 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
       aria-label={copied ? "Copied" : "Copy code"}
       title={copied ? "Copied" : "Copy code"}
     >
@@ -103,12 +103,12 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
   return (
     <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border)/40 bg-[#1e1e1e]">
       <div className="flex h-8 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
-        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-(--dim)">
+        <span className="font-mono text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3.5 py-2.5 text-[9.6px] leading-[1.6]">
+      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3.5 py-2.5 text-[length:var(--fs-xs)] leading-[1.6]">
         <code className={codeClassName} dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -119,35 +119,35 @@ FencedCodeBlock.displayName = "FencedCodeBlock";
 const components: Components = {
   h1: ({ node: _n, ...props }) => (
     <h1
-      className="mb-2 mt-5 text-[14.4px] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-2 mt-5 text-[length:var(--fs-xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h2: ({ node: _n, ...props }) => (
     <h2
-      className="mb-1.5 mt-4 text-[12px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-4 text-[length:var(--fs-lg)] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h3: ({ node: _n, ...props }) => (
     <h3
-      className="mb-1.5 mt-3.5 text-[11.2px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-3.5 text-[length:var(--fs-base)] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h4: ({ node: _n, ...props }) => (
-    <h4 className="mb-1 mt-3 text-[10.4px] font-semibold leading-snug text-(--fg)" {...props} />
+    <h4 className="mb-1 mt-3 text-[length:var(--fs-md)] font-semibold leading-snug text-(--fg)" {...props} />
   ),
   p: ({ node: _n, ...props }) => (
     <p
-      className="my-2.5 max-w-full break-words text-[10.4px] leading-[1.6] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
+      className="my-2.5 max-w-full break-words text-[length:var(--fs-md)] leading-[1.6] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
       {...props}
     />
   ),
   ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-5" {...props} />,
   ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
   li: ({ node: _n, ...props }) => (
-    <li className="text-[10.4px] leading-[1.6] tracking-normal" {...props} />
+    <li className="text-[length:var(--fs-md)] leading-[1.6] tracking-normal" {...props} />
   ),
   code: ({ node: _n, className, children, ...props }) => {
     const isBlock = typeof className === "string" && /\blanguage-/.test(className);
@@ -160,7 +160,7 @@ const components: Components = {
     }
     return (
       <code
-        className="rounded-md bg-(--surface-2)/60 px-[5px] py-[1px] font-mono text-[10px] leading-[14.4px] text-(--fg)/85 [overflow-wrap:anywhere]"
+        className="rounded-md bg-(--surface-2)/60 px-[5px] py-[1px] font-mono text-[length:var(--fs-sm)] leading-[16px] text-(--fg)/85 [overflow-wrap:anywhere]"
         {...props}
       >
         {children}
@@ -203,13 +203,26 @@ const components: Components = {
 const REMARK_PLUGINS = [remarkGfm];
 
 type ToolHandlers = {
-  requestFileOpen: (path: string) => void;
   setComputerOpen: (open: boolean) => void;
   setComputerTab: (tab: "browser" | "files" | "status" | "canvas") => void;
   setBrowserUrl: (url: string, input?: string) => void;
 };
 
 function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
+  // Open a referenced file or URL in the in-app sidepanel browser. Local paths
+  // resolve to a file:// URL the browser renders directly; the chip's copy
+  // button stays independent (it only copies the raw path/link).
+  const openInBrowser = (raw: string) => {
+    const cleaned = raw
+      .trim()
+      .replace(/^`+|`+$/g, "")
+      .replace(/:\d+(?::\d+)?$/, "");
+    const next = normalizeBrowserInput(cleaned, "");
+    if (!next) return;
+    tools.setComputerOpen(true);
+    tools.setComputerTab("browser");
+    tools.setBrowserUrl(next, next);
+  };
   return {
     ...components,
     code: ({ node: _n, className, children, ...props }) => {
@@ -224,7 +237,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       const value = nodeToPlainText(children).trim();
       if (isFileReference(value)) {
         return (
-          <CopyablePathChip value={value} onOpen={tools.requestFileOpen}>
+          <CopyablePathChip value={value} onOpen={openInBrowser}>
             {children}
           </CopyablePathChip>
         );
@@ -235,7 +248,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       const fileHref = typeof href === "string" && isFileReference(href);
       if (fileHref) {
         return (
-          <CopyablePathChip value={href} onOpen={tools.requestFileOpen}>
+          <CopyablePathChip value={href} onOpen={openInBrowser}>
             {children}
           </CopyablePathChip>
         );
@@ -273,18 +286,17 @@ function AssistantMarkdownInner({ text }: { text: string }) {
   const componentsWithAppLinks = useMemo<Components>(
     () =>
       buildComponentsWithAppLinks({
-        requestFileOpen: tools.requestFileOpen,
         setComputerOpen: tools.setComputerOpen,
         setComputerTab: tools.setComputerTab,
         setBrowserUrl: tools.setBrowserUrl,
       }),
-    [tools.requestFileOpen, tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
+    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
   );
   return (
-    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[10.4px] leading-[16px] tracking-normal [overflow-wrap:anywhere]">
+    <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden text-[length:var(--fs-md)] leading-[18px] tracking-normal [overflow-wrap:anywhere]">
       <MarkdownErrorBoundary
         fallback={
-          <pre className="max-w-full whitespace-pre-wrap break-words text-[10.4px] leading-[17.6px] tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">
+          <pre className="max-w-full whitespace-pre-wrap break-words text-[length:var(--fs-md)] leading-[19.2px] tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">
             {text}
           </pre>
         }

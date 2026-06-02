@@ -31,18 +31,18 @@ export function GpuSection({ gpus }: GpuSectionProps) {
       <section className="mt-4 border-t border-(--border)/40 px-2 pt-3 pb-4">
         <div className="flex w-full items-center gap-4 text-left">
           <div className="flex shrink-0 items-baseline gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+            <span className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
               GPUs
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-(--dim)/65">0</span>
+            <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">0</span>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div className="h-[3px] min-w-[5rem] flex-1 max-w-[18rem] overflow-hidden rounded-[2px] bg-(--dim)/15" />
-            <span className="font-mono text-[11.5px] tabular-nums text-(--fg)/85">
+            <div className="h-[3px] min-w-[5rem] flex-1 max-w-[18rem] overflow-hidden rounded-[var(--rad-2xs)] bg-(--dim)/15" />
+            <span className="font-mono text-[length:var(--fs-sm)] tabular-nums text-(--fg)/85">
               0.0<span className="text-(--dim)/65">/0G</span>
             </span>
           </div>
-          <div className="hidden items-baseline gap-5 font-mono text-[11px] tabular-nums sm:flex">
+          <div className="hidden items-baseline gap-5 font-mono text-[length:var(--fs-sm)] tabular-nums sm:flex">
             <Aggregate label="util" value="0%" />
             <Aggregate label="temp" value="0°" />
             <Aggregate label="pwr" value="0/0W" />
@@ -61,28 +61,28 @@ export function GpuSection({ gpus }: GpuSectionProps) {
         aria-expanded={expanded}
       >
         <div className="flex shrink-0 items-baseline gap-2">
-          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-(--dim)">
+          <span className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
             GPUs
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-(--dim)/65">
+          <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
             {sortedGpus.length}
           </span>
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <div className="h-[3px] min-w-[5rem] flex-1 max-w-[18rem] overflow-hidden rounded-[2px] bg-(--dim)/15">
+          <div className="h-[3px] min-w-[5rem] flex-1 max-w-[18rem] overflow-hidden rounded-[var(--rad-2xs)] bg-(--dim)/15">
             <div
-              className="h-full rounded-[2px] bg-(--fg)/55 transition-[width] duration-300"
+              className="h-full rounded-[var(--rad-2xs)] bg-(--fg)/55 transition-[width] duration-300"
               style={{ width: `${memPct}%` }}
             />
           </div>
-          <span className="font-mono text-[11.5px] tabular-nums text-(--fg)/85">
+          <span className="font-mono text-[length:var(--fs-sm)] tabular-nums text-(--fg)/85">
             {totalUsed.toFixed(1)}
             <span className="text-(--dim)/65">/{totalCap.toFixed(0)}G</span>
           </span>
         </div>
 
-        <div className="hidden items-baseline gap-5 font-mono text-[11px] tabular-nums sm:flex">
+        <div className="hidden items-baseline gap-5 font-mono text-[length:var(--fs-sm)] tabular-nums sm:flex">
           <Aggregate label="util" value={`${Math.round(avgUtil)}%`} />
           <Aggregate label="temp" value={maxTemp > 0 ? `${Math.round(maxTemp)}°` : "—"} />
           <Aggregate
@@ -95,7 +95,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
 
         <span
           aria-hidden
-          className={`ml-1 font-mono text-[10px] text-(--dim)/55 transition-transform group-hover:text-(--dim) ${
+          className={`ml-1 font-mono text-[length:var(--fs-xs)] text-(--dim)/55 transition-transform group-hover:text-(--dim) ${
             expanded ? "rotate-90" : ""
           }`}
         >
@@ -117,7 +117,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
 function Aggregate({ label, value }: { label: string; value: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[9px] uppercase tracking-[0.14em] text-(--dim)/55">{label}</span>
+      <span className="text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] text-(--dim)/55">{label}</span>
       <span className="text-(--fg)/85">{value}</span>
     </span>
   );
@@ -134,13 +134,13 @@ function GpuRow({ gpu }: { gpu: GPU }) {
   const memPct = memTotal > 0 ? clamp((memUsed / memTotal) * 100, 0, 100) : 0;
 
   return (
-    <div className="flex items-center gap-3 py-0.5 font-mono text-[11px] tabular-nums">
+    <div className="flex items-center gap-3 py-0.5 font-mono text-[length:var(--fs-sm)] tabular-nums">
       <span className="w-8 shrink-0 text-(--fg)/85">G{label}</span>
-      <span className="min-w-0 flex-1 truncate text-[10.5px] text-(--dim)/75" title={gpu.name}>
+      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] text-(--dim)/75" title={gpu.name}>
         {gpu.name}
       </span>
       <div className="flex w-[8rem] shrink-0 items-center gap-2">
-        <div className="h-[2px] flex-1 overflow-hidden rounded-[1px] bg-(--dim)/15">
+        <div className="h-[2px] flex-1 overflow-hidden rounded-[var(--rad-2xs)] bg-(--dim)/15">
           <div className="h-full bg-(--fg)/45" style={{ width: `${memPct}%` }} />
         </div>
         <span className="text-(--fg)/80">

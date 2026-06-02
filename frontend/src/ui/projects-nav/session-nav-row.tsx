@@ -52,7 +52,7 @@ export function SessionNavRow({
   canDoubleClickRename = false,
   showClearAction = false,
   menuIconClass = "h-3 w-3",
-  renameInputClass = "text-[12px]",
+  renameInputClass = "text-[length:var(--fs-md)]",
   menuItemsWithIcons = false,
 }: SessionNavRowProps) {
   const [renaming, setRenaming] = useState(false);
@@ -262,11 +262,11 @@ function SessionRowContent({
       {isRunning ? (
         <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--accent)" aria-hidden />
       ) : null}
-      <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
+      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
         {label}
       </span>
       {age ? (
-        <span className="shrink-0 pl-1.5 pr-1 font-mono text-[8.5px] text-(--dim)">{age}</span>
+        <span className="shrink-0 pl-1.5 pr-1 font-mono text-[length:var(--fs-2xs)] text-(--dim)">{age}</span>
       ) : null}
     </>
   );

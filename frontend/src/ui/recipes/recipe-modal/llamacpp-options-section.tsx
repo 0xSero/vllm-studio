@@ -1,6 +1,7 @@
 "use client";
 
 import { Settings } from "lucide-react";
+import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
 import { LLAMACPP_OPTIONS } from "@/lib/recipes/llamacpp-options";
 
 type LlamacppTab = "model" | "resources" | "performance" | "features";
@@ -31,44 +32,32 @@ export function LlamacppOptionsSection({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-        <Settings className="w-4 h-4 text-(--accent)" />
-        <span className="text-sm font-medium">llama.cpp Options</span>
-      </div>
+    <FormSection icon={<Settings className="h-4 w-4" />} title="llama.cpp Options">
       <div className="grid grid-cols-2 gap-3">
         {options.map((option) => {
           const value = getValueForKey(option.key);
           const wide =
             option.type === "text" && /prompt|template|grammar|control|model/.test(option.key);
+          const span = wide ? "col-span-2" : undefined;
+
           if (option.type === "boolean") {
             return (
-              <label
+              <CheckboxRow
                 key={option.key}
-                className={`flex items-center gap-2 px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-xs text-(--dim) ${
-                  wide ? "col-span-2" : ""
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={coerceBooleanValue(value)}
-                  onChange={(e) => setValueForKey(option.key, e.target.checked ? true : undefined)}
-                  className="accent-(--accent)"
-                />
-                {option.label}
-              </label>
+                className={span}
+                checked={coerceBooleanValue(value)}
+                onChange={(checked) => setValueForKey(option.key, checked ? true : undefined)}
+                label={option.label}
+              />
             );
           }
+
           if (option.type === "select") {
             return (
-              <div key={option.key} className={wide ? "col-span-2" : ""}>
-                <label className="block text-xs font-medium text-(--dim) mb-2">
-                  {option.label}
-                </label>
-                <select
+              <FormField key={option.key} label={option.label} className={span}>
+                <Select
                   value={value ? String(value) : ""}
                   onChange={(e) => setValueForKey(option.key, e.target.value || undefined)}
-                  className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
                 >
                   <option value="">Default</option>
                   {option.options?.map((entry) => (
@@ -76,16 +65,15 @@ export function LlamacppOptionsSection({
                       {entry}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </FormField>
             );
           }
 
           const inputType = option.type === "number" ? "number" : "text";
           return (
-            <div key={option.key} className={wide ? "col-span-2" : ""}>
-              <label className="block text-xs font-medium text-(--dim) mb-2">{option.label}</label>
-              <input
+            <FormField key={option.key} label={option.label} className={span}>
+              <Input
                 type={inputType}
                 value={value !== undefined && value !== null ? String(value) : ""}
                 onChange={(e) =>
@@ -99,16 +87,15 @@ export function LlamacppOptionsSection({
                   )
                 }
                 placeholder={option.placeholder}
-                className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
               />
-            </div>
+            </FormField>
           );
         })}
       </div>
-      <p className="text-xs text-(--dim)">
+      <p className="text-xs text-(--ui-muted)">
         All llama.cpp flags are supported via Extra CLI Arguments. These fields cover the most-used
         options.
       </p>
-    </div>
+    </FormSection>
   );
 }

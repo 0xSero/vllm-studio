@@ -138,10 +138,10 @@ function ControllerMatrix() {
   return (
     <section className="mb-3 border-b border-(--border)/35 pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
           controllers live
         </div>
-        <div className="text-[10.5px] text-(--dim)/70">
+        <div className="text-[length:var(--fs-xs)] text-(--dim)/70">
           {rows.filter((row) => row.online).length}/{rows.length} online
         </div>
       </div>
@@ -202,7 +202,7 @@ function ControllerTab({
       type="button"
       onClick={onActivate}
       title={controller.url}
-      className={`group inline-flex h-7 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-left text-[11px] transition ${
+      className={`group inline-flex h-7 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-left text-[length:var(--fs-sm)] transition ${
         active
           ? "border-(--accent)/60 bg-(--accent)/10 text-(--fg)"
           : "border-(--border)/55 bg-(--surface)/40 text-(--dim) hover:border-(--border) hover:text-(--fg)"
@@ -210,9 +210,9 @@ function ControllerTab({
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
       <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
-      <span className="font-mono text-[9.5px] uppercase tracking-wide text-(--dim)">{state}</span>
-      <span className="font-mono text-[9.5px] text-(--dim)">{controller.gpus.length}× gpu</span>
-      <span className="max-w-[14rem] truncate text-[10px] text-(--dim)" title={model}>
+      <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">{state}</span>
+      <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">{controller.gpus.length}× gpu</span>
+      <span className="max-w-[14rem] truncate text-[length:var(--fs-xs)] text-(--dim)" title={model}>
         {controller.online ? model : controller.error || "unreachable"}
       </span>
     </button>
@@ -290,12 +290,12 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
   return (
     <section className="border-t border-(--border)/40 px-2 pt-4 pb-5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
           Controller logs
         </div>
-        <div className="text-[10.5px] text-(--dim)/70">{tail.length} lines</div>
+        <div className="text-[length:var(--fs-xs)] text-(--dim)/70">{tail.length} lines</div>
       </div>
-      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[10.5px] leading-5 text-(--dim)/80">
+      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
         {tail.length > 0 ? (
           tail.map((line, index) => (
             <div key={`${index}-${line}`} className="truncate">

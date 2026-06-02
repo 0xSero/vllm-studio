@@ -1,6 +1,7 @@
 "use client";
 
 import { Cpu, Database, GitBranch } from "lucide-react";
+import { CheckboxRow, FormField, FormSection, Input, Slider } from "@/ui";
 import type { RecipeEditor } from "@/lib/types";
 import { LlamacppOptionsSection } from "../llamacpp-options-section";
 
@@ -19,7 +20,7 @@ export function RecipeModalTabResources({
 }) {
   if (isLlamacpp) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-6">
         <LlamacppOptionsSection
           tab="resources"
           getValueForKey={getExtraArgValueForKey}
@@ -29,21 +30,14 @@ export function RecipeModalTabResources({
     );
   }
 
-  return (
-    <div className="space-y-5">
-      {/* Parallelism */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <GitBranch className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Parallelism</span>
-        </div>
+  const gpuUtil = recipe.gpu_memory_utilization ?? 0.9;
 
+  return (
+    <div className="space-y-6">
+      <FormSection icon={<GitBranch className="h-4 w-4" />} title="Parallelism">
         <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">
-              Tensor Parallel (TP)
-            </label>
-            <input
+          <FormField label="Tensor Parallel">
+            <Input
               type="number"
               min={1}
               value={recipe.tp ?? recipe.tensor_parallel_size ?? 1}
@@ -54,14 +48,10 @@ export function RecipeModalTabResources({
                   tensor_parallel_size: Number(e.target.value),
                 })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">
-              Pipeline Parallel (PP)
-            </label>
-            <input
+          </FormField>
+          <FormField label="Pipeline Parallel">
+            <Input
               type="number"
               min={1}
               value={recipe.pp ?? recipe.pipeline_parallel_size ?? 1}
@@ -72,12 +62,10 @@ export function RecipeModalTabResources({
                   pipeline_parallel_size: Number(e.target.value),
                 })
               }
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Data Parallel</label>
-            <input
+          </FormField>
+          <FormField label="Data Parallel">
+            <Input
               type="number"
               min={1}
               value={recipe.data_parallel_size || ""}
@@ -85,56 +73,37 @@ export function RecipeModalTabResources({
                 onChange({ ...recipe, data_parallel_size: Number(e.target.value) || undefined })
               }
               placeholder="1"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
+          </FormField>
         </div>
 
-        <div className="flex items-center">
-          <label className="flex items-center gap-2 text-sm text-(--dim) cursor-pointer hover:text-(--fg) transition-colors">
-            <input
-              type="checkbox"
-              checked={recipe.enable_expert_parallel || false}
-              onChange={(e) => onChange({ ...recipe, enable_expert_parallel: e.target.checked })}
-              className="rounded border-(--border) bg-(--bg) w-4 h-4"
-            />
-            Expert Parallel (MoE)
-          </label>
-        </div>
-      </div>
+        <CheckboxRow
+          checked={recipe.enable_expert_parallel || false}
+          onChange={(checked) => onChange({ ...recipe, enable_expert_parallel: checked })}
+          label="Expert Parallel (MoE)"
+          description="Shard MoE experts across the parallel group."
+        />
+      </FormSection>
 
-      {/* GPU Settings */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Cpu className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">GPU Settings</span>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">
-            GPU Memory Utilization
-          </label>
+      <FormSection icon={<Cpu className="h-4 w-4" />} title="GPU Settings">
+        <FormField label="GPU Memory Utilization">
           <div className="flex items-center gap-3">
-            <input
-              type="range"
+            <Slider
               min={0}
               max={1}
               step={0.05}
-              value={recipe.gpu_memory_utilization ?? 0.9}
-              onChange={(e) =>
-                onChange({ ...recipe, gpu_memory_utilization: Number(e.target.value) })
-              }
-              className="flex-1 h-2 bg-(--border) rounded-md appearance-none cursor-pointer accent-(--accent)"
+              value={gpuUtil}
+              onChange={(next) => onChange({ ...recipe, gpu_memory_utilization: next })}
+              aria-label="GPU memory utilization"
             />
-            <span className="text-sm font-mono w-12 text-right">
-              {Math.round((recipe.gpu_memory_utilization ?? 0.9) * 100)}%
+            <span className="atlas-num w-12 shrink-0 text-right text-sm tabular-nums">
+              {Math.round(gpuUtil * 100)}%
             </span>
           </div>
-        </div>
+        </FormField>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Visible Devices</label>
-          <input
+        <FormField label="Visible Devices">
+          <Input
             type="text"
             value={recipe.visible_devices ?? recipe.cuda_visible_devices ?? ""}
             onChange={(e) =>
@@ -145,62 +114,44 @@ export function RecipeModalTabResources({
               })
             }
             placeholder="0,1,2,3 or all"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
-        </div>
-      </div>
+        </FormField>
+      </FormSection>
 
-      {/* Memory Management */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Database className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Memory Management</span>
-        </div>
-
+      <FormSection icon={<Database className="h-4 w-4" />} title="Memory Management">
         <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Swap Space (GB)</label>
-            <input
+          <FormField label="Swap Space (GB)">
+            <Input
               type="number"
               value={recipe.swap_space || ""}
               onChange={(e) =>
                 onChange({ ...recipe, swap_space: Number(e.target.value) || undefined })
               }
               placeholder="0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">CPU Offload (GB)</label>
-            <input
+          </FormField>
+          <FormField label="CPU Offload (GB)">
+            <Input
               type="number"
               value={recipe.cpu_offload_gb || ""}
               onChange={(e) =>
                 onChange({ ...recipe, cpu_offload_gb: Number(e.target.value) || undefined })
               }
               placeholder="0"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">
-              GPU Blocks Override
-            </label>
-            <input
+          </FormField>
+          <FormField label="GPU Blocks Override">
+            <Input
               type="number"
               value={recipe.num_gpu_blocks_override || ""}
               onChange={(e) =>
-                onChange({
-                  ...recipe,
-                  num_gpu_blocks_override: Number(e.target.value) || undefined,
-                })
+                onChange({ ...recipe, num_gpu_blocks_override: Number(e.target.value) || undefined })
               }
               placeholder="Auto"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
+          </FormField>
         </div>
-      </div>
+      </FormSection>
     </div>
   );
 }

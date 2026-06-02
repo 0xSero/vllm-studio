@@ -68,6 +68,12 @@ export type { SectionNavItem } from "./page";
 
 export { ListGroup, ListRow, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
 
+export { Toggle } from "./toggle";
+export { Slider } from "./slider";
+export { SegmentedControl } from "./segmented-control";
+export type { SegmentedItem } from "./segmented-control";
+export { ColorField } from "./color-field";
+
 export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";
 

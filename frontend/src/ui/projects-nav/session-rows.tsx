@@ -75,7 +75,7 @@ export function ProjectRow({
               />
             </span>
           )}
-          <span className="truncate text-[13px] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
+          <span className="truncate text-[length:var(--fs-base)] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
             {project.name}
           </span>
           {!project.exists ? (
@@ -110,7 +110,7 @@ export function ProjectRow({
         ) : null}
       </div>
       {missingErrorVisible && !project.exists ? (
-        <div className="pl-12 pr-2 pb-1 text-[12px] text-red-400">
+        <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-md)] text-red-400">
           <span>Folder not found at {project.path}</span>
           <button
             type="button"
@@ -216,9 +216,9 @@ export function ProjectSessions({
         />
       ))}
       {loading && !sessions ? (
-        <div className="pl-2 pr-2 py-0.5 text-[11px] text-(--dim)">Loading...</div>
+        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">Loading...</div>
       ) : recent.length === 0 && visibleActiveSessions.length === 0 ? (
-        <div className="pl-2 pr-2 py-0.5 text-[11px] text-(--dim)">No chats</div>
+        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
       ) : (
         recent.map((session) => (
           <SessionRow
@@ -283,7 +283,7 @@ export function ActiveSessionRow({
       isRunning={session.status !== "idle" && session.status !== "done"}
       canDoubleClickRename
       menuIconClass="h-3.5 w-3.5"
-      renameInputClass="text-[10.5px]"
+      renameInputClass="text-[length:var(--fs-xs)]"
     />
   );
 }

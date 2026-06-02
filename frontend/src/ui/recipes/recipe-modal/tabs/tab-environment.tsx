@@ -45,7 +45,7 @@ export function RecipeModalTabEnvironment({
         </FormSection>
       )}
       {isLlamacpp && (
-        <p className="text-xs text-(--dim)">
+        <p className="text-xs text-(--ui-muted)">
           llama.cpp uses the configured server binary. Set{" "}
           <span className="font-mono">VLLM_STUDIO_LLAMA_BIN</span> if you need a custom path.
         </p>
@@ -96,9 +96,9 @@ export function RecipeModalTabEnvironment({
       {/* Extra Args */}
       <FormSection icon={<Code className="h-4 w-4" />} title="Extra CLI Arguments">
         <Card padding="sm" className="overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 bg-(--surface) border-b border-(--border)">
-            <span className="text-xs text-(--dim)">JSON Editor</span>
-            {extraArgsError && <span className="text-xs text-(--err)">Invalid JSON</span>}
+          <div className="flex items-center justify-between px-3 py-2 bg-(--ui-surface) border-b border-(--ui-border)">
+            <span className="text-xs text-(--ui-muted)">JSON Editor</span>
+            {extraArgsError && <span className="text-xs text-(--ui-danger)">Invalid JSON</span>}
           </div>
           <Textarea
             value={extraArgsText}
@@ -109,25 +109,25 @@ export function RecipeModalTabEnvironment({
             placeholder='{\"custom-flag\": true}'
           />
         </Card>
-        <p className="text-xs text-(--dim)">
+        <p className="text-xs text-(--ui-muted)">
           Extra arguments are passed directly to the CLI. These override form fields.
         </p>
       </FormSection>
 
       {isLlamacpp && (
-        <details className="bg-(--bg) border border-(--border) rounded-md overflow-hidden">
-          <summary className="cursor-pointer px-3 py-2 text-xs text-(--dim) bg-(--surface) border-b border-(--border)">
+        <details className="bg-(--ui-bg) border border-(--ui-border) rounded-md overflow-hidden">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-(--ui-muted) bg-(--ui-surface) border-b border-(--ui-border)">
             llama.cpp CLI Reference
           </summary>
           <div className="px-3 py-2">
             {llamaConfigLoading && (
-              <div className="text-xs text-(--dim)">Loading llama.cpp config…</div>
+              <div className="text-xs text-(--ui-muted)">Loading llama.cpp config…</div>
             )}
             {!llamaConfigLoading && llamaConfigHelp?.error && (
-              <div className="text-xs text-(--err)">{llamaConfigHelp.error}</div>
+              <div className="text-xs text-(--ui-danger)">{llamaConfigHelp.error}</div>
             )}
             {!llamaConfigLoading && !llamaConfigHelp?.error && (
-              <pre className="text-xs text-(--dim) whitespace-pre-wrap">
+              <pre className="text-xs text-(--ui-muted) whitespace-pre-wrap">
                 {llamaConfigHelp?.config ?? "No config data returned."}
               </pre>
             )}

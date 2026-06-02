@@ -262,14 +262,14 @@ export function PluginsPanel() {
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-xs">
         <Plug className="h-3.5 w-3.5 text-(--accent)" />
         <span className="font-medium text-(--fg)">Pi packages</span>
-        <span className="min-w-0 flex-1 truncate text-[11px] text-(--dim)">
+        <span className="min-w-0 flex-1 truncate text-[length:var(--fs-sm)] text-(--dim)">
           Catalog from npm · install on click
         </span>
         <div className="flex items-center gap-0.5 rounded border border-(--border) p-0.5">
           <button
             type="button"
             onClick={() => setView("browse")}
-            className={`h-5 rounded px-2 text-[10px] ${
+            className={`h-5 rounded px-2 text-[length:var(--fs-xs)] ${
               view === "browse"
                 ? "bg-(--accent)/15 text-(--accent)"
                 : "text-(--dim) hover:text-(--fg)"
@@ -280,7 +280,7 @@ export function PluginsPanel() {
           <button
             type="button"
             onClick={() => setView("installed")}
-            className={`h-5 rounded px-2 text-[10px] ${
+            className={`h-5 rounded px-2 text-[length:var(--fs-xs)] ${
               view === "installed"
                 ? "bg-(--accent)/15 text-(--accent)"
                 : "text-(--dim) hover:text-(--fg)"
@@ -292,7 +292,7 @@ export function PluginsPanel() {
         <button
           type="button"
           onClick={() => void refresh()}
-          className="h-6 rounded px-2 text-[11px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="h-6 rounded px-2 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         >
           {loading ? "…" : "Refresh"}
         </button>
@@ -300,12 +300,12 @@ export function PluginsPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 text-xs">
         {error ? (
-          <div className="mb-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
+          <div className="mb-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[length:var(--fs-sm)] text-red-300">
             {error}
           </div>
         ) : null}
         {showRestartHint ? (
-          <div className="mb-2 flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
+          <div className="mb-2 flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[length:var(--fs-sm)] text-amber-300">
             <span className="flex-1">
               Plugin changes apply to the <b>next session</b>. Start a new chat for the model to see
               new tools.
@@ -396,13 +396,13 @@ function BrowseView(props: {
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search pi packages…"
-            className="h-7 w-full rounded border border-(--border) bg-(--bg) pl-6 pr-2 text-[11px] text-(--fg) outline-none focus:border-(--accent)/60"
+            className="h-7 w-full rounded border border-(--border) bg-(--bg) pl-6 pr-2 text-[length:var(--fs-sm)] text-(--fg) outline-none focus:border-(--accent)/60"
           />
         </div>
         <select
           value={scope}
           onChange={(event) => onScopeChange(event.target.value as "user" | "project")}
-          className="h-7 rounded border border-(--border) bg-(--bg) px-1 text-[10px] text-(--fg)"
+          className="h-7 rounded border border-(--border) bg-(--bg) px-1 text-[length:var(--fs-xs)] text-(--fg)"
           title="Install scope"
         >
           <option value="user">User</option>
@@ -410,7 +410,7 @@ function BrowseView(props: {
         </select>
       </div>
 
-      <details className="rounded border border-(--border)/60 bg-(--surface)/20 px-2 py-1 text-[11px]">
+      <details className="rounded border border-(--border)/60 bg-(--surface)/20 px-2 py-1 text-[length:var(--fs-sm)]">
         <summary className="cursor-pointer select-none text-(--dim) hover:text-(--fg)">
           Install from custom source (git, local path, etc.)
         </summary>
@@ -423,13 +423,13 @@ function BrowseView(props: {
               if (event.key === "Enter") onCustomInstall();
             }}
             placeholder="npm:@scope/name · git:owner/repo · ./local-path"
-            className="min-w-0 flex-1 rounded border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[10px] text-(--fg) outline-none focus:border-(--accent)/60"
+            className="min-w-0 flex-1 rounded border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--fg) outline-none focus:border-(--accent)/60"
           />
           <button
             type="button"
             onClick={onCustomInstall}
             disabled={!customSource.trim() || busyKey?.startsWith("install:")}
-            className="h-7 rounded bg-(--accent)/20 px-3 text-[10px] text-(--accent) hover:bg-(--accent)/30 disabled:opacity-50"
+            className="h-7 rounded bg-(--accent)/20 px-3 text-[length:var(--fs-xs)] text-(--accent) hover:bg-(--accent)/30 disabled:opacity-50"
           >
             Install
           </button>
@@ -437,13 +437,13 @@ function BrowseView(props: {
       </details>
 
       {error ? (
-        <div className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
+        <div className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[length:var(--fs-sm)] text-red-300">
           {error}
         </div>
       ) : null}
 
       {loading && entries.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-[11px] text-(--dim)">
+        <div className="flex items-center justify-center gap-2 py-8 text-[length:var(--fs-sm)] text-(--dim)">
           <Loader2 className="h-3 w-3 animate-spin" /> Loading catalog…
         </div>
       ) : (
@@ -460,25 +460,25 @@ function BrowseView(props: {
                   <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--dim)" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="truncate font-mono text-[12px] text-(--fg)">
+                      <span className="truncate font-mono text-[length:var(--fs-md)] text-(--fg)">
                         {entry.name}
                       </span>
-                      <span className="rounded bg-(--bg) px-1 py-px text-[9px] uppercase tracking-wide text-(--dim)">
+                      <span className="rounded bg-(--bg) px-1 py-px text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
                         {KIND_LABEL[entry.kind]}
                       </span>
-                      <span className="font-mono text-[9px] text-(--dim)">v{entry.version}</span>
+                      <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">v{entry.version}</span>
                       {installed ? (
-                        <span className="rounded bg-(--accent)/15 px-1 py-px text-[9px] uppercase tracking-wide text-(--accent)">
+                        <span className="rounded bg-(--accent)/15 px-1 py-px text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--accent)">
                           Installed
                         </span>
                       ) : null}
                     </div>
                     {entry.description ? (
-                      <div className="mt-0.5 line-clamp-2 text-[11px] text-(--dim)">
+                      <div className="mt-0.5 line-clamp-2 text-[length:var(--fs-sm)] text-(--dim)">
                         {entry.description}
                       </div>
                     ) : null}
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-(--dim)">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[length:var(--fs-xs)] text-(--dim)">
                       {entry.author ? <span>@{entry.author}</span> : null}
                       <span>{formatDownloads(entry.weeklyDownloads)}/wk</span>
                       <span>{timeAgo(entry.date)}</span>
@@ -503,7 +503,7 @@ function BrowseView(props: {
                     </div>
                   </div>
                   {installed ? (
-                    <span className="inline-flex h-6 items-center rounded bg-(--bg) px-2 text-[10px] text-(--dim)">
+                    <span className="inline-flex h-6 items-center rounded bg-(--bg) px-2 text-[length:var(--fs-xs)] text-(--dim)">
                       ✓
                     </span>
                   ) : (
@@ -511,7 +511,7 @@ function BrowseView(props: {
                       type="button"
                       onClick={() => onInstall(entry.name)}
                       disabled={installBusy}
-                      className="inline-flex h-6 items-center gap-1 rounded bg-(--accent)/20 px-2 text-[10px] text-(--accent) hover:bg-(--accent)/30 disabled:opacity-50"
+                      className="inline-flex h-6 items-center gap-1 rounded bg-(--accent)/20 px-2 text-[length:var(--fs-xs)] text-(--accent) hover:bg-(--accent)/30 disabled:opacity-50"
                     >
                       {installBusy ? (
                         <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -526,7 +526,7 @@ function BrowseView(props: {
             );
           })}
           {!loading && entries.length === 0 ? (
-            <li className="rounded border border-dashed border-(--border) px-3 py-6 text-center text-[11px] text-(--dim)">
+            <li className="rounded border border-dashed border-(--border) px-3 py-6 text-center text-[length:var(--fs-sm)] text-(--dim)">
               No packages match your search.
             </li>
           ) : null}
@@ -550,7 +550,7 @@ function InstalledView(props: {
   const packages = data?.packages ?? [];
   if (packages.length === 0) {
     return (
-      <div className="rounded border border-dashed border-(--border) px-3 py-6 text-center text-[11px] text-(--dim)">
+      <div className="rounded border border-dashed border-(--border) px-3 py-6 text-center text-[length:var(--fs-sm)] text-(--dim)">
         Nothing installed yet. Switch to <b>Browse</b> to add one.
       </div>
     );
@@ -565,20 +565,20 @@ function InstalledView(props: {
           <div className="flex items-start gap-2">
             <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--accent)" />
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-(--fg)">
+              <div className="flex flex-wrap items-center gap-1.5 text-[length:var(--fs-md)] text-(--fg)">
                 <span className="truncate font-mono">{pkg.source}</span>
-                <span className="rounded bg-(--bg) px-1 py-px text-[9px] uppercase tracking-wide text-(--dim)">
+                <span className="rounded bg-(--bg) px-1 py-px text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
                   {pkg.scope}
                 </span>
                 {pkg.filtered ? (
-                  <span className="rounded bg-(--bg) px-1 py-px text-[9px] uppercase tracking-wide text-(--dim)">
+                  <span className="rounded bg-(--bg) px-1 py-px text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
                     filtered
                   </span>
                 ) : null}
               </div>
               {pkg.installedPath ? (
                 <div
-                  className="mt-0.5 truncate font-mono text-[10px] text-(--dim)"
+                  className="mt-0.5 truncate font-mono text-[length:var(--fs-xs)] text-(--dim)"
                   title={pkg.installedPath}
                 >
                   {pkg.installedPath}
@@ -589,7 +589,7 @@ function InstalledView(props: {
               type="button"
               onClick={() => onToggle(pkg.source, !pkg.enabled)}
               disabled={busyKey === `toggle:${pkg.source}`}
-              className={`h-6 rounded px-2 text-[10px] ${
+              className={`h-6 rounded px-2 text-[length:var(--fs-xs)] ${
                 pkg.enabled
                   ? "bg-(--accent)/15 text-(--accent)"
                   : "bg-(--bg) text-(--dim) hover:text-(--fg)"
@@ -601,7 +601,7 @@ function InstalledView(props: {
               type="button"
               onClick={() => onRemove(pkg)}
               disabled={busyKey === `remove:${pkg.source}`}
-              className="inline-flex h-6 items-center gap-1 rounded px-2 text-[10px] text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+              className="inline-flex h-6 items-center gap-1 rounded px-2 text-[length:var(--fs-xs)] text-red-300 hover:bg-red-500/10 disabled:opacity-50"
               title="Uninstall"
             >
               <Trash2 className="h-3 w-3" />

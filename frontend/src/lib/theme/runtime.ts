@@ -112,6 +112,39 @@ export function applyTokensToDocument(tokens: ThemeTokens): void {
   setThemeTokens(tokens);
 }
 
+/* ── Master scale/shape knobs (beyond colors) the Appearance editor controls ──
+   These set the canonical CSS variables that the whole UI derives from, so a
+   handful of values re-theme everything uniformly. Persisted to localStorage and
+   re-applied on load. */
+const UI_CONTROLS_KEY = "vllm-studio.uiControls";
+
+export function applyUiControl(name: string, value: string): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(name, value);
+  try {
+    const raw = window.localStorage.getItem(UI_CONTROLS_KEY);
+    const next = (raw ? JSON.parse(raw) : {}) as Record<string, string>;
+    next[name] = value;
+    window.localStorage.setItem(UI_CONTROLS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function applyStoredUiControls(): void {
+  if (typeof document === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(UI_CONTROLS_KEY);
+    if (!raw) return;
+    const stored = JSON.parse(raw) as Record<string, string>;
+    for (const [name, value] of Object.entries(stored)) {
+      if (typeof value === "string") document.documentElement.style.setProperty(name, value);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getThemeBootstrapScript(): string {
   const bootstrapData = {
     storeKey: STORE_KEY,

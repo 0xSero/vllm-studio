@@ -144,7 +144,7 @@ export function DropdownItem({
     <button
       onClick={handleClick}
       disabled={disabled}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 font-sans text-[13px] transition-colors:ease-in:200ms disabled:opacity-50 ${
+      className={`w-full flex items-center gap-2.5 px-3 py-2 font-sans text-[length:var(--fs-base)] transition-colors:ease-in:200ms disabled:opacity-50 ${
         isActive ? "text-(--ui-fg)" : "text-(--ui-muted) hover:bg-(--ui-fg)/5 hover:text-(--ui-fg)"
       }`}
     >

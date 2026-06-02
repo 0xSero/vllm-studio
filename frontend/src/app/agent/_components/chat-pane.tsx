@@ -213,6 +213,8 @@ export function ChatPane({
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(false);
+  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
+  const [editingQueueText, setEditingQueueText] = useState("");
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -830,6 +832,60 @@ export function ChatPane({
     },
     [activeTab, updateTab],
   );
+  const editQueued = useCallback(
+    (queueId: string, text: string) => {
+      if (!activeTab) return;
+      updateTab(activeTab.id, (tab) => ({
+        ...tab,
+        queue: (tab.queue ?? []).map((entry) =>
+          entry.id === queueId ? { ...entry, text } : entry,
+        ),
+      }));
+    },
+    [activeTab, updateTab],
+  );
+  const steerQueued = useCallback(
+    async (queueId: string) => {
+      if (!activeTab) return;
+      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
+      if (!item) return;
+      // Promote a queued follow-up to an immediate steer: drop it from the queue
+      // and inject it into the running turn. Re-add on failure so the message is
+      // never silently lost.
+      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      removeQueued(queueId);
+      const result = await engine.sendControl(
+        "steer",
+        item.text,
+        runtime,
+        activeTab.id,
+        activeTab.piSessionId,
+      );
+      if (!result.ok) {
+        updateTab(activeTab.id, (t) => ({
+          ...t,
+          queue: [...(t.queue ?? []), item],
+          error: result.error || "Steer failed",
+        }));
+      }
+    },
+    [activeTab, engine, removeQueued, runtimeSessionId, updateTab],
+  );
+  const beginQueueEdit = (item: QueuedMessage) => {
+    setEditingQueueId(item.id);
+    setEditingQueueText(item.text);
+  };
+  const cancelQueueEdit = () => {
+    setEditingQueueId(null);
+    setEditingQueueText("");
+  };
+  const commitQueueEdit = (queueId: string) => {
+    const trimmed = editingQueueText.trim();
+    if (trimmed) editQueued(queueId, trimmed);
+    else removeQueued(queueId);
+    setEditingQueueId(null);
+    setEditingQueueText("");
+  };
   const attachFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const fileArray = files ? Array.from(files) : [];
@@ -986,7 +1042,7 @@ export function ChatPane({
       </div>
       <form onSubmit={sendMessage} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
         {visibleQueueItems.length > 0 ? (
-          <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[11px] text-(--fg)">
+          <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[length:var(--fs-sm)] text-(--fg)">
             <button
               type="button"
               onClick={() => setQueueExpanded((value) => !value)}
@@ -994,7 +1050,7 @@ export function ChatPane({
               aria-expanded={queueExpanded}
               title="Queued follow-ups and steers"
             >
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-(--dim)">
+              <span className="shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
                 queue {visibleQueueItems.length}
               </span>
               <span className="min-w-0 flex-1 truncate">
@@ -1003,31 +1059,69 @@ export function ChatPane({
             </button>{" "}
             {queueExpanded ? (
               <div className="mt-1 space-y-0.5">
-                {" "}
-                {visibleQueue.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex min-w-0 items-center gap-2 py-1"
-                    title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
-                  >
-                    {" "}
-                    <span
-                      className={`shrink-0 font-mono text-[10px] uppercase tracking-wide ${item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"}`}
+                {visibleQueue.map((item) => {
+                  const isEditing = editingQueueId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex min-w-0 items-center gap-2 py-1"
+                      title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
                     >
-                      {item.mode === "steer" ? "steer" : "queue"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{item.text}</span>{" "}
-                    <button
-                      type="button"
-                      onClick={() => removeQueued(item.id)}
-                      className="shrink-0 p-0.5 text-(--dim) hover:text-(--fg)"
-                      aria-label="Remove queued message"
-                      title="Remove queued message"
-                    >
-                      <CloseIcon className="h-3 w-3" />{" "}
-                    </button>
-                  </div>
-                ))}
+                      <span
+                        className={`shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide ${item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"}`}
+                      >
+                        {item.mode === "steer" ? "steer" : "queue"}
+                      </span>
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          value={editingQueueText}
+                          onChange={(event) => setEditingQueueText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              commitQueueEdit(item.id);
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              cancelQueueEdit();
+                            }
+                          }}
+                          onBlur={() => commitQueueEdit(item.id)}
+                          className="min-w-0 flex-1 rounded-sm bg-(--surface-2)/60 px-1.5 py-0.5 text-[length:var(--fs-sm)] text-(--fg) outline-none"
+                          aria-label="Edit queued message"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => beginQueueEdit(item)}
+                          className="min-w-0 flex-1 truncate text-left hover:text-(--fg)"
+                          title="Click to edit"
+                        >
+                          {item.text}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void steerQueued(item.id)}
+                        disabled={!running}
+                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--accent) disabled:opacity-30"
+                        aria-label="Send now (steer)"
+                        title="Send now — interrupt the current turn"
+                      >
+                        <SendIcon className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeQueued(item.id)}
+                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--fg)"
+                        aria-label="Remove queued message"
+                        title="Remove from queue"
+                      >
+                        <CloseIcon className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -1040,7 +1134,7 @@ export function ChatPane({
         >
           {" "}
           {composerDragActive ? (
-            <div className="px-4 pt-2 text-[11px] text-(--accent)">
+            <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--accent)">
               Drop files to attach to the next message.
             </div>
           ) : null}
@@ -1049,7 +1143,7 @@ export function ChatPane({
             selectedPromptTemplates.length +
             selectedExtensionOverrides.length >
           0 ? (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[11px]">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[length:var(--fs-sm)]">
               {selectedPlugins.map((plugin) => (
                 <LoadedContextTab
                   key={`plugin-${plugin.id}`}
@@ -1134,7 +1228,7 @@ export function ChatPane({
                   })}
                 </div>
               ) : (
-                <div className="rounded-md border border-dashed border-(--border) px-3 py-3 text-center text-[11px] text-(--dim)">
+                <div className="rounded-md border border-dashed border-(--border) px-3 py-3 text-center text-[length:var(--fs-sm)] text-(--dim)">
                   No{" "}
                   {mention.kind === "plugin"
                     ? "plugins or files"
@@ -1169,7 +1263,7 @@ export function ChatPane({
               {attachments.map((file) => (
                 <span
                   key={file.id}
-                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[11px] text-(--dim)"
+                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[length:var(--fs-sm)] text-(--dim)"
                   title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
                 >
                   {isImageAttachment(file) ? (
@@ -1179,7 +1273,7 @@ export function ChatPane({
                       className="h-7 w-7 shrink-0 rounded object-cover"
                     />
                   ) : isRenderableAttachment(file) && file.previewKind === "pdf" ? (
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-(--border) bg-(--bg) font-mono text-[9px] text-(--fg)">
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-(--border) bg-(--bg) font-mono text-[length:var(--fs-2xs)] text-(--fg)">
                       PDF
                     </span>
                   ) : isRenderableAttachment(file) && file.previewKind === "video" ? (
@@ -1294,7 +1388,7 @@ export function ChatPane({
               }
             }}
             placeholder=""
-            className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[14px] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
+            className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[length:var(--fs-lg)] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
           />
           <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
             {" "}
@@ -1347,13 +1441,12 @@ export function ChatPane({
               <Code2 className="h-3.5 w-3.5" />
             </button>{" "}
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {modelSelector}{" "}
               {running ? (
                 <>
                   {" "}
                   {activeTab?.status === "starting" ? (
                     <span
-                      className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[11px] text-(--dim)"
+                      className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[length:var(--fs-sm)] text-(--dim)"
                       title="Waiting for the model to start"
                     >
                       {" "}
@@ -1365,7 +1458,7 @@ export function ChatPane({
                       <button
                         type="button"
                         onClick={() => void queueMessage()}
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center px-1.5 text-[11px] text-(--dim) underline-offset-2 hover:text-(--fg) hover:underline"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center px-1.5 text-[length:var(--fs-sm)] text-(--dim) underline-offset-2 hover:text-(--fg) hover:underline"
                         title="Queue (Tab)"
                       >
                         {" "}
@@ -1373,7 +1466,7 @@ export function ChatPane({
                       </button>{" "}
                       <button
                         type="submit"
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[11px] text-(--accent)/75 hover:bg-(--accent)/15 hover:text-(--fg)/85"
+                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[length:var(--fs-sm)] text-(--accent)/75 hover:bg-(--accent)/15 hover:text-(--fg)/85"
                         title="Steer (Enter): interrupt current turn and send"
                       >
                         <SendIcon className="h-3 w-3" /> Steer{" "}
@@ -1384,11 +1477,11 @@ export function ChatPane({
                     type="button"
                     onClick={() => void abortTurn()}
                     disabled={activeTab?.status === "starting"}
-                    className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 px-2 text-xs text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
+                    className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
+                    aria-label="Pause"
                     title="Pause (Esc)"
                   >
-                    {" "}
-                    <StopIcon className="h-3 w-3" /> Pause
+                    <StopIcon className="h-3 w-3" />
                   </button>{" "}
                 </>
               ) : (
@@ -1411,7 +1504,7 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="relative z-20 mx-auto mt-2.5 flex w-full max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[10px] text-(--dim)">
+        <div className="relative z-20 mx-auto mt-2.5 flex w-full max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[length:var(--fs-xs)] text-(--dim)">
           {" "}
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <div className="min-w-0 max-w-[42%] shrink overflow-visible">
@@ -1449,6 +1542,7 @@ export function ChatPane({
               </span>
             ) : null}
           </div>{" "}
+          {modelSelector}
           <ContextReadout
             current={currentContextTokens}
             contextWindow={effectiveContextWindow}
@@ -1544,11 +1638,11 @@ function ChatPaneHeader({
                 setRenaming(false);
               }
             }}
-            className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[12px] font-medium text-(--fg) outline-none"
+            className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[length:var(--fs-md)] font-medium text-(--fg) outline-none"
             aria-label="Rename session"
           />
         ) : (
-          <span className="min-w-0 truncate text-[12px] font-medium text-(--fg)" title={title}>
+          <span className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)" title={title}>
             {title}
           </span>
         )}
@@ -1689,7 +1783,7 @@ function LoadedContextTab({
   const meta = LOADED_TAB_META[prefix];
   return (
     <span
-      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded border px-2 py-1 text-[11px] shadow-sm shadow-black/5 ${meta.classes}`}
+      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded border px-2 py-1 text-[length:var(--fs-sm)] shadow-sm shadow-black/5 ${meta.classes}`}
       title={title ?? label}
     >
       <meta.Icon className="h-3 w-3 shrink-0" />
@@ -1780,21 +1874,21 @@ function MentionPickerHeader({
 }) {
   const meta = MENTION_KIND_META[kind];
   return (
-    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[11px]">
+    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[length:var(--fs-sm)]">
       <meta.Icon className={`h-3.5 w-3.5 ${meta.accentClass}`} />
       <span className="font-medium text-(--fg)">{meta.title}</span>
       {query ? (
-        <span className="font-mono text-[10px] text-(--dim)">
+        <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">
           {query.length > 24 ? `${query.slice(0, 24)}…` : query}
         </span>
       ) : null}
-      <span className="ml-auto truncate text-[10px] text-(--dim)">{meta.hint}</span>
+      <span className="ml-auto truncate text-[length:var(--fs-xs)] text-(--dim)">{meta.hint}</span>
       {kind === "extension" ? (
         <button
           type="button"
           onMouseDown={(event) => event.preventDefault()}
           onClick={onOpenPlugins}
-          className="rounded border border-(--border) px-1.5 py-[1px] text-[10px] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="rounded border border-(--border) px-1.5 py-[1px] text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           title="Open the Pi packages panel"
         >
           Manage
@@ -1833,9 +1927,9 @@ function MentionExtensionRow({
       <Plug className={`h-3.5 w-3.5 shrink-0 ${effective ? "text-emerald-300" : "text-(--dim)"}`} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5">
-          <span className="truncate text-[12px] text-(--fg)">{entry.row.name}</span>
+          <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{entry.row.name}</span>
           <span
-            className={`shrink-0 rounded px-1 py-[1px] text-[9px] font-medium uppercase tracking-wide ${
+            className={`shrink-0 rounded px-1 py-[1px] text-[length:var(--fs-2xs)] font-medium uppercase tracking-wide ${
               effective ? "bg-emerald-500/20 text-emerald-300" : "bg-(--bg) text-(--dim)"
             }`}
           >
@@ -1843,14 +1937,14 @@ function MentionExtensionRow({
           </span>
           {turnOverride ? (
             <span
-              className="shrink-0 rounded bg-(--accent)/15 px-1 py-[1px] font-mono text-[9px] uppercase tracking-wide text-(--accent)"
+              className="shrink-0 rounded bg-(--accent)/15 px-1 py-[1px] font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--accent)"
               title="Per-turn override"
             >
               turn
             </span>
           ) : null}
         </span>
-        <span className="block truncate text-[10.5px] text-(--dim)">{source}</span>
+        <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">{source}</span>
       </span>
       <span
         role="button"
@@ -1860,7 +1954,7 @@ function MentionExtensionRow({
           event.stopPropagation();
           onPersist(!persisted);
         }}
-        className="hidden shrink-0 rounded border border-(--border) px-1.5 py-[1px] text-[9px] uppercase tracking-wide text-(--dim) hover:bg-(--hover) hover:text-(--fg) sm:inline"
+        className="hidden shrink-0 rounded border border-(--border) px-1.5 py-[1px] text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim) hover:bg-(--hover) hover:text-(--fg) sm:inline"
         title={
           persisted
             ? "Disable persistently (writes enabled.json)"
@@ -1903,16 +1997,16 @@ function MentionRowItem({
       <Icon className={`h-3.5 w-3.5 shrink-0 ${accent}`} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5">
-          <span className="truncate text-[12px] text-(--fg)">{title}</span>
-          {version ? <span className="font-mono text-[10px] text-(--dim)">{version}</span> : null}
+          <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
+          {version ? <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">{version}</span> : null}
         </span>
         {description ? (
-          <span className="block truncate text-[10.5px] text-(--dim)">{description}</span>
+          <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">{description}</span>
         ) : null}
       </span>
       {source ? (
         <span
-          className="hidden truncate font-mono text-[9px] uppercase tracking-wide text-(--dim) sm:inline"
+          className="hidden truncate font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim) sm:inline"
           title={source}
         >
           {source}

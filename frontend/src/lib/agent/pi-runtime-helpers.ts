@@ -15,6 +15,12 @@ export type RuntimePluginRef = {
   appConfigPath?: string;
   appIds?: string[];
   appPath?: string;
+  /**
+   * Mirrors PluginRow.launch. "host-app" plugins (e.g. computer-use) ship a
+   * bundled helper binary; their MCP is loaded when that binary actually
+   * resolves on disk — see shouldLoadMcpConfig.
+   */
+  launch?: "standard" | "host-app";
 };
 
 export type RuntimeSkillRef = {
@@ -304,9 +310,41 @@ function isLaunchConstrainedComputerUseMcp(configPath: string): boolean {
 function shouldLoadMcpConfig(plugin: RuntimePluginRef, configPath: string): boolean {
   if (process.env.VLLM_STUDIO_ENABLE_CODEX_COMPUTER_USE_MCP === "1") return true;
   if (isLocalComputerUseHelper(plugin, configPath)) return true;
+  // Data-driven host-app gate: a "host-app" plugin (e.g. computer-use) may load
+  // its MCP only when the bundled helper binary the .mcp.json points at actually
+  // resolves on disk. This replaces the old blanket computer-use block — when the
+  // helper is present (bundled Codex.app install) the launch can succeed.
+  if (isHostAppPlugin(plugin) && hostAppHelperResolves(configPath)) return true;
   return !(
     pluginNameMatches(plugin, "computer-use") && isLaunchConstrainedComputerUseMcp(configPath)
   );
+}
+
+function isHostAppPlugin(plugin: RuntimePluginRef): boolean {
+  // Prefer the explicit launch flag; fall back to the name match so this still
+  // gates correctly if `launch` was dropped somewhere in the request pipeline.
+  return plugin.launch === "host-app" || pluginNameMatches(plugin, "computer-use");
+}
+
+// Resolve every mcpServers[*].command in the .mcp.json the way the MCP extension
+// will at launch (relative command + cwd resolved against the config's own dir)
+// and confirm at least one resolved command binary exists on disk.
+function hostAppHelperResolves(configPath: string): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
+      mcpServers?: Record<string, { command?: unknown; cwd?: unknown }>;
+    };
+    const baseDir = path.dirname(configPath);
+    return Object.values(parsed.mcpServers ?? {}).some((server) => {
+      const command = typeof server.command === "string" ? server.command : "";
+      if (!command) return false;
+      const cwd = path.resolve(baseDir, typeof server.cwd === "string" ? server.cwd : ".");
+      const resolved = path.isAbsolute(command) ? command : path.resolve(cwd, command);
+      return existsSync(resolved);
+    });
+  } catch {
+    return false;
+  }
 }
 
 function isLocalComputerUseHelper(plugin: RuntimePluginRef, configPath: string): boolean {
@@ -353,11 +391,17 @@ export function deriveFrontendBase(env: NodeJS.ProcessEnv = process.env): string
 function shouldLoadBrowserTool(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): boolean {
   return (
     options.browserToolEnabled === true ||
-    plugins.some(
-      (plugin) =>
-        pluginNameMatches(plugin, "browser-use") || pluginNameMatches(plugin, "computer-use"),
-    )
+    plugins.some((plugin) => isBrowserPlugin(plugin) || pluginNameMatches(plugin, "computer-use"))
   );
+}
+
+// The bundled Codex `browser` and `chrome` plugins (and the legacy `browser-use`
+// name) all drive a web browser. vLLM Studio fulfils them with its OWN browser
+// tooling (browser.ts / parchi) rather than Codex's in-app/native-host bridge,
+// so selecting any of them turns the browser tool on. ("browser" matches
+// "browser-use" too, since pluginNameMatches is a substring check.)
+function isBrowserPlugin(plugin: RuntimePluginRef): boolean {
+  return pluginNameMatches(plugin, "browser") || pluginNameMatches(plugin, "chrome");
 }
 
 function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {

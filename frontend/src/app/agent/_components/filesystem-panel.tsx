@@ -95,6 +95,29 @@ function previewKindForPath(path: string): "html" | "jsx" | "md" | null {
   if (/\.(md|mdx|markdown)$/i.test(path)) return "md";
   return null;
 }
+// Infer a renderable kind from raw content (no file path available, e.g. the
+// canvas buffer). Markdown is the default since most freeform notes are prose.
+export function detectPreviewKind(content: string): "html" | "jsx" | "md" {
+  const trimmed = content.trimStart();
+  const hasMarkup = /<[A-Za-z]/.test(content);
+  if (
+    hasMarkup &&
+    (/(^|\n)\s*(import\s.+from|export\s+default|export\s+function)/.test(content) ||
+      /\bclassName=/.test(content))
+  ) {
+    return "jsx";
+  }
+  if (
+    /^<!doctype html/i.test(trimmed) ||
+    /^<html[\s>]/i.test(trimmed) ||
+    /^<(div|section|main|article|header|footer|nav|aside|h[1-6]|p|ul|ol|table|svg|body|head|span|button|a|img|figure|form|style)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return "html";
+  }
+  return "md";
+}
 function extractJsxPreviewSource(source: string): string {
   const withoutImports = source
     .replace(/^\s*import\s.+?;?\s*$/gm, "")
@@ -159,7 +182,7 @@ function TreeFileList({
           <div key={entry.path}>
             {" "}
             <div
-              className={`flex w-full items-center gap-1 py-0.5 text-left text-[11px] hover:bg-(--surface) ${isActive ? "bg-(--surface) text-(--fg)" : "text-(--dim)"}`}
+              className={`flex w-full items-center gap-1 py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--surface) ${isActive ? "bg-(--surface) text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
               {isDir ? (
@@ -175,7 +198,7 @@ function TreeFileList({
                 >
                   {" "}
                   {isLoading ? (
-                    <span className="text-[8px] text-(--dim)">…</span>
+                    <span className="text-[length:var(--fs-2xs)] text-(--dim)">…</span>
                   ) : isExpanded ? (
                     <ChevronDown className="h-3 w-3" />
                   ) : (
@@ -199,7 +222,7 @@ function TreeFileList({
                 )}
                 <span className="flex-1 truncate">{entry.name}</span>{" "}
                 {!isDir && entry.size != null && entry.size > 0 ? (
-                  <span className="shrink-0 text-[9px] text-(--dim)">
+                  <span className="shrink-0 text-[length:var(--fs-2xs)] text-(--dim)">
                     {entry.size < 1024
                       ? `${entry.size}B`
                       : entry.size < 1024 * 1024
@@ -328,7 +351,7 @@ export function FilesystemPanel({ cwd }: Props) {
   const previewKind = useMemo(() => (openFile ? previewKindForPath(openFile) : null), [openFile]);
   if (!cwd) {
     return (
-      <div className="flex h-full items-center justify-center text-center text-[11px] text-(--dim)">
+      <div className="flex h-full items-center justify-center text-center text-[length:var(--fs-sm)] text-(--dim)">
         Pick a project to browse its files.
       </div>
     );
@@ -361,14 +384,14 @@ export function FilesystemPanel({ cwd }: Props) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search files…"
-              className="w-full rounded border border-(--border) bg-(--surface) px-2 py-0.5 text-[10px] text-(--fg) outline-none placeholder:text-(--dim)"
+              className="w-full rounded border border-(--border) bg-(--surface) px-2 py-0.5 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
               spellCheck={false}
             />{" "}
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="ml-1 shrink-0 rounded p-0.5 text-[10px] text-(--dim) hover:text-(--fg)"
+                className="ml-1 shrink-0 rounded p-0.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
                 title="Clear search"
               >
                 {" "}
@@ -389,7 +412,7 @@ export function FilesystemPanel({ cwd }: Props) {
               dirLoading={dirLoading}
             />{" "}
             {entries.length === 0 && !searchQuery && (
-              <div className="px-2 py-2 text-[11px] text-(--dim)">Empty.</div>
+              <div className="px-2 py-2 text-[length:var(--fs-sm)] text-(--dim)">Empty.</div>
             )}
           </div>{" "}
         </div>
@@ -408,17 +431,17 @@ export function FilesystemPanel({ cwd }: Props) {
       <div className="flex min-w-0 flex-1 flex-col">
         {" "}
         {!openFile ? (
-          <div className="flex h-full items-center justify-center text-[11px] text-(--dim)">
+          <div className="flex h-full items-center justify-center text-[length:var(--fs-sm)] text-(--dim)">
             Select a file to view.
           </div>
         ) : fileTruncated ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-[11px] text-(--dim)">
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-[length:var(--fs-sm)] text-(--dim)">
             {" "}
             <span>Binary or too large to render</span>
             <span className="font-mono">{(fileSize / 1024).toFixed(1)} KB</span>{" "}
           </div>
         ) : loadingFile ? (
-          <div className="flex h-full items-center justify-center text-[11px] text-(--dim)">
+          <div className="flex h-full items-center justify-center text-[length:var(--fs-sm)] text-(--dim)">
             Loading…
           </div>
         ) : (
@@ -427,7 +450,7 @@ export function FilesystemPanel({ cwd }: Props) {
             <div
               className={`flex h-8 shrink-0 items-center justify-between gap-1 border-b border-(--border) px-2 ${fileListOpen ? "" : "pl-10"}`}
             >
-              <div className="min-w-0 truncate font-mono text-[10px] text-(--dim) flex-1">
+              <div className="min-w-0 truncate font-mono text-[length:var(--fs-xs)] text-(--dim) flex-1">
                 {openFile}
               </div>{" "}
               <div className="flex shrink-0 items-center gap-0.5">
@@ -436,7 +459,7 @@ export function FilesystemPanel({ cwd }: Props) {
                     <button
                       type="button"
                       onClick={() => setViewMode("preview")}
-                      className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] ${viewMode === "preview" ? "bg-(--bg) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
+                      className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[length:var(--fs-xs)] ${viewMode === "preview" ? "bg-(--bg) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
                     >
                       {" "}
                       <Monitor className="h-3 w-3" />
@@ -444,7 +467,7 @@ export function FilesystemPanel({ cwd }: Props) {
                     <button
                       type="button"
                       onClick={() => setViewMode("code")}
-                      className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] ${viewMode === "code" ? "bg-(--bg) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
+                      className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[length:var(--fs-xs)] ${viewMode === "code" ? "bg-(--bg) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
                     >
                       <Code className="h-3 w-3" />{" "}
                     </button>
@@ -460,7 +483,7 @@ export function FilesystemPanel({ cwd }: Props) {
                   >
                     <Minus className="h-3 w-3" />{" "}
                   </button>
-                  <span className="w-5 text-center text-[9px] text-(--dim)">{fontSize}</span>{" "}
+                  <span className="w-5 text-center text-[length:var(--fs-2xs)] text-(--dim)">{fontSize}</span>{" "}
                   <button
                     type="button"
                     onClick={() => setFontSize(Math.min(20, fontSize + 1))}
@@ -487,7 +510,7 @@ export function FilesystemPanel({ cwd }: Props) {
 function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }) {
   const parts = relPath ? relPath.split("/").filter(Boolean) : [];
   return (
-    <div className="flex h-7 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[11px] text-(--dim)">
+    <div className="flex h-7 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[length:var(--fs-sm)] text-(--dim)">
       <button
         type="button"
         onClick={onRoot}
@@ -500,7 +523,7 @@ function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }
       {parts.length > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)" />}
       {parts.map((part, i) => (
         <span key={i} className="flex shrink-0 items-center gap-0.5">
-          <span className="truncate font-mono text-[10px] text-(--fg)">{part}</span>{" "}
+          <span className="truncate font-mono text-[length:var(--fs-xs)] text-(--fg)">{part}</span>{" "}
           {i < parts.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)" />}
         </span>
       ))}
@@ -508,7 +531,13 @@ function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }
   );
 }
 
-function RenderedPreview({ content, kind }: { content: string; kind: "html" | "jsx" | "md" }) {
+export function RenderedPreview({
+  content,
+  kind,
+}: {
+  content: string;
+  kind: "html" | "jsx" | "md";
+}) {
   if (kind === "md") {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">

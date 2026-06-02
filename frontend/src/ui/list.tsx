@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { cx } from "./utils";
 
 export function ListGroup({
@@ -9,28 +10,51 @@ export function ListGroup({
   actions,
   children,
   className,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const showBody = collapsible ? open : true;
   return (
     <section className={cx("mb-6 last:mb-0", className)}>
       {title || actions ? (
         <div className="mb-1.5 flex items-end justify-between gap-3 px-3.5">
-          <h3 className="text-[12px] font-semibold tracking-[-0.005em] text-(--ui-muted)">
-            {title}
-          </h3>
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              className="group flex items-center gap-1.5 text-(--ui-muted) hover:text-(--ui-fg)"
+            >
+              <ChevronDown
+                className={cx("h-3 w-3 transition-transform", open ? "" : "-rotate-90")}
+                aria-hidden
+              />
+              <h3 className="text-[length:var(--fs-md)] font-semibold tracking-[-0.005em]">{title}</h3>
+            </button>
+          ) : (
+            <h3 className="text-[length:var(--fs-md)] font-semibold tracking-[-0.005em] text-(--ui-muted)">
+              {title}
+            </h3>
+          )}
           {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-[var(--ui-radius-lg)] border border-(--ui-border) bg-(--ui-surface) [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:left-3.5 [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--ui-separator) [&>*]:relative">
-        {children}
-      </div>
-      {description ? (
-        <p className="mt-1.5 px-3.5 text-[11px] leading-relaxed text-(--ui-muted)">{description}</p>
+      {showBody ? (
+        <div className="overflow-hidden rounded-[var(--ui-radius-lg)] border border-(--ui-border) bg-(--ui-surface) [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:left-3.5 [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--ui-separator) [&>*]:relative">
+          {children}
+        </div>
+      ) : null}
+      {description && showBody ? (
+        <p className="mt-1.5 px-3.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">{description}</p>
       ) : null}
     </section>
   );
@@ -56,24 +80,23 @@ export function ListRow({
   className?: string;
 }) {
   return (
-    <div
-      className={cx(
-        "flex min-h-[40px] items-center justify-between gap-4 px-3.5 py-2.5",
-        className,
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] text-(--ui-fg)">{label}</div>
-        {description ? (
-          <div className="mt-0.5 text-[11px] leading-relaxed text-(--ui-muted)">{description}</div>
-        ) : null}
-        {children ? <div className="mt-1.5">{children}</div> : null}
+    <div className={cx("px-3.5 py-2.5", className)}>
+      {/* Shared 2-column grid pins a fixed label column so every control across
+          rows lines up vertically; expanded children indent to the control column. */}
+      <div className="grid min-h-7 grid-cols-1 gap-1.5 md:grid-cols-[minmax(160px,0.42fr)_minmax(0,1fr)] md:items-center md:gap-5">
+        <div className="min-w-0">
+          <div className="text-[length:var(--fs-base)] text-(--ui-fg)">{label}</div>
+          {description ? (
+            <div className="mt-0.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">{description}</div>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          {control ?? value ?? null}
+          {status ? <div className="shrink-0">{status}</div> : null}
+          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {control ?? value ?? null}
-        {status ? <div className="shrink-0">{status}</div> : null}
-        {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
-      </div>
+      {children ? <div className="mt-2 md:ml-[calc(160px+1.25rem)]">{children}</div> : null}
     </div>
   );
 }
@@ -92,8 +115,8 @@ export function RowValue({
   return (
     <div
       className={cx(
-        "text-[13px]",
-        mono ? "font-mono text-[12px]" : "",
+        "text-[length:var(--fs-base)]",
+        mono ? "font-mono text-[length:var(--fs-md)]" : "",
         dim ? "text-(--ui-muted)" : "text-(--ui-fg)/80",
         className,
       )}
@@ -106,7 +129,7 @@ export function RowValue({
 
 export function EmptySafeNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="px-3.5 py-2.5 text-[12px] leading-relaxed text-(--ui-muted)">{children}</div>
+    <div className="px-3.5 py-2.5 text-[length:var(--fs-md)] leading-relaxed text-(--ui-muted)">{children}</div>
   );
 }
 

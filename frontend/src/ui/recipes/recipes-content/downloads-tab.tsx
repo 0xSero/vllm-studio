@@ -98,7 +98,7 @@ export function DownloadsTab() {
               }
             >
               {download.error ? (
-                <div className="text-[11px] text-(--err)">{download.error}</div>
+                <div className="text-[length:var(--fs-sm)] text-(--err)">{download.error}</div>
               ) : null}
             </ModelRow>
           );

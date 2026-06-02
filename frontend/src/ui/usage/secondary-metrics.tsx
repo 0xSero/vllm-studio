@@ -31,7 +31,7 @@ interface SecondaryMetricsStats {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-3 font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+    <div className="mb-3 font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
       {children}
     </div>
   );
@@ -40,10 +40,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function Cell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>
-      <dd className="mt-1 font-mono text-[16px] leading-none tabular-nums text-(--fg)">{value}</dd>
+      <dd className="mt-1 font-mono text-[length:var(--fs-xl)] leading-none tabular-nums text-(--fg)">{value}</dd>
     </div>
   );
 }
@@ -67,7 +67,7 @@ export function SecondaryMetrics(stats: SecondaryMetricsStats) {
         <Cell label="prompt" value={formatNumber(stats.tokens_per_request.avg_prompt)} />
         <Cell label="completion" value={formatNumber(stats.tokens_per_request.avg_completion)} />
       </dl>
-      <dl className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-(--dim)">
+      <dl className="mt-3 grid grid-cols-2 gap-2 font-mono text-[length:var(--fs-sm)] text-(--dim)">
         <div>
           p50{" "}
           <span className="tabular-nums text-(--fg)">
@@ -89,7 +89,7 @@ export function SecondaryMetrics(stats: SecondaryMetricsStats) {
           <Cell label="hits" value={formatNumber(stats.cache.hits)} />
           <Cell label="misses" value={formatNumber(stats.cache.misses)} />
         </dl>
-        <dl className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-(--dim)">
+        <dl className="mt-3 grid grid-cols-2 gap-2 font-mono text-[length:var(--fs-sm)] text-(--dim)">
           <div>
             cached{" "}
             <span className="tabular-nums text-(--fg)">{formatNumber(stats.cache.hit_tokens)}</span>
@@ -105,10 +105,10 @@ export function SecondaryMetrics(stats: SecondaryMetricsStats) {
 
       <div className="mt-6">
         <div className="mb-3 flex items-center justify-between">
-          <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+          <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
             Hourly activity
           </div>
-          <span className="font-mono text-[10.5px] text-(--dim)">
+          <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">
             peak {peakHour?.hour ?? 0}:00 ·{" "}
             <span className="tabular-nums text-(--fg)">
               {formatNumber(peakHour?.requests || 0)}
@@ -134,14 +134,14 @@ export function SecondaryMetrics(stats: SecondaryMetricsStats) {
                   title={`${i}:00 — ${formatNumber(requests)} requests`}
                 />
                 {i % 6 === 0 ? (
-                  <div className="font-mono text-[8.5px] text-(--dim)/60">{i}:00</div>
+                  <div className="font-mono text-[length:var(--fs-2xs)] text-(--dim)/60">{i}:00</div>
                 ) : null}
               </div>
             );
           })}
         </div>
 
-        <div className="mt-2 flex items-center justify-between font-mono text-[10.5px] text-(--dim)">
+        <div className="mt-2 flex items-center justify-between font-mono text-[length:var(--fs-xs)] text-(--dim)">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 bg-(--hl3)" />
             peak hour

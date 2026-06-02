@@ -51,7 +51,7 @@ export function Timeline({
     return (
       <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
         <div className="agent-thread-shell mx-auto flex flex-1">
-          <div className="flex flex-1 items-center justify-center text-center text-[26px] font-medium leading-[1.35] text-(--fg)">
+          <div className="flex flex-1 items-center justify-center text-center text-[length:var(--fs-4xl)] font-medium leading-[1.35] text-(--fg)">
             <p className="max-w-[680px]">
               A dream is something you build for yourself.
               <br />
@@ -85,7 +85,7 @@ export function Timeline({
         })}
         {running ? (
           <div className="pt-6 pb-4 [overflow-anchor:none]">
-            <div className="flex items-center gap-2.5 text-[10.4px] leading-4 text-(--dim)">
+            <div className="flex items-center gap-2.5 text-[length:var(--fs-xs)] leading-4 text-(--dim)">
               <span className="relative inline-flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--accent)/40 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-(--accent)/60" />

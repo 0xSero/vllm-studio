@@ -56,7 +56,7 @@ export default function UsagePage() {
     <AppPage>
       <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 2xl:px-10">
         <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--border)/35 pb-2">
-          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.16em] text-(--dim)">
+          <span className="mr-1 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--dim)">
             source
           </span>
           <Tabs
@@ -64,23 +64,23 @@ export default function UsagePage() {
             items={TABS}
             activeTab={tab}
             onSelectTab={setTab}
-            className="[&_button]:h-7 [&_button]:px-2 [&_button]:py-0 [&_button]:text-[11px]"
+            className="[&_button]:h-7 [&_button]:px-2 [&_button]:py-0 [&_button]:text-[length:var(--fs-sm)]"
           />
         </div>
 
         <section className="px-2 pt-2 pb-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.04em]">
+              <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)] tracking-[0.04em]">
                 <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">Usage</span>
-                <span className="font-mono text-[10px] tabular-nums text-(--dim)/70">
+                <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">
                   {tab === "provider" ? "controller" : "pi sessions"}
                 </span>
               </div>
-              <h1 className="mt-1.5 truncate text-[22px] font-semibold leading-tight tracking-[-0.01em] text-(--fg)">
+              <h1 className="mt-1.5 truncate text-[length:var(--fs-3xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg)">
                 {formatNumber(totals.total_tokens)} tokens
               </h1>
-              <div className="mt-1 font-mono text-[11px] text-(--dim)">
+              <div className="mt-1 font-mono text-[length:var(--fs-sm)] text-(--dim)">
                 {formatNumber(totals.total_requests)} requests ·{" "}
                 {formatNumber(totals.unique_sessions)} sessions ·{" "}
                 {formatNumber(totals.unique_users)} users
@@ -89,7 +89,7 @@ export default function UsagePage() {
             <RefreshButton
               onRefresh={loadStats}
               loading={loading}
-              className="h-8 rounded-md border-0 bg-(--surface) px-3 text-[12px] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
+              className="h-8 rounded-md border-0 bg-(--surface) px-3 text-[length:var(--fs-md)] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
             />
           </div>
 
@@ -147,14 +147,14 @@ export default function UsagePage() {
 function HeaderStat({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>
-      <dd className="mt-1 min-w-0 font-mono text-[18px] leading-none tabular-nums text-(--fg)">
+      <dd className="mt-1 min-w-0 font-mono text-[length:var(--fs-2xl)] leading-none tabular-nums text-(--fg)">
         {value}
       </dd>
       {detail ? (
-        <dd className="mt-1 truncate font-mono text-[10.5px] text-(--dim)">{detail}</dd>
+        <dd className="mt-1 truncate font-mono text-[length:var(--fs-xs)] text-(--dim)">{detail}</dd>
       ) : null}
     </div>
   );

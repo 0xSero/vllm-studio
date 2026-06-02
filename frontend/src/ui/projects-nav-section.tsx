@@ -178,7 +178,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col">
-          <div className="mt-3 flex h-5 items-center px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
+          <div className="mt-3 flex h-5 items-center px-2 text-[length:var(--fs-xs)] font-semibold uppercase tracking-[0.14em] text-(--dim)">
             Pinned
           </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -246,7 +246,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           <button
             type="button"
             onClick={handleAddProject}
-            className="px-2 py-1 text-left text-[12px] text-(--dim) hover:text-(--fg)"
+            className="px-2 py-1 text-left text-[length:var(--fs-md)] text-(--dim) hover:text-(--fg)"
           >
             {" "}
             No projects yet — pick a folder to get started.
@@ -271,7 +271,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ))
         )
       ) : null}
-      {addError ? <div className="px-2 py-1 text-[11px] text-red-400">{addError}</div> : null}{" "}
+      {addError ? <div className="px-2 py-1 text-[length:var(--fs-sm)] text-red-400">{addError}</div> : null}{" "}
     </div>
   );
 }
@@ -287,7 +287,7 @@ function SidebarSectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="group mt-3 flex h-5 items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--dim)">
+    <div className="group mt-3 flex h-5 items-center justify-between px-2 text-[length:var(--fs-xs)] font-semibold uppercase tracking-[0.14em] text-(--dim)">
       <button
         type="button"
         onClick={onToggle}

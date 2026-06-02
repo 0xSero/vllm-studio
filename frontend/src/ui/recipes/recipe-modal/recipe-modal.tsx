@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { RefreshCw, Save, X } from "lucide-react";
+import { RefreshCw, Save } from "lucide-react";
 import { Button, StatusPill } from "@/ui";
+import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import api from "@/lib/api";
 import type { Backend, ModelInfo, Recipe, RecipeEditor, RecipeWithStatus } from "@/lib/types";
 import { formatBackendLabel } from "@/lib/recipes/recipe-labels";
@@ -219,35 +220,20 @@ export function RecipeModal({
   };
 
   return (
-    <aside
-      className="relative flex shrink-0 flex-col border-l border-(--ui-border) bg-(--ui-bg)"
-      style={{ width: "720px", minWidth: "min(420px, 40%)", maxWidth: "min(820px, 65%)" }}
-    >
-      {/* Header — matches chat sidepanel ComputerHeader (h-9, text-[11px]) */}
-      <div className="relative flex h-9 shrink-0 items-center gap-2 border-b border-(--ui-border) px-2 text-[11px]">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate font-medium text-(--ui-fg)/85">
-            {recipe.id ? "Edit recipe" : "New recipe"}
-          </span>
+    <Drawer>
+      <DrawerHeader
+        title={recipe.id ? "Edit recipe" : "New recipe"}
+        badge={
           <StatusPill tone="info" variant="badge" className="shrink-0">
             {formatBackendLabel(recipe.backend)}
           </StatusPill>
-        </div>
-        <Button
-          variant="icon"
-          size="sm"
-          onClick={onClose}
-          aria-label="Close recipe drawer"
-          title="Close"
-        >
-          <X className="h-3 w-3" />
-        </Button>
-      </div>
+        }
+        onClose={onClose}
+      />
 
       <RecipeModalTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      {/* Content */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <DrawerBody>
         <RecipeModalTabContent
           activeTab={activeTab}
           recipe={recipe}
@@ -276,40 +262,42 @@ export function RecipeModal({
           onCommandChange={handleCommandChange}
           onResetCommand={handleCommandReset}
         />
-      </div>
+      </DrawerBody>
 
-      {/* Footer */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-t border-(--ui-border) bg-(--ui-bg) px-2 text-[11px]">
-        <div className="min-w-0 truncate text-(--ui-muted)/75">
-          {recipe.id ? `Editing ${recipe.name}` : "Creating new recipe"}
-          {extraArgsError && <span className="ml-3 text-(--ui-danger)">Extra args has errors</span>}
-          {recipeSourceError && (
-            <span className="ml-3 text-(--ui-danger)">Recipe JSON has errors</span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={onSave}
-            disabled={
-              saving ||
-              !!extraArgsError ||
-              !!recipeSourceError ||
-              !(recipe.name ?? "").trim() ||
-              !(recipe.model_path ?? "").trim()
-            }
-            icon={
-              saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />
-            }
-          >
-            {saving ? "Saving..." : "Save recipe"}
-          </Button>
-        </div>
-      </div>
-    </aside>
+      <DrawerFooter
+        status={
+          <>
+            {recipe.id ? `Editing ${recipe.name}` : "Creating new recipe"}
+            {extraArgsError && (
+              <span className="ml-3 text-(--ui-danger)">Extra args has errors</span>
+            )}
+            {recipeSourceError && (
+              <span className="ml-3 text-(--ui-danger)">Recipe JSON has errors</span>
+            )}
+          </>
+        }
+      >
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={
+            saving ||
+            !!extraArgsError ||
+            !!recipeSourceError ||
+            !(recipe.name ?? "").trim() ||
+            !(recipe.model_path ?? "").trim()
+          }
+          icon={
+            saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />
+          }
+        >
+          {saving ? "Saving..." : "Save recipe"}
+        </Button>
+      </DrawerFooter>
+    </Drawer>
   );
 }
 

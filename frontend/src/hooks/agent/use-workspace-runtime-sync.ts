@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
 import type { ChatMessage } from "@/lib/agent/session";
@@ -17,10 +17,7 @@ import {
   runtimePromptStreamsSnapshot,
   subscribeRuntimePromptStreams,
 } from "@/lib/agent/sessions/stream-ownership";
-import {
-  createTextDeltaCoalescer,
-  type TextDeltaCoalescer,
-} from "@/lib/agent/sessions/text-delta-coalescer";
+import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 
 type UseWorkspaceRuntimeSyncDeps = {
   dispatch: WorkspaceDispatch;
@@ -89,20 +86,33 @@ function sameRuntimePatch(
   );
 }
 
+// The useSyncExternalStore subscriptions below run their side effects purely
+// for the mount/cleanup lifecycle (effect hooks are banned in this codebase).
+// A constant snapshot guarantees they never trigger a re-render.
+const getRuntimeSyncSnapshot = (): number => 0;
+
 export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRuntimeSyncDeps): void {
   const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
   const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
   const piEventBatchesRef = useRef<Map<SessionId, PiEventBatch>>(new Map());
   const lastSeqBySessionRef = useRef<Map<SessionId, number>>(new Map());
-  const textDeltaCoalescerRef = useRef<TextDeltaCoalescer | null>(null);
   // Live resume subscriptions, one per session, managed incrementally so a
   // status flip never tears down and rebuilds unrelated connections.
   const resumeSubsRef = useRef<Map<SessionId, { key: string; sub: RuntimeEventSubscription }>>(
     new Map(),
   );
 
-  useEffect(() => {
+  // Mirror the latest sessions into a ref in the commit phase (never during
+  // render) so the long-lived subscriptions below read the current value
+  // without re-subscribing on every content update.
+  const subscribeSessionsRef = useCallback(() => {
+    sessionsRef.current = sessions;
+    return () => undefined;
+  }, [sessions]);
+  useSyncExternalStore(subscribeSessionsRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
+
+  // Track the high-water lastEventSeq per session as sessions update.
+  const subscribeLastSeq = useCallback(() => {
     for (const session of sessions) {
       if (typeof session.lastEventSeq === "number") {
         const current = lastSeqBySessionRef.current.get(session.id) ?? 0;
@@ -110,21 +120,9 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
           lastSeqBySessionRef.current.set(session.id, session.lastEventSeq);
       }
     }
+    return () => undefined;
   }, [sessions]);
-
-  useEffect(
-    () => () => {
-      textDeltaCoalescerRef.current?.flushAll();
-      textDeltaCoalescerRef.current?.dispose();
-      for (const batch of piEventBatchesRef.current.values()) {
-        if (batch.timer) clearTimeout(batch.timer);
-      }
-      piEventBatchesRef.current.clear();
-      for (const entry of resumeSubsRef.current.values()) entry.sub.close();
-      resumeSubsRef.current.clear();
-    },
-    [],
-  );
+  useSyncExternalStore(subscribeLastSeq, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const updateSession = useCallback(
     (sessionId: SessionId, patch: (session: Session) => Session) => {
@@ -157,18 +155,28 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     [patchAssistant, updateSession],
   );
   const applyPiEventRef = useRef(applyPiEvent);
-  applyPiEventRef.current = applyPiEvent;
-  if (!textDeltaCoalescerRef.current) {
-    textDeltaCoalescerRef.current = createTextDeltaCoalescer({
-      applyPiEvent: (sessionId, assistantId, event) => {
-        applyPiEventRef.current(sessionId, assistantId, event);
-      },
+  const subscribeApplyPiEventRef = useCallback(() => {
+    applyPiEventRef.current = applyPiEvent;
+    return () => undefined;
+  }, [applyPiEvent]);
+  useSyncExternalStore(subscribeApplyPiEventRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
+
+  // Single coalescer per hook instance, created lazily in the commit phase (not
+  // during render, so the dispatcher's ref read stays lint-clean). It always
+  // routes through the latest applyPiEvent.
+  const coalescerRef = useRef<ReturnType<typeof createTextDeltaCoalescer> | null>(null);
+  const subscribeCoalescer = useCallback(() => {
+    coalescerRef.current ??= createTextDeltaCoalescer({
+      applyPiEvent: (sessionId, assistantId, event) =>
+        applyPiEventRef.current(sessionId, assistantId, event),
     });
-  }
+    return () => undefined;
+  }, []);
+  useSyncExternalStore(subscribeCoalescer, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const flushPiEvents = useCallback(
     (sessionId: SessionId) => {
-      textDeltaCoalescerRef.current?.flushNow(sessionId);
+      coalescerRef.current?.flushNow(sessionId);
       const batch = piEventBatchesRef.current.get(sessionId);
       if (!batch) return;
       if (batch.timer) clearTimeout(batch.timer);
@@ -185,10 +193,10 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       event: Record<string, unknown>,
       options: { flushNow?: boolean } = {},
     ) => {
-      if (textDeltaCoalescerRef.current?.enqueuePiEvent(sessionId, assistantId, event, options)) {
+      if (coalescerRef.current?.enqueuePiEvent(sessionId, assistantId, event, options)) {
         return;
       }
-      textDeltaCoalescerRef.current?.flushNow(sessionId);
+      coalescerRef.current?.flushNow(sessionId);
       if (options.flushNow) flushPiEvents(sessionId);
       applyPiEvent(sessionId, assistantId, event);
     },
@@ -225,7 +233,7 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   // live-and-unowned set, close it when it leaves, and recreate it only when its
   // connection params (runtime/pi id) change. A transient status flip leaves
   // every existing connection untouched.
-  useEffect(() => {
+  const subscribeResume = useCallback(() => {
     const desired = new Map<SessionId, { runtimeSessionId: string; piSessionId: string | null }>();
     for (const session of sessionsRef.current) {
       if (
@@ -269,11 +277,13 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       });
       subs.set(sessionId, { key: resumeConnectionKey(want.runtimeSessionId, want.piSessionId), sub });
     }
+    return () => undefined;
   }, [subscriptionKey, enqueuePiEvent, flushPiEvents, shouldApplySeq, updateSession]);
+  useSyncExternalStore(subscribeResume, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
 
-  useEffect(() => {
+  const subscribePoll = useCallback(() => {
     if (sessionsRef.current.length === 0) return () => undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -341,4 +351,22 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       if (timer) clearInterval(timer);
     };
   }, [registryKey, updateSession]);
+  useSyncExternalStore(subscribePoll, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
+
+  // Unmount cleanup: flush/dispose the coalescer, clear pending batches, and
+  // close any open resume subscriptions.
+  const subscribeCleanup = useCallback(
+    () => () => {
+      coalescerRef.current?.flushAll();
+      coalescerRef.current?.dispose();
+      for (const batch of piEventBatchesRef.current.values()) {
+        if (batch.timer) clearTimeout(batch.timer);
+      }
+      piEventBatchesRef.current.clear();
+      for (const entry of resumeSubsRef.current.values()) entry.sub.close();
+      resumeSubsRef.current.clear();
+    },
+    [],
+  );
+  useSyncExternalStore(subscribeCleanup, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 }

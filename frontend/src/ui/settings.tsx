@@ -53,7 +53,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
       <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,640px)] lg:gap-10 lg:py-8">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h1 className="text-[17px] font-semibold tracking-[-0.01em] text-(--ui-fg)">{title}</h1>
+            <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">{title}</h1>
             <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
           </div>
           <SectionNav
@@ -139,7 +139,7 @@ export function SettingsButton({
       disabled={disabled}
       title={title}
       className={cx(
-        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[11px] font-normal transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[length:var(--fs-sm)] font-normal transition-colors disabled:pointer-events-none disabled:opacity-45",
         classes,
       )}
     >
@@ -171,7 +171,7 @@ export function SettingsInput({
       onBlur={onBlur}
       placeholder={placeholder}
       className={cx(
-        "h-7 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 text-[13px] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/50 focus:border-(--ui-accent)/40",
+        "h-7 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/50 focus:border-(--ui-accent)/40",
         className,
       )}
     />

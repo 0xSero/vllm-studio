@@ -107,14 +107,14 @@ export function LogsView({
                   onChange={onAutoRefreshChange}
                   label="Auto-refresh"
                   className="hidden items-center sm:flex"
-                  labelClassName="text-[11px] font-normal"
+                  labelClassName="text-[length:var(--fs-sm)] font-normal"
                 />
                 <Checkbox
                   checked={autoScroll}
                   onChange={onAutoScrollChange}
                   label="Auto-scroll"
                   className="hidden items-center sm:flex"
-                  labelClassName="text-[11px] font-normal"
+                  labelClassName="text-[length:var(--fs-sm)] font-normal"
                 />
                 <div className="w-px h-4 bg-(--border) hidden sm:block" />
                 <SearchInput
@@ -142,7 +142,7 @@ export function LogsView({
             {/* Log Content */}
             <div
               ref={logRef}
-              className="flex-1 overflow-auto p-2 sm:p-4 font-mono text-[10px] sm:text-xs bg-(--surface) leading-relaxed"
+              className="flex-1 overflow-auto p-2 sm:p-4 font-mono text-[length:var(--fs-xs)] sm:text-xs bg-(--surface) leading-relaxed"
             >
               {loadingContent ? (
                 <div className="flex items-center justify-center h-full">

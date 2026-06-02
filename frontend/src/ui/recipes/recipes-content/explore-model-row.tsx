@@ -88,7 +88,7 @@ export const ExploreModelRow = memo(function ExploreModelRow({
       label={rowLabel(model.modelId, child)}
       description={rowDescription(provider, variantCount, child)}
       value={
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-(--dim)">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-md)] text-(--dim)">
           <span className="font-mono text-(--fg)">
             {quants.length ? quants.join(", ") : "format unknown"}
           </span>
@@ -117,7 +117,7 @@ export const ExploreModelRow = memo(function ExploreModelRow({
     >
       {activeDownload ? (
         <div
-          className="text-[11px] text-(--dim)"
+          className="text-[length:var(--fs-sm)] text-(--dim)"
           title={`Server path: ${activeDownload.target_dir}`}
         >
           {formatBytes(activeDownload.downloaded_bytes)} / {formatBytes(activeDownload.total_bytes)}{" "}
@@ -178,7 +178,7 @@ function ExploreModelActions({
         href={`https://huggingface.co/${modelId}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+        className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
         title="Open on Hugging Face"
       >
         <ExternalLink className="h-3 w-3" />

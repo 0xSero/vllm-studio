@@ -88,19 +88,19 @@ export const RecipeRow = memo(function RecipeRow({
               <div className="absolute right-0 z-50 mt-1 w-32 overflow-hidden rounded-md border border-(--border) bg-(--surface) shadow-lg">
                 <button
                   onClick={handleTogglePin}
-                  className="w-full px-3 py-2 text-left text-[12px] hover:bg-(--hover)"
+                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] hover:bg-(--hover)"
                 >
                   {isPinned ? "Unpin" : "Pin"}
                 </button>
                 <button
                   onClick={handleEdit}
-                  className="w-full px-3 py-2 text-left text-[12px] hover:bg-(--hover)"
+                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] hover:bg-(--hover)"
                 >
                   Edit
                 </button>
                 <button
                   onClick={handleRequestDelete}
-                  className="w-full px-3 py-2 text-left text-[12px] text-(--err) hover:bg-(--err)/10"
+                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] text-(--err) hover:bg-(--err)/10"
                 >
                   Delete
                 </button>

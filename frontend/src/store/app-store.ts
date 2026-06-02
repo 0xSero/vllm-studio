@@ -6,6 +6,7 @@ import {
   hydrateDurableUiPreferences,
   scheduleDurableUiPreferencesSave,
 } from "@/lib/desktop-ui-preferences";
+import { applyStoredUiControls } from "@/lib/theme/runtime";
 
 export type AppStore = AppSlice &
   ThemeSlice & {
@@ -62,6 +63,7 @@ export const useAppStore = create<AppStore>()(
         if (state?.themeId) state.setThemeId(state.themeId);
         if (state?.fontFamilyId) state.setFontFamilyId(state.fontFamilyId);
         if (state?.fontSizeId) state.setFontSizeId(state.fontSizeId);
+        applyStoredUiControls();
       },
     }),
     { name: "vllm-studio" },

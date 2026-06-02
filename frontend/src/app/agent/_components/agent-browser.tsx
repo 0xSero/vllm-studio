@@ -229,13 +229,13 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
           onChange={(event) => onInputChange(event.target.value)}
           spellCheck={false}
           placeholder="Enter a URL or search local apps"
-          className="min-w-0 flex-1 rounded border border-(--border) bg-(--surface) px-2 py-1 font-mono text-[11px] text-(--fg) outline-none placeholder:text-(--dim)"
+          className="min-w-0 flex-1 rounded border border-(--border) bg-(--surface) px-2 py-1 font-mono text-[length:var(--fs-sm)] text-(--fg) outline-none placeholder:text-(--dim)"
           aria-label="Browser address"
         />
         <button
           type="button"
           onClick={() => setReadingMode((value) => !value)}
-          className={`shrink-0 rounded border px-1.5 py-1 text-[10px] uppercase tracking-wide ${
+          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide ${
             readingMode
               ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
               : "border-(--border) text-(--dim) hover:text-(--fg)"
@@ -338,15 +338,15 @@ function LocalhostStartPage({
       <div className="mx-auto max-w-3xl">
         <div className="mb-5 flex items-end justify-between gap-3">
           <div>
-            <div className="text-[15px] font-medium text-(--dim)">Local</div>
-            <div className="mt-1 text-[11px] text-(--dim)">
+            <div className="text-[length:var(--fs-lg)] font-medium text-(--dim)">Local</div>
+            <div className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
               Pick a running localhost app, or type a URL/search above.
             </div>
           </div>
           <button
             type="button"
             onClick={() => onQueryChange("")}
-            className="rounded-md px-2 py-1 text-[11px] text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            className="rounded-md px-2 py-1 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
           >
             Clear
           </button>
@@ -359,8 +359,8 @@ function LocalhostStartPage({
             className="mb-3 flex w-full items-center justify-between rounded-xl border border-(--border) bg-(--surface)/70 px-4 py-3 text-left hover:bg-(--surface)"
           >
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">Open “{query.trim()}”</span>
-              <span className="mt-1 block text-[11px] text-(--dim)">Navigate in the browser</span>
+              <span className="block truncate text-[length:var(--fs-base)] font-medium">Open “{query.trim()}”</span>
+              <span className="mt-1 block text-[length:var(--fs-sm)] text-(--dim)">Navigate in the browser</span>
             </span>
             <span className="text-lg text-(--dim)">↗</span>
           </button>
@@ -417,16 +417,16 @@ function LocalhostSiteRow({
           <span className="block h-1.5 w-16 rounded-full bg-black/15" />
           <span className="block h-1.5 w-11 rounded-full bg-black/15" />
         </span>
-        <span className="truncate text-[7px] font-semibold text-black/70">{site.title}</span>
+        <span className="truncate text-[length:var(--fs-2xs)] font-semibold text-black/70">{site.title}</span>
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold tracking-tight text-(--fg)">
+        <span className="block truncate text-[length:var(--fs-lg)] font-semibold tracking-tight text-(--fg)">
           {site.title}
         </span>
-        <span className="mt-1 block truncate text-[13px] text-(--dim)">{site.displayUrl}</span>
+        <span className="mt-1 block truncate text-[length:var(--fs-base)] text-(--dim)">{site.displayUrl}</span>
       </span>
       {site.current ? (
-        <span className="rounded-md border border-(--border) px-2 py-1 text-[11px] text-(--dim)">
+        <span className="rounded-md border border-(--border) px-2 py-1 text-[length:var(--fs-sm)] text-(--dim)">
           This chat
         </span>
       ) : null}
@@ -474,7 +474,7 @@ function ReadingView({
       <div className="mx-auto max-w-3xl">
         <div className="text-xs text-(--dim)">{page.url}</div>
         <h1 className="mt-1 text-base font-semibold tracking-tight text-(--fg)">{page.title}</h1>
-        <article className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-6 text-(--fg)">
+        <article className="mt-3 whitespace-pre-wrap break-words text-[length:var(--fs-base)] leading-6 text-(--fg)">
           {segments}
         </article>
       </div>

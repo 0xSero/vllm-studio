@@ -111,7 +111,7 @@ export function RecipesContentView(props: Props) {
           <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 px-4 py-4 sm:px-6 lg:grid-cols-[172px_minmax(0,1fr)] lg:gap-8 lg:py-6">
             <aside className="lg:sticky lg:top-5 lg:self-start">
               <div className="mb-3 flex h-8 items-center justify-between gap-2">
-                <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-(--fg)">
+                <h1 className="truncate text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--fg)">
                   Models
                 </h1>
                 <button
@@ -139,7 +139,7 @@ export function RecipesContentView(props: Props) {
                         key={section.id}
                         type="button"
                         onClick={() => setTab(section.id)}
-                        className={`group grid h-7 grid-cols-[18px_1fr] items-center gap-2 rounded-md px-2 text-left text-[12px] transition-colors lg:w-full ${
+                        className={`group grid h-7 grid-cols-[18px_1fr] items-center gap-2 rounded-md px-2 text-left text-[length:var(--fs-md)] transition-colors lg:w-full ${
                           active
                             ? "bg-(--surface) text-(--fg)"
                             : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
@@ -160,14 +160,14 @@ export function RecipesContentView(props: Props) {
             <section className="min-w-0 pb-10">
               <div className="mb-5 flex min-h-8 items-center justify-between gap-4 border-b border-(--border)/75 pb-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-(--dim)">
+                  <div className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.16em] text-(--dim)">
                     Model library
                   </div>
-                  <h2 className="mt-1 truncate text-[18px] font-semibold tracking-[-0.015em] text-(--fg)">
+                  <h2 className="mt-1 truncate text-[length:var(--fs-2xl)] font-semibold tracking-[-0.015em] text-(--fg)">
                     {activeLabel}
                   </h2>
                 </div>
-                <span className="shrink-0 text-[11px] text-(--dim)">
+                <span className="shrink-0 text-[length:var(--fs-sm)] text-(--dim)">
                   {refreshing ? "refreshing" : status}
                 </span>
               </div>

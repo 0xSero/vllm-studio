@@ -87,7 +87,7 @@ export function RecipesTab({
           }
         >
           {launchProgressMessage ? (
-            <div className="text-[11px] text-(--dim)">{launchProgressMessage}</div>
+            <div className="text-[length:var(--fs-sm)] text-(--dim)">{launchProgressMessage}</div>
           ) : null}
         </ModelRow>
       </ModelSection>

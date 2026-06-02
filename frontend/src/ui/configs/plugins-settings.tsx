@@ -10,58 +10,71 @@ import {
 } from "@/ui";
 import { getConfigsViewSnapshot } from "./configs-view-snapshot";
 
+type Plugin = {
+  id: string;
+  name: string;
+  source?: string;
+  path: string;
+  installed: boolean;
+  enabled: boolean;
+  description?: string;
+  appIds?: string[];
+  skillPath?: string;
+  mcpConfigPath?: string;
+  launch?: "standard" | "host-app";
+};
+type PluginRuntimeCheck = {
+  skillConfigured?: boolean;
+  mcpConfigured?: boolean;
+  appConfigured?: boolean;
+  mcpExecutableExists?: boolean;
+  runtimeBlockedOutsideCodex?: boolean;
+  runtimeCheckRequired?: boolean;
+  note?: string;
+};
+type PluginValidation = {
+  browserUseAvailable?: boolean;
+  browserUseRuntime?: PluginRuntimeCheck | null;
+  computerUseAvailable?: boolean;
+  computerUseRuntime?: PluginRuntimeCheck | null;
+};
+type Marketplace = { name: string; source?: string; sourceType?: string; lastUpdated?: string };
+type PluginsPayload = {
+  plugins?: Plugin[];
+  marketplaces?: Marketplace[];
+  validation?: PluginValidation;
+};
+
+const BROWSER_TOOL_PLUGINS = ["browser", "chrome"] as const;
+
+function nameIncludes(plugin: Plugin, needle: string): boolean {
+  return plugin.name.toLowerCase().includes(needle);
+}
+
 export function PluginsSettings() {
-  type Plugin = {
-    id: string;
-    name: string;
-    source?: string;
-    path: string;
-    installed: boolean;
-    enabled: boolean;
-    description?: string;
-    appIds?: string[];
-  };
-  type PluginRuntimeCheck = {
-    skillConfigured?: boolean;
-    mcpConfigured?: boolean;
-    appConfigured?: boolean;
-    mcpExecutableExists?: boolean;
-    runtimeBlockedOutsideCodex?: boolean;
-    runtimeCheckRequired?: boolean;
-    note?: string;
-  };
-  type PluginValidation = {
-    browserUseAvailable?: boolean;
-    browserUseRuntime?: PluginRuntimeCheck | null;
-    computerUseAvailable?: boolean;
-    computerUseRuntime?: PluginRuntimeCheck | null;
-  };
-  type Marketplace = { name: string; source?: string; sourceType?: string; lastUpdated?: string };
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [marketplaceSource, setMarketplaceSource] = useState("");
   const [validation, setValidation] = useState<PluginValidation | null>(null);
   const [savingPlugin, setSavingPlugin] = useState<string | null>(null);
   const [upgradingMarketplace, setUpgradingMarketplace] = useState<string | null>(null);
-  const browserUse =
-    plugins.find((plugin) => plugin.name.toLowerCase().includes("browser-use")) ?? null;
-  const computerUse =
-    plugins.find((plugin) => plugin.name.toLowerCase().includes("computer-use")) ?? null;
+
+  // `browser`/`chrome` are fulfilled by vLLM Studio's own browser tooling, so
+  // they get dedicated rows; `computer-use` keeps its MCP runtime check.
+  const browser = plugins.find((plugin) => nameIncludes(plugin, "browser")) ?? null;
+  const chrome = plugins.find((plugin) => nameIncludes(plugin, "chrome")) ?? null;
+  const computerUse = plugins.find((plugin) => nameIncludes(plugin, "computer-use")) ?? null;
+  const installedCount = plugins.filter((plugin) => plugin.installed).length;
+
+  const applyPayload = (payload: PluginsPayload) => {
+    setPlugins(payload.plugins ?? []);
+    setMarketplaces(payload.marketplaces ?? []);
+    setValidation(payload.validation ?? null);
+  };
   const loadPlugins = () =>
     fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
-      .then(
-        (res) =>
-          res.json() as Promise<{
-            plugins?: Plugin[];
-            marketplaces?: Marketplace[];
-            validation?: PluginValidation;
-          }>,
-      )
-      .then((payload) => {
-        setPlugins(payload.plugins ?? []);
-        setMarketplaces(payload.marketplaces ?? []);
-        setValidation(payload.validation ?? null);
-      })
+      .then((res) => res.json() as Promise<PluginsPayload>)
+      .then(applyPayload)
       .catch(() => {
         setPlugins([]);
         setMarketplaces([]);
@@ -73,95 +86,65 @@ export function PluginsSettings() {
   }, []);
 
   useSyncExternalStore(subscribePlugins, getConfigsViewSnapshot, getConfigsViewSnapshot);
-  const setPluginEnabled = (plugin: Plugin, enabled: boolean) => {
-    setSavingPlugin(plugin.id);
+
+  const postPlugins = (body: unknown, busyKey: { plugin?: string; marketplace?: string }) => {
+    if (busyKey.plugin) setSavingPlugin(busyKey.plugin);
+    if (busyKey.marketplace) setUpgradingMarketplace(busyKey.marketplace);
     void fetch("/api/agent/plugins", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: plugin.name, source: plugin.source, enabled }),
+      body: JSON.stringify(body),
     })
-      .then(
-        (res) =>
-          res.json() as Promise<{
-            plugins?: Plugin[];
-            marketplaces?: Marketplace[];
-            validation?: PluginValidation;
-          }>,
-      )
-      .then((payload) => {
-        setPlugins(payload.plugins ?? []);
-        setMarketplaces(payload.marketplaces ?? []);
-        setValidation(payload.validation ?? null);
-      })
+      .then((res) => res.json() as Promise<PluginsPayload>)
+      .then(applyPayload)
       .catch(() => void loadPlugins())
-      .finally(() => setSavingPlugin(null));
+      .finally(() => {
+        if (busyKey.plugin) setSavingPlugin(null);
+        if (busyKey.marketplace) setUpgradingMarketplace(null);
+      });
   };
-  const upgradeMarketplace = (marketplace?: Marketplace) => {
-    const key = marketplace?.name ?? "all";
-    setUpgradingMarketplace(key);
-    void fetch("/api/agent/plugins", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "upgrade_marketplace", name: marketplace?.name }),
-    })
-      .then(
-        (res) =>
-          res.json() as Promise<{
-            plugins?: Plugin[];
-            marketplaces?: Marketplace[];
-            validation?: PluginValidation;
-          }>,
-      )
-      .then((payload) => {
-        setPlugins(payload.plugins ?? []);
-        setMarketplaces(payload.marketplaces ?? []);
-        setValidation(payload.validation ?? null);
-      })
-      .catch(() => void loadPlugins())
-      .finally(() => setUpgradingMarketplace(null));
-  };
+  const setPluginEnabled = (plugin: Plugin, enabled: boolean) =>
+    postPlugins({ name: plugin.name, source: plugin.source, enabled }, { plugin: plugin.id });
+  const upgradeMarketplace = (marketplace?: Marketplace) =>
+    postPlugins(
+      { action: "upgrade_marketplace", name: marketplace?.name },
+      { marketplace: marketplace?.name ?? "all" },
+    );
   const addMarketplace = () => {
     const source = marketplaceSource.trim();
     if (!source) return;
-    setUpgradingMarketplace("add");
     void fetch("/api/agent/plugins", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "add_marketplace", source }),
     })
-      .then(
-        (res) =>
-          res.json() as Promise<{
-            plugins?: Plugin[];
-            marketplaces?: Marketplace[];
-            validation?: PluginValidation;
-          }>,
-      )
+      .then((res) => res.json() as Promise<PluginsPayload>)
       .then((payload) => {
-        setPlugins(payload.plugins ?? []);
-        setMarketplaces(payload.marketplaces ?? []);
-        setValidation(payload.validation ?? null);
+        applyPayload(payload);
         setMarketplaceSource("");
       })
       .catch(() => void loadPlugins())
       .finally(() => setUpgradingMarketplace(null));
   };
+
+  const registryPlugins = plugins.filter(
+    (plugin) =>
+      !nameIncludes(plugin, "browser") &&
+      !nameIncludes(plugin, "chrome") &&
+      !nameIncludes(plugin, "computer-use"),
+  );
+
   return (
     <div className="space-y-5">
       <SettingsGroup
         title="Plugin marketplaces"
         description="Uses Codex marketplace metadata and the Codex CLI upgrade path instead of a vLLM-specific plugin registry."
         actions={
-          <SettingsButton
-            onClick={() => upgradeMarketplace()}
-            disabled={upgradingMarketplace === "all"}
-          >
-            {" "}
+          <SettingsButton onClick={() => upgradeMarketplace()} disabled={upgradingMarketplace === "all"}>
             Upgrade all
           </SettingsButton>
         }
       >
-        {" "}
         {marketplaces.length ? (
           marketplaces.map((marketplace) => (
             <SettingsRow
@@ -170,7 +153,6 @@ export function PluginsSettings() {
               description={marketplace.source ?? "No source reported"}
               value={
                 <SettingsValue>
-                  {" "}
                   {marketplace.sourceType ?? "source"} · {marketplace.lastUpdated ?? "never"}
                 </SettingsValue>
               }
@@ -179,7 +161,7 @@ export function PluginsSettings() {
                   onClick={() => upgradeMarketplace(marketplace)}
                   disabled={upgradingMarketplace === marketplace.name}
                 >
-                  Upgrade{" "}
+                  Upgrade
                 </SettingsButton>
               }
             />
@@ -202,37 +184,36 @@ export function PluginsSettings() {
               onClick={addMarketplace}
               disabled={!marketplaceSource.trim() || upgradingMarketplace === "add"}
             >
-              Add{" "}
+              Add
             </SettingsButton>
           }
         />
-      </SettingsGroup>{" "}
+      </SettingsGroup>
+
       <SettingsGroup
-        title="Plugin registry"
-        description="Discovers Codex plugin bundles from the local Codex plugin cache. Composer/runtime wiring stays modular."
+        title="Browser & desktop control"
+        description="@browser and @chrome are routed through vLLM Studio's own browser tooling (navigate, click, type, screenshot); @computer-use drives the local Codex helper over MCP."
         actions={
-          <StatusPill tone={plugins.length ? "good" : "warning"}>{plugins.length} found</StatusPill>
+          <StatusPill tone={browser?.enabled || chrome?.enabled || computerUse?.enabled ? "good" : "default"}>
+            {[browser, chrome, computerUse].filter((row) => row?.enabled).length} active
+          </StatusPill>
         }
       >
         <SettingsRow
-          label="Browser-use"
-          description="Required composer plugin for browser control via @browser-use."
-          value={
-            <SettingsValue>
-              {pluginAvailabilityText(browserUse, validation?.browserUseRuntime)}
-            </SettingsValue>
-          }
-          status={
-            <PluginAvailabilityPill
-              plugin={browserUse}
-              available={validation?.browserUseAvailable}
-              runtime={validation?.browserUseRuntime}
-            />
-          }
-        />{" "}
+          label="Browser"
+          description="@browser drives a web browser for local/dev pages. Fulfilled by vLLM Studio's browser tool."
+          value={<SettingsValue>{browserToolText(browser)}</SettingsValue>}
+          status={<BrowserToolPill plugin={browser} />}
+        />
+        <SettingsRow
+          label="Chrome"
+          description="@chrome targets real Chrome tabs, cookies and profiles. Routed through vLLM Studio's browser tool; the Codex Chrome-extension native-host bridge (which targets Codex, not this app) is not used."
+          value={<SettingsValue>{browserToolText(chrome)}</SettingsValue>}
+          status={<BrowserToolPill plugin={chrome} />}
+        />
         <SettingsRow
           label="Computer-use"
-          description="Specific parity check requested for the Codex computer-use helper."
+          description="Local Codex computer-use helper (SkyComputerUseClient) wired over MCP for desktop control."
           value={
             <SettingsValue>
               {pluginAvailabilityText(computerUse, validation?.computerUseRuntime)}
@@ -246,38 +227,83 @@ export function PluginsSettings() {
             />
           }
         />
-        {plugins
-          .filter(
-            (plugin) =>
-              !plugin.name.toLowerCase().includes("browser-use") &&
-              !plugin.name.toLowerCase().includes("computer-use"),
-          )
-          .slice(0, 40)
-          .map((plugin) => (
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Plugin registry"
+        description="Every Codex plugin discovered from the local cache, bundled Codex.app set, and the live app-server marketplace. Enabled plugins are selectable in the composer; not-installed ones can be installed from their marketplace."
+        actions={
+          <StatusPill tone={installedCount ? "good" : "warning"}>
+            {installedCount} installed · {plugins.length} total
+          </StatusPill>
+        }
+      >
+        {registryPlugins.length ? (
+          registryPlugins.slice(0, 60).map((plugin) => (
             <SettingsRow
               key={plugin.path}
               label={plugin.name}
               description={pluginDescription(plugin)}
               value={<SettingsValue mono>{pluginLocation(plugin)}</SettingsValue>}
-              status={
-                <StatusPill tone={plugin.enabled ? "good" : "default"}>
-                  {plugin.installed ? "installed" : "available"}
-                </StatusPill>
-              }
+              status={<PluginCapabilityPill plugin={plugin} />}
               actions={
-                <SettingsButton
-                  onClick={() => setPluginEnabled(plugin, !plugin.enabled)}
-                  disabled={savingPlugin === plugin.id}
-                >
-                  {plugin.enabled ? "Disable" : "Enable"}{" "}
-                </SettingsButton>
+                plugin.installed ? (
+                  <SettingsButton
+                    onClick={() => setPluginEnabled(plugin, !plugin.enabled)}
+                    disabled={savingPlugin === plugin.id}
+                  >
+                    {plugin.enabled ? "Disable" : "Enable"}
+                  </SettingsButton>
+                ) : undefined
               }
             />
-          ))}{" "}
+          ))
+        ) : (
+          <EmptySafeNotice>No Codex plugins discovered.</EmptySafeNotice>
+        )}
+        {registryPlugins.length > 60 ? (
+          <SettingsRow
+            label="…and more"
+            description={`${registryPlugins.length - 60} additional marketplace plugins not shown.`}
+          />
+        ) : null}
       </SettingsGroup>
     </div>
   );
 }
+
+function browserToolText(plugin: { enabled: boolean } | null): string {
+  if (!plugin) return "Not discovered";
+  if (!plugin.enabled) return "Discovered but disabled in Codex plugin config";
+  return "Selectable — routes to vLLM Studio's browser tool";
+}
+
+function BrowserToolPill({ plugin }: { plugin: { enabled: boolean } | null }) {
+  if (!plugin) return <StatusPill tone="default">not found</StatusPill>;
+  if (!plugin.enabled) return <StatusPill tone="default">disabled</StatusPill>;
+  return <StatusPill tone="good">browser tool</StatusPill>;
+}
+
+function PluginCapabilityPill({
+  plugin,
+}: {
+  plugin: {
+    installed: boolean;
+    enabled: boolean;
+    launch?: "standard" | "host-app";
+    mcpConfigPath?: string;
+    skillPath?: string;
+  };
+}) {
+  if (!plugin.installed) return <StatusPill tone="default">available</StatusPill>;
+  const tone = plugin.enabled ? "good" : "default";
+  if (plugin.launch === "host-app" || plugin.mcpConfigPath) {
+    return <StatusPill tone={plugin.enabled ? "info" : "default"}>mcp</StatusPill>;
+  }
+  if (plugin.skillPath) return <StatusPill tone={tone}>skill</StatusPill>;
+  return <StatusPill tone={tone}>{plugin.enabled ? "enabled" : "installed"}</StatusPill>;
+}
+
 function pluginAvailabilityText(
   plugin: { enabled: boolean } | null,
   runtime?: {
@@ -287,7 +313,7 @@ function pluginAvailabilityText(
     runtimeCheckRequired?: boolean;
     note?: string;
   } | null,
-) {
+): string {
   if (!plugin) return "Not discovered";
   if (!plugin.enabled) return "Discovered but disabled in Codex plugin config";
   if (runtime?.mcpConfigured && runtime.mcpExecutableExists === false) {
@@ -296,6 +322,7 @@ function pluginAvailabilityText(
   if (runtime?.runtimeBlockedOutsideCodex) return runtime.note ?? "Runtime blocked outside Codex";
   return runtime?.note ?? "Available and selectable in the composer";
 }
+
 function PluginAvailabilityPill({
   plugin,
   available,
@@ -320,12 +347,14 @@ function PluginAvailabilityPill({
   if (runtime?.mcpConfigured) return <StatusPill tone="info">mcp wired</StatusPill>;
   return <StatusPill tone="good">selectable</StatusPill>;
 }
-function pluginDescription(plugin: { appIds?: string[]; description?: string; path: string }) {
+
+function pluginDescription(plugin: { appIds?: string[]; description?: string; path: string }): string {
   const summary = plugin.description?.replace(/\s+/g, " ").trim();
   const short = summary && summary.length > 150 ? `${summary.slice(0, 147)}…` : summary;
   const connectors = plugin.appIds?.length ? `Connectors: ${plugin.appIds.join(", ")}` : "";
   return [short, connectors].filter(Boolean).join(" · ") || "Codex plugin bundle";
 }
-function pluginLocation(plugin: { enabled: boolean; source?: string; path: string }) {
+
+function pluginLocation(plugin: { enabled: boolean; source?: string; path: string }): string {
   return `${plugin.enabled ? "enabled" : "disabled"} · ${plugin.source ?? "local"} · ${plugin.path}`;
 }

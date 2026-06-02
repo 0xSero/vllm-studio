@@ -36,10 +36,10 @@ export function ModelPerformanceTable({
   return (
     <section className="px-2 pt-2 pb-5">
       <div className="mb-3 flex items-center justify-between">
-        <div className="font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
           Model performance
         </div>
-        <div className="font-mono text-[10.5px] text-(--dim)">
+        <div className="font-mono text-[length:var(--fs-xs)] text-(--dim)">
           <span className="tabular-nums text-(--fg)">{sortedModels.length}</span> models
         </div>
       </div>
@@ -47,7 +47,7 @@ export function ModelPerformanceTable({
       <Table
         bordered={false}
         className="border-b border-(--border)/40"
-        tableClassName="text-[12px]"
+        tableClassName="text-[length:var(--fs-md)]"
       >
         <THead className="bg-transparent">
           <TRow className="border-b border-(--border)/40 hover:bg-transparent">
@@ -141,7 +141,7 @@ export function ModelPerformanceTable({
                     <div className="flex items-center gap-2">
                       <div className="h-3 w-1 shrink-0" style={{ backgroundColor: modelColor }} />
                       <div
-                        className="max-w-[150px] truncate font-mono text-[11.5px] text-(--fg) sm:max-w-[240px]"
+                        className="max-w-[150px] truncate font-mono text-[length:var(--fs-sm)] text-(--fg) sm:max-w-[240px]"
                         title={model.model}
                       >
                         {modelDisplayName(model.model)}
@@ -233,10 +233,10 @@ export function ModelPerformanceTable({
 function ExpandedCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>
-      <dd className="mt-1 font-mono text-[13px] leading-none tabular-nums text-(--fg)">{value}</dd>
+      <dd className="mt-1 font-mono text-[length:var(--fs-base)] leading-none tabular-nums text-(--fg)">{value}</dd>
     </div>
   );
 }
@@ -251,7 +251,7 @@ function renderSpeedDisplay(speed: SpeedDisplay) {
   return (
     <div className={`flex flex-col items-end gap-0.5 ${speed.muted ? "text-(--dim)" : ""}`}>
       {speed.rows.map((row) => (
-        <span key={row} className="tabular-nums text-[11px]">
+        <span key={row} className="tabular-nums text-[length:var(--fs-sm)]">
           {row}
         </span>
       ))}

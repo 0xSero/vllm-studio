@@ -1,6 +1,7 @@
 "use client";
 
 import { Brain, MessageSquare, Wrench } from "lucide-react";
+import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
 import type { RecipeEditor } from "@/lib/types";
 import { LlamacppOptionsSection } from "../llamacpp-options-section";
 
@@ -19,7 +20,7 @@ export function RecipeModalTabFeatures({
 }) {
   if (isLlamacpp) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-6">
         <LlamacppOptionsSection
           tab="features"
           getValueForKey={getExtraArgValueForKey}
@@ -30,20 +31,12 @@ export function RecipeModalTabFeatures({
   }
 
   return (
-    <div className="space-y-5">
-      {/* Tool Calling */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Wrench className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Tool Calling</span>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Tool Call Parser</label>
-          <select
+    <div className="space-y-6">
+      <FormSection icon={<Wrench className="h-4 w-4" />} title="Tool Calling">
+        <FormField label="Tool Call Parser">
+          <Select
             value={recipe.tool_call_parser || ""}
             onChange={(e) => onChange({ ...recipe, tool_call_parser: e.target.value || undefined })}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="">None</option>
             <optgroup label="General">
@@ -75,55 +68,31 @@ export function RecipeModalTabFeatures({
               <option value="minimax">MiniMax</option>
               <option value="kimi_k2">Kimi K2</option>
             </optgroup>
-          </select>
-        </div>
+          </Select>
+        </FormField>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Tool Parser Plugin</label>
-          <input
+        <FormField label="Tool Parser Plugin">
+          <Input
             type="text"
             value={recipe.tool_parser_plugin || ""}
-            onChange={(e) =>
-              onChange({ ...recipe, tool_parser_plugin: e.target.value || undefined })
-            }
+            onChange={(e) => onChange({ ...recipe, tool_parser_plugin: e.target.value || undefined })}
             placeholder="Path to custom parser module"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
-        </div>
+        </FormField>
 
-        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
-          <input
-            type="checkbox"
-            id="enable_auto_tool_choice"
-            checked={recipe.enable_auto_tool_choice || false}
-            onChange={(e) => onChange({ ...recipe, enable_auto_tool_choice: e.target.checked })}
-            className="rounded border-(--border) bg-(--surface) w-4 h-4"
-          />
-          <div className="flex-1">
-            <label
-              htmlFor="enable_auto_tool_choice"
-              className="text-sm font-medium text-(--fg) cursor-pointer"
-            >
-              Enable Auto Tool Choice
-            </label>
-            <p className="text-xs text-(--dim)">Automatically decide when to use tools</p>
-          </div>
-        </div>
-      </div>
+        <CheckboxRow
+          checked={recipe.enable_auto_tool_choice || false}
+          onChange={(checked) => onChange({ ...recipe, enable_auto_tool_choice: checked })}
+          label="Enable Auto Tool Choice"
+          description="Automatically decide when to use tools"
+        />
+      </FormSection>
 
-      {/* Reasoning */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <Brain className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Reasoning & Thinking</span>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">Reasoning Parser</label>
-          <select
+      <FormSection icon={<Brain className="h-4 w-4" />} title="Reasoning & Thinking">
+        <FormField label="Reasoning Parser">
+          <Select
             value={recipe.reasoning_parser || ""}
             onChange={(e) => onChange({ ...recipe, reasoning_parser: e.target.value || undefined })}
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="">None</option>
             <optgroup label="DeepSeek">
@@ -135,96 +104,63 @@ export function RecipeModalTabFeatures({
               <option value="glm45">GLM-4.5</option>
               <option value="granite">Granite</option>
             </optgroup>
-          </select>
-        </div>
+          </Select>
+        </FormField>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">
-            Guided Decoding Backend
-          </label>
-          <input
+        <FormField label="Guided Decoding Backend">
+          <Input
             type="text"
             value={recipe.guided_decoding_backend || ""}
             onChange={(e) =>
               onChange({ ...recipe, guided_decoding_backend: e.target.value || undefined })
             }
             placeholder="e.g., xgrammar, outlines"
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           />
-        </div>
+        </FormField>
 
-        <div className="flex items-center gap-3 p-3 bg-(--bg) border border-(--border) rounded-md">
-          <input
-            type="checkbox"
-            id="enable_thinking"
-            checked={recipe.enable_thinking || false}
-            onChange={(e) => onChange({ ...recipe, enable_thinking: e.target.checked })}
-            className="rounded border-(--border) bg-(--surface) w-4 h-4"
-          />
-          <div className="flex-1">
-            <label
-              htmlFor="enable_thinking"
-              className="text-sm font-medium text-(--fg) cursor-pointer"
-            >
-              Enable Thinking Mode
-            </label>
-            <p className="text-xs text-(--dim)">Show model&apos;s thinking process</p>
-          </div>
-        </div>
+        <CheckboxRow
+          checked={recipe.enable_thinking || false}
+          onChange={(checked) => onChange({ ...recipe, enable_thinking: checked })}
+          label="Enable Thinking Mode"
+          description="Show the model's thinking process"
+        />
 
         {recipe.enable_thinking && (
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">
-              Thinking Budget (tokens)
-            </label>
-            <input
+          <FormField label="Thinking Budget (tokens)">
+            <Input
               type="number"
               value={recipe.thinking_budget || ""}
               onChange={(e) =>
                 onChange({ ...recipe, thinking_budget: Number(e.target.value) || undefined })
               }
               placeholder="1024"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
+          </FormField>
         )}
-      </div>
+      </FormSection>
 
-      {/* Chat & Server */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-(--fg) pb-2 border-b border-(--border)/50">
-          <MessageSquare className="w-4 h-4 text-(--accent)" />
-          <span className="text-sm font-medium">Chat & Templates</span>
-        </div>
-
+      <FormSection icon={<MessageSquare className="h-4 w-4" />} title="Chat & Templates">
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Chat Template</label>
-            <input
+          <FormField label="Chat Template">
+            <Input
               type="text"
               value={recipe.chat_template || ""}
               onChange={(e) => onChange({ ...recipe, chat_template: e.target.value || undefined })}
               placeholder="Path or name"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-(--dim) mb-2">Response Role</label>
-            <input
+          </FormField>
+          <FormField label="Response Role">
+            <Input
               type="text"
               value={recipe.response_role || ""}
               onChange={(e) => onChange({ ...recipe, response_role: e.target.value || undefined })}
               placeholder="assistant"
-              className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
             />
-          </div>
+          </FormField>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-(--dim) mb-2">
-            Chat Template Format
-          </label>
-          <select
+        <FormField label="Chat Template Format">
+          <Select
             value={recipe.chat_template_content_format || "auto"}
             onChange={(e) =>
               onChange({
@@ -235,14 +171,13 @@ export function RecipeModalTabFeatures({
                     : (e.target.value as "auto" | "string" | "openai"),
               })
             }
-            className="w-full px-3 py-2 bg-(--bg) border border-(--border) rounded-md text-sm focus:outline-none focus:border-(--accent)"
           >
             <option value="auto">Auto</option>
             <option value="string">String</option>
             <option value="openai">OpenAI</option>
-          </select>
-        </div>
-      </div>
+          </Select>
+        </FormField>
+      </FormSection>
     </div>
   );
 }

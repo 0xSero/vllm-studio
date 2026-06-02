@@ -235,7 +235,7 @@ function RuntimeTargetRow({
     >
       {job ? <JobMessage job={job} /> : null}
       {target.update ? <UpdateDetails update={target.update} /> : null}
-      {disabledReason ? <p className="text-[11px] text-(--dim)">{disabledReason}</p> : null}
+      {disabledReason ? <p className="text-[length:var(--fs-sm)] text-(--dim)">{disabledReason}</p> : null}
     </SettingsRow>
   );
 }
@@ -302,7 +302,7 @@ function BackendRow({
         </SettingsValue>
       ) : null}
       {state.status === "error" && state.message ? (
-        <p className="truncate text-[11px] text-(--err)">{state.message}</p>
+        <p className="truncate text-[length:var(--fs-sm)] text-(--err)">{state.message}</p>
       ) : null}
     </SettingsRow>
   );
@@ -337,7 +337,7 @@ function EngineStatus({
 function JobMessage({ job }: { job: EngineJob }) {
   return (
     <div
-      className={`space-y-1 text-[12px] ${job.status === "error" ? "text-(--err)/80" : "text-(--dim)/60"}`}
+      className={`space-y-1 text-[length:var(--fs-md)] ${job.status === "error" ? "text-(--err)/80" : "text-(--dim)/60"}`}
     >
       <p>{job.message}</p>
       {job.command ? <p className="truncate font-mono">{job.command}</p> : null}
@@ -350,18 +350,18 @@ function JobMessage({ job }: { job: EngineJob }) {
 
 function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
   return (
-    <div className="grid gap-1.5 border-t border-(--border)/[0.06] pt-3 text-[12px] text-(--dim)/60">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
+    <div className="grid gap-1.5 border-t border-(--border)/[0.06] pt-3 text-[length:var(--fs-md)] text-(--dim)/60">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[length:var(--fs-sm)]">
         <span>current {update.currentVersion ?? "unknown"}</span>
         <span>target {update.targetVersion}</span>
         <span>{update.restartRequired ? "restart required" : "no restart"}</span>
       </div>
-      <div className="font-mono text-[11px]">{update.packageSpec}</div>
+      <div className="font-mono text-[length:var(--fs-sm)]">{update.packageSpec}</div>
       <div className="flex flex-wrap gap-1">
         {update.changes.map((change) => (
           <span
             key={change}
-            className="rounded border border-(--border)/[0.08] px-1.5 py-[1px] text-[11px]"
+            className="rounded border border-(--border)/[0.08] px-1.5 py-[1px] text-[length:var(--fs-sm)]"
           >
             {change}
           </span>
@@ -371,7 +371,7 @@ function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]
         href={update.releaseNotesUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="w-fit text-[12px] text-(--accent)/80 hover:underline"
+        className="w-fit text-[length:var(--fs-md)] text-(--accent)/80 hover:underline"
       >
         release notes
       </a>

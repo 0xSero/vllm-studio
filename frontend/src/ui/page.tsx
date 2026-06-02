@@ -39,14 +39,14 @@ export function PageHeader({
     <div className="mb-5 flex min-h-8 items-center justify-between gap-3">
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="text-[10px] uppercase tracking-[0.14em] text-(--ui-muted)">{eyebrow}</div>
+          <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--ui-muted)">{eyebrow}</div>
         ) : null}
-        <h2 className="mt-1 truncate text-[20px] font-medium tracking-[-0.02em] text-(--ui-fg)">
+        <h2 className="mt-1 truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
           {title}
         </h2>
       </div>
       {(actions ?? status) ? (
-        <div className="flex shrink-0 items-center gap-2 text-[11px] text-(--ui-muted)">
+        <div className="flex shrink-0 items-center gap-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
           {status}
           {actions}
         </div>
@@ -77,7 +77,7 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-8 grid-cols-[18px_1fr] items-center gap-2.5 rounded-md px-2.5 text-left text-[12px] transition-colors lg:w-full",
+                "group grid h-8 grid-cols-[18px_1fr] items-center gap-2.5 rounded-md px-2.5 text-left text-[length:var(--fs-md)] transition-colors lg:w-full",
                 active
                   ? "bg-(--ui-hover) text-(--ui-fg)"
                   : "text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg)",

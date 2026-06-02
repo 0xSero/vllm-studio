@@ -173,7 +173,7 @@ function VramPoolInput({
       placeholder={detectedPoolGb > 0 ? String(Math.round(detectedPoolGb)) : "Auto"}
       defaultValue={poolOverrideGb === null ? "" : String(poolOverrideGb)}
       onBlur={(event) => updatePoolOverride(event.currentTarget, poolOverrideGb, setPoolOverrideGb)}
-      className="h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[12px] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60"
+      className="h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[length:var(--fs-md)] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60"
       title="Override total VRAM pool for Explore."
     />
   );
@@ -388,7 +388,7 @@ function fallbackRows(search: string, loading: boolean) {
           href={`https://huggingface.co/${label}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
         >
           <ExternalLink className="h-3 w-3" />
         </a>
