@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef } from "react";
 import {
   useSessionEngineBatchCleanupEffect,
   useSessionEnginePromptStreamCleanupEffect,
-  useSessionEngineRuntimeResumeEffect,
   useSessionEngineTextDeltaCleanupEffect,
 } from "@/hooks/agent/use-session-engine-effects";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
@@ -36,7 +35,6 @@ import type { ToolSelection } from "@/lib/agent/tools/types";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import * as api from "./api";
 import {
-  resolveResumeRuntimeTarget,
   resolveRuntimeSessionId,
   runtimeCanHydrateCanonicalSession,
   runtimeIsActiveForPiSession,
@@ -134,9 +132,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const selectionForRef = useRef(selectionFor);
   selectionForRef.current = selectionFor;
 
-  // Tracks which sessions own their stream right now (we own = don't double-
-  // subscribe via the resume-runtime SSE). Keyed by session id.
-  const localStreamRef = useRef<Set<SessionId>>(new Set());
   // The "live" assistant message id we're currently appending to, per session.
   // Pi can split a single user turn across multiple assistant messages (after
   // a queue_update / message_start), and we need a stable id to patch.
@@ -403,7 +398,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const controller = new AbortController();
       const streamOwnerId = `${sessionId}:${assistantId}`;
       liveAssistantIdsRef.current.set(sessionId, assistantId);
-      localStreamRef.current.add(sessionId);
       promptStreamControllersRef.current.set(runtime, controller);
       claimRuntimePromptStream(runtime, streamOwnerId, controller);
       try {
@@ -478,7 +472,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         }
       } finally {
         flushPiEventBatch(sessionId);
-        localStreamRef.current.delete(sessionId);
         promptStreamControllersRef.current.delete(runtime);
         releaseRuntimePromptStream(runtime, streamOwnerId);
         liveAssistantIdsRef.current.delete(sessionId);
@@ -635,35 +628,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       updateSession,
     ],
   );
-
-  // Resume an in-flight runtime session via SSE — fires when the active
-  // session's status flips to running/starting and we *don't* own the local
-  // stream (e.g. after a refresh, or when a different pane joins a running
-  // session).
-  const resumeRuntimeTarget = resolveResumeRuntimeTarget(
-    tabsRef.current,
-    activeTabId,
-    runtimeSessionId,
-  );
-  const resumeRuntimeId = resumeRuntimeTarget?.sessionId ?? null;
-  const resumeRuntimeSessionId = resumeRuntimeTarget?.runtimeSessionId ?? null;
-  const resumeAfter = resumeRuntimeTarget?.after ?? 0;
-  const resumePiSessionId = resumeRuntimeTarget?.piSessionId ?? null;
-
-  useSessionEngineRuntimeResumeEffect({
-    after: resumeAfter,
-    applyPiEvent: enqueuePiEvent,
-    flushPiEvents: flushPiEventBatch,
-    localStreamRef,
-    onPiSessionIdChange,
-    piSessionId: resumePiSessionId,
-    runtime: resumeRuntimeSessionId,
-    sessionId: resumeRuntimeId,
-    shouldApplySeq: shouldApplyRuntimeSeq,
-    submitPromptRef,
-    tabsRef,
-    updateSession,
-  });
 
   return useMemo<SessionEngine>(
     () => ({

@@ -307,13 +307,15 @@ export function loadPersistedActiveAgentSessions(
           cwd: typeof entry.cwd === "string" ? entry.cwd : "",
           paneId: typeof entry.paneId === "string" ? entry.paneId : "",
           tabId: typeof entry.tabId === "string" ? entry.tabId : "",
+          runtimeSessionId:
+            typeof entry.runtimeSessionId === "string" ? entry.runtimeSessionId.trim() : "",
           piSessionId: piSessionId || null,
           modelId: typeof entry.modelId === "string" ? entry.modelId : undefined,
           title:
             cleanSessionTitle(typeof entry.title === "string" ? entry.title : null) ||
             "Loading session",
           status: typeof entry.status === "string" ? entry.status : "idle",
-          active: entry.active === true,
+          focused: entry.focused === true,
           startedAt: typeof entry.startedAt === "string" ? entry.startedAt : undefined,
           updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : "",
           plugins: Array.isArray(entry.plugins)
@@ -331,7 +333,8 @@ export function loadPersistedActiveAgentSessions(
           Boolean(entry.projectId) &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId) &&
-          Boolean(entry.tabId),
+          Boolean(entry.tabId) &&
+          Boolean(entry.runtimeSessionId),
       );
   } catch {
     return [];

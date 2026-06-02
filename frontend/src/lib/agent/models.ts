@@ -1,3 +1,5 @@
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
+
 export interface OpenAIModelListItem {
   id: string;
   object?: string;
@@ -248,6 +250,15 @@ function isDeepSeekReasoningModel(model: AgentModel): boolean {
   return model.reasoning && id.includes("deepseek");
 }
 
+const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
+  supportsStore: false,
+  supportsDeveloperRole: false,
+  supportsReasoningEffort: false,
+  supportsStrictMode: false,
+  supportsUsageInStreaming: true,
+  maxTokensField: "max_tokens",
+};
+
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => {
     const deepSeekReasoning = isDeepSeekReasoningModel(model);
@@ -272,9 +283,7 @@ export function modelsToPiModels(models: AgentModel[]) {
           }
         : {}),
       compat: {
-        supportsDeveloperRole: false,
-        supportsReasoningEffort: model.reasoning,
-        maxTokensField: "max_tokens",
+        ...VLLM_OPENAI_COMPAT,
         ...(deepSeekReasoning
           ? {
               thinkingFormat: "deepseek",

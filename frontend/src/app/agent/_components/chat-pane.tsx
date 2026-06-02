@@ -78,6 +78,7 @@ import {
   type SessionSubmitGuard,
 } from "@/lib/agent/sessions/submit-guard";
 import { copySessionPref, patchSessionPref } from "@/lib/agent/session/prefs";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import { useTools } from "@/lib/agent/tools/context";
 import {
   attachmentDedupKey,
@@ -599,6 +600,14 @@ export function ChatPane({
     updateSession,
     selectionFor: tools.selectionFor,
   });
+  const ensureBrowserToolForText = useCallback(
+    (text: string) => {
+      if (!promptRequestsBrowser(text)) return;
+      tools.setComputerTab("browser");
+      tools.setBrowserEnabled(true);
+    },
+    [tools],
+  );
   const buildPromptArgs = useCallback(
     (sessionId: string, rawText: string) => {
       const text = rawText.trim();
@@ -662,6 +671,7 @@ export function ChatPane({
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
+      ensureBrowserToolForText(args.userText);
       const currentSelection = tools.selectionFor(targetId);
       if (currentSelection.skills.length > 0) {
         tools.setSelection(targetId, { ...currentSelection, skills: [] });
@@ -675,7 +685,16 @@ export function ChatPane({
       if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
-    [activeTab, attachments.length, buildPromptArgs, engine, modelId, readingAttachments, tools],
+    [
+      activeTab,
+      attachments.length,
+      buildPromptArgs,
+      engine,
+      ensureBrowserToolForText,
+      modelId,
+      readingAttachments,
+      tools,
+    ],
   );
   const queueAndSendControl = useCallback(
     async (
@@ -685,6 +704,7 @@ export function ChatPane({
       runtime: string,
       cwdHint?: string,
     ) => {
+      ensureBrowserToolForText(text);
       const queuedId = newId("queue");
       updateTab(tab.id, (t) => ({
         ...t,
@@ -707,7 +727,7 @@ export function ChatPane({
         ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
       }));
     },
-    [engine, updateTab],
+    [engine, ensureBrowserToolForText, updateTab],
   );
   const sendMessage = useCallback(
     async (event: FormEvent) => {

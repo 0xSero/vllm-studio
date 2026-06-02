@@ -46,17 +46,50 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      const es = new EventSource(sseUrl);
-      eventSourceRef.current = es;
+      let disposed = false;
+      let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+      let failureStreak = 0;
 
-      for (const type of CONTROLLER_EVENT_TYPES) {
-        es.addEventListener(type, (event) => handleMessage(event as MessageEvent));
-      }
+      const open = () => {
+        if (disposed) return;
+        const es = new EventSource(sseUrl);
+        eventSourceRef.current = es;
+        let deliveredEvent = false;
 
-      es.onmessage = (event) => handleMessage(event as MessageEvent);
+        const onDelivered = (event: MessageEvent) => {
+          // A delivered event proves this backend's /events actually streams, so
+          // reset the backoff — a genuine mid-stream drop should reconnect fast.
+          failureStreak = 0;
+          deliveredEvent = true;
+          handleMessage(event);
+        };
+
+        for (const type of CONTROLLER_EVENT_TYPES) {
+          es.addEventListener(type, (event) => onDelivered(event as MessageEvent));
+        }
+        es.onmessage = (event) => onDelivered(event as MessageEvent);
+
+        es.onerror = () => {
+          if (disposed) return;
+          es.close();
+          // The browser's native EventSource reconnects immediately. On a backend
+          // whose /events never streams (e.g. CDN-buffered SSE behind Cloudflare),
+          // that pins a long hung request every few seconds for nothing. Take over
+          // reconnection with capped exponential backoff; the realtime-status
+          // store's polling fallback keeps data fresh meanwhile. Connections that
+          // delivered at least one event don't count toward the streak.
+          if (!deliveredEvent) failureStreak = Math.min(failureStreak + 1, 6);
+          const delay = Math.min(60_000, 3_000 * 2 ** failureStreak);
+          reconnectTimer = setTimeout(open, delay);
+        };
+      };
+
+      open();
 
       return () => {
-        es.close();
+        disposed = true;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        eventSourceRef.current?.close();
       };
     },
     [backendRevision, handleMessage, sseUrl],

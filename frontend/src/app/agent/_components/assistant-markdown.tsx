@@ -11,10 +11,11 @@ import React, {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ExternalLink, FileText } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { highlightFenced } from "@/lib/agent/highlight-cache";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import { useTools } from "@/lib/agent/tools/context";
+import { CopyablePathChip } from "./copyable-path-chip";
 
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
@@ -223,34 +224,30 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       const value = nodeToPlainText(children).trim();
       if (isFileReference(value)) {
         return (
-          <button
-            type="button"
-            onClick={() => tools.requestFileOpen(value)}
-            className="chat-ref-chip"
-            title={`Open ${value}`}
-          >
-            <FileText className="chat-ref-chip-icon" aria-hidden />
-            <span className="chat-ref-chip-label">{children}</span>
-          </button>
+          <CopyablePathChip value={value} onOpen={tools.requestFileOpen}>
+            {children}
+          </CopyablePathChip>
         );
       }
       return <code {...props}>{children}</code>;
     },
     a: ({ node: _n, href, children, ...props }) => {
       const fileHref = typeof href === "string" && isFileReference(href);
+      if (fileHref) {
+        return (
+          <CopyablePathChip value={href} onOpen={tools.requestFileOpen}>
+            {children}
+          </CopyablePathChip>
+        );
+      }
       return (
         <a
           {...props}
           href={href}
-          target={fileHref ? undefined : "_blank"}
-          rel={fileHref ? undefined : "noreferrer noopener"}
+          target="_blank"
+          rel="noreferrer noopener"
           onClick={(event) => {
             if (!href) return;
-            if (isFileReference(href)) {
-              event.preventDefault();
-              tools.requestFileOpen(href);
-              return;
-            }
             const next = normalizeBrowserInput(href, "");
             if (!next) return;
             event.preventDefault();
@@ -261,11 +258,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
           className="chat-ref-chip"
           title={href}
         >
-          {fileHref ? (
-            <FileText className="chat-ref-chip-icon" aria-hidden />
-          ) : (
-            <ExternalLink className="chat-ref-chip-icon" aria-hidden />
-          )}
+          <ExternalLink className="chat-ref-chip-icon" aria-hidden />
           <span className="chat-ref-chip-label">{children}</span>
         </a>
       );

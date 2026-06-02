@@ -65,6 +65,10 @@
   padding-bottom: 0;
 }
 
+.agent-thread-shell {
+  width: min(95%, var(--thread-w));
+}
+
 @media (max-width: 768px) {
   .chat-scroll-pad {
     padding-bottom: calc(var(--chat-composer-height, 128px) + env(safe-area-inset-bottom, 0px));
@@ -195,6 +199,36 @@
     border-color 0.13s ease;
 }
 
+.chat-markdown .chat-ref-chip[role="group"] {
+  cursor: default;
+}
+
+.chat-markdown .chat-ref-chip-open,
+.chat-markdown .chat-ref-chip-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: inherit;
+}
+
+.chat-markdown .chat-ref-chip-open {
+  cursor: pointer;
+}
+
+.chat-markdown .chat-ref-chip-copy {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  opacity: 0.68;
+  cursor: copy;
+}
+
+.chat-markdown .chat-ref-chip-copy:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--link, #6ea8fe) 16%, transparent);
+}
+
 .chat-markdown .chat-ref-chip:hover {
   background: color-mix(in srgb, var(--link, #6ea8fe) 18%, transparent);
   border-color: color-mix(in srgb, var(--link, #6ea8fe) 36%, transparent);
@@ -212,6 +246,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: text;
 }
 
 /* Tables — rounded, rule-separated (no grid lines), zebra-striped body.

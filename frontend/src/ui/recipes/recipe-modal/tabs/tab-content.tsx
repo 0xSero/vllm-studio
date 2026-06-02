@@ -28,8 +28,13 @@ export function RecipeModalTabContent({
   onExtraArgsChange,
   llamaConfigLoading,
   llamaConfigHelp,
+  recipeSourceText,
+  recipeSourceError,
+  onRecipeSourceChange,
+  onFormatRecipeSource,
   commandText,
   generatedCommand,
+  hasCommandOverride,
   onCommandChange,
   onResetCommand,
 }: {
@@ -50,8 +55,13 @@ export function RecipeModalTabContent({
   onExtraArgsChange: (value: string) => void;
   llamaConfigLoading: boolean;
   llamaConfigHelp: { config: string | null; error?: string | null } | null;
+  recipeSourceText: string;
+  recipeSourceError: string | null;
+  onRecipeSourceChange: (value: string) => void;
+  onFormatRecipeSource: () => void;
   commandText: string;
   generatedCommand: string;
+  hasCommandOverride: boolean;
   onCommandChange: (value: string) => void;
   onResetCommand: () => void;
 }) {
@@ -125,8 +135,13 @@ export function RecipeModalTabContent({
     case "command":
       return (
         <RecipeModalTabCommand
+          recipeSourceText={recipeSourceText}
+          recipeSourceError={recipeSourceError}
+          onRecipeSourceChange={onRecipeSourceChange}
+          onFormatRecipeSource={onFormatRecipeSource}
           commandText={commandText}
           generatedCommand={generatedCommand}
+          hasCommandOverride={hasCommandOverride}
           onCommandChange={onCommandChange}
           onResetCommand={onResetCommand}
         />

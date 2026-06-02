@@ -4,6 +4,8 @@ import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
 } from "@/lib/agent/active-sessions";
+import { runBrowserPanelCommand } from "@/lib/agent/browser/command";
+import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
 import {
   detectComposerMention,
@@ -11,6 +13,7 @@ import {
   selectedContextPrompt,
 } from "@/lib/agent/composer-context";
 import { piStatusFromEvents } from "@/lib/agent/pi-runtime-state";
+import { modelsToPiModels } from "@/lib/agent/models";
 import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
 import {
   runtimeStatusLooksActive,
@@ -27,7 +30,10 @@ import {
   textDeltaFromPiEvent,
 } from "@/lib/agent/sessions/text-delta-coalescer";
 import { isEmptyStarterSession } from "@/lib/agent/sessions/store";
-import { beginSessionSubmit, endSessionSubmit } from "@/lib/agent/sessions/submit-guard";
+import {
+  beginSessionSubmit,
+  endSessionSubmit,
+} from "@/lib/agent/sessions/submit-guard";
 import type { Session } from "@/lib/agent/sessions/types";
 import { reducer } from "@/lib/agent/workspace/reducer";
 import type { WorkspaceState } from "@/lib/agent/workspace/types";
@@ -64,6 +70,37 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     lastHandledNavKey: "",
   };
 }
+
+test("browser intent catches direct user browser requests", () => {
+  assert.equal(
+    promptRequestsBrowser("please use the browser to find the current docs"),
+    true,
+  );
+});
+
+test("browser navigate primes the URL while the browser surface is mounting", async () => {
+  let browserUrl = "";
+  let browserInput = "";
+
+  const result = await runBrowserPanelCommand(
+    "navigate",
+    { url: "https://example.com/docs" },
+    {
+      browser: null,
+      currentUrl: "",
+      isElectron: true,
+      setBrowserUrl: (url, input) => {
+        browserUrl = url;
+        browserInput = input ?? "";
+      },
+    },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(browserUrl, "https://example.com/docs");
+  assert.equal(browserInput, "https://example.com/docs");
+  assert.equal((result.data as { pending?: boolean }).pending, true);
+});
 
 function makePiEventApplierHarness(
   initialSession: Session,
@@ -146,7 +183,12 @@ test("empty starter reuse clears stale title and transient runtime metadata", ()
     status: "done",
     error: "old error",
     tokenStats: { read: 1, write: 2, current: 3 },
-    contextUsage: { tokens: 3, contextWindow: 10, percent: 30, shouldCompact: false },
+    contextUsage: {
+      tokens: 3,
+      contextWindow: 10,
+      percent: 30,
+      shouldCompact: false,
+    },
     usedSkills: [{ id: "skill-old", name: "Old skill" }],
   });
 
@@ -160,7 +202,9 @@ test("empty starter reuse clears stale title and transient runtime metadata", ()
     mode: "replace",
   });
 
-  const active = next.sessions.get(next.panesById.get("p-main")?.sessionId ?? "");
+  const active = next.sessions.get(
+    next.panesById.get("p-main")?.sessionId ?? "",
+  );
   assert.equal(active?.id, "s-starter");
   assert.equal(active?.title, "New session");
   assert.equal(active?.status, "idle");
@@ -192,7 +236,7 @@ test("session submit guards block duplicate sends only within the same session",
   assert.equal(beginSessionSubmit(guard, "s-old"), true);
 });
 
-test("agent session navigation restores active SDK sessions with skills and model selection", () => {
+test("agent session navigation restores running SDK sessions with runtime identity", () => {
   const state = makeState();
   const usedSkills = [
     { id: "skill-browser", name: "browser", path: "/skills/browser" },
@@ -209,11 +253,12 @@ test("agent session navigation restores active SDK sessions with skills and mode
         cwd: "/workspace/personal",
         paneId: "p-main",
         tabId: "tab-deepseek",
+        runtimeSessionId: "rt-deepseek",
         piSessionId: "pi-deepseek",
         modelId: "deepseek-v4-flash",
         title: "Still running",
         status: "running",
-        active: true,
+        focused: true,
         updatedAt: "2026-05-26T12:00:00.000Z",
         usedSkills,
       },
@@ -224,23 +269,26 @@ test("agent session navigation restores active SDK sessions with skills and mode
   assert.equal(next.hydrated, true);
   assert.equal(next.focusedPaneId, "p-main");
   assert.equal(restoredPane?.sessionId, "tab-deepseek");
+  assert.equal(restoredPane?.runtimeSessionId, "rt-deepseek");
   const restored = next.sessions.get("tab-deepseek");
+  assert.equal(restored?.runtimeSessionId, "rt-deepseek");
   assert.equal(restored?.piSessionId, "pi-deepseek");
   assert.equal(restored?.modelId, "deepseek-v4-flash");
   assert.deepEqual(restored?.usedSkills, usedSkills);
 });
 
-test("agent session merge upgrades tab identity to pi identity without dropping active state", () => {
+test("agent session merge upgrades tab identity to pi identity without dropping focus", () => {
   const previous: ActiveAgentSessionSnapshot[] = [
     {
       projectId: "personal",
       cwd: "/workspace/personal",
       paneId: "p-main",
       tabId: "tab-1",
+      runtimeSessionId: "rt-live",
       piSessionId: null,
       title: "Draft",
       status: "starting",
-      active: true,
+      focused: true,
       updatedAt: "2026-05-26T12:00:00.000Z",
     },
   ];
@@ -251,6 +299,7 @@ test("agent session merge upgrades tab identity to pi identity without dropping 
       cwd: "/workspace/personal",
       paneId: "p-main",
       tabId: "tab-1",
+      runtimeSessionId: "rt-live",
       piSessionId: "pi-live",
       modelId: "deepseek-v4-flash",
       title: "Live",
@@ -264,44 +313,60 @@ test("agent session merge upgrades tab identity to pi identity without dropping 
 
   assert.equal(merged.length, 1);
   assert.equal(merged[0]?.piSessionId, "pi-live");
-  assert.equal(merged[0]?.active, true);
+  assert.equal(merged[0]?.focused, true);
+  assert.equal(merged[0]?.runtimeSessionId, "rt-live");
   assert.equal(merged[0]?.modelId, "deepseek-v4-flash");
   assert.deepEqual(merged[0]?.usedSkills, [{ id: "skill-code", name: "code" }]);
 });
 
-test("agent session merge preserves model metadata when active snapshots absorb inactive updates", () => {
+test("agent session merge preserves multiple running sessions instead of normalizing to one active row", () => {
   const incoming: ActiveAgentSessionSnapshot[] = [
     {
       projectId: "personal",
       cwd: "/workspace/personal",
       paneId: "p-main",
       tabId: "tab-live",
+      runtimeSessionId: "rt-live",
       piSessionId: "pi-live",
       title: "Live",
       status: "running",
-      active: true,
+      focused: true,
       updatedAt: "2026-05-26T12:00:02.000Z",
     },
     {
       projectId: "personal",
       cwd: "/workspace/personal",
-      paneId: "p-main",
-      tabId: "tab-live",
-      piSessionId: "pi-live",
+      paneId: "p-side",
+      tabId: "tab-side",
+      runtimeSessionId: "rt-side",
+      piSessionId: "pi-side",
       modelId: "deepseek-v4-flash",
-      title: "Live with model",
+      title: "Side live",
       status: "running",
-      active: false,
       updatedAt: "2026-05-26T12:00:03.000Z",
     },
   ];
 
   const merged = mergeActiveAgentSessions([], incoming);
 
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.active, true);
-  assert.equal(merged[0]?.modelId, "deepseek-v4-flash");
-  assert.equal(merged[0]?.title, "Live with model");
+  assert.equal(merged.length, 2);
+  assert.deepEqual(
+    merged
+      .map((session) => [session.piSessionId, session.status])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    [
+      ["pi-live", "running"],
+      ["pi-side", "running"],
+    ],
+  );
+  assert.equal(
+    merged.find((session) => session.piSessionId === "pi-live")?.focused,
+    true,
+  );
+  assert.equal(
+    merged.find((session) => session.piSessionId === "pi-side")?.modelId,
+    "deepseek-v4-flash",
+  );
 });
 
 test("completed runtime remains running but not active after the prompt promise settles", () => {
@@ -715,7 +780,7 @@ test("text delta coalescer preserves alternating text and reasoning order", () =
   );
 });
 
-test("live pre-tool text stays visible when a tool call follows", () => {
+test("live pre-tool text collapses with the following tool call", () => {
   const textEvent = {
     type: "message_update",
     assistantMessageEvent: {
@@ -745,12 +810,93 @@ test("live pre-tool text stays visible when a tool call follows", () => {
   assert.equal(textBlocks[0]?.kind, "text");
 
   const blocks = applyAssistantPiEventToBlocks(textBlocks, toolEvent);
-  assert.equal(blocks?.[0]?.kind, "text");
+  assert.equal(blocks?.[0]?.kind, "thinking");
   assert.equal(blocks?.[0]?.text, "Let me inspect that first.");
   assert.equal(blocks?.[1]?.kind, "tool");
 });
 
-test("reasoning then content then tool keeps blocks in [thinking, text, tool] order", () => {
+test("tool call deltas use pi-provided partial arguments", () => {
+  const findTool = (
+    blocks: NonNullable<ReturnType<typeof applyAssistantPiEventToBlocks>>,
+  ) => blocks.find((block) => block.kind === "tool");
+  let blocks =
+    applyAssistantPiEventToBlocks([], {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "toolcall_delta",
+        toolCallId: "call-write",
+        toolName: "write_file",
+        delta: '{"path":"/tmp',
+        partial: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-write",
+              name: "write_file",
+              arguments: { path: "/tmp" },
+            },
+          ],
+        },
+      },
+    }) ?? [];
+
+  let tool = findTool(blocks);
+  assert.equal(tool?.kind, "tool");
+  assert.equal(tool?.kind === "tool" ? tool.args?.path : undefined, "/tmp");
+
+  blocks =
+    applyAssistantPiEventToBlocks(blocks, {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "toolcall_delta",
+        toolCallId: "call-write",
+        toolName: "write_file",
+        delta: '/file.txt","content":"hello',
+        partial: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-write",
+              name: "write_file",
+              arguments: { path: "/tmp/file.txt", content: "hello" },
+            },
+          ],
+        },
+      },
+    }) ?? [];
+
+  tool = findTool(blocks);
+  assert.equal(tool?.kind, "tool");
+  assert.equal(
+    tool?.kind === "tool" ? tool.args?.path : undefined,
+    "/tmp/file.txt",
+  );
+  assert.equal(tool?.kind === "tool" ? tool.args?.content : undefined, "hello");
+});
+
+test("vllm pi model config uses pi openai-compatible parsing without reasoning controls", () => {
+  const [model] = modelsToPiModels([
+    {
+      id: "step-3.7-flash",
+      name: "Step 3.7 Flash",
+      provider: "vllm-studio",
+      contextWindow: 262_144,
+      maxTokens: 65_536,
+      reasoning: true,
+      vision: true,
+      active: true,
+    },
+  ]);
+
+  assert.equal(model?.compat?.supportsDeveloperRole, false);
+  assert.equal(model?.compat?.supportsReasoningEffort, false);
+  assert.equal(model?.compat?.maxTokensField, "max_tokens");
+  assert.equal(model?.compat?.supportsUsageInStreaming, true);
+});
+
+test("reasoning then pre-tool narration then tool keeps activity together", () => {
   const reasoningEvent = {
     type: "message_update",
     assistantMessageEvent: {
@@ -784,10 +930,49 @@ test("reasoning then content then tool keeps blocks in [thinking, text, tool] or
   const blocks = applyAssistantPiEventToBlocks(afterText, toolEvent) ?? [];
 
   assert.equal(blocks[0]?.kind, "thinking");
-  assert.equal(blocks[0]?.text, "Internal reasoning before the answer.");
-  assert.equal(blocks[1]?.kind, "text");
-  assert.equal(blocks[1]?.text, "Here is the answer.");
-  assert.equal(blocks[2]?.kind, "tool");
+  assert.match(blocks[0]?.text ?? "", /Internal reasoning before the answer/);
+  assert.match(blocks[0]?.text ?? "", /Here is the answer/);
+  assert.equal(blocks[1]?.kind, "tool");
+});
+
+test("visible answer text after a tool call stays after the collapsed activity", () => {
+  const narrationEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Let me inspect that first.",
+    },
+  };
+  const toolStartEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "toolcall_start",
+      toolCall: {
+        id: "call-read",
+        name: "read",
+        arguments: { path: "/workspace/file.txt" },
+      },
+    },
+  };
+  const answerEvent = {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "Here is the answer.",
+    },
+  };
+
+  const afterNarration =
+    applyAssistantPiEventToBlocks([], narrationEvent) ?? [];
+  const afterTool =
+    applyAssistantPiEventToBlocks(afterNarration, toolStartEvent) ?? [];
+  const blocks = applyAssistantPiEventToBlocks(afterTool, answerEvent) ?? [];
+
+  assert.equal(blocks[0]?.kind, "thinking");
+  assert.equal(blocks[0]?.text, "Let me inspect that first.");
+  assert.equal(blocks[1]?.kind, "tool");
+  assert.equal(blocks[2]?.kind, "text");
+  assert.equal(blocks[2]?.text, "Here is the answer.");
 });
 
 test("late reasoning deltas move before visible text without splitting the answer", () => {
@@ -828,7 +1013,7 @@ test("late reasoning deltas move before visible text without splitting the answe
   );
 });
 
-test("tool_execution_start does not bury visible text into thinking", () => {
+test("tool_execution_start collapses pending narration with tool activity", () => {
   const textBlocks =
     applyAssistantPiEventToBlocks([], {
       type: "message_update",
@@ -844,7 +1029,7 @@ test("tool_execution_start does not bury visible text into thinking", () => {
     toolName: "bash",
   });
 
-  assert.equal(blocks?.[0]?.kind, "text");
+  assert.equal(blocks?.[0]?.kind, "thinking");
   assert.equal(blocks?.[0]?.text, "I'll run a quick check.");
   assert.equal(blocks?.[1]?.kind, "tool");
 });

@@ -310,9 +310,16 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
               status: "running",
             };
           });
-        } else if (liveSessionStatus(session.status)) {
+        } else if (session.status === "running") {
+          // Only a session the runtime once acknowledged (status "running") may be
+          // idled by the poll. A freshly-sent "starting" turn is not yet in the
+          // runtime list during prefill/TTFT; idling it here would hide the
+          // working indicator for several seconds until the first token lands.
+          // The prompt stream's own `finally` owns the starting->terminal
+          // transition, so the poll must not race it.
           const patch = patchRuntimeStatus(status);
           updateSession(session.id, (current) => {
+            if (current.status !== "running") return current;
             if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
               return current;
             }

@@ -16,7 +16,7 @@ function currentSearchParams(): URLSearchParams {
 }
 
 function shouldRestoreWorkspace(params: URLSearchParams): boolean {
-  return params.get("restore") === "1";
+  return params.get("restore") !== "0";
 }
 
 export function useWorkspaceHydrationEffects({

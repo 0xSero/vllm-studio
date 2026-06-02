@@ -93,18 +93,15 @@ async function checkFrontendHealth(): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
   try {
-    const response = await fetch(`${frontendServer.runtime.url}/api/desktop-health`, {
+    // Any HTTP answer means the Node server is alive and serving; only a
+    // transport-level failure (process dead/hung) rejects and counts as unhealthy.
+    await fetch(`${frontendServer.runtime.url}/api/desktop-health`, {
       redirect: "manual",
       signal: controller.signal,
       headers: { "cache-control": "no-cache" },
     });
-    // Any HTTP answer means the Node server is alive and serving; only a
-    // transport-level failure (process dead/hung) counts as unhealthy.
-    if (response.status > 0) {
-      frontendHealthFailures = 0;
-      return;
-    }
-    frontendHealthFailures += 1;
+    frontendHealthFailures = 0;
+    return;
   } catch {
     frontendHealthFailures += 1;
   } finally {

@@ -244,8 +244,8 @@ export function ActiveSessionRow({
 }) {
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
-  const isActive = session.active === true;
-  const rowClass = `group relative flex h-6 items-center rounded-md pl-3 pr-0 transition-colors ${isActive ? "bg-(--hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--hover) hover:text-(--fg)/95"}`;
+  const isFocused = session.focused === true;
+  const rowClass = `group relative flex h-6 items-center rounded-md pl-3 pr-0 transition-colors ${isFocused ? "bg-(--hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--hover) hover:text-(--fg)/95"}`;
 
   return (
     <SessionNavRow

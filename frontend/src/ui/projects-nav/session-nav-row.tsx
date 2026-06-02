@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
@@ -100,13 +101,13 @@ export function SessionNavRow({
     >
       <SessionPinButton
         pinned={Boolean(pref.pinned)}
-        running={isRunning}
         onToggle={() => onPatchPref({ pinned: !pref.pinned })}
       />
       <SessionOpenTarget
         age={age}
         canDoubleClickRename={canDoubleClickRename}
         href={href}
+        isRunning={isRunning}
         label={label}
         onDragStart={onDragStart}
         onOpen={onOpen}
@@ -189,6 +190,7 @@ function SessionOpenTarget({
   age,
   canDoubleClickRename,
   href,
+  isRunning,
   label,
   onDragStart,
   onOpen,
@@ -198,6 +200,7 @@ function SessionOpenTarget({
   age: string;
   canDoubleClickRename: boolean;
   href?: string;
+  isRunning: boolean;
   label: string;
   onDragStart: (event: DragEvent) => void;
   onOpen?: () => void;
@@ -212,7 +215,7 @@ function SessionOpenTarget({
         },
       }
     : {};
-  const content = <SessionRowContent age={age} label={label} />;
+  const content = <SessionRowContent age={age} isRunning={isRunning} label={label} />;
 
   if (href) {
     return (
@@ -245,9 +248,20 @@ function SessionOpenTarget({
   );
 }
 
-function SessionRowContent({ age, label }: { age: string; label: string }) {
+function SessionRowContent({
+  age,
+  isRunning,
+  label,
+}: {
+  age: string;
+  isRunning: boolean;
+  label: string;
+}) {
   return (
     <>
+      {isRunning ? (
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--accent)" aria-hidden />
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-[10.5px] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
         {label}
       </span>
@@ -351,12 +365,10 @@ function SessionPinButton({
   pinned,
   onToggle,
   disabled = false,
-  running = false,
 }: {
   pinned: boolean;
   onToggle: () => void;
   disabled?: boolean;
-  running?: boolean;
 }) {
   return (
     <button
@@ -372,7 +384,7 @@ function SessionPinButton({
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}
     >
-      <PinIcon className={`h-3.5 w-3.5 ${running ? "animate-pulse" : ""}`} />
+      <PinIcon className="h-3.5 w-3.5" />
     </button>
   );
 }

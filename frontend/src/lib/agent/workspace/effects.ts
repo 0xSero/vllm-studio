@@ -97,6 +97,7 @@ const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
   "splitTab",
   "closePane",
   "setPaneSession",
+  "patchSession",
   "patchActiveTab",
   "hydrateActiveSessions",
   "notifySessionsChanged",
@@ -105,6 +106,7 @@ const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
 
 const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>([
   "setPaneSession",
+  "patchSession",
   "patchActiveTab",
 ]);
 
@@ -187,7 +189,7 @@ export function subscribeWorkspaceWindowEvents(
       isRecord(detail) && Array.isArray(detail.projects) ? (detail.projects as Project[]) : [];
     const params =
       typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const restoreWorkspace = params?.get("restore") === "1";
+    const restoreWorkspace = params?.get("restore") !== "0";
     dispatch({
       type: "hydrateActiveSessions",
       snapshots: restoreWorkspace ? loadPersistedActiveAgentSessions() : [],
@@ -284,11 +286,12 @@ function computeActiveSessionBroadcast(
       cwd: tab.cwd ?? "",
       paneId,
       tabId: tab.id,
+      runtimeSessionId: tab.runtimeSessionId || pane.runtimeSessionId,
       piSessionId: tab.piSessionId,
       modelId: tab.modelId ?? state.selectedModel,
       title: cleanSessionTitle(tab.title) || "Current session",
       status: tab.status,
-      active: paneId === state.focusedPaneId,
+      focused: paneId === state.focusedPaneId,
       startedAt: tab.startedAt,
       updatedAt: tab.startedAt || new Date().toISOString(),
       plugins: selection.plugins.length > 0 ? selection.plugins : undefined,

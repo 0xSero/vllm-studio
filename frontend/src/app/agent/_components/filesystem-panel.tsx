@@ -116,7 +116,7 @@ function extractJsxPreviewSource(source: string): string {
 }
 function previewDocument(content: string, kind: "html" | "jsx"): string {
   const body = kind === "jsx" ? extractJsxPreviewSource(content) : content;
-  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:16px;font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff}*{box-sizing:border-box}img,video,iframe{max-width:100%}pre,code{white-space:pre-wrap}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0}body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff}*{box-sizing:border-box}img,video,iframe{max-width:100%}pre,code{white-space:pre-wrap}</style></head><body>${body}</body></html>`;
 }
 
 function TreeFileList({
@@ -424,7 +424,9 @@ export function FilesystemPanel({ cwd }: Props) {
         ) : (
           <>
             {/* Toolbar: file name + view toggle + font size */}{" "}
-            <div className="flex h-8 shrink-0 items-center justify-between border-b border-(--border) px-2 gap-1">
+            <div
+              className={`flex h-8 shrink-0 items-center justify-between gap-1 border-b border-(--border) px-2 ${fileListOpen ? "" : "pl-10"}`}
+            >
               <div className="min-w-0 truncate font-mono text-[10px] text-(--dim) flex-1">
                 {openFile}
               </div>{" "}
@@ -509,7 +511,7 @@ function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }
 function RenderedPreview({ content, kind }: { content: string; kind: "html" | "jsx" | "md" }) {
   if (kind === "md") {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) p-4 text-(--fg) text-sm leading-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">
         <AssistantMarkdown text={content} />{" "}
       </div>
     );

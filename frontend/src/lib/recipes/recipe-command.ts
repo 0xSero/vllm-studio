@@ -119,11 +119,18 @@ const appendLlamacppArgsToCommand = (
 
 type RecipeCommandPayload = ReturnType<typeof prepareRecipeForSave>;
 
-export const generateCommand = (recipe: RecipeEditor): string => {
+export const generateCommand = (
+  recipe: RecipeEditor,
+  options: { includeCommandOverride?: boolean } = {},
+): string => {
   const payload = prepareRecipeForSave(recipe);
   const commandOverride =
     payload.extra_args?.["launch_command"] ?? payload.extra_args?.["custom_command"];
-  if (typeof commandOverride === "string" && commandOverride.trim()) {
+  if (
+    options.includeCommandOverride !== false &&
+    typeof commandOverride === "string" &&
+    commandOverride.trim()
+  ) {
     return commandOverride;
   }
 
@@ -148,7 +155,9 @@ function appendBackendCommand(args: string[], backend: string) {
 
 function appendModelArgument(args: string[], backend: string, modelPath?: string) {
   if (!modelPath) return;
-  args.push(backend === "llamacpp" || backend === "mlx" ? `--model ${modelPath}` : modelPath);
+  if (backend === "llamacpp" || backend === "mlx") args.push(`--model ${modelPath}`);
+  else if (backend === "sglang") args.push(`--model-path ${modelPath}`);
+  else args.push(modelPath);
 }
 
 function appendNetworkArguments(args: string[], backend: string, payload: RecipeCommandPayload) {
@@ -180,10 +189,26 @@ function appendContextArguments(args: string[], backend: string, payload: Recipe
     return;
   }
   if (backend === "mlx") return;
-  if (payload.max_model_len) args.push(`--max-model-len ${payload.max_model_len}`);
-  if (payload.max_num_seqs) args.push(`--max-num-seqs ${payload.max_num_seqs}`);
+  if (payload.max_model_len) {
+    args.push(
+      backend === "sglang"
+        ? `--context-length ${payload.max_model_len}`
+        : `--max-model-len ${payload.max_model_len}`,
+    );
+  }
+  if (payload.max_num_seqs) {
+    args.push(
+      backend === "sglang"
+        ? `--max-running-requests ${payload.max_num_seqs}`
+        : `--max-num-seqs ${payload.max_num_seqs}`,
+    );
+  }
   if (payload.gpu_memory_utilization !== undefined && payload.gpu_memory_utilization !== null) {
-    args.push(`--gpu-memory-utilization ${payload.gpu_memory_utilization}`);
+    args.push(
+      backend === "sglang"
+        ? `--mem-fraction-static ${payload.gpu_memory_utilization}`
+        : `--gpu-memory-utilization ${payload.gpu_memory_utilization}`,
+    );
   }
   if (payload.kv_cache_dtype && payload.kv_cache_dtype !== "auto") {
     args.push(`--kv-cache-dtype ${payload.kv_cache_dtype}`);
@@ -207,18 +232,20 @@ function appendRuntimeOptions(args: string[], backend: string, payload: RecipeCo
   if (payload.quantization) args.push(`--quantization ${payload.quantization}`);
   if (payload.dtype && payload.dtype !== "auto") args.push(`--dtype ${payload.dtype}`);
   if (payload.trust_remote_code) args.push("--trust-remote-code");
-  appendToolOptions(args, payload);
+  appendToolOptions(args, backend, payload);
   if (payload.reasoning_parser) args.push(`--reasoning-parser ${payload.reasoning_parser}`);
   if (backend === "sglang" && !hasExtraArgument(payload.extra_args ?? {}, "enable-metrics")) {
     args.push("--enable-metrics");
   }
 }
 
-function appendToolOptions(args: string[], payload: RecipeCommandPayload) {
+function appendToolOptions(args: string[], backend: string, payload: RecipeCommandPayload) {
   if (payload.tool_call_parser) {
     args.push(`--tool-call-parser ${payload.tool_call_parser}`);
-    args.push("--enable-auto-tool-choice");
+    if (backend !== "sglang") args.push("--enable-auto-tool-choice");
     return;
   }
-  if (payload.enable_auto_tool_choice) args.push("--enable-auto-tool-choice");
+  if (payload.enable_auto_tool_choice && backend !== "sglang") {
+    args.push("--enable-auto-tool-choice");
+  }
 }

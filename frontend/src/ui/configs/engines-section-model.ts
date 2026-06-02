@@ -11,10 +11,9 @@ export const ENGINE_META: Record<string, { label: string; description: string }>
     description: "GGUF inference through CPU, Metal, or CUDA builds.",
   },
   mlx: { label: "MLX", description: "Apple Silicon inference through mlx-lm." },
-  exllamav3: { label: "ExLlama v3", description: "EXL3 quantized inference target." },
 };
 
-export const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "mlx", "exllamav3"] as const;
+export const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "mlx"] as const;
 
 export type EngineRowsView =
   | { kind: "backends"; rows: Array<{ id: string; info: RuntimeBackendInfo }> }

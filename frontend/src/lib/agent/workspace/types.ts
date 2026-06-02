@@ -116,6 +116,7 @@ export type WorkspaceAction =
    * Replace the visible session of a pane and write it into the flat sessions map.
    */
   | { type: "setPaneSession"; paneId: PaneId; session: Session }
+  | { type: "patchSession"; sessionId: SessionId; patch: Partial<Session> | ((session: Session) => Session) }
   | { type: "patchActiveTab"; paneId: PaneId; patch: Partial<Session> }
   | { type: "notifySessionsChanged" }
   | {

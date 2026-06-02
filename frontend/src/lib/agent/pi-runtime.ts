@@ -29,6 +29,10 @@ class PiRuntimeManager {
     }
     return { sessionId, session: this.getSession(sessionId) };
   }
+
+  listSessions(): Array<{ sessionId: string; session: PiAgentSession }> {
+    return [...this.sessions.entries()].map(([sessionId, session]) => ({ sessionId, session }));
+  }
 }
 
 const globalForPi = globalThis as typeof globalThis & {

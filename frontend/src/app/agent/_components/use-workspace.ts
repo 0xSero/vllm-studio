@@ -21,6 +21,7 @@ import {
 } from "@/lib/agent/workspace/effects";
 import { useWorkspaceHydrationEffects } from "@/hooks/agent/use-workspace-hydration-effects";
 import { useBrowserEventsEffects } from "@/hooks/agent/use-browser-events-effects";
+import { useWorkspaceRuntimeSync } from "@/hooks/agent/use-workspace-runtime-sync";
 import type {
   AgentModel,
   PaneId,
@@ -32,6 +33,7 @@ import { useTools } from "@/lib/agent/tools/context";
 import { getApiKey } from "@/lib/api-key";
 import { getStoredBackendUrl } from "@/lib/backend-url";
 import { loadSavedControllers, normalizeControllerUrl } from "@/lib/controllers";
+import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import type { Project } from "@/lib/agent/projects/types";
 import { paneSessions } from "@/lib/agent/sessions/selectors";
 import { runBrowserPanelCommand, type BrowserCommandResult } from "@/lib/agent/browser/command";
@@ -147,6 +149,31 @@ function createWorkspaceWindow(source: Window): WorkspaceWindow {
     removeEventListener: source.removeEventListener.bind(source),
     setTimeout: source.setTimeout.bind(source),
   };
+}
+
+function browserHostIsReady(handle: AgentBrowserHandle | null, isElectron: boolean): boolean {
+  return isElectron ? Boolean(handle?.webview) : Boolean(handle?.iframe);
+}
+
+function waitForBrowserHost(
+  getHandle: () => AgentBrowserHandle | null,
+  isElectron: boolean,
+  timeoutMs = 2_500,
+): Promise<void> {
+  if (browserHostIsReady(getHandle(), isElectron) || typeof window === "undefined") {
+    return Promise.resolve();
+  }
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (browserHostIsReady(getHandle(), isElectron) || Date.now() - startedAt >= timeoutMs) {
+        resolve();
+        return;
+      }
+      window.setTimeout(tick, 40);
+    };
+    tick();
+  });
 }
 
 function createBrowserEvents(
@@ -320,13 +347,25 @@ export function useWorkspace(): UseWorkspaceResult {
     const runBrowserCommand = async (
       verb: string,
       payload: Record<string, unknown>,
-    ): Promise<BrowserCommandResult> =>
-      runBrowserPanelCommand(verb, payload, {
+    ): Promise<BrowserCommandResult> => {
+      const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
+      const currentTools = toolsRef.current;
+      currentTools.setComputerTab("browser");
+      currentTools.setBrowserEnabled(true);
+      if (verb === "navigate") {
+        const nextUrl = sanitizePublicBrowserUrl(String(payload.url || ""));
+        if (nextUrl) currentTools.setBrowserUrl(nextUrl, nextUrl);
+      }
+      if (verb !== "get-url") {
+        await waitForBrowserHost(() => browserRef.current, isElectron);
+      }
+      return runBrowserPanelCommand(verb, payload, {
         browser: browserRef.current,
         currentUrl: toolsRef.current.browser.url,
         setBrowserUrl: toolsRef.current.setBrowserUrl,
-        isElectron: typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent),
+        isElectron,
       });
+    };
     return { browserEvents: getBrowserEvents(), dispatch: workspaceDispatch, runBrowserCommand };
   }, [queueSessionReplay]);
 
@@ -522,6 +561,7 @@ export function useWorkspace(): UseWorkspaceResult {
   );
 
   useWorkspaceHydrationEffects({ dispatch, projectsRef, toolsRef });
+  useWorkspaceRuntimeSync({ dispatch, sessions: [...state.sessions.values()] });
 
   return { state, dispatch, handles };
 }

@@ -71,6 +71,12 @@ export async function runBrowserPanelCommand(
 
   const iframe = deps.browser?.iframe ?? null;
   if (!iframe && verb === "get-url") return { ok: true, data: { url: deps.currentUrl, title: "" } };
+  if (!iframe && verb === "navigate") {
+    const url = sanitizePublicBrowserUrl(String(payload.url || ""));
+    if (!url) return { ok: false, error: "valid public http(s) url required" };
+    deps.setBrowserUrl(url, url);
+    return { ok: true, data: { url, pending: true } };
+  }
   if (!iframe) return { ok: false, error: "Browser panel not mounted" };
   return runIframeCommand(verb, payload, iframe, deps.setBrowserUrl);
 }

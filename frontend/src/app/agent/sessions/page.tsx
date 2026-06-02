@@ -30,7 +30,7 @@ type ActiveSession = {
   piSessionId: string | null;
   title: string;
   status: string;
-  active?: boolean;
+  focused?: boolean;
   updatedAt: string;
 };
 

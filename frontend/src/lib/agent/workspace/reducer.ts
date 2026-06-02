@@ -1,5 +1,6 @@
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
-import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
+import { makeFreshTab } from "@/lib/agent/session/helpers";
+import { patchSession as patchSessionInMap } from "@/lib/agent/sessions/store";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 import type {
@@ -45,6 +46,7 @@ function tabFromSnapshot(session: ActiveAgentSessionSnapshot): Session {
   return {
     ...fresh,
     id: session.tabId || fresh.id,
+    runtimeSessionId: session.runtimeSessionId || fresh.runtimeSessionId,
     piSessionId: session.piSessionId,
     projectId: session.projectId,
     cwd: session.cwd,
@@ -98,24 +100,24 @@ function hydrateSessionSnapshots(
   for (const paneId of paneIds) {
     const group = grouped.get(paneId) ?? [];
     const restored = group.map(tabFromSnapshot);
-    const activeSessionId = group.find((session) => session.active)?.tabId || restored[0]?.id;
+    const focusedSessionId = group.find((session) => session.focused)?.tabId || restored[0]?.id;
     const session =
-      restored.find((tab) => tab.id === activeSessionId) ?? restored[0] ?? makeFreshTab();
+      restored.find((tab) => tab.id === focusedSessionId) ?? restored[0] ?? makeFreshTab();
     sessions.set(session.id, session);
     panesById.set(paneId, {
       sessionId: session.id,
-      runtimeSessionId: newRuntimeId(),
+      runtimeSessionId: session.runtimeSessionId,
     });
   }
 
-  const activeSnapshot = restorable.find((session) => session.active) ?? restorable[0];
+  const focusedSnapshot = restorable.find((session) => session.focused) ?? restorable[0];
 
   return {
     ...state,
     sessions,
     panesById,
     layout: layoutFromPaneIds(paneIds),
-    focusedPaneId: activeSnapshot.paneId,
+    focusedPaneId: focusedSnapshot.paneId,
     hydrated: true,
   };
 }
@@ -245,6 +247,11 @@ function reduceSessionEditAction(
       });
     case "setPaneSession":
       return setPaneSession(state, { paneId: action.paneId, session: action.session });
+    case "patchSession":
+      return {
+        ...state,
+        sessions: patchSessionInMap(state.sessions, action.sessionId, action.patch),
+      };
     case "patchActiveTab":
       return patchActiveTab(state, { paneId: action.paneId, patch: action.patch });
     case "urlNavRequested":

@@ -33,6 +33,21 @@ export type RuntimeStatus = {
   contextUsage?: RuntimeContextUsage | null;
 };
 
+export type RuntimeSessionSummary = {
+  sessionId: string;
+  status: RuntimeStatus;
+};
+
+export async function listRuntimeSessions(): Promise<RuntimeSessionSummary[]> {
+  try {
+    const response = await fetch("/api/agent/runtime/sessions", { cache: "no-store" });
+    const payload = await safeJson<{ sessions?: RuntimeSessionSummary[] }>(response);
+    return Array.isArray(payload.sessions) ? payload.sessions : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function loadRuntimeStatus(
   sessionId: string,
   piSessionId?: string | null,
@@ -184,7 +199,7 @@ export async function submitTurnStream(
  * (e.g. probe runtime status to see if the session still exists).
  */
 export type RuntimeEventPayload =
-  | { type: "status"; phase: string; session?: { piSessionId?: string | null } }
+  | { type: "status"; phase: string; session?: RuntimeStatus }
   | { type: "pi"; seq?: number; event: Record<string, unknown> };
 
 export type RuntimeEventSubscription = { close: () => void };

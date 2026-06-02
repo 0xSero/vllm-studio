@@ -85,7 +85,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
   const [readable, setReadable] = useState<ReadablePage | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
   const [readingLoading, setReadingLoading] = useState(false);
-  const [liveBlank, setLiveBlank] = useState(false);
   const [hasOpenedUrl, setHasOpenedUrl] = useState(() =>
     Boolean(url && url !== DEFAULT_BROWSER_URL),
   );
@@ -135,7 +134,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     webviewRef,
     fetchReadable,
     onLocationChange,
-    setLiveBlank,
     enabled: !showStartPage,
   });
   useLocalhostSitesEffects({
@@ -296,19 +294,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
                 />
               );
             })()}
-            {liveBlank ? (
-              <div className="absolute inset-x-0 top-10 z-10 mx-auto w-fit rounded border border-(--border) bg-(--surface) px-3 py-1.5 text-[11px] text-(--dim) shadow">
-                Page came back empty —
-                <button
-                  type="button"
-                  onClick={() => setReadingMode(true)}
-                  className="ml-1 text-(--accent) underline-offset-2 hover:underline"
-                >
-                  open in reading mode
-                </button>
-                .
-              </div>
-            ) : null}
           </>
         ) : (
           <iframe
