@@ -29,8 +29,8 @@ Access these in scripts via environment variables or load them from `.env.local`
 - **Run**: `cd frontend && PORT=3001 npm run dev`
 - **Do not run dev unless explicitly asked.** If a dev server is already running, you may use it for verification.
 - Use this local server for fast browser verification unless the user explicitly asks for a different port or deployment target.
-- **Do not build or replace the desktop app unless explicitly asked.** Default to web/dev-server verification or an isolated beta app so the user's real vLLM Studio desktop app is not disturbed.
-- **Beta desktop app for testing**: when desktop verification is explicitly requested, build/install a separate beta app with its own app name, bundle id, and user data path. Do not overwrite `/Applications/vLLM Studio.app` or relaunch the user's production work app while testing feature branches.
+- **Always rebuild the desktop app after any frontend change.** The desktop app bundles its own copy of the frontend (embedded standalone Next server), so `./scripts/deploy-remote.sh frontend` and any web/remote deploy update only the homelab web UI (`:3000`) — they do **not** update the desktop app. Whenever you touch `frontend/`, rebuild and reinstall the canonical app per [Deployment Workflow](#deployment-workflow). (`rm -rf "/Applications/vLLM Studio.app"` is part of the documented reinstall — confirm with the user before that destructive step.)
+- **Beta desktop app (exception, for risky feature-branch testing only)**: if you need to test without touching the user's working app, build/install a separate beta app with its own app name, bundle id, and user data path. This is the exception — the default is to rebuild and reinstall the canonical `/Applications/vLLM Studio.app`.
 - **Desktop dev mode for iterative UI work**: launch Electron against the local dev server so frontend changes show up without rebuilding the installed app:
 
 ```bash
@@ -90,6 +90,7 @@ After finishing a feature, you **MUST** complete the appropriate deployment step
 
 - For a quick user test, use the **Fast Desktop Test Build** path.
 - Before pushing/release/production-ready status, use the **Production / Pre-Push Build** path.
+- **The desktop rebuild + reinstall (steps 5–7 below) is mandatory after any frontend change** — the desktop app bundles its own frontend and is never updated by remote/web deploys. Use `desktop:pack` for iteration, `desktop:dist` before release.
 
 After finishing a feature, follow this checklist:
 
@@ -129,9 +130,12 @@ Then enforce single-install + relaunch:
 # Remove old non-canonical app if present
 rm -rf "$HOME/Applications/vllm-studio-mac.app"
 
-# Relaunch canonical app
+# Relaunch canonical app. Force LaunchServices to re-register the freshly
+# replaced bundle first and open it by full path — otherwise `open -a` can
+# fail with error -600 (stale registration / ambiguous name) right after ditto.
 killall "vLLM Studio" >/dev/null 2>&1 || true
-open -a "vLLM Studio"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/vLLM Studio.app"
+open "/Applications/vLLM Studio.app"
 ```
 
 Verification (required):
