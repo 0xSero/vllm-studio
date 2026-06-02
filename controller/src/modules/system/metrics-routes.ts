@@ -30,24 +30,49 @@ const firstMetric = (metrics: Record<string, number>, names: string[]): number =
   return 0;
 };
 
-const scrapePrometheusMetrics = async (port: number): Promise<Record<string, number>> => {
+type EngineScrape = {
+  metrics: Record<string, number>;
+  modelName: string | null;
+  hasVllm: boolean;
+  hasSglang: boolean;
+};
+
+const scrapePrometheusMetrics = async (port: number): Promise<EngineScrape> => {
+  const empty: EngineScrape = { metrics: {}, modelName: null, hasVllm: false, hasSglang: false };
   try {
     const response = await fetchLocal(port, "/metrics", { timeoutMs: 1500 });
-    if (response.status !== 200) return {};
+    if (response.status !== 200) return empty;
     const text = await response.text();
     const metrics: Record<string, number> = {};
+    let modelName: string | null = null;
+    let hasVllm = false;
+    let hasSglang = false;
     for (const line of text.split("\n")) {
       if (line.startsWith("#") || line.trim().length === 0) continue;
+      if (!hasVllm && line.startsWith("vllm:")) hasVllm = true;
+      if (!hasSglang && line.startsWith("sglang:")) hasSglang = true;
+      if (!modelName) {
+        const label = line.match(/(?:served_model_name|model_name)="([^"]+)"/);
+        if (label?.[1]) modelName = label[1];
+      }
       const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)\{?[^}]*\}?\s+([\d.eE+-]+)$/);
       if (!match?.[1] || !match[2]) continue;
       const value = Number(match[2]);
       if (Number.isFinite(value)) metrics[match[1]] = value;
     }
-    return metrics;
+    return { metrics, modelName, hasVllm, hasSglang };
   } catch {
-    return {};
+    return empty;
   }
 };
+
+// Previous-scrape token counters per model, used to derive live throughput as a
+// rate for engines (vLLM) that expose only cumulative counters, not gauges.
+const throughputSamples = new Map<
+  string,
+  { promptTokens: number; genTokens: number; ts: number; promptTps: number; genTps: number }
+>();
+const MIN_RATE_INTERVAL_MS = 1500;
 
 const buildModelKeys = (modelId: string, modelPath: string | null | undefined): Set<string> => {
   const keys = new Set<string>([modelId]);
@@ -85,7 +110,13 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
     power_limit_watts: Math.round(powerLimitWatts),
   };
 
-  if (!current) {
+  // Scrape the inference port directly so metrics resolve for any engine and any
+  // launch style (manual `vllm serve`, `python -m …`, controller-launched),
+  // independent of host-process detection.
+  const scrape = await scrapePrometheusMetrics(context.config.inference_port);
+  const engineActive = scrape.hasVllm || scrape.hasSglang;
+
+  if (!current && !engineActive) {
     return {
       ...baseMetrics,
       model_id: null,
@@ -94,12 +125,13 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
     };
   }
 
-  const modelId = current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
-  const isSglang = current.backend === "sglang";
-  const prometheus =
-    current.backend === "vllm" || current.backend === "sglang"
-      ? await scrapePrometheusMetrics(context.config.inference_port)
-      : {};
+  const isSglang = current?.backend === "sglang" || (!current && scrape.hasSglang);
+  const modelId =
+    current?.served_model_name ??
+    current?.model_path?.split("/").pop() ??
+    scrape.modelName ??
+    "active";
+  const prometheus = scrape.metrics;
   const promptTokenNames = isSglang
     ? ["sglang:prompt_tokens_total", "sglang:prefill_tokens_total"]
     : ["vllm:prompt_tokens_total"];
@@ -111,11 +143,51 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
       ]
     : ["vllm:generation_tokens_total"];
   const usageAggregate = context.stores.inferenceRequestStore.aggregate(
-    buildModelKeys(modelId, current.model_path)
+    buildModelKeys(modelId, current?.model_path)
   ) as UsageAggregate | null;
   const usageTotals = usageAggregate?.totals;
   const promptTokensTotal = firstMetric(prometheus, promptTokenNames);
   const generationTokensTotal = firstMetric(prometheus, generationTokenNames);
+
+  // Throughput: SGLang publishes instantaneous gauges; vLLM (and most engines)
+  // publish only cumulative token counters, so derive a live rate from the delta
+  // between scrapes. Sub-interval polls reuse the previous rate to avoid spikes.
+  let promptThroughput = isSglang
+    ? firstMetric(prometheus, ["sglang:prompt_throughput", "sglang:prefill_throughput"])
+    : 0;
+  let generationThroughput = isSglang
+    ? firstMetric(prometheus, ["sglang:gen_throughput", "sglang:generation_throughput"])
+    : 0;
+  if (!isSglang) {
+    const nowMs = Date.now();
+    const previous = throughputSamples.get(modelId);
+    if (previous && nowMs - previous.ts >= MIN_RATE_INTERVAL_MS) {
+      const elapsedSeconds = (nowMs - previous.ts) / 1000;
+      promptThroughput = Math.max(0, (promptTokensTotal - previous.promptTokens) / elapsedSeconds);
+      generationThroughput = Math.max(
+        0,
+        (generationTokensTotal - previous.genTokens) / elapsedSeconds
+      );
+      throughputSamples.set(modelId, {
+        promptTokens: promptTokensTotal,
+        genTokens: generationTokensTotal,
+        ts: nowMs,
+        promptTps: promptThroughput,
+        genTps: generationThroughput,
+      });
+    } else if (previous) {
+      promptThroughput = previous.promptTps;
+      generationThroughput = previous.genTps;
+    } else {
+      throughputSamples.set(modelId, {
+        promptTokens: promptTokensTotal,
+        genTokens: generationTokensTotal,
+        ts: nowMs,
+        promptTps: 0,
+        genTps: 0,
+      });
+    }
+  }
   const ttftSumName = isSglang
     ? "sglang:time_to_first_token_seconds_sum"
     : "vllm:time_to_first_token_seconds_sum";
@@ -130,8 +202,8 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   return {
     ...baseMetrics,
     model_id: modelId,
-    model_path: current.model_path ?? null,
-    served_model_name: current.served_model_name ?? null,
+    model_path: current?.model_path ?? null,
+    served_model_name: current?.served_model_name ?? scrape.modelName ?? null,
     running_requests: firstMetric(
       prometheus,
       isSglang
@@ -155,18 +227,8 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
       positiveOrUndefined(usageTotals?.completion_tokens),
     total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
     total_requests: positiveOrUndefined(usageTotals?.total_requests),
-    prompt_throughput: firstMetric(
-      prometheus,
-      isSglang
-        ? ["sglang:prompt_throughput", "sglang:prefill_throughput"]
-        : ["vllm:prompt_throughput", "vllm:prefill_throughput"]
-    ),
-    generation_throughput: firstMetric(
-      prometheus,
-      isSglang
-        ? ["sglang:gen_throughput", "sglang:generation_throughput"]
-        : ["vllm:gen_throughput", "vllm:generation_throughput"]
-    ),
+    prompt_throughput: promptThroughput,
+    generation_throughput: generationThroughput,
     avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : usageAggregate?.ttft?.avg_ms,
     latency_avg: positiveOrUndefined(usageAggregate?.latency?.avg_ms),
     best_session_peak_id: bestSessionPeakData?.["session_id"] ?? null,

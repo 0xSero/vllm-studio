@@ -1,13 +1,7 @@
 import type { RecipeId } from "../../types/brand";
-import type { Backend as SharedBackend, ModelInfo, RecipeBase } from "../shared/recipe-types";
+import type { Backend as SharedBackend, RecipeBase } from "../shared/recipe-types";
 import type { ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
-import type {
-  ServiceInfo,
-  SystemConfig,
-  EnvironmentInfo,
-  SystemRuntimeInfo,
-  ConfigData,
-} from "../shared/system-types";
+import type { ConfigData } from "../shared/system-types";
 
 export type { ModelInfo } from "../shared/recipe-types";
 export type {
