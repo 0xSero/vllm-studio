@@ -5,12 +5,14 @@ import type { HuggingFaceModel } from "@/lib/types";
 import {
   DownloadStatusSection,
   ExploreControls,
+  ExploreHardwareShortlistSection,
   ExploreResultsSection,
 } from "./explore-tab-sections";
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
 import api from "@/lib/api";
 import { HuggingFaceModelCardModal } from "@/ui";
+import type { ModelFit } from "./hardware-profile";
 
 export function ExploreTab() {
   const {
@@ -18,8 +20,9 @@ export function ExploreTab() {
     maxVramGb,
     detectedPoolGb,
     poolOverrideGb,
+    hardwareProfile,
+    hardwareShortlist,
     setPoolOverrideGb,
-    gpuCount,
     loading,
     error,
     search,
@@ -42,6 +45,7 @@ export function ExploreTab() {
   const [selectedModelCard, setSelectedModelCard] = useState<{
     model: HuggingFaceModel;
     variants: HuggingFaceModel[];
+    fit?: ModelFit;
   } | null>(null);
   const completedSet = useRef<Set<string>>(new Set());
 
@@ -132,7 +136,7 @@ export function ExploreTab() {
         maxVramGb={maxVramGb}
         detectedPoolGb={detectedPoolGb}
         poolOverrideGb={poolOverrideGb}
-        gpuCount={gpuCount}
+        hardwareProfile={hardwareProfile}
         loading={loading}
         error={error}
         search={search}
@@ -141,6 +145,11 @@ export function ExploreTab() {
         refresh={refresh}
       />
       <DownloadStatusSection error={downloadError} />
+      <ExploreHardwareShortlistSection
+        groups={hardwareShortlist}
+        hardwareProfile={hardwareProfile}
+        openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
+      />
       <ExploreResultsSection
         groups={groups}
         expandedKeys={expandedKeys}
@@ -157,12 +166,13 @@ export function ExploreTab() {
         pauseDownload={handlePause}
         resumeDownload={handleResume}
         loadMore={loadMore}
-        openModelCard={(model, variants) => setSelectedModelCard({ model, variants })}
+        openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
       />
       <HuggingFaceModelCardModal
         open={Boolean(selectedModelCard)}
         model={selectedModelCard?.model ?? null}
         variants={selectedModelCard?.variants ?? []}
+        fit={selectedModelCard?.fit}
         onClose={() => setSelectedModelCard(null)}
       />
     </div>

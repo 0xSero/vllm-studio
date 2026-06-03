@@ -20,6 +20,12 @@ import {
 } from "@/ui/recipes/recipes-content/explore-eligibility";
 import { readExplorePoolOverrideGb, writeExplorePoolOverrideGb } from "./explore-pool-storage";
 import { resolveGroupNeedGb } from "@/ui/recipes/recipes-content/explore-model-stats";
+import {
+  buildHardwareProfile,
+  scoreModelFit,
+  type HardwareProfile,
+  type ModelFit,
+} from "./hardware-profile";
 
 export interface ModelGroup {
   key: string;
@@ -31,6 +37,7 @@ export interface ModelGroup {
   lastModifiedMs: number;
   needGb: number | null;
   tier: "heavy" | "warm" | "fresh";
+  fit: ModelFit;
 }
 
 function groupPassesExploreFilters(group: ModelGroup, search: string): boolean {
@@ -96,6 +103,11 @@ export function useExplore() {
       : detectedPoolGb > 0
         ? detectedPoolGb
         : 0;
+
+  const hardwareProfile = useMemo(
+    () => buildHardwareProfile({ gpus, poolGb, detectedPoolGb, poolOverrideGb }),
+    [gpus, poolGb, detectedPoolGb, poolOverrideGb],
+  );
 
   const spotlightRecommendations = useMemo(() => {
     return filterRecommendationsWithinPool(recommendations, poolGb);
@@ -224,9 +236,28 @@ export function useExplore() {
       const lastModifiedMs = sorted.reduce((m, v) => Math.max(m, modelRecencyMs(v)), 0);
       const needGb = resolveGroupNeedGb(key, recByKey, lead);
       const tier = engagementTier(maxLikes, maxDownloads);
-      return { key, lead, variants: sorted, maxDownloads, maxLikes, lastModifiedMs, needGb, tier };
+      const fit = scoreModelFit({
+        model: lead,
+        variants: sorted,
+        needGb,
+        maxLikes,
+        maxDownloads,
+        lastModifiedMs,
+        hardware: hardwareProfile,
+      });
+      return {
+        key,
+        lead,
+        variants: sorted,
+        maxDownloads,
+        maxLikes,
+        lastModifiedMs,
+        needGb,
+        tier,
+        fit,
+      };
     });
-  }, [models, recByKey, search]);
+  }, [models, recByKey, search, hardwareProfile]);
 
   const sortedGroups = useMemo(() => {
     return [...groupedModels].sort((a, b) => {
@@ -236,10 +267,10 @@ export function useExplore() {
       if (!aSpot && bSpot) return 1;
 
       if (b.maxLikes !== a.maxLikes) return b.maxLikes - a.maxLikes;
+      if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
       const ta = a.lastModifiedMs;
       const tb = b.lastModifiedMs;
       if (tb !== ta) return tb - ta;
-      if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
 
       if (poolGb > 0) {
         const ea = a.needGb;
@@ -265,6 +296,11 @@ export function useExplore() {
     return mixedGroups.filter((g) => groupPassesExploreFilters(g, search));
   }, [mixedGroups, search]);
 
+  const hardwareShortlist = useMemo(
+    () => hardwareShortlistFromGroups(visibleGroups),
+    [visibleGroups],
+  );
+
   const refresh = useCallback(() => {
     void (async () => {
       await loadRecommendationsAndGpus();
@@ -277,6 +313,8 @@ export function useExplore() {
     maxVramGb: poolGb,
     detectedPoolGb,
     poolOverrideGb,
+    hardwareProfile,
+    hardwareShortlist,
     setPoolOverrideGb,
     gpuCount: gpus.length,
     loading,
@@ -298,4 +336,17 @@ function leadPreferenceScore(model: HuggingFaceModel, search: string): number {
   return score;
 }
 
+function hardwareShortlistFromGroups(groups: ModelGroup[]): ModelGroup[] {
+  return [...groups]
+    .filter((group) => group.fit.status !== "too-large")
+    .sort((a, b) => {
+      if (b.fit.score !== a.fit.score) return b.fit.score - a.fit.score;
+      if (b.maxLikes !== a.maxLikes) return b.maxLikes - a.maxLikes;
+      return b.maxDownloads - a.maxDownloads;
+    })
+    .slice(0, 4);
+}
+
 const getExploreSnapshot = (): number => 0;
+
+export type { HardwareProfile };

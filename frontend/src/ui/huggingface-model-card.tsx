@@ -16,14 +16,23 @@ import { UiModal, UiModalHeader } from "./modal";
 import { StatusPill } from "./status";
 import { ModelLogo } from "./model-logo";
 
+type HardwareFitSummary = {
+  label: string;
+  tone: "default" | "good" | "warning" | "danger" | "info";
+  score: number;
+  reason: string;
+};
+
 export function HuggingFaceModelCardModal({
   model,
   variants = [],
+  fit,
   open,
   onClose,
 }: {
   model: HuggingFaceModel | null;
   variants?: HuggingFaceModel[];
+  fit?: HardwareFitSummary;
   open: boolean;
   onClose: () => void;
 }) {
@@ -151,6 +160,7 @@ export function HuggingFaceModelCardModal({
           </section>
 
           <aside className="space-y-4">
+            <HardwareFitPanel fit={fit} />
             <MetadataPanel payload={payload} model={model} />
             <QuantPanel variants={variants} />
             <FilesPanel payload={payload} />
@@ -158,6 +168,25 @@ export function HuggingFaceModelCardModal({
         </div>
       </div>
     </UiModal>
+  );
+}
+
+function HardwareFitPanel({ fit }: { fit?: HardwareFitSummary }) {
+  if (!fit) return null;
+  return (
+    <Panel title="Hardware fit">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">Recommendation</span>
+        <StatusPill tone={fit.tone} variant="badge">
+          {fit.label}
+        </StatusPill>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-[length:var(--fs-sm)]">
+        <span className="text-(--ui-muted)">Score</span>
+        <span className="font-mono text-(--ui-fg)">{fit.score}</span>
+      </div>
+      <p className="text-[length:var(--fs-sm)] leading-5 text-(--ui-fg)/80">{fit.reason}</p>
+    </Panel>
   );
 }
 

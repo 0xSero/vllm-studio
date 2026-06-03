@@ -1,9 +1,10 @@
-import { ExternalLink, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, RefreshCw, Search, Sparkles } from "lucide-react";
 import { ModelButton, ModelSection, ModelInput, ModelRow, ModelValue, ModelStatus } from "@/ui";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";
 import { estimateRoughWeightsGb } from "./explore-model-stats";
-import type { ModelGroup } from "./use-explore";
+import type { ModelFit } from "./hardware-profile";
+import type { HardwareProfile, ModelGroup } from "./use-explore";
 
 const FALLBACK_MODELS = [
   [
@@ -28,7 +29,7 @@ export function ExploreControls({
   maxVramGb,
   detectedPoolGb,
   poolOverrideGb,
-  gpuCount,
+  hardwareProfile,
   loading,
   error,
   search,
@@ -40,7 +41,7 @@ export function ExploreControls({
   maxVramGb: number;
   detectedPoolGb: number;
   poolOverrideGb: number | null;
-  gpuCount: number;
+  hardwareProfile: HardwareProfile;
   loading: boolean;
   error: string | null;
   search: string;
@@ -71,11 +72,7 @@ export function ExploreControls({
         poolOverrideGb={poolOverrideGb}
         setPoolOverrideGb={setPoolOverrideGb}
       />
-      <ExploreHardwareHintRow
-        gpuCount={gpuCount}
-        detectedPoolGb={detectedPoolGb}
-        poolOverrideGb={poolOverrideGb}
-      />
+      <ExploreHardwareHintRow hardwareProfile={hardwareProfile} poolOverrideGb={poolOverrideGb} />
     </ModelSection>
   );
 }
@@ -180,21 +177,59 @@ function VramPoolInput({
 }
 
 function ExploreHardwareHintRow({
-  gpuCount,
-  detectedPoolGb,
+  hardwareProfile,
   poolOverrideGb,
 }: {
-  gpuCount: number;
-  detectedPoolGb: number;
+  hardwareProfile: HardwareProfile;
   poolOverrideGb: number | null;
 }) {
   return (
     <ModelRow
-      label="Hardware hint"
-      description="Detected GPU pool from the controller, plus manual override state."
-      value={<ModelValue>{hardwareHintText(gpuCount, detectedPoolGb)}</ModelValue>}
+      label="Hardware profile"
+      description={hardwareProfile.detail}
+      value={<ModelValue>{hardwareProfile.label}</ModelValue>}
       status={<ModelStatus>{poolOverrideGb != null ? "manual" : "detected"}</ModelStatus>}
     />
+  );
+}
+
+export function ExploreHardwareShortlistSection({
+  groups,
+  hardwareProfile,
+  openModelCard,
+}: {
+  groups: ModelGroup[];
+  hardwareProfile: HardwareProfile;
+  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
+}) {
+  if (!groups.length) return null;
+  return (
+    <ModelSection
+      title="Best for this hardware"
+      description="Ranked from model popularity, recent downloads, estimated footprint, and MLX/oMLX fit when relevant."
+      actions={<ModelStatus tone="info">{hardwareProfile.label}</ModelStatus>}
+    >
+      {groups.map((group) => (
+        <ModelRow
+          key={`fit-${group.key}`}
+          label={group.lead.modelId}
+          description={group.fit.reason}
+          onClick={() => openModelCard(group.lead, group.variants, group.fit)}
+          value={
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-md)] text-(--ui-muted)">
+              <span className="inline-flex items-center gap-1.5 font-mono text-(--ui-fg)">
+                <Sparkles className="h-3.5 w-3.5 text-(--ui-info)" />
+                {group.fit.score}
+              </span>
+              <span>{formatNeed(group.needGb)}</span>
+              <span>{group.maxDownloads.toLocaleString()} downloads</span>
+              <span>{group.maxLikes.toLocaleString()} likes</span>
+            </div>
+          }
+          status={<ModelStatus tone={group.fit.tone}>{group.fit.label}</ModelStatus>}
+        />
+      ))}
+    </ModelSection>
   );
 }
 
@@ -248,7 +283,7 @@ export function ExploreResultsSection({
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   loadMore: () => void;
-  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[]) => void;
+  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
 }) {
   return (
     <ModelSection
@@ -335,7 +370,7 @@ function exploreGroupRows({
   startDownload: (modelId: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
-  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[]) => void;
+  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
 }) {
   const rows = [
     <ExploreModelRow
@@ -354,7 +389,8 @@ function exploreGroupRows({
       displayLikes={group.maxLikes}
       weightEstimateGb={group.needGb}
       pooledVramGb={maxVramGb}
-      onOpenModelCard={() => openModelCard(group.lead, group.variants)}
+      fit={group.fit}
+      onOpenModelCard={() => openModelCard(group.lead, group.variants, group.fit)}
     />,
   ];
   if (!expanded) return rows;
@@ -376,7 +412,8 @@ function exploreGroupRows({
           child
           weightEstimateGb={estimateRoughWeightsGb(variant)}
           pooledVramGb={maxVramGb}
-          onOpenModelCard={() => openModelCard(variant, group.variants)}
+          fit={group.fit}
+          onOpenModelCard={() => openModelCard(variant, group.variants, group.fit)}
         />
       )),
   );
@@ -409,12 +446,6 @@ function fallbackDescription(search: string, description: string) {
   return query ? `No exact match yet for "${query}". ${description}` : description;
 }
 
-function hardwareHintText(gpuCount: number, detectedPoolGb: number) {
-  if (gpuCount > 0) return `${gpuCount} GPU${gpuCount === 1 ? "" : "s"} detected`;
-  if (detectedPoolGb > 0) return `${Math.round(detectedPoolGb)} GB reported`;
-  return "No live GPU hint; estimates remain visible";
-}
-
 function updatePoolOverride(
   input: HTMLInputElement,
   poolOverrideGb: number | null,
@@ -431,4 +462,9 @@ function updatePoolOverride(
     return;
   }
   input.value = poolOverrideGb === null ? "" : String(poolOverrideGb);
+}
+
+function formatNeed(needGb: number | null) {
+  if (needGb == null || !Number.isFinite(needGb)) return "unknown footprint";
+  return `~${needGb < 10 ? needGb.toFixed(1) : Math.round(needGb)} GB`;
 }

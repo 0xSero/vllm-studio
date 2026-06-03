@@ -9,7 +9,9 @@ export function modelRecencyMs(model: HuggingFaceModel): number {
 }
 
 const QUANT_TAG_MATCHERS: Array<{ quant: QuantFormat; tags: string[] }> = [
+  { quant: "q6_k", tags: ["q6", "oq6", "6-bit"] },
   { quant: "q4_k_m", tags: ["q4_k_m", "q4-k-m"] },
+  { quant: "q4_k_m", tags: ["oq4", "4-bit"] },
   { quant: "q5_k_m", tags: ["q5_k_m"] },
   { quant: "q8_0", tags: ["q8_0", "q8-0"] },
   { quant: "q4_0", tags: ["q4_0", "q4-0"] },

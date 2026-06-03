@@ -13,6 +13,9 @@ const QUANT_MARKERS = [
   "int8",
   "mlx",
   "mxfp4",
+  "oq",
+  "oq4",
+  "oq6",
   "q2",
   "q3",
   "q4",
@@ -22,11 +25,14 @@ const QUANT_MARKERS = [
   "quant",
   "w4a16",
   "w8a16",
+  "4-bit",
+  "6-bit",
 ] as const;
 
 const DERIVATIVE_OWNERS = new Set([
   "bartowski",
   "ggml-org",
+  "jundot",
   "lmstudio-community",
   "mlx-community",
   "quantfactory",
@@ -66,10 +72,13 @@ export function normalizeModelId(modelId: string): string {
   return modelId
     .toLowerCase()
     .replace(
-      /[-_](awq|bnb|exl2|exl3|fp4|fp8|gguf|gptq|int4|int8|mlx|mxfp4|quant|w4a16|w8a16)[-_]?/gi,
+      /[-_](awq|bnb|exl2|exl3|fp4|fp8|gguf|gptq|int4|int8|mlx|mxfp4|oq[2-8]?|quant|w4a16|w8a16|[2-8]-bit)(?=$|[-_])/gi,
       "",
     )
+    .replace(/[-_](fp16|bf16|f16)(?=$|[-_]mtp$|[-_]mlx$)/gi, "")
+    .replace(/[-_]mtp$/gi, "")
     .replace(/[-_]?q[2-8](_k_[msl]|_[msl])?$/gi, "")
+    .replace(/[-_]{2,}/g, "-")
     .replace(/[-_]+$/g, "");
 }
 
@@ -120,7 +129,7 @@ export function isDerivativeModel(model: Pick<HuggingFaceModel, "modelId" | "tag
 
 export function originalModelKey(model: Pick<HuggingFaceModel, "modelId" | "tags">): string {
   const baseModel = baseModelFromTags(model.tags ?? []);
-  return baseModel ? normalizeModelId(baseModel) : modelFamilyName(model.modelId);
+  return baseModel ? modelFamilyName(baseModel) : modelFamilyName(model.modelId);
 }
 
 export function modelDisplayName(modelId: string): string {
@@ -136,9 +145,11 @@ export function engagementTier(likes: number, downloads: number): "heavy" | "war
 function quantRank(label: string): number {
   const normalized = label.toLowerCase();
   if (normalized === "mlx") return 0;
+  if (normalized.startsWith("oq")) return 0.5;
   if (normalized === "gguf") return 1;
   if (normalized === "awq") return 2;
   if (normalized === "gptq") return 3;
+  if (normalized.endsWith("-bit")) return 8;
   const qMatch = normalized.match(/^q([2-8])/);
   if (qMatch) return 10 + Number(qMatch[1]);
   return 50;
