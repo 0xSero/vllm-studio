@@ -8,7 +8,6 @@ import { MessageView } from "./message-view";
 type TimelineProps = {
   messages: ChatMessage[];
   running: boolean;
-  statusLabel?: string;
   emptyPrompt?: boolean;
   stickToBottom?: boolean;
   onStickToBottomChange?: (value: boolean) => void;
@@ -24,7 +23,6 @@ const MemoMessage = memo(
 export function Timeline({
   messages,
   running,
-  statusLabel,
   emptyPrompt = false,
   stickToBottom = true,
   onStickToBottomChange,
@@ -41,9 +39,6 @@ export function Timeline({
     scrollerRef,
     bottomRef,
     stickToBottom,
-    itemCount: visibleMessages.length,
-    running,
-    statusLabel,
     onStickToBottomChange,
   });
 
@@ -77,7 +72,7 @@ export function Timeline({
           return (
             <div
               key={message.id}
-              className={`[overflow-anchor:none] ${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""} ${isLast ? "" : "[content-visibility:auto] [contain-intrinsic-size:auto_220px]"}`}
+              className={`[overflow-anchor:none] ${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""}`}
             >
               <MemoMessage message={message} live={isLast && running} />
             </div>

@@ -10,6 +10,7 @@ import type {
   ToolBlock,
 } from "@/lib/agent/session";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
+import { TIMELINE_USER_LAYOUT_EVENT } from "@/hooks/agent/use-timeline-scroll-effects";
 import { AssistantMarkdown } from "../assistant-markdown";
 import { ToolBlockView } from "./tool-block-view";
 import {
@@ -263,6 +264,11 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
         className="flex min-h-7 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1 text-[length:var(--fs-xs)] leading-4 text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)/80 [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
+          if (!expanded) {
+            event.currentTarget
+              .closest("[data-timeline-scroller]")
+              ?.dispatchEvent(new CustomEvent(TIMELINE_USER_LAYOUT_EVENT));
+          }
           setExpanded((value) => !value);
         }}
       >

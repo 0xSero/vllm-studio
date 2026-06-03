@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
 
 const AT_BOTTOM_THRESHOLD_PX = 64;
+export const TIMELINE_USER_LAYOUT_EVENT = "vllm-studio.timeline.user-layout-change";
 
 const getTimelineScrollSnapshot = (): number => 0;
 
@@ -9,13 +10,10 @@ const getTimelineScrollSnapshot = (): number => 0;
  * user the moment they intentionally scroll up to read history, and re-pins when
  * they return to the bottom.
  *
- * Detach is driven by genuine *user intent* (wheel-up, upward touch drag, or the
- * scroll-up keys) rather than by a raw decrease in `scrollTop`. That distinction
- * matters here because the timeline renders with `content-visibility:auto` +
- * `contain-intrinsic-size`: off-screen items resolve their real heights mid-
- * stream and can momentarily shift `scrollTop` downward. A pure direction
- * heuristic mistakes that layout shift for a user scroll-up and unpins — the
- * "auto-scroll sometimes stops" bug. Re-attach is driven by an
+ * Detach is driven by genuine *user intent* (wheel-up, scrollbar drag, upward
+ * touch drag, scroll-up keys, or expanding a detail block) rather than by a raw
+ * decrease in `scrollTop`. Layout growth while streaming can momentarily shift
+ * scroll geometry, so direction alone is noisy. Re-attach is driven by an
  * IntersectionObserver on the bottom sentinel, so reaching the bottom by any
  * means re-pins. Our own follow-writes never set intent, so they can't detach.
  */
@@ -35,6 +33,8 @@ export function useTimelineScrollEffects({
   // tab-change force a re-stick); `onChangeRef` reports our changes back to it.
   const stickRef = useRef(stickToBottom);
   const onChangeRef = useRef(onStickToBottomChange);
+  const programmaticScrollUntilRef = useRef(0);
+  const userScrollIntentUntilRef = useRef(0);
 
   // Mirror prop + callback into refs in the commit phase (never during render).
   const subscribeStickRef = useCallback(() => {
@@ -54,6 +54,7 @@ export function useTimelineScrollEffects({
     const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
 
     const pinToBottom = () => {
+      programmaticScrollUntilRef.current = Date.now() + 200;
       el.scrollTop = el.scrollHeight;
     };
     const setStick = (next: boolean) => {
@@ -66,22 +67,57 @@ export function useTimelineScrollEffects({
     // that lands at the bottom re-attaches (the sentinel observer also covers
     // re-attach, but handling it here makes the wheel case feel instant).
     const onWheel = (event: WheelEvent) => {
+      userScrollIntentUntilRef.current = Date.now() + 800;
       if (event.deltaY < 0) setStick(false);
       else if (atBottom()) setStick(true);
     };
+    let pointerActive = false;
+    const onPointerDown = () => {
+      pointerActive = true;
+      userScrollIntentUntilRef.current = Date.now() + 1_200;
+    };
+    const onPointerMove = () => {
+      if (pointerActive) userScrollIntentUntilRef.current = Date.now() + 1_200;
+    };
+    const onPointerEnd = () => {
+      pointerActive = false;
+      userScrollIntentUntilRef.current = Date.now() + 300;
+    };
+    const onScroll = () => {
+      if (Date.now() < programmaticScrollUntilRef.current) return;
+      if (atBottom()) {
+        setStick(true);
+        return;
+      }
+      if (Date.now() < userScrollIntentUntilRef.current) setStick(false);
+    };
+    const onUserLayoutChange = () => {
+      setStick(false);
+    };
     let touchY: number | null = null;
     const onTouchStart = (event: TouchEvent) => {
+      userScrollIntentUntilRef.current = Date.now() + 1_200;
       touchY = event.touches[0]?.clientY ?? null;
     };
     const onTouchMove = (event: TouchEvent) => {
+      userScrollIntentUntilRef.current = Date.now() + 800;
       const y = event.touches[0]?.clientY ?? null;
       if (touchY !== null && y !== null && y - touchY > 2) setStick(false);
       touchY = y;
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) setStick(false);
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
+        userScrollIntentUntilRef.current = Date.now() + 800;
+        setStick(false);
+      }
     };
     el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("pointerdown", onPointerDown, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener(TIMELINE_USER_LAYOUT_EVENT, onUserLayoutChange as EventListener);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerup", onPointerEnd, { passive: true });
+    window.addEventListener("pointercancel", onPointerEnd, { passive: true });
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("keydown", onKeyDown);
@@ -126,6 +162,12 @@ export function useTimelineScrollEffects({
 
     return () => {
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener(TIMELINE_USER_LAYOUT_EVENT, onUserLayoutChange as EventListener);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("keydown", onKeyDown);
@@ -145,6 +187,7 @@ export function useTimelineScrollEffects({
       el &&
       el.scrollHeight - el.scrollTop - el.clientHeight > AT_BOTTOM_THRESHOLD_PX
     ) {
+      programmaticScrollUntilRef.current = Date.now() + 200;
       el.scrollTop = el.scrollHeight;
     }
     return () => undefined;
