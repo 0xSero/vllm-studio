@@ -43,7 +43,7 @@ export function requestWorkspaceUrlNavigation({
     project,
     sessionId,
     ...(sessionTitle ? { sessionTitle } : {}),
-    newSession: newParam === "1",
+    newSession: newParam !== null,
     split: splitParam === "1",
     paneId: newPaneId(),
     runtimeSessionId: newRuntimeId(),

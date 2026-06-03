@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { safeJson } from "@/lib/agent/safe-json";
 import { cleanSessionTitle } from "@/lib/agent/session/helpers";
@@ -9,7 +10,6 @@ import { useProjectSessionsReloadEffect } from "@/hooks/agent/use-projects-nav-s
 import {
   ACTIVE_AGENT_SESSION_OPEN_EVENT,
   ACTIVE_AGENT_SESSION_RENAME_EVENT,
-  NEW_AGENT_SESSION_EVENT,
 } from "@/lib/agent/workspace/events";
 import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
@@ -344,15 +344,19 @@ export function NewChatPlusButton({
   label: string;
   className: string;
 }) {
+  const router = useRouter();
+  const href = `/agent?project=${encodeURIComponent(projectId)}&new=1`;
   return (
     <div className="relative flex items-center justify-center leading-none">
       <Link
-        href={`/agent?project=${encodeURIComponent(projectId)}&new=1`}
+        href={href}
         onClick={(event) => {
-          if (window.location.pathname !== "/agent") return;
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
           event.stopPropagation();
-          window.dispatchEvent(new CustomEvent(NEW_AGENT_SESSION_EVENT, { detail: { projectId } }));
+          router.push(
+            `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}`,
+          );
         }}
         className={className}
         aria-label={label}
