@@ -1,8 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolveDataDir } from "@/lib/data-dir";
 import { packagesConfigToken, readEnabledOverrides } from "./pi-packages-store";
 import { listProjectsFromStore } from "./projects-store";
 
@@ -50,7 +49,7 @@ export type RuntimeExtensionOverride = {
 export type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "parchi";
+  browserBackend?: "embedded" | "parchi" | "cdp";
   canvasEnabled?: boolean;
   plugins?: RuntimePluginRef[];
   skills?: RuntimeSkillRef[];
@@ -168,6 +167,13 @@ export function resolveParchiBrowserExtensionPath(): string | null {
   );
 }
 
+export function resolveCdpBrowserExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "cdp-browser.ts",
+    process.env.VLLM_STUDIO_CDP_BROWSER_EXTENSION_PATH,
+  );
+}
+
 export function resolveCanvasExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("canvas.ts", process.env.VLLM_STUDIO_CANVAS_EXTENSION_PATH);
 }
@@ -266,10 +272,17 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
 
 export function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
   return uniqueExistingPaths(
-    plugins.flatMap((plugin) => [
-      plugin.skillPath,
-      plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, "skills") : null,
-    ]),
+    // Skip OpenAI's bundled `browser`/`chrome` skills: they hard-direct the
+    // model to Codex's `node_repl` + `browser-client.mjs` bridge, which is
+    // trust-locked to Codex's signed runtime and cannot run here. Our own
+    // first-party chrome skill (under desktop/resources) is KEPT — it describes
+    // the cdp_* tools the CDP backend registers.
+    plugins
+      .filter((plugin) => !isSuppressedBrowserSkill(plugin))
+      .flatMap((plugin) => [
+        plugin.skillPath,
+        plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, "skills") : null,
+      ]),
   );
 }
 
@@ -292,80 +305,6 @@ export function uniqueExistingPaths(values: Array<string | null | undefined>): s
   });
 }
 
-function isLaunchConstrainedComputerUseMcp(configPath: string): boolean {
-  try {
-    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
-      mcpServers?: Record<string, { command?: unknown; args?: unknown }>;
-    };
-    return Object.entries(parsed.mcpServers ?? {}).some(([name, server]) => {
-      const marker =
-        `${name} ${String(server.command ?? "")} ${Array.isArray(server.args) ? server.args.join(" ") : ""}`.toLowerCase();
-      return marker.includes("computer-use") || marker.includes("skycomputeruseclient");
-    });
-  } catch {
-    return false;
-  }
-}
-
-function shouldLoadMcpConfig(plugin: RuntimePluginRef, configPath: string): boolean {
-  if (process.env.VLLM_STUDIO_ENABLE_CODEX_COMPUTER_USE_MCP === "1") return true;
-  if (isLocalComputerUseHelper(plugin, configPath)) return true;
-  // Data-driven host-app gate: a "host-app" plugin (e.g. computer-use) may load
-  // its MCP only when the bundled helper binary the .mcp.json points at actually
-  // resolves on disk. This replaces the old blanket computer-use block — when the
-  // helper is present (bundled Codex.app install) the launch can succeed.
-  if (isHostAppPlugin(plugin) && hostAppHelperResolves(configPath)) return true;
-  return !(
-    pluginNameMatches(plugin, "computer-use") && isLaunchConstrainedComputerUseMcp(configPath)
-  );
-}
-
-function isHostAppPlugin(plugin: RuntimePluginRef): boolean {
-  // Prefer the explicit launch flag; fall back to the name match so this still
-  // gates correctly if `launch` was dropped somewhere in the request pipeline.
-  return plugin.launch === "host-app" || pluginNameMatches(plugin, "computer-use");
-}
-
-// Resolve every mcpServers[*].command in the .mcp.json the way the MCP extension
-// will at launch (relative command + cwd resolved against the config's own dir)
-// and confirm at least one resolved command binary exists on disk.
-function hostAppHelperResolves(configPath: string): boolean {
-  try {
-    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as {
-      mcpServers?: Record<string, { command?: unknown; cwd?: unknown }>;
-    };
-    const baseDir = path.dirname(configPath);
-    return Object.values(parsed.mcpServers ?? {}).some((server) => {
-      const command = typeof server.command === "string" ? server.command : "";
-      if (!command) return false;
-      const cwd = path.resolve(baseDir, typeof server.cwd === "string" ? server.cwd : ".");
-      const resolved = path.isAbsolute(command) ? command : path.resolve(cwd, command);
-      return existsSync(resolved);
-    });
-  } catch {
-    return false;
-  }
-}
-
-function isLocalComputerUseHelper(plugin: RuntimePluginRef, configPath: string): boolean {
-  return (
-    pluginNameMatches(plugin, "computer-use") &&
-    localComputerUseRoots().some((root) => isPathInside(configPath, root))
-  );
-}
-
-function localComputerUseRoots(): string[] {
-  return [
-    path.join(resolveDataDir(), "computer-use"),
-    path.join(homedir(), ".codex", "computer-use"),
-  ];
-}
-
-export function isPathInside(candidate: string, root: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 export function pluginMcpConfigs(plugins: RuntimePluginRef[]): RuntimeMcpConfig[] {
   const seen = new Set<string>();
   return plugins.flatMap((plugin) => {
@@ -374,7 +313,6 @@ export function pluginMcpConfigs(plugins: RuntimePluginRef[]): RuntimeMcpConfig[
       (plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, ".mcp.json") : null);
     if (!configPath || !existsSync(configPath)) return [];
     const resolved = path.resolve(configPath);
-    if (!shouldLoadMcpConfig(plugin, resolved)) return [];
     if (seen.has(resolved)) return [];
     seen.add(resolved);
     return [
@@ -404,10 +342,38 @@ function isBrowserPlugin(plugin: RuntimePluginRef): boolean {
   return pluginNameMatches(plugin, "browser") || pluginNameMatches(plugin, "chrome");
 }
 
-function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
-  return options.browserBackend === "parchi" || process.env.VLLM_STUDIO_BROWSER_BACKEND === "parchi"
-    ? "parchi"
-    : "embedded";
+// Suppress only OpenAI's bundled browser/chrome skills (their dead node_repl
+// path). Our own first-party skill (under desktop/resources) is kept so the
+// model gets cdp_* guidance.
+function isSuppressedBrowserSkill(plugin: RuntimePluginRef): boolean {
+  if (!isBrowserPlugin(plugin)) return false;
+  const where = (plugin.path ?? "").toLowerCase();
+  return where.includes("openai-bundled") || where.includes("/codex.app/");
+}
+
+function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" | "cdp" {
+  const backend = options.browserBackend ?? process.env.VLLM_STUDIO_BROWSER_BACKEND;
+  if (backend === "cdp") return "cdp";
+  if (backend === "parchi") return "parchi";
+  return "embedded";
+}
+
+// Selecting @chrome implies our CDP bridge (real, logged-in browser) unless a
+// backend was explicitly chosen via option or env.
+function effectiveBrowserBackend(
+  options: RuntimeStartOptions,
+  plugins: RuntimePluginRef[],
+): "embedded" | "parchi" | "cdp" {
+  const explicit = options.browserBackend ?? process.env.VLLM_STUDIO_BROWSER_BACKEND;
+  if (explicit) return browserBackend(options);
+  if (plugins.some((plugin) => pluginNameMatches(plugin, "chrome"))) return "cdp";
+  return browserBackend(options);
+}
+
+function browserExtensionPathFor(backend: "embedded" | "parchi" | "cdp"): string | null {
+  if (backend === "cdp") return resolveCdpBrowserExtensionPath();
+  if (backend === "parchi") return resolveParchiBrowserExtensionPath();
+  return resolveBrowserExtensionPath();
 }
 
 function runtimeExtensionPaths(
@@ -417,9 +383,7 @@ function runtimeExtensionPaths(
 ): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
   const browserExtensionPath = shouldLoadBrowserTool(options, plugins)
-    ? browserBackend(options) === "parchi"
-      ? resolveParchiBrowserExtensionPath()
-      : resolveBrowserExtensionPath()
+    ? browserExtensionPathFor(effectiveBrowserBackend(options, plugins))
     : null;
   return uniqueExistingPaths([
     timeoutExtensionPath,
