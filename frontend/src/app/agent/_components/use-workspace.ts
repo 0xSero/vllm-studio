@@ -366,6 +366,7 @@ export function useWorkspace(): UseWorkspaceResult {
     ): Promise<BrowserCommandResult> => {
       const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
       const currentTools = toolsRef.current;
+      const hadBrowserHost = browserHostIsReady(browserRef.current, isElectron);
       // A `navigate` is real, intentional browser use: open the panel so the
       // webview host mounts and the user can watch. Passive verbs (get-url,
       // get-text, screenshot, etc.) only register/select the browser tab without
@@ -376,7 +377,7 @@ export function useWorkspace(): UseWorkspaceResult {
       if (verb === "navigate") {
         currentTools.setComputerTab("browser");
         const nextUrl = sanitizePublicBrowserUrl(String(payload.url || ""));
-        if (nextUrl) currentTools.setBrowserUrl(nextUrl, nextUrl);
+        if (nextUrl && !hadBrowserHost) currentTools.setBrowserUrl(nextUrl, nextUrl);
       } else {
         currentTools.selectComputerTabWithoutOpening("browser");
       }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { CloseIcon } from "@/ui/icons";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
+import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import { useTools } from "@/lib/agent/tools/context";
 import type { ComputerTab } from "@/lib/agent/tools/types";
 import type { Project } from "@/lib/agent/projects/types";
@@ -92,7 +93,9 @@ export function AgentBrowserPanel({
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, activeProject?.path ?? "");
     if (!next) return;
-    tools.setBrowserUrl(next, next);
+    if (!sanitizePublicBrowserUrl(next)) {
+      tools.setBrowserUrl(next, next);
+    }
     void runBrowserCommand("navigate", { url: next });
   };
   const openSideChat = useCallback(() => {

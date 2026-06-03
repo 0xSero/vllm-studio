@@ -31,9 +31,11 @@ export function registerNavigationPolicy(appOrigin: string): void {
     });
 
     contents.on("will-navigate", (event) => {
-      // Guest WebContents (cross-origin iframes / OOPIF) are not owned by a BrowserWindow.
-      // Origin-locking those navigations leaves the Computer sidebar iframe permanently blank.
-      if (BrowserWindow.fromWebContents(contents) == null) {
+      // Guest WebContents (the embedded browser webview plus cross-origin
+      // iframes / OOPIFs) must be able to perform their own navigations.
+      // Keep the app shell origin-locked, but do not turn the Computer browser
+      // into a single-load preview.
+      if (contents.getType() === "webview" || BrowserWindow.fromWebContents(contents) == null) {
         return;
       }
       const targetUrl = event.url;
