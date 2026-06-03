@@ -970,16 +970,47 @@ export function ChatPane({
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = filesFromDataTransfer(event.clipboardData);
       if (files.length === 0) {
-        const pastedImage = imageFileFromDataUrlText(event.clipboardData.getData("text/plain"));
-        if (!pastedImage) return;
+        const text = event.clipboardData.getData("text/plain");
+        const pastedImage = imageFileFromDataUrlText(text);
+        if (pastedImage) {
+          event.preventDefault();
+          void attachFiles([pastedImage]);
+          return;
+        }
+        // Insert plain text ourselves in ONE atomic update. Letting the browser
+        // natively insert a large multi-line paste makes the controlled value
+        // round-trip through the reducer mid-insertion, so the textarea visibly
+        // fills line-by-line and the auto-resize fires repeatedly (flicker +
+        // resize). Splicing at the caret and updating once avoids that.
+        if (!text || !activeTab) return;
         event.preventDefault();
-        void attachFiles([pastedImage]);
+        const element = event.currentTarget;
+        const start = element.selectionStart ?? element.value.length;
+        const end = element.selectionEnd ?? element.value.length;
+        const current = activeTab.input ?? "";
+        const nextValue = current.slice(0, start) + text + current.slice(end);
+        const nextCaret = start + text.length;
+        updateTab(activeTab.id, (tab) => ({ ...tab, input: nextValue }));
+        setMention(null);
+        // Resize once after React commits the new value, and restore the caret
+        // to just after the inserted text.
+        requestAnimationFrame(() => {
+          const node = textareaRef.current;
+          if (!node) return;
+          node.setSelectionRange(nextCaret, nextCaret);
+          node.style.height = "auto";
+          const next = node.scrollHeight;
+          node.style.height = `${next}px`;
+          lastAppliedComposerHeightRef.current = next;
+          lastComposerValueLengthRef.current = nextValue.length;
+          setIsMultiline(next > 38);
+        });
         return;
       }
       event.preventDefault();
       void attachFiles(files);
     },
-    [attachFiles],
+    [activeTab, attachFiles, updateTab],
   );
   const handleComposerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
