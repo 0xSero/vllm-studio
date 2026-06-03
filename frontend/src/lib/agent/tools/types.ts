@@ -45,6 +45,16 @@ export type FileOpenRequest = {
   path: string;
 };
 
+export type ContextAttachRequest = {
+  id: number;
+  /** Short label shown on the composer chip (e.g. the file name). */
+  label: string;
+  /** Optional disk path so the attachment dedupes/links to the file. */
+  path?: string;
+  /** The text injected into the model context. */
+  content: string;
+};
+
 export type ToolSelection = {
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];

@@ -23,6 +23,7 @@ import {
   type BrowserState,
   type ComputerState,
   type ComputerTab,
+  type ContextAttachRequest,
   type FileOpenRequest,
   type ToolSelection,
   type ToolSelectionMap,
@@ -45,6 +46,7 @@ export type ToolsContextValue = {
   browser: BrowserState;
   computer: ComputerState;
   fileOpenRequest: FileOpenRequest | null;
+  contextAttachRequest: ContextAttachRequest | null;
   pluginCatalogue: ComposerPluginRef[];
   skillCatalogue: ComposerSkillRef[];
   promptTemplateCatalogue: ComposerPromptTemplateRef[];
@@ -71,6 +73,7 @@ export type ToolsContextValue = {
   setCanvasText: (text: string) => void;
   setActiveCanvasSession: (sessionId: SessionId | null) => void;
   requestFileOpen: (path: string) => void;
+  requestContextAttach: (request: { label: string; path?: string; content: string }) => void;
   /**
    * Replace the entire selection for a session. Pass `null` to clear it (used
    * when a session is closed / pruned).
@@ -107,6 +110,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
+  const [contextAttachRequest, setContextAttachRequest] = useState<ContextAttachRequest | null>(
+    null,
+  );
   const [pluginCatalogue, setPluginCatalogue] = useState<ComposerPluginRef[]>([]);
   const [skillCatalogue, setSkillCatalogue] = useState<ComposerSkillRef[]>([]);
   const [promptTemplateCatalogue, setPromptTemplateCatalogue] = useState<
@@ -305,6 +311,20 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const requestContextAttach = useCallback(
+    (request: { label: string; path?: string; content: string }) => {
+      const content = request.content.trim();
+      if (!content) return;
+      setContextAttachRequest((current) => ({
+        id: (current?.id ?? 0) + 1,
+        label: request.label.trim() || "context",
+        ...(request.path ? { path: request.path } : {}),
+        content,
+      }));
+    },
+    [],
+  );
+
   const selectionFor = useCallback(
     (sessionId: SessionId | null | undefined): ToolSelection => {
       if (!sessionId) return EMPTY_SELECTION;
@@ -397,6 +417,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       browser,
       computer,
       fileOpenRequest,
+      contextAttachRequest,
       pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
@@ -418,6 +439,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setCanvasText,
       setActiveCanvasSession,
       requestFileOpen,
+      requestContextAttach,
       setSelection,
       hydrateSelections,
     }),
@@ -425,6 +447,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       browser,
       computer,
       fileOpenRequest,
+      contextAttachRequest,
       pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
@@ -446,6 +469,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setCanvasText,
       setActiveCanvasSession,
       requestFileOpen,
+      requestContextAttach,
       setSelection,
       hydrateSelections,
     ],

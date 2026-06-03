@@ -9,6 +9,7 @@ import {
   Folder,
   Monitor,
   Minus,
+  MessageSquarePlus,
   PanelLeftOpen,
   Plus,
 } from "lucide-react";
@@ -349,6 +350,48 @@ export function FilesystemPanel({ cwd }: Props) {
   );
   const lines = useMemo(() => fileContent.split("\n"), [fileContent]);
   const previewKind = useMemo(() => (openFile ? previewKindForPath(openFile) : null), [openFile]);
+  const addComment = useCallback(
+    async (line: number, body: string) => {
+      if (!cwd || !openFile || !body.trim()) return;
+      try {
+        const response = await fetch("/api/agent/comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, path: openFile, line, body }),
+        });
+        const payload = (await response.json()) as { comment?: Comment; error?: string };
+        if (payload.comment) setComments((current) => [...current, payload.comment!]);
+      } catch {
+        // best-effort; comment store errors surface server-side
+      }
+    },
+    [cwd, openFile],
+  );
+  const removeComment = useCallback(
+    async (id: string) => {
+      if (!cwd || !openFile) return;
+      setComments((current) => current.filter((comment) => comment.id !== id));
+      try {
+        await fetch(
+          `/api/agent/comments?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}&id=${encodeURIComponent(id)}`,
+          { method: "DELETE" },
+        );
+      } catch {
+        // best-effort
+      }
+    },
+    [cwd, openFile],
+  );
+  const attachCommentsToChat = useCallback(() => {
+    if (!openFile || comments.length === 0) return;
+    const ordered = [...comments].sort((a, b) => a.line - b.line);
+    const body = ordered.map((comment) => `- Line ${comment.line}: ${comment.body}`).join("\n");
+    tools.requestContextAttach({
+      label: `${openFile.split("/").pop() ?? openFile} · comments`,
+      path: openFile,
+      content: `Comments on ${openFile}:\n${body}`,
+    });
+  }, [comments, openFile, tools]);
   if (!cwd) {
     return (
       <div className="flex h-full items-center justify-center text-center text-[length:var(--fs-sm)] text-(--dim)">
@@ -454,6 +497,17 @@ export function FilesystemPanel({ cwd }: Props) {
                 {openFile}
               </div>{" "}
               <div className="flex shrink-0 items-center gap-0.5">
+                {comments.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={attachCommentsToChat}
+                    className="mr-1 inline-flex h-5 items-center gap-1 rounded border border-(--border) bg-(--surface) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                    title="Attach this file's comments to the chat as context"
+                  >
+                    <MessageSquarePlus className="h-3 w-3" />
+                    {comments.length}
+                  </button>
+                )}
                 {previewKind && (
                   <div className="flex items-center gap-0.5 rounded border border-(--border) bg-(--surface) p-0.5 mr-1">
                     <button
@@ -483,7 +537,9 @@ export function FilesystemPanel({ cwd }: Props) {
                   >
                     <Minus className="h-3 w-3" />{" "}
                   </button>
-                  <span className="w-5 text-center text-[length:var(--fs-2xs)] text-(--dim)">{fontSize}</span>{" "}
+                  <span className="w-5 text-center text-[length:var(--fs-2xs)] text-(--dim)">
+                    {fontSize}
+                  </span>{" "}
                   <button
                     type="button"
                     onClick={() => setFontSize(Math.min(20, fontSize + 1))}
@@ -498,7 +554,15 @@ export function FilesystemPanel({ cwd }: Props) {
             {previewKind && viewMode === "preview" ? (
               <RenderedPreview content={fileContent} kind={previewKind} />
             ) : (
-              <FileViewer key={openFile} filePath={openFile} lines={lines} fontSize={fontSize} />
+              <FileViewer
+                key={openFile}
+                filePath={openFile}
+                lines={lines}
+                fontSize={fontSize}
+                comments={comments}
+                onAddComment={addComment}
+                onRemoveComment={removeComment}
+              />
             )}
           </>
         )}
@@ -558,11 +622,19 @@ function FileViewer({
   filePath,
   lines,
   fontSize,
+  comments,
+  onAddComment,
+  onRemoveComment,
 }: {
   filePath: string;
   lines: string[];
   fontSize: number;
+  comments: Comment[];
+  onAddComment: (line: number, body: string) => void;
+  onRemoveComment: (id: string) => void;
 }) {
+  const [composingLine, setComposingLine] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
   const highlightedLines = useMemo(() => {
     const lang = languageForPath(filePath);
     if (!lang) return null;
@@ -573,16 +645,35 @@ function FileViewer({
       return null;
     }
   }, [filePath, lines]);
+  const commentsByLine = useMemo(() => {
+    const map = new Map<number, Comment[]>();
+    for (const comment of comments) {
+      const list = map.get(comment.line) ?? [];
+      list.push(comment);
+      map.set(comment.line, list);
+    }
+    return map;
+  }, [comments]);
   const lineHeight = Math.round(fontSize * 1.5);
+  const submitDraft = useCallback(
+    (line: number) => {
+      const body = draft.trim();
+      if (body) onAddComment(line, body);
+      setDraft("");
+      setComposingLine(null);
+    },
+    [draft, onAddComment],
+  );
   const renderLine = useCallback(
     (index: number) => {
       const lineNumber = index + 1;
       const text = lines[index] ?? "";
       const html = highlightedLines?.[index];
+      const lineComments = commentsByLine.get(lineNumber);
+      const composing = composingLine === lineNumber;
       return (
         <div className="group flex flex-col">
-          <div className="flex gap-1 px-1 hover:bg-(--surface)">
-            {" "}
+          <div className="flex items-start gap-1 px-1 hover:bg-(--surface)">
             <span
               className="w-8 shrink-0 select-none text-right font-mono text-(--dim)"
               style={{ fontSize: fontSize - 2, lineHeight: `${lineHeight}px` }}
@@ -602,12 +693,93 @@ function FileViewer({
               >
                 {text || "\u00a0"}
               </pre>
-            )}{" "}
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setComposingLine(composing ? null : lineNumber);
+                setDraft("");
+              }}
+              className="shrink-0 rounded p-0.5 text-(--dim) opacity-0 transition-opacity hover:text-(--fg) group-hover:opacity-100"
+              title="Comment on this line"
+              aria-label={`Comment on line ${lineNumber}`}
+              style={{ lineHeight: `${lineHeight}px` }}
+            >
+              <MessageSquarePlus className="h-3 w-3" />
+            </button>
           </div>
+          {lineComments?.map((comment) => (
+            <div
+              key={comment.id}
+              className="ml-9 mr-2 my-0.5 flex items-start gap-2 rounded border border-(--border)/60 bg-(--surface)/50 px-2 py-1 text-[length:var(--fs-xs)] text-(--fg)/85"
+            >
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{comment.body}</span>
+              <button
+                type="button"
+                onClick={() => onRemoveComment(comment.id)}
+                className="shrink-0 rounded p-0.5 text-(--dim) hover:text-(--err)"
+                title="Delete comment"
+                aria-label="Delete comment"
+              >
+                <Minus className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          {composing ? (
+            <div className="ml-9 mr-2 my-1 flex flex-col gap-1">
+              <textarea
+                autoFocus
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    submitDraft(lineNumber);
+                  }
+                  if (event.key === "Escape") {
+                    setComposingLine(null);
+                    setDraft("");
+                  }
+                }}
+                placeholder="Add a comment… (⌘↵ to save)"
+                className="w-full resize-none rounded border border-(--border) bg-(--surface) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
+                rows={2}
+              />
+              <div className="flex justify-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setComposingLine(null);
+                    setDraft("");
+                  }}
+                  className="rounded px-2 py-0.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitDraft(lineNumber)}
+                  className="rounded bg-(--accent)/80 px-2 py-0.5 text-[length:var(--fs-xs)] text-white hover:bg-(--accent)"
+                >
+                  Comment
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       );
     },
-    [lines, highlightedLines, fontSize, lineHeight],
+    [
+      lines,
+      highlightedLines,
+      fontSize,
+      lineHeight,
+      commentsByLine,
+      composingLine,
+      draft,
+      submitDraft,
+      onRemoveComment,
+    ],
   );
   if (lines.length < 2000) {
     return (

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ClipboardEvent,
   type DragEvent,
   type ReactNode,
@@ -247,6 +248,42 @@ export function ChatPane({
     activeTabId: activeTab?.id,
     setStickToBottom,
   });
+  // Consume "attach as context" requests (e.g. file comments from the
+  // filesystem panel) into this pane's composer attachments. Only the focused
+  // pane consumes a given request; a handled-id guard prevents re-adding.
+  // Uses useSyncExternalStore (not useEffect) per this repo's workspace rule.
+  const contextAttachRequest = tools.contextAttachRequest;
+  const handledContextAttachRef = useRef(0);
+  const subscribeContextAttach = useCallback(() => {
+    if (
+      contextAttachRequest &&
+      isFocused &&
+      handledContextAttachRef.current !== contextAttachRequest.id
+    ) {
+      handledContextAttachRef.current = contextAttachRequest.id;
+      const attachment: ChatAttachment = {
+        id: newId("ctx"),
+        name: contextAttachRequest.label,
+        type: "text/plain",
+        size: contextAttachRequest.content.length,
+        ...(contextAttachRequest.path ? { path: contextAttachRequest.path } : {}),
+        mode: "text",
+        content: contextAttachRequest.content,
+        previewKind: "file",
+      };
+      setAttachments((current) => {
+        const nextKey = attachmentDedupKey(attachment);
+        if (current.some((file) => attachmentDedupKey(file) === nextKey)) return current;
+        return [...current, attachment];
+      });
+    }
+    return () => undefined;
+  }, [contextAttachRequest, isFocused]);
+  useSyncExternalStore(
+    subscribeContextAttach,
+    getChatPaneEffectSnapshot,
+    getChatPaneEffectSnapshot,
+  );
   const overrideByKey = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const entry of selectedExtensionOverrides) map.set(entry.key, entry.enabled);
@@ -1583,6 +1620,8 @@ function ContextReadout({
     </button>
   );
 }
+
+const getChatPaneEffectSnapshot = (): number => 0;
 
 const CHAT_HEADER_MENU_CLASS =
   "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
