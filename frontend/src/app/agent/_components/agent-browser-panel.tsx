@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Activity,
   Code2,
@@ -58,6 +58,12 @@ type AgentBrowserPanelProps = {
   } | null;
 };
 
+type TerminalOwner = {
+  key: string;
+  sessionId: string | null;
+  cwd: string | null;
+};
+
 function createSideChatSession(
   activeProject: Project | null,
   focusedSession: Session | null,
@@ -90,6 +96,20 @@ export function AgentBrowserPanel({
   const { registerComputerAside, startComputerResize, registerBrowserHandle, runBrowserCommand } =
     handles;
   const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
+  const terminalOwner = useMemo<TerminalOwner | null>(() => {
+    if (focusedSession) {
+      return {
+        key: `session:${focusedSession.id}`,
+        sessionId: focusedSession.id,
+        cwd: activeProject?.path ?? focusedSession.cwd ?? null,
+      };
+    }
+    if (activeProject) {
+      return { key: `project:${activeProject.id}`, sessionId: null, cwd: activeProject.path };
+    }
+    return null;
+  }, [activeProject, focusedSession]);
+  const sessionIdSignature = sessions.map((session) => session.id).join("\0");
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, activeProject?.path ?? "");
     if (!next) return;
@@ -220,25 +240,49 @@ export function AgentBrowserPanel({
         <PluginsPanel />
       ) : null}
 
-      <PersistentTerminal
+      <PersistentTerminals
         active={tools.computer.tab === "terminal"}
-        cwd={activeProject?.path ?? null}
+        owner={terminalOwner}
+        sessionIdSignature={sessionIdSignature}
       />
     </aside>
   );
 }
 
-// Keep the terminal mounted once first opened so its PTY survives tab switches
-// (unmounting kills the shell and loses scrollback — the "terminal resets" bug).
-// Hidden via CSS rather than conditional rendering when another tab is active.
-function PersistentTerminal({ active, cwd }: { active: boolean; cwd: string | null }) {
-  const [everActive, setEverActive] = useState(active);
-  if (active && !everActive) setEverActive(true);
-  if (!everActive) return null;
+// Keep terminal panels mounted per session once opened so each session keeps its
+// own PTY and scrollback while the user navigates elsewhere.
+function PersistentTerminals({
+  active,
+  owner,
+  sessionIdSignature,
+}: {
+  active: boolean;
+  owner: TerminalOwner | null;
+  sessionIdSignature: string;
+}) {
+  const [terminals, setTerminals] = useState<TerminalOwner[]>([]);
+  const sessionIds = new Set(sessionIdSignature ? sessionIdSignature.split("\0") : []);
+  const prunedTerminals = terminals.filter(
+    (terminal) => !terminal.sessionId || sessionIds.has(terminal.sessionId),
+  );
+  const liveTerminals = prunedTerminals.length === terminals.length ? terminals : prunedTerminals;
+  const nextTerminals =
+    active && owner && !liveTerminals.some((terminal) => terminal.key === owner.key)
+      ? [...liveTerminals, owner]
+      : liveTerminals;
+  if (nextTerminals !== terminals) setTerminals(nextTerminals);
+  if (!nextTerminals.length) return null;
   return (
-    <div className={active ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-      <TerminalPanel cwd={cwd} />
-    </div>
+    <>
+      {nextTerminals.map((terminal) => {
+        const visible = active && terminal.key === owner?.key;
+        return (
+          <div key={terminal.key} className={visible ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+            <TerminalPanel cwd={terminal.cwd} />
+          </div>
+        );
+      })}
+    </>
   );
 }
 
