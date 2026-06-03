@@ -300,6 +300,22 @@ export function useWorkspace(): UseWorkspaceResult {
         const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
         const handle = paneHandlesRef.current.get(paneId);
         if (!pendingSessionId || !handle) return;
+        // Only replay onto the session this replay was queued for. A "+" click
+        // (or any swap) replaces a pane's session in place under the same paneId;
+        // a fresh empty starter has nothing to replay, so a stale pending replay
+        // landing here would overwrite the new chat with the old transcript —
+        // the "+ opens the old chat" bug. Drop the replay in that case.
+        const pane = stateRef.current.panesById.get(paneId);
+        const current = pane ? stateRef.current.sessions.get(pane.sessionId) : undefined;
+        const isFreshStarter =
+          !!current &&
+          current.piSessionId == null &&
+          current.messages.length === 0 &&
+          current.status === "idle";
+        if (!current || isFreshStarter) {
+          pendingSessionReplaysRef.current.delete(paneId);
+          return;
+        }
         pendingSessionReplaysRef.current.delete(paneId);
         void handle.loadAndReplay(pendingSessionId);
       }, 0);
@@ -350,7 +366,10 @@ export function useWorkspace(): UseWorkspaceResult {
     ): Promise<BrowserCommandResult> => {
       const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
       const currentTools = toolsRef.current;
-      currentTools.setComputerTab("browser");
+      // Route the model's browser activity to the browser tab WITHOUT popping the
+      // computer panel open — the user controls panel visibility (the "browser
+      // opens whenever I prompt" annoyance).
+      currentTools.selectComputerTabWithoutOpening("browser");
       currentTools.setBrowserEnabled(true);
       if (verb === "navigate") {
         const nextUrl = sanitizePublicBrowserUrl(String(payload.url || ""));

@@ -63,6 +63,7 @@ export type ToolsContextValue = {
   setComputerOpen: (open: boolean) => void;
   toggleComputerOpen: () => void;
   setComputerTab: (tab: ComputerTab) => void;
+  selectComputerTabWithoutOpening: (tab: ComputerTab) => void;
   closeComputerTab: (tab: ComputerTab) => void;
   setComputerWidth: (width: number) => void;
   setCanvasEnabled: (enabled: boolean) => void;
@@ -195,6 +196,26 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
         : { ...current, open: true, tab, tabs };
     });
     writeComputerTab(tab);
+    if (tab === "browser") {
+      setBrowser((current) => {
+        if (current.enabled) return current;
+        writeBrowserEnabled(true);
+        return { ...current, enabled: true };
+      });
+    }
+  }, []);
+
+  // Register + select a tab WITHOUT force-opening the computer panel. Used when
+  // the model drives a background tool (e.g. the browser): it should route to the
+  // right tab and pre-select it, but must not pop the panel open on every prompt
+  // — the user controls whether the panel is visible.
+  const selectComputerTabWithoutOpening = useCallback((tab: ComputerTab) => {
+    setComputer((current) => {
+      const tabs = uniqueComputerTabs([...current.tabs, tab]);
+      writeComputerTabs(tabs);
+      writeComputerTab(tab);
+      return current.tab === tab && current.tabs === tabs ? current : { ...current, tab, tabs };
+    });
     if (tab === "browser") {
       setBrowser((current) => {
         if (current.enabled) return current;
@@ -389,6 +410,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setComputerOpen,
       toggleComputerOpen,
       setComputerTab,
+      selectComputerTabWithoutOpening,
       closeComputerTab,
       setComputerWidth,
       setCanvasEnabled,
@@ -416,6 +438,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setComputerOpen,
       toggleComputerOpen,
       setComputerTab,
+      selectComputerTabWithoutOpening,
       closeComputerTab,
       setComputerWidth,
       setCanvasEnabled,
