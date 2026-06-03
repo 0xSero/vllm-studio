@@ -150,6 +150,15 @@ function reduceWorkspaceStatus(
     case "setError":
       return { ...state, error: action.error };
     case "hydrateActiveSessions":
+      // Auto-restore is a one-shot: it only runs before the user has touched the
+      // workspace. Once we're hydrated — by a prior restore OR an explicit action
+      // such as creating a session — a late-arriving PROJECTS_LOADED must not
+      // clobber the focused pane. This was the "+ opens an old chat" bug: clicking
+      // "+" before projects finished loading created a fresh empty session, then
+      // this restore ran and — because the session had no piSessionId/messages —
+      // sailed past the content guard in hydrateSessionSnapshots and replaced it
+      // with the previously focused (old) chat.
+      if (state.hydrated) return state;
       return action.hasExplicitSessionNav
         ? { ...state, hydrated: true }
         : hydrateSessionSnapshots(state, action.snapshots, action.projects);
@@ -183,14 +192,20 @@ function reduceSessionOpenAction(
   action: WorkspaceAction,
 ): WorkspaceState | null {
   switch (action.type) {
-    case "openNewSession":
-      return openNewSessionInFocusedPane(state, {
+    case "openNewSession": {
+      const next = openNewSessionInFocusedPane(state, {
         project: action.project,
         tab: action.tab,
         paneId: action.paneId,
         runtimeSessionId: action.runtimeSessionId,
         mode: action.mode,
       });
+      // Explicitly opening a chat marks the workspace as user-touched so a late
+      // auto-restore can't swap it out for an old session (see
+      // hydrateActiveSessions). Only when the action actually changed state —
+      // a no-op returns the same reference.
+      return next === state ? state : { ...next, hydrated: true };
+    }
     case "replaySession":
       return replaySessionInFocusedPane(state, {
         piSessionId: action.piSessionId,
