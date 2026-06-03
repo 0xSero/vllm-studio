@@ -284,8 +284,37 @@ function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }
   const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--dim)">diff</div>
+      <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--dim)">
+        diff
+      </div>
       <HighlightedToolSource body={diffText} lang="diff" />
+    </ToolSummary>
+  );
+}
+
+function execCommand(block: ToolBlock): string | null {
+  const command = extractFromArgs(block.args, block.argsText, [
+    "cmd",
+    "command",
+    "script",
+    "shell",
+    "input",
+  ]);
+  return command && command.trim() ? command : null;
+}
+
+function ExecPreview({ block, command }: { block: ToolBlock; command: string }) {
+  return (
+    <ToolSummary block={block} open={block.status === "running"}>
+      <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--dim)">
+        bash
+      </div>
+      <HighlightedToolSource body={command} lang="bash" />
+      {block.resultText ? (
+        <div className="mt-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
+          <ToolOutput>{block.resultText}</ToolOutput>
+        </div>
+      ) : null}
     </ToolSummary>
   );
 }
@@ -301,8 +330,14 @@ export function ToolBlockView({ block }: { block: ToolBlock }) {
   if (diffPreview) {
     return <DiffPreview block={block} diffText={diffPreview} />;
   }
+  if (classifyTool(block) === "exec") {
+    const command = execCommand(block);
+    if (command) {
+      return <ExecPreview block={block} command={command} />;
+    }
+  }
 
-  // Generic fallback (shells, reads, searches, browser tools, etc.).
+  // Generic fallback (reads, searches, browser tools, etc.).
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (

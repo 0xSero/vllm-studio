@@ -279,11 +279,23 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
           <span className="min-w-0 flex-1" />
         )}
         {hasActiveTool ? (
-          <span className="shrink-0 text-[length:var(--fs-2xs)] font-medium text-(--accent)/60">running</span>
+          <span className="shrink-0 text-[length:var(--fs-2xs)] font-medium text-(--accent)/60">
+            running
+          </span>
         ) : null}
       </summary>
       {expanded ? (
-        <div className="ml-3 mt-2 flex min-w-0 flex-col gap-1.5 border-l border-(--border)/50 pl-3">
+        <div
+          className="ml-3 mt-2 flex min-w-0 cursor-pointer flex-col gap-1.5 border-l border-(--border)/50 pl-3"
+          onClick={(event) => {
+            // Collapse when the user clicks anywhere in the reasoning area, but
+            // not when clicking a tool section (kept interactive) or when they
+            // were selecting text.
+            if (window.getSelection()?.toString()) return;
+            if ((event.target as HTMLElement).closest("[data-activity-tool]")) return;
+            setExpanded(false);
+          }}
+        >
           {segments.flatMap(activitySegmentItems).map((item) => (
             <ActivityTreeItem key={item.id} item={item} />
           ))}
@@ -306,7 +318,12 @@ function activitySegmentItems(segment: ActivitySegment): ActivityTreeItem[] {
 
 function ActivityTreeItem({ item }: { item: ActivityTreeItem }) {
   if (item.kind === "reasoning") return <ReasoningLeaf block={item.block} />;
-  return <ToolBlockView block={item.block} />;
+  // Tool sections stay interactive: clicks here must not collapse the group.
+  return (
+    <div data-activity-tool onClick={(event) => event.stopPropagation()}>
+      <ToolBlockView block={item.block} />
+    </div>
+  );
 }
 
 function ReasoningLeaf({ block }: { block: ThinkingBlock }) {

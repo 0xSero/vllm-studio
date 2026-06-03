@@ -31,6 +31,7 @@ import {
   SendIcon,
   StopIcon,
 } from "@/ui/icons";
+import { useAppStore } from "@/store";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import {
   useChatPaneMentionEffects,
@@ -674,9 +675,13 @@ export function ChatPane({
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
       const args = buildPromptArgs(targetId, rawText);
       ensureBrowserToolForText(args.userText);
+      // `args` already snapshotted the tagged plugins/skills (buildPromptArgs),
+      // so they still ride this outgoing turn. Clear their composer pills on send
+      // so a tagged `@plugin` (and `$skill`) goes out with the message instead of
+      // lingering above the textarea for the next turn.
       const currentSelection = tools.selectionFor(targetId);
-      if (currentSelection.skills.length > 0) {
-        tools.setSelection(targetId, { ...currentSelection, skills: [] });
+      if (currentSelection.skills.length > 0 || currentSelection.plugins.length > 0) {
+        tools.setSelection(targetId, { ...currentSelection, skills: [], plugins: [] });
       }
       setStickToBottom(true);
       setAttachments([]);
@@ -1036,7 +1041,6 @@ export function ChatPane({
           onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={Boolean(running)}
-          statusLabel={activeTab?.status}
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
@@ -1611,6 +1615,9 @@ function ChatPaneHeader({
   const [draftTitle, setDraftTitle] = useState(title);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
+  // When the left sidebar is collapsed, the fixed "expand sidebar" button sits
+  // over the top-left corner. Pad the header so the title never renders under it.
+  const sidebarCollapsed = useAppStore((s) => !s.desktopSidebarPinnedOpen);
   const RightPanelIcon = rightPanelOpen ? PanelRightClose : PanelRightOpen;
   const startRename = () => {
     setDraftTitle(title);
@@ -1623,7 +1630,11 @@ function ChatPaneHeader({
     setRenaming(false);
   };
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-2 text-xs">
+    <div
+      className={`flex h-9 shrink-0 items-center gap-2 border-b border-(--border) py-0 pr-2 text-xs ${
+        sidebarCollapsed ? "pl-12" : "pl-2"
+      }`}
+    >
       <div ref={ref} className="relative flex min-w-0 flex-1 items-center gap-1.5">
         {renaming ? (
           <input
@@ -1642,7 +1653,10 @@ function ChatPaneHeader({
             aria-label="Rename session"
           />
         ) : (
-          <span className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)" title={title}>
+          <span
+            className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)"
+            title={title}
+          >
             {title}
           </span>
         )}
@@ -1998,10 +2012,14 @@ function MentionRowItem({
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5">
           <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
-          {version ? <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">{version}</span> : null}
+          {version ? (
+            <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">{version}</span>
+          ) : null}
         </span>
         {description ? (
-          <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">{description}</span>
+          <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">
+            {description}
+          </span>
         ) : null}
       </span>
       {source ? (

@@ -175,7 +175,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       {!isExpanded ? (
-        <div className="fixed left-0 top-0 z-50 hidden h-11 w-10 items-center justify-center md:flex">
+        <div className="fixed left-0 top-0 z-50 hidden h-9 w-10 items-center justify-center md:flex">
           <button
             onClick={() => setDesktopSidebarPinnedOpen(true)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)"
@@ -253,7 +253,9 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Search sessions (⌘K)"
                 >
                   <SearchIcon className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal">Search</span>
+                  <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal">
+                    Search
+                  </span>
                   <kbd className="px-1.5 py-0.5 text-[length:var(--fs-xs)] font-mono text-(--dim)/50 bg-transparent rounded border border-(--border)/30">
                     ⌘K
                   </kbd>
@@ -284,7 +286,9 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   }`}
                 >
                   <Settings className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="whitespace-nowrap text-[length:var(--fs-base)] font-normal">Settings</span>
+                  <span className="whitespace-nowrap text-[length:var(--fs-base)] font-normal">
+                    Settings
+                  </span>
                 </Link>
               </div>
             </>

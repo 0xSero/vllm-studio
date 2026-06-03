@@ -1,248 +1,157 @@
 import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
 
 const AT_BOTTOM_THRESHOLD_PX = 64;
-const RETURN_TO_BOTTOM_IDLE_MS = 250;
-const PROGRAMMATIC_SCROLL_IGNORE_MS = 120;
-const USER_SCROLL_INTENT_MS = 700;
 
 const getTimelineScrollSnapshot = (): number => 0;
 
+/**
+ * Keeps the chat pinned to the latest message while streaming, yields to the
+ * user the moment they intentionally scroll up to read history, and re-pins when
+ * they return to the bottom.
+ *
+ * Detach is driven by genuine *user intent* (wheel-up, upward touch drag, or the
+ * scroll-up keys) rather than by a raw decrease in `scrollTop`. That distinction
+ * matters here because the timeline renders with `content-visibility:auto` +
+ * `contain-intrinsic-size`: off-screen items resolve their real heights mid-
+ * stream and can momentarily shift `scrollTop` downward. A pure direction
+ * heuristic mistakes that layout shift for a user scroll-up and unpins — the
+ * "auto-scroll sometimes stops" bug. Re-attach is driven by an
+ * IntersectionObserver on the bottom sentinel, so reaching the bottom by any
+ * means re-pins. Our own follow-writes never set intent, so they can't detach.
+ */
 export function useTimelineScrollEffects({
   scrollerRef,
   bottomRef,
   stickToBottom,
-  itemCount,
-  running,
-  statusLabel,
   onStickToBottomChange,
 }: {
   scrollerRef: RefObject<HTMLDivElement | null>;
   bottomRef: RefObject<HTMLDivElement | null>;
   stickToBottom: boolean;
-  itemCount: number;
-  running: boolean;
-  statusLabel?: string;
   onStickToBottomChange?: (value: boolean) => void;
 }) {
-  // `stickRef` is the SYNCHRONOUS source of truth that the layout effect
-  // consults. The parent's `stickToBottom` prop is the eventually-consistent
-  // mirror used for UI like a "jump to latest" button. We flip the ref
-  // immediately on user input so streaming `scrollIntoView` writes never
-  // fight a user scroll-up gesture mid-frame (which is the visible "shake").
+  // Synchronous source of truth the handlers read. The parent's `stickToBottom`
+  // prop is the eventually-consistent mirror (drives chrome and lets submit /
+  // tab-change force a re-stick); `onChangeRef` reports our changes back to it.
   const stickRef = useRef(stickToBottom);
-
-  // Cache the callback in a ref so listener registration never re-binds
-  // when the parent hands us a new function identity per render.
   const onChangeRef = useRef(onStickToBottomChange);
 
+  // Mirror prop + callback into refs in the commit phase (never during render).
   const subscribeStickRef = useCallback(() => {
     stickRef.current = stickToBottom;
     return () => undefined;
   }, [stickToBottom]);
-
   const subscribeOnChangeRef = useCallback(() => {
     onChangeRef.current = onStickToBottomChange;
     return () => undefined;
   }, [onStickToBottomChange]);
 
-  const subscribeScrollListeners = useCallback(() => {
+  const subscribeScroll = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return () => undefined;
-    let rafId: number | null = null;
-    let scrollRafId: number | null = null;
-    let followupScrollRafId: number | null = null;
-    let returnTimer: number | null = null;
-    let userScrollIntentUntil = 0;
-    let pointerScrollActive = false;
-    // `programmaticScrollUntil` lets us ignore scroll events emitted by our
-    // own writes; otherwise a sticky scroll can immediately re-evaluate
-    // against a transient layout and toggle state.
-    let programmaticScrollUntil = 0;
 
-    const markProgrammaticScroll = () => {
-      programmaticScrollUntil = performance.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
-    };
-    const scrollToBottom = () => {
-      if (!stickRef.current) return;
-      markProgrammaticScroll();
+    const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
+
+    const pinToBottom = () => {
       el.scrollTop = el.scrollHeight;
-      if (scrollRafId != null) return;
-      scrollRafId = window.requestAnimationFrame(() => {
-        scrollRafId = null;
-        if (!stickRef.current) return;
-        markProgrammaticScroll();
-        el.scrollTop = el.scrollHeight;
-        followupScrollRafId = window.requestAnimationFrame(() => {
-          followupScrollRafId = null;
-          if (!stickRef.current) return;
-          markProgrammaticScroll();
-          el.scrollTop = el.scrollHeight;
-        });
-      });
+    };
+    const setStick = (next: boolean) => {
+      if (stickRef.current === next) return;
+      stickRef.current = next;
+      onChangeRef.current?.(next);
     };
 
-    const evaluate = () => {
-      rafId = null;
-      if (performance.now() < programmaticScrollUntil) return;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX;
-
-      if (!atBottom && stickRef.current) {
-        const userIntendedScroll = pointerScrollActive || performance.now() < userScrollIntentUntil;
-        if (!userIntendedScroll) {
-          // Content grew between frames while we were sticky. Do not interpret
-          // that scroll-height delta as the user scrolling up; follow it.
-          scrollToBottom();
-          return;
-        }
-        // User started scrolling up. Detach IMMEDIATELY so streaming content
-        // can no longer yank the viewport. Tell the parent on the same tick so
-        // any chrome (jump-to-latest button) updates promptly.
-        stickRef.current = false;
-        onChangeRef.current?.(false);
-        if (returnTimer != null) {
-          window.clearTimeout(returnTimer);
-          returnTimer = null;
-        }
-        return;
-      }
-
-      if (atBottom && !stickRef.current) {
-        // Don't re-stick the moment the user grazes the bottom — wait until
-        // they've been idle there. This prevents inertial rubber-banding
-        // from causing rapid stick/unstick oscillation.
-        if (returnTimer != null) return;
-        returnTimer = window.setTimeout(() => {
-          returnTimer = null;
-          const stillAtBottom =
-            el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX;
-          if (stillAtBottom) {
-            stickRef.current = true;
-            onChangeRef.current?.(true);
-          }
-        }, RETURN_TO_BOTTOM_IDLE_MS);
-      }
-    };
-
-    const onScroll = () => {
-      if (rafId != null) return;
-      rafId = window.requestAnimationFrame(evaluate);
-    };
-    const restickIfAtBottom = () => {
-      if (stickRef.current) return;
-      window.requestAnimationFrame(() => {
-        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX;
-        if (!atBottom) return;
-        stickRef.current = true;
-        onChangeRef.current?.(true);
-        scrollToBottom();
-      });
-    };
-    const markUserScrollIntent = () => {
-      userScrollIntentUntil = performance.now() + USER_SCROLL_INTENT_MS;
-    };
+    // User intent: an upward gesture detaches immediately. A downward gesture
+    // that lands at the bottom re-attaches (the sentinel observer also covers
+    // re-attach, but handling it here makes the wheel case feel instant).
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) {
-        markUserScrollIntent();
-        return;
-      }
-      if (event.deltaY > 0) restickIfAtBottom();
+      if (event.deltaY < 0) setStick(false);
+      else if (atBottom()) setStick(true);
     };
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target !== el) return;
-      pointerScrollActive = true;
-      markUserScrollIntent();
+    let touchY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      touchY = event.touches[0]?.clientY ?? null;
     };
-    const onPointerUp = () => {
-      if (!pointerScrollActive) return;
-      pointerScrollActive = false;
-      markUserScrollIntent();
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY ?? null;
+      if (touchY !== null && y !== null && y - touchY > 2) setStick(false);
+      touchY = y;
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
-        markUserScrollIntent();
-        return;
-      }
-      if (["ArrowDown", "PageDown", "End"].includes(event.key)) {
-        restickIfAtBottom();
-      }
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) setStick(false);
     };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: true });
-    el.addEventListener("touchstart", markUserScrollIntent, { passive: true });
-    el.addEventListener("touchmove", markUserScrollIntent, { passive: true });
-    el.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("pointerup", onPointerUp, { passive: true });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("keydown", onKeyDown);
 
-    const listEl = bottomRef.current?.parentElement;
+    // Re-attach whenever the bottom sentinel scrolls back into view by any means.
+    const sentinel = bottomRef.current;
+    const intersectionObserver =
+      typeof IntersectionObserver === "undefined" || !sentinel
+        ? null
+        : new IntersectionObserver(
+            (entries) => {
+              if (entries.some((entry) => entry.isIntersecting)) setStick(true);
+            },
+            { root: el, rootMargin: `0px 0px ${AT_BOTTOM_THRESHOLD_PX}px 0px` },
+          );
+    if (sentinel) intersectionObserver?.observe(sentinel);
+
+    // Follow content + viewport growth while pinned. Running synchronously in the
+    // observer callback means a growth never momentarily reads as "not at bottom".
+    const listEl = sentinel?.parentElement ?? el;
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
-            if (stickRef.current) scrollToBottom();
+            if (stickRef.current) pinToBottom();
           });
-    if (listEl) resizeObserver?.observe(listEl);
     resizeObserver?.observe(el);
+    if (listEl !== el) resizeObserver?.observe(listEl);
 
-    // Expose a marker the scroll sync can set when it programmatically
-    // scrolls, so we don't misread our own writes as user input.
-    (el as HTMLElement & { __markProgrammaticScroll?: () => void }).__markProgrammaticScroll =
-      markProgrammaticScroll;
+    // Streamed text mutates existing nodes without resizing the observed boxes;
+    // keep following those too while pinned.
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            if (stickRef.current) pinToBottom();
+          });
+    mutationObserver?.observe(listEl, { childList: true, subtree: true, characterData: true });
+
+    // Initial alignment.
+    if (stickRef.current) pinToBottom();
 
     return () => {
-      el.removeEventListener("scroll", onScroll);
       el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("touchstart", markUserScrollIntent);
-      el.removeEventListener("touchmove", markUserScrollIntent);
-      el.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("keydown", onKeyDown);
+      intersectionObserver?.disconnect();
       resizeObserver?.disconnect();
-      if (rafId != null) window.cancelAnimationFrame(rafId);
-      if (scrollRafId != null) window.cancelAnimationFrame(scrollRafId);
-      if (followupScrollRafId != null) window.cancelAnimationFrame(followupScrollRafId);
-      if (returnTimer != null) window.clearTimeout(returnTimer);
-      delete (el as HTMLElement & { __markProgrammaticScroll?: () => void })
-        .__markProgrammaticScroll;
+      mutationObserver?.disconnect();
     };
   }, [bottomRef, scrollerRef]);
 
-  const subscribeStickyScroll = useCallback(() => {
-    if (!stickRef.current) return () => undefined;
-    const scroller = scrollerRef.current as
-      | (HTMLElement & { __markProgrammaticScroll?: () => void })
-      | null;
-    if (!scroller || !bottomRef.current) return () => undefined;
-    scroller?.__markProgrammaticScroll?.();
-    // Keep the write scoped to the timeline scroller. `scrollIntoView` walks
-    // ancestor scrollers too; when a submit swaps the empty-state view for the
-    // real timeline it can accidentally yank the chat container to the top.
-    // Directly assigning scrollTop avoids touching any parent scroll context.
-    scroller.scrollTop = scroller.scrollHeight;
-    let followupRafId: number | null = null;
-    const rafId = window.requestAnimationFrame(() => {
-      if (!stickRef.current) return;
-      scroller.__markProgrammaticScroll?.();
-      scroller.scrollTop = scroller.scrollHeight;
-      followupRafId = window.requestAnimationFrame(() => {
-        if (!stickRef.current) return;
-        scroller.__markProgrammaticScroll?.();
-        scroller.scrollTop = scroller.scrollHeight;
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      if (followupRafId != null) window.cancelAnimationFrame(followupRafId);
-    };
-  }, [bottomRef, scrollerRef, itemCount, running, statusLabel]);
+  // When the parent forces stick=true (submit, tab change, jump-to-latest) and we
+  // aren't already near the bottom, snap down. Guarded so re-sticking from a
+  // graze of the bottom doesn't cause a visible jump.
+  const subscribeForceStick = useCallback(() => {
+    const el = scrollerRef.current;
+    if (
+      stickToBottom &&
+      el &&
+      el.scrollHeight - el.scrollTop - el.clientHeight > AT_BOTTOM_THRESHOLD_PX
+    ) {
+      el.scrollTop = el.scrollHeight;
+    }
+    return () => undefined;
+  }, [stickToBottom, scrollerRef]);
 
   useSyncExternalStore(subscribeStickRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
   useSyncExternalStore(subscribeOnChangeRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
-  useSyncExternalStore(
-    subscribeScrollListeners,
-    getTimelineScrollSnapshot,
-    getTimelineScrollSnapshot,
-  );
-  useSyncExternalStore(subscribeStickyScroll, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
+  useSyncExternalStore(subscribeScroll, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
+  useSyncExternalStore(subscribeForceStick, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
 }
