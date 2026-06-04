@@ -32,7 +32,6 @@ const EMPTY_SELECTION: ToolSelection = {
   plugins: [],
   skills: [],
   promptTemplates: [],
-  extensionOverrides: [],
 };
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };

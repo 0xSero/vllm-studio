@@ -1,10 +1,8 @@
 import { NextRequest } from "next/server";
 import {
-  type ComposerExtensionOverride,
   type ComposerPluginRef,
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
-  sanitizeComposerExtensionOverrides,
   sanitizeComposerPlugins,
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
@@ -27,7 +25,6 @@ type CompactRequest = {
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
-  extensionOverrides?: ComposerExtensionOverride[];
 };
 
 function compactInstructions(
@@ -60,7 +57,6 @@ export async function POST(request: NextRequest) {
     const plugins = sanitizeComposerPlugins(body.plugins);
     const skills = sanitizeComposerSkills(body.skills);
     const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
-    const extensionOverrides = sanitizeComposerExtensionOverrides(body.extensionOverrides);
     await session.ensureStarted(modelId, cwd, piSessionId, {
       browserToolEnabled: body.browserToolEnabled === true,
       browserSessionId:
@@ -69,7 +65,6 @@ export async function POST(request: NextRequest) {
       plugins,
       skills,
       promptTemplates,
-      extensionOverrides,
     });
     const result = await session.compact(
       compactInstructions(plugins, skills, body.customInstructions),

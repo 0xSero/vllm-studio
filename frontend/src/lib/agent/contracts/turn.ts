@@ -1,5 +1,4 @@
 import {
-  sanitizeComposerExtensionOverrides,
   sanitizeComposerPlugins,
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
@@ -28,12 +27,6 @@ export type AgentTurnRequest = {
   plugins: ReturnType<typeof sanitizeComposerPlugins>;
   skills: ReturnType<typeof sanitizeComposerSkills>;
   promptTemplates: ReturnType<typeof sanitizeComposerPromptTemplates>;
-  /**
-   * Per-turn Pi extension on/off overrides set via the composer's
-   * `/plugins` slash command. Layered on top of persistent
-   * `<agentDir>/extension-config/enabled.json` overrides.
-   */
-  extensionOverrides: ReturnType<typeof sanitizeComposerExtensionOverrides>;
   mode: AgentTurnMode;
   streamingBehavior?: AgentStreamingBehavior;
 };
@@ -78,7 +71,6 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       plugins: sanitizeComposerPlugins(body.plugins),
       skills: sanitizeComposerSkills(body.skills),
       promptTemplates: sanitizeComposerPromptTemplates(body.promptTemplates),
-      extensionOverrides: sanitizeComposerExtensionOverrides(body.extensionOverrides),
       mode,
       ...(streamingBehavior ? { streamingBehavior } : {}),
     },

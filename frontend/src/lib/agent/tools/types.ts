@@ -7,7 +7,6 @@
 //    sessions stay independent of tool choice.
 
 import type {
-  ComposerExtensionOverride,
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
@@ -22,8 +21,7 @@ export type ComputerTab =
   | "browser"
   | "files"
   | "diff"
-  | "terminal"
-  | "plugins";
+  | "terminal";
 
 export type BrowserState = {
   enabled: boolean;
@@ -59,13 +57,6 @@ export type ToolSelection = {
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];
-  /**
-   * Per-turn Pi extension on/off overrides selected via the composer's
-   * `/plugins` slash command. These layer on top of the persistent
-   * `<agentDir>/extension-config/enabled.json` overrides — they do not write
-   * to disk and only affect the next session start.
-   */
-  extensionOverrides: ComposerExtensionOverride[];
 };
 
 export type ToolSelectionMap = ReadonlyMap<SessionId, ToolSelection>;
@@ -74,5 +65,4 @@ export const EMPTY_SELECTION: ToolSelection = {
   plugins: [],
   skills: [],
   promptTemplates: [],
-  extensionOverrides: [],
 };

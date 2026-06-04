@@ -9,7 +9,6 @@ import {
   Globe2,
   MessageSquarePlus,
   PanelRight,
-  Plug,
   Plus,
   TerminalSquare,
   type LucideIcon,
@@ -29,7 +28,6 @@ import { ChatPane } from "./chat-pane";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
-import { PluginsPanel } from "./plugins-panel";
 import {
   PersistentTerminals,
   uniqueTerminalKeys,
@@ -234,8 +232,6 @@ export function AgentBrowserPanel({
         </section>
       ) : tools.computer.tab === "diff" ? (
         <GitDiffPanel cwd={activeProject?.path ?? null} />
-      ) : tools.computer.tab === "plugins" ? (
-        <PluginsPanel />
       ) : null}
 
       <PersistentTerminals
@@ -255,7 +251,6 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   files: "Filesystem",
   diff: "Git",
   terminal: "Terminal",
-  plugins: "Plugins",
 };
 
 const TAB_OPTIONS: Array<{
@@ -290,12 +285,6 @@ const TAB_OPTIONS: Array<{
     icon: FolderTree,
   },
   { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
-  {
-    tab: "plugins",
-    label: "Plugins",
-    description: "Install and manage Pi extensions, skills, prompts, themes",
-    icon: Plug,
-  },
 ];
 
 function ComputerHeader({
@@ -428,13 +417,6 @@ function ComputerLauncherPanel({
       description: "Start an interactive shell",
       icon: TerminalSquare,
       onClick: () => onSelectTab("terminal"),
-    },
-    {
-      key: "plugins",
-      title: "Plugins",
-      description: "Install Pi extensions, skills, prompts, themes",
-      icon: Plug,
-      onClick: () => onSelectTab("plugins"),
     },
   ] as const;
   return (

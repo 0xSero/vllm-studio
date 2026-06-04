@@ -18,7 +18,6 @@ import {
 } from "./pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { piEventsAfter, piStatusFromEvents } from "./pi-runtime-state";
-import { readEnabledOverrides } from "./pi-packages-store";
 import { findSessionFile } from "./sessions-store";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 
@@ -121,39 +120,21 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
     const resuming = Boolean(resumeFile);
     const runtime = await createAgentSessionRuntime(
       async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
-        // Per-extension disable overrides written by the plugins panel,
-        // overlaid with any per-turn `/plugins` overrides from the composer.
-        // The turn-level entries win because they're the user's most recent
-        // explicit intent. We filter the SDK's loaded extension list AFTER
-        // the loader has already executed each module; this preserves
-        // load-error diagnostics while preventing disabled extensions from
-        // contributing tools or handlers to the active session.
-        const persistedOverrides = readEnabledOverrides();
-        const turnOverrides = sessionOptions.extensionOverrides;
-        const isEnabled = (extPath: string, source: string | undefined) => {
-          // Turn-level override wins if either the path or the source is keyed.
-          if (extPath in turnOverrides) return turnOverrides[extPath];
-          if (source && source in turnOverrides) return turnOverrides[source];
-          if (persistedOverrides[extPath] === false) return false;
-          if (source && persistedOverrides[source] === false) return false;
-          return true;
-        };
         const services = await createAgentSessionServices({
           cwd,
           agentDir,
           resourceLoaderOptions: {
+            // Do not load user-installed Pi package/drop-in extensions from
+            // settings.json or auto-discovery. vLLM Studio only allows the
+            // first-party extension paths assembled below plus selected MCP
+            // servers through mcp-plugin.ts.
+            noExtensions: true,
             additionalSkillPaths: sessionOptions.skills,
             // Hand the SDK absolute paths so its jiti-based loader handles
             // .ts/.js resolution. We avoid pre-importing via `import(variable)`
             // because Next/webpack's static analyser refuses dynamic specifiers.
             additionalExtensionPaths: sessionOptions.extensionPaths,
             additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
-            extensionsOverride: (base) => ({
-              ...base,
-              extensions: base.extensions.filter((ext) =>
-                isEnabled(ext.path, ext.sourceInfo?.source),
-              ),
-            }),
           },
         });
         const model = services.modelRegistry.find(providerId, backendModelId);

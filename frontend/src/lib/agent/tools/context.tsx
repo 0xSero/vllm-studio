@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  ComposerExtensionRef,
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
@@ -50,13 +49,6 @@ export type ToolsContextValue = {
   pluginCatalogue: ComposerPluginRef[];
   skillCatalogue: ComposerSkillRef[];
   promptTemplateCatalogue: ComposerPromptTemplateRef[];
-  /**
-   * Workspace-global Pi extension catalogue (installed packages + auto-
-   * discovered drop-ins). Hydrated lazily — empty until the user opens the
-   * `/plugins` slash menu or the plugins panel.
-   */
-  extensionCatalogue: ComposerExtensionRef[];
-  refreshExtensionCatalogue: () => Promise<void>;
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
   setBrowserEnabled: (enabled: boolean) => void;
   toggleBrowser: () => void;
@@ -118,7 +110,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [promptTemplateCatalogue, setPromptTemplateCatalogue] = useState<
     ComposerPromptTemplateRef[]
   >([]);
-  const [extensionCatalogue, setExtensionCatalogue] = useState<ComposerExtensionRef[]>([]);
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   // Bump on every selection mutation so consumers re-render.
   const [selectionVersion, setSelectionVersion] = useState(0);
@@ -130,11 +121,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   // Discover the workspace-global plugin / skill catalogue once on mount.
   // The lifecycle bridge lives in `use-tools-catalogue-effects.ts`.
   useToolsCatalogueEffects({
-    onLoaded: ({ plugins, skills, promptTemplates, extensions }) => {
+    onLoaded: ({ plugins, skills, promptTemplates }) => {
       setPluginCatalogue(plugins);
       setSkillCatalogue(skills);
       setPromptTemplateCatalogue(promptTemplates);
-      setExtensionCatalogue(extensions);
     },
   });
   useCanvasEffects({ setComputer, sessionId: activeCanvasSessionId });
@@ -345,8 +335,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
         current &&
         current.plugins === selection.plugins &&
         current.skills === selection.skills &&
-        current.promptTemplates === selection.promptTemplates &&
-        current.extensionOverrides === selection.extensionOverrides
+        current.promptTemplates === selection.promptTemplates
       ) {
         return;
       }
@@ -365,8 +354,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
         existing &&
         existing.plugins === selection.plugins &&
         existing.skills === selection.skills &&
-        existing.promptTemplates === selection.promptTemplates &&
-        existing.extensionOverrides === selection.extensionOverrides
+        existing.promptTemplates === selection.promptTemplates
       ) {
         continue;
       }
@@ -374,42 +362,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       changed = true;
     }
     if (changed) setSelectionVersion((v) => v + 1);
-  }, []);
-
-  const refreshExtensionCatalogue = useCallback(async () => {
-    try {
-      const response = await fetch("/api/agent/extensions", { cache: "no-store" });
-      if (!response.ok) return;
-      const payload = (await response.json()) as {
-        resources?: {
-          extensions?: Array<{
-            path: string;
-            source: string;
-            enabled: boolean;
-            origin: "package" | "top-level";
-            scope: "user" | "project" | "temporary";
-          }>;
-        };
-      };
-      const extensions = payload.resources?.extensions ?? [];
-      setExtensionCatalogue(
-        extensions.map((ext) => {
-          const id = ext.source && ext.source !== "auto" ? ext.source : ext.path;
-          const name = deriveExtensionName(ext.source, ext.path);
-          return {
-            id,
-            name,
-            source: ext.source,
-            path: ext.path,
-            scope: ext.scope,
-            origin: ext.origin,
-            enabled: ext.enabled,
-          };
-        }),
-      );
-    } catch {
-      // Best-effort; leave previous catalogue in place.
-    }
   }, []);
 
   const value = useMemo<ToolsContextValue>(
@@ -421,8 +373,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
-      extensionCatalogue,
-      refreshExtensionCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
@@ -451,8 +401,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
-      extensionCatalogue,
-      refreshExtensionCatalogue,
       selectionFor,
       setBrowserEnabled,
       toggleBrowser,
@@ -485,15 +433,3 @@ export function useTools(): ToolsContextValue {
 }
 
 export type { ToolSelection, ToolSelectionMap, BrowserState, ComputerState, ComputerTab };
-
-function deriveExtensionName(source: string, absPath: string): string {
-  // Prefer the package name from sources like "npm:@scope/foo" or "git:owner/repo".
-  if (source && source !== "auto") {
-    const m = /^(?:npm|git|file|ssh|https?):(.+)$/.exec(source);
-    const tail = (m?.[1] ?? source).trim();
-    const last = tail.split(/[\\/]/).filter(Boolean).pop();
-    if (last) return last;
-  }
-  const base = absPath.split(/[\\/]/).filter(Boolean).pop() ?? absPath;
-  return base.replace(/\.(?:t|j)sx?$/i, "");
-}

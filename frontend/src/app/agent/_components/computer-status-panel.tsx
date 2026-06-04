@@ -129,8 +129,6 @@ export function ComputerStatusPanel({
         <StatusRow label="Browser" value={tools.browser.enabled ? tools.browser.url : "Tool off"} />
       </StatusSection>
 
-      <ActivePluginsSection focusedSession={focusedSession} />
-
       <CanvasPeek />
     </section>
   );
@@ -174,67 +172,6 @@ function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
               <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{skill.name}</span>
               <span className="shrink-0 truncate text-[length:var(--fs-xs)] text-(--dim)">
                 {skill.source ?? "skill"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ActivePluginsSection({ focusedSession }: { focusedSession: Session | null }) {
-  const tools = useTools();
-  // Compose the effective list: persisted enabled flag layered with per-turn
-  // overrides from the focused session. Matches the runtime's filter logic.
-  const overrides = focusedSession ? tools.selectionFor(focusedSession.id).extensionOverrides : [];
-  const overrideByKey = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const entry of overrides) map.set(entry.key, entry.enabled);
-    return map;
-  }, [overrides]);
-  const active = useMemo(
-    () =>
-      tools.extensionCatalogue.filter((ext) => {
-        if (overrideByKey.has(ext.source)) return overrideByKey.get(ext.source);
-        if (overrideByKey.has(ext.path)) return overrideByKey.get(ext.path);
-        return ext.enabled;
-      }),
-    [overrideByKey, tools.extensionCatalogue],
-  );
-  return (
-    <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 flex items-center gap-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
-        <span>Pi plugins · active</span>
-        <span className="font-mono normal-case tracking-normal">{active.length}</span>
-        <button
-          type="button"
-          onClick={() => {
-            tools.setComputerTab("plugins");
-            tools.setComputerOpen(true);
-          }}
-          className="ml-auto h-5 rounded px-1.5 text-[length:var(--fs-xs)] normal-case tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-        >
-          Manage
-        </button>
-      </div>
-      {active.length === 0 ? (
-        <div className="rounded-md border border-dashed border-(--border) px-2 py-1.5 text-[length:var(--fs-xs)] text-(--dim)">
-          No Pi extensions enabled. Type <span className="font-mono">/plugins</span> in the composer
-          or install one from the panel.
-        </div>
-      ) : (
-        <ul className="grid gap-0.5">
-          {active.map((ext) => (
-            <li
-              key={ext.id}
-              className="flex min-w-0 items-center gap-2 py-0.5 text-[length:var(--fs-sm)]"
-              title={ext.path}
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent)/70" />
-              <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{ext.name}</span>
-              <span className="shrink-0 font-mono text-[length:var(--fs-2xs)] uppercase text-(--dim)">
-                {ext.scope}
               </span>
             </li>
           ))}
@@ -308,7 +245,9 @@ function CanvasPeek() {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">{label}</div>
+      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
+        {label}
+      </div>
       <div className="mt-1 truncate text-[length:var(--fs-base)] text-(--fg)">{value}</div>
     </div>
   );
@@ -317,7 +256,9 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function StatusSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">{title}</div>
+      <div className="mb-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
+        {title}
+      </div>
       <div className="grid gap-1">{children}</div>
     </div>
   );
@@ -327,7 +268,10 @@ function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] gap-3 py-0.5">
       <span className="text-[length:var(--fs-xs)] text-(--dim)">{label}</span>
-      <span className="min-w-0 truncate text-right font-mono text-[length:var(--fs-sm)] text-(--fg)" title={value}>
+      <span
+        className="min-w-0 truncate text-right font-mono text-[length:var(--fs-sm)] text-(--fg)"
+        title={value}
+      >
         {value}
       </span>
     </div>
