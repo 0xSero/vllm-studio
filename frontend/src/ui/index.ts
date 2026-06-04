@@ -97,6 +97,8 @@ export { ModelLogo } from "./model-logo";
 export { HuggingFaceModelCardModal } from "./huggingface-model-card";
 export { AgentModelPicker } from "./agent-model-picker";
 export { AgentQueuePanel } from "./agent-queue-panel";
+export { AgentLoadedContextTabs, AgentMentionPicker } from "./agent-composer-context";
+export type { FileMentionRow, MentionRow } from "./agent-composer-context";
 
 export { LeftSidebar } from "./left-sidebar";
 export { ModelStopConfirm } from "./model-stop-confirm";
