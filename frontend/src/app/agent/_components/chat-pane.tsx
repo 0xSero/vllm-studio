@@ -33,6 +33,7 @@ import {
 } from "@/ui/icons";
 import { useAppStore } from "@/store";
 import { useClickOutside } from "@/hooks/use-click-outside";
+import { AgentQueuePanel } from "@/ui/agent-queue-panel";
 import {
   useChatPaneMentionEffects,
   useChatPaneRegisterHandleEffect,
@@ -207,8 +208,6 @@ export function ChatPane({
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(false);
-  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
-  const [editingQueueText, setEditingQueueText] = useState("");
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -765,21 +764,6 @@ export function ChatPane({
     },
     [activeTab, engine, removeQueued, runtimeSessionId, updateTab],
   );
-  const beginQueueEdit = (item: QueuedMessage) => {
-    setEditingQueueId(item.id);
-    setEditingQueueText(item.text);
-  };
-  const cancelQueueEdit = () => {
-    setEditingQueueId(null);
-    setEditingQueueText("");
-  };
-  const commitQueueEdit = (queueId: string) => {
-    const trimmed = editingQueueText.trim();
-    if (trimmed) editQueued(queueId, trimmed);
-    else removeQueued(queueId);
-    setEditingQueueId(null);
-    setEditingQueueText("");
-  };
   const attachFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const fileArray = files ? Array.from(files) : [];
@@ -900,8 +884,6 @@ export function ChatPane({
   );
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
-  const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
-  const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
   const openComputerStatus = useCallback(() => {
     tools.setComputerTab("status");
     tools.setComputerOpen(true);
@@ -965,91 +947,15 @@ export function ChatPane({
         />
       </div>
       <form onSubmit={sendMessage} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
-        {visibleQueueItems.length > 0 ? (
-          <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[length:var(--fs-sm)] text-(--fg)">
-            <button
-              type="button"
-              onClick={() => setQueueExpanded((value) => !value)}
-              className="flex w-full min-w-0 items-center gap-2 text-left"
-              aria-expanded={queueExpanded}
-              title="Queued follow-ups and steers"
-            >
-              <span className="shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
-                queue {visibleQueueItems.length}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                {latestQueued?.text ?? "No queued message"}
-              </span>
-            </button>{" "}
-            {queueExpanded ? (
-              <div className="mt-1 space-y-0.5">
-                {visibleQueue.map((item) => {
-                  const isEditing = editingQueueId === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex min-w-0 items-center gap-2 py-1"
-                      title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
-                    >
-                      <span
-                        className={`shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide ${item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"}`}
-                      >
-                        {item.mode === "steer" ? "steer" : "queue"}
-                      </span>
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          value={editingQueueText}
-                          onChange={(event) => setEditingQueueText(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              commitQueueEdit(item.id);
-                            } else if (event.key === "Escape") {
-                              event.preventDefault();
-                              cancelQueueEdit();
-                            }
-                          }}
-                          onBlur={() => commitQueueEdit(item.id)}
-                          className="min-w-0 flex-1 rounded-sm bg-(--surface-2)/60 px-1.5 py-0.5 text-[length:var(--fs-sm)] text-(--fg) outline-none"
-                          aria-label="Edit queued message"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => beginQueueEdit(item)}
-                          className="min-w-0 flex-1 truncate text-left hover:text-(--fg)"
-                          title="Click to edit"
-                        >
-                          {item.text}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void steerQueued(item.id)}
-                        disabled={!running}
-                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--accent) disabled:opacity-30"
-                        aria-label="Send now (steer)"
-                        title="Send now — interrupt the current turn"
-                      >
-                        <SendIcon className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeQueued(item.id)}
-                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--fg)"
-                        aria-label="Remove queued message"
-                        title="Remove from queue"
-                      >
-                        <CloseIcon className="h-3 w-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <AgentQueuePanel
+          items={visibleQueueItems}
+          expanded={queueExpanded}
+          running={Boolean(running)}
+          onExpandedChange={setQueueExpanded}
+          onEdit={editQueued}
+          onRemove={removeQueued}
+          onSteer={(queueId) => void steerQueued(queueId)}
+        />
         <div
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
