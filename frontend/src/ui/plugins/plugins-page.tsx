@@ -1,20 +1,13 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { RefreshCw, Search, Tags, Trash2 } from "lucide-react";
-import { Button } from "../button";
-import { EmptySafeNotice } from "../list";
-import { AppPage, PageHeader } from "../page";
-import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsInput,
-  SettingsRow,
-  SettingsValue,
-} from "../settings";
-import { StatusPill } from "../status";
+import { Globe, Plug, ShieldCheck, type LucideIcon } from "lucide-react";
+import { SettingsLayout, type SettingsSectionDef } from "../settings";
+import { CuratedQuickAddPanel } from "./plugins-curated-quick-add";
+import { InstalledMcpServersPanel } from "./plugins-installed-servers";
 import { ManualMcpServerPanel } from "./plugins-manual-server";
-import { ConfigureEntryPanel, RegistryRow, ServerPill } from "./plugins-page-parts";
+import { ConfigureEntryPanel } from "./plugins-page-parts";
+import { RegistrySearchPanel } from "./plugins-registry-search";
 import { RegistrySourcesPanel } from "./plugins-registry-sources";
 import {
   type CatalogueEntry,
@@ -23,15 +16,41 @@ import {
   type RegistrySource,
   type ServersPayload,
 } from "./plugins-types";
-import {
-  parseArgsText,
-  parseEnvLines,
-  parseTagsText,
-  serverDescription,
-  serverLocation,
-} from "./plugins-utils";
+import { parseArgsText, parseEnvLines, parseTagsText } from "./plugins-utils";
+
+type PluginsSectionId = "custom" | "registry" | "curated";
+
+const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
+const SECTIONS: SettingsSectionDef<PluginsSectionId>[] = [
+  {
+    id: "custom",
+    label: "Custom",
+    description: "Installed MCP servers, manual servers, and registry sources.",
+    icon: sectionIcon(Plug),
+  },
+  {
+    id: "registry",
+    label: "Registry",
+    description: "Search official and enabled compatible MCP registries.",
+    icon: sectionIcon(Globe),
+  },
+  {
+    id: "curated",
+    label: "Curated",
+    description: "High-confidence stdio MCP quick-add entries.",
+    icon: sectionIcon(ShieldCheck),
+  },
+];
+
+const isSectionId = (value: string): value is PluginsSectionId =>
+  SECTIONS.some((section) => section.id === value);
 
 export function PluginsPage() {
+  const [activeSection, setActiveSection] = useState<PluginsSectionId>(() => {
+    if (typeof window === "undefined") return "custom";
+    const hash = window.location.hash.replace("#", "");
+    return isSectionId(hash) ? hash : "custom";
+  });
   const [servers, setServers] = useState<McpServer[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [registry, setRegistry] = useState<CatalogueEntry[]>([]);
@@ -88,8 +107,7 @@ export function PluginsPage() {
       if (!response.ok) throw new Error(payload.error || "Failed to search MCP registry.");
       setRegistry(payload.entries ?? []);
       setRegistrySources(payload.registries ?? []);
-      if (payload.warnings?.length) setError(payload.warnings.join("; "));
-      else setError(null);
+      setError(payload.warnings?.length ? payload.warnings.join("; ") : null);
     } catch (loadError) {
       setRegistry([]);
       setError(loadError instanceof Error ? loadError.message : "Failed to search MCP registry.");
@@ -114,8 +132,19 @@ export function PluginsPage() {
     [loadRegistry],
   );
 
+  const subscribeHashSection = useCallback((_notify: () => void) => {
+    if (typeof window === "undefined") return () => {};
+    const onHashChange = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (isSectionId(hash)) setActiveSection(hash);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   useSyncExternalStore(subscribeServers, getPluginsSnapshot, getPluginsSnapshot);
   useSyncExternalStore(subscribeRegistry, getPluginsSnapshot, getPluginsSnapshot);
+  useSyncExternalStore(subscribeHashSection, getPluginsSnapshot, getPluginsSnapshot);
 
   const post = useCallback(
     async (body: unknown, busyKey: string) => {
@@ -177,17 +206,7 @@ export function PluginsPage() {
     setConfigureEntry(entry);
     setConfigureCommand(entry.command || "");
     setConfigureArgs((entry.args ?? []).join(" "));
-    setConfigureTags(
-      (
-        entry.tags ?? [
-          entry.registry === "official"
-            ? "official-registry"
-            : entry.registry === "custom"
-              ? "custom-registry"
-              : "curated",
-        ]
-      ).join(", "),
-    );
+    setConfigureTags((entry.tags ?? [defaultRegistryTag(entry)]).join(", "));
     setConfigureEnv({ ...(entry.env ?? {}) });
   };
 
@@ -229,11 +248,10 @@ export function PluginsPage() {
       { action: "add_registry", name: registryName.trim(), url: registryUrl.trim() },
       "registry:add",
     ).then((ok) => {
-      if (ok) {
-        setRegistryOpen(false);
-        setRegistryName("");
-        setRegistryUrl("");
-      }
+      if (!ok) return;
+      setRegistryOpen(false);
+      setRegistryName("");
+      setRegistryUrl("");
     });
   };
 
@@ -266,137 +284,75 @@ export function PluginsPage() {
     );
   };
 
-  return (
-    <AppPage>
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:py-7">
-        <PageHeader
-          eyebrow="Tooling"
-          title="Plugins"
-          status={
-            <StatusPill tone={enabledCount ? "good" : "default"}>
-              {loading ? "syncing" : `${enabledCount} enabled`}
-            </StatusPill>
-          }
-          actions={
-            <Button variant="icon" size="sm" onClick={loadServers} title="Refresh MCP servers">
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          }
-        />
+  const refreshAll = useCallback(() => {
+    void loadServers();
+    void loadRegistry();
+  }, [loadRegistry, loadServers]);
 
+  const selectSection = (section: PluginsSectionId) => {
+    setActiveSection(section);
+    if (typeof window !== "undefined") window.history.replaceState(null, "", `#${section}`);
+  };
+
+  const layoutStatus = loading
+    ? "syncing servers"
+    : registryLoading
+      ? "searching registry"
+      : `${enabledCount} enabled`;
+
+  return (
+    <>
+      <SettingsLayout
+        sections={SECTIONS}
+        activeSection={activeSection}
+        title="Plugins"
+        status={layoutStatus}
+        loading={loading || registryLoading}
+        onReload={refreshAll}
+        onSelectSection={selectSection}
+        eyebrow="Tooling"
+      >
         {error ? (
           <div className="mb-4 rounded-md border border-(--ui-danger)/40 bg-(--ui-danger)/10 px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-danger)">
             {error}
           </div>
         ) : null}
-
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <main className="min-w-0 space-y-5">
-            <SettingsGroup
-              title="Enabled MCP servers"
-              description="Servers here are exposed to agent turns when selected in the composer. Tags become local labels for routing and audits."
-              actions={
-                <StatusPill tone={enabledCount ? "good" : "default"} variant="badge">
-                  {servers.length} installed
-                </StatusPill>
+        {activeSection === "custom" ? (
+          <div className="space-y-5">
+            <InstalledMcpServersPanel
+              servers={servers}
+              enabledCount={enabledCount}
+              busyId={busyId}
+              tagDrafts={tagDrafts}
+              onToggleServer={(server) =>
+                void post(
+                  { action: "set_enabled", id: server.id, enabled: !server.enabled },
+                  server.id,
+                )
               }
-            >
-              {servers.length ? (
-                servers.map((server) => (
-                  <SettingsRow
-                    key={server.id}
-                    label={server.displayName ?? server.name}
-                    description={serverDescription(server)}
-                    value={<SettingsValue mono>{serverLocation(server)}</SettingsValue>}
-                    status={<ServerPill server={server} />}
-                    actions={
-                      <>
-                        <SettingsButton
-                          onClick={() =>
-                            void post(
-                              { action: "set_enabled", id: server.id, enabled: !server.enabled },
-                              server.id,
-                            )
-                          }
-                          disabled={busyId === server.id}
-                        >
-                          {server.enabled ? "Disable" : "Enable"}
-                        </SettingsButton>
-                        <SettingsButton
-                          tone="danger"
-                          onClick={() => void post({ action: "remove", id: server.id }, server.id)}
-                          disabled={busyId === server.id}
-                          title="Remove MCP server"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </SettingsButton>
-                      </>
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <Tags className="h-3.5 w-3.5 shrink-0 text-(--ui-muted)" />
-                      <SettingsInput
-                        value={tagDrafts[server.id] ?? (server.tags ?? []).join(", ")}
-                        onChange={(value) =>
-                          setTagDrafts((drafts) => ({ ...drafts, [server.id]: value }))
-                        }
-                        onBlur={() => saveTags(server)}
-                        placeholder="tag, another-tag"
-                      />
-                      <SettingsButton
-                        onClick={() => saveTags(server)}
-                        disabled={busyId === `${server.id}:tags`}
-                      >
-                        Save tags
-                      </SettingsButton>
-                    </div>
-                  </SettingsRow>
-                ))
-              ) : (
-                <EmptySafeNotice>No MCP servers configured yet.</EmptySafeNotice>
-              )}
-            </SettingsGroup>
-
-            <SettingsGroup
-              title="Official MCP Registry"
-              description="Search the official MCP Registry plus any compatible registries you explicitly enable."
-              actions={
-                <StatusPill tone={registryLoading ? "info" : "good"} variant="badge">
-                  {registryLoading ? "searching" : `${registry.length} results`}
-                </StatusPill>
+              onRemoveServer={(server) => void post({ action: "remove", id: server.id }, server.id)}
+              onTagDraftChange={(server, value) =>
+                setTagDrafts((drafts) => ({ ...drafts, [server.id]: value }))
               }
-            >
-              <SettingsRow
-                label="Search registry"
-                description="Search server names from enabled MCP registries."
-                control={
-                  <div className="relative w-full">
-                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--ui-muted)" />
-                    <SettingsInput
-                      value={search}
-                      onChange={setSearch}
-                      placeholder="GitHub, Postgres, filesystem..."
-                      className="pl-8"
-                    />
-                  </div>
-                }
-              />
-              {registry.map((entry) => (
-                <RegistryRow
-                  key={entry.id}
-                  entry={entry}
-                  added={installedNames.has(entry.name.toLowerCase())}
-                  busy={busyId === entry.id}
-                  onConfigure={() => beginConfigureEntry(entry)}
-                />
-              ))}
-              {!registry.length && !registryLoading ? (
-                <EmptySafeNotice>No registry matches. Try a broader search.</EmptySafeNotice>
-              ) : null}
-            </SettingsGroup>
-          </main>
-
-          <aside className="space-y-5">
+              onSaveTags={saveTags}
+            />
+            <ManualMcpServerPanel
+              open={manualOpen}
+              name={manualName}
+              command={manualCommand}
+              args={manualArgs}
+              tags={manualTags}
+              env={manualEnv}
+              busy={busyId === "manual"}
+              onToggleOpen={() => setManualOpen((open) => !open)}
+              onNameChange={setManualName}
+              onCommandChange={setManualCommand}
+              onArgsChange={setManualArgs}
+              onTagsChange={setManualTags}
+              onEnvChange={setManualEnv}
+              onCancel={() => setManualOpen(false)}
+              onSubmit={submitManual}
+            />
             <RegistrySourcesPanel
               sources={registrySources}
               open={registryOpen}
@@ -425,43 +381,28 @@ export function PluginsPage() {
                 )
               }
             />
-
-            <SettingsGroup
-              title="Curated quick add"
-              description="Fixed stdio launch lines for high-confidence reference servers."
-            >
-              {curated.map((entry) => (
-                <RegistryRow
-                  key={entry.id}
-                  entry={entry}
-                  added={installedNames.has(entry.name.toLowerCase())}
-                  busy={busyId === entry.id}
-                  compact
-                  onConfigure={() => beginConfigureEntry(entry)}
-                />
-              ))}
-            </SettingsGroup>
-
-            <ManualMcpServerPanel
-              open={manualOpen}
-              name={manualName}
-              command={manualCommand}
-              args={manualArgs}
-              tags={manualTags}
-              env={manualEnv}
-              busy={busyId === "manual"}
-              onToggleOpen={() => setManualOpen((open) => !open)}
-              onNameChange={setManualName}
-              onCommandChange={setManualCommand}
-              onArgsChange={setManualArgs}
-              onTagsChange={setManualTags}
-              onEnvChange={setManualEnv}
-              onCancel={() => setManualOpen(false)}
-              onSubmit={submitManual}
-            />
-          </aside>
-        </div>
-      </div>
+          </div>
+        ) : null}
+        {activeSection === "registry" ? (
+          <RegistrySearchPanel
+            entries={registry}
+            loading={registryLoading}
+            search={search}
+            installedNames={installedNames}
+            busyId={busyId}
+            onSearchChange={setSearch}
+            onConfigure={beginConfigureEntry}
+          />
+        ) : null}
+        {activeSection === "curated" ? (
+          <CuratedQuickAddPanel
+            entries={curated}
+            installedNames={installedNames}
+            busyId={busyId}
+            onConfigure={beginConfigureEntry}
+          />
+        ) : null}
+      </SettingsLayout>
 
       {configureEntry ? (
         <ConfigureEntryPanel
@@ -479,8 +420,14 @@ export function PluginsPage() {
           onSubmit={submitConfiguredEntry}
         />
       ) : null}
-    </AppPage>
+    </>
   );
+}
+
+function defaultRegistryTag(entry: CatalogueEntry): string {
+  if (entry.registry === "official") return "official-registry";
+  if (entry.registry === "custom") return "custom-registry";
+  return "curated";
 }
 
 const getPluginsSnapshot = (): number => 0;
