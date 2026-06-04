@@ -75,7 +75,7 @@ export function ListRow({
   className,
 }: {
   label: string;
-  description?: string;
+  description?: ReactNode;
   value?: ReactNode;
   control?: ReactNode;
   status?: ReactNode;
@@ -107,7 +107,12 @@ export function ListRow({
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
         </div>
       </div>
-      {children ? <div className="mt-2 md:ml-[calc(160px+1.25rem)]">{children}</div> : null}
+      {children ? (
+        <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(160px,0.42fr)_minmax(0,1fr)] md:gap-5">
+          <div className="hidden md:block" />
+          <div className="min-w-0">{children}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -116,11 +121,13 @@ export function RowValue({
   children,
   mono = false,
   dim = false,
+  truncate = false,
   className,
 }: {
   children: ReactNode;
   mono?: boolean;
   dim?: boolean;
+  truncate?: boolean;
   className?: string;
 }) {
   return (
@@ -129,6 +136,7 @@ export function RowValue({
         "text-[length:var(--fs-base)]",
         mono ? "font-mono text-[length:var(--fs-md)]" : "",
         dim ? "text-(--ui-muted)" : "text-(--ui-fg)/80",
+        truncate ? "min-w-0 truncate" : "",
         className,
       )}
       title={typeof children === "string" ? children : undefined}

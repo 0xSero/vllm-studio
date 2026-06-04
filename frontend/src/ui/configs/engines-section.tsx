@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Check, Loader2, Settings, XCircle } from "lucide-react";
+import { ArrowUpCircle, Check, Info, Loader2, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
@@ -176,20 +176,16 @@ function RuntimeTargetRow({
   job?: EngineJob;
   onJobCreated: () => Promise<void>;
 }) {
-  const meta = ENGINE_META[target.backend] ?? {
-    label: target.backend,
-    description: "Runtime target",
-  };
+  const meta = ENGINE_META[target.backend];
   const running = isRunningJob(job);
-  const action = target.capabilities.canUpdate
-    ? target.installed
-      ? "Update"
-      : "Install"
-    : "Configure";
+  const action = target.installed ? "Update" : "Install";
+  const unsupportedReason = target.health.message ?? "Updates are unsupported for this target.";
   const actionDisabled = running || !target.capabilities.canUpdate;
-  const disabledReason = !target.capabilities.canUpdate
-    ? (target.health.message ?? "Updates are unsupported for this target.")
-    : undefined;
+  const healthMessage =
+    target.capabilities.canUpdate &&
+    (target.health.status === "warning" || target.health.status === "error")
+      ? target.health.message
+      : undefined;
 
   const handleAction = useCallback(async () => {
     if (actionDisabled) return;
@@ -203,14 +199,9 @@ function RuntimeTargetRow({
 
   return (
     <SettingsRow
-      label={target.label || meta.label}
-      description={`${meta.description} · ${target.kind} · ${target.source}`}
-      value={
-        <SettingsValue mono>
-          {target.installed ? (target.version ?? "installed") : "not installed"}
-          {pathForTarget(target) ? ` · ${pathForTarget(target)}` : ""}
-        </SettingsValue>
-      }
+      label={target.label || meta?.label || target.backend}
+      description={<RuntimeTargetMeta target={target} />}
+      control={<RuntimeTargetSummary target={target} />}
       status={
         <EngineStatus
           installed={target.installed}
@@ -222,25 +213,72 @@ function RuntimeTargetRow({
         <SettingsButton
           onClick={() => void handleAction()}
           disabled={actionDisabled}
-          title={disabledReason}
+          title={target.capabilities.canUpdate ? undefined : unsupportedReason}
         >
           {running ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : target.capabilities.canUpdate ? (
             <ArrowUpCircle className="h-3 w-3" />
           ) : (
-            <Settings className="h-3 w-3" />
+            <Info className="h-3 w-3" />
           )}
-          {running ? job?.status : action}
+          {running ? job?.status : target.capabilities.canUpdate ? action : "Managed"}
         </SettingsButton>
       }
     >
       {job ? <JobMessage job={job} /> : null}
-      {target.update ? <UpdateDetails update={target.update} /> : null}
-      {disabledReason ? (
-        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">{disabledReason}</p>
+      {target.capabilities.canUpdate && target.update ? (
+        <UpdateDetails update={target.update} />
+      ) : null}
+      {!target.capabilities.canUpdate ? (
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">{unsupportedReason}</p>
+      ) : null}
+      {healthMessage ? (
+        <p className="text-[length:var(--fs-sm)] text-(--ui-warning)">{healthMessage}</p>
       ) : null}
     </SettingsRow>
+  );
+}
+
+function RuntimeTargetMeta({ target }: { target: RuntimeTarget }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+      <span>{target.kind}</span>
+      <span aria-hidden>·</span>
+      <span>{target.source}</span>
+      {target.active ? (
+        <>
+          <span aria-hidden>·</span>
+          <span className="text-(--ui-success)">running</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+function RuntimeTargetSummary({ target }: { target: RuntimeTarget }) {
+  const location = pathForTarget(target);
+  return (
+    <div className="min-w-0 flex-1 text-left">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="font-mono text-[length:var(--fs-md)] text-(--ui-fg)/85">
+          {target.installed ? (target.version ?? "installed") : "not installed"}
+        </span>
+        {target.update && target.capabilities.canUpdate ? (
+          <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+            target {target.update.targetVersion}
+          </span>
+        ) : null}
+      </div>
+      {location ? (
+        <div
+          className="mt-0.5 min-w-0 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)"
+          title={location}
+        >
+          {location}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -275,7 +313,7 @@ function BackendRow({
       label={meta.label}
       description={meta.description}
       value={
-        <SettingsValue mono>
+        <SettingsValue mono truncate>
           {info.installed ? (info.version ?? "installed") : "not installed"}
         </SettingsValue>
       }
@@ -301,7 +339,7 @@ function BackendRow({
       }
     >
       {info.python_path || info.binary_path ? (
-        <SettingsValue mono dim>
+        <SettingsValue mono dim truncate>
           {info.python_path ?? info.binary_path}
         </SettingsValue>
       ) : null}
@@ -335,13 +373,17 @@ function EngineStatus({
       : installed
         ? "installed"
         : "available";
-  return <StatusPill tone={tone}>{label}</StatusPill>;
+  return (
+    <StatusPill tone={tone} variant="badge">
+      {label}
+    </StatusPill>
+  );
 }
 
 function JobMessage({ job }: { job: EngineJob }) {
   return (
     <div
-      className={`space-y-1 text-[length:var(--fs-md)] ${job.status === "error" ? "text-(--err)/80" : "text-(--dim)/60"}`}
+      className={`space-y-1 text-[length:var(--fs-md)] ${job.status === "error" ? "text-(--ui-danger)/80" : "text-(--ui-muted)"}`}
     >
       <p>{job.message}</p>
       {job.command ? <p className="truncate font-mono">{job.command}</p> : null}
@@ -360,10 +402,15 @@ function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
       <span>
-        Updates to <span className="font-mono text-(--ui-fg)/70">{update.targetVersion}</span>
+        Update available:{" "}
+        <span className="font-mono text-(--ui-fg)/70">
+          {update.currentVersion ?? "unknown"} → {update.targetVersion}
+        </span>
       </span>
       {update.restartRequired ? (
-        <span className="text-(--ui-warning)/90">restarts the running model</span>
+        <StatusPill tone="warning" variant="badge">
+          restarts model
+        </StatusPill>
       ) : null}
       <a
         href={update.releaseNotesUrl}

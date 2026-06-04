@@ -26,7 +26,7 @@ type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
 
 type RowProps = {
   label: string;
-  description?: string;
+  description?: ReactNode;
   value?: ReactNode;
   control?: ReactNode;
   status?: ReactNode;
@@ -53,7 +53,9 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
       <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,640px)] lg:gap-10 lg:py-8">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">{title}</h1>
+            <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">
+              {title}
+            </h1>
             <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
           </div>
           <SectionNav
@@ -98,13 +100,15 @@ export function SettingsValue({
   children,
   mono = false,
   dim = false,
+  truncate = false,
 }: {
   children: ReactNode;
   mono?: boolean;
   dim?: boolean;
+  truncate?: boolean;
 }) {
   return (
-    <RowValue mono={mono} dim={dim}>
+    <RowValue mono={mono} dim={dim} truncate={truncate}>
       {children}
     </RowValue>
   );
