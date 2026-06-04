@@ -10,7 +10,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { CloseIcon, FileIcon } from "@/ui/icons";
+import { AgentAttachmentTray } from "@/ui/agent-attachment-tray";
 import { AgentChatPaneHeader } from "@/ui/agent-chat-pane-header";
 import { AgentComposerActions } from "@/ui/agent-composer-actions";
 import { AgentComposerStatusBar } from "@/ui/agent-composer-status-bar";
@@ -73,11 +73,8 @@ import {
   createProjectFileAttachment,
   dataTransferHasFiles,
   filesFromDataTransfer,
-  formatFileSize,
   imageFileFromDataUrlText,
   imageInputFromAttachment,
-  isImageAttachment,
-  isRenderableAttachment,
   type ChatAttachment,
 } from "./chat-attachments";
 import { Timeline } from "./timeline/timeline";
@@ -951,50 +948,10 @@ export function ChatPane({
             activeIndex={mentionIndex}
             onSelect={(entry) => void selectMentionRow(entry)}
           />
-          {attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 px-4 pt-2">
-              {attachments.map((file) => (
-                <span
-                  key={file.id}
-                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[length:var(--fs-sm)] text-(--dim)"
-                  title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
-                >
-                  {isImageAttachment(file) ? (
-                    <img
-                      src={file.content}
-                      alt=""
-                      className="h-7 w-7 shrink-0 rounded object-cover"
-                    />
-                  ) : isRenderableAttachment(file) && file.previewKind === "pdf" ? (
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-(--border) bg-(--bg) font-mono text-[length:var(--fs-2xs)] text-(--fg)">
-                      PDF
-                    </span>
-                  ) : isRenderableAttachment(file) && file.previewKind === "video" ? (
-                    <video
-                      src={file.previewUrl}
-                      className="h-7 w-7 shrink-0 rounded object-cover"
-                      muted
-                    />
-                  ) : (
-                    <FileIcon className="h-3 w-3 shrink-0" />
-                  )}{" "}
-                  <span className="truncate">{file.name}</span>
-                  <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>{" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAttachments((current) => current.filter((item) => item.id !== file.id))
-                    }
-                    className="p-0.5 hover:text-(--fg)"
-                    aria-label={`Remove ${file.name}`}
-                    title={`Remove ${file.name}`}
-                  >
-                    <CloseIcon className="h-3 w-3" />{" "}
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <AgentAttachmentTray
+            attachments={attachments}
+            onRemove={(id) => setAttachments((current) => current.filter((item) => item.id !== id))}
+          />
           <textarea
             ref={textareaRef}
             rows={1}
