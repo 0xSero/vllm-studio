@@ -1,5 +1,3 @@
-import type { RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
-
 export interface VllmRuntimeInfo {
   installed: boolean;
   version: string | null;
