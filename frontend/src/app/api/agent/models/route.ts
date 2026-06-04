@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { refreshPiModels } from "@/lib/agent/pi-runtime-models";
-import type { PiControllerModelsRequest } from "@/lib/agent/pi-runtime-models";
+import { refreshPiModels, type PiControllerModelsRequest } from "@/lib/agent/pi-runtime-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

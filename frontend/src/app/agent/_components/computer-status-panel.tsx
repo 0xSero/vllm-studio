@@ -17,6 +17,17 @@ type GitSummary = {
   statusCount: number;
 } | null;
 
+type StatusTotals = {
+  read: number;
+  write: number;
+  current: number;
+  messages: number;
+  queued: number;
+  running: number;
+};
+
+type StatusRowData = { label: string; value: string };
+
 export function ComputerStatusPanel({
   activeProject,
   activeModel,
@@ -34,34 +45,15 @@ export function ComputerStatusPanel({
 }) {
   const tools = useTools();
   const [compacting, setCompacting] = useState(false);
-  const totals = useMemo(
-    () =>
-      sessions.reduce(
-        (acc, session) => ({
-          read: acc.read + (session.tokenStats?.read ?? 0),
-          write: acc.write + (session.tokenStats?.write ?? 0),
-          current: acc.current + (session.tokenStats?.current ?? 0),
-          messages: acc.messages + session.messages.length,
-          queued: acc.queued + (session.queue?.length ?? 0),
-          running:
-            acc.running + (session.status === "running" || session.status === "starting" ? 1 : 0),
-        }),
-        { read: 0, write: 0, current: 0, messages: 0, queued: 0, running: 0 },
-      ),
-    [sessions],
-  );
-  const contextWindow = activeModel?.contextWindow ?? 0;
-  const sessionTokens = focusedSession?.tokenStats?.current ?? 0;
-  const sessionRunning =
-    focusedSession?.status === "running" || focusedSession?.status === "starting";
-  const compactDisabled =
-    compacting ||
-    sessionRunning ||
-    !focusedSession?.piSessionId ||
-    !activeModel ||
-    !onCompactSession;
-  const shouldCompact = Boolean(focusedSession?.contextUsage?.shouldCompact);
+  const totals = useMemo(() => summarizeSessions(sessions), [sessions]);
   const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
+  const compactDisabled = isCompactDisabled(
+    activeModel,
+    focusedSession,
+    compacting,
+    Boolean(onCompactSession),
+  );
+  const compactHighlighted = shouldCompactSession(focusedSession);
   const compactFocusedSession = async () => {
     if (compactDisabled) return;
     setCompacting(true);
@@ -74,64 +66,141 @@ export function ComputerStatusPanel({
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
       <SessionSummary
-        title={focusedSession?.title ?? "New session"}
-        sessionTokens={sessionTokens}
+        title={sessionTitle(focusedSession)}
+        sessionTokens={sessionTokenCount(focusedSession)}
         allTokens={totals.current}
         messageCount={totals.messages}
       />
 
       <StatusSection title="Session">
-        <StatusRow label="State" value={focusedSession?.status ?? "idle"} />
-        <StatusRow
-          label="Model"
-          value={activeModel?.name ?? focusedSession?.modelId ?? "No model"}
-        />
-        <StatusRow
-          label="Context"
-          value={`${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`}
-        />
+        <StatusRows rows={sessionTopRows(activeModel, focusedSession)} />
         <StatusActionRow label="Compact">
           <button
             type="button"
             onClick={() => void compactFocusedSession()}
             disabled={compactDisabled}
             className={`inline-flex h-6 items-center gap-1 rounded px-2 text-[length:var(--fs-sm)] ${
-              shouldCompact
+              compactHighlighted
                 ? "text-(--accent) ring-1 ring-(--accent)/40"
                 : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
             } disabled:pointer-events-none disabled:opacity-30`}
-            title={
-              shouldCompact
-                ? "Context near limit - compact this session"
-                : "Compact this session context"
-            }
+            title={compactTitle(compactHighlighted)}
           >
             {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             {compacting ? "Compacting" : "Compact"}
           </button>
         </StatusActionRow>
-        <StatusRow
-          label="Read / write"
-          value={`${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`}
-        />
-        <StatusRow label="Queue" value={`${totals.queued} queued · ${totals.running} running`} />
+        <StatusRows rows={sessionBottomRows(totals)} />
       </StatusSection>
 
       <UsedSkillsSection skills={sessionSkills} />
 
       <StatusSection title="Workspace">
-        <StatusRow label="Project" value={activeProject?.name ?? "No project"} />
-        <StatusRow
-          label="Directory"
-          value={activeProject?.path ?? focusedSession?.cwd ?? "No directory"}
+        <StatusRows
+          rows={workspaceRows(
+            activeProject,
+            focusedSession,
+            gitSummary ?? null,
+            tools.browser.enabled,
+            tools.browser.url,
+          )}
         />
-        <StatusRow label="Git" value={formatGitSummary(gitSummary ?? null)} />
-        <StatusRow label="Browser" value={tools.browser.enabled ? tools.browser.url : "Tool off"} />
       </StatusSection>
 
       <CanvasPeek />
     </section>
   );
+}
+
+function summarizeSessions(sessions: Session[]): StatusTotals {
+  return sessions.reduce(
+    (acc, session) => ({
+      read: acc.read + (session.tokenStats?.read ?? 0),
+      write: acc.write + (session.tokenStats?.write ?? 0),
+      current: acc.current + (session.tokenStats?.current ?? 0),
+      messages: acc.messages + session.messages.length,
+      queued: acc.queued + (session.queue?.length ?? 0),
+      running: acc.running + (isSessionRunning(session) ? 1 : 0),
+    }),
+    { read: 0, write: 0, current: 0, messages: 0, queued: 0, running: 0 },
+  );
+}
+
+function sessionTitle(session: Session | null): string {
+  return session?.title ?? "New session";
+}
+
+function sessionTokenCount(session: Session | null): number {
+  return session?.tokenStats?.current ?? 0;
+}
+
+function sessionTopRows(activeModel: AgentModel | null, session: Session | null): StatusRowData[] {
+  const sessionTokens = sessionTokenCount(session);
+  const contextWindow = activeModel?.contextWindow ?? 0;
+  return [
+    { label: "State", value: session?.status ?? "idle" },
+    { label: "Model", value: activeModel?.name ?? session?.modelId ?? "No model" },
+    {
+      label: "Context",
+      value: `${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`,
+    },
+  ];
+}
+
+function sessionBottomRows(totals: StatusTotals): StatusRowData[] {
+  return [
+    {
+      label: "Read / write",
+      value: `${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`,
+    },
+    { label: "Queue", value: `${totals.queued} queued · ${totals.running} running` },
+  ];
+}
+
+function workspaceRows(
+  activeProject: Project | null,
+  session: Session | null,
+  gitSummary: GitSummary,
+  browserEnabled: boolean,
+  browserUrl: string,
+): StatusRowData[] {
+  return [
+    { label: "Project", value: activeProject?.name ?? "No project" },
+    { label: "Directory", value: activeProject?.path ?? session?.cwd ?? "No directory" },
+    { label: "Git", value: formatGitSummary(gitSummary) },
+    { label: "Browser", value: browserEnabled ? browserUrl : "Tool off" },
+  ];
+}
+
+function isCompactDisabled(
+  activeModel: AgentModel | null,
+  session: Session | null,
+  compacting: boolean,
+  hasCompactAction: boolean,
+): boolean {
+  return (
+    compacting ||
+    isSessionRunning(session) ||
+    !session?.piSessionId ||
+    !activeModel ||
+    !hasCompactAction
+  );
+}
+
+function shouldCompactSession(session: Session | null): boolean {
+  return Boolean(session?.contextUsage?.shouldCompact);
+}
+
+function compactTitle(highlighted: boolean): string {
+  return highlighted ? "Context near limit - compact this session" : "Compact this session context";
+}
+
+function isSessionRunning(session: Session | null): boolean {
+  return session?.status === "running" || session?.status === "starting";
+}
+
+function StatusRows({ rows }: { rows: StatusRowData[] }) {
+  return rows.map((row) => <StatusRow key={row.label} label={row.label} value={row.value} />);
 }
 
 function usedSkillsForSession(session: Session | null): ComposerSkillRef[] {
