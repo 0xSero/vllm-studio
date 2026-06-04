@@ -2,7 +2,6 @@ export const ESC = '\x1b[';
 export const clear = (): boolean => process.stdout.write(`${ESC}2J${ESC}H`);
 export const hideCursor = (): boolean => process.stdout.write(`${ESC}?25l`);
 export const showCursor = (): boolean => process.stdout.write(`${ESC}?25h`);
-export const moveTo = (row: number, col: number): string => `${ESC}${row};${col}H`;
 
 export const colors = {
   reset: `${ESC}0m`,
