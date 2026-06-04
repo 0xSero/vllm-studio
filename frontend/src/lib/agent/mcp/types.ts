@@ -49,10 +49,14 @@ export type McpCatalogueEntry = {
   command: string;
   args?: string[];
   tags?: string[];
-  registry?: "curated" | "glama";
+  registry?: "curated" | "official" | "custom";
+  registryName?: string;
+  registrySourceId?: string;
   registryUrl?: string;
   repositoryUrl?: string;
   attributes?: string[];
+  installable?: boolean;
+  unsupportedReason?: string;
   /** Default env keys (value may be a placeholder the user replaces). */
   env?: Record<string, string>;
   /** Which env keys are mandatory before the server can launch. */

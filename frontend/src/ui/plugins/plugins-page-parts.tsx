@@ -22,14 +22,14 @@ export function RegistryRow({
   compact?: boolean;
   onConfigure: () => void;
 }) {
-  const source = entry.registry === "glama" ? "Glama" : "Curated";
+  const source = registryLabel(entry);
   return (
     <SettingsRow
       label={entry.displayName}
       description={compact ? (entry.shortDescription ?? entry.description) : entry.description}
       value={
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <StatusPill tone={entry.registry === "glama" ? "info" : "good"} variant="badge">
+          <StatusPill tone={registryTone(entry)} variant="badge">
             <ShieldCheck className="mr-1 h-3 w-3" />
             {source}
           </StatusPill>
@@ -103,8 +103,8 @@ export function ConfigureEntryPanel({
               {entry.displayName}
             </h2>
           </div>
-          <StatusPill tone={entry.registry === "glama" ? "info" : "good"} variant="badge">
-            {entry.registry === "glama" ? "Glama" : "Curated"}
+          <StatusPill tone={registryTone(entry)} variant="badge">
+            {registryLabel(entry)}
           </StatusPill>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4">
@@ -113,8 +113,9 @@ export function ConfigureEntryPanel({
               label="Command"
               description={
                 entry.command
-                  ? "Curated default can be adjusted before adding."
-                  : "Glama validates the server, but you choose the local stdio launch command."
+                  ? "Registry default can be adjusted before adding."
+                  : (entry.unsupportedReason ??
+                    "Choose the local stdio launch command before adding this server.")
               }
               control={
                 <SettingsInput value={command} onChange={onCommandChange} placeholder="npx" />
@@ -186,4 +187,15 @@ export function ServerPill({ server }: { server: McpServer }) {
   if (!server.enabled) return <StatusPill>disabled</StatusPill>;
   if (server.source === "marketplace") return <StatusPill tone="info">marketplace</StatusPill>;
   return <StatusPill tone="info">manual</StatusPill>;
+}
+
+function registryLabel(entry: CatalogueEntry): string {
+  if (entry.registry === "official") return "Official";
+  if (entry.registry === "custom") return entry.registryName ?? "Registry";
+  return "Curated";
+}
+
+function registryTone(entry: CatalogueEntry): "default" | "good" | "info" | "warning" | "danger" {
+  if (entry.registry === "custom") return "info";
+  return "good";
 }

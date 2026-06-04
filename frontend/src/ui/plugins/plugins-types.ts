@@ -24,13 +24,25 @@ export type CatalogueEntry = {
   command: string;
   args?: string[];
   tags?: string[];
-  registry?: "curated" | "glama";
+  registry?: "curated" | "official" | "custom";
+  registryName?: string;
+  registrySourceId?: string;
   registryUrl?: string;
   repositoryUrl?: string;
   attributes?: string[];
+  installable?: boolean;
+  unsupportedReason?: string;
   env?: Record<string, string>;
   requiredEnv?: string[];
   homepage?: string;
+};
+
+export type RegistrySource = {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  builtIn?: boolean;
 };
 
 export type ServersPayload = {
@@ -41,8 +53,10 @@ export type ServersPayload = {
 };
 
 export type RegistryPayload = {
-  source: "glama";
+  source: "official";
   sourceUrl: string;
+  registries?: RegistrySource[];
   entries: CatalogueEntry[];
+  warnings?: string[];
   error?: string;
 };

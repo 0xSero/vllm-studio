@@ -13,11 +13,14 @@ import {
   SettingsValue,
 } from "../settings";
 import { StatusPill } from "../status";
+import { ManualMcpServerPanel } from "./plugins-manual-server";
 import { ConfigureEntryPanel, RegistryRow, ServerPill } from "./plugins-page-parts";
+import { RegistrySourcesPanel } from "./plugins-registry-sources";
 import {
   type CatalogueEntry,
   type McpServer,
   type RegistryPayload,
+  type RegistrySource,
   type ServersPayload,
 } from "./plugins-types";
 import {
@@ -32,6 +35,7 @@ export function PluginsPage() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [registry, setRegistry] = useState<CatalogueEntry[]>([]);
+  const [registrySources, setRegistrySources] = useState<RegistrySource[]>([]);
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +53,9 @@ export function PluginsPage() {
   const [manualArgs, setManualArgs] = useState("");
   const [manualEnv, setManualEnv] = useState("");
   const [manualTags, setManualTags] = useState("custom");
+  const [registryOpen, setRegistryOpen] = useState(false);
+  const [registryName, setRegistryName] = useState("");
+  const [registryUrl, setRegistryUrl] = useState("");
 
   const applyServersPayload = useCallback((payload: ServersPayload) => {
     setServers(payload.servers ?? payload.plugins ?? []);
@@ -80,6 +87,9 @@ export function PluginsPage() {
       const payload = (await response.json()) as RegistryPayload;
       if (!response.ok) throw new Error(payload.error || "Failed to search MCP registry.");
       setRegistry(payload.entries ?? []);
+      setRegistrySources(payload.registries ?? []);
+      if (payload.warnings?.length) setError(payload.warnings.join("; "));
+      else setError(null);
     } catch (loadError) {
       setRegistry([]);
       setError(loadError instanceof Error ? loadError.message : "Failed to search MCP registry.");
@@ -129,24 +139,65 @@ export function PluginsPage() {
     [applyServersPayload],
   );
 
+  const postRegistry = useCallback(
+    async (body: unknown, busyKey: string) => {
+      setBusyId(busyKey);
+      setError(null);
+      try {
+        const response = await fetch("/api/mcp/registry", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = (await response.json()) as RegistryPayload;
+        if (!response.ok || payload.error) {
+          throw new Error(payload.error || "Registry update failed.");
+        }
+        setRegistrySources(payload.registries ?? []);
+        await loadRegistry();
+        return true;
+      } catch (postError) {
+        setError(postError instanceof Error ? postError.message : "Registry update failed.");
+        return false;
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [loadRegistry],
+  );
+
   const enabledCount = servers.filter((server) => server.enabled).length;
   const installedNames = useMemo(
     () => new Set(servers.map((server) => server.name.toLowerCase())),
     [servers],
   );
-  const curated = catalogue.filter((entry) => entry.registry !== "glama");
+  const curated = catalogue.filter((entry) => entry.registry === "curated");
 
   const beginConfigureEntry = (entry: CatalogueEntry) => {
     setConfigureEntry(entry);
     setConfigureCommand(entry.command || "");
     setConfigureArgs((entry.args ?? []).join(" "));
-    setConfigureTags((entry.tags ?? [entry.registry === "glama" ? "glama" : "curated"]).join(", "));
+    setConfigureTags(
+      (
+        entry.tags ?? [
+          entry.registry === "official"
+            ? "official-registry"
+            : entry.registry === "custom"
+              ? "custom-registry"
+              : "curated",
+        ]
+      ).join(", "),
+    );
     setConfigureEnv({ ...(entry.env ?? {}) });
   };
 
   const submitConfiguredEntry = () => {
     if (!configureEntry) return;
-    if (configureEntry.command && configureCommand === configureEntry.command) {
+    if (
+      configureEntry.registry === "curated" &&
+      configureEntry.command &&
+      configureCommand === configureEntry.command
+    ) {
       void post(
         {
           action: "add_from_catalogue",
@@ -171,6 +222,19 @@ export function PluginsPage() {
       },
       configureEntry.id,
     ).then(() => setConfigureEntry(null));
+  };
+
+  const submitRegistry = () => {
+    void postRegistry(
+      { action: "add_registry", name: registryName.trim(), url: registryUrl.trim() },
+      "registry:add",
+    ).then((ok) => {
+      if (ok) {
+        setRegistryOpen(false);
+        setRegistryName("");
+        setRegistryUrl("");
+      }
+    });
   };
 
   const submitManual = () => {
@@ -294,8 +358,8 @@ export function PluginsPage() {
             </SettingsGroup>
 
             <SettingsGroup
-              title="Glama MCP registry"
-              description="Glama indexes the official registry plus sandbox-inspected community servers with maintainer verification and quality signals."
+              title="Official MCP Registry"
+              description="Search the official MCP Registry plus any compatible registries you explicitly enable."
               actions={
                 <StatusPill tone={registryLoading ? "info" : "good"} variant="badge">
                   {registryLoading ? "searching" : `${registry.length} results`}
@@ -304,7 +368,7 @@ export function PluginsPage() {
             >
               <SettingsRow
                 label="Search registry"
-                description="Search server names, providers, and tool descriptions from Glama."
+                description="Search server names from enabled MCP registries."
                 control={
                   <div className="relative w-full">
                     <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--ui-muted)" />
@@ -333,6 +397,35 @@ export function PluginsPage() {
           </main>
 
           <aside className="space-y-5">
+            <RegistrySourcesPanel
+              sources={registrySources}
+              open={registryOpen}
+              name={registryName}
+              url={registryUrl}
+              busyId={busyId}
+              onToggleOpen={() => setRegistryOpen((open) => !open)}
+              onNameChange={setRegistryName}
+              onUrlChange={setRegistryUrl}
+              onCancel={() => setRegistryOpen(false)}
+              onSubmit={submitRegistry}
+              onToggleSource={(source) =>
+                void postRegistry(
+                  {
+                    action: "set_registry_enabled",
+                    id: source.id,
+                    enabled: !source.enabled,
+                  },
+                  `${source.id}:enabled`,
+                )
+              }
+              onRemoveSource={(source) =>
+                void postRegistry(
+                  { action: "remove_registry", id: source.id },
+                  `${source.id}:remove`,
+                )
+              }
+            />
+
             <SettingsGroup
               title="Curated quick add"
               description="Fixed stdio launch lines for high-confidence reference servers."
@@ -349,86 +442,23 @@ export function PluginsPage() {
               ))}
             </SettingsGroup>
 
-            <SettingsGroup
-              title="Manual MCP server"
-              description="Register any stdio MCP server by launch command, args, env, and tags."
-              actions={
-                <SettingsButton onClick={() => setManualOpen((open) => !open)}>
-                  {manualOpen ? "Close" : "Configure"}
-                </SettingsButton>
-              }
-            >
-              {manualOpen ? (
-                <>
-                  <SettingsRow
-                    label="Name"
-                    control={
-                      <SettingsInput
-                        value={manualName}
-                        onChange={setManualName}
-                        placeholder="My MCP server"
-                      />
-                    }
-                  />
-                  <SettingsRow
-                    label="Command"
-                    control={
-                      <SettingsInput
-                        value={manualCommand}
-                        onChange={setManualCommand}
-                        placeholder="npx"
-                      />
-                    }
-                  />
-                  <SettingsRow
-                    label="Arguments"
-                    control={
-                      <SettingsInput
-                        value={manualArgs}
-                        onChange={setManualArgs}
-                        placeholder="-y @scope/server"
-                      />
-                    }
-                  />
-                  <SettingsRow
-                    label="Tags"
-                    control={
-                      <SettingsInput
-                        value={manualTags}
-                        onChange={setManualTags}
-                        placeholder="coding, api"
-                      />
-                    }
-                  />
-                  <SettingsRow
-                    label="Environment"
-                    control={
-                      <textarea
-                        value={manualEnv}
-                        onChange={(event) => setManualEnv(event.target.value)}
-                        placeholder={"API_KEY=...\nANOTHER=..."}
-                        rows={4}
-                        className="w-full resize-none rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 py-1.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/50 focus:border-(--ui-info)/50"
-                      />
-                    }
-                  />
-                  <div className="flex justify-end gap-1 px-3.5 py-2">
-                    <SettingsButton onClick={() => setManualOpen(false)}>Cancel</SettingsButton>
-                    <SettingsButton
-                      tone="primary"
-                      onClick={submitManual}
-                      disabled={!manualName.trim() || !manualCommand.trim() || busyId === "manual"}
-                    >
-                      Add server
-                    </SettingsButton>
-                  </div>
-                </>
-              ) : (
-                <EmptySafeNotice>
-                  Use a command like `npx`, `uvx`, `node`, or `python`.
-                </EmptySafeNotice>
-              )}
-            </SettingsGroup>
+            <ManualMcpServerPanel
+              open={manualOpen}
+              name={manualName}
+              command={manualCommand}
+              args={manualArgs}
+              tags={manualTags}
+              env={manualEnv}
+              busy={busyId === "manual"}
+              onToggleOpen={() => setManualOpen((open) => !open)}
+              onNameChange={setManualName}
+              onCommandChange={setManualCommand}
+              onArgsChange={setManualArgs}
+              onTagsChange={setManualTags}
+              onEnvChange={setManualEnv}
+              onCancel={() => setManualOpen(false)}
+              onSubmit={submitManual}
+            />
           </aside>
         </div>
       </div>
