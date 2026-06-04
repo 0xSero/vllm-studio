@@ -270,7 +270,7 @@ function RuntimeTargetSummary({ target }: { target: RuntimeTarget }) {
       </div>
       {location ? (
         <div
-          className="mt-1 min-w-0 break-all font-mono text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)"
+          className="mt-1 line-clamp-2 min-w-0 break-all font-mono text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)"
           title={location}
         >
           {location}

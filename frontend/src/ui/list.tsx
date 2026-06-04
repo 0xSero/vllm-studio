@@ -90,7 +90,14 @@ export function ListRow({
   if (variant === "resource") {
     return (
       <div className={cx("px-4 py-3.5 transition-colors hover:bg-(--ui-hover)/35", className)}>
-        <div className="flex min-h-8 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div
+          className={cx(
+            "grid min-h-8 min-w-0 grid-cols-1 gap-2.5",
+            primaryValue
+              ? "lg:grid-cols-[minmax(150px,0.85fr)_minmax(220px,1.25fr)_auto] lg:items-start"
+              : "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
+          )}
+        >
           <div className="min-w-0 flex-1 space-y-1">
             <div className="min-w-0 text-[length:var(--fs-base)] font-medium leading-snug text-(--ui-fg)">
               {label}
@@ -101,19 +108,25 @@ export function ListRow({
               </div>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:pt-0.5">
+          {primaryValue ? (
+            <div className="min-w-0 pt-0.5 text-(--ui-muted)">{primaryValue}</div>
+          ) : null}
+          <div className="flex shrink-0 items-center gap-1.5 sm:pt-0.5 lg:justify-end">
             {status ? <div className="shrink-0">{status}</div> : null}
             {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
           </div>
         </div>
-        {primaryValue ? (
-          <div className="mt-2 min-w-0 rounded-md border border-(--ui-separator) bg-(--ui-bg)/55 px-2.5 py-2 text-(--ui-muted)">
-            {primaryValue}
-          </div>
-        ) : null}
         {children ? (
-          <div className="mt-2 min-w-0 space-y-1.5 text-[length:var(--fs-sm)] leading-relaxed">
-            {children}
+          <div
+            className={cx(
+              "mt-2 grid min-w-0 gap-2 border-t border-(--ui-separator)/70 pt-2 text-[length:var(--fs-sm)] leading-relaxed",
+              primaryValue ? "lg:grid-cols-[minmax(150px,0.85fr)_minmax(220px,1.25fr)_auto]" : "",
+            )}
+          >
+            {primaryValue ? <div className="hidden lg:block" /> : null}
+            <div className={cx("min-w-0 space-y-1.5", primaryValue ? "lg:col-span-2" : "")}>
+              {children}
+            </div>
           </div>
         ) : null}
       </div>
