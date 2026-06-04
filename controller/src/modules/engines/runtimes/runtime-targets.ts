@@ -31,8 +31,6 @@ const resetRuntimeTargetsCache = (): void => {
 
 export const clearRuntimeTargetsCache = (): void => resetRuntimeTargetsCache();
 
-export const clearRuntimeTargetsForTests = (): void => resetRuntimeTargetsCache();
-
 const unique = (values: Array<string | null | undefined>): string[] => {
   const seen = new Set<string>();
   const result: string[] = [];

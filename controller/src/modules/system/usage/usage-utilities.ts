@@ -64,15 +64,3 @@ export const emptyResponse = (): Record<string, unknown> => ({
   daily_by_model: [],
   hourly_pattern: [],
 });
-
-export const toNumber = (value: unknown): number => {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-};
-
-export const getPercentile = (sorted: { latency_ms: number }[], p: number): number => {
-  if (sorted.length === 0) return 0;
-  const index = Math.floor(sorted.length * p);
-  return Math.round(sorted[Math.min(index, sorted.length - 1)]?.latency_ms ?? 0);
-};
-

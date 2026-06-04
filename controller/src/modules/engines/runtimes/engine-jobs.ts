@@ -292,5 +292,3 @@ export const cancelEngineJob = (id: string): EngineJob | null => {
     finishedAt: nowIso(),
   });
 };
-
-export const clearEngineJobsForTests = (): void => jobs.clear();
