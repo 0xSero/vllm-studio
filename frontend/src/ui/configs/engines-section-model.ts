@@ -1,17 +1,5 @@
 import type { RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
-
-export const ENGINE_META: Record<string, { label: string; description: string }> = {
-  vllm: {
-    label: "vLLM",
-    description: "High-throughput LLM serving with CUDA-oriented scheduling.",
-  },
-  sglang: { label: "SGLang", description: "Fast structured generation and multi-turn serving." },
-  llamacpp: {
-    label: "llama.cpp",
-    description: "GGUF inference through CPU, Metal, or CUDA builds.",
-  },
-  mlx: { label: "MLX", description: "Apple Silicon inference through mlx-lm." },
-};
+export { ENGINE_META } from "@/ui";
 
 export const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "mlx"] as const;
 

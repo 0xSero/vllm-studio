@@ -14,10 +14,6 @@ type MutatingRateLimitEntry = {
 
 const mutatingRateLimitStore = new Map<string, MutatingRateLimitEntry>();
 
-export function resetMutatingRateLimitStoreForTests(): void {
-  mutatingRateLimitStore.clear();
-}
-
 function isMutatingRequest(method: string): boolean {
   return MUTATING_METHODS.has(method.toUpperCase());
 }

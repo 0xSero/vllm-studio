@@ -77,8 +77,33 @@ export { ColorField } from "./color-field";
 export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";
 
+export {
+  ENGINE_META,
+  MANAGED_RUNTIME_BACKENDS,
+  SETUP_RUNTIME_BACKENDS,
+  ManagedRuntimeInstallRows,
+  RuntimeJobMessage,
+  RuntimeTargetRow,
+  RuntimeTargetRows,
+  RuntimeTargetStatus,
+  RuntimeUpdateDetails,
+  isManagedRuntimeTarget,
+  isRunningEngineJob,
+  jobForRuntimeTarget,
+} from "./runtime-targets";
+export type { ManagedRuntimeInstallBackend } from "./runtime-targets";
+
 export { ModelLogo } from "./model-logo";
 export { HuggingFaceModelCardModal } from "./huggingface-model-card";
+export { AgentModelPicker } from "./agent-model-picker";
+export { AgentQueuePanel } from "./agent-queue-panel";
+export { AgentAttachmentTray } from "./agent-attachment-tray";
+export type { AgentComposerAttachment } from "./agent-attachment-tray";
+export { AgentComposerActions } from "./agent-composer-actions";
+export { AgentChatPaneHeader } from "./agent-chat-pane-header";
+export { AgentComposerStatusBar } from "./agent-composer-status-bar";
+export { AgentLoadedContextTabs, AgentMentionPicker } from "./agent-composer-context";
+export type { FileMentionRow, MentionRow } from "./agent-composer-context";
 
 export { LeftSidebar } from "./left-sidebar";
 export { ModelStopConfirm } from "./model-stop-confirm";
@@ -99,6 +124,9 @@ export {
   SettingsValue,
   SettingsButton,
   SettingsInput,
+  SettingsTextarea,
+  SettingsNotice,
+  SettingsActions,
 } from "./settings";
 export type { SettingsSectionDef, SettingsSectionId, StatusTone } from "./settings";
 

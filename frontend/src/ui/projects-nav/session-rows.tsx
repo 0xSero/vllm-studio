@@ -262,7 +262,15 @@ export function ActiveSessionRow({
       onOpen={() => {
         window.dispatchEvent(
           new CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
-            detail: { paneId: session.paneId, tabId: session.tabId, mode: "focus" },
+            detail: {
+              paneId: session.paneId,
+              tabId: session.tabId,
+              piSessionId: session.piSessionId,
+              projectId: project.id,
+              cwd: session.cwd || project.path,
+              title: label,
+              mode: "focus",
+            },
           }),
         );
       }}

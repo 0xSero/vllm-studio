@@ -32,42 +32,14 @@ This addendum introduces commit hygiene rules for agent execution.
 - Resume: when the API route passes a `piSessionId`, `PiSdkSession.ensureStarted` locates the JSONL via `findSessionFile(cwd, id)` and calls `sessionManager.setSessionFile(...)` before constructing the runtime. `sessionStartEvent.reason` reflects whether the file was found (`"resume"` vs `"startup"`).
 - Do not reintroduce the legacy RPC subprocess, `pi-binary.ts`, `buildPiLaunchPlan`, or the `desktop:prepare-pi` script.
 
-### Pi packages marketplace
+### Plugin policy
 
-- Install/list/uninstall/update Pi packages (extensions, skills, prompts,
-  themes) via `GET/POST /api/agent/extensions[/install|/uninstall|/update]`,
-  which wrap the SDK's `DefaultPackageManager` against `<agentDir>` and persist
-  to `<agentDir>/settings.json`.
-- Per-package on/off (without uninstalling) lives in
-  `<agentDir>/extension-config/enabled.json`. The runtime applies these as a
-  `resourceLoaderOptions.extensionsOverride` filter so disabled extensions
-  load (errors still surface) but never contribute tools/handlers to the
-  active session. Toggle via `POST /api/agent/extensions/enable`.
-- Per-package JSON config lives in
-  `<agentDir>/extension-config/<sanitizedKey>.json` and is read/written via
-  `GET|POST /api/agent/extensions/configure`.
-- Runtime fingerprint (`pluginFingerprint` in `pi-runtime-helpers.ts`) includes
-  the disabled-overrides set and a mtime-based `piPackagesToken` for
-  `<agentDir>/settings.json`. Installing, uninstalling, updating, or toggling
-  a package invalidates the cached `PiSdkSession` runtime so the next call to
-  `getSession()` reloads with the new resource set.
-- Dev-mode caveat: Next.js HMR can retain stale module bindings for the
-  singleton `piRuntimeManager`. After installing or toggling an extension,
-  the UI panel refreshes immediately, but for the runtime filter to re-run
-  you may need to abort the in-flight turn (or start a new chat / restart
-  `npm run dev`). Production builds do not exhibit this caching behaviour.
-
-### Auto-discovered extensions
-
-- The SDK's package manager auto-discovers extension entries placed in
-  `<agentDir>/extensions/` (currently `<dataDir>/pi-agent/extensions/`) and
-  `<cwd>/.pi/extensions/`. Drop a `.ts` / `.js` file or a directory containing
-  `package.json` (with a `pi` manifest) or `index.ts` there and it is picked up
-  on the next session start — no settings edit required.
-- Built-in extensions registered via `buildAgentSessionOptions` (browser,
-  parchi, canvas, timeouts, mcp-plugin) are still passed explicitly through
-  `additionalExtensionPaths`; auto-discovery is purely additive for user files.
-- Load failures are captured into `piResourceDiagnostics()` (see
-  `pi-sdk-runtime.ts`) and surfaced via `GET /api/agent/setup-checks` as the
-  `diagnostics` field. Check that endpoint when a drop-in extension does not
-  appear active.
+- The app's user-facing plugin surface is MCP-only. Do not reintroduce the old
+  Pi package marketplace, `/api/agent/extensions/*` routes, chrome/CDP bridge,
+  or computer-use shim.
+- `PiSdkSession` sets `resourceLoaderOptions.noExtensions = true`; only
+  first-party extension paths returned by `buildAgentSessionOptions` are loaded
+  through `additionalExtensionPaths`.
+- MCP servers are selected through `/api/agent/plugins`, discovered from the
+  local MCP store, and bridged by `desktop/resources/pi-extensions/mcp-plugin.ts`.
+  Keep new tool integrations behind that MCP store/settings path.

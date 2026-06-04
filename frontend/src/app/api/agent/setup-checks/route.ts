@@ -11,9 +11,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
-  // Extension load failures captured during the most recent SDK runtime
-  // creation. Surfaced here so users dropping a broken extension into
-  // `<agentDir>/extensions/` see why it didn't activate.
+  // First-party extension load failures captured during the most recent SDK
+  // runtime creation. User/drop-in Pi extensions are intentionally disabled.
   const diagnostics = piResourceDiagnostics();
   return NextResponse.json({
     checks: [

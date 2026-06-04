@@ -10,30 +10,17 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
+import { AgentAttachmentTray } from "@/ui/agent-attachment-tray";
+import { AgentChatPaneHeader } from "@/ui/agent-chat-pane-header";
+import { AgentComposerActions } from "@/ui/agent-composer-actions";
+import { AgentComposerStatusBar } from "@/ui/agent-composer-status-bar";
 import {
-  AtSign,
-  Code2,
-  FileText,
-  Hash,
-  Loader2,
-  PanelRightClose,
-  PanelRightOpen,
-  Plug,
-  Plus,
-  Slash,
-  Sparkles,
-} from "lucide-react";
-import {
-  CloseIcon,
-  FileIcon,
-  GitBranchIcon,
-  GlobeIcon,
-  MoreIcon,
-  SendIcon,
-  StopIcon,
-} from "@/ui/icons";
-import { useAppStore } from "@/store";
-import { useClickOutside } from "@/hooks/use-click-outside";
+  AgentLoadedContextTabs,
+  AgentMentionPicker,
+  type FileMentionRow,
+  type MentionRow,
+} from "@/ui/agent-composer-context";
+import { AgentQueuePanel } from "@/ui/agent-queue-panel";
 import {
   useChatPaneMentionEffects,
   useChatPaneRegisterHandleEffect,
@@ -47,8 +34,6 @@ import {
   detectComposerMention,
   consumeComposerMention,
   selectedContextPrompt,
-  type ComposerExtensionOverride,
-  type ComposerExtensionRef,
   type ComposerMention,
   type ComposerPluginRef,
   type ComposerPromptTemplateRef,
@@ -62,7 +47,6 @@ import {
   ChatPaneHandle,
   EventBlock,
   cleanSessionTitle,
-  formatTokenCount,
   isPlaceholderSessionTitle,
   newId,
   QueuedMessage,
@@ -89,11 +73,8 @@ import {
   createProjectFileAttachment,
   dataTransferHasFiles,
   filesFromDataTransfer,
-  formatFileSize,
   imageFileFromDataUrlText,
   imageInputFromAttachment,
-  isImageAttachment,
-  isRenderableAttachment,
   type ChatAttachment,
 } from "./chat-attachments";
 import { Timeline } from "./timeline/timeline";
@@ -147,25 +128,6 @@ type Props = {
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   showHeader?: boolean;
 };
-type FileMentionRow = {
-  id: string;
-  name: string;
-  rel: string;
-  path: string;
-  source: string;
-};
-type ExtensionRowState = ComposerExtensionRef & {
-  effectiveEnabled: boolean;
-  hasTurnOverride: boolean;
-};
-
-type MentionRow =
-  | { kind: "plugin"; row: ComposerPluginRef }
-  | { kind: "skill"; row: ComposerSkillRef }
-  | { kind: "promptTemplate"; row: ComposerPromptTemplateRef }
-  | { kind: "file"; row: FileMentionRow }
-  | { kind: "extension"; row: ExtensionRowState };
-
 export function ChatPane({
   paneId,
   runtimeSessionId,
@@ -215,8 +177,6 @@ export function ChatPane({
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(false);
-  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
-  const [editingQueueText, setEditingQueueText] = useState("");
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -235,14 +195,6 @@ export function ChatPane({
   const selectedPlugins = activeSelection.plugins;
   const selectedSkills = activeSelection.skills;
   const selectedPromptTemplates = activeSelection.promptTemplates;
-  const selectedExtensionOverrides = activeSelection.extensionOverrides;
-  const extensionCatalogue = tools.extensionCatalogue;
-  const refreshExtensionCatalogue = tools.refreshExtensionCatalogue;
-  const computerUseLoaded = selectedPlugins.some((plugin) =>
-    [plugin.id, plugin.name, plugin.path].some((value) =>
-      value?.toLowerCase().includes("computer-use"),
-    ),
-  );
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
   useChatPaneStickToBottomEffect({
     activeTabId: activeTab?.id,
@@ -284,11 +236,6 @@ export function ChatPane({
     getChatPaneEffectSnapshot,
     getChatPaneEffectSnapshot,
   );
-  const overrideByKey = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const entry of selectedExtensionOverrides) map.set(entry.key, entry.enabled);
-    return map;
-  }, [selectedExtensionOverrides]);
   const mentionRows = useMemo<MentionRow[]>(() => {
     if (!mention) return [];
     if (mention.kind === "skill") {
@@ -299,44 +246,7 @@ export function ChatPane({
         kind: "promptTemplate" as const,
         row,
       }));
-      // Surface installed Pi extensions here too — they own real slash
-      // commands (e.g. /goal from @narumitw/pi-goal) and the user otherwise
-      // has no visual confirmation that they're loaded.
-      const extensions = byQuery(extensionCatalogue, mention.query, 8).map((row) => {
-        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
-        let effectiveEnabled = row.enabled;
-        let hasTurnOverride = false;
-        for (const key of overrideKeys) {
-          if (overrideByKey.has(key)) {
-            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
-            hasTurnOverride = true;
-            break;
-          }
-        }
-        return {
-          kind: "extension" as const,
-          row: { ...row, effectiveEnabled, hasTurnOverride },
-        };
-      });
-      return [...templates, ...extensions].slice(0, 12);
-    }
-    if (mention.kind === "extension") {
-      return byQuery(extensionCatalogue, mention.query, 12).map((row) => {
-        const overrideKeys = [row.source, row.path].filter(Boolean) as string[];
-        let effectiveEnabled = row.enabled;
-        let hasTurnOverride = false;
-        for (const key of overrideKeys) {
-          if (overrideByKey.has(key)) {
-            effectiveEnabled = overrideByKey.get(key) ?? row.enabled;
-            hasTurnOverride = true;
-            break;
-          }
-        }
-        return {
-          kind: "extension" as const,
-          row: { ...row, effectiveEnabled, hasTurnOverride },
-        };
-      });
+      return templates;
     }
     const plugins = byQuery(pluginRows, mention.query, 5).map((row) => ({
       kind: "plugin" as const,
@@ -350,26 +260,7 @@ export function ChatPane({
       .slice(0, 5)
       .map((row) => ({ kind: "file" as const, row }));
     return [...plugins, ...files].slice(0, 8);
-  }, [
-    extensionCatalogue,
-    fileMentionRows,
-    mention,
-    overrideByKey,
-    pluginRows,
-    promptTemplateRows,
-    skillRows,
-  ]);
-  // Refresh the extension catalogue whenever the `/plugins` picker opens so
-  // freshly-installed packages or external `enabled.json` edits show up.
-  const mentionKind = mention?.kind;
-  const lastExtensionRefreshRef = useRef<number>(0);
-  if (mentionKind === "extension" || mentionKind === "promptTemplate") {
-    const now = Date.now();
-    if (now - lastExtensionRefreshRef.current > 1_500) {
-      lastExtensionRefreshRef.current = now;
-      void refreshExtensionCatalogue();
-    }
-  }
+  }, [fileMentionRows, mention, pluginRows, promptTemplateRows, skillRows]);
   useChatPaneMentionEffects({
     cwd,
     mention,
@@ -437,59 +328,10 @@ export function ChatPane({
     },
     [activeTab, displayedSessionTitle, onRenameSession, patchActiveSessionPrefs],
   );
-  const toggleExtensionOverride = useCallback(
-    (row: ExtensionRowState) => {
-      if (!activeTab) return;
-      const current = tools.selectionFor(activeTab.id);
-      const key = row.source && row.source !== "auto" ? row.source : row.path;
-      const next = !row.effectiveEnabled;
-      // If the new state matches the persisted enabled flag we have no
-      // reason to keep a per-turn override around (cleaner UX, no stale chip).
-      const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
-      if (next !== row.enabled) {
-        overrides.push({ key, enabled: next });
-      }
-      tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
-    },
-    [activeTab, tools],
-  );
-  const persistExtensionEnabled = useCallback(
-    async (row: ExtensionRowState, enabled: boolean) => {
-      const key = row.source && row.source !== "auto" ? row.source : row.path;
-      try {
-        await fetch("/api/agent/extensions/enable", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ key, enabled }),
-        });
-        if (activeTab) {
-          const current = tools.selectionFor(activeTab.id);
-          const overrides = current.extensionOverrides.filter((entry) => entry.key !== key);
-          if (overrides.length !== current.extensionOverrides.length) {
-            tools.setSelection(activeTab.id, { ...current, extensionOverrides: overrides });
-          }
-        }
-        await refreshExtensionCatalogue();
-      } catch {
-        // Best-effort — the picker will reflect the previous state.
-      }
-    },
-    [activeTab, refreshExtensionCatalogue, tools],
-  );
   const selectMentionRow = useCallback(
     async (entry: MentionRow) => {
       if (!activeTab || !mention) return;
       const selectedMention = mention;
-      if (entry.kind === "extension") {
-        // `/plugins` picker: clicking a row toggles the per-turn override.
-        // The picker stays open so the user can flip multiple plugins; the
-        // composer text is preserved so they can continue typing afterwards.
-        toggleExtensionOverride(entry.row);
-        // Keep focus in the textarea but don't close the picker; users
-        // typically toggle several before sending.
-        requestAnimationFrame(() => textareaRef.current?.focus());
-        return;
-      }
       if (entry.kind === "file") {
         const input = consumeComposerMention(activeTab.input, selectedMention);
         updateTab(activeTab.id, (tab) => ({ ...tab, input }));
@@ -578,30 +420,13 @@ export function ChatPane({
           promptTemplates: [...current.promptTemplates, selectedRow as ComposerPromptTemplateRef],
         });
       }
-      if (
-        selectedMention.kind === "plugin" &&
-        entry.kind === "plugin" &&
-        row.name.toLowerCase().includes("browser-use") &&
-        !browserToolEnabled
-      ) {
-        onToggleBrowserTool();
-      }
       setMention(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [
-      activeTab,
-      browserToolEnabled,
-      cwd,
-      mention,
-      onToggleBrowserTool,
-      toggleExtensionOverride,
-      tools,
-      updateTab,
-    ],
+    [activeTab, cwd, mention, tools, updateTab],
   );
   const removeLoadedContext = useCallback(
-    (kind: "plugin" | "skill" | "promptTemplate" | "extensionOverride", id: string) => {
+    (kind: "plugin" | "skill" | "promptTemplate", id: string) => {
       if (!activeTab) return;
       const current = tools.selectionFor(activeTab.id);
       tools.setSelection(activeTab.id, {
@@ -615,10 +440,6 @@ export function ChatPane({
           kind === "promptTemplate"
             ? current.promptTemplates.filter((template) => template.id !== id)
             : current.promptTemplates,
-        extensionOverrides:
-          kind === "extensionOverride"
-            ? current.extensionOverrides.filter((entry) => entry.key !== id)
-            : current.extensionOverrides,
       });
     },
     [activeTab, tools],
@@ -700,7 +521,6 @@ export function ChatPane({
         plugins: activeComposerPlugins(selection.plugins) as ComposerPluginRef[],
         skills: selection.skills,
         promptTemplates: selection.promptTemplates,
-        extensionOverrides: selection.extensionOverrides,
       };
     },
     [attachments, tools],
@@ -913,21 +733,6 @@ export function ChatPane({
     },
     [activeTab, engine, removeQueued, runtimeSessionId, updateTab],
   );
-  const beginQueueEdit = (item: QueuedMessage) => {
-    setEditingQueueId(item.id);
-    setEditingQueueText(item.text);
-  };
-  const cancelQueueEdit = () => {
-    setEditingQueueId(null);
-    setEditingQueueText("");
-  };
-  const commitQueueEdit = (queueId: string) => {
-    const trimmed = editingQueueText.trim();
-    if (trimmed) editQueued(queueId, trimmed);
-    else removeQueued(queueId);
-    setEditingQueueId(null);
-    setEditingQueueText("");
-  };
   const attachFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const fileArray = files ? Array.from(files) : [];
@@ -1048,8 +853,6 @@ export function ChatPane({
   );
   const queue = activeTab?.queue ?? [];
   const visibleQueueItems = visibleQueuedMessages(queue);
-  const visibleQueue = queueExpanded ? visibleQueueItems : visibleQueueItems.slice(-1);
-  const latestQueued = visibleQueueItems[visibleQueueItems.length - 1] ?? null;
   const openComputerStatus = useCallback(() => {
     tools.setComputerTab("status");
     tools.setComputerOpen(true);
@@ -1076,7 +879,6 @@ export function ChatPane({
   const handleRef = useRef<ChatPaneHandle>({ loadAndReplay, compact: compactSession });
   handleRef.current = { loadAndReplay, compact: compactSession };
   useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
-  const displayCwd = formatHomeRelativePath(cwd);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -1084,7 +886,7 @@ export function ChatPane({
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--agent-bg)"
     >
       {showHeader ? (
-        <ChatPaneHeader
+        <AgentChatPaneHeader
           title={displayedSessionTitle}
           pinned={sessionPinned}
           rightPanelOpen={rightPanelOpen}
@@ -1113,91 +915,15 @@ export function ChatPane({
         />
       </div>
       <form onSubmit={sendMessage} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
-        {visibleQueueItems.length > 0 ? (
-          <div className="mx-auto mb-1 w-[85%] max-w-[var(--composer-w)] overflow-hidden rounded-lg bg-(--composer) px-4 py-2 text-[length:var(--fs-sm)] text-(--fg)">
-            <button
-              type="button"
-              onClick={() => setQueueExpanded((value) => !value)}
-              className="flex w-full min-w-0 items-center gap-2 text-left"
-              aria-expanded={queueExpanded}
-              title="Queued follow-ups and steers"
-            >
-              <span className="shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
-                queue {visibleQueueItems.length}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                {latestQueued?.text ?? "No queued message"}
-              </span>
-            </button>{" "}
-            {queueExpanded ? (
-              <div className="mt-1 space-y-0.5">
-                {visibleQueue.map((item) => {
-                  const isEditing = editingQueueId === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex min-w-0 items-center gap-2 py-1"
-                      title={`${item.mode === "steer" ? "Steer" : "Queued follow-up"}: ${item.text}`}
-                    >
-                      <span
-                        className={`shrink-0 font-mono text-[length:var(--fs-xs)] uppercase tracking-wide ${item.mode === "steer" ? "text-(--accent)" : "text-(--dim)"}`}
-                      >
-                        {item.mode === "steer" ? "steer" : "queue"}
-                      </span>
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          value={editingQueueText}
-                          onChange={(event) => setEditingQueueText(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              commitQueueEdit(item.id);
-                            } else if (event.key === "Escape") {
-                              event.preventDefault();
-                              cancelQueueEdit();
-                            }
-                          }}
-                          onBlur={() => commitQueueEdit(item.id)}
-                          className="min-w-0 flex-1 rounded-sm bg-(--surface-2)/60 px-1.5 py-0.5 text-[length:var(--fs-sm)] text-(--fg) outline-none"
-                          aria-label="Edit queued message"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => beginQueueEdit(item)}
-                          className="min-w-0 flex-1 truncate text-left hover:text-(--fg)"
-                          title="Click to edit"
-                        >
-                          {item.text}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void steerQueued(item.id)}
-                        disabled={!running}
-                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--accent) disabled:opacity-30"
-                        aria-label="Send now (steer)"
-                        title="Send now — interrupt the current turn"
-                      >
-                        <SendIcon className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeQueued(item.id)}
-                        className="shrink-0 p-0.5 text-(--dim) hover:text-(--fg)"
-                        aria-label="Remove queued message"
-                        title="Remove from queue"
-                      >
-                        <CloseIcon className="h-3 w-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <AgentQueuePanel
+          items={visibleQueueItems}
+          expanded={queueExpanded}
+          running={Boolean(running)}
+          onExpandedChange={setQueueExpanded}
+          onEdit={editQueued}
+          onRemove={removeQueued}
+          onSteer={(queueId) => void steerQueued(queueId)}
+        />
         <div
           onDragOver={handleComposerDragOver}
           onDragLeave={handleComposerDragLeave}
@@ -1210,170 +936,22 @@ export function ChatPane({
               Drop files to attach to the next message.
             </div>
           ) : null}
-          {selectedPlugins.length +
-            selectedSkills.length +
-            selectedPromptTemplates.length +
-            selectedExtensionOverrides.length >
-          0 ? (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[length:var(--fs-sm)]">
-              {selectedPlugins.map((plugin) => (
-                <LoadedContextTab
-                  key={`plugin-${plugin.id}`}
-                  prefix="@"
-                  label={plugin.displayName ?? plugin.name}
-                  title={plugin.path}
-                  active={plugin.name.toLowerCase().includes("computer-use")}
-                  onRemove={() => removeLoadedContext("plugin", plugin.id)}
-                />
-              ))}{" "}
-              {selectedSkills.map((skill) => (
-                <LoadedContextTab
-                  key={`skill-${skill.id}`}
-                  prefix="$"
-                  label={skill.name}
-                  title={skill.path}
-                  active={false}
-                  onRemove={() => removeLoadedContext("skill", skill.id)}
-                />
-              ))}
-              {selectedPromptTemplates.map((template) => (
-                <LoadedContextTab
-                  key={`template-${template.id}`}
-                  prefix="/"
-                  label={template.name}
-                  title={template.description ?? template.path}
-                  active={false}
-                  onRemove={() => removeLoadedContext("promptTemplate", template.id)}
-                />
-              ))}
-              {selectedExtensionOverrides.map((entry) => {
-                const ext = extensionCatalogue.find(
-                  (row) => row.source === entry.key || row.path === entry.key,
-                );
-                const label = ext?.name ?? entry.key;
-                return (
-                  <LoadedContextTab
-                    key={`extover-${entry.key}`}
-                    prefix={entry.enabled ? "/+" : "/-"}
-                    label={label}
-                    title={`${entry.enabled ? "Force-enable" : "Force-disable"} for this turn: ${entry.key}`}
-                    active={entry.enabled}
-                    onRemove={() => removeLoadedContext("extensionOverride", entry.key)}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
-          {mention ? (
-            <div className="px-4 pt-2">
-              <MentionPickerHeader
-                kind={mention.kind}
-                query={mention.query}
-                onOpenPlugins={() => {
-                  tools.setComputerTab("plugins");
-                  tools.setComputerOpen(true);
-                }}
-              />{" "}
-              {mentionRows.length ? (
-                <div className="grid gap-1">
-                  {" "}
-                  {mentionRows.map((entry, index) => {
-                    if (entry.kind === "extension") {
-                      return (
-                        <MentionExtensionRow
-                          key={`ext:${entry.row.id}`}
-                          entry={entry}
-                          active={index === mentionIndex}
-                          onSelect={() => void selectMentionRow(entry)}
-                          onPersist={(next) => void persistExtensionEnabled(entry.row, next)}
-                        />
-                      );
-                    }
-                    return (
-                      <MentionRowItem
-                        key={entry.row.id}
-                        entry={entry}
-                        active={index === mentionIndex}
-                        onSelect={() => void selectMentionRow(entry)}
-                      />
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-md border border-dashed border-(--border) px-3 py-3 text-center text-[length:var(--fs-sm)] text-(--dim)">
-                  No{" "}
-                  {mention.kind === "plugin"
-                    ? "plugins or files"
-                    : mention.kind === "skill"
-                      ? "skills"
-                      : mention.kind === "promptTemplate"
-                        ? "slash commands or extensions"
-                        : "installed Pi extensions"}{" "}
-                  match <span className="font-mono text-(--fg)">{mention.query || "…"}</span>
-                  {mention.kind === "extension" ? (
-                    <>
-                      .{" "}
-                      <button
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          tools.setComputerTab("plugins");
-                          tools.setComputerOpen(true);
-                        }}
-                        className="text-(--accent) hover:underline"
-                      >
-                        Browse catalog →
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          ) : null}
-          {attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 px-4 pt-2">
-              {attachments.map((file) => (
-                <span
-                  key={file.id}
-                  className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[length:var(--fs-sm)] text-(--dim)"
-                  title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
-                >
-                  {isImageAttachment(file) ? (
-                    <img
-                      src={file.content}
-                      alt=""
-                      className="h-7 w-7 shrink-0 rounded object-cover"
-                    />
-                  ) : isRenderableAttachment(file) && file.previewKind === "pdf" ? (
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-(--border) bg-(--bg) font-mono text-[length:var(--fs-2xs)] text-(--fg)">
-                      PDF
-                    </span>
-                  ) : isRenderableAttachment(file) && file.previewKind === "video" ? (
-                    <video
-                      src={file.previewUrl}
-                      className="h-7 w-7 shrink-0 rounded object-cover"
-                      muted
-                    />
-                  ) : (
-                    <FileIcon className="h-3 w-3 shrink-0" />
-                  )}{" "}
-                  <span className="truncate">{file.name}</span>
-                  <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>{" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAttachments((current) => current.filter((item) => item.id !== file.id))
-                    }
-                    className="p-0.5 hover:text-(--fg)"
-                    aria-label={`Remove ${file.name}`}
-                    title={`Remove ${file.name}`}
-                  >
-                    <CloseIcon className="h-3 w-3" />{" "}
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <AgentLoadedContextTabs
+            plugins={selectedPlugins}
+            skills={selectedSkills}
+            promptTemplates={selectedPromptTemplates}
+            onRemove={removeLoadedContext}
+          />
+          <AgentMentionPicker
+            mention={mention}
+            rows={mentionRows}
+            activeIndex={mentionIndex}
+            onSelect={(entry) => void selectMentionRow(entry)}
+          />
+          <AgentAttachmentTray
+            attachments={attachments}
+            onRemove={(id) => setAttachments((current) => current.filter((item) => item.id !== id))}
+          />
           <textarea
             ref={textareaRef}
             rows={1}
@@ -1462,659 +1040,35 @@ export function ChatPane({
             placeholder=""
             className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[length:var(--fs-lg)] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
           />
-          <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
-            {" "}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(event) => void attachFiles(event.currentTarget.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={readingAttachments || running}
-              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg)/80 disabled:opacity-30"
-              aria-label="Attach files"
-              title="Attach files (or paste/drop into composer)"
-            >
-              {" "}
-              <Plus className="h-3.5 w-3.5" />
-            </button>{" "}
-            <button
-              type="button"
-              onClick={onToggleBrowserTool}
-              aria-pressed={browserToolEnabled}
-              title={
-                browserToolEnabled
-                  ? "Browser tool: ON — agent can drive the browser"
-                  : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
-              }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
-            >
-              <span className="relative inline-flex">
-                {" "}
-                <GlobeIcon className="h-3.5 w-3.5" />
-                {computerUseLoaded ? <ComputerUseActivityDot /> : null}{" "}
-              </span>
-            </button>{" "}
-            <button
-              type="button"
-              onClick={onToggleCanvas}
-              aria-pressed={canvasEnabled}
-              title={
-                canvasEnabled
-                  ? "Canvas: ON — shared scratchboard tools loaded; model reads/writes the canvas"
-                  : "Canvas: OFF — click to share a scratchboard with the model (notes, plans, links, state)"
-              }
-              className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
-            >
-              <Code2 className="h-3.5 w-3.5" />
-            </button>{" "}
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              {running ? (
-                <>
-                  {" "}
-                  {activeTab?.status === "starting" ? (
-                    <span
-                      className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[length:var(--fs-sm)] text-(--dim)"
-                      title="Waiting for the model to start"
-                    >
-                      {" "}
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Starting…{" "}
-                    </span>
-                  ) : activeTab?.input.trim() ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => void queueMessage()}
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center px-1.5 text-[length:var(--fs-sm)] text-(--dim) underline-offset-2 hover:text-(--fg) hover:underline"
-                        title="Queue (Tab)"
-                      >
-                        {" "}
-                        Queue
-                      </button>{" "}
-                      <button
-                        type="submit"
-                        className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[length:var(--fs-sm)] text-(--accent)/75 hover:bg-(--accent)/15 hover:text-(--fg)/85"
-                        title="Steer (Enter): interrupt current turn and send"
-                      >
-                        <SendIcon className="h-3 w-3" /> Steer{" "}
-                      </button>
-                    </>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void abortTurn()}
-                    disabled={activeTab?.status === "starting"}
-                    className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
-                    aria-label="Pause"
-                    title="Pause (Esc)"
-                  >
-                    <StopIcon className="h-3 w-3" />
-                  </button>{" "}
-                </>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={
-                    (!activeTab?.input.trim() && attachments.length === 0) || readingAttachments
-                  }
-                  className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/85 hover:text-(--fg)/85 disabled:opacity-30"
-                  aria-label="Send"
-                  title="Send (Enter) · Queue (Tab)"
-                >
-                  {activeTab?.status === "starting" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <SendIcon className="h-3.5 w-3.5" />
-                  )}{" "}
-                </button>
-              )}{" "}
-            </div>
-          </div>{" "}
-        </div>
-        <div className="relative z-20 mx-auto mt-2.5 flex w-full max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {" "}
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-            <div className="min-w-0 max-w-[42%] shrink overflow-visible">
-              {displayCwd ? (
-                <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
-                  {displayCwd}{" "}
-                </span>
-              ) : null}{" "}
-            </div>
-            {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 text-(--dim)">
-                <GitBranchIcon className="h-3 w-3 shrink-0" />{" "}
-                <span className="truncate">{gitBranch}</span>
-              </span>
-            ) : gitSummary && !gitSummary.isRepo ? (
-              <button
-                type="button"
-                onClick={onInitGit}
-                className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg)"
-                title="Init git"
-              >
-                {" "}
-                <GitBranchIcon className="h-3 w-3" />
-                git{" "}
-              </button>
-            ) : null}{" "}
-            {gitSummary?.isRepo ? (
-              <span className="inline-flex shrink-0 items-center gap-1">
-                {" "}
-                <span className="text-emerald-400">+{gitSummary.additions}</span>
-                <span className="text-red-400">-{gitSummary.deletions}</span>{" "}
-                {gitSummary.statusCount > 0 ? (
-                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
-                ) : null}
-              </span>
-            ) : null}
-          </div>{" "}
-          {modelSelector}
-          <ContextReadout
-            current={currentContextTokens}
-            contextWindow={effectiveContextWindow}
-            onClick={openComputerStatus}
+          <AgentComposerActions
+            fileInputRef={fileInputRef}
+            onAttachFiles={(files) => void attachFiles(files)}
+            readingAttachments={readingAttachments}
+            running={Boolean(running)}
+            status={activeTab?.status}
+            input={activeTab?.input ?? ""}
+            attachmentsCount={attachments.length}
+            browserToolEnabled={browserToolEnabled}
+            onToggleBrowserTool={onToggleBrowserTool}
+            canvasEnabled={canvasEnabled}
+            onToggleCanvas={onToggleCanvas}
+            onQueueMessage={() => void queueMessage()}
+            onAbortTurn={() => void abortTurn()}
           />
-        </div>{" "}
+        </div>
+        <AgentComposerStatusBar
+          cwd={cwd}
+          gitBranch={gitBranch}
+          gitSummary={gitSummary}
+          onInitGit={onInitGit}
+          modelSelector={modelSelector}
+          currentContextTokens={currentContextTokens}
+          contextWindow={effectiveContextWindow}
+          onOpenStatus={openComputerStatus}
+        />
       </form>
     </section>
   );
 }
 
-function ContextReadout({
-  current,
-  contextWindow,
-  onClick,
-}: {
-  current: number;
-  contextWindow: number;
-  onClick: () => void;
-}) {
-  const title = `Open status · Context ${formatTokenCount(current)} / ${formatTokenCount(contextWindow)}`;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="ml-auto inline-flex shrink-0 items-center rounded-sm px-1 text-(--dim) hover:text-(--fg)/80"
-      title={title}
-      aria-label={title}
-    >
-      <span className="tabular-nums">
-        {formatTokenCount(current)}/{formatTokenCount(contextWindow)}
-      </span>
-    </button>
-  );
-}
-
 const getChatPaneEffectSnapshot = (): number => 0;
-
-const CHAT_HEADER_MENU_CLASS =
-  "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
-
-function ChatPaneHeader({
-  title,
-  pinned,
-  rightPanelOpen,
-  canFork,
-  canClose,
-  onTogglePinned,
-  onRename,
-  onFork,
-  onClose,
-  onToggleRightPanel,
-}: {
-  title: string;
-  pinned: boolean;
-  rightPanelOpen: boolean;
-  canFork: boolean;
-  canClose: boolean;
-  onTogglePinned: () => void;
-  onRename: (title: string) => void;
-  onFork?: () => void;
-  onClose?: () => void;
-  onToggleRightPanel: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [draftTitle, setDraftTitle] = useState(title);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
-  // When the left sidebar is collapsed, the fixed "expand sidebar" button sits
-  // over the top-left corner. Pad the header so the title never renders under it.
-  const sidebarCollapsed = useAppStore((s) => !s.desktopSidebarPinnedOpen);
-  const RightPanelIcon = rightPanelOpen ? PanelRightClose : PanelRightOpen;
-  const startRename = () => {
-    setDraftTitle(title);
-    setRenaming(true);
-    setOpen(false);
-  };
-  const finishRename = () => {
-    const trimmed = draftTitle.trim();
-    if (trimmed) onRename(trimmed);
-    setRenaming(false);
-  };
-  return (
-    <div
-      className={`flex h-9 shrink-0 items-center gap-2 border-b border-(--border) py-0 pr-2 text-xs ${
-        sidebarCollapsed ? "pl-12" : "pl-2"
-      }`}
-    >
-      <div ref={ref} className="relative flex min-w-0 flex-1 items-center gap-1.5">
-        {renaming ? (
-          <input
-            autoFocus
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            onBlur={finishRename}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") finishRename();
-              if (event.key === "Escape") {
-                setDraftTitle(title);
-                setRenaming(false);
-              }
-            }}
-            className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[length:var(--fs-md)] font-medium text-(--fg) outline-none"
-            aria-label="Rename session"
-          />
-        ) : (
-          <span
-            className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)"
-            title={title}
-          >
-            {title}
-          </span>
-        )}
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => setOpen((value) => !value)}
-          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-            open
-              ? "text-(--fg) hover:bg-(--surface)"
-              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-          }`}
-          aria-label="Session settings"
-          title="Session settings"
-          aria-haspopup="menu"
-          aria-expanded={open}
-        >
-          <MoreIcon className="pointer-events-none h-3.5 w-3.5" />
-        </button>
-        {open ? (
-          <div className={CHAT_HEADER_MENU_CLASS} role="menu">
-            <HeaderMenuItem onClick={startRename}>Rename</HeaderMenuItem>
-            <HeaderMenuItem
-              onClick={() => {
-                onTogglePinned();
-                setOpen(false);
-              }}
-            >
-              {pinned ? "Unpin" : "Pin"}
-            </HeaderMenuItem>
-            <HeaderMenuItem
-              disabled={!canFork}
-              onClick={() => {
-                onFork?.();
-                setOpen(false);
-              }}
-            >
-              Fork
-            </HeaderMenuItem>
-          </div>
-        ) : null}
-      </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
-        {canClose ? (
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onClose?.();
-            }}
-            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-            aria-label="Close pane"
-            title="Close pane"
-          >
-            <CloseIcon className="h-3 w-3 pointer-events-none" />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={onToggleRightPanel}
-          aria-pressed={rightPanelOpen}
-          className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md ${
-            rightPanelOpen
-              ? "text-(--fg) hover:bg-(--surface)"
-              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-          }`}
-          title={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
-          aria-label={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
-        >
-          <RightPanelIcon className="pointer-events-none h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function HeaderMenuItem({
-  onClick,
-  children,
-  disabled = false,
-}: {
-  onClick: () => void;
-  children: ReactNode;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="block w-full rounded-sm px-2.5 py-1.5 text-left text-xs text-(--fg) hover:bg-[#2a2a2a] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-      role="menuitem"
-    >
-      {children}
-    </button>
-  );
-}
-
-function formatHomeRelativePath(value: string): string {
-  const normalized = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalized) return "";
-  const homeMatch = normalized.match(/^\/Users\/[^/]+(\/.*)?$/);
-  if (homeMatch) return `~${homeMatch[1] ?? ""}`;
-  return normalized;
-}
-
-function mentionRowTitle(entry: MentionRow): string {
-  if (entry.kind === "file") return entry.row.rel;
-  return ("displayName" in entry.row && entry.row.displayName) || entry.row.name;
-}
-function mentionRowVersion(entry: MentionRow): string | undefined {
-  return entry.kind === "plugin" ? entry.row.version : undefined;
-}
-function mentionRowDescription(entry: MentionRow): string | undefined {
-  if (entry.kind === "file") return entry.row.path;
-  if (entry.kind === "plugin") return entry.row.shortDescription;
-  if (entry.kind === "promptTemplate") return entry.row.description;
-  return undefined;
-}
-function LoadedContextTab({
-  prefix,
-  label,
-  title,
-  active,
-  onRemove,
-}: {
-  prefix: "@" | "$" | "/" | "/+" | "/-";
-  label: string;
-  title?: string;
-  active?: boolean;
-  onRemove: () => void;
-}) {
-  const meta = LOADED_TAB_META[prefix];
-  return (
-    <span
-      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded border px-2 py-1 text-[length:var(--fs-sm)] shadow-sm shadow-black/5 ${meta.classes}`}
-      title={title ?? label}
-    >
-      <meta.Icon className="h-3 w-3 shrink-0" />
-      {active ? <ComputerUseActivityDot inline /> : null}
-      <span className="truncate text-(--fg)">{label}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="-mr-1 ml-0.5 rounded p-0.5 text-(--dim) hover:bg-black/10 hover:text-(--fg)"
-        aria-label={`Unload ${prefix}${label}`}
-        title={`Unload ${prefix}${label}`}
-      >
-        <CloseIcon className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  );
-}
-
-const LOADED_TAB_META: Record<
-  "@" | "$" | "/" | "/+" | "/-",
-  { Icon: typeof AtSign; classes: string }
-> = {
-  "@": {
-    Icon: AtSign,
-    classes: "border-sky-500/30 bg-sky-500/10 text-sky-300",
-  },
-  $: {
-    Icon: Sparkles,
-    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  },
-  "/": {
-    Icon: Slash,
-    classes: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  },
-  "/+": {
-    Icon: Plug,
-    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  },
-  "/-": {
-    Icon: Plug,
-    classes: "border-red-500/30 bg-red-500/10 text-red-300",
-  },
-};
-
-const MENTION_KIND_META: Record<
-  "plugin" | "skill" | "promptTemplate" | "extension",
-  {
-    title: string;
-    hint: string;
-    Icon: typeof AtSign;
-    accentClass: string;
-  }
-> = {
-  plugin: {
-    title: "Plugins & files",
-    hint: "Type to filter · Enter to attach",
-    Icon: AtSign,
-    accentClass: "text-sky-300",
-  },
-  skill: {
-    title: "Skills",
-    hint: "Pick a skill to instruct the agent",
-    Icon: Sparkles,
-    accentClass: "text-violet-300",
-  },
-  promptTemplate: {
-    title: "Slash commands",
-    hint: "Templates + installed Pi extensions",
-    Icon: Slash,
-    accentClass: "text-amber-300",
-  },
-  extension: {
-    title: "Pi extensions",
-    hint: "Click ON/OFF to override for this turn",
-    Icon: Plug,
-    accentClass: "text-emerald-300",
-  },
-};
-
-function MentionPickerHeader({
-  kind,
-  query,
-  onOpenPlugins,
-}: {
-  kind: "plugin" | "skill" | "promptTemplate" | "extension";
-  query: string;
-  onOpenPlugins: () => void;
-}) {
-  const meta = MENTION_KIND_META[kind];
-  return (
-    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[length:var(--fs-sm)]">
-      <meta.Icon className={`h-3.5 w-3.5 ${meta.accentClass}`} />
-      <span className="font-medium text-(--fg)">{meta.title}</span>
-      {query ? (
-        <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {query.length > 24 ? `${query.slice(0, 24)}…` : query}
-        </span>
-      ) : null}
-      <span className="ml-auto truncate text-[length:var(--fs-xs)] text-(--dim)">{meta.hint}</span>
-      {kind === "extension" ? (
-        <button
-          type="button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onOpenPlugins}
-          className="rounded border border-(--border) px-1.5 py-[1px] text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-          title="Open the Pi packages panel"
-        >
-          Manage
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function MentionExtensionRow({
-  entry,
-  active,
-  onSelect,
-  onPersist,
-}: {
-  entry: { kind: "extension"; row: ExtensionRowState };
-  active: boolean;
-  onSelect: () => void;
-  onPersist: (next: boolean) => void;
-}) {
-  const effective = entry.row.effectiveEnabled;
-  const persisted = entry.row.enabled;
-  const turnOverride = entry.row.hasTurnOverride;
-  const source =
-    entry.row.source && entry.row.source !== "auto" ? entry.row.source : entry.row.path;
-  return (
-    <button
-      type="button"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onSelect}
-      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
-        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
-      }`}
-      title={effective ? "Click to disable for this turn" : "Click to enable for this turn"}
-    >
-      <Plug className={`h-3.5 w-3.5 shrink-0 ${effective ? "text-emerald-300" : "text-(--dim)"}`} />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-1.5">
-          <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{entry.row.name}</span>
-          <span
-            className={`shrink-0 rounded px-1 py-[1px] text-[length:var(--fs-2xs)] font-medium uppercase tracking-wide ${
-              effective ? "bg-emerald-500/20 text-emerald-300" : "bg-(--bg) text-(--dim)"
-            }`}
-          >
-            {effective ? "On" : "Off"}
-          </span>
-          {turnOverride ? (
-            <span
-              className="shrink-0 rounded bg-(--accent)/15 px-1 py-[1px] font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--accent)"
-              title="Per-turn override"
-            >
-              turn
-            </span>
-          ) : null}
-        </span>
-        <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">{source}</span>
-      </span>
-      <span
-        role="button"
-        tabIndex={0}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onPersist(!persisted);
-        }}
-        className="hidden shrink-0 rounded border border-(--border) px-1.5 py-[1px] text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim) hover:bg-(--hover) hover:text-(--fg) sm:inline"
-        title={
-          persisted
-            ? "Disable persistently (writes enabled.json)"
-            : "Enable persistently (writes enabled.json)"
-        }
-      >
-        {persisted ? "Save off" : "Save on"}
-      </span>
-    </button>
-  );
-}
-
-function MentionRowItem({
-  entry,
-  active,
-  onSelect,
-}: {
-  entry: MentionRow;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  // `extension` kind has its own renderer above; this only handles file /
-  // plugin / skill / promptTemplate.
-  const kindMeta = MENTION_KIND_META[entry.kind === "file" ? "plugin" : entry.kind];
-  const Icon = entry.kind === "file" ? FileText : kindMeta.Icon;
-  const accent = entry.kind === "file" ? "text-(--dim)" : kindMeta.accentClass;
-  const title = mentionRowTitle(entry);
-  const description = mentionRowDescription(entry);
-  const version = mentionRowVersion(entry);
-  const source = entry.kind !== "file" ? (entry.row.source ?? "") : "";
-  return (
-    <button
-      type="button"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onSelect}
-      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left ${
-        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover)/60 hover:text-(--fg)"
-      }`}
-    >
-      <Icon className={`h-3.5 w-3.5 shrink-0 ${accent}`} />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-1.5">
-          <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
-          {version ? (
-            <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">{version}</span>
-          ) : null}
-        </span>
-        {description ? (
-          <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">
-            {description}
-          </span>
-        ) : null}
-      </span>
-      {source ? (
-        <span
-          className="hidden truncate font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim) sm:inline"
-          title={source}
-        >
-          {source}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-function ComputerUseActivityDot({ inline = false }: { inline?: boolean }) {
-  return (
-    <span
-      className={
-        inline
-          ? "relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center"
-          : "absolute -right-1.5 -top-1 inline-flex h-2.5 w-2.5 items-center justify-center"
-      }
-      aria-hidden="true"
-    >
-      <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-(--accent)/35" />{" "}
-      <span className="relative h-1.5 w-1.5 rounded-full bg-(--accent)" />
-    </span>
-  );
-}

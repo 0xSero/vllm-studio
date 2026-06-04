@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, openSync, closeSync, readSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const LOG_PREFIX = "vllm_";
 const LOG_SUFFIX = ".log";
@@ -222,8 +222,4 @@ export const tailFileLines = (path: string, limit: number, maxBytes = 10 * 1024 
   } finally {
     closeSync(fd);
   }
-};
-
-export const ensureParentDirectory = (path: string): void => {
-  mkdirSync(dirname(path), { recursive: true });
 };

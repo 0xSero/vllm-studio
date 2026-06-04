@@ -105,7 +105,6 @@ class McpClient {
   private nextId = 1;
   private buffer = Buffer.alloc(0);
   private stderr = "";
-  private transport: "headers" | "jsonl";
   private pending = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -117,14 +116,11 @@ class McpClient {
     baseDir: string,
     readonly onFailure?: (message: string) => void,
   ) {
-    // Resolve cwd "." (or any relative cwd) against the .mcp.json's own dir, then
-    // resolve a relative command against that cwd. computer-use ships
-    // command "./Codex Computer Use.app/.../SkyComputerUseClient" with cwd "."
-    // so it only launches once both are anchored to the config dir. Bare PATH
-    // executables (e.g. "node", no separator) and absolute commands stay as-is.
+    // Resolve cwd "." (or any relative cwd) against the .mcp.json's own dir,
+    // then resolve path-like commands against that cwd. Bare PATH executables
+    // (e.g. "node", no separator) and absolute commands stay as-is.
     const cwd = path.resolve(baseDir, config.cwd || ".");
     const command = resolveServerCommand(config.command ?? "", cwd);
-    this.transport = usesJsonLineMcp(name, command, config.args) ? "jsonl" : "headers";
     this.child = spawn(command, config.args ?? [], {
       cwd,
       env: { ...process.env, ...(config.env ?? {}) },
@@ -145,7 +141,6 @@ class McpClient {
         code === null ? null : `code=${code}`,
         signal ? `signal=${signal}` : null,
         this.stderr.trim() ? `stderr=${this.stderr.trim()}` : null,
-        computerUseLaunchHint(name, command),
       ]
         .filter(Boolean)
         .join("; ");
@@ -225,10 +220,6 @@ class McpClient {
   }
 
   private write(payload: unknown) {
-    if (this.transport === "jsonl") {
-      this.child.stdin.write(`${JSON.stringify(payload)}\n`);
-      return;
-    }
     const body = Buffer.from(JSON.stringify(payload), "utf8");
     this.child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
     this.child.stdin.write(body);
@@ -236,10 +227,6 @@ class McpClient {
 
   private onData(chunk: Buffer) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    if (this.transport === "jsonl") {
-      this.onJsonLineData();
-      return;
-    }
     while (true) {
       const headerEnd = this.buffer.indexOf("\r\n\r\n");
       if (headerEnd === -1) return;
@@ -255,16 +242,6 @@ class McpClient {
       const body = this.buffer.slice(bodyStart, bodyEnd).toString("utf8");
       this.buffer = this.buffer.slice(bodyEnd);
       this.handleMessage(body);
-    }
-  }
-
-  private onJsonLineData() {
-    while (true) {
-      const lineEnd = this.buffer.indexOf("\n");
-      if (lineEnd === -1) return;
-      const line = this.buffer.slice(0, lineEnd).toString("utf8").trim();
-      this.buffer = this.buffer.slice(lineEnd + 1);
-      if (line) this.handleMessage(line);
     }
   }
 
@@ -297,18 +274,6 @@ function resolveServerCommand(command: string, cwd: string): string {
     command.includes("/") ||
     command.includes(path.sep);
   return isPathLike ? path.resolve(cwd, command) : command;
-}
-
-function usesJsonLineMcp(serverName: string, command: string, args: string[] | undefined): boolean {
-  const marker = `${serverName} ${command} ${(args ?? []).join(" ")}`.toLowerCase();
-  return marker.includes("computer-use") || marker.includes("skycomputeruseclient");
-}
-
-function computerUseLaunchHint(serverName: string, command: string): string | null {
-  if (process.platform !== "darwin") return null;
-  const marker = `${serverName} ${command}`.toLowerCase();
-  if (!marker.includes("computer-use") && !marker.includes("skycomputeruseclient")) return null;
-  return "hint=macOS AMFI launch constraints block SkyComputerUseClient when launched outside the Codex-signed host; use a signed/brokered runtime before desktop-control tools can work";
 }
 
 async function registerOneServer(

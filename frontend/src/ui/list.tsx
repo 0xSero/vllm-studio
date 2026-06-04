@@ -73,16 +73,53 @@ export function ListRow({
   actions,
   children,
   className,
+  variant = "settings",
 }: {
   label: string;
-  description?: string;
+  description?: ReactNode;
   value?: ReactNode;
   control?: ReactNode;
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
+  variant?: "settings" | "resource";
 }) {
+  const primaryValue = control ?? value;
+
+  if (variant === "resource") {
+    return (
+      <div className={cx("px-4 py-3.5 transition-colors hover:bg-(--ui-hover)/35", className)}>
+        <div className="flex min-h-8 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="min-w-0 text-[length:var(--fs-base)] font-medium leading-snug text-(--ui-fg)">
+              {label}
+            </div>
+            {description ? (
+              <div className="text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+                {description}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 sm:pt-0.5">
+            {status ? <div className="shrink-0">{status}</div> : null}
+            {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+          </div>
+        </div>
+        {primaryValue ? (
+          <div className="mt-2 min-w-0 rounded-md border border-(--ui-separator) bg-(--ui-bg)/55 px-2.5 py-2 text-(--ui-muted)">
+            {primaryValue}
+          </div>
+        ) : null}
+        {children ? (
+          <div className="mt-2 min-w-0 space-y-1.5 text-[length:var(--fs-sm)] leading-relaxed">
+            {children}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className={cx("px-3.5 py-2.5 transition-colors hover:bg-(--ui-hover)/35", className)}>
       {/* Shared 2-column grid pins a fixed label column so every control across
@@ -107,7 +144,12 @@ export function ListRow({
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
         </div>
       </div>
-      {children ? <div className="mt-2 md:ml-[calc(160px+1.25rem)]">{children}</div> : null}
+      {children ? (
+        <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(160px,0.42fr)_minmax(0,1fr)] md:gap-5">
+          <div className="hidden md:block" />
+          <div className="min-w-0">{children}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -116,11 +158,13 @@ export function RowValue({
   children,
   mono = false,
   dim = false,
+  truncate = false,
   className,
 }: {
   children: ReactNode;
   mono?: boolean;
   dim?: boolean;
+  truncate?: boolean;
   className?: string;
 }) {
   return (
@@ -129,6 +173,7 @@ export function RowValue({
         "text-[length:var(--fs-base)]",
         mono ? "font-mono text-[length:var(--fs-md)]" : "",
         dim ? "text-(--ui-muted)" : "text-(--ui-fg)/80",
+        truncate ? "min-w-0 truncate" : "",
         className,
       )}
       title={typeof children === "string" ? children : undefined}

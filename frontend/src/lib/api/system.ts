@@ -39,7 +39,7 @@ export function createSystemApi(core: ApiCore) {
       }),
 
     countTextTokens: (data: { model: string; text: string }): Promise<{ num_tokens?: number }> =>
-      core.request("/v1/tokens/count", { method: "POST", body: JSON.stringify(data) }),
+      core.request("/v1/count-tokens", { method: "POST", body: JSON.stringify(data) }),
 
     getGPUs: (options?: RequestOptions): Promise<{ gpus: GPU[] }> => core.request("/gpus", options),
 

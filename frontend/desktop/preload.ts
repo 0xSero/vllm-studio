@@ -21,6 +21,7 @@ const bridge: DesktopBridge = {
     write: (id, data) => ipcRenderer.invoke("desktop:pty-write", id, data),
     resize: (id, cols, rows) => ipcRenderer.invoke("desktop:pty-resize", id, cols, rows),
     close: (id) => ipcRenderer.invoke("desktop:pty-close", id),
+    closeOwner: (ownerKey) => ipcRenderer.invoke("desktop:pty-close-owner", ownerKey),
     onData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; chunk: string }) =>
         listener(payload.id, payload.chunk);

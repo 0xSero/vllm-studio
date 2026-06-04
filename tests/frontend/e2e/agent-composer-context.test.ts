@@ -10,8 +10,6 @@ import {
   byQuery,
   consumeComposerMention,
   detectComposerMention,
-  sanitizeComposerExtensionOverrides,
-  type ComposerExtensionRef,
 } from "@/lib/agent/composer-context";
 import {
   selectionFromPersistedTab,
@@ -79,69 +77,58 @@ test("truncated tagged files stay metadata-only while preserving the local path"
   assert.doesNotMatch(prompt, /binary payload should not be inlined/);
 });
 
-test("Pi extension slash selection is searchable and persists per-turn overrides", () => {
-  const mention = detectComposerMention(
-    "/plugins browser",
-    "/plugins browser".length,
-  );
-  const extensions: ComposerExtensionRef[] = [
+test("MCP plugin slash and at-mention context persist selected plugin state", () => {
+  const slashMention = detectComposerMention("/plugins browser", "/plugins browser".length);
+  const pluginMention = detectComposerMention("use @filesystem", "use @filesystem".length);
+  const plugins = [
     {
-      id: "npm:@openai/browser",
-      name: "browser",
-      source: "npm:@openai/browser",
-      path: "/Users/sero/.pi/extensions/browser",
-      scope: "user",
-      origin: "package",
-      enabled: true,
+      id: "mcp-filesystem",
+      name: "filesystem",
+      path: "/Users/sero/.codex/mcp/filesystem",
+      mcpConfigPath: "/Users/sero/.codex/mcp/filesystem/.mcp.json",
+      source: "manual",
     },
     {
-      id: "auto:/Users/sero/.pi/extensions/unused",
-      name: "unused",
-      source: "auto",
-      path: "/Users/sero/.pi/extensions/unused",
-      scope: "user",
-      origin: "top-level",
-      enabled: false,
+      id: "mcp-git",
+      name: "git",
+      path: "/Users/sero/.codex/mcp/git",
+      mcpConfigPath: "/Users/sero/.codex/mcp/git/.mcp.json",
+      source: "manual",
     },
   ];
-  const overrides = sanitizeComposerExtensionOverrides([
-    { key: "npm:@openai/browser", enabled: false },
-    { key: "npm:@openai/browser", enabled: true },
-    { key: "", enabled: true },
-    { key: "/tmp/not-valid", enabled: "yes" },
-  ]);
   const session = {
-    id: "s-ext",
-    runtimeSessionId: "rt-ext",
+    id: "s-plugin",
+    runtimeSessionId: "rt-plugin",
     piSessionId: null,
-    title: "Extension run",
+    title: "Plugin run",
     messages: [],
     status: "idle",
     error: "",
     input: "",
   } satisfies Session;
 
-  assert.deepEqual(mention, {
-    kind: "extension",
-    query: "browser",
+  assert.deepEqual(slashMention, {
+    kind: "promptTemplate",
+    query: "plugins browser",
     start: 0,
     end: "/plugins browser".length,
   });
+  assert.deepEqual(pluginMention, {
+    kind: "plugin",
+    query: "filesystem",
+    start: 4,
+    end: "use @filesystem".length,
+  });
   assert.deepEqual(
-    byQuery(extensions, "browser").map((extension) => extension.id),
-    ["npm:@openai/browser"],
+    byQuery(plugins, "filesystem").map((plugin) => plugin.id),
+    ["mcp-filesystem"],
   );
-  assert.deepEqual(overrides, [{ key: "npm:@openai/browser", enabled: false }]);
 
   const persisted = sessionMetaForPersistence(session, {
-    plugins: [],
+    plugins: [plugins[0]],
     skills: [],
     promptTemplates: [],
-    extensionOverrides: overrides,
   });
-  assert.deepEqual(persisted.extensionOverrides, overrides);
-  assert.deepEqual(
-    selectionFromPersistedTab(persisted)?.extensionOverrides,
-    overrides,
-  );
+  assert.deepEqual(persisted.plugins, [plugins[0]]);
+  assert.deepEqual(selectionFromPersistedTab(persisted)?.plugins, [plugins[0]]);
 });

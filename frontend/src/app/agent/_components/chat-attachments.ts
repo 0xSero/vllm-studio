@@ -2,6 +2,7 @@
 
 import { newId, randomIdSegment } from "@/lib/agent/session/helpers";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
+import { formatFileSize } from "@/lib/file-size";
 
 export type ChatAttachment = {
   id: string;
@@ -75,12 +76,6 @@ function objectUrlFor(file: File): string | undefined {
 
 function newAttachmentId() {
   return newId("file");
-}
-
-export function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function extensionFromMimeType(type: string): string {

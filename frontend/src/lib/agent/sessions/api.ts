@@ -9,7 +9,6 @@ import {
 } from "@/lib/agent/session";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type {
-  ComposerExtensionOverride,
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
@@ -111,7 +110,6 @@ export type CompactSessionArgs = {
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
-  extensionOverrides?: ComposerExtensionOverride[];
 };
 
 export type CompactSessionResult = {
@@ -147,7 +145,6 @@ export type SubmitTurnArgs = {
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
-  extensionOverrides?: ComposerExtensionOverride[];
 };
 
 /**

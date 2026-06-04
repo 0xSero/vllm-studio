@@ -23,7 +23,6 @@ import {
 import {
   activeComposerPlugins,
   selectedContextPrompt,
-  type ComposerExtensionOverride,
   type ComposerPluginRef,
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
@@ -47,7 +46,6 @@ import { createTextDeltaCoalescer, type TextDeltaCoalescer } from "./text-delta-
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
-const EMPTY_EXTENSION_OVERRIDES: ComposerExtensionOverride[] = [];
 
 function mergeSkills(
   existing: ComposerSkillRef[] | undefined,
@@ -73,7 +71,6 @@ type SubmitArgs = {
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
-  extensionOverrides?: ComposerExtensionOverride[];
   targetSessionId?: SessionId;
 };
 
@@ -249,7 +246,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const plugins = activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
       const skills = selection.skills ?? EMPTY_SKILLS;
       const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
-      const extensionOverrides = selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
       const browserEnabledForTurn = browserToolEnabled || promptRequestsBrowser(text);
       const message = selectedContextPrompt(text, plugins, skills);
       const ensureAssistantId = () => {
@@ -289,7 +285,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             plugins: plugins as ComposerPluginRef[],
             skills,
             promptTemplates,
-            extensionOverrides,
           },
           (payload) => {
             if (controller.signal.aborted) return;
@@ -360,8 +355,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const skills = args.skills ?? selection.skills ?? EMPTY_SKILLS;
       const promptTemplates =
         args.promptTemplates ?? selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
-      const extensionOverrides =
-        args.extensionOverrides ?? selection.extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES;
 
       // Optimistic: push a user message + a blank assistant placeholder so the
       // UI shows "we received it" even before the first SSE chunk lands.
@@ -417,7 +410,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             plugins: plugins as ComposerPluginRef[],
             skills,
             promptTemplates,
-            extensionOverrides,
           },
           (payload) => {
             if (controller.signal.aborted) return;
@@ -606,8 +598,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
           promptTemplates:
             selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
-          extensionOverrides:
-            selectionForRef.current(sessionId).extensionOverrides ?? EMPTY_EXTENSION_OVERRIDES,
         });
         const nextSessionId = result.status?.piSessionId || session.piSessionId;
         if (nextSessionId) await loadAndReplay(nextSessionId, sessionId);

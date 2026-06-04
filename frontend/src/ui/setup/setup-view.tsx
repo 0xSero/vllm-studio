@@ -1,13 +1,14 @@
 "use client";
 
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { Alert, AppPage, Button, Card } from "@/ui";
+import { Alert, AppPage, Button, Card, type ManagedRuntimeInstallBackend } from "@/ui";
 import type {
+  EngineJob,
   ModelDownload,
   ModelRecommendation,
+  RuntimeTarget,
   StudioDiagnostics,
   StudioSettings,
-  VllmUpgradeResult,
 } from "@/lib/types";
 import { SetupStepper } from "./setup-view/setup-stepper";
 import { StepBenchmark } from "./setup-view/step-benchmark";
@@ -34,13 +35,14 @@ interface SetupViewProps {
   setModelsDir: (value: string) => void;
   diagnostics: StudioDiagnostics | null;
   recommendations: ModelRecommendation[];
+  runtimeTargets: RuntimeTarget[];
+  runtimeJobs: EngineJob[];
   maxVram: number;
   selectedModel: string;
   manualModelId: string;
   setManualModelId: (value: string) => void;
   savingSettings: boolean;
   upgrading: boolean;
-  upgradeResult: VllmUpgradeResult | null;
   hardwareConfirmed: boolean;
   setHardwareConfirmed: (value: boolean) => void;
   downloads: ModelDownload[];
@@ -49,7 +51,8 @@ interface SetupViewProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   saveSettings: () => void;
-  upgradeRuntime: () => void;
+  installRuntime: (backend: ManagedRuntimeInstallBackend) => void;
+  updateRuntimeTarget: (target: RuntimeTarget) => void;
   beginDownload: (modelId: string) => void;
   submitManualModel: () => void;
   continueFromHardware: () => void;
@@ -76,13 +79,14 @@ export function SetupView({
   setModelsDir,
   diagnostics,
   recommendations,
+  runtimeTargets,
+  runtimeJobs,
   maxVram,
   selectedModel,
   manualModelId,
   setManualModelId,
   savingSettings,
   upgrading,
-  upgradeResult,
   hardwareConfirmed,
   setHardwareConfirmed,
   downloads,
@@ -91,7 +95,8 @@ export function SetupView({
   resumeDownload,
   cancelDownload,
   saveSettings,
-  upgradeRuntime,
+  installRuntime,
+  updateRuntimeTarget,
   beginDownload,
   submitManualModel,
   continueFromHardware,
@@ -150,9 +155,11 @@ export function SetupView({
         {!loading && step === 1 && (
           <StepHardware
             diagnostics={diagnostics}
-            upgradeRuntime={upgradeRuntime}
+            runtimeTargets={runtimeTargets}
+            runtimeJobs={runtimeJobs}
+            installRuntime={installRuntime}
+            updateRuntimeTarget={updateRuntimeTarget}
             upgrading={upgrading}
-            upgradeResult={upgradeResult}
             hardwareConfirmed={hardwareConfirmed}
             setHardwareConfirmed={setHardwareConfirmed}
             continueFromHardware={continueFromHardware}

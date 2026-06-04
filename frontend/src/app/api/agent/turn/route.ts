@@ -60,7 +60,6 @@ export async function POST(request: NextRequest) {
     plugins,
     skills,
     promptTemplates,
-    extensionOverrides,
     mode,
     streamingBehavior,
   } = parsed.value;
@@ -110,7 +109,6 @@ export async function POST(request: NextRequest) {
             plugins,
             skills,
             promptTemplates,
-            extensionOverrides,
           });
         }
         sse(controller, { type: "status", phase: "running", session: session.status }, isOpen);

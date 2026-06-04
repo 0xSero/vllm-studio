@@ -21,7 +21,9 @@ export function setupInput(onKey: KeyHandler): () => void {
   stdin.resume();
   stdin.setEncoding('utf8');
 
-  const handler = (data: string): void => { onKey(KEY_MAP[data] || data); };
+  const handler = (data: string): void => {
+    onKey(KEY_MAP[data] || data);
+  };
   stdin.on('data', handler);
 
   return () => {
@@ -29,8 +31,4 @@ export function setupInput(onKey: KeyHandler): () => void {
     stdin.pause();
     stdin.off('data', handler);
   };
-}
-
-export function parseKey(data: string): string {
-  return KEY_MAP[data] || data;
 }

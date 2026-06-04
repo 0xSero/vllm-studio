@@ -49,7 +49,6 @@ export function useConfigs() {
 
   const [apiSettings, setApiSettings] = useState<ApiConnectionSettings>(DEFAULT_API_SETTINGS);
   const [apiSettingsLoading, setApiSettingsLoading] = useState(true);
-  const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("unknown");
@@ -222,13 +221,11 @@ export function useConfigs() {
     error,
     apiSettings,
     apiSettingsLoading,
-    showApiKey,
     saving,
     testing,
     connectionStatus,
     statusMessage,
     setApiSettings,
-    setShowApiKey,
     loadConfig,
     saveApiSettings,
     testConnection,

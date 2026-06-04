@@ -1,4 +1,4 @@
-import type { StudioDiagnostics, VllmUpgradeResult } from "@/lib/types";
+import type { StudioDiagnostics } from "@/lib/types";
 import { formatBytes } from "./utils";
 
 interface HardwareSummary {
@@ -7,11 +7,6 @@ interface HardwareSummary {
   gpu: string;
   runtime: string;
   vram: string;
-}
-
-interface UpgradeMessage {
-  text: string;
-  toneClassName: "text-(--err)" | "text-(--hl2)";
 }
 
 /**
@@ -31,24 +26,5 @@ export function buildHardwareSummary(diagnostics: StudioDiagnostics | null): Har
       ? `vLLM ${diagnostics.runtime.vllm_version ?? ""} detected.`
       : "vLLM runtime not detected. Install to continue.",
     vram: firstGpuVramMb ? `${Math.round(firstGpuVramMb / 1024)} GB` : "CPU only",
-  };
-}
-
-/**
- * Convert an upgrade result into setup UI copy and tone.
- * @param upgradeResult - Runtime upgrade result, if present.
- * @returns Upgrade message copy and tone, or null when no result exists.
- */
-export function buildUpgradeMessage(
-  upgradeResult: VllmUpgradeResult | null,
-): UpgradeMessage | null {
-  if (!upgradeResult) {
-    return null;
-  }
-  return {
-    text: upgradeResult.success
-      ? `Updated to vLLM ${upgradeResult.version}`
-      : (upgradeResult.error ?? "Runtime upgrade failed."),
-    toneClassName: upgradeResult.success ? "text-(--hl2)" : "text-(--err)",
   };
 }

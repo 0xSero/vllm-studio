@@ -1,33 +1,31 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Check, Loader2, Settings, XCircle } from "lucide-react";
+import { ArrowUpCircle, Check, Loader2, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
 import {
+  ENGINE_META,
+  MANAGED_RUNTIME_BACKENDS,
+  ManagedRuntimeInstallRows,
+  RuntimeTargetRows,
+  RuntimeTargetStatus,
   SettingsButton,
   SettingsGroup,
   SettingsRow,
   SettingsValue,
   StatusPill,
-  type StatusTone,
+  isManagedRuntimeTarget,
+  type ManagedRuntimeInstallBackend,
 } from "@/ui";
 import {
-  ENGINE_META,
   hasHydratedEngineRows,
   resolveEngineRowsView,
   type EngineRowsView,
 } from "./engines-section-model";
 
 type UpgradeState = { status: "idle" | "upgrading" | "success" | "error"; message?: string };
-
-const isRunningJob = (job: EngineJob | undefined): boolean =>
-  job?.status === "queued" || job?.status === "running";
-
-const jobForTarget = (jobs: EngineJob[], target: RuntimeTarget): EngineJob | undefined =>
-  jobs.find((job) => job.targetId === target.id && isRunningJob(job)) ??
-  jobs.find((job) => job.targetId === target.id);
 
 export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null }) {
   const { runtimeSummary, status, lease } = useRealtimeStatus();
@@ -141,15 +139,45 @@ function EngineRows({
   onJobCreated: () => Promise<void>;
   view: EngineRowsView;
 }) {
+  const handleTargetAction = useCallback(
+    async (target: RuntimeTarget) => {
+      await api.createRuntimeJob({
+        backend: target.backend,
+        targetId: target.id,
+        type: target.installed ? "update" : "install",
+      });
+      await onJobCreated();
+    },
+    [onJobCreated],
+  );
+  const handleManagedInstall = useCallback(
+    async (backend: ManagedRuntimeInstallBackend) => {
+      await api.createRuntimeJob({ backend, type: "install" });
+      await onJobCreated();
+    },
+    [onJobCreated],
+  );
+
   if (view.kind === "targets") {
-    return view.targets.map((target) => (
-      <RuntimeTargetRow
-        key={target.id}
-        target={target}
-        job={jobForTarget(jobs, target)}
-        onJobCreated={onJobCreated}
-      />
-    ));
+    const discoveredTargets = view.targets.filter((target) => !isManagedRuntimeTarget(target));
+    return (
+      <>
+        <ManagedRuntimeInstallRows
+          backends={MANAGED_RUNTIME_BACKENDS}
+          targets={view.targets}
+          jobs={jobs}
+          onInstall={handleManagedInstall}
+          onUpdateTarget={handleTargetAction}
+        />
+        {discoveredTargets.length > 0 ? (
+          <RuntimeTargetRows
+            targets={discoveredTargets}
+            jobs={jobs}
+            onAction={handleTargetAction}
+          />
+        ) : null}
+      </>
+    );
   }
   if (view.kind === "backends") {
     return view.rows.map(({ id, info }) => (
@@ -165,83 +193,6 @@ function EngineRows({
       status={<StatusPill tone="info">pending</StatusPill>}
     />
   ));
-}
-
-function RuntimeTargetRow({
-  target,
-  job,
-  onJobCreated,
-}: {
-  target: RuntimeTarget;
-  job?: EngineJob;
-  onJobCreated: () => Promise<void>;
-}) {
-  const meta = ENGINE_META[target.backend] ?? {
-    label: target.backend,
-    description: "Runtime target",
-  };
-  const running = isRunningJob(job);
-  const action = target.capabilities.canUpdate
-    ? target.installed
-      ? "Update"
-      : "Install"
-    : "Configure";
-  const actionDisabled = running || !target.capabilities.canUpdate;
-  const disabledReason = !target.capabilities.canUpdate
-    ? (target.health.message ?? "Updates are unsupported for this target.")
-    : undefined;
-
-  const handleAction = useCallback(async () => {
-    if (actionDisabled) return;
-    await api.createRuntimeJob({
-      backend: target.backend,
-      targetId: target.id,
-      type: target.installed ? "update" : "install",
-    });
-    await onJobCreated();
-  }, [actionDisabled, onJobCreated, target.backend, target.id, target.installed]);
-
-  return (
-    <SettingsRow
-      label={target.label || meta.label}
-      description={`${meta.description} · ${target.kind} · ${target.source}`}
-      value={
-        <SettingsValue mono>
-          {target.installed ? (target.version ?? "installed") : "not installed"}
-          {pathForTarget(target) ? ` · ${pathForTarget(target)}` : ""}
-        </SettingsValue>
-      }
-      status={
-        <EngineStatus
-          installed={target.installed}
-          active={target.active}
-          health={target.health.status}
-        />
-      }
-      actions={
-        <SettingsButton
-          onClick={() => void handleAction()}
-          disabled={actionDisabled}
-          title={disabledReason}
-        >
-          {running ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : target.capabilities.canUpdate ? (
-            <ArrowUpCircle className="h-3 w-3" />
-          ) : (
-            <Settings className="h-3 w-3" />
-          )}
-          {running ? job?.status : action}
-        </SettingsButton>
-      }
-    >
-      {job ? <JobMessage job={job} /> : null}
-      {target.update ? <UpdateDetails update={target.update} /> : null}
-      {disabledReason ? (
-        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">{disabledReason}</p>
-      ) : null}
-    </SettingsRow>
-  );
 }
 
 function BackendRow({
@@ -272,10 +223,11 @@ function BackendRow({
 
   return (
     <SettingsRow
+      variant="resource"
       label={meta.label}
       description={meta.description}
       value={
-        <SettingsValue mono>
+        <SettingsValue mono truncate>
           {info.installed ? (info.version ?? "installed") : "not installed"}
         </SettingsValue>
       }
@@ -301,7 +253,7 @@ function BackendRow({
       }
     >
       {info.python_path || info.binary_path ? (
-        <SettingsValue mono dim>
+        <SettingsValue mono dim truncate>
           {info.python_path ?? info.binary_path}
         </SettingsValue>
       ) : null}
@@ -312,74 +264,8 @@ function BackendRow({
   );
 }
 
-function EngineStatus({
-  installed,
-  active,
-  health,
-}: {
-  installed: boolean;
-  active?: boolean;
-  health?: RuntimeTarget["health"]["status"];
-}) {
-  const tone: StatusTone = active
-    ? "good"
-    : health === "error"
-      ? "danger"
-      : installed
-        ? "info"
-        : "default";
-  const label = active
-    ? "active"
-    : health === "error"
-      ? "error"
-      : installed
-        ? "installed"
-        : "available";
-  return <StatusPill tone={tone}>{label}</StatusPill>;
-}
-
-function JobMessage({ job }: { job: EngineJob }) {
-  return (
-    <div
-      className={`space-y-1 text-[length:var(--fs-md)] ${job.status === "error" ? "text-(--err)/80" : "text-(--dim)/60"}`}
-    >
-      <p>{job.message}</p>
-      {job.command ? <p className="truncate font-mono">{job.command}</p> : null}
-      {job.error || job.outputTail ? (
-        <p className="line-clamp-3 whitespace-pre-wrap font-mono">{job.error ?? job.outputTail}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
-  // `update.changes` is generic "what an update touches" boilerplate — identical
-  // on every row — so we don't render it as chips. The one genuinely useful
-  // entry is the optional pin hint, surfaced below as a real helper line.
-  const pinHint = update.changes.find((change) => change.startsWith("Set "));
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
-      <span>
-        Updates to <span className="font-mono text-(--ui-fg)/70">{update.targetVersion}</span>
-      </span>
-      {update.restartRequired ? (
-        <span className="text-(--ui-warning)/90">restarts the running model</span>
-      ) : null}
-      <a
-        href={update.releaseNotesUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-(--ui-accent)/80 hover:underline"
-      >
-        release notes
-      </a>
-      {pinHint ? <span className="basis-full text-(--ui-muted)/70">{pinHint}</span> : null}
-    </div>
-  );
-}
-
-function pathForTarget(target: RuntimeTarget) {
-  return target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
+function EngineStatus({ installed, active }: { installed: boolean; active?: boolean }) {
+  return <RuntimeTargetStatus installed={installed} active={active} />;
 }
 
 function upgradeHandler(id: string) {

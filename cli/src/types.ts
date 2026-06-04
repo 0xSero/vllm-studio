@@ -1,4 +1,4 @@
-import type { Backend as SharedBackend, RecipePayload } from "../../controller/src/modules/shared/recipe-types";
+import type { RecipePayload } from "../../controller/src/modules/shared/recipe-types";
 
 export type View = 'dashboard' | 'recipes' | 'status' | 'config';
 
@@ -11,8 +11,6 @@ export interface GPU {
   temperature: number;
   power_draw: number;
 }
-
-export type Backend = SharedBackend;
 
 export type Recipe = Pick<
   RecipePayload,

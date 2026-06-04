@@ -15,9 +15,6 @@ export type ComposerPluginRef = {
   iconPath?: string;
   skillPath?: string;
   mcpConfigPath?: string;
-  appConfigPath?: string;
-  appIds?: string[];
-  appPath?: string;
   instructions?: string;
 };
 
@@ -38,31 +35,8 @@ export type ComposerPromptTemplateRef = {
   argumentHint?: string;
 };
 
-/**
- * Lightweight reference for an installed Pi extension/package. Sourced from
- * `GET /api/agent/extensions`. Used by the `/plugins` slash command to let
- * the composer toggle extensions on/off for the next turn (and optionally
- * persist to `<agentDir>/extension-config/enabled.json`).
- */
-export type ComposerExtensionRef = {
-  /** Stable identifier — package source if known, else absolute path. */
-  id: string;
-  /** Display label (short package name or basename). */
-  name: string;
-  /** Source string from SDK settings ("npm:...", "git:...", "auto", ...). */
-  source: string;
-  /** Absolute path the SDK resolved for this extension. */
-  path: string;
-  /** Pi scope this extension was contributed at. */
-  scope: "user" | "project" | "temporary";
-  /** Origin: package install vs top-level (auto-discovered) drop-in. */
-  origin: "package" | "top-level";
-  /** Persisted enable/disable state (mirrors `enabled.json`). */
-  enabled: boolean;
-};
-
 export type ComposerMention = {
-  kind: "plugin" | "skill" | "promptTemplate" | "extension";
+  kind: "plugin" | "skill" | "promptTemplate";
   query: string;
   start: number;
   end: number;
@@ -111,9 +85,6 @@ export function sanitizeComposerPlugins(value: unknown): ComposerPluginRef[] {
         iconPath: stringField(record, "iconPath"),
         skillPath: stringField(record, "skillPath"),
         mcpConfigPath: stringField(record, "mcpConfigPath"),
-        appConfigPath: stringField(record, "appConfigPath"),
-        appIds: stringArrayField(record, "appIds"),
-        appPath: stringField(record, "appPath"),
         instructions: stringField(record, "instructions"),
       };
       return plugin.name || plugin.id || plugin.path ? [plugin] : [];
@@ -137,34 +108,6 @@ export function sanitizeComposerSkills(value: unknown): ComposerSkillRef[] {
   });
 }
 
-/**
- * Per-turn extension override entry — the user composer telling the runtime
- * "for this turn, force extension X enabled/disabled regardless of what's in
- * <agentDir>/extension-config/enabled.json". The runtime applies these on top
- * of the persisted overrides without writing to disk.
- */
-export type ComposerExtensionOverride = {
-  /** Source string preferred; falls back to path. */
-  key: string;
-  enabled: boolean;
-};
-
-export function sanitizeComposerExtensionOverrides(value: unknown): ComposerExtensionOverride[] {
-  if (!Array.isArray(value)) return [];
-  const out: ComposerExtensionOverride[] = [];
-  const seen = new Set<string>();
-  for (const item of value) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const record = item as Record<string, unknown>;
-    const key = typeof record.key === "string" ? record.key.trim() : "";
-    if (!key || seen.has(key)) continue;
-    if (typeof record.enabled !== "boolean") continue;
-    seen.add(key);
-    out.push({ key, enabled: record.enabled });
-  }
-  return out;
-}
-
 export function sanitizeComposerPromptTemplates(value: unknown): ComposerPromptTemplateRef[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): ComposerPromptTemplateRef[] => {
@@ -182,45 +125,9 @@ export function sanitizeComposerPromptTemplates(value: unknown): ComposerPromptT
   });
 }
 
-/**
- * Tokens at the very start of the composer that route the slash menu to the
- * Pi-plugins picker instead of prompt templates. Matched case-insensitively
- * and required to be followed by a space (or end-of-line) so users can still
- * fuzzy-search prompt templates whose names happen to start with "plug…".
- */
-const EXTENSION_SLASH_TOKENS = ["plugins", "plugin", "extensions", "extension"] as const;
-
-function parseExtensionSlash(beforeCaret: string): { token: string; query: string } | null {
-  // Must be the very first token in the composer; capture the keyword (case-
-  // insensitive) and an optional space-separated query.
-  const match = /^\/([a-zA-Z]+)(?:\s+([^\n]{0,80}))?$/.exec(beforeCaret);
-  if (!match) return null;
-  const keyword = (match[1] ?? "").toLowerCase();
-  if (!EXTENSION_SLASH_TOKENS.includes(keyword as (typeof EXTENSION_SLASH_TOKENS)[number])) {
-    return null;
-  }
-  return {
-    token: beforeCaret,
-    query: (match[2] ?? "").trimStart(),
-  };
-}
-
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
   const beforeCaret = value.slice(0, safeCaret);
-  // `/plugins …` / `/extensions …` — composer-level Pi-plugins picker. Has
-  // to win over the generic prompt-template `/` match so that users can
-  // discover the plugin slash command without it being absorbed by template
-  // fuzzy search.
-  const extensionSlash = parseExtensionSlash(beforeCaret);
-  if (extensionSlash) {
-    return {
-      kind: "extension",
-      query: extensionSlash.query,
-      start: safeCaret - extensionSlash.token.length,
-      end: safeCaret,
-    };
-  }
   // `/` only triggers a prompt-template mention when it appears at the very
   // start of the composer (mirrors slash-command semantics from the Pi CLI /
   // Claude Code editors). This avoids false positives on prose like "and/or".
@@ -286,18 +193,6 @@ function selectedPluginContextLines(plugins: ComposerPluginRef[] = []): string[]
   if (!enabledPlugins.length) return lines;
   lines.push(`Enabled plugins: ${enabledPlugins.map(pluginRefLabel).join(", ")}.`);
   for (const plugin of enabledPlugins) lines.push(...pluginContextLines(plugin));
-  if (enabledPlugins.some((plugin) => pluginNameIncludes(plugin, "browser-use"))) {
-    lines.push("Browser-use is enabled; use browser tools when the task requires page control.");
-  }
-  if (
-    enabledPlugins.some(
-      (plugin) => pluginNameIncludes(plugin, "computer-use") || pluginNameIncludes(plugin, "sybil"),
-    )
-  ) {
-    lines.push(
-      "Sybil/computer-use is selected; call mcp_plugin_status first, then use sybil_* MCP tools for desktop UI tasks. Browser/webview tasks should still use the vLLM Studio browser tools.",
-    );
-  }
   return lines;
 }
 
@@ -315,9 +210,6 @@ function pluginContextLines(plugin: ComposerPluginRef): string[] {
   if (plugin.instructions) lines.push(`Plugin ${label} instructions:\n${plugin.instructions}`);
   const runtime = pluginRuntimeDetails(plugin);
   if (runtime.length) lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);
-  if (plugin.appIds?.length) {
-    lines.push(`Plugin ${label} declares app connectors: ${plugin.appIds.join(", ")}`);
-  }
   return lines;
 }
 
@@ -336,19 +228,11 @@ function pluginRuntimeDetails(plugin: ComposerPluginRef): string[] {
     plugin.path ? `plugin=${plugin.path}` : null,
     plugin.skillPath ? `skills=${plugin.skillPath}` : null,
     plugin.mcpConfigPath ? `mcp=${plugin.mcpConfigPath}` : null,
-    plugin.appConfigPath ? `apps=${plugin.appConfigPath}` : null,
-    plugin.appPath ? `app=${plugin.appPath}` : null,
   ].filter((value): value is string => Boolean(value));
 }
 
 function pluginRefLabel(plugin: ComposerPluginRef): string {
   return plugin.source ? `@${plugin.name} (${plugin.source})` : `@${plugin.name}`;
-}
-
-function pluginNameIncludes(plugin: ComposerPluginRef, needle: string): boolean {
-  return [plugin.id, plugin.name, plugin.displayName, plugin.path]
-    .filter((value): value is string => Boolean(value))
-    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function searchableText(row: {
