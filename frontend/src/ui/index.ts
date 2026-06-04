@@ -77,6 +77,22 @@ export { ColorField } from "./color-field";
 export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";
 
+export {
+  ENGINE_META,
+  MANAGED_RUNTIME_BACKENDS,
+  SETUP_RUNTIME_BACKENDS,
+  ManagedRuntimeInstallRows,
+  RuntimeJobMessage,
+  RuntimeTargetRow,
+  RuntimeTargetRows,
+  RuntimeTargetStatus,
+  RuntimeUpdateDetails,
+  isManagedRuntimeTarget,
+  isRunningEngineJob,
+  jobForRuntimeTarget,
+} from "./runtime-targets";
+export type { ManagedRuntimeInstallBackend } from "./runtime-targets";
+
 export { ModelLogo } from "./model-logo";
 export { HuggingFaceModelCardModal } from "./huggingface-model-card";
 

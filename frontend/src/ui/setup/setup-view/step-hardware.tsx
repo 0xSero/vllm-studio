@@ -1,29 +1,50 @@
 "use client";
 
-import { ChevronRight, Cpu, DownloadCloud, HardDrive, Loader2 } from "lucide-react";
-import { Button, Card, Checkbox } from "@/ui";
-import type { StudioDiagnostics, VllmUpgradeResult } from "@/lib/types";
-import { buildHardwareSummary, buildUpgradeMessage } from "./step-hardware-model";
+import { ChevronRight, Cpu } from "lucide-react";
+import {
+  Button,
+  Card,
+  Checkbox,
+  ManagedRuntimeInstallRows,
+  RuntimeTargetRows,
+  SETUP_RUNTIME_BACKENDS,
+  SettingsGroup,
+  SettingsNotice,
+  isManagedRuntimeTarget,
+  type ManagedRuntimeInstallBackend,
+} from "@/ui";
+import type { EngineJob, RuntimeTarget, StudioDiagnostics } from "@/lib/types";
+import { buildHardwareSummary } from "./step-hardware-model";
 
 export function StepHardware({
   diagnostics,
-  upgradeRuntime,
+  runtimeTargets,
+  runtimeJobs,
+  installRuntime,
+  updateRuntimeTarget,
   upgrading,
-  upgradeResult,
   hardwareConfirmed,
   setHardwareConfirmed,
   continueFromHardware,
 }: {
   diagnostics: StudioDiagnostics | null;
-  upgradeRuntime: () => void;
+  runtimeTargets: RuntimeTarget[];
+  runtimeJobs: EngineJob[];
+  installRuntime: (backend: ManagedRuntimeInstallBackend) => void;
+  updateRuntimeTarget: (target: RuntimeTarget) => void;
   upgrading: boolean;
-  upgradeResult: VllmUpgradeResult | null;
   hardwareConfirmed: boolean;
   setHardwareConfirmed: (value: boolean) => void;
   continueFromHardware: () => void;
 }) {
   const hardware = buildHardwareSummary(diagnostics);
-  const upgradeMessage = buildUpgradeMessage(upgradeResult);
+  const visibleTargets = runtimeTargets
+    .filter(
+      (target) =>
+        !isManagedRuntimeTarget(target) &&
+        (target.installed || target.active || target.source === "configured"),
+    )
+    .slice(0, 8);
 
   return (
     <div className="grid gap-6">
@@ -52,15 +73,31 @@ export function StepHardware({
         </div>
       </Card>
 
-      <Card padding="lg" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <HardDrive className="h-5 w-5 text-(--hl1)" />
-          <h2 className="text-lg font-medium">Runtime</h2>
-        </div>
-        <div className="text-sm text-(--dim)">{hardware.runtime}</div>
-        {upgradeMessage && (
-          <div className={`text-xs ${upgradeMessage.toneClassName}`}>{upgradeMessage.text}</div>
+      <SettingsGroup
+        title="Runtime setup"
+        description="Controller-managed Python environment for the guided vLLM launch path."
+      >
+        <ManagedRuntimeInstallRows
+          backends={SETUP_RUNTIME_BACKENDS}
+          jobs={runtimeJobs}
+          targets={runtimeTargets}
+          onInstall={installRuntime}
+          onUpdateTarget={updateRuntimeTarget}
+        />
+        {visibleTargets.length > 0 ? (
+          <RuntimeTargetRows
+            targets={visibleTargets}
+            jobs={runtimeJobs}
+            onAction={updateRuntimeTarget}
+          />
+        ) : (
+          <SettingsNotice tone="info" className="m-3">
+            {hardware.runtime}
+          </SettingsNotice>
         )}
+      </SettingsGroup>
+
+      <Card padding="lg" className="space-y-4">
         <Checkbox
           checked={hardwareConfirmed}
           onChange={setHardwareConfirmed}
@@ -70,22 +107,8 @@ export function StepHardware({
         />
         <div className="flex items-center gap-3">
           <Button
-            variant="secondary"
-            onClick={upgradeRuntime}
-            disabled={upgrading}
-            icon={
-              upgrading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <DownloadCloud className="h-4 w-4" />
-              )
-            }
-          >
-            Install / Upgrade vLLM
-          </Button>
-          <Button
             onClick={continueFromHardware}
-            disabled={!hardwareConfirmed}
+            disabled={!hardwareConfirmed || upgrading}
             icon={<ChevronRight className="h-4 w-4" />}
           >
             Continue

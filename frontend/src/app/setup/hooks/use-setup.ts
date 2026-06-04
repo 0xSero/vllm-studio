@@ -4,13 +4,17 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type {
+  EngineBackend,
+  EngineJob,
   ModelRecommendation,
+  RuntimeTarget,
   StudioDiagnostics,
   StudioSettings,
-  VllmUpgradeResult,
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
 import { buildStarterRecipe } from "./setup-helpers";
+
+type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -28,12 +32,13 @@ export function useSetup() {
   const [modelsDir, setModelsDir] = useState("");
   const [diagnostics, setDiagnostics] = useState<StudioDiagnostics | null>(null);
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
+  const [runtimeTargets, setRuntimeTargets] = useState<RuntimeTarget[]>([]);
+  const [runtimeJobs, setRuntimeJobs] = useState<EngineJob[]>([]);
   const [maxVram, setMaxVram] = useState(0);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [manualModelId, setManualModelId] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
-  const [upgradeResult, setUpgradeResult] = useState<VllmUpgradeResult | null>(null);
   const [hardwareConfirmed, setHardwareConfirmed] = useState(false);
   const [configuringRecipe, setConfiguringRecipe] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -49,19 +54,33 @@ export function useSetup() {
     return downloadsState.downloads.find((download) => download.model_id === selectedModel) ?? null;
   }, [downloadsState.downloads, selectedModel]);
 
+  const refreshRuntimeState = useCallback(async () => {
+    const [targetPayload, jobPayload] = await Promise.all([
+      api.getRuntimeTargets().catch(() => ({ targets: [] })),
+      api.getRuntimeJobs().catch(() => ({ jobs: [] })),
+    ]);
+    setRuntimeTargets(targetPayload.targets);
+    setRuntimeJobs(jobPayload.jobs);
+  }, []);
+
   const loadSetupData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, diagnosticsRes, recommendationsRes] = await Promise.all([
-        api.getStudioSettings(),
-        api.getStudioDiagnostics(),
-        api.getModelRecommendations(),
-      ]);
+      const [settingsRes, diagnosticsRes, recommendationsRes, targetPayload, jobPayload] =
+        await Promise.all([
+          api.getStudioSettings(),
+          api.getStudioDiagnostics(),
+          api.getModelRecommendations(),
+          api.getRuntimeTargets().catch(() => ({ targets: [] })),
+          api.getRuntimeJobs().catch(() => ({ jobs: [] })),
+        ]);
       setSettings(settingsRes);
       setModelsDir(settingsRes.effective.models_dir);
       setDiagnostics(diagnosticsRes);
       setRecommendations(recommendationsRes.recommendations || []);
+      setRuntimeTargets(targetPayload.targets);
+      setRuntimeJobs(jobPayload.jobs);
       setMaxVram(recommendationsRes.max_vram_gb ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load setup data");
@@ -99,43 +118,63 @@ export function useSetup() {
     }
   }, [modelsDir]);
 
-  const upgradeRuntime = useCallback(async () => {
-    setUpgrading(true);
-    setUpgradeResult(null);
-    try {
-      const { job_id: jobId } = await api.upgradeVllmRuntime({ preferBundled: true });
-      let finalJob = (await api.getRuntimeJob(jobId)).job;
-      for (
-        let attempt = 0;
-        attempt < 120 && (finalJob.status === "queued" || finalJob.status === "running");
-        attempt += 1
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        finalJob = (await api.getRuntimeJob(jobId)).job;
-      }
-      setUpgradeResult({
-        success: finalJob.status === "success",
-        version: null,
-        output: finalJob.outputTail ?? null,
-        error: finalJob.status === "error" ? (finalJob.error ?? finalJob.message) : null,
-        used_wheel: null,
-        used_command: finalJob.command ?? null,
-      });
-      const refreshed = await api.getStudioDiagnostics();
-      setDiagnostics(refreshed);
-    } catch (err) {
-      setUpgradeResult({
-        success: false,
-        version: null,
-        output: null,
-        error: err instanceof Error ? err.message : "Upgrade failed",
-        used_wheel: null,
-        used_command: null,
-      });
-    } finally {
-      setUpgrading(false);
+  const finishRuntimeJob = useCallback(async (jobId: string): Promise<EngineJob> => {
+    let finalJob = (await api.getRuntimeJob(jobId)).job;
+    for (
+      let attempt = 0;
+      attempt < 120 && (finalJob.status === "queued" || finalJob.status === "running");
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      finalJob = (await api.getRuntimeJob(jobId)).job;
+      setRuntimeJobs((current) => [
+        finalJob,
+        ...current.filter((candidate) => candidate.id !== finalJob.id),
+      ]);
     }
+    return finalJob;
   }, []);
+
+  const runRuntimeJob = useCallback(
+    async (payload: { backend: EngineBackend; targetId?: string; type: "install" | "update" }) => {
+      setUpgrading(true);
+      setError(null);
+      try {
+        const { job } = await api.createRuntimeJob(payload);
+        setRuntimeJobs((current) => [
+          job,
+          ...current.filter((candidate) => candidate.id !== job.id),
+        ]);
+        await finishRuntimeJob(job.id);
+        await refreshRuntimeState();
+        const refreshed = await api.getStudioDiagnostics();
+        setDiagnostics(refreshed);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Runtime job failed");
+      } finally {
+        setUpgrading(false);
+      }
+    },
+    [finishRuntimeJob, refreshRuntimeState],
+  );
+
+  const installRuntime = useCallback(
+    async (backend: ManagedSetupBackend) => {
+      await runRuntimeJob({ backend, type: "install" });
+    },
+    [runRuntimeJob],
+  );
+
+  const updateRuntimeTarget = useCallback(
+    async (target: RuntimeTarget) => {
+      await runRuntimeJob({
+        backend: target.backend,
+        targetId: target.id,
+        type: target.installed ? "update" : "install",
+      });
+    },
+    [runRuntimeJob],
+  );
 
   const beginDownload = useCallback(
     async (modelId: string) => {
@@ -252,13 +291,14 @@ export function useSetup() {
     setModelsDir,
     diagnostics,
     recommendations,
+    runtimeTargets,
+    runtimeJobs,
     maxVram,
     selectedModel,
     manualModelId,
     setManualModelId,
     savingSettings,
     upgrading,
-    upgradeResult,
     hardwareConfirmed,
     setHardwareConfirmed,
     downloads: downloadsState.downloads,
@@ -267,7 +307,8 @@ export function useSetup() {
     resumeDownload: downloadsState.resumeDownload,
     cancelDownload: downloadsState.cancelDownload,
     saveSettings,
-    upgradeRuntime,
+    installRuntime,
+    updateRuntimeTarget,
     beginDownload,
     submitManualModel,
     continueFromHardware,

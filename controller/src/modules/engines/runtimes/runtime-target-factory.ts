@@ -3,6 +3,7 @@ import {
   getVllmUpgradeVersion,
   isUpgradeCommandConfigured,
   LLAMACPP_UPGRADE_ENV,
+  SGLANG_UPGRADE_ENV,
   VLLM_UPGRADE_VERSION_ENV,
 } from "./upgrade-config";
 
@@ -28,6 +29,11 @@ const createCapabilities = (target: {
     (target.backend === "vllm" &&
       target.installed &&
       (target.kind === "venv" || (target.kind === "system" && Boolean(target.pythonPath)))) ||
+    (target.backend === "sglang" &&
+      target.installed &&
+      (target.kind === "venv" ||
+        (target.kind === "system" && Boolean(target.pythonPath)) ||
+        isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV))) ||
     (target.backend === "llamacpp" && isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV)),
   canInspectOptions:
     target.backend !== "sglang" &&

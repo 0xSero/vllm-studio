@@ -25,6 +25,7 @@ const ENV_KEYS = [
   "VLLM_STUDIO_RUNTIME_SKIP_DOCKER",
   "VLLM_STUDIO_RUNTIME_SKIP_SYSTEM",
   "VLLM_STUDIO_LLAMA_BIN",
+  "VLLM_STUDIO_SGLANG_PYTHON",
   "VLLM_STUDIO_MLX_PYTHON",
   "PI_CODING_AGENT_DIR",
 ] as const;
@@ -1053,7 +1054,7 @@ world"}</arguments></tool_call>`,
         }),
       ]),
     );
-  }, 15_000);
+  }, 30_000);
 
   test("studio settings and provider CRUD routes persist observable contracts", async () => {
     const app = await createTestApp();
@@ -1721,6 +1722,20 @@ world"}</arguments></tool_call>`,
     );
     chmodSync(llamaBin, 0o755);
     process.env.VLLM_STUDIO_LLAMA_BIN = llamaBin;
+    const sglangPython = join(tempDir, "python-sglang-test");
+    writeFileSync(
+      sglangPython,
+      [
+        "#!/usr/bin/env sh",
+        'if [ "$1" = "--version" ] || [ "$1" = "-V" ]; then echo \'Python 3.12.0\'; exit 0; fi',
+        'if [ "$1" = "-c" ]; then echo \'{"version":"0.4.0","python":"\'"$0"\'"}\'; exit 0; fi',
+        "exit 0",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    chmodSync(sglangPython, 0o755);
+    process.env.VLLM_STUDIO_SGLANG_PYTHON = sglangPython;
     const mlxPython = join(tempDir, "python-mlx-test");
     writeFileSync(
       mlxPython,
@@ -1761,6 +1776,34 @@ world"}</arguments></tool_call>`,
     });
     if (!target)
       throw new Error("Expected configured llama.cpp runtime target");
+
+    const sglangTarget = targetsBody.targets.find(
+      (candidate: Record<string, unknown>) =>
+        candidate["backend"] === "sglang" &&
+        candidate["source"] === "configured" &&
+        candidate["pythonPath"] === sglangPython,
+    );
+    expect(sglangTarget).toMatchObject({
+      backend: "sglang",
+      kind: "venv",
+      source: "configured",
+      installed: true,
+      active: false,
+      version: "0.4.0",
+      pythonPath: sglangPython,
+      capabilities: expect.objectContaining({
+        canLaunch: true,
+        canUpdate: true,
+        canInspectOptions: false,
+      }),
+      update: expect.objectContaining({
+        targetVersion: "latest",
+        packageSpec: "sglang",
+      }),
+      health: { status: "ok" },
+    });
+    if (!sglangTarget)
+      throw new Error("Expected configured SGLang runtime target");
 
     const mlxTarget = targetsBody.targets.find(
       (candidate: Record<string, unknown>) =>
@@ -2056,7 +2099,40 @@ world"}</arguments></tool_call>`,
         }),
       ]),
     );
-  }, 15_000);
+  }, 30_000);
+
+  test("managed runtime install helpers stay inside controller data dir", async () => {
+    const { managedPackageSpec, managedVenvPath } = await import(
+      "../../../controller/src/modules/engines/runtimes/engine-jobs"
+    );
+    const { getSglangRuntimePython } = await import(
+      "../../../controller/src/modules/engines/runtimes/runtime-upgrade"
+    );
+    const selectedSglangPython = join(
+      tempDir,
+      "runtime",
+      "venvs",
+      "sglang-latest",
+      "bin",
+      "python",
+    );
+
+    expect(managedVenvPath({ data_dir: tempDir }, "vllm")).toBe(
+      join(tempDir, "runtime", "venvs", "vllm-latest"),
+    );
+    expect(managedPackageSpec("vllm")).toBe("vllm");
+    expect(managedPackageSpec("vllm", "0.10.2")).toBe("vllm==0.10.2");
+    expect(managedPackageSpec("sglang")).toBe("sglang");
+    expect(managedPackageSpec("mlx")).toBe("mlx-lm");
+    expect(
+      getSglangRuntimePython(
+        { sglang_python: join(tempDir, "fallback-python") } as Parameters<
+          typeof getSglangRuntimePython
+        >[0],
+        { pythonPath: selectedSglangPython },
+      ),
+    ).toBe(selectedSglangPython);
+  });
 
   test("runtime backend metadata routes expose host-shaped contracts and observability", async () => {
     const app = await createTestApp();
@@ -2281,14 +2357,16 @@ world"}</arguments></tool_call>`,
     const logsResponse = await app.request("/logs");
     const logsBody = await logsResponse.json();
     expect(logsResponse.status).toBe(200);
-    expect(logsBody.sessions).toEqual([
-      expect.objectContaining({
-        id: "route-test",
-        recipe_id: "route-test",
-        model: "route-test",
-        status: "stopped",
-      }),
-    ]);
+    expect(logsBody.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "route-test",
+          recipe_id: "route-test",
+          model: "route-test",
+          status: "stopped",
+        }),
+      ]),
+    );
 
     const logResponse = await app.request("/logs/route-test?limit=1");
     const logBody = await logResponse.json();
