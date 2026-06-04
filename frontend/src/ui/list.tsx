@@ -85,34 +85,35 @@ export function ListRow({
   className?: string;
   variant?: "settings" | "resource";
 }) {
+  const primaryValue = control ?? value;
+
   if (variant === "resource") {
     return (
       <div className={cx("px-3.5 py-3 transition-colors hover:bg-(--ui-hover)/35", className)}>
-        <div className="grid min-h-8 grid-cols-1 gap-2 md:grid-cols-[minmax(180px,0.85fr)_minmax(190px,1fr)_auto] md:items-center md:gap-4">
-          <div className="min-w-0">
-            <div
-              className="truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
-              title={label}
-            >
-              {label}
+        <div className="grid min-h-8 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-4">
+          <div className="min-w-0 space-y-1">
+            <div className="min-w-0">
+              <div
+                className="min-w-0 truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
+                title={label}
+              >
+                {label}
+              </div>
             </div>
             {description ? (
-              <div className="mt-0.5 text-[length:var(--fs-sm)] leading-snug text-(--ui-muted)">
+              <div className="text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
                 {description}
               </div>
             ) : null}
+            {primaryValue ? <div className="min-w-0 text-(--ui-muted)">{primaryValue}</div> : null}
           </div>
-          <div className="min-w-0">{control ?? value ?? null}</div>
           <div className="flex items-center justify-end gap-1.5">
             {status ? <div className="shrink-0">{status}</div> : null}
             {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
           </div>
         </div>
         {children ? (
-          <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(180px,0.85fr)_minmax(0,1fr)] md:gap-4">
-            <div className="hidden md:block" />
-            <div className="min-w-0">{children}</div>
-          </div>
+          <div className="mt-2 min-w-0 space-y-1.5 text-[length:var(--fs-sm)]">{children}</div>
         ) : null}
       </div>
     );
