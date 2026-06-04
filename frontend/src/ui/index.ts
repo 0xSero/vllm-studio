@@ -98,6 +98,7 @@ export { HuggingFaceModelCardModal } from "./huggingface-model-card";
 export { AgentModelPicker } from "./agent-model-picker";
 export { AgentQueuePanel } from "./agent-queue-panel";
 export { AgentChatPaneHeader } from "./agent-chat-pane-header";
+export { AgentComposerStatusBar } from "./agent-composer-status-bar";
 export { AgentLoadedContextTabs, AgentMentionPicker } from "./agent-composer-context";
 export type { FileMentionRow, MentionRow } from "./agent-composer-context";
 

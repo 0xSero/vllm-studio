@@ -11,8 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import { Code2, Loader2, Plus } from "lucide-react";
-import { CloseIcon, FileIcon, GitBranchIcon, GlobeIcon, SendIcon, StopIcon } from "@/ui/icons";
+import { CloseIcon, FileIcon, GlobeIcon, SendIcon, StopIcon } from "@/ui/icons";
 import { AgentChatPaneHeader } from "@/ui/agent-chat-pane-header";
+import { AgentComposerStatusBar } from "@/ui/agent-composer-status-bar";
 import {
   AgentLoadedContextTabs,
   AgentMentionPicker,
@@ -46,7 +47,6 @@ import {
   ChatPaneHandle,
   EventBlock,
   cleanSessionTitle,
-  formatTokenCount,
   isPlaceholderSessionTitle,
   newId,
   QueuedMessage,
@@ -882,7 +882,6 @@ export function ChatPane({
   const handleRef = useRef<ChatPaneHandle>({ loadAndReplay, compact: compactSession });
   handleRef.current = { loadAndReplay, compact: compactSession };
   useChatPaneRegisterHandleEffect({ handleRef, onRegisterHandle });
-  const displayCwd = formatHomeRelativePath(cwd);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -1197,88 +1196,19 @@ export function ChatPane({
             </div>
           </div>{" "}
         </div>
-        <div className="relative z-20 mx-auto mt-2.5 flex w-full max-w-[var(--composer-w)] items-center gap-2 overflow-visible font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {" "}
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-            <div className="min-w-0 max-w-[42%] shrink overflow-visible">
-              {displayCwd ? (
-                <span className="block min-w-0 truncate text-(--dim)" title={cwd}>
-                  {displayCwd}{" "}
-                </span>
-              ) : null}{" "}
-            </div>
-            {gitBranch ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 text-(--dim)">
-                <GitBranchIcon className="h-3 w-3 shrink-0" />{" "}
-                <span className="truncate">{gitBranch}</span>
-              </span>
-            ) : gitSummary && !gitSummary.isRepo ? (
-              <button
-                type="button"
-                onClick={onInitGit}
-                className="inline-flex shrink-0 items-center gap-1 text-(--dim) hover:text-(--fg)"
-                title="Init git"
-              >
-                {" "}
-                <GitBranchIcon className="h-3 w-3" />
-                git{" "}
-              </button>
-            ) : null}{" "}
-            {gitSummary?.isRepo ? (
-              <span className="inline-flex shrink-0 items-center gap-1">
-                {" "}
-                <span className="text-emerald-400">+{gitSummary.additions}</span>
-                <span className="text-red-400">-{gitSummary.deletions}</span>{" "}
-                {gitSummary.statusCount > 0 ? (
-                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
-                ) : null}
-              </span>
-            ) : null}
-          </div>{" "}
-          {modelSelector}
-          <ContextReadout
-            current={currentContextTokens}
-            contextWindow={effectiveContextWindow}
-            onClick={openComputerStatus}
-          />
-        </div>{" "}
+        <AgentComposerStatusBar
+          cwd={cwd}
+          gitBranch={gitBranch}
+          gitSummary={gitSummary}
+          onInitGit={onInitGit}
+          modelSelector={modelSelector}
+          currentContextTokens={currentContextTokens}
+          contextWindow={effectiveContextWindow}
+          onOpenStatus={openComputerStatus}
+        />
       </form>
     </section>
   );
 }
 
-function ContextReadout({
-  current,
-  contextWindow,
-  onClick,
-}: {
-  current: number;
-  contextWindow: number;
-  onClick: () => void;
-}) {
-  const title = `Open status · Context ${formatTokenCount(current)} / ${formatTokenCount(contextWindow)}`;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="ml-auto inline-flex shrink-0 items-center rounded-sm px-1 text-(--dim) hover:text-(--fg)/80"
-      title={title}
-      aria-label={title}
-    >
-      <span className="tabular-nums">
-        {formatTokenCount(current)}/{formatTokenCount(contextWindow)}
-      </span>
-    </button>
-  );
-}
-
 const getChatPaneEffectSnapshot = (): number => 0;
-
-function formatHomeRelativePath(value: string): string {
-  const normalized = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalized) return "";
-  const homeMatch = normalized.match(/^\/Users\/[^/]+(\/.*)?$/);
-  if (homeMatch) return `~${homeMatch[1] ?? ""}`;
-  return normalized;
-}
