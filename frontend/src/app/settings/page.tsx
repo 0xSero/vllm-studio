@@ -32,7 +32,6 @@ export default function SettingsPage() {
       error={configs.error}
       apiSettings={configs.apiSettings}
       apiSettingsLoading={configs.apiSettingsLoading}
-      showApiKey={configs.showApiKey}
       saving={configs.saving}
       testing={configs.testing}
       connectionStatus={configs.connectionStatus}
@@ -41,7 +40,6 @@ export default function SettingsPage() {
       isInitialLoading={configs.isInitialLoading}
       onReload={configs.loadConfig}
       onApiSettingsChange={configs.setApiSettings}
-      onToggleApiKey={() => configs.setShowApiKey(!configs.showApiKey)}
       onTestConnection={configs.testConnection}
       onSaveSettings={configs.saveApiSettings}
     />

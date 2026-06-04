@@ -79,25 +79,21 @@ function readEntries(): ControllerEntry[] {
 export function ApiConnectionSection({
   apiSettingsLoading,
   apiSettings,
-  showApiKey,
   testing,
   saving,
   connectionStatus,
   statusMessage,
   onApiSettingsChange,
-  onToggleApiKey,
   onTestConnection,
   onSave,
 }: {
   apiSettingsLoading: boolean;
   apiSettings: ApiConnectionSettings;
-  showApiKey: boolean;
   testing: boolean;
   saving: boolean;
   connectionStatus: ConnectionStatus;
   statusMessage: string;
   onApiSettingsChange: (nextSettings: ApiConnectionSettings) => void;
-  onToggleApiKey: () => void;
   onTestConnection: () => void;
   onSave: () => void;
 }) {
@@ -187,40 +183,26 @@ export function ApiConnectionSection({
             />
           ))
         )}
-        <div className="flex items-center gap-2 px-4 py-3.5">
-          <SettingsInput
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3.5">
+          <ControllerTextInput
             value={draft.name ?? ""}
             placeholder="Name (e.g. homelab)"
             onChange={(name) => setDraft((current) => ({ ...current, name }))}
-            className="w-32"
+            className="w-36 shrink-0"
           />
-          <SettingsInput
+          <ControllerTextInput
             value={draft.url}
             placeholder="http://192.168.1.70:8080"
             onChange={(url) => setDraft((current) => ({ ...current, url }))}
-            className="flex-1"
+            className="min-w-60 flex-1"
           />
-          <div className="relative w-40">
-            <SettingsInput
-              type={revealed.__draft ? "text" : "password"}
-              value={draft.apiKey ?? ""}
-              placeholder="API key optional"
-              onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
-              className="pr-7"
-            />
-            <button
-              type="button"
-              onClick={() => toggleReveal("__draft")}
-              className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-              aria-label={revealed.__draft ? "Hide API key" : "Reveal API key"}
-            >
-              {revealed.__draft ? (
-                <EyeOff className="pointer-events-none h-3.5 w-3.5" />
-              ) : (
-                <Eye className="pointer-events-none h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
+          <ControllerSecretInput
+            value={draft.apiKey ?? ""}
+            revealed={Boolean(revealed.__draft)}
+            onToggleReveal={() => toggleReveal("__draft")}
+            onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
+            className="w-40 shrink-0"
+          />
           <SettingsButton
             onClick={() => {
               const url = normalizeControllerUrl(draft.url);
@@ -346,7 +328,9 @@ function ControllerListRow({
     onCommit(next);
   };
   return (
-    <div className={`flex items-center gap-2 px-4 py-3 ${active ? "bg-(--accent)/[0.03]" : ""}`}>
+    <div
+      className={`flex flex-wrap items-center gap-2 px-4 py-3 ${active ? "bg-(--accent)/[0.03]" : ""}`}
+    >
       <button
         type="button"
         onClick={onActivate}
@@ -364,45 +348,92 @@ function ControllerListRow({
           <span className="h-1.5 w-1.5 rounded-full bg-current" />
         )}
       </button>
-      <SettingsInput
+      <ControllerTextInput
         value={draft.name ?? ""}
         placeholder={`Controller ${index + 1}`}
         onChange={(name) => setDraft((current) => ({ ...current, name }))}
         onBlur={() => commit(draft)}
-        className="w-28"
+        className="w-32 shrink-0"
       />
-      <SettingsInput
+      <ControllerTextInput
         value={draft.url}
         placeholder="http://host:port"
         onChange={(url) => setDraft((current) => ({ ...current, url }))}
         onBlur={() => commit(draft)}
-        className="flex-1"
+        className="min-w-60 flex-1"
       />
-      <div className="relative w-36">
-        <SettingsInput
-          type={revealed ? "text" : "password"}
-          value={draft.apiKey ?? ""}
-          placeholder="API key optional"
-          onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
-          onBlur={() => commit(draft)}
-          className="pr-7"
-        />
-        <button
-          type="button"
-          onClick={onToggleReveal}
-          className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-          aria-label={revealed ? "Hide API key" : "Reveal API key"}
-        >
-          {revealed ? (
-            <EyeOff className="pointer-events-none h-3.5 w-3.5" />
-          ) : (
-            <Eye className="pointer-events-none h-3.5 w-3.5" />
-          )}
-        </button>
-      </div>
+      <ControllerSecretInput
+        value={draft.apiKey ?? ""}
+        revealed={revealed}
+        onToggleReveal={onToggleReveal}
+        onChange={(apiKey) => setDraft((current) => ({ ...current, apiKey }))}
+        onBlur={() => commit(draft)}
+        className="w-36 shrink-0"
+      />
       <SettingsButton tone="danger" onClick={onRemove} title="Remove controller">
         <Trash2 className="h-3 w-3" />
       </SettingsButton>
+    </div>
+  );
+}
+
+function ControllerTextInput({
+  value,
+  placeholder,
+  onChange,
+  onBlur,
+  className,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  className: string;
+}) {
+  return (
+    <div className={className}>
+      <SettingsInput value={value} placeholder={placeholder} onChange={onChange} onBlur={onBlur} />
+    </div>
+  );
+}
+
+function ControllerSecretInput({
+  value,
+  revealed,
+  onToggleReveal,
+  onChange,
+  onBlur,
+  className,
+}: {
+  value: string;
+  revealed: boolean;
+  onToggleReveal: () => void;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  className: string;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <SettingsInput
+        type={revealed ? "text" : "password"}
+        value={value}
+        placeholder="API key optional"
+        onChange={onChange}
+        onBlur={onBlur}
+        className="pr-7"
+      />
+      <button
+        type="button"
+        onClick={onToggleReveal}
+        className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        aria-label={revealed ? "Hide API key" : "Reveal API key"}
+      >
+        {revealed ? (
+          <EyeOff className="pointer-events-none h-3.5 w-3.5" />
+        ) : (
+          <Eye className="pointer-events-none h-3.5 w-3.5" />
+        )}
+      </button>
     </div>
   );
 }
