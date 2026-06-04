@@ -194,18 +194,66 @@ build_frontend_local() {
 
 restart_controller() {
   step "Restarting controller on :8080"
-  remote bash <<REMOTE
-set -e
-cd $REMOTE_DIR_SHELL
+  remote bash -s -- "$REMOTE_DIR" <<'REMOTE'
+set -euo pipefail
+remote_dir=$1
+cd "$remote_dir"
 docker compose stop controller 2>/dev/null || true
-pkill -f "bun.*controller/src/main.ts" 2>/dev/null || true
-fuser -k 8080/tcp >/dev/null 2>&1 || true
+controller_dir=$(readlink -f "$PWD/controller")
+
+collect_controller_pids() {
+  {
+    port_pids=$(fuser 8080/tcp 2>/dev/null || true)
+    for pid in $port_pids; do
+      echo "$pid"
+    done
+
+    for pid in $(pgrep -x bun 2>/dev/null || true); do
+      cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+      if [[ "$cwd" == "$controller_dir" ]]; then
+        echo "$pid"
+      fi
+    done
+  } | sed '/^$/d' | sort -n -u
+}
+
+controller_pids=$(collect_controller_pids)
+if [[ -n "$controller_pids" ]]; then
+  while read -r pid; do
+    [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true
+  done <<< "$controller_pids"
+
+  for _ in $(seq 1 20); do
+    if [[ -z "$(collect_controller_pids)" ]] && ! ss -tlnp | grep -q ':8080\b'; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  controller_pids=$(collect_controller_pids)
+  if [[ -n "$controller_pids" ]]; then
+    while read -r pid; do
+      [[ -n "$pid" ]] && kill -KILL "$pid" 2>/dev/null || true
+    done <<< "$controller_pids"
+    sleep 1
+  fi
+fi
+
+if ss -tlnp | grep -q ':8080\b'; then
+  echo "Port 8080 is still in use after stopping controller processes" >&2
+  ss -tlnp | grep ':8080\b' >&2 || true
+  exit 1
+fi
+
 sleep 1
 set -a; source .env 2>/dev/null || true; set +a
+: > /tmp/controller-stdout.log
 nohup ~/.bun/bin/bun run controller/src/main.ts > /tmp/controller-stdout.log 2>&1 &
 REMOTE
   wait_port 8080 controller || return 1
-  ok "controller :8080 (pid $(remote "pgrep -f 'bun.*controller/src/main.ts'" 2>/dev/null || echo '?'))"
+  local controller_pid
+  controller_pid=$(remote "ss -tlnp | sed -n 's/.*:8080\\b.*pid=\\([0-9][0-9]*\\).*/\\1/p' | head -1" 2>/dev/null || true)
+  ok "controller :8080 (pid ${controller_pid:-?})"
 }
 
 restart_frontend() {

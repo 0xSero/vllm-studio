@@ -65,7 +65,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     <div className="space-y-8">
       <SettingsGroup
         title="Inference engines"
-        description="Codex-style status rows instead of install cards; each row keeps an action or a fallback."
+        description="Model-serving runtimes installed on the controller host."
         actions={<HydrationStatus hasRows={hasRows} />}
       >
         <EngineRows
@@ -78,7 +78,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
 
       <SettingsGroup
         title="Hardware monitor"
-        description="GPU telemetry rows stay visible even before live samples arrive."
+        description="GPU telemetry and lease state reported by the controller."
       >
         <GpuMonitoringRow gpuMon={gpuMon} />
         <GpuLeaseRow holder={lease?.holder} />
@@ -90,9 +90,11 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
 const getEnginesSectionSnapshot = (): number => 0;
 
 function HydrationStatus({ hasRows }: { hasRows: boolean }) {
-  return (
-    <StatusPill tone={hasRows ? "good" : "info"}>{hasRows ? "hydrated" : "waiting"}</StatusPill>
-  );
+  // Nothing to announce once the data is in — the rows speak for themselves, and
+  // the page header already shows controller sync. Only surface a quiet hint
+  // while the first payload is still loading.
+  if (hasRows) return null;
+  return <StatusPill tone="info">Loading…</StatusPill>;
 }
 
 function GpuMonitoringRow({ gpuMon }: { gpuMon?: SystemRuntimeInfo["gpu_monitoring"] }) {
@@ -235,7 +237,9 @@ function RuntimeTargetRow({
     >
       {job ? <JobMessage job={job} /> : null}
       {target.update ? <UpdateDetails update={target.update} /> : null}
-      {disabledReason ? <p className="text-[length:var(--fs-sm)] text-(--dim)">{disabledReason}</p> : null}
+      {disabledReason ? (
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">{disabledReason}</p>
+      ) : null}
     </SettingsRow>
   );
 }
@@ -349,32 +353,27 @@ function JobMessage({ job }: { job: EngineJob }) {
 }
 
 function UpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
+  // `update.changes` is generic "what an update touches" boilerplate — identical
+  // on every row — so we don't render it as chips. The one genuinely useful
+  // entry is the optional pin hint, surfaced below as a real helper line.
+  const pinHint = update.changes.find((change) => change.startsWith("Set "));
   return (
-    <div className="grid gap-1.5 border-t border-(--border)/[0.06] pt-3 text-[length:var(--fs-md)] text-(--dim)/60">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[length:var(--fs-sm)]">
-        <span>current {update.currentVersion ?? "unknown"}</span>
-        <span>target {update.targetVersion}</span>
-        <span>{update.restartRequired ? "restart required" : "no restart"}</span>
-      </div>
-      <div className="font-mono text-[length:var(--fs-sm)]">{update.packageSpec}</div>
-      <div className="flex flex-wrap gap-1">
-        {update.changes.map((change) => (
-          <span
-            key={change}
-            className="rounded border border-(--border)/[0.08] px-1.5 py-[1px] text-[length:var(--fs-sm)]"
-          >
-            {change}
-          </span>
-        ))}
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
+      <span>
+        Updates to <span className="font-mono text-(--ui-fg)/70">{update.targetVersion}</span>
+      </span>
+      {update.restartRequired ? (
+        <span className="text-(--ui-warning)/90">restarts the running model</span>
+      ) : null}
       <a
         href={update.releaseNotesUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="w-fit text-[length:var(--fs-md)] text-(--accent)/80 hover:underline"
+        className="text-(--ui-accent)/80 hover:underline"
       >
         release notes
       </a>
+      {pinHint ? <span className="basis-full text-(--ui-muted)/70">{pinHint}</span> : null}
     </div>
   );
 }

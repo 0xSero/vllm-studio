@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "computer-use": {
+      "command": "node",
+      "args": ["server.mjs"],
+      "cwd": "."
+    }
+  }
+}

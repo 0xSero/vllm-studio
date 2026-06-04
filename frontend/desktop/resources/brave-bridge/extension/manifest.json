@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "vLLM Studio Browser Bridge",
+  "version": "0.1.0",
+  "description": "Lets vLLM Studio's agent drive this browser's tabs via the DevTools protocol (chrome.debugger). Original code; no third-party bridge.",
+  "permissions": ["debugger", "tabs", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" }
+}
