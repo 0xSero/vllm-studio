@@ -24,10 +24,6 @@ export interface RuntimeJobResponse {
   job: import("../system/config").EngineJob;
 }
 
-export interface VllmUpgradeResult extends RuntimeUpgradeResult {
-  used_wheel: string | null;
-}
-
 export interface RuntimeCommandPayload {
   command?: string;
   args?: string[];
