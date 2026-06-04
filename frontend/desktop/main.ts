@@ -12,6 +12,7 @@ import { checkForUpdates, getUpdateState, initializeAutoUpdates } from "./logic/
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import {
   closePty,
+  closePtyByOwner,
   isPtyAvailable,
   killAllPtys,
   openPty,
@@ -263,7 +264,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     "desktop:pty-open",
-    async (event, opts: { cwd?: string; cols?: number; rows?: number }) => {
+    async (event, opts: { cwd?: string; cols?: number; rows?: number; ownerKey?: string }) => {
       return openPty(event.sender, opts ?? {});
     },
   );
@@ -281,6 +282,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("desktop:pty-close", async (_, id: string) => {
     if (typeof id !== "string") return;
     closePty(id);
+  });
+
+  ipcMain.handle("desktop:pty-close-owner", async (_, ownerKey: string) => {
+    if (typeof ownerKey !== "string") return;
+    closePtyByOwner(ownerKey);
   });
 }
 

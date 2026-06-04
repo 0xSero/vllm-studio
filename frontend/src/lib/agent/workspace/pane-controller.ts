@@ -403,6 +403,13 @@ export function focusPane(state: WorkspaceState, payload: { paneId: PaneId }): W
   return paneExists(state, payload.paneId) ? { ...state, focusedPaneId: payload.paneId } : state;
 }
 
+export function focusPaneSession(
+  state: WorkspaceState,
+  payload: { paneId: PaneId; sessionId: SessionId },
+): WorkspaceState {
+  return focusExistingSession(state, payload.paneId, payload.sessionId);
+}
+
 export function renameTab(
   state: WorkspaceState,
   payload: { paneId: PaneId; tabId: SessionId; title: string },

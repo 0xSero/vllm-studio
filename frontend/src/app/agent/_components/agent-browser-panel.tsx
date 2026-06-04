@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { CloseIcon } from "@/ui/icons";
+import { clearPersistentTerminalOwners } from "@/hooks/agent/use-persistent-terminal-owners";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import { useTools } from "@/lib/agent/tools/context";
@@ -28,11 +29,8 @@ import { ChatPane } from "./chat-pane";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
-import {
-  PersistentTerminals,
-  uniqueTerminalKeys,
-  type TerminalOwner,
-} from "./persistent-terminals";
+import { uniqueTerminalKeys, type TerminalOwner } from "@/lib/agent/terminal-owners";
+import { PersistentTerminals } from "./persistent-terminals";
 import type { WorkspaceHandles } from "./use-workspace";
 
 type AgentBrowserPanelHandles = Pick<
@@ -148,6 +146,25 @@ export function AgentBrowserPanel({
     setSideChatSession(createSideChatSession(activeProject ?? null, focusedSession, activeModelId));
     tools.closeComputerTab("side-chat");
   }, [activeModelId, activeProject, focusedSession, tools]);
+  const closeComputerTab = useCallback(
+    (closing: ComputerTab) => {
+      if (closing === "side-chat") {
+        closeSideChat();
+        return;
+      }
+      if (closing === "terminal") {
+        const closedOwners = clearPersistentTerminalOwners();
+        const terminalBridge = (
+          window as unknown as {
+            vllmStudioDesktop?: { terminal?: { closeOwner?: (ownerKey: string) => Promise<void> } };
+          }
+        ).vllmStudioDesktop?.terminal;
+        for (const owner of closedOwners) void terminalBridge?.closeOwner?.(owner.mountKey);
+      }
+      tools.closeComputerTab(closing);
+    },
+    [closeSideChat, tools],
+  );
   return (
     <aside
       className={`${tools.computer.open ? "relative flex" : "hidden"} shrink-0 flex-col border-l border-(--border) bg-(--agent-bg)`}
@@ -165,9 +182,7 @@ export function AgentBrowserPanel({
         tab={tools.computer.tab}
         openTabs={tools.computer.tabs}
         onSelectTab={tools.setComputerTab}
-        onCloseTab={(closing) =>
-          closing === "side-chat" ? closeSideChat() : tools.closeComputerTab(closing)
-        }
+        onCloseTab={closeComputerTab}
         onShowLauncher={() => tools.setComputerTab("tools")}
       />
 

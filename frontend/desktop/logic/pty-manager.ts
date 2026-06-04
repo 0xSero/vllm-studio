@@ -28,12 +28,17 @@ type PtyFactory = (opts: {
 
 type Session = {
   id: string;
+  ownerKey: string | null;
   pty: PtyHandle;
-  webContents: WebContents;
+  webContents: WebContents | null;
+  replay: string;
   disposers: Array<() => void>;
+  disposeWebContents?: () => void;
 };
 
+const MAX_REPLAY_CHARS = 200_000;
 const sessions = new Map<string, Session>();
+const sessionsByOwner = new Map<string, string>();
 let factory: PtyFactory | null = null;
 let factoryError: Error | null = null;
 
@@ -89,6 +94,40 @@ function buildEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+function safeOwnerKey(input: string | undefined | null): string | null {
+  const key = (input || "").trim();
+  return key ? key.slice(0, 512) : null;
+}
+
+function appendReplay(session: Session, chunk: string): void {
+  session.replay += chunk;
+  if (session.replay.length > MAX_REPLAY_CHARS) {
+    session.replay = session.replay.slice(-MAX_REPLAY_CHARS);
+  }
+}
+
+function attachWebContents(session: Session, webContents: WebContents): void {
+  session.disposeWebContents?.();
+  session.webContents = webContents;
+  const destroyed = () => {
+    if (session.ownerKey) {
+      if (session.webContents === webContents) session.webContents = null;
+      session.disposeWebContents = undefined;
+      return;
+    }
+    closeInternal(session.id);
+  };
+  webContents.once("destroyed", destroyed);
+  session.disposeWebContents = () => webContents.removeListener("destroyed", destroyed);
+}
+
+function ownedSession(ownerKey: string): Session | null {
+  const id = sessionsByOwner.get(ownerKey);
+  const session = id ? sessions.get(id) : null;
+  if (!session) sessionsByOwner.delete(ownerKey);
+  return session ?? null;
+}
+
 export function isPtyAvailable(): boolean {
   return loadFactory() !== null;
 }
@@ -100,40 +139,60 @@ export function ptyUnavailableReason(): string | null {
 
 export function openPty(
   webContents: WebContents,
-  opts: { cwd?: string; cols?: number; rows?: number },
-): { id: string } {
+  opts: { cwd?: string; cols?: number; rows?: number; ownerKey?: string },
+): { id: string; replay?: string; reused?: boolean } {
   const make = loadFactory();
   if (!make) {
     throw new Error(`PTY unavailable: ${factoryError?.message ?? "unknown"}`);
   }
+  const ownerKey = safeOwnerKey(opts.ownerKey);
   const cwd = safeCwd(opts.cwd);
   const cols = Math.max(2, Math.floor(opts.cols ?? 80));
   const rows = Math.max(2, Math.floor(opts.rows ?? 24));
+  const existing = ownerKey ? ownedSession(ownerKey) : null;
+  if (existing) {
+    attachWebContents(existing, webContents);
+    resizePty(existing.id, cols, rows);
+    log.info(`pty-manager: attached id=${existing.id} owner=${ownerKey}`);
+    return { id: existing.id, replay: existing.replay, reused: true };
+  }
+
   const { shell, args } = resolveShell();
   const pty = make({ cwd, cols, rows, shell, args, env: buildEnv() });
   const id = randomUUID();
+  const session: Session = {
+    id,
+    ownerKey,
+    pty,
+    webContents: null,
+    replay: "",
+    disposers: [],
+  };
   const onData = pty.onData((chunk) => {
-    if (webContents.isDestroyed()) return;
-    webContents.send("desktop:pty-data", { id, chunk });
+    const current = sessions.get(id);
+    if (!current) return;
+    appendReplay(current, chunk);
+    if (!current.webContents || current.webContents.isDestroyed()) return;
+    current.webContents.send("desktop:pty-data", { id, chunk });
   });
   const onExit = pty.onExit(({ exitCode, signal }) => {
-    if (!webContents.isDestroyed()) {
-      webContents.send("desktop:pty-exit", { id, exitCode, signal: signal ?? null });
+    const current = sessions.get(id);
+    if (current?.webContents && !current.webContents.isDestroyed()) {
+      current.webContents.send("desktop:pty-exit", { id, exitCode, signal: signal ?? null });
     }
     closeInternal(id);
   });
-  const session: Session = {
-    id,
-    pty,
-    webContents,
-    disposers: [() => onData.dispose(), () => onExit.dispose()],
-  };
+  session.disposers.push(
+    () => onData.dispose(),
+    () => onExit.dispose(),
+  );
   sessions.set(id, session);
-  const destroyed = () => closeInternal(id);
-  webContents.once("destroyed", destroyed);
-  session.disposers.push(() => webContents.removeListener("destroyed", destroyed));
-  log.info(`pty-manager: spawned id=${id} pid=${pty.pid} cwd=${cwd} shell=${shell}`);
-  return { id };
+  if (ownerKey) sessionsByOwner.set(ownerKey, id);
+  attachWebContents(session, webContents);
+  log.info(
+    `pty-manager: spawned id=${id} pid=${pty.pid} cwd=${cwd} shell=${shell}${ownerKey ? ` owner=${ownerKey}` : ""}`,
+  );
+  return { id, reused: false };
 }
 
 export function writePty(id: string, data: string): void {
@@ -158,10 +217,17 @@ export function closePty(id: string): void {
   closeInternal(id);
 }
 
+export function closePtyByOwner(ownerKey: string): void {
+  const session = ownedSession(ownerKey);
+  if (session) closeInternal(session.id);
+}
+
 function closeInternal(id: string): void {
   const session = sessions.get(id);
   if (!session) return;
   sessions.delete(id);
+  if (session.ownerKey) sessionsByOwner.delete(session.ownerKey);
+  session.disposeWebContents?.();
   for (const dispose of session.disposers) {
     try {
       dispose();

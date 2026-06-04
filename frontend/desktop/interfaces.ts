@@ -26,14 +26,16 @@ export interface PtyOpenOpts {
   cwd?: string;
   cols?: number;
   rows?: number;
+  ownerKey?: string;
 }
 
 export interface PtyBridge {
   status(): Promise<PtyStatus>;
-  open(opts: PtyOpenOpts): Promise<{ id: string }>;
+  open(opts: PtyOpenOpts): Promise<{ id: string; replay?: string; reused?: boolean }>;
   write(id: string, data: string): Promise<void>;
   resize(id: string, cols: number, rows: number): Promise<void>;
   close(id: string): Promise<void>;
+  closeOwner(ownerKey: string): Promise<void>;
   onData(listener: (id: string, chunk: string) => void): () => void;
   onExit(
     listener: (id: string, info: { exitCode: number; signal: number | null }) => void,

@@ -35,8 +35,10 @@ import {
   endSessionSubmit,
 } from "@/lib/agent/sessions/submit-guard";
 import type { Session } from "@/lib/agent/sessions/types";
+import { ACTIVE_AGENT_SESSION_OPEN_EVENT } from "@/lib/agent/workspace/events";
+import { subscribeWorkspaceWindowEvents } from "@/lib/agent/workspace/effects";
 import { reducer } from "@/lib/agent/workspace/reducer";
-import type { WorkspaceState } from "@/lib/agent/workspace/types";
+import type { WorkspaceAction, WorkspaceState } from "@/lib/agent/workspace/types";
 import { collectLeaves } from "@/lib/agent/workspace/layout";
 
 function makeSession(id: string, patch: Partial<Session> = {}): Session {
@@ -68,6 +70,45 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     error: "",
     hydrated: true,
     lastHandledNavKey: "",
+  };
+}
+
+function makeWorkspaceWindowHarness() {
+  const listeners = new Map<string, Set<(event: Event) => void>>();
+  class HarnessCustomEvent<T> extends Event {
+    detail: T;
+    constructor(type: string, init: { detail: T }) {
+      super(type);
+      this.detail = init.detail;
+    }
+  }
+  return {
+    window: {
+      Event,
+      CustomEvent: HarnessCustomEvent as typeof CustomEvent,
+      dispatchEvent: (event: Event) => {
+        for (const listener of listeners.get(event.type) ?? []) listener(event);
+        return true;
+      },
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+        const set = listeners.get(type) ?? new Set<(event: Event) => void>();
+        set.add(
+          typeof listener === "function"
+            ? listener
+            : (event: Event) => listener.handleEvent(event),
+        );
+        listeners.set(type, set);
+      },
+      removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+        const set = listeners.get(type);
+        if (!set) return;
+        set.delete(
+          typeof listener === "function"
+            ? listener
+            : (event: Event) => listener.handleEvent(event),
+        );
+      },
+    },
   };
 }
 
@@ -175,6 +216,57 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
   assert.equal(active?.status, "idle");
   assert.equal(active?.input, "");
   assert.equal(active?.modelId, "model-a");
+});
+
+test("active persisted sidebar rows replay by session id instead of stale pane focus", () => {
+  const actions: WorkspaceAction[] = [];
+  const { window } = makeWorkspaceWindowHarness();
+  const unsubscribe = subscribeWorkspaceWindowEvents(window, (action) => actions.push(action));
+
+  window.dispatchEvent(
+    new window.CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
+      detail: {
+        paneId: "p-main",
+        tabId: "s-old",
+        piSessionId: "pi-old",
+        title: "Old chat",
+        mode: "focus",
+      },
+    }),
+  );
+  unsubscribe();
+
+  assert.equal(actions.length, 2);
+  assert.equal(actions[0].type, "replaySession");
+  assert.equal(actions[0].piSessionId, "pi-old");
+  assert.equal(actions[0].sessionTitle, "Old chat");
+  assert.equal(actions[1].type, "workspaceUnmounted");
+});
+
+test("active local sidebar rows focus by pane and tab without cloning identity", () => {
+  const actions: WorkspaceAction[] = [];
+  const { window } = makeWorkspaceWindowHarness();
+  const unsubscribe = subscribeWorkspaceWindowEvents(window, (action) => actions.push(action));
+
+  window.dispatchEvent(
+    new window.CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
+      detail: {
+        paneId: "p-main",
+        tabId: "s-local",
+        projectId: "project-a",
+        cwd: "/workspace/project-a",
+        title: "Local chat",
+        mode: "focus",
+      },
+    }),
+  );
+  unsubscribe();
+
+  assert.equal(actions.length, 2);
+  assert.equal(actions[0].type, "focusPaneSession");
+  assert.equal(actions[0].paneId, "p-main");
+  assert.equal(actions[0].sessionId, "s-local");
+  assert.equal(actions[1].type, "workspaceUnmounted");
 });
 
 test("empty starter reuse clears stale title and transient runtime metadata", () => {

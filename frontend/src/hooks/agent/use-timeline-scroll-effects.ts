@@ -53,6 +53,7 @@ export function useTimelineScrollEffects({
 
     const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
+    let reattachTimer: number | null = null;
 
     const pinToBottom = () => {
       programmaticScrollUntilRef.current = Date.now() + 200;
@@ -63,6 +64,18 @@ export function useTimelineScrollEffects({
       if (stickRef.current === next) return;
       stickRef.current = next;
       onChangeRef.current?.(next);
+    };
+    const scheduleReattachAfterIntent = () => {
+      if (reattachTimer !== null) window.clearTimeout(reattachTimer);
+      const delay = Math.max(0, userScrollIntentUntilRef.current - Date.now() + 20);
+      reattachTimer = window.setTimeout(() => {
+        reattachTimer = null;
+        if (Date.now() < userScrollIntentUntilRef.current) {
+          scheduleReattachAfterIntent();
+          return;
+        }
+        if (atBottom()) setStick(true);
+      }, delay);
     };
 
     // User intent: an upward gesture detaches immediately. A downward gesture
@@ -90,11 +103,21 @@ export function useTimelineScrollEffects({
       const previousScrollTop = lastScrollTopRef.current;
       lastScrollTopRef.current = el.scrollTop;
       if (now < programmaticScrollUntilRef.current) return;
+      const userIntentActive = now < userScrollIntentUntilRef.current;
+      const scrollingUp = el.scrollTop < previousScrollTop - 1;
+      if (scrollingUp) {
+        setStick(false);
+        return;
+      }
       if (atBottom()) {
+        if (userIntentActive) {
+          scheduleReattachAfterIntent();
+          return;
+        }
         setStick(true);
         return;
       }
-      if (now < userScrollIntentUntilRef.current || el.scrollTop < previousScrollTop - 1) {
+      if (userIntentActive) {
         setStick(false);
       }
     };
@@ -137,7 +160,10 @@ export function useTimelineScrollEffects({
         ? null
         : new IntersectionObserver(
             (entries) => {
-              if (Date.now() < userScrollIntentUntilRef.current) return;
+              if (Date.now() < userScrollIntentUntilRef.current) {
+                scheduleReattachAfterIntent();
+                return;
+              }
               if (entries.some((entry) => entry.isIntersecting)) setStick(true);
             },
             { root: el, rootMargin: `0px 0px ${AT_BOTTOM_THRESHOLD_PX}px 0px` },
@@ -181,6 +207,7 @@ export function useTimelineScrollEffects({
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("keydown", onKeyDown);
+      if (reattachTimer !== null) window.clearTimeout(reattachTimer);
       intersectionObserver?.disconnect();
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();

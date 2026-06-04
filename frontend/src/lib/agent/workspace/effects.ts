@@ -80,6 +80,7 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "openSessionPayloadInPane",
   "splitPaneWithPayload",
   "focusPane",
+  "focusPaneSession",
   "renameTab",
   "splitTab",
   "closePane",
@@ -165,9 +166,22 @@ export function subscribeWorkspaceWindowEvents(
     if (!isRecord(detail)) return;
     const paneId = stringField(detail, "paneId");
     const tabId = stringField(detail, "tabId");
+    const piSessionId = stringField(detail, "piSessionId");
+    const title = stringField(detail, "title");
     const mode = stringField(detail, "mode");
     if (!paneId || !tabId) return;
     if (mode === "split") {
+      if (piSessionId) {
+        dispatch({
+          type: "replaySessionInSplit",
+          piSessionId,
+          sessionTitle: title,
+          paneId: newPaneId(),
+          runtimeSessionId: newRuntimeId(),
+          tab: makeFreshTab(),
+        });
+        return;
+      }
       dispatch({
         type: "splitTab",
         sourcePaneId: paneId,
@@ -178,7 +192,11 @@ export function subscribeWorkspaceWindowEvents(
       });
       return;
     }
-    dispatch({ type: "focusPane", paneId });
+    if (piSessionId) {
+      dispatch({ type: "replaySession", piSessionId, sessionTitle: title, tab: makeFreshTab() });
+      return;
+    }
+    dispatch({ type: "focusPaneSession", paneId, sessionId: tabId });
   };
   // Fired by ProjectsProvider once its first load settles. We hold off on
   // hydrating active-session snapshots until then so we can filter sessions

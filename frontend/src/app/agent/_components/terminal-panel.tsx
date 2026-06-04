@@ -6,7 +6,7 @@ import {
   type TerminalRefs,
 } from "@/hooks/agent/use-terminal-panel-effects";
 
-export function TerminalPanel({ cwd }: { cwd: string | null }) {
+export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<TerminalRefs>({
     term: null,
@@ -16,7 +16,7 @@ export function TerminalPanel({ cwd }: { cwd: string | null }) {
     disposed: false,
   });
 
-  useTerminalPanelEffects({ containerRef, cwd, stateRef });
+  useTerminalPanelEffects({ containerRef, cwd, ownerKey, stateRef });
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[#070707]">

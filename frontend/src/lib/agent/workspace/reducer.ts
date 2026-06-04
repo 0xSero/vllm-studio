@@ -15,6 +15,7 @@ import {
   applyUrlNavigation,
   closePane,
   focusPane,
+  focusPaneSession,
   openNewSessionInFocusedPane,
   openSessionPayloadInPane,
   patchActiveTab,
@@ -180,6 +181,8 @@ function reducePaneLayoutAction(
       return restorePaneWorkspaceState(state, action);
     case "focusPane":
       return focusPane(state, { paneId: action.paneId });
+    case "focusPaneSession":
+      return focusPaneSession(state, { paneId: action.paneId, sessionId: action.sessionId });
     case "closePane":
       return closePane(state, { paneId: action.paneId });
     default:

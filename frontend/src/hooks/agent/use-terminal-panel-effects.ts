@@ -5,10 +5,16 @@ import type { TerminalRunResult } from "@/lib/agent/contracts/terminal";
 
 type PtyBridge = {
   status(): Promise<{ available: boolean; reason: string | null }>;
-  open(opts: { cwd?: string; cols?: number; rows?: number }): Promise<{ id: string }>;
+  open(opts: {
+    cwd?: string;
+    cols?: number;
+    rows?: number;
+    ownerKey?: string;
+  }): Promise<{ id: string; replay?: string; reused?: boolean }>;
   write(id: string, data: string): Promise<void>;
   resize(id: string, cols: number, rows: number): Promise<void>;
   close(id: string): Promise<void>;
+  closeOwner(ownerKey: string): Promise<void>;
   onData(listener: (id: string, chunk: string) => void): () => void;
   onExit(
     listener: (id: string, info: { exitCode: number; signal: number | null }) => void,
@@ -42,10 +48,12 @@ const getTerminalPanelSnapshot = (): number => 0;
 export function useTerminalPanelEffects({
   containerRef,
   cwd,
+  ownerKey,
   stateRef,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   cwd: string | null;
+  ownerKey: string;
   stateRef: RefObject<TerminalRefs>;
 }): void {
   const subscribeTerminal = useCallback(() => {
@@ -53,8 +61,7 @@ export function useTerminalPanelEffects({
     refs.disposed = false;
     refs.input = "";
     refs.running = false;
-    let cleanupResize: (() => void) | null = null;
-    let disposePty: (() => void) | null = null;
+    let cleanupTerminal: (() => void) | null = null;
 
     async function boot() {
       const element = containerRef.current;
@@ -137,10 +144,9 @@ export function useTerminalPanelEffects({
       }
 
       if (!useFallback && pty) {
-        disposePty = await bootPty(pty, term, fit, refs, element, cwd);
-        cleanupResize = disposePty;
+        cleanupTerminal = await bootPty(pty, term, fit, refs, element, cwd, ownerKey);
       } else {
-        cleanupResize = bootFallback(term, fit, refs, element, cwd);
+        cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
       }
 
       window.setTimeout(() => {
@@ -152,13 +158,12 @@ export function useTerminalPanelEffects({
 
     return () => {
       refs.disposed = true;
-      cleanupResize?.();
-      disposePty?.();
+      cleanupTerminal?.();
       refs.term?.dispose();
       refs.term = null;
       refs.fit = null;
     };
-  }, [containerRef, cwd, stateRef]);
+  }, [containerRef, cwd, ownerKey, stateRef]);
 
   useSyncExternalStore(subscribeTerminal, getTerminalPanelSnapshot, getTerminalPanelSnapshot);
 }
@@ -170,18 +175,45 @@ async function bootPty(
   refs: TerminalRefs,
   element: HTMLDivElement,
   cwd: string | null,
+  ownerKey: string,
 ): Promise<() => void> {
   const { cols, rows } = term;
-  const { id } = await pty.open({ cwd: cwd ?? undefined, cols, rows });
+  let currentId: string | null = null;
+  const queuedData: Array<{ sessionId: string; chunk: string }> = [];
+  const queuedExits: Array<{
+    sessionId: string;
+    info: { exitCode: number; signal: number | null };
+  }> = [];
   const dataDisposer = pty.onData((sessionId, chunk) => {
-    if (sessionId === id && !refs.disposed) term.write(chunk);
+    if (!currentId) {
+      queuedData.push({ sessionId, chunk });
+      return;
+    }
+    if (sessionId === currentId && !refs.disposed) term.write(chunk);
   });
   const exitDisposer = pty.onExit((sessionId, info) => {
-    if (sessionId !== id || refs.disposed) return;
+    if (!currentId) {
+      queuedExits.push({ sessionId, info });
+      return;
+    }
+    if (sessionId !== currentId || refs.disposed) return;
     term.writeln(
       `\r\n\x1b[90m[process exited: code=${info.exitCode}${info.signal ? ` signal=${info.signal}` : ""}]\x1b[0m`,
     );
   });
+  const { id, replay } = await pty.open({ cwd: cwd ?? undefined, cols, rows, ownerKey });
+  currentId = id;
+  if (replay) term.write(replay);
+  for (const item of queuedData) {
+    if (item.sessionId === id && !refs.disposed) term.write(item.chunk);
+  }
+  for (const item of queuedExits) {
+    if (item.sessionId !== id || refs.disposed) continue;
+    const { info } = item;
+    term.writeln(
+      `\r\n\x1b[90m[process exited: code=${info.exitCode}${info.signal ? ` signal=${info.signal}` : ""}]\x1b[0m`,
+    );
+  }
   const dataSub = term.onData((data) => {
     void pty.write(id, data);
   });
@@ -221,7 +253,6 @@ async function bootPty(
     exitDisposer();
     dataSub.dispose();
     resizeObserver.disconnect();
-    void pty.close(id);
   };
 }
 
