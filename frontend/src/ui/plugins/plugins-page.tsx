@@ -207,8 +207,8 @@ export function PluginsPage() {
     <AppPage>
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:py-7">
         <PageHeader
-          eyebrow="MCP tools"
-          title="Plugins"
+          eyebrow="Tooling"
+          title="Plugin"
           status={
             <StatusPill tone={enabledCount ? "good" : "default"}>
               {loading ? "syncing" : `${enabledCount} enabled`}
