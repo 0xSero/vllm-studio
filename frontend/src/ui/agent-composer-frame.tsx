@@ -1,0 +1,208 @@
+"use client";
+
+import type {
+  ChangeEventHandler,
+  ClipboardEventHandler,
+  DragEventHandler,
+  FormEventHandler,
+  KeyboardEventHandler,
+  ReactNode,
+  RefObject,
+} from "react";
+import type {
+  ComposerMention,
+  ComposerPluginRef,
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
+} from "@/lib/agent/composer-context";
+import type { QueuedMessage } from "@/lib/agent/session";
+import { AgentAttachmentTray, type AgentComposerAttachment } from "./agent-attachment-tray";
+import { AgentComposerActions } from "./agent-composer-actions";
+import {
+  AgentLoadedContextTabs,
+  AgentMentionPicker,
+  type MentionRow,
+} from "./agent-composer-context";
+import { AgentComposerStatusBar } from "./agent-composer-status-bar";
+import { AgentComposerTextArea } from "./agent-composer-textarea";
+import { AgentQueuePanel } from "./agent-queue-panel";
+import { cx } from "./utils";
+
+type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
+
+type GitSummary = {
+  isRepo: boolean;
+  additions: number;
+  deletions: number;
+  statusCount: number;
+};
+
+export type AgentComposerFrameProps = {
+  attachments: AgentComposerAttachment[];
+  browserToolEnabled: boolean;
+  canvasEnabled: boolean;
+  composerDragActive: boolean;
+  contextWindow: number;
+  currentContextTokens: number;
+  cwd: string;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  gitBranch?: string | null;
+  gitSummary?: GitSummary | null;
+  input: string;
+  mention: ComposerMention | null;
+  mentionIndex: number;
+  mentionRows: MentionRow[];
+  modelSelector?: ReactNode;
+  onAbortTurn: () => void;
+  onAttachFiles: (files: FileList | null) => void;
+  onComposerChange: ChangeEventHandler<HTMLTextAreaElement>;
+  onComposerDragLeave: DragEventHandler<HTMLDivElement>;
+  onComposerDragOver: DragEventHandler<HTMLDivElement>;
+  onComposerDrop: DragEventHandler<HTMLDivElement>;
+  onComposerKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
+  onComposerPaste: ClipboardEventHandler<HTMLTextAreaElement>;
+  onEditQueued: (queueId: string, text: string) => void;
+  onInitGit?: () => void;
+  onOpenStatus: () => void;
+  onQueueExpandedChange: (expanded: boolean) => void;
+  onQueueMessage: () => void;
+  onRemoveAttachment: (id: string) => void;
+  onRemoveLoadedContext: (kind: LoadedContextKind, id: string) => void;
+  onRemoveQueued: (queueId: string) => void;
+  onSelectMention: (entry: MentionRow) => void;
+  onSteerQueued: (queueId: string) => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+  onToggleBrowserTool: () => void;
+  onToggleCanvas: () => void;
+  promptTemplates: ComposerPromptTemplateRef[];
+  queueExpanded: boolean;
+  queueItems: QueuedMessage[];
+  readingAttachments: boolean;
+  running: boolean;
+  selectedPlugins: ComposerPluginRef[];
+  selectedSkills: ComposerSkillRef[];
+  status?: string;
+  textareaRef: RefObject<HTMLTextAreaElement | null>;
+};
+
+export function AgentComposerFrame({
+  attachments,
+  browserToolEnabled,
+  canvasEnabled,
+  composerDragActive,
+  contextWindow,
+  currentContextTokens,
+  cwd,
+  fileInputRef,
+  gitBranch,
+  gitSummary,
+  input,
+  mention,
+  mentionIndex,
+  mentionRows,
+  modelSelector,
+  onAbortTurn,
+  onAttachFiles,
+  onComposerChange,
+  onComposerDragLeave,
+  onComposerDragOver,
+  onComposerDrop,
+  onComposerKeyDown,
+  onComposerPaste,
+  onEditQueued,
+  onInitGit,
+  onOpenStatus,
+  onQueueExpandedChange,
+  onQueueMessage,
+  onRemoveAttachment,
+  onRemoveLoadedContext,
+  onRemoveQueued,
+  onSelectMention,
+  onSteerQueued,
+  onSubmit,
+  onToggleBrowserTool,
+  onToggleCanvas,
+  promptTemplates,
+  queueExpanded,
+  queueItems,
+  readingAttachments,
+  running,
+  selectedPlugins,
+  selectedSkills,
+  status,
+  textareaRef,
+}: AgentComposerFrameProps) {
+  return (
+    <form onSubmit={onSubmit} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
+      <AgentQueuePanel
+        items={queueItems}
+        expanded={queueExpanded}
+        running={running}
+        onExpandedChange={onQueueExpandedChange}
+        onEdit={onEditQueued}
+        onRemove={onRemoveQueued}
+        onSteer={onSteerQueued}
+      />
+      <div
+        onDragOver={onComposerDragOver}
+        onDragLeave={onComposerDragLeave}
+        onDrop={onComposerDrop}
+        className={cx(
+          "mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-2xl border border-(--border)/20 bg-(--sidebar-bg) transition-colors",
+          composerDragActive && "outline outline-1 outline-(--accent)/50",
+        )}
+      >
+        {composerDragActive ? (
+          <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--accent)">
+            Drop files to attach to the next message.
+          </div>
+        ) : null}
+        <AgentLoadedContextTabs
+          plugins={selectedPlugins}
+          skills={selectedSkills}
+          promptTemplates={promptTemplates}
+          onRemove={onRemoveLoadedContext}
+        />
+        <AgentMentionPicker
+          mention={mention}
+          rows={mentionRows}
+          activeIndex={mentionIndex}
+          onSelect={onSelectMention}
+        />
+        <AgentAttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
+        <AgentComposerTextArea
+          inputRef={textareaRef}
+          value={input}
+          onPaste={onComposerPaste}
+          onChange={onComposerChange}
+          onKeyDown={onComposerKeyDown}
+        />
+        <AgentComposerActions
+          fileInputRef={fileInputRef}
+          onAttachFiles={onAttachFiles}
+          readingAttachments={readingAttachments}
+          running={running}
+          status={status}
+          input={input}
+          attachmentsCount={attachments.length}
+          browserToolEnabled={browserToolEnabled}
+          onToggleBrowserTool={onToggleBrowserTool}
+          canvasEnabled={canvasEnabled}
+          onToggleCanvas={onToggleCanvas}
+          onQueueMessage={onQueueMessage}
+          onAbortTurn={onAbortTurn}
+        />
+      </div>
+      <AgentComposerStatusBar
+        cwd={cwd}
+        gitBranch={gitBranch}
+        gitSummary={gitSummary}
+        onInitGit={onInitGit}
+        modelSelector={modelSelector}
+        currentContextTokens={currentContextTokens}
+        contextWindow={contextWindow}
+        onOpenStatus={onOpenStatus}
+      />
+    </form>
+  );
+}
