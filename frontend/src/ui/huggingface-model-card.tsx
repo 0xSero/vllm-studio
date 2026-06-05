@@ -117,7 +117,6 @@ export function HuggingFaceModelCardPanel({
   );
 }
 
-export const HuggingFaceModelCardModal = HuggingFaceModelCardPanel;
 
 function useModelCardPayload(modelId: string, open: boolean) {
   const [payload, setPayload] = useState<HuggingFaceModelCardPayload | null>(null);

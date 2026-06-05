@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { HuggingFaceModelCardModal, Table, TBody, THead, TH, TRow } from "@/ui";
+import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { originalModelKey } from "@/lib/huggingface";
 import { ModelRow } from "./discover-results/model-row";
@@ -151,7 +151,7 @@ export function DiscoverResults({
           </button>
         </div>
       )}
-      <HuggingFaceModelCardModal
+      <HuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}
         model={selectedModelCard?.model ?? null}
         variants={selectedModelCard?.variants ?? []}

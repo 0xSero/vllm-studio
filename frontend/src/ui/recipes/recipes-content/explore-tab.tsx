@@ -10,7 +10,7 @@ import {
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
 import api from "@/lib/api";
-import { HuggingFaceModelCardModal } from "@/ui";
+import { HuggingFaceModelCardPanel } from "@/ui";
 import type { ModelFit } from "./hardware-profile";
 
 export function ExploreTab() {
@@ -161,7 +161,7 @@ export function ExploreTab() {
         loadMore={loadMore}
         openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
       />
-      <HuggingFaceModelCardModal
+      <HuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}
         model={selectedModelCard?.model ?? null}
         variants={selectedModelCard?.variants ?? []}
