@@ -257,23 +257,30 @@ function RuntimeTargetMeta({ target }: { target: RuntimeTarget }) {
 function RuntimeTargetSummary({ target }: { target: RuntimeTarget }) {
   const location = pathForTarget(target);
   return (
-    <div className="min-w-0 text-left">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-        <span className="font-mono text-[length:var(--fs-md)] text-(--ui-fg)/85">
+    <div className="min-w-0 space-y-1 text-left">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 font-mono text-[length:var(--fs-md)] text-(--ui-fg)/85">
           {target.installed ? (target.version ?? "installed") : "not installed"}
         </span>
-        {target.update && target.capabilities.canUpdate ? (
+        {location ? (
+          <>
+            <span className="shrink-0 text-(--ui-muted)/70" aria-hidden>
+              ·
+            </span>
+            <span
+              className="min-w-0 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)"
+              title={location}
+            >
+              {location}
+            </span>
+          </>
+        ) : null}
+      </div>
+      {target.update && target.capabilities.canUpdate ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">
             target {target.update.targetVersion}
           </span>
-        ) : null}
-      </div>
-      {location ? (
-        <div
-          className="mt-1 line-clamp-2 min-w-0 break-all font-mono text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)"
-          title={location}
-        >
-          {location}
         </div>
       ) : null}
     </div>
