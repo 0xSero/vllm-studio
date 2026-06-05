@@ -43,6 +43,16 @@ type FallbackSession = {
   previousCwd: string | null;
 };
 
+type PtyBootOptions = {
+  pty: PtyBridge;
+  term: XTerm;
+  fit: FitAddon;
+  refs: TerminalRefs;
+  element: HTMLDivElement;
+  cwd: string | null;
+  ownerKey: string;
+};
+
 const getTerminalPanelSnapshot = (): number => 0;
 
 export function useTerminalPanelEffects({
@@ -144,7 +154,7 @@ export function useTerminalPanelEffects({
       }
 
       if (!useFallback && pty) {
-        cleanupTerminal = await bootPty(pty, term, fit, refs, element, cwd, ownerKey);
+        cleanupTerminal = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey });
       } else {
         cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
       }
@@ -168,15 +178,15 @@ export function useTerminalPanelEffects({
   useSyncExternalStore(subscribeTerminal, getTerminalPanelSnapshot, getTerminalPanelSnapshot);
 }
 
-async function bootPty(
-  pty: PtyBridge,
-  term: XTerm,
-  fit: FitAddon,
-  refs: TerminalRefs,
-  element: HTMLDivElement,
-  cwd: string | null,
-  ownerKey: string,
-): Promise<() => void> {
+async function bootPty({
+  pty,
+  term,
+  fit,
+  refs,
+  element,
+  cwd,
+  ownerKey,
+}: PtyBootOptions): Promise<() => void> {
   const { cols, rows } = term;
   let currentId: string | null = null;
   const queuedData: Array<{ sessionId: string; chunk: string }> = [];
