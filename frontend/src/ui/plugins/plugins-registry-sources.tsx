@@ -3,10 +3,11 @@
 import { EmptySafeNotice } from "../list";
 import {
   SettingsButton,
+  SettingsFactRows,
   SettingsGroup,
   SettingsInput,
   SettingsRow,
-  SettingsValue,
+  type SettingsFactRow,
 } from "../settings";
 import { StatusPill } from "../status";
 import type { RegistrySource } from "./plugins-types";
@@ -40,6 +41,35 @@ export function RegistrySourcesPanel({
   onRemoveSource: (source: RegistrySource) => void;
   loading?: boolean;
 }) {
+  const rows: SettingsFactRow[] = sources.map((source) => ({
+    key: source.id,
+    variant: "resource",
+    label: source.name,
+    description: source.url,
+    value: source.builtIn ? "official" : "custom",
+    status: {
+      label: source.enabled ? "enabled" : "disabled",
+      tone: source.enabled ? "good" : "default",
+    },
+    actions: source.builtIn ? undefined : (
+      <>
+        <SettingsButton
+          onClick={() => onToggleSource(source)}
+          disabled={busyId === `${source.id}:enabled`}
+        >
+          {source.enabled ? "Disable" : "Enable"}
+        </SettingsButton>
+        <SettingsButton
+          tone="danger"
+          onClick={() => onRemoveSource(source)}
+          disabled={busyId === `${source.id}:remove`}
+        >
+          Remove
+        </SettingsButton>
+      </>
+    ),
+  }));
+
   return (
     <SettingsGroup
       title="Registry sources"
@@ -47,39 +77,7 @@ export function RegistrySourcesPanel({
       actions={<SettingsButton onClick={onToggleOpen}>{open ? "Close" : "Add"}</SettingsButton>}
     >
       {sources.length ? (
-        sources.map((source) => (
-          <SettingsRow
-            key={source.id}
-            variant="resource"
-            label={source.name}
-            description={source.url}
-            value={<SettingsValue>{source.builtIn ? "official" : "custom"}</SettingsValue>}
-            status={
-              <StatusPill tone={source.enabled ? "good" : "default"}>
-                {source.enabled ? "enabled" : "disabled"}
-              </StatusPill>
-            }
-            actions={
-              source.builtIn ? null : (
-                <>
-                  <SettingsButton
-                    onClick={() => onToggleSource(source)}
-                    disabled={busyId === `${source.id}:enabled`}
-                  >
-                    {source.enabled ? "Disable" : "Enable"}
-                  </SettingsButton>
-                  <SettingsButton
-                    tone="danger"
-                    onClick={() => onRemoveSource(source)}
-                    disabled={busyId === `${source.id}:remove`}
-                  >
-                    Remove
-                  </SettingsButton>
-                </>
-              )
-            }
-          />
-        ))
+        <SettingsFactRows rows={rows} />
       ) : (
         <EmptySafeNotice>
           {loading

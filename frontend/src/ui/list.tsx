@@ -162,12 +162,14 @@ export function RowValue({
   mono = false,
   dim = false,
   truncate = false,
+  wrap = false,
   className,
 }: {
   children: ReactNode;
   mono?: boolean;
   dim?: boolean;
   truncate?: boolean;
+  wrap?: boolean;
   className?: string;
 }) {
   const value =
@@ -179,6 +181,7 @@ export function RowValue({
         mono ? "font-mono text-[length:var(--fs-md)]" : "",
         dim ? "text-(--ui-muted)" : "text-(--ui-fg)/80",
         truncate ? "min-w-0 truncate" : "",
+        wrap && !truncate ? "min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]" : "",
         className,
       )}
       title={typeof children === "string" ? children : undefined}

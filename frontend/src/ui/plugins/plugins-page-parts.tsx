@@ -6,7 +6,7 @@ import { EmptySafeNotice } from "../list";
 import { ModelButton } from "../model-page";
 import { SettingsButton, SettingsGroup, SettingsInput, SettingsRow } from "../settings";
 import { StatusPill } from "../status";
-import { type CatalogueEntry, type McpServer } from "./plugins-types";
+import { type CatalogueEntry } from "./plugins-types";
 import { missingRequiredEnv } from "./plugins-utils";
 
 export function RegistryRow({
@@ -182,12 +182,6 @@ export function ConfigureEntryPanel({
       </div>
     </div>
   );
-}
-
-export function ServerPill({ server }: { server: McpServer }) {
-  if (!server.enabled) return <StatusPill>disabled</StatusPill>;
-  if (server.source === "marketplace") return <StatusPill tone="info">marketplace</StatusPill>;
-  return <StatusPill tone="info">manual</StatusPill>;
 }
 
 function registryLabel(entry: CatalogueEntry): string {

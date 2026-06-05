@@ -102,14 +102,16 @@ export function SettingsValue({
   mono = false,
   dim = false,
   truncate = false,
+  wrap = false,
 }: {
   children: ReactNode;
   mono?: boolean;
   dim?: boolean;
   truncate?: boolean;
+  wrap?: boolean;
 }) {
   return (
-    <RowValue mono={mono} dim={dim} truncate={truncate}>
+    <RowValue mono={mono} dim={dim} truncate={truncate} wrap={wrap}>
       {children}
     </RowValue>
   );
@@ -120,9 +122,11 @@ export type SettingsFactRow = {
   value: ReactNode;
   key?: string | number;
   description?: ReactNode;
+  variant?: "settings" | "resource";
   mono?: boolean;
   dim?: boolean;
   truncate?: boolean;
+  wrap?: boolean;
   status?: { label: ReactNode; tone?: StatusTone };
   actions?: ReactNode;
   children?: ReactNode;
@@ -134,10 +138,11 @@ export function SettingsFactRows({ rows }: { rows: SettingsFactRow[] }) {
       {rows.map((row) => (
         <SettingsRow
           key={row.key ?? row.label}
+          variant={row.variant}
           label={row.label}
           description={row.description}
           value={
-            <SettingsValue mono={row.mono} dim={row.dim} truncate={row.truncate}>
+            <SettingsValue mono={row.mono} dim={row.dim} truncate={row.truncate} wrap={row.wrap}>
               {row.value}
             </SettingsValue>
           }
