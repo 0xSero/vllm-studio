@@ -1,13 +1,5 @@
 "use client";
-import {
-  FormEvent,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type ReactNode,
-} from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { AgentAttachmentTray } from "@/ui/agent-attachment-tray";
 import { AgentChatPaneHeader } from "@/ui/agent-chat-pane-header";
 import { AgentComposerActions } from "@/ui/agent-composer-actions";
@@ -58,17 +50,10 @@ import {
 } from "@/lib/agent/sessions/submit-guard";
 import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import { useTools } from "@/lib/agent/tools/context";
-import {
-  attachmentDedupKey,
-  attachmentPrompt,
-  createAttachment,
-  dataTransferHasFiles,
-  filesFromDataTransfer,
-  imageInputFromAttachment,
-  type ChatAttachment,
-} from "./chat-attachments";
+import { attachmentPrompt, imageInputFromAttachment } from "./chat-attachments";
 import { Timeline } from "./timeline/timeline";
 import { useChatPaneSessionTitle } from "./use-chat-pane-session-title";
+import { useComposerAttachments } from "./use-composer-attachments";
 import { useComposerMentionSelection } from "./use-composer-mention-selection";
 import { useComposerTextareaBehavior } from "./use-composer-textarea-behavior";
 export type {
@@ -159,9 +144,6 @@ export function ChatPane({
   const lastAppliedComposerHeightRef = useRef(0);
   const lastComposerValueLengthRef = useRef(0);
   const [stickToBottom, setStickToBottom] = useState(true);
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [readingAttachments, setReadingAttachments] = useState(false);
-  const [composerDragActive, setComposerDragActive] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(false);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -181,6 +163,31 @@ export function ChatPane({
   const selectedSkills = activeSelection.skills;
   const selectedPromptTemplates = activeSelection.promptTemplates;
   const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
+  const updateTab = useCallback(
+    (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
+      onTabsChange((currentTabs) =>
+        currentTabs.map((tab) => (tab.id === tabId ? patch(tab) : tab)),
+      );
+    },
+    [onTabsChange],
+  );
+  const {
+    attachments,
+    setAttachments,
+    readingAttachments,
+    composerDragActive,
+    attachFiles,
+    removeAttachment,
+    clearAttachments,
+    handleComposerDragOver,
+    handleComposerDragLeave,
+    handleComposerDrop,
+  } = useComposerAttachments({
+    activeTab,
+    running: Boolean(running),
+    updateTab,
+    fileInputRef,
+  });
   useChatPaneStickToBottomEffect({
     activeTabId: activeTab?.id,
     setStickToBottom,
@@ -221,14 +228,6 @@ export function ChatPane({
     setFileMentionRows,
     setMentionIndex,
   });
-  const updateTab = useCallback(
-    (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
-      onTabsChange((currentTabs) =>
-        currentTabs.map((tab) => (tab.id === tabId ? patch(tab) : tab)),
-      );
-    },
-    [onTabsChange],
-  );
   const {
     displayedSessionTitle,
     sessionPinned,
@@ -374,15 +373,15 @@ export function ChatPane({
         tools.setSelection(targetId, { ...currentSelection, skills: [], plugins: [] });
       }
       setStickToBottom(true);
-      setAttachments([]);
+      clearAttachments();
       resetComposerHeight();
-      if (fileInputRef.current) fileInputRef.current.value = "";
       await engine.submitPrompt({ ...args, targetSessionId: targetId });
     },
     [
       activeTab,
       attachments.length,
       buildPromptArgs,
+      clearAttachments,
       engine,
       ensureBrowserToolForText,
       modelId,
@@ -561,67 +560,6 @@ export function ChatPane({
     },
     [activeTab, engine, removeQueued, runtimeSessionId, updateTab],
   );
-  const attachFiles = useCallback(
-    async (files: FileList | File[] | null) => {
-      const fileArray = files ? Array.from(files) : [];
-      if (fileArray.length === 0 || !activeTab) return;
-      if (running) {
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          error: "Pause or wait for the current turn before attaching files.",
-        }));
-        return;
-      }
-      setReadingAttachments(true);
-      try {
-        const next = await Promise.all(fileArray.map((file) => createAttachment(file)));
-        setAttachments((current) => {
-          const seen = new Set(current.map(attachmentDedupKey));
-          const uniqueNext: ChatAttachment[] = [];
-          next.forEach((file) => {
-            const key = attachmentDedupKey(file);
-            if (seen.has(key)) return;
-            seen.add(key);
-            uniqueNext.push(file);
-          });
-          return [...current, ...uniqueNext];
-        });
-        updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
-      } catch (err) {
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          error: err instanceof Error ? err.message : "Failed to attach file",
-        }));
-      } finally {
-        setReadingAttachments(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    },
-    [activeTab, running, updateTab],
-  );
-  const handleComposerDragOver = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasFiles(event.dataTransfer)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = running ? "none" : "copy";
-      setComposerDragActive(true);
-    },
-    [running],
-  );
-  const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-    setComposerDragActive(false);
-  }, []);
-  const handleComposerDrop = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasFiles(event.dataTransfer)) return;
-      event.preventDefault();
-      setComposerDragActive(false);
-      void attachFiles(filesFromDataTransfer(event.dataTransfer));
-    },
-    [attachFiles],
-  );
   const abortTurn = useCallback(async () => {
     if (!activeTab) return;
     await engine.abortTurn(activeTab.id);
@@ -749,10 +687,7 @@ export function ChatPane({
             activeIndex={mentionIndex}
             onSelect={(entry) => void selectMentionRow(entry)}
           />
-          <AgentAttachmentTray
-            attachments={attachments}
-            onRemove={(id) => setAttachments((current) => current.filter((item) => item.id !== id))}
-          />
+          <AgentAttachmentTray attachments={attachments} onRemove={removeAttachment} />
           <AgentComposerTextArea
             inputRef={textareaRef}
             value={activeTab?.input ?? ""}
