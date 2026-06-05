@@ -31,6 +31,17 @@ const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const FAST_COMPAT_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const FAST_GPU_REQUEST = { timeout: 5_000, retries: 0 } as const;
 
+type ControllerEventDetail = { type?: string; data?: Record<string, unknown> };
+type PolledStatus = Awaited<ReturnType<typeof api.getStatus>>;
+type PolledCompatibility = Awaited<ReturnType<typeof api.getCompatibility>>;
+type PollResults = {
+  compatibility: PolledCompatibility | null;
+  gpus: GPU[];
+  metrics: Metrics | null;
+  status: PolledStatus | null;
+  statusConnected: boolean;
+};
+
 const unavailableBackend = (): RuntimeBackendInfo => ({
   installed: false,
   version: null,
@@ -146,79 +157,213 @@ function scheduleLaunchClear(stage: LaunchProgressData["stage"]) {
   }
 }
 
-async function fetchStatusNow() {
-  if (!snapshot.statusLoading) {
-    emitIfChanged({
-      ...snapshot,
-      statusLoading: true,
-      lastEventAt: Date.now(),
-    });
-  }
+function emitStatusLoading() {
+  if (snapshot.statusLoading) return;
+  emitIfChanged({
+    ...snapshot,
+    statusLoading: true,
+    lastEventAt: Date.now(),
+  });
+}
 
+async function fetchPollResults(): Promise<PollResults> {
   const [statusResult, compatibilityResult, gpuResult, metricsResult] = await Promise.allSettled([
     api.getStatus(FAST_STATUS_REQUEST),
     api.getCompatibility(FAST_COMPAT_REQUEST),
     api.getGPUs(FAST_GPU_REQUEST),
     api.getMetrics().catch(() => null),
   ]);
-
   const status = statusResult.status === "fulfilled" ? statusResult.value : null;
-  notePollOutcome(statusResult.status === "fulfilled");
-  const compatibility =
-    compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null;
-  const gpus =
-    gpuResult.status === "fulfilled" ? (gpuResult.value.gpus ?? snapshot.gpus) : snapshot.gpus;
-  const previousProcessKey = processKey(snapshot.status?.process);
-  const nextProcessKey = processKey(status?.process);
-  const polledMetrics =
-    metricsResult.status === "fulfilled" && metricsResult.value
-      ? (metricsResult.value as Metrics)
-      : previousProcessKey === nextProcessKey
-        ? snapshot.metrics
-        : null;
+  return {
+    compatibility: compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null,
+    gpus:
+      gpuResult.status === "fulfilled" ? (gpuResult.value.gpus ?? snapshot.gpus) : snapshot.gpus,
+    metrics: pollMetrics(metricsResult, status),
+    status,
+    statusConnected: statusResult.status === "fulfilled",
+  };
+}
 
-  if (status) {
-    const { running, process, inference_port } = status;
+function pollMetrics(
+  result: PromiseSettledResult<Metrics | null>,
+  status: PolledStatus | null,
+): Metrics | null {
+  if (result.status === "fulfilled" && result.value) return result.value;
+  return processKey(snapshot.status?.process) === processKey(status?.process)
+    ? snapshot.metrics
+    : null;
+}
 
-    // Hydrate runtime summary from /compat fallback
-    let runtimeSummary = snapshot.runtimeSummary;
-    if (!runtimeSummary && compatibility) {
-      const fallbackVendor =
-        compatibility.platform.kind === "cuda"
-          ? "nvidia"
-          : compatibility.platform.kind === "rocm"
-            ? "amd"
-            : null;
-      runtimeSummary = {
-        platform: { kind: compatibility.platform.kind, vendor: fallbackVendor },
-        gpu_monitoring: compatibility.gpu_monitoring,
-        backends: normalizeRuntimeBackends(compatibility.backends),
-      };
-    }
+function fallbackRuntimeVendor(
+  kind: RuntimeSummaryData["platform"]["kind"] | null | undefined,
+): RuntimeSummaryData["platform"]["vendor"] {
+  if (kind === "cuda") return "nvidia";
+  if (kind === "rocm") return "amd";
+  return null;
+}
 
-    emitIfChanged({
-      status: { running, process, inference_port, launching: status.launching ?? null },
-      statusLoading: false,
-      gpus,
-      metrics: polledMetrics,
-      launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
-        process: process ?? null,
-        launching: status.launching ?? null,
-      }),
-      platformKind: compatibility?.platform?.kind ?? snapshot.platformKind,
-      runtimeSummary,
-      services: snapshot.services,
-      lease: snapshot.lease,
-      lastEventAt: Date.now(),
-    });
-    return;
-  }
+function runtimeSummaryFromCompatibility(
+  current: RuntimeSummaryData | null,
+  compatibility: PolledCompatibility | null,
+): RuntimeSummaryData | null {
+  if (current || !compatibility) return current;
+  const kind = compatibility.platform.kind;
+  return {
+    platform: { kind, vendor: fallbackRuntimeVendor(kind) },
+    gpu_monitoring: compatibility.gpu_monitoring,
+    backends: normalizeRuntimeBackends(compatibility.backends),
+  };
+}
 
+function emitNoPolledStatus() {
   emitIfChanged({
     ...snapshot,
     statusLoading: false,
     lastEventAt: Date.now(),
   });
+}
+
+function emitPolledStatus({ compatibility, gpus, metrics, status }: PollResults) {
+  if (!status) return emitNoPolledStatus();
+  const { running, process, inference_port } = status;
+  const launching = status.launching ?? null;
+  emitIfChanged({
+    status: { running, process, inference_port, launching },
+    statusLoading: false,
+    gpus,
+    metrics,
+    launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
+      process: process ?? null,
+      launching,
+    }),
+    platformKind: compatibility?.platform?.kind ?? snapshot.platformKind,
+    runtimeSummary: runtimeSummaryFromCompatibility(snapshot.runtimeSummary, compatibility),
+    services: snapshot.services,
+    lease: snapshot.lease,
+    lastEventAt: Date.now(),
+  });
+}
+
+function statusFromEventData(
+  data: Record<string, unknown>,
+): NonNullable<RealtimeStatusSnapshot["status"]> {
+  const process = (data["process"] ?? null) as ProcessInfo | null;
+  return {
+    running: Boolean(data["running"] ?? process),
+    process,
+    inference_port: Number(data["inference_port"] ?? 8000),
+    launching:
+      typeof data["launching"] === "string" && data["launching"] ? data["launching"] : null,
+  };
+}
+
+function metricsForEventProcess(process: ProcessInfo | null): Metrics | null {
+  return processKey(snapshot.status?.process) === processKey(process) ? snapshot.metrics : null;
+}
+
+function handleStatusEvent(data: Record<string, unknown>, now: number) {
+  // A live status event means the selected backend is reachable; clear any
+  // poll backoff so a recovered connection resumes fast polling.
+  notePollOutcome(true);
+  const status = statusFromEventData(data);
+  emitIfChanged({
+    ...snapshot,
+    status,
+    statusLoading: false,
+    metrics: metricsForEventProcess(status.process),
+    launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
+      process: status.process,
+      launching: status.launching,
+    }),
+    lastEventAt: now,
+  });
+}
+
+function handleGpuEvent(data: Record<string, unknown>, now: number) {
+  const list = (data["gpus"] ?? []) as GPU[];
+  emitIfChanged({
+    ...snapshot,
+    gpus: Array.isArray(list) ? list : [],
+    lastEventAt: now,
+  });
+}
+
+function handleMetricsEvent(data: Record<string, unknown>, now: number) {
+  emitIfChanged({
+    ...snapshot,
+    metrics: data as Metrics,
+    lastEventAt: now,
+  });
+}
+
+function handleLaunchProgressEvent(data: Record<string, unknown>, now: number) {
+  const progress = data as unknown as LaunchProgressData;
+  scheduleLaunchClear(progress.stage);
+  emitIfChanged({
+    ...snapshot,
+    launchProgress: progress,
+    lastEventAt: now,
+  });
+}
+
+type RuntimeSummaryEventPlatform = { kind?: string; vendor?: string | null };
+
+function handleRuntimeSummaryEvent(data: Record<string, unknown>, now: number) {
+  const platform = data["platform"] as RuntimeSummaryEventPlatform | undefined;
+  const nextKind =
+    platform?.kind === "cuda" || platform?.kind === "rocm" || platform?.kind === "unknown"
+      ? platform.kind
+      : snapshot.platformKind;
+  const nextVendor =
+    platform?.vendor === "nvidia" || platform?.vendor === "amd"
+      ? platform.vendor
+      : fallbackRuntimeVendor(nextKind);
+  const gpuMon = data["gpu_monitoring"] as RuntimeSummaryData["gpu_monitoring"] | undefined;
+  const backends = data["backends"] as Partial<RuntimeSummaryData["backends"]> | undefined;
+  const rawServices = data["services"] as ServiceEntry[] | undefined;
+  const rawLease = data["lease"] as LeaseInfo | undefined;
+
+  emitIfChanged({
+    status: snapshot.status,
+    statusLoading: snapshot.statusLoading,
+    gpus: snapshot.gpus,
+    metrics: snapshot.metrics,
+    launchProgress: snapshot.launchProgress,
+    platformKind: nextKind,
+    runtimeSummary:
+      platform && gpuMon && backends
+        ? {
+            platform: { kind: nextKind ?? "unknown", vendor: nextVendor },
+            gpu_monitoring: gpuMon,
+            backends: normalizeRuntimeBackends(backends),
+          }
+        : snapshot.runtimeSummary,
+    services: Array.isArray(rawServices) ? rawServices : snapshot.services,
+    lease: rawLease ?? snapshot.lease,
+    lastEventAt: now,
+  });
+}
+
+const controllerEventHandlers: Record<
+  string,
+  (data: Record<string, unknown>, now: number) => void
+> = {
+  status: handleStatusEvent,
+  gpu: handleGpuEvent,
+  metrics: handleMetricsEvent,
+  launch_progress: handleLaunchProgressEvent,
+  runtime_summary: handleRuntimeSummaryEvent,
+};
+
+function handleControllerEvent(detail: ControllerEventDetail | undefined) {
+  controllerEventHandlers[detail?.type ?? ""]?.(detail?.data ?? {}, Date.now());
+}
+
+async function fetchStatusNow() {
+  emitStatusLoading();
+  const results = await fetchPollResults();
+  notePollOutcome(results.statusConnected);
+  emitPolledStatus(results);
 }
 
 function resetForControllerSwitch() {
@@ -235,108 +380,7 @@ function start() {
   started = true;
 
   const onControllerEvent = (event: Event) => {
-    const custom = event as CustomEvent<{ type?: string; data?: Record<string, unknown> }>;
-    const type = custom.detail?.type;
-    const data = custom.detail?.data ?? {};
-
-    const now = Date.now();
-
-    if (type === "status") {
-      // A live status event means the selected backend is reachable; clear any
-      // poll backoff so a recovered connection resumes fast polling.
-      notePollOutcome(true);
-      const running = Boolean(data["running"] ?? data["process"]);
-      const process = (data["process"] ?? null) as ProcessInfo | null;
-      const inference_port = Number(data["inference_port"] ?? 8000);
-      const launching =
-        typeof data["launching"] === "string" && data["launching"] ? data["launching"] : null;
-      const previousProcessKey = processKey(snapshot.status?.process);
-      const nextProcessKey = processKey(process);
-      emitIfChanged({
-        ...snapshot,
-        status: { running, process, inference_port, launching },
-        statusLoading: false,
-        metrics: previousProcessKey === nextProcessKey ? snapshot.metrics : null,
-        launchProgress: reconcileLaunchProgress(snapshot.launchProgress, { process, launching }),
-        lastEventAt: now,
-      });
-      return;
-    }
-
-    if (type === "gpu") {
-      const list = (data["gpus"] ?? []) as GPU[];
-      emitIfChanged({
-        ...snapshot,
-        gpus: Array.isArray(list) ? list : [],
-        lastEventAt: now,
-      });
-      return;
-    }
-
-    if (type === "metrics") {
-      emitIfChanged({
-        ...snapshot,
-        metrics: data as Metrics,
-        lastEventAt: now,
-      });
-      return;
-    }
-
-    if (type === "launch_progress") {
-      const progress = data as unknown as LaunchProgressData;
-      scheduleLaunchClear(progress.stage);
-      emitIfChanged({
-        ...snapshot,
-        launchProgress: progress,
-        lastEventAt: now,
-      });
-      return;
-    }
-
-    if (type === "runtime_summary") {
-      const platform = data["platform"] as { kind?: string; vendor?: string | null } | undefined;
-      const nextKind =
-        platform?.kind === "cuda" || platform?.kind === "rocm" || platform?.kind === "unknown"
-          ? platform.kind
-          : snapshot.platformKind;
-      const nextVendor =
-        platform?.vendor === "nvidia" || platform?.vendor === "amd"
-          ? platform.vendor
-          : nextKind === "cuda"
-            ? "nvidia"
-            : nextKind === "rocm"
-              ? "amd"
-              : null;
-
-      const gpuMon = data["gpu_monitoring"] as RuntimeSummaryData["gpu_monitoring"] | undefined;
-      const backends = data["backends"] as Partial<RuntimeSummaryData["backends"]> | undefined;
-      const nextSummary: RuntimeSummaryData | null =
-        platform && gpuMon && backends
-          ? {
-              platform: { kind: nextKind ?? "unknown", vendor: nextVendor },
-              gpu_monitoring: gpuMon,
-              backends: normalizeRuntimeBackends(backends),
-            }
-          : snapshot.runtimeSummary;
-
-      const rawServices = data["services"] as ServiceEntry[] | undefined;
-      const nextServices = Array.isArray(rawServices) ? rawServices : snapshot.services;
-      const rawLease = data["lease"] as LeaseInfo | undefined;
-      const nextLease = rawLease ?? snapshot.lease;
-
-      emitIfChanged({
-        status: snapshot.status,
-        statusLoading: snapshot.statusLoading,
-        gpus: snapshot.gpus,
-        metrics: snapshot.metrics,
-        launchProgress: snapshot.launchProgress,
-        platformKind: nextKind,
-        runtimeSummary: nextSummary,
-        services: nextServices,
-        lease: nextLease,
-        lastEventAt: now,
-      });
-    }
+    handleControllerEvent((event as CustomEvent<ControllerEventDetail>).detail);
   };
 
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
