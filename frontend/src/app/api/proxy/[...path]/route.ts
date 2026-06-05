@@ -379,6 +379,7 @@ function buildProxyRequestHeaders(
   request: NextRequest,
   apiKey: string,
   apiKeyQuery: string | null,
+  allowQueryApiKey: boolean,
 ): Headers {
   const headers = new Headers();
   const accept = request.headers.get("accept");
@@ -387,8 +388,9 @@ function buildProxyRequestHeaders(
   if (accept) headers.set("Accept", accept);
   if (contentType) headers.set("Content-Type", contentType);
   if (incomingAuth) headers.set("Authorization", incomingAuth);
-  else if (apiKeyQuery) headers.set("Authorization", `Bearer ${apiKeyQuery}`);
+  else if (allowQueryApiKey && apiKeyQuery) headers.set("Authorization", `Bearer ${apiKeyQuery}`);
   else if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
+  else if (apiKeyQuery) headers.set("Authorization", `Bearer ${apiKeyQuery}`);
   return headers;
 }
 
@@ -492,7 +494,12 @@ async function handleRequest(request: NextRequest, method: string, path: string[
     logProxyAccess({ client, hasAuth, method, overrideUrl: target.overrideUrl, path });
 
     const body = method !== "GET" && method !== "DELETE" ? await request.text() : undefined;
-    const headers = buildProxyRequestHeaders(request, target.apiKey, apiKeyQuery);
+    const headers = buildProxyRequestHeaders(
+      request,
+      target.apiKey,
+      apiKeyQuery,
+      Boolean(target.overrideUrl),
+    );
 
     const { response, usedFallback } = await fetchWithOptionalFallback(
       targetUrl,

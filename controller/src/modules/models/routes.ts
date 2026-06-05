@@ -281,23 +281,27 @@ export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
   app.get("/v1/huggingface/models", async (ctx) => {
     const search = ctx.req.query("search")?.trim() || undefined;
     const filter = ctx.req.query("filter") || undefined;
-    const sort = ctx.req.query("sort") || "trending";
+    const sort = ctx.req.query("sort")?.trim() || undefined;
     const limit = Math.min(Math.max(Number(ctx.req.query("limit") ?? 50), 1), 100);
     const offset = Math.max(Number(ctx.req.query("offset") ?? 0), 0);
 
     const sortMapping: Record<string, string> = {
+      createdAt: "createdAt",
       trending: "trendingScore",
       downloads: "downloads",
       likes: "likes",
+      lastModified: "lastModified",
       modified: "lastModified",
     };
-    const hfSort = sortMapping[sort] ?? "trendingScore";
+    const hfSort = sort ? (sortMapping[sort] ?? "trendingScore") : undefined;
     const requestLimit = Math.min(limit + offset, 500);
     const params = new URLSearchParams({
       limit: String(requestLimit),
       full: "false",
-      sort: hfSort,
     });
+    if (hfSort) {
+      params.set("sort", hfSort);
+    }
     if (search) {
       params.set("search", search);
     }

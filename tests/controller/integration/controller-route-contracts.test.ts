@@ -145,9 +145,8 @@ async function collectSseJson(stream: ReadableStream<Uint8Array>) {
 
 describe("controller route contracts", () => {
   test("stream proxy keeps content with null tool_calls as answer text", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -211,9 +210,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy keeps same-delta content visible when tool_calls are present", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -260,9 +258,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy splits implicit thinking close tags without duplicating answer text", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -303,9 +300,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy buffers split implicit thinking until the close tag arrives", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -352,9 +348,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy normalizes openai-compatible reasoning aliases", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -390,9 +385,8 @@ describe("controller route contracts", () => {
   });
 
   test("message normalizer maps reasoning aliases to reasoning_content", async () => {
-    const { normalizeReasoningAndContentInMessage } = await import(
-      "../../../controller/src/modules/proxy/reasoning-extractor"
-    );
+    const { normalizeReasoningAndContentInMessage } =
+      await import("../../../controller/src/modules/proxy/reasoning-extractor");
     const message: Record<string, unknown> = {
       role: "assistant",
       content: "pong",
@@ -407,9 +401,8 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy still extracts XML tool calls after stripping visible content", async () => {
-    const { createToolCallStream } = await import(
-      "../../../controller/src/modules/proxy/tool-call-stream"
-    );
+    const { createToolCallStream } =
+      await import("../../../controller/src/modules/proxy/tool-call-stream");
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -457,9 +450,8 @@ describe("controller route contracts", () => {
   });
 
   test("tool XML parser repairs malformed JSON arguments through pi-ai", async () => {
-    const { parseToolCallsFromContent } = await import(
-      "../../../controller/src/modules/proxy/tool-call-parser"
-    );
+    const { parseToolCallsFromContent } =
+      await import("../../../controller/src/modules/proxy/tool-call-parser");
 
     const [call] = parseToolCallsFromContent(
       `<tool_call><function=write_file><arguments>{"content":"hello
@@ -761,6 +753,102 @@ world"}</arguments></tool_call>`,
           }),
         ]),
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("HuggingFace model search route forwards createdAt sorting", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (!url.startsWith("https://huggingface.co/api/models?")) {
+        return new Response(JSON.stringify({ detail: "unexpected URL" }), {
+          status: 500,
+        });
+      }
+
+      const params = new URL(url).searchParams;
+      expect(params.get("filter")).toBe("text-generation");
+      expect(params.get("sort")).toBe("createdAt");
+      expect(params.get("limit")).toBe("5");
+      return new Response(
+        JSON.stringify([
+          {
+            id: "fresh/model",
+            createdAt: "2026-06-05T00:00:00.000Z",
+            downloads: 0,
+            likes: 0,
+            private: false,
+            tags: ["text-generation"],
+          },
+        ]),
+        { headers: { "content-type": "application/json" } },
+      );
+    };
+
+    try {
+      const app = await createTestApp();
+      const response = await app.request(
+        "/v1/huggingface/models?filter=text-generation&sort=createdAt&limit=5",
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual([
+        expect.objectContaining({
+          _id: "fresh/model",
+          modelId: "fresh/model",
+          createdAt: "2026-06-05T00:00:00.000Z",
+        }),
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("HuggingFace model search route preserves omitted sort for relevance", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (!url.startsWith("https://huggingface.co/api/models?")) {
+        return new Response(JSON.stringify({ detail: "unexpected URL" }), {
+          status: 500,
+        });
+      }
+
+      const params = new URL(url).searchParams;
+      expect(params.get("search")).toBe("llama");
+      expect(params.get("sort")).toBeNull();
+      expect(params.get("limit")).toBe("1");
+      return new Response(
+        JSON.stringify([
+          {
+            id: "relevant/model",
+            downloads: 10,
+            likes: 2,
+            private: false,
+            tags: ["text-generation"],
+          },
+        ]),
+        { status: 200 },
+      );
+    };
+
+    try {
+      const app = await createTestApp();
+      const response = await app.request(
+        "/v1/huggingface/models?search=llama&limit=1",
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual([
+        expect.objectContaining({
+          _id: "relevant/model",
+          modelId: "relevant/model",
+        }),
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -2103,12 +2191,10 @@ world"}</arguments></tool_call>`,
   }, 30_000);
 
   test("managed runtime install helpers stay inside controller data dir", async () => {
-    const { managedPackageSpec, managedVenvPath } = await import(
-      "../../../controller/src/modules/engines/runtimes/engine-jobs"
-    );
-    const { getSglangRuntimePython } = await import(
-      "../../../controller/src/modules/engines/runtimes/runtime-upgrade"
-    );
+    const { managedPackageSpec, managedVenvPath } =
+      await import("../../../controller/src/modules/engines/runtimes/engine-jobs");
+    const { getSglangRuntimePython } =
+      await import("../../../controller/src/modules/engines/runtimes/runtime-upgrade");
     const selectedSglangPython = join(
       tempDir,
       "runtime",

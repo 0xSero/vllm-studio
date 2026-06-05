@@ -1,4 +1,5 @@
 import type { HuggingFaceModel, ModelDownload, ModelRecommendation } from "@/lib/types";
+import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 import { Card, StatusPill } from "@/ui";
 import { SORT_OPTIONS, TASKS } from "./config";
 import { DiscoverHeader } from "./discover/discover-header";
@@ -95,6 +96,11 @@ export function DiscoverView({
   });
   const sliderMax = Math.max(1, Math.round(maxVramGb));
   const sliderValue = Math.max(1, Math.min(sliderMax, Math.round(effectiveVramGb || sliderMax)));
+  const isBrowsingRecentModels = search.trim().length === 0;
+  const activeSort = isBrowsingRecentModels ? RECENT_HF_MODEL_SORT : sort;
+  const visibleSortOptions = isBrowsingRecentModels
+    ? SORT_OPTIONS.filter((option) => option.value === RECENT_HF_MODEL_SORT)
+    : SORT_OPTIONS;
 
   return (
     <div className="flex flex-col h-full bg-(--bg) text-(--fg)">
@@ -130,9 +136,9 @@ export function DiscoverView({
             providerFilter={providerFilter}
             providers={providers}
             library={library}
-            sort={sort}
+            sort={activeSort}
             tasks={TASKS}
-            sortOptions={SORT_OPTIONS}
+            sortOptions={visibleSortOptions}
             excludedQuantizations={excludedQuantizations}
             onTaskChange={onTaskChange}
             onProviderFilterChange={onProviderFilterChange}
@@ -142,7 +148,11 @@ export function DiscoverView({
           />
 
           {/* Quick sort chips */}
-          <DiscoverSortChips sort={sort} sortOptions={SORT_OPTIONS} onSortChange={onSortChange} />
+          <DiscoverSortChips
+            sort={activeSort}
+            sortOptions={visibleSortOptions}
+            onSortChange={onSortChange}
+          />
 
           {recommendations.length > 0 && (
             <Card padding="md" className="mb-4">

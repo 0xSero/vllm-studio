@@ -1,4 +1,5 @@
-import { RefreshCw, Download, Heart, TrendingUp } from "lucide-react";
+import { Clock, Download, Heart, Search, TrendingUp } from "lucide-react";
+import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 
 export const TASKS = [
   { value: "", label: "All Tasks" },
@@ -14,10 +15,11 @@ export const TASKS = [
 ];
 
 export const SORT_OPTIONS = [
+  { value: "", label: "Relevance", icon: Search },
   { value: "trending", label: "Trending", icon: TrendingUp },
   { value: "downloads", label: "Most Downloads", icon: Download },
   { value: "likes", label: "Most Likes", icon: Heart },
-  { value: "modified", label: "Recently Updated", icon: RefreshCw },
+  { value: RECENT_HF_MODEL_SORT, label: "Newest", icon: Clock },
 ];
 
 export const QUANTIZATION_TAGS = [

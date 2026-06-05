@@ -5,7 +5,6 @@ import type { HuggingFaceModel } from "@/lib/types";
 import {
   DownloadStatusSection,
   ExploreControls,
-  ExploreHardwareShortlistSection,
   ExploreResultsSection,
 } from "./explore-tab-sections";
 import { useExplore } from "./use-explore";
@@ -21,7 +20,6 @@ export function ExploreTab() {
     detectedPoolGb,
     poolOverrideGb,
     hardwareProfile,
-    hardwareShortlist,
     setPoolOverrideGb,
     loading,
     error,
@@ -145,11 +143,6 @@ export function ExploreTab() {
         refresh={refresh}
       />
       <DownloadStatusSection error={downloadError} />
-      <ExploreHardwareShortlistSection
-        groups={hardwareShortlist}
-        hardwareProfile={hardwareProfile}
-        openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
-      />
       <ExploreResultsSection
         groups={groups}
         expandedKeys={expandedKeys}

@@ -36,14 +36,27 @@ export async function GET(request: NextRequest) {
         { status: 502 },
       );
     }
-    return new NextResponse(text, {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    const payload = JSON.parse(text) as unknown;
+    const data = Array.isArray(payload) ? payload.map(normalizeModel) : payload;
+    return NextResponse.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch Hugging Face models.";
     return NextResponse.json({ error: message }, { status: 502 });
   }
+}
+
+function normalizeModel(model: unknown): Record<string, unknown> {
+  const record = model && typeof model === "object" ? (model as Record<string, unknown>) : {};
+  const modelId = String(record.modelId ?? record.id ?? "");
+  return {
+    ...record,
+    _id: String(record._id ?? modelId),
+    modelId,
+    downloads: Number(record.downloads ?? 0),
+    likes: Number(record.likes ?? 0),
+    tags: Array.isArray(record.tags) ? record.tags : [],
+    private: Boolean(record.private),
+  };
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

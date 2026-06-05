@@ -6,10 +6,12 @@ import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
 import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
 import {
   engagementTier,
+  isRecentHuggingFaceModel,
   isDerivativeModel,
   modelFamilyName,
   modelRecencyMs,
   originalModelKey,
+  RECENT_HF_MODEL_SORT,
 } from "@/lib/huggingface";
 import {
   filterRecommendationsWithinPool,
@@ -136,23 +138,27 @@ export function useExplore() {
       setError(null);
       try {
         const params = new URLSearchParams();
-        if (search) params.set("search", search);
+        const isBrowsing = search.trim().length === 0;
+        if (!isBrowsing) params.set("search", search);
         params.set("filter", "text-generation");
-        params.set("sort", search.trim().length > 0 ? "downloads" : "likes");
+        params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : "downloads");
         params.set("limit", String(PAGE_SIZE));
         params.set("full", "false");
         params.set("offset", String(pageIndex * PAGE_SIZE));
 
         const data = await fetchHuggingFaceModels(params);
+        const visibleData = isBrowsing ? data.filter(isRecentHuggingFaceModel) : data;
 
         if (append) {
-          setModels((prev) => [...prev, ...data]);
+          setModels((prev) => [...prev, ...visibleData]);
           setPage(pageIndex);
         } else {
-          setModels(data);
+          setModels(visibleData);
           setPage(0);
         }
-        setHasMore(data.length === PAGE_SIZE);
+        setHasMore(
+          data.length === PAGE_SIZE && (!isBrowsing || visibleData.length === data.length),
+        );
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -296,11 +302,6 @@ export function useExplore() {
     return mixedGroups.filter((g) => groupPassesExploreFilters(g, search));
   }, [mixedGroups, search]);
 
-  const hardwareShortlist = useMemo(
-    () => hardwareShortlistFromGroups(visibleGroups),
-    [visibleGroups],
-  );
-
   const refresh = useCallback(() => {
     void (async () => {
       await loadRecommendationsAndGpus();
@@ -314,7 +315,6 @@ export function useExplore() {
     detectedPoolGb,
     poolOverrideGb,
     hardwareProfile,
-    hardwareShortlist,
     setPoolOverrideGb,
     gpuCount: gpus.length,
     loading,
@@ -334,17 +334,6 @@ function leadPreferenceScore(model: HuggingFaceModel, search: string): number {
   if (model.likes >= 1000) score -= 10;
   if (model.likes >= 250) score -= 4;
   return score;
-}
-
-function hardwareShortlistFromGroups(groups: ModelGroup[]): ModelGroup[] {
-  return [...groups]
-    .filter((group) => group.fit.status !== "too-large")
-    .sort((a, b) => {
-      if (b.fit.score !== a.fit.score) return b.fit.score - a.fit.score;
-      if (b.maxLikes !== a.maxLikes) return b.maxLikes - a.maxLikes;
-      return b.maxDownloads - a.maxDownloads;
-    })
-    .slice(0, 4);
 }
 
 const getExploreSnapshot = (): number => 0;

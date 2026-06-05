@@ -8,20 +8,19 @@ import { getStoredBackendUrl } from "./backend-url";
 let runtimeApiKey = "";
 
 /**
- * Get the API key from environment variables or in-memory runtime state.
+ * Get the API key from the active browser/controller state.
+ *
+ * Do not read NEXT_PUBLIC_* here. This module is bundled into the renderer,
+ * so public env values become compiled defaults and can outlive key rotation.
  */
 export function getApiKey(): string {
-  // Prefer env var if available (build-time or runtime)
-  const envKey = process.env.NEXT_PUBLIC_VLLM_STUDIO_API_KEY || process.env.VLLM_STUDIO_API_KEY;
-  if (envKey) return envKey;
-
   if (runtimeApiKey) return runtimeApiKey;
 
   if (typeof window !== "undefined") {
     return getControllerApiKey(getStoredBackendUrl());
   }
 
-  return "";
+  return process.env.VLLM_STUDIO_API_KEY?.trim() || "";
 }
 
 /**

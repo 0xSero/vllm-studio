@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, Loader2, Rocket } from "lucide-react";
-import { Button, Card } from "@/ui";
+import { Loader2, Rocket } from "lucide-react";
+import { Alert, Button, Card, FactGrid } from "@/ui";
 
 export function StepLaunch({
   selectedModel,
@@ -28,23 +28,25 @@ export function StepLaunch({
           <span className="text-(--fg)">{selectedModel}</span>, keep the safe local defaults, and
           launch it immediately.
         </p>
-        <div className="rounded-lg border border-(--surface) bg-(--surface)/40 p-4 text-sm text-(--dim)">
-          <div>Backend: vLLM</div>
-          <div>dtype: auto</div>
-          <div>KV cache dtype: auto</div>
-          <div>Advanced parser and tooling changes can be reviewed in Recipes after launch.</div>
-        </div>
+        <FactGrid
+          variant="panel"
+          items={[
+            { label: "Backend", value: "vLLM" },
+            { label: "dtype", value: "auto" },
+            { label: "KV cache dtype", value: "auto" },
+            {
+              label: "Review",
+              value: "Advanced parser and tooling changes can be reviewed in Recipes after launch.",
+              span: "full",
+            },
+          ]}
+        />
         {createdRecipeId && (
           <div className="text-xs text-(--dim)">
             Starter recipe id: <span className="text-(--fg)">{createdRecipeId}</span>
           </div>
         )}
-        {launchError && (
-          <div className="flex items-start gap-2 rounded-lg border border-(--err)/30 bg-(--err)/10 p-3 text-sm text-(--err)">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{launchError}</span>
-          </div>
-        )}
+        {launchError && <Alert variant="error">{launchError}</Alert>}
         <Button
           onClick={configureAndLaunch}
           disabled={configuringRecipe}

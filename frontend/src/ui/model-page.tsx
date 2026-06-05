@@ -5,6 +5,7 @@ import { StatusPill, type UiTone } from "./status";
 import { cx } from "./utils";
 
 export type ModelStatusTone = UiTone;
+export type ModelRowHighlight = "none" | "success";
 
 type ModelRowProps = {
   label: string;
@@ -14,6 +15,7 @@ type ModelRowProps = {
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
+  highlight?: ModelRowHighlight;
   className?: string;
   onClick?: () => void;
 };
@@ -53,6 +55,7 @@ export function ModelRow({
   status,
   actions,
   children,
+  highlight = "none",
   className,
   onClick,
 }: ModelRowProps) {
@@ -64,6 +67,7 @@ export function ModelRow({
         interactive
           ? "cursor-pointer rounded-md focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45"
           : "",
+        highlight === "success" ? "model-row-shine" : "",
         className,
       )}
       onClick={onClick}

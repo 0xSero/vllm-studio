@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { HuggingFaceModel, ModelInfo, ModelRecommendation } from "@/lib/types";
 import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
+import { isRecentHuggingFaceModel, RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 import { extractProvider, extractQuantizations, normalizeModelId } from "@/ui/discover/utils";
 
 export function useDiscover() {
@@ -15,8 +16,8 @@ export function useDiscover() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [task, setTask] = useState("text-generation");
-  const [sort, setSort] = useState("likes");
+  const [task, setTask] = useState("");
+  const [sort, setSort] = useState("");
   const [library, setLibrary] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -93,42 +94,49 @@ export function useDiscover() {
   );
 
   const fetchModels = useCallback(
-    async (append = false) => {
+    async (append = false, pageIndex = 0) => {
       setLoading(true);
       setError(null);
       try {
         const params = new URLSearchParams();
-        if (search) params.set("search", search);
+        const isBrowsing = search.trim().length === 0;
+        if (!isBrowsing) params.set("search", search);
         if (task) params.set("filter", task);
         if (library) params.set("filter", library);
-        params.set("sort", sort);
+        const nextSort = isBrowsing ? RECENT_HF_MODEL_SORT : sort;
+        if (nextSort) params.set("sort", nextSort);
         params.set("limit", String(PAGE_SIZE));
         params.set("full", "false");
-        params.set("offset", String(append ? page * PAGE_SIZE : 0));
+        params.set("offset", String(pageIndex * PAGE_SIZE));
 
         const data = await fetchHuggingFaceModels(params);
+        const visibleData = isBrowsing ? data.filter(isRecentHuggingFaceModel) : data;
 
         if (append) {
-          setModels((prev) => [...prev, ...data]);
+          setModels((prev) => [...prev, ...visibleData]);
+          setPage(pageIndex);
         } else {
-          setModels(data);
+          setModels(visibleData);
+          setPage(0);
         }
 
-        setHasMore(data.length === PAGE_SIZE);
+        setHasMore(
+          data.length === PAGE_SIZE && (!isBrowsing || visibleData.length === data.length),
+        );
       } catch (e) {
         setError((e as Error).message);
       } finally {
         setLoading(false);
       }
     },
-    [library, page, search, sort, task],
+    [library, search, sort, task],
   );
 
   const subscribeModelSearch = useCallback(
     (_notify: () => void) => {
       setPage(0);
       const debounce = setTimeout(() => {
-        void fetchModels(false);
+        void fetchModels(false, 0);
       }, 300);
       return () => clearTimeout(debounce);
     },
@@ -140,8 +148,7 @@ export function useDiscover() {
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {
       const nextPage = page + 1;
-      setPage(nextPage);
-      fetchModels(true);
+      void fetchModels(true, nextPage);
     }
   }, [page, loading, hasMore, fetchModels]);
 
@@ -173,7 +180,7 @@ export function useDiscover() {
     return out;
   }, [models, providerFilter, excludedQuantizations]);
 
-  const refreshModels = useCallback(() => fetchModels(false), [fetchModels]);
+  const refreshModels = useCallback(() => fetchModels(false, 0), [fetchModels]);
 
   return {
     models,

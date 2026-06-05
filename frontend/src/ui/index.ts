@@ -11,6 +11,12 @@ export type { SpinnerProps, SpinnerSize } from "./spinner";
 export { EmptyState } from "./empty-state";
 export type { EmptyStateProps } from "./empty-state";
 
+export { FactGrid } from "./fact-grid";
+export type { FactGridColumns, FactGridItem, FactGridVariant } from "./fact-grid";
+export { MarkdownContent } from "./markdown-content";
+export { RightDetailPanel } from "./right-detail-panel";
+export type { RightDetailPanelProps } from "./right-detail-panel";
+
 // Form Controls
 export { Input } from "./input";
 export type { InputProps } from "./input";

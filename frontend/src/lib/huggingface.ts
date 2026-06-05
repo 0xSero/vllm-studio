@@ -41,6 +41,8 @@ const DERIVATIVE_OWNERS = new Set([
 ]);
 
 const BASE_MODEL_PREFIX = "base_model:";
+export const RECENT_HF_MODEL_MONTHS = 6;
+export const RECENT_HF_MODEL_SORT = "createdAt";
 
 export type HuggingFaceModelCardPayload = {
   modelId: string;
@@ -94,6 +96,29 @@ export function modelRecencyMs(
   if (!raw) return 0;
   const parsed = Date.parse(raw);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function modelPublishedMs(
+  model: Pick<HuggingFaceModel, "createdAt" | "lastModified">,
+): number {
+  const raw = model.createdAt;
+  if (!raw) return 0;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function recentHfModelCutoffMs(nowMs = Date.now()): number {
+  const cutoff = new Date(nowMs);
+  cutoff.setMonth(cutoff.getMonth() - RECENT_HF_MODEL_MONTHS);
+  return cutoff.getTime();
+}
+
+export function isRecentHuggingFaceModel(
+  model: Pick<HuggingFaceModel, "createdAt" | "lastModified">,
+  nowMs = Date.now(),
+): boolean {
+  const publishedMs = modelPublishedMs(model);
+  return publishedMs > 0 && publishedMs >= recentHfModelCutoffMs(nowMs);
 }
 
 export function baseModelFromTags(tags: string[] = []): string | null {

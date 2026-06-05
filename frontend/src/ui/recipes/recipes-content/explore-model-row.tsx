@@ -108,6 +108,9 @@ export const ExploreModelRow = memo(function ExploreModelRow({
       label={rowLabel(model.modelId, child)}
       description={rowDescription(provider, variantCount, child)}
       onClick={onOpenModelCard}
+      highlight={
+        fit && !child && (fit.status === "best" || fit.status === "fits") ? "success" : "none"
+      }
       value={
         <div className="flex min-w-0 items-center gap-3">
           <ModelLogo modelId={model.modelId} author={model.author} size={child ? "sm" : "md"} />

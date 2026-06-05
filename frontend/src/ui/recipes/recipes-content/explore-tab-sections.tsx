@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ExternalLink, RefreshCw, Search } from "lucide-react";
 import { ModelButton, ModelSection, ModelInput, ModelRow, ModelValue, ModelStatus } from "@/ui";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";
@@ -190,46 +190,6 @@ function ExploreHardwareHintRow({
       value={<ModelValue>{hardwareProfile.label}</ModelValue>}
       status={<ModelStatus>{poolOverrideGb != null ? "manual" : "detected"}</ModelStatus>}
     />
-  );
-}
-
-export function ExploreHardwareShortlistSection({
-  groups,
-  hardwareProfile,
-  openModelCard,
-}: {
-  groups: ModelGroup[];
-  hardwareProfile: HardwareProfile;
-  openModelCard: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
-}) {
-  if (!groups.length) return null;
-  return (
-    <ModelSection
-      title="Best for this hardware"
-      description="Ranked from model popularity, recent downloads, estimated footprint, and MLX/oMLX fit when relevant."
-      actions={<ModelStatus tone="info">{hardwareProfile.label}</ModelStatus>}
-    >
-      {groups.map((group) => (
-        <ModelRow
-          key={`fit-${group.key}`}
-          label={group.lead.modelId}
-          description={group.fit.reason}
-          onClick={() => openModelCard(group.lead, group.variants, group.fit)}
-          value={
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-md)] text-(--ui-muted)">
-              <span className="inline-flex items-center gap-1.5 font-mono text-(--ui-fg)">
-                <Sparkles className="h-3.5 w-3.5 text-(--ui-info)" />
-                {group.fit.score}
-              </span>
-              <span>{formatNeed(group.needGb)}</span>
-              <span>{group.maxDownloads.toLocaleString()} downloads</span>
-              <span>{group.maxLikes.toLocaleString()} likes</span>
-            </div>
-          }
-          status={<ModelStatus tone={group.fit.tone}>{group.fit.label}</ModelStatus>}
-        />
-      ))}
-    </ModelSection>
   );
 }
 
@@ -462,9 +422,4 @@ function updatePoolOverride(
     return;
   }
   input.value = poolOverrideGb === null ? "" : String(poolOverrideGb);
-}
-
-function formatNeed(needGb: number | null) {
-  if (needGb == null || !Number.isFinite(needGb)) return "unknown footprint";
-  return `~${needGb < 10 ? needGb.toFixed(1) : Math.round(needGb)} GB`;
 }

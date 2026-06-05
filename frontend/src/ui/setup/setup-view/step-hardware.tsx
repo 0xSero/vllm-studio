@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Checkbox,
+  FactGrid,
   ManagedRuntimeInstallRows,
   RuntimeTargetRows,
   SETUP_RUNTIME_BACKENDS,
@@ -53,24 +54,14 @@ export function StepHardware({
           <Cpu className="h-5 w-5 text-(--hl1)" />
           <h2 className="text-lg font-medium">Hardware Check</h2>
         </div>
-        <div className="grid md:grid-cols-2 gap-4 text-sm text-(--dim)">
-          <div>
-            <div className="text-xs text-(--dim) mb-1">CPU</div>
-            <div>{hardware.cpu}</div>
-          </div>
-          <div>
-            <div className="text-xs text-(--dim) mb-1">Memory</div>
-            <div>{hardware.memory}</div>
-          </div>
-          <div>
-            <div className="text-xs text-(--dim) mb-1">GPU</div>
-            <div>{hardware.gpu}</div>
-          </div>
-          <div>
-            <div className="text-xs text-(--dim) mb-1">VRAM</div>
-            <div>{hardware.vram}</div>
-          </div>
-        </div>
+        <FactGrid
+          items={[
+            { label: "CPU", value: hardware.cpu },
+            { label: "Memory", value: hardware.memory },
+            { label: "GPU", value: hardware.gpu },
+            { label: "VRAM", value: hardware.vram },
+          ]}
+        />
       </Card>
 
       <SettingsGroup

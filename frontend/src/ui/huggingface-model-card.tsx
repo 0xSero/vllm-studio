@@ -12,7 +12,8 @@ import {
 } from "@/lib/huggingface";
 import { formatBytes, formatNumber } from "@/lib/formatters";
 import { Button } from "./button";
-import { UiModal, UiModalHeader } from "./modal";
+import { MarkdownContent } from "./markdown-content";
+import { RightDetailPanel } from "./right-detail-panel";
 import { StatusPill } from "./status";
 import { ModelLogo } from "./model-logo";
 
@@ -29,7 +30,7 @@ type ModelCardStats = {
   tier: ReturnType<typeof engagementTier>;
 };
 
-export function HuggingFaceModelCardModal({
+export function HuggingFaceModelCardPanel({
   model,
   variants = [],
   fit,
@@ -49,46 +50,48 @@ export function HuggingFaceModelCardModal({
   if (!model) return null;
 
   const badges = modelCardBadges(model, payload);
-  const readme = readmeContent({ error, loading, summary: readmeSummary(payload?.readme) });
+  const readme = readmeContent({ error, loading, markdown: readmeMarkdown(payload?.readme) });
 
   return (
-    <UiModal isOpen={open} onClose={onClose} maxWidth="max-w-4xl" className="overflow-hidden">
-      <UiModalHeader
-        title={modelDisplayName(model.modelId)}
-        icon={<ModelLogo modelId={model.modelId} author={payload?.author ?? model.author} />}
-        onClose={onClose}
-        actions={
-          <div className="flex items-center gap-1.5">
-            <StatusPill tone={engagementTone(stats.tier)} variant="badge">
-              {engagementLabel(stats.tier)}
+    <RightDetailPanel
+      open={open}
+      onClose={onClose}
+      widthClassName="w-full sm:w-[min(620px,calc(100vw-72px))]"
+      className="bg-(--bg)"
+      title={modelDisplayName(model.modelId)}
+      icon={<ModelLogo modelId={model.modelId} author={payload?.author ?? model.author} />}
+      actions={
+        <>
+          <StatusPill tone={engagementTone(stats.tier)} variant="badge">
+            {engagementLabel(stats.tier)}
+          </StatusPill>
+          <a href={hfModelUrl(model.modelId)} target="_blank" rel="noopener noreferrer">
+            <Button variant="icon" size="sm" title="Open on Hugging Face">
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          </a>
+        </>
+      }
+    >
+      <div className="p-4">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+          <span className="inline-flex items-center gap-1.5">
+            <Download className="h-3.5 w-3.5" />
+            {formatNumber(stats.downloads)} downloads
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Heart className="h-3.5 w-3.5" />
+            {formatNumber(stats.likes)} likes
+          </span>
+          {badges.map((badge) => (
+            <StatusPill key={`${badge.kind}:${badge.label}`} variant="badge">
+              {badge.label}
             </StatusPill>
-            <a href={hfModelUrl(model.modelId)} target="_blank" rel="noopener noreferrer">
-              <Button variant="icon" size="sm" title="Open on Hugging Face">
-                <ExternalLink className="h-3.5 w-3.5" />
-              </Button>
-            </a>
-          </div>
-        }
-        closeIcon="x"
-      />
-      <div className="max-h-[78vh] overflow-y-auto p-5">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
-          <section className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-              <span className="inline-flex items-center gap-1.5">
-                <Download className="h-3.5 w-3.5" />
-                {formatNumber(stats.downloads)} downloads
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Heart className="h-3.5 w-3.5" />
-                {formatNumber(stats.likes)} likes
-              </span>
-              {badges.map((badge) => (
-                <StatusPill key={`${badge.kind}:${badge.label}`} variant="badge">
-                  {badge.label}
-                </StatusPill>
-              ))}
-            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+          <section className="min-w-0">
             <div className="rounded-md border border-(--ui-border) bg-(--ui-surface)">
               <div className="flex h-9 items-center justify-between border-b border-(--ui-border) px-3">
                 <div className="flex min-w-0 items-center gap-2 text-[length:var(--fs-sm)] font-medium text-(--ui-fg)">
@@ -102,7 +105,7 @@ export function HuggingFaceModelCardModal({
               <div className="p-3">{readme}</div>
             </div>
           </section>
-          <aside className="space-y-4">
+          <aside className="space-y-3">
             <HardwareFitPanel fit={fit} />
             <MetadataPanel payload={payload} model={model} />
             <QuantPanel variants={variants} />
@@ -110,9 +113,11 @@ export function HuggingFaceModelCardModal({
           </aside>
         </div>
       </div>
-    </UiModal>
+    </RightDetailPanel>
   );
 }
+
+export const HuggingFaceModelCardModal = HuggingFaceModelCardPanel;
 
 function useModelCardPayload(modelId: string, open: boolean) {
   const [payload, setPayload] = useState<HuggingFaceModelCardPayload | null>(null);
@@ -184,20 +189,14 @@ function engagementLabel(tier: ModelCardStats["tier"]) {
 function readmeContent({
   error,
   loading,
-  summary,
+  markdown,
 }: {
   error: string | null;
   loading: boolean;
-  summary: string;
+  markdown: string;
 }): ReactNode {
   if (error) return <p className="text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</p>;
-  if (summary) {
-    return (
-      <pre className="max-h-[460px] whitespace-pre-wrap font-sans text-[length:var(--fs-md)] leading-6 text-(--ui-fg)/85">
-        {summary}
-      </pre>
-    );
-  }
+  if (markdown) return <MarkdownContent markdown={markdown} />;
   if (loading) return null;
   return (
     <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
@@ -319,14 +318,61 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function readmeSummary(readme?: string): string {
+function readmeMarkdown(readme?: string): string {
   if (!readme) return "";
-  return readme
-    .replace(/^---[\s\S]*?---\s*/m, "")
-    .replace(/<[^>]+>/g, "")
+  return readableMarkdownFromHtml(readme.replace(/^---[\s\S]*?---\s*/m, ""))
     .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 6000);
+    .trim();
+}
+
+function readableMarkdownFromHtml(markdown: string): string {
+  return markdown
+    .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level: string, content: string) => {
+      const text = htmlText(content);
+      return text ? `\n${"#".repeat(Number(level))} ${text}\n` : "\n";
+    })
+    .replace(
+      /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi,
+      (_, _quote: string, href: string, content: string) => {
+        const label = htmlText(content) || href;
+        return href ? `[${label}](${href})` : label;
+      },
+    )
+    .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, (_, _quote: string, alt: string) =>
+      htmlEntityDecode(alt),
+    )
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(
+      /<\/(p|div|section|article|details|summary|li|ul|ol|table|thead|tbody|tr|td|th)>/gi,
+      "\n",
+    )
+    .replace(/<[^>]+>/g, "")
+    .replace(/[ \t]+\n/g, "\n");
+}
+
+function htmlText(value: string): string {
+  return htmlEntityDecode(
+    value
+      .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, "$2")
+      .replace(/<img\b[^>]*>/gi, "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+function htmlEntityDecode(value: string): string {
+  return value
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code: string) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function formatDate(value?: string): string {

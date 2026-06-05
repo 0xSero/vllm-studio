@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  LayoutDashboard,
-  Loader2,
-  MessageCircle,
-} from "lucide-react";
-import { Button, Card } from "@/ui";
+import { Activity, LayoutDashboard, Loader2, MessageCircle } from "lucide-react";
+import { Alert, Button, Card, FactGrid } from "@/ui";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -60,38 +53,23 @@ export function StepBenchmark({
         </Button>
 
         {benchmarkResult && (
-          <div className="space-y-3 rounded-lg border border-(--hl2)/30 bg-(--hl2)/10 p-4">
-            <div className="flex items-center gap-2 text-sm text-(--hl2)">
-              <CheckCircle2 className="h-4 w-4" />
-              Benchmark completed.
+          <Alert variant="success">
+            <div className="space-y-3">
+              <div>Benchmark completed.</div>
+              <FactGrid
+                columns={4}
+                items={[
+                  { label: "Prompt tokens", value: benchmarkResult.prompt_tokens },
+                  { label: "Completion tokens", value: benchmarkResult.completion_tokens },
+                  { label: "Total time", value: `${benchmarkResult.total_time_s}s` },
+                  { label: "Generation TPS", value: benchmarkResult.generation_tps },
+                ]}
+              />
             </div>
-            <div className="grid gap-3 md:grid-cols-4 text-sm">
-              <div>
-                <div className="text-xs text-(--dim)">Prompt tokens</div>
-                <div>{benchmarkResult.prompt_tokens}</div>
-              </div>
-              <div>
-                <div className="text-xs text-(--dim)">Completion tokens</div>
-                <div>{benchmarkResult.completion_tokens}</div>
-              </div>
-              <div>
-                <div className="text-xs text-(--dim)">Total time</div>
-                <div>{benchmarkResult.total_time_s}s</div>
-              </div>
-              <div>
-                <div className="text-xs text-(--dim)">Generation TPS</div>
-                <div>{benchmarkResult.generation_tps}</div>
-              </div>
-            </div>
-          </div>
+          </Alert>
         )}
 
-        {benchmarkError && (
-          <div className="flex items-start gap-2 rounded-lg border border-(--err)/30 bg-(--err)/10 p-3 text-sm text-(--err)">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{benchmarkError}</span>
-          </div>
-        )}
+        {benchmarkError && <Alert variant="error">{benchmarkError}</Alert>}
       </Card>
 
       {hasAttemptedBenchmark && (
