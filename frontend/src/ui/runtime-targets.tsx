@@ -2,6 +2,7 @@
 
 import { ArrowUpCircle, DownloadCloud, Loader2 } from "lucide-react";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "@/lib/types";
+import { RowFacts, type RowFact } from "./list";
 import { SettingsButton, SettingsRow, SettingsValue } from "./settings";
 import { StatusPill, type UiTone } from "./status";
 
@@ -256,35 +257,21 @@ function RuntimeTargetMeta({ target }: { target: RuntimeTarget }) {
 
 function RuntimeTargetSummary({ target }: { target: RuntimeTarget }) {
   const location = pathForTarget(target);
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-1 text-left sm:grid-cols-[5rem_minmax(0,1fr)]">
-      <span className="text-[length:var(--fs-xs)] uppercase text-(--ui-muted)/70">Version</span>
-      <span className="min-w-0 font-mono text-[length:var(--fs-md)] text-(--ui-fg)/85">
-        {target.installed ? (target.version ?? "installed") : "not installed"}
-      </span>
-      {location ? (
-        <>
-          <span className="text-[length:var(--fs-xs)] uppercase text-(--ui-muted)/70">
-            Location
-          </span>
-          <span
-            className="min-w-0 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)"
-            title={location}
-          >
-            {location}
-          </span>
-        </>
-      ) : null}
-      {target.update && target.capabilities.canUpdate ? (
-        <>
-          <span className="text-[length:var(--fs-xs)] uppercase text-(--ui-muted)/70">Target</span>
-          <span className="min-w-0 font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
-            {target.update.targetVersion}
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
+  const facts: RowFact[] = [
+    {
+      label: "Version",
+      value: target.installed ? (target.version ?? "installed") : "not installed",
+      mono: true,
+    },
+  ];
+  if (location) {
+    facts.push({ label: "Location", value: location, mono: true, title: location, truncate: true });
+  }
+  if (target.update && target.capabilities.canUpdate) {
+    facts.push({ label: "Latest", value: target.update.targetVersion, mono: true });
+  }
+
+  return <RowFacts items={facts} />;
 }
 
 export function RuntimeTargetStatus({
@@ -334,27 +321,29 @@ export function RuntimeJobMessage({ job }: { job: EngineJob }) {
 export function RuntimeUpdateDetails({ update }: { update: NonNullable<RuntimeTarget["update"]> }) {
   const pinHint = update.changes.find((change) => change.startsWith("Set "));
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
-      <span>
-        Update available:{" "}
-        <span className="font-mono text-(--ui-fg)/70">
-          {update.currentVersion ?? "unknown"} -&gt; {update.targetVersion}
+    <div className="space-y-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span>
+          Update available:{" "}
+          <span className="font-mono text-(--ui-fg)/70">
+            {update.currentVersion ?? "unknown"} -&gt; {update.targetVersion}
+          </span>
         </span>
-      </span>
-      {update.restartRequired ? (
-        <StatusPill tone="warning" variant="badge">
-          restarts model
-        </StatusPill>
-      ) : null}
-      <a
-        href={update.releaseNotesUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-(--ui-accent)/80 hover:underline"
-      >
-        release notes
-      </a>
-      {pinHint ? <span className="basis-full text-(--ui-muted)/70">{pinHint}</span> : null}
+        {update.restartRequired ? (
+          <StatusPill tone="warning" variant="badge">
+            restarts model
+          </StatusPill>
+        ) : null}
+        <a
+          href={update.releaseNotesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-(--ui-accent)/80 hover:underline"
+        >
+          release notes
+        </a>
+      </div>
+      {pinHint ? <p className="text-(--ui-muted)/70">{pinHint}</p> : null}
     </div>
   );
 }

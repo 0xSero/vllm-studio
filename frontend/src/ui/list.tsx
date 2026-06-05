@@ -113,11 +113,7 @@ export function ListRow({
             </div>
           ) : null}
         </div>
-        {primaryValue ? (
-          <div className="mt-2 min-w-0 rounded-md border border-(--ui-separator)/70 bg-(--ui-bg)/45 px-2.5 py-2 text-(--ui-muted)">
-            {primaryValue}
-          </div>
-        ) : null}
+        {primaryValue ? <div className="mt-2 min-w-0 text-(--ui-muted)">{primaryValue}</div> : null}
         {children ? (
           <div className="mt-2 min-w-0 space-y-1.5 border-t border-(--ui-separator)/70 pt-2 text-[length:var(--fs-sm)] leading-relaxed">
             {children}
@@ -187,6 +183,43 @@ export function RowValue({
     >
       {children || "Not set"}
     </div>
+  );
+}
+
+export type RowFact = {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  title?: string;
+  truncate?: boolean;
+};
+
+export function RowFacts({ items, className }: { items: RowFact[]; className?: string }) {
+  return (
+    <dl
+      className={cx(
+        "grid min-w-0 grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-[6rem_minmax(0,1fr)]",
+        className,
+      )}
+    >
+      {items.map((item) => (
+        <div key={item.label} className="contents">
+          <dt className="text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
+            {item.label}
+          </dt>
+          <dd
+            className={cx(
+              "min-w-0 text-[length:var(--fs-sm)] text-(--ui-fg)/80",
+              item.mono ? "font-mono" : "",
+              item.truncate ? "truncate" : "break-words",
+            )}
+            title={item.title ?? (typeof item.value === "string" ? item.value : undefined)}
+          >
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

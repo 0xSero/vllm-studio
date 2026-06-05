@@ -66,7 +66,8 @@ export type { TableProps, THeadProps, TBodyProps, TRowProps, THProps, TCellProps
 export { AppPage, PageHeader, SectionNav, RefreshIconButton } from "./page";
 export type { SectionNavItem } from "./page";
 
-export { ListGroup, ListRow, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
+export { ListGroup, ListRow, RowFacts, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
+export type { RowFact } from "./list";
 
 export { Toggle } from "./toggle";
 export { Slider } from "./slider";
