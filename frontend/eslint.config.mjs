@@ -113,7 +113,6 @@ const eslintConfig = defineConfig([
       "src/app/agent/_components/agent-workspace-shell.tsx",
       "src/app/agent/sessions/page.tsx",
       "src/components/dashboard/control-panel/control-panel-v2.tsx",
-      "src/components/dashboard/control-panel/status-section.tsx",
       "src/components/dashboard/use-dashboard-recipes.ts",
       "src/ui/configs/configs-view.tsx",
       "src/app/configs/_components/engines-section.tsx",
