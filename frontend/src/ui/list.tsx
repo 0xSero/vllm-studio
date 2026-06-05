@@ -89,21 +89,16 @@ export function ListRow({
 
   if (variant === "resource") {
     return (
-      <div className={cx("px-4 py-3 transition-colors hover:bg-(--ui-hover)/35", className)}>
-        <div
-          className={cx(
-            "grid min-h-8 min-w-0 grid-cols-1 gap-2",
-            primaryValue
-              ? "lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1.45fr)_auto_auto] lg:items-start"
-              : "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
-          )}
-        >
-          <div className="min-w-0 flex-1 space-y-1">
-            <div
-              className="min-w-0 truncate text-[length:var(--fs-base)] font-medium leading-snug text-(--ui-fg)"
-              title={label}
-            >
-              {label}
+      <div className={cx("px-3.5 py-3 transition-colors hover:bg-(--ui-hover)/35", className)}>
+        <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+          <div className="min-w-0 space-y-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <div
+                className="min-w-0 break-words text-[length:var(--fs-base)] font-medium leading-snug text-(--ui-fg)"
+                title={label}
+              >
+                {label}
+              </div>
             </div>
             {description ? (
               <div className="line-clamp-2 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
@@ -111,27 +106,21 @@ export function ListRow({
               </div>
             ) : null}
           </div>
-          {primaryValue ? (
-            <div className="min-w-0 pt-px text-(--ui-muted)">{primaryValue}</div>
-          ) : null}
-          {status ? <div className="shrink-0 sm:pt-0.5 lg:justify-self-end">{status}</div> : null}
-          {actions ? (
-            <div className="flex shrink-0 items-center gap-1.5 sm:pt-px lg:justify-self-end">
-              {actions}
+          {status || actions ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:justify-end sm:pt-0.5">
+              {status ? <div className="shrink-0">{status}</div> : null}
+              {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
             </div>
           ) : null}
         </div>
+        {primaryValue ? (
+          <div className="mt-2 min-w-0 rounded-md border border-(--ui-separator)/70 bg-(--ui-bg)/45 px-2.5 py-2 text-(--ui-muted)">
+            {primaryValue}
+          </div>
+        ) : null}
         {children ? (
-          <div
-            className={cx(
-              "mt-2 grid min-w-0 gap-2 border-t border-(--ui-separator)/70 pt-2 text-[length:var(--fs-sm)] leading-relaxed",
-              primaryValue ? "lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1.45fr)_auto_auto]" : "",
-            )}
-          >
-            {primaryValue ? <div className="hidden lg:block" /> : null}
-            <div className={cx("min-w-0 space-y-1.5", primaryValue ? "lg:col-span-3" : "")}>
-              {children}
-            </div>
+          <div className="mt-2 min-w-0 space-y-1.5 border-t border-(--ui-separator)/70 pt-2 text-[length:var(--fs-sm)] leading-relaxed">
+            {children}
           </div>
         ) : null}
       </div>
