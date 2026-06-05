@@ -2,6 +2,16 @@ import { SettingsGroup, SettingsRow, SettingsValue, StatusPill, type StatusTone 
 import type { ApiConnectionSettings } from "@/lib/configs/types";
 import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
 
+type SettingsFactRow = {
+  label: string;
+  value: string | number;
+  key?: string;
+  description?: string;
+  mono?: boolean;
+  dim?: boolean;
+  status?: { label: string; tone?: StatusTone };
+};
+
 export function ServicesSettings({
   data,
   apiSettings,
@@ -42,20 +52,7 @@ function ServiceTopologyGroup({
       description="Live service rows when the controller answers; stable fallback rows when it does not."
       actions={<StatusPill tone={tone}>{label}</StatusPill>}
     >
-      {rows.map((service) => (
-        <SettingsRow
-          key={`${service.name}-${service.port}`}
-          label={service.name}
-          description={service.description ?? "No description reported"}
-          value={
-            <SettingsValue mono>
-              {service.protocol.toUpperCase()} :{service.port}
-              {service.port !== service.internal_port ? ` → :${service.internal_port}` : ""}
-            </SettingsValue>
-          }
-          status={<StatusPill tone={toneForStatus(service.status)}>{service.status}</StatusPill>}
-        />
-      ))}
+      <SettingsFactRows rows={rows.map(serviceFactRow)} />
     </SettingsGroup>
   );
 }
@@ -72,35 +69,30 @@ function EnvironmentUrlsGroup({
       title="Environment URLs"
       description="Endpoints used by the desktop app and browser proxy."
     >
-      <SettingsRow
-        label="Controller"
-        description="API control plane and runtime status source."
-        value={
-          <SettingsValue mono>
-            {data?.environment.controller_url ?? apiSettings.backendUrl}
-          </SettingsValue>
-        }
-        status={<StatusPill tone={data ? "good" : "info"}>{data ? "live" : "saved"}</StatusPill>}
-      />
-      <SettingsRow
-        label="Inference"
-        description="OpenAI-compatible model server target."
-        value={
-          <SettingsValue mono>
-            {data?.environment.inference_url ?? "http://127.0.0.1:8000"}
-          </SettingsValue>
-        }
-        status={<StatusPill>{data ? "reported" : "default"}</StatusPill>}
-      />
-      <SettingsRow
-        label="Frontend"
-        description="Next.js route that Electron loads in development and production."
-        value={
-          <SettingsValue mono>
-            {data?.environment.frontend_url ?? "http://localhost:3001"}
-          </SettingsValue>
-        }
-        status={<StatusPill>{data ? "reported" : "local"}</StatusPill>}
+      <SettingsFactRows
+        rows={[
+          {
+            label: "Controller",
+            description: "API control plane and runtime status source.",
+            value: data?.environment.controller_url ?? apiSettings.backendUrl,
+            mono: true,
+            status: { label: data ? "live" : "saved", tone: data ? "good" : "info" },
+          },
+          {
+            label: "Inference",
+            description: "OpenAI-compatible model server target.",
+            value: data?.environment.inference_url ?? "http://127.0.0.1:8000",
+            mono: true,
+            status: { label: data ? "reported" : "default" },
+          },
+          {
+            label: "Frontend",
+            description: "Next.js route that Electron loads in development and production.",
+            value: data?.environment.frontend_url ?? "http://localhost:3001",
+            mono: true,
+            status: { label: data ? "reported" : "local" },
+          },
+        ]}
       />
     </SettingsGroup>
   );
@@ -197,32 +189,22 @@ function ControllerStateGroup({
 
 function NetworkSettingsGroup({ data }: { data: ConfigData | null }) {
   const config = data?.config;
-  const rows = [
-    ["Host", config?.host ?? "127.0.0.1"],
-    ["Controller port", config?.port ?? 8080],
-    ["Inference port", config?.inference_port ?? 8000],
-  ] as const;
   return (
     <SettingsGroup title="Network" description="Controller and inference ports from config.">
-      {rows.map(([label, value]) => (
-        <SettingsRow
-          key={label}
-          label={label}
-          value={<SettingsValue mono>{value}</SettingsValue>}
-        />
-      ))}
-      <SettingsRow
-        label="API key"
-        value={
-          <SettingsValue>
-            {config?.api_key_configured ? "Configured" : "Not configured"}
-          </SettingsValue>
-        }
-        status={
-          <StatusPill tone={config?.api_key_configured ? "good" : "default"}>
-            {config?.api_key_configured ? "stored" : "optional"}
-          </StatusPill>
-        }
+      <SettingsFactRows
+        rows={[
+          { label: "Host", value: config?.host ?? "127.0.0.1", mono: true },
+          { label: "Controller port", value: config?.port ?? 8080, mono: true },
+          { label: "Inference port", value: config?.inference_port ?? 8000, mono: true },
+          {
+            label: "API key",
+            value: config?.api_key_configured ? "Configured" : "Not configured",
+            status: {
+              label: config?.api_key_configured ? "stored" : "optional",
+              tone: config?.api_key_configured ? "good" : "default",
+            },
+          },
+        ]}
       />
     </SettingsGroup>
   );
@@ -235,9 +217,13 @@ function StorageSettingsGroup({ data }: { data: ConfigData | null }) {
       title="Storage"
       description="File paths remain explicit instead of being hidden in cards."
     >
-      <PathRow label="Models" value={config?.models_dir} fallback="~/models" />
-      <PathRow label="Data" value={config?.data_dir} fallback="data/" />
-      <PathRow label="Database" value={config?.db_path} fallback="data/studio.db" />
+      <SettingsFactRows
+        rows={[
+          pathFactRow("Models", config?.models_dir, "~/models"),
+          pathFactRow("Data", config?.data_dir, "data/"),
+          pathFactRow("Database", config?.db_path, "data/studio.db"),
+        ]}
+      />
     </SettingsGroup>
   );
 }
@@ -245,33 +231,35 @@ function StorageSettingsGroup({ data }: { data: ConfigData | null }) {
 function HardwareSettingsGroup({ data }: { data: ConfigData | null }) {
   const runtime = data?.runtime;
   const gpuCount = runtime?.gpus.count ?? 0;
-  const rows = [
-    ["Platform", runtime?.platform.kind ?? "unknown"],
-    ["GPU types", runtime?.gpus.types.length ? runtime.gpus.types.join(", ") : "Unknown"],
-    ["CUDA driver", runtime?.cuda.driver_version ?? "Unknown", true],
-    ["CUDA runtime", runtime?.cuda.cuda_version ?? "Unknown", true],
-    ["ROCm version", runtime?.platform.rocm?.rocm_version ?? "Unknown", true],
-  ] as const;
   return (
     <SettingsGroup
       title="Hardware"
       description="Runtime platform and GPU inventory from compatibility/config probes."
     >
-      {rows.map(([label, value, mono]) => (
-        <SettingsRow
-          key={label}
-          label={label}
-          value={<SettingsValue mono={mono}>{value}</SettingsValue>}
-        />
-      ))}
-      <SettingsRow
-        label="GPU count"
-        value={<SettingsValue mono>{gpuCount}</SettingsValue>}
-        status={
-          <StatusPill tone={gpuCount ? "good" : "default"}>
-            {gpuCount ? "detected" : "not detected"}
-          </StatusPill>
-        }
+      <SettingsFactRows
+        rows={[
+          { label: "Platform", value: runtime?.platform.kind ?? "unknown" },
+          {
+            label: "GPU types",
+            value: runtime?.gpus.types.length ? runtime.gpus.types.join(", ") : "Unknown",
+          },
+          { label: "CUDA driver", value: runtime?.cuda.driver_version ?? "Unknown", mono: true },
+          { label: "CUDA runtime", value: runtime?.cuda.cuda_version ?? "Unknown", mono: true },
+          {
+            label: "ROCm version",
+            value: runtime?.platform.rocm?.rocm_version ?? "Unknown",
+            mono: true,
+          },
+          {
+            label: "GPU count",
+            value: gpuCount,
+            mono: true,
+            status: {
+              label: gpuCount ? "detected" : "not detected",
+              tone: gpuCount ? "good" : "default",
+            },
+          },
+        ]}
       />
     </SettingsGroup>
   );
@@ -294,58 +282,86 @@ function CompatibilitySettings({
         </StatusPill>
       }
     >
-      {" "}
       {!report ? (
-        <SettingsRow
-          label="Report"
-          description="Compatibility probe has not returned yet."
-          value={<SettingsValue dim>Waiting for /compat; settings remain usable.</SettingsValue>}
-          status={<StatusPill tone="info">pending</StatusPill>}
+        <SettingsFactRows
+          rows={[
+            {
+              label: "Report",
+              description: "Compatibility probe has not returned yet.",
+              value: "Waiting for /compat; settings remain usable.",
+              dim: true,
+              status: { label: "pending", tone: "info" },
+            },
+          ]}
         />
       ) : ordered.length === 0 ? (
-        <SettingsRow
-          label="Compatibility"
-          description="Controller reported no compatibility issues."
-          value={<SettingsValue>No issues detected</SettingsValue>}
-          status={<StatusPill tone="good">clean</StatusPill>}
+        <SettingsFactRows
+          rows={[
+            {
+              label: "Compatibility",
+              description: "Controller reported no compatibility issues.",
+              value: "No issues detected",
+              status: { label: "clean", tone: "good" },
+            },
+          ]}
         />
       ) : (
-        ordered.map((check) => (
-          <SettingsRow
-            key={check.id}
-            label={check.severity.toUpperCase()}
-            description={check.message}
-            value={
-              <SettingsValue dim>
-                {check.evidence ?? check.suggested_fix ?? "No extra evidence"}
-              </SettingsValue>
-            }
-            status={<StatusPill tone={severityTone(check.severity)}>{check.severity}</StatusPill>}
-          />
-        ))
+        <SettingsFactRows rows={ordered.map(compatibilityFactRow)} />
       )}
     </SettingsGroup>
   );
 }
-function PathRow({
-  label,
-  value,
-  fallback,
-}: {
-  label: string;
-  value?: string | null;
-  fallback: string;
-}) {
-  return (
+function SettingsFactRows({ rows }: { rows: SettingsFactRow[] }) {
+  return rows.map((row) => (
     <SettingsRow
-      label={label}
-      description="Filesystem path reported by the controller or a stable default."
-      value={<SettingsValue mono>{value || fallback}</SettingsValue>}
+      key={row.key ?? row.label}
+      label={row.label}
+      description={row.description}
+      value={
+        <SettingsValue mono={row.mono} dim={row.dim}>
+          {row.value}
+        </SettingsValue>
+      }
       status={
-        <StatusPill tone={value ? "good" : "default"}>{value ? "reported" : "fallback"}</StatusPill>
+        row.status ? <StatusPill tone={row.status.tone}>{row.status.label}</StatusPill> : undefined
       }
     />
-  );
+  ));
+}
+function serviceFactRow(service: ServiceInfo): SettingsFactRow {
+  return {
+    key: `${service.name}-${service.port}`,
+    label: service.name,
+    description: service.description ?? "No description reported",
+    value: `${service.protocol.toUpperCase()} :${service.port}${
+      service.port !== service.internal_port ? ` → :${service.internal_port}` : ""
+    }`,
+    mono: true,
+    status: { label: service.status, tone: toneForStatus(service.status) },
+  };
+}
+function pathFactRow(
+  label: string,
+  value: string | null | undefined,
+  fallback: string,
+): SettingsFactRow {
+  return {
+    label,
+    description: "Filesystem path reported by the controller or a stable default.",
+    value: value || fallback,
+    mono: true,
+    status: { label: value ? "reported" : "fallback", tone: value ? "good" : "default" },
+  };
+}
+function compatibilityFactRow(check: CompatibilityCheck): SettingsFactRow {
+  return {
+    key: check.id,
+    label: check.severity.toUpperCase(),
+    description: check.message,
+    value: check.evidence ?? check.suggested_fix ?? "No extra evidence",
+    dim: true,
+    status: { label: check.severity, tone: severityTone(check.severity) },
+  };
 }
 function portFromUrl(value: string) {
   try {
