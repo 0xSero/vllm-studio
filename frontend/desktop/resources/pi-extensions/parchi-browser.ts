@@ -12,6 +12,16 @@ type ToolResult = {
   details: Record<string, unknown>;
 };
 
+type RelayRpcResult = {
+  result?: unknown;
+  error?: { message?: string };
+};
+
+type RelayCommandResult = {
+  success?: boolean;
+  error?: unknown;
+};
+
 const DEFAULT_PARCHI_RELAY_RPC = "http://127.0.0.1:17373/v1/rpc";
 const DEFAULT_PARCHI_ORIGIN = "http://127.0.0.1:3000";
 const DEFAULT_PARCHI_TIMEOUT_MS = 120_000;
@@ -53,8 +63,17 @@ function normalizeRelayUrl(value: string): string {
   return trimmed.endsWith("/v1/rpc") ? trimmed : `${trimmed.replace(/\/+$/, "")}/v1/rpc`;
 }
 
-async function callParchiBridge(
-  verb: string,
+function relayResultError(value: unknown): string {
+  const command = value && typeof value === "object" ? (value as RelayCommandResult) : null;
+  if (!command || command.success !== false) return "";
+  if (typeof command.error === "string") return command.error;
+  return "Parchi relay command returned success=false";
+}
+
+async function callParchiRpc(
+  method: "bridge.call" | "tool.call",
+  params: Record<string, unknown>,
+  label: string,
   payload: Record<string, unknown>,
   signal: AbortSignal,
 ): Promise<ToolResult> {
@@ -72,16 +91,8 @@ async function callParchiBridge(
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: `parchi-${Date.now()}`,
-      method: "bridge.call",
-      params: {
-        verb,
-        payload,
-        origin: PARCHI_RELAY_ORIGIN,
-        sessionId: PARCHI_RELAY_SESSION_ID,
-        taskId: PARCHI_RELAY_TASK_ID,
-        taskTitle: PARCHI_RELAY_TASK_TITLE,
-        timeoutMs: PARCHI_TOOL_TIMEOUT_MS,
-      },
+      method,
+      params,
     }),
     signal: controller.signal,
   }).finally(() => {
@@ -89,19 +100,60 @@ async function callParchiBridge(
     signal.removeEventListener("abort", abort);
   });
 
-  const result = (await response.json().catch(() => ({}))) as {
-    result?: unknown;
-    error?: { message?: string };
-  };
+  const result = (await response.json().catch(() => ({}))) as RelayRpcResult;
   if (!response.ok || result.error) {
     throw new Error(result.error?.message || `Parchi relay HTTP ${response.status}`);
   }
+  const commandError = relayResultError(result.result);
+  if (commandError) throw new Error(commandError);
   const text =
     typeof result.result === "string" ? result.result : JSON.stringify(result.result, null, 2);
   return {
     content: [{ type: "text", text }],
-    details: { verb, payload, data: result.result, relaySessionId: PARCHI_RELAY_SESSION_ID },
+    details: { label, payload, data: result.result, relaySessionId: PARCHI_RELAY_SESSION_ID },
   };
+}
+
+async function callParchiBridge(
+  verb: string,
+  payload: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<ToolResult> {
+  return callParchiRpc(
+    "bridge.call",
+    {
+      verb,
+      payload,
+      origin: PARCHI_RELAY_ORIGIN,
+      sessionId: PARCHI_RELAY_SESSION_ID,
+      taskId: PARCHI_RELAY_TASK_ID,
+      taskTitle: PARCHI_RELAY_TASK_TITLE,
+      timeoutMs: PARCHI_TOOL_TIMEOUT_MS,
+    },
+    verb,
+    payload,
+    signal,
+  );
+}
+
+async function callParchiTool(
+  tool: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<ToolResult> {
+  return callParchiRpc(
+    "tool.call",
+    {
+      tool,
+      args,
+      source: "vllm-studio",
+      sessionId: PARCHI_RELAY_SESSION_ID,
+      timeoutMs: PARCHI_TOOL_TIMEOUT_MS,
+    },
+    tool,
+    args,
+    signal,
+  );
 }
 
 async function safeParchiBridge(
@@ -116,7 +168,46 @@ async function safeParchiBridge(
   }
 }
 
+async function safeParchiTool(
+  tool: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<ToolResult> {
+  try {
+    return await callParchiTool(tool, args, signal);
+  } catch (error) {
+    return failedToolResult(tool, args, error);
+  }
+}
+
 export default function registerParchiBrowserExtension(pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "parchi_tool_call",
+    label: "Parchi: Relay Tool Call",
+    description:
+      "Call any agent-browser command exposed by the local Parchi relay. Use this for full screen/page control when a dedicated parchi_* wrapper is not available.",
+    parameters: Type.Object({
+      tool: Type.String({
+        description:
+          "Relay tool name, e.g. open, click, mouse.click, fill, hover, focus, check, uncheck, select, press, wait, eval, get, is, snapshot, findHtml, screenshot, pdf, console, errors, network.watch, network.requests, record.start, record.stop.",
+      }),
+      args: Type.Optional(
+        Type.Record(Type.String(), Type.Any(), {
+          description: "JSON arguments passed to the relay tool.",
+        }),
+      ),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiTool(
+        params.tool,
+        params.args && typeof params.args === "object"
+          ? (params.args as Record<string, unknown>)
+          : {},
+        signal,
+      );
+    },
+  });
+
   pi.registerTool({
     name: "parchi_create_workspace",
     label: "Parchi: Create Workspace",
@@ -312,6 +403,27 @@ export default function registerParchiBrowserExtension(pi: ExtensionAPI) {
     }),
     async execute(_id, params, signal) {
       return safeParchiBridge("repl", { script: params.script }, signal);
+    },
+  });
+
+  pi.registerTool({
+    name: "parchi_node_repl",
+    label: "Parchi: Node REPL",
+    description:
+      "Sitegeist-compatible node_repl alias. Runs JavaScript through Parchi's sandboxed browser/session REPL bridge; use browser-side code for page/screen automation.",
+    parameters: Type.Object({
+      title: Type.Optional(Type.String({ description: "Optional short run title" })),
+      code: Type.String({ description: "JavaScript source to evaluate" }),
+    }),
+    async execute(_id, params, signal) {
+      return safeParchiBridge(
+        "repl",
+        {
+          script: params.code,
+          ...(typeof params.title === "string" ? { title: params.title } : {}),
+        },
+        signal,
+      );
     },
   });
 }
