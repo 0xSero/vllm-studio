@@ -99,6 +99,8 @@ function SideChatTab({
       cwd={sideChatSession.cwd ?? activeProject?.path ?? focusedSession?.cwd ?? ""}
       projectName={activeProject?.name ?? null}
       browserToolEnabled={false}
+      browserBackend={tools.browser.backend}
+      onToggleBrowserBackend={tools.toggleBrowserBackend}
       onToggleBrowserTool={() => tools.setComputerTab("browser")}
       canvasEnabled={false}
       onToggleCanvas={tools.toggleCanvas}

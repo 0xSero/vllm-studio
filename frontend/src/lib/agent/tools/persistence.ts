@@ -1,6 +1,7 @@
-import type { BrowserState, ComputerState, ComputerTab } from "./types";
+import type { BrowserBackend, BrowserState, ComputerState, ComputerTab } from "./types";
 
 export const BROWSER_TOOL_KEY = "vllm-studio.agent.browserToolEnabled";
+export const BROWSER_BACKEND_KEY = "vllm-studio.agent.browserBackend";
 export const BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY =
   "***************************************************";
 export const COMPUTER_BROWSER_OPEN_KEY = "vllm-studio.agent.computer.browserOpen";
@@ -13,6 +14,7 @@ export const COMPUTER_CANVAS_ENABLED_KEY = "vllm-studio.agent.computer.canvasEna
 export const COMPUTER_CANVAS_TEXT_KEY = "vllm-studio.agent.computer.canvasText";
 
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
+export const DEFAULT_BROWSER_BACKEND: BrowserBackend = "parchi";
 export const DEFAULT_COMPUTER_WIDTH = 440;
 export const MIN_COMPUTER_WIDTH = 280;
 export const MAX_COMPUTER_WIDTH = 1800;
@@ -124,6 +126,7 @@ export function migrateToolStorage(): void {
 export function loadBrowserState(): BrowserState {
   return {
     enabled: read(BROWSER_TOOL_KEY) === "1",
+    backend: parseBrowserBackend(read(BROWSER_BACKEND_KEY)),
     url: DEFAULT_BROWSER_URL,
     input: DEFAULT_BROWSER_URL,
   };
@@ -181,6 +184,14 @@ export function uniqueComputerTabs(tabs: ComputerTab[]): ComputerTab[] {
 
 export function writeBrowserEnabled(enabled: boolean): void {
   write(BROWSER_TOOL_KEY, enabled ? "1" : "0");
+}
+
+function parseBrowserBackend(value: string | null): BrowserBackend {
+  return value === "embedded" || value === "parchi" ? value : DEFAULT_BROWSER_BACKEND;
+}
+
+export function writeBrowserBackend(backend: BrowserBackend): void {
+  write(BROWSER_BACKEND_KEY, backend);
 }
 
 export function writeComputerTab(tab: ComputerTab): void {

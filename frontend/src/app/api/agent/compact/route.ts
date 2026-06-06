@@ -21,6 +21,7 @@ type CompactRequest = {
   customInstructions?: string;
   browserToolEnabled?: boolean;
   browserSessionId?: string;
+  browserBackend?: "embedded" | "parchi";
   canvasEnabled?: boolean;
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
       browserToolEnabled: body.browserToolEnabled === true,
       browserSessionId:
         typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
+      browserBackend: body.browserBackend === "embedded" ? "embedded" : "parchi",
       canvasEnabled: body.canvasEnabled === true,
       plugins,
       skills,

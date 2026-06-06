@@ -8,6 +8,7 @@ import {
   type RuntimeLoggedEvent,
 } from "@/lib/agent/session";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
+import type { BrowserBackend } from "@/lib/agent/tools/types";
 import type {
   ComposerPluginRef,
   ComposerPromptTemplateRef,
@@ -106,6 +107,7 @@ export type CompactSessionArgs = {
   piSessionId?: string | null;
   browserToolEnabled: boolean;
   browserSessionId?: string;
+  browserBackend?: BrowserBackend;
   canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
@@ -141,6 +143,7 @@ export type SubmitTurnArgs = {
   mode?: "steer" | "follow_up";
   browserToolEnabled: boolean;
   browserSessionId?: string;
+  browserBackend?: BrowserBackend;
   canvasEnabled?: boolean;
   plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];

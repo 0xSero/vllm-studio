@@ -26,6 +26,7 @@ import {
 } from "@/lib/agent/session";
 import { useSessionEngine } from "@/lib/agent/sessions/engine";
 import { useTools } from "@/lib/agent/tools/context";
+import type { BrowserBackend } from "@/lib/agent/tools/types";
 import { Timeline } from "./timeline/timeline";
 import { useChatPaneDerivedState } from "./use-chat-pane-derived-state";
 import { useChatPaneRuntimeHandle } from "./use-chat-pane-runtime-handle";
@@ -69,6 +70,8 @@ type Props = {
   } | null;
   onInitGit?: () => void;
   browserToolEnabled: boolean;
+  browserBackend: BrowserBackend;
+  onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   canvasEnabled: boolean;
   onToggleCanvas: () => void;
@@ -100,6 +103,8 @@ export function ChatPane({
   gitSummary,
   onInitGit,
   browserToolEnabled,
+  browserBackend,
+  onToggleBrowserBackend,
   onToggleBrowserTool,
   canvasEnabled,
   onToggleCanvas,
@@ -225,6 +230,7 @@ export function ChatPane({
     modelId,
     cwd,
     browserToolEnabled,
+    browserBackend,
     canvasEnabled: tools.computer.canvasEnabled,
     onPiSessionIdChange: handlePiSessionIdChange,
     updateSession,
@@ -316,6 +322,7 @@ export function ChatPane({
       <AgentComposerFrame
         attachments={attachments}
         browserToolEnabled={browserToolEnabled}
+        browserBackend={browserBackend}
         canvasEnabled={canvasEnabled}
         composerDragActive={composerDragActive}
         contextWindow={effectiveContextWindow}
@@ -348,6 +355,7 @@ export function ChatPane({
         onSelectMention={(entry) => void selectMentionRow(entry)}
         onSteerQueued={(queueId) => void steerQueued(queueId)}
         onSubmit={sendMessage}
+        onToggleBrowserBackend={onToggleBrowserBackend}
         onToggleBrowserTool={onToggleBrowserTool}
         onToggleCanvas={onToggleCanvas}
         promptTemplates={selectedPromptTemplates}

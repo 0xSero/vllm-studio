@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -176,6 +176,13 @@ export function resolveBrowserSkillPath(): string | null {
   return resolveBundledSkillPath("browser", process.env.VLLM_STUDIO_BROWSER_SKILL_PATH);
 }
 
+export function resolveParchiBrowserSkillPath(): string | null {
+  return resolveBundledSkillPath(
+    "parchi-browser",
+    process.env.VLLM_STUDIO_PARCHI_BROWSER_SKILL_PATH,
+  );
+}
+
 export function resolveCanvasSkillPath(): string | null {
   return resolveBundledSkillPath("canvas", process.env.VLLM_STUDIO_CANVAS_SKILL_PATH);
 }
@@ -268,6 +275,11 @@ function browserExtensionPathFor(backend: "embedded" | "parchi"): string | null 
   return resolveBrowserExtensionPath();
 }
 
+function browserSkillPathFor(backend: "embedded" | "parchi"): string | null {
+  if (backend === "parchi") return resolveParchiBrowserSkillPath();
+  return resolveBrowserSkillPath();
+}
+
 function runtimeExtensionPaths(
   options: RuntimeStartOptions,
   mcpConfigs: RuntimeMcpConfig[],
@@ -286,10 +298,11 @@ function runtimeExtensionPaths(
 
 function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
   const loadBrowser = shouldLoadBrowserTool(options);
+  const backend = browserBackend(options);
   return uniqueExistingPaths([
     ...pluginSkillPaths(plugins),
     ...selectedSkillPaths(options.skills ?? []),
-    loadBrowser ? resolveBrowserSkillPath() : null,
+    loadBrowser ? browserSkillPathFor(backend) : null,
     options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
   ]);
 }
@@ -300,13 +313,49 @@ function runtimeEnvInjections(
   env: NodeJS.ProcessEnv,
 ): Record<string, string> {
   const frontendBase = env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
+  const parchiRelay = readParchiRelayEnv(env);
   return {
     VLLM_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     VLLM_STUDIO_FRONTEND_BASE: frontendBase,
     VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
+    PARCHI_RELAY_URL:
+      env.PARCHI_RELAY_RPC ??
+      env.PARCHI_RELAY_URL ??
+      parchiRelay.PARCHI_RELAY_RPC ??
+      parchiRelay.PARCHI_RELAY_URL ??
+      "",
+    PARCHI_RELAY_TOKEN: env.PARCHI_RELAY_TOKEN ?? parchiRelay.PARCHI_RELAY_TOKEN ?? "",
     PARCHI_RELAY_ORIGIN: env.PARCHI_RELAY_ORIGIN ?? frontendBase,
     PARCHI_RELAY_SESSION_ID: options.browserSessionId ?? "",
   };
+}
+
+function readParchiRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const filePath = expandHome(
+    env.VLLM_STUDIO_PARCHI_RELAY_ENV_PATH ?? "~/.config/parchi-relay/env",
+  );
+  if (!existsSync(filePath)) return {};
+  try {
+    return Object.fromEntries(
+      readFileSync(filePath, "utf8")
+        .split(/\r?\n/)
+        .flatMap((line): Array<[string, string]> => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) return [];
+          const clean = trimmed.startsWith("export ") ? trimmed.slice(7).trim() : trimmed;
+          const index = clean.indexOf("=");
+          if (index < 1) return [];
+          const key = clean.slice(0, index).trim();
+          const value = clean
+            .slice(index + 1)
+            .trim()
+            .replace(/^['"]|['"]$/g, "");
+          return key.startsWith("PARCHI_RELAY_") ? [[key, value]] : [];
+        }),
+    );
+  } catch {
+    return {};
+  }
 }
 
 export function applyRuntimeEnvInjections(

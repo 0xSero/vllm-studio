@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { Code2, Loader2, Plus } from "lucide-react";
+import type { BrowserBackend } from "@/lib/agent/tools/types";
 import { GlobeIcon, SendIcon, StopIcon } from "./icons";
 
 export function AgentComposerActions({
@@ -13,6 +14,8 @@ export function AgentComposerActions({
   input,
   attachmentsCount,
   browserToolEnabled,
+  browserBackend,
+  onToggleBrowserBackend,
   onToggleBrowserTool,
   canvasEnabled,
   onToggleCanvas,
@@ -27,6 +30,8 @@ export function AgentComposerActions({
   input: string;
   attachmentsCount: number;
   browserToolEnabled: boolean;
+  browserBackend: BrowserBackend;
+  onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   canvasEnabled: boolean;
   onToggleCanvas: () => void;
@@ -70,6 +75,20 @@ export function AgentComposerActions({
           <GlobeIcon className="h-3.5 w-3.5" />
         </span>
       </button>
+      {browserToolEnabled ? (
+        <button
+          type="button"
+          onClick={onToggleBrowserBackend}
+          className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10px] uppercase tracking-normal text-(--dim) hover:bg-(--bg-soft) hover:text-(--fg)/85"
+          title={
+            browserBackend === "parchi"
+              ? "Browser backend: Parchi relay. Click to use embedded panel."
+              : "Browser backend: embedded panel. Click to use Parchi relay."
+          }
+        >
+          {browserBackend === "parchi" ? "Parchi" : "Panel"}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={onToggleCanvas}

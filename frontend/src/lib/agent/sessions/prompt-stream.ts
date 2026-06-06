@@ -15,7 +15,7 @@ import {
 } from "@/lib/agent/composer-context";
 import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
-import type { ToolSelection } from "@/lib/agent/tools/types";
+import type { BrowserBackend, ToolSelection } from "@/lib/agent/tools/types";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import * as api from "./api";
 import { runtimeIsActiveForPiSession } from "./engine-helpers";
@@ -47,6 +47,7 @@ export type SubmitArgs = {
 export type PromptStreamDeps = {
   activeTabId: SessionId;
   browserToolEnabled: boolean;
+  browserBackend: BrowserBackend;
   canvasEnabled: boolean;
   cwd: string;
   enqueuePiEvent: (
@@ -202,6 +203,7 @@ function promptTurnRequest(
       context.selected.piSessionId,
     browserToolEnabled: context.browserEnabledForTurn,
     browserSessionId: context.runtime,
+    browserBackend: deps.browserBackend,
     canvasEnabled: deps.canvasEnabled,
     plugins: context.plugins,
     skills: context.skills,

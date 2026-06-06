@@ -298,6 +298,8 @@ function renderWorkspacePane({
         />
       }
       browserToolEnabled={view.isFocused && tools.browser.enabled}
+      browserBackend={tools.browser.backend}
+      onToggleBrowserBackend={tools.toggleBrowserBackend}
       onToggleBrowserTool={() => {
         tools.setComputerTab("browser");
         tools.setBrowserEnabled(!tools.browser.enabled);

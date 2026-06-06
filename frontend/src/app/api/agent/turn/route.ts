@@ -104,6 +104,7 @@ async function ensurePromptRuntime(turn: AgentTurnRequest, resolved: ResolvedTur
   await resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
     browserToolEnabled: turn.browserToolEnabled,
     browserSessionId: turn.browserSessionId,
+    browserBackend: turn.browserBackend,
     canvasEnabled: turn.canvasEnabled,
     plugins: turn.plugins,
     skills: turn.skills,

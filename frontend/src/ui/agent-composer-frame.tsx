@@ -16,6 +16,7 @@ import type {
   ComposerSkillRef,
 } from "@/lib/agent/composer-context";
 import type { QueuedMessage } from "@/lib/agent/session";
+import type { BrowserBackend } from "@/lib/agent/tools/types";
 import { AgentAttachmentTray, type AgentComposerAttachment } from "./agent-attachment-tray";
 import { AgentComposerActions } from "./agent-composer-actions";
 import {
@@ -40,6 +41,7 @@ type GitSummary = {
 export type AgentComposerFrameProps = {
   attachments: AgentComposerAttachment[];
   browserToolEnabled: boolean;
+  browserBackend: BrowserBackend;
   canvasEnabled: boolean;
   composerDragActive: boolean;
   contextWindow: number;
@@ -72,6 +74,7 @@ export type AgentComposerFrameProps = {
   onSelectMention: (entry: MentionRow) => void;
   onSteerQueued: (queueId: string) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
+  onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   onToggleCanvas: () => void;
   promptTemplates: ComposerPromptTemplateRef[];
@@ -88,6 +91,7 @@ export type AgentComposerFrameProps = {
 export function AgentComposerFrame({
   attachments,
   browserToolEnabled,
+  browserBackend,
   canvasEnabled,
   composerDragActive,
   contextWindow,
@@ -120,6 +124,7 @@ export function AgentComposerFrame({
   onSelectMention,
   onSteerQueued,
   onSubmit,
+  onToggleBrowserBackend,
   onToggleBrowserTool,
   onToggleCanvas,
   promptTemplates,
@@ -186,6 +191,8 @@ export function AgentComposerFrame({
           input={input}
           attachmentsCount={attachments.length}
           browserToolEnabled={browserToolEnabled}
+          browserBackend={browserBackend}
+          onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
           canvasEnabled={canvasEnabled}
           onToggleCanvas={onToggleCanvas}

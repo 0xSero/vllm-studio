@@ -23,8 +23,11 @@ export type ComputerTab =
   | "diff"
   | "terminal";
 
+export type BrowserBackend = "embedded" | "parchi";
+
 export type BrowserState = {
   enabled: boolean;
+  backend: BrowserBackend;
   url: string;
   input: string;
 };

@@ -27,7 +27,7 @@ import {
 } from "@/lib/agent/composer-context";
 import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
-import type { ToolSelection } from "@/lib/agent/tools/types";
+import type { BrowserBackend, ToolSelection } from "@/lib/agent/tools/types";
 import * as api from "./api";
 import { resolveRuntimeSessionId, runtimeCanHydrateCanonicalSession } from "./engine-helpers";
 import { applyPiEventToSession } from "./pi-event-applier";
@@ -49,6 +49,7 @@ export type UseSessionEngineDeps = {
   modelId: string;
   cwd: string;
   browserToolEnabled: boolean;
+  browserBackend: BrowserBackend;
   canvasEnabled: boolean;
   onPiSessionIdChange?: (piSessionId: string) => void;
   /** Mutate a single session record. */
@@ -84,6 +85,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     modelId,
     cwd,
     browserToolEnabled,
+    browserBackend,
     canvasEnabled,
     onPiSessionIdChange,
     updateSession,
@@ -247,6 +249,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             mode,
             browserToolEnabled: browserEnabledForTurn,
             browserSessionId: runtime,
+            browserBackend,
             canvasEnabled,
             plugins: plugins as ComposerPluginRef[],
             skills,
@@ -291,6 +294,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     },
     [
       browserToolEnabled,
+      browserBackend,
       canvasEnabled,
       cwd,
       enqueuePiEvent,
@@ -312,6 +316,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         {
           activeTabId,
           browserToolEnabled,
+          browserBackend,
           canvasEnabled,
           cwd,
           enqueuePiEvent,
@@ -336,6 +341,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       runtimeSessionId,
       cwd,
       browserToolEnabled,
+      browserBackend,
       canvasEnabled,
       onPiSessionIdChange,
       enqueuePiEvent,
@@ -433,6 +439,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           piSessionId: session.piSessionId,
           browserToolEnabled: browserToolEnabled || promptRequestsBrowser(session.input),
           browserSessionId: session.runtimeSessionId || runtimeSessionId,
+          browserBackend,
           canvasEnabled,
           plugins: activeComposerPlugins(
             selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
@@ -452,6 +459,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     },
     [
       browserToolEnabled,
+      browserBackend,
       canvasEnabled,
       cwd,
       loadAndReplay,

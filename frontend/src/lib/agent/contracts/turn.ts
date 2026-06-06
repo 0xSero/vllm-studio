@@ -3,6 +3,7 @@ import {
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
 } from "@/lib/agent/composer-context";
+import type { BrowserBackend } from "@/lib/agent/tools/types";
 import { boolField, objectRecord, stringField, type ParseResult } from "./common";
 
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
@@ -23,6 +24,7 @@ export type AgentTurnRequest = {
   piSessionId: string | null;
   browserToolEnabled: boolean;
   browserSessionId?: string;
+  browserBackend?: BrowserBackend;
   canvasEnabled: boolean;
   plugins: ReturnType<typeof sanitizeComposerPlugins>;
   skills: ReturnType<typeof sanitizeComposerSkills>;
@@ -51,6 +53,7 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   if (!piSessionId.ok) return piSessionId;
   const browserSessionId = stringField(body, "browserSessionId");
   if (!browserSessionId.ok) return browserSessionId;
+  const browserBackend = body.browserBackend === "embedded" ? "embedded" : "parchi";
   const mode = body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const streamingBehavior =
     body.streamingBehavior === "steer" || body.streamingBehavior === "followUp"
@@ -67,6 +70,7 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       piSessionId: piSessionId.value ?? null,
       browserToolEnabled: boolField(body, "browserToolEnabled"),
       browserSessionId: browserSessionId.value,
+      browserBackend,
       canvasEnabled: boolField(body, "canvasEnabled"),
       plugins: sanitizeComposerPlugins(body.plugins),
       skills: sanitizeComposerSkills(body.skills),

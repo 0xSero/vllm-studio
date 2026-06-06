@@ -19,6 +19,7 @@ import { useToolsCatalogueEffects } from "@/hooks/agent/use-tools-catalogue-effe
 import type { SessionId } from "@/lib/agent/sessions/types";
 import {
   EMPTY_SELECTION,
+  type BrowserBackend,
   type BrowserState,
   type ComputerState,
   type ComputerTab,
@@ -33,6 +34,7 @@ import {
   loadComputerState,
   migrateToolStorage,
   uniqueComputerTabs,
+  writeBrowserBackend,
   writeBrowserEnabled,
   writeComputerCanvasEnabled,
   writeComputerCanvasText,
@@ -51,6 +53,8 @@ export type ToolsContextValue = {
   promptTemplateCatalogue: ComposerPromptTemplateRef[];
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
   setBrowserEnabled: (enabled: boolean) => void;
+  setBrowserBackend: (backend: BrowserBackend) => void;
+  toggleBrowserBackend: () => void;
   toggleBrowser: () => void;
   setBrowserUrl: (url: string, input?: string) => void;
   setBrowserInput: (input: string) => void;
@@ -78,7 +82,7 @@ const ToolsContext = createContext<ToolsContextValue | null>(null);
 
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
-    return { enabled: false, url: "", input: "" };
+    return { enabled: false, backend: "parchi", url: "", input: "" };
   }
   migrateToolStorage();
   return loadBrowserState();
@@ -137,6 +141,19 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const setBrowserEnabled = useCallback((enabled: boolean) => {
     setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
     writeBrowserEnabled(enabled);
+  }, []);
+
+  const setBrowserBackend = useCallback((backend: BrowserBackend) => {
+    setBrowser((current) => (current.backend === backend ? current : { ...current, backend }));
+    writeBrowserBackend(backend);
+  }, []);
+
+  const toggleBrowserBackend = useCallback(() => {
+    setBrowser((current) => {
+      const backend = current.backend === "parchi" ? "embedded" : "parchi";
+      writeBrowserBackend(backend);
+      return { ...current, backend };
+    });
   }, []);
 
   const toggleBrowser = useCallback(() => {
@@ -375,6 +392,8 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       promptTemplateCatalogue,
       selectionFor,
       setBrowserEnabled,
+      setBrowserBackend,
+      toggleBrowserBackend,
       toggleBrowser,
       setBrowserUrl,
       setBrowserInput,
@@ -403,6 +422,8 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       promptTemplateCatalogue,
       selectionFor,
       setBrowserEnabled,
+      setBrowserBackend,
+      toggleBrowserBackend,
       toggleBrowser,
       setBrowserUrl,
       setBrowserInput,
@@ -432,4 +453,11 @@ export function useTools(): ToolsContextValue {
   return value;
 }
 
-export type { ToolSelection, ToolSelectionMap, BrowserState, ComputerState, ComputerTab };
+export type {
+  ToolSelection,
+  ToolSelectionMap,
+  BrowserState,
+  BrowserBackend,
+  ComputerState,
+  ComputerTab,
+};
