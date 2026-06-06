@@ -8,6 +8,7 @@ import { runBrowserPanelCommand } from "@/lib/agent/browser/command";
 import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
+import { hasExplicitSessionNavigation } from "@/hooks/agent/use-workspace-hydration-effects";
 import {
   detectComposerMention,
   selectedContextInstructions,
@@ -985,6 +986,35 @@ test("new chat replaces an empty starter with fresh identity", () => {
   assert.equal(active?.tokenStats, undefined);
   assert.equal(active?.contextUsage, undefined);
   assert.equal(active?.usedSkills, undefined);
+});
+
+test("explicit new-session navigation blocks persisted active-session hydration", () => {
+  const params = new URLSearchParams("project=personal&new=first-click");
+  const oldSnapshot = {
+    projectId: "personal",
+    cwd: "/workspace/personal",
+    paneId: "p-main",
+    tabId: "tab-old",
+    runtimeSessionId: "rt-old",
+    piSessionId: "pi-old",
+    title: "Old restored chat",
+    status: "running" as const,
+    focused: true,
+  };
+
+  assert.equal(hasExplicitSessionNavigation(params), true);
+
+  const next = reducer({ ...makeState(), hydrated: false }, {
+    type: "hydrateActiveSessions",
+    projects: [{ id: "personal", name: "personal", path: "/workspace/personal" }],
+    snapshots: [oldSnapshot],
+    hasExplicitSessionNav: hasExplicitSessionNavigation(params),
+  });
+
+  const active = next.sessions.get(next.panesById.get("p-main")?.sessionId ?? "");
+  assert.equal(active?.piSessionId, null);
+  assert.notEqual(active?.id, "tab-old");
+  assert.equal(next.hydrated, true);
 });
 
 test("empty starter detection rejects cleared live sessions", () => {

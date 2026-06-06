@@ -19,6 +19,10 @@ function shouldRestoreWorkspace(params: URLSearchParams): boolean {
   return params.get("restore") !== "0";
 }
 
+export function hasExplicitSessionNavigation(params: URLSearchParams): boolean {
+  return Boolean(params.get("session") || params.get("new"));
+}
+
 export function useWorkspaceHydrationEffects({
   dispatch,
   projectsRef,
@@ -44,6 +48,7 @@ export function useWorkspaceHydrationEffects({
           type: "hydrateActiveSessions",
           snapshots,
           projects: projectsRef.current.projects,
+          hasExplicitSessionNav: !restoreWorkspace || hasExplicitSessionNavigation(params),
         });
       }
 
