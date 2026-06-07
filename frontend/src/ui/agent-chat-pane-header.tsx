@@ -53,11 +53,11 @@ export function AgentChatPaneHeader({
   };
   return (
     <div
-      className={`flex h-9 shrink-0 items-center gap-2 border-b border-(--border) py-0 pr-2 text-xs ${
+      className={`grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden border-b border-(--border) py-0 pr-2 text-xs ${
         sidebarCollapsed ? "pl-12" : "pl-2"
       }`}
     >
-      <div ref={ref} className="relative flex min-w-0 flex-1 items-center gap-1.5">
+      <div ref={ref} className="relative flex min-w-0 items-center gap-1.5 overflow-hidden">
         {renaming ? (
           <input
             autoFocus
@@ -71,12 +71,12 @@ export function AgentChatPaneHeader({
                 setRenaming(false);
               }
             }}
-            className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[length:var(--fs-md)] font-medium text-(--fg) outline-none"
+            className="h-7 min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-[length:var(--fs-md)] font-medium text-(--fg) outline-none"
             aria-label="Rename session"
           />
         ) : (
           <span
-            className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)"
+            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-md)] font-medium leading-none text-(--fg)"
             title={title}
           >
             {title}
@@ -122,7 +122,7 @@ export function AgentChatPaneHeader({
           </div>
         ) : null}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         {canClose ? (
           <button
             type="button"

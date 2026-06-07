@@ -51,6 +51,15 @@ export type {
   ToolBlock,
 };
 export { visibleQueuedMessages };
+
+const FINALIZATION_RETRY_ERROR_RE =
+  /Model did not produce a valid final response\.?\s+Retrying finalization/i;
+
+function visibleSessionError(error?: string): string {
+  const value = error?.trim() ?? "";
+  return FINALIZATION_RETRY_ERROR_RE.test(value) ? "" : value;
+}
+
 type Props = {
   paneId: string;
   runtimeSessionId: string;
@@ -285,6 +294,7 @@ export function ChatPane({
     onRegisterHandle,
     running: Boolean(running),
   });
+  const visibleError = visibleSessionError(activeTab?.error);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -305,9 +315,9 @@ export function ChatPane({
           onToggleRightPanel={onToggleRightPanel}
         />
       ) : null}
-      {activeTab?.error ? (
+      {visibleError ? (
         <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
-          {activeTab.error}
+          {visibleError}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
