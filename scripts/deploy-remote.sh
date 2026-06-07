@@ -183,8 +183,10 @@ build_frontend_local() {
   ok "local next build"
 
   step "Syncing frontend build"
+  remote "rm -rf $REMOTE_DIR_SHELL/frontend/.next/standalone/data"
   rsync -az --delete \
     --exclude 'cache' \
+    --exclude 'standalone/data' \
     -e "ssh $SSH_OPTS" \
     frontend/.next/ "$REMOTE:$REMOTE_DIR/frontend/.next/" 2>/dev/null
   ok ".next/ → remote"
