@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+#
+# set-intel-xe-power-cap
+#
+# Boot-time recovery + power cap for Intel Arc Pro B70 (Battlemage, device 8086:e223)
+# on this AMD / 8x-3090-class host.
+#
+# For each target B70 PCI endpoint this script:
+#   1. Enables the PCI endpoint            (.../enable        -> 1)
+#   2. Forces PCI runtime power control on (.../power/control -> on)
+#   3. Binds the xe driver if not bound    (xe/bind)
+#   4. Applies the 150 W cap via xe hwmon  (power1_cap -> 150000000 uW)
+#
+# Design rules:
+#   - Missing cards are SKIPPED, not fatal. The service must exit 0 even if a
+#     B70 has fully dropped off the PCI bus (only a reboot/bus reset recovers
+#     that case; see B70-RECOVERY-GUIDE.md "Why It Drops").
+#   - Present-but-unbound cards are RECOVERED.
+#   - Idempotent: safe to run repeatedly.
+#
+# Install to: /usr/local/sbin/set-intel-xe-power-cap  (chmod 755)
+
+set -u
+
+# --- Configuration ----------------------------------------------------------
+
+# B70 PCI endpoints to manage.
+TARGETS=(
+  "0000:83:00.0"
+  "0000:c4:00.0"
+)
+
+# Power cap in microwatts. 150 W = 150000000 uW.
+POWER_CAP_UW="150000000"
+
+# Battlemage B70 PCI device id (vendor:device). Used as a sanity check.
+EXPECTED_DEVICE_ID="0x8086 0xe223"   # informational; not strictly enforced
+
+XE_DRIVER_DIR="/sys/bus/pci/drivers/xe"
+
+# --- Helpers ----------------------------------------------------------------
+
+log()  { echo "[xe-power-cap] $*"; }
+warn() { echo "[xe-power-cap] WARN: $*" >&2; }
+
+# Write a value to a sysfs path, logging failures but never aborting the run.
+sysfs_write() {
+  local value="$1" path="$2"
+  if [ ! -e "$path" ]; then
+    warn "missing sysfs path: $path"
+    return 1
+  fi
+  if echo "$value" > "$path" 2>/dev/null; then
+    return 0
+  fi
+  warn "failed to write '$value' -> $path"
+  return 1
+}
+
+enable_endpoint() {
+  local dev="$1"
+  sysfs_write 1   "/sys/bus/pci/devices/$dev/enable"
+  sysfs_write on  "/sys/bus/pci/devices/$dev/power/control"
+}
+
+bind_xe() {
+  local dev="$1"
+  local cur=""
+  if [ -e "/sys/bus/pci/devices/$dev/driver" ]; then
+    cur="$(basename "$(readlink -f "/sys/bus/pci/devices/$dev/driver")")"
+  fi
+
+  if [ "$cur" = "xe" ]; then
+    log "$dev already bound to xe"
+    return 0
+  fi
+
+  if [ -n "$cur" ] && [ "$cur" != "xe" ]; then
+    warn "$dev bound to '$cur' (not xe); unbinding first"
+    sysfs_write "$dev" "/sys/bus/pci/drivers/$cur/unbind"
+  fi
+
+  if [ ! -d "$XE_DRIVER_DIR" ]; then
+    warn "xe driver not present in sysfs ($XE_DRIVER_DIR); is the module loaded?"
+    return 1
+  fi
+
+  # new_id / drivers_probe sometimes needed; bind is the direct path.
+  if sysfs_write "$dev" "$XE_DRIVER_DIR/bind"; then
+    log "$dev bound to xe"
+    return 0
+  fi
+
+  # Fallback: ask the bus to re-probe.
+  sysfs_write "$dev" "/sys/bus/pci/drivers_probe"
+}
+
+apply_power_cap() {
+  local dev="$1"
+  local applied=0
+  local h
+  for h in /sys/bus/pci/devices/"$dev"/hwmon/hwmon*; do
+    [ -e "$h/name" ] || continue
+    if [ -w "$h/power1_cap" ]; then
+      if sysfs_write "$POWER_CAP_UW" "$h/power1_cap"; then
+        log "$dev cap set via $(basename "$h") ($(cat "$h/name")) -> ${POWER_CAP_UW} uW"
+        applied=1
+      fi
+    fi
+  done
+  if [ "$applied" -eq 0 ]; then
+    warn "$dev no writable power1_cap hwmon node found (cap not applied)"
+    return 1
+  fi
+  return 0
+}
+
+# --- Main -------------------------------------------------------------------
+
+# Ensure xe module is loaded (no-op if builtin / already loaded).
+modprobe xe 2>/dev/null || true
+
+overall_present=0
+for dev in "${TARGETS[@]}"; do
+  if [ ! -e "/sys/bus/pci/devices/$dev" ]; then
+    warn "$dev not present on PCI bus -- skipping (needs reboot/bus reset to recover)"
+    continue
+  fi
+  overall_present=$((overall_present + 1))
+
+  log "processing $dev"
+  enable_endpoint "$dev"
+  bind_xe "$dev"
+
+  # Give xe a moment to create the render node after bind.
+  sleep 1
+
+  apply_power_cap "$dev"
+
+  if [ -e "/sys/bus/pci/devices/$dev/driver" ]; then
+    drv="$(basename "$(readlink -f "/sys/bus/pci/devices/$dev/driver")")"
+    log "$dev final driver: $drv"
+  else
+    warn "$dev still has no driver bound"
+  fi
+done
+
+log "done; $overall_present/${#TARGETS[@]} target endpoint(s) present"
+
+# Always succeed so a single missing card never wedges the boot service.
+exit 0

@@ -5,6 +5,11 @@ import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
 export type { SessionSummary } from "@/lib/agent/session-summary";
 
 export type PinnedSession = SessionSummary & { project: ProjectEntry };
+export type PinnedActiveSession = ActiveAgentSessionSnapshot & {
+  id: string;
+  firstUserMessage: string | null;
+  project: ProjectEntry;
+};
 
 export type DirectoryBrowserEntry = {
   name: string;

@@ -18,7 +18,7 @@ export type ActiveAgentSessionSnapshot = {
   usedSkills?: ComposerSkillRef[];
 };
 
-export type ActiveSessionPrefs = Record<string, { hidden?: boolean }>;
+export type ActiveSessionPrefs = Record<string, { hidden?: boolean; pinned?: boolean }>;
 
 type MergeTarget = {
   key: string;

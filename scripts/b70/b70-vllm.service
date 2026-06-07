@@ -1,0 +1,70 @@
+# b70-vllm.service
+#
+# Serves Qwen3.6-27B INT4 on the two Intel Arc Pro B70s via the llm-scaler-vllm
+# container. It CANNOT start unless the B70 recovery service has run AND the
+# preflight gate passes — this is the safety interlock.
+#
+# Install: handled by ./install.sh (it copies this file if present).
+# Manual:
+#   sudo install -m 0644 b70-vllm.service /etc/systemd/system/b70-vllm.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now b70-vllm.service
+#   journalctl -u b70-vllm.service -f
+
+[Unit]
+Description=B70 vLLM (Qwen3.6-27B INT4, TP=2, XPU)
+# Hard dependency: the GPUs must be enabled/bound/capped first.
+Requires=intel-xe-power-cap.service
+After=intel-xe-power-cap.service docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+# SAFETY INTERLOCK: refuse to start if the B70s are not fully healthy.
+# b70-check returns non-zero if any of: PCI missing / not xe / no render node /
+# wrong power cap. --fix attempts one service-based recovery before failing.
+ExecStartPre=/usr/local/sbin/b70-check --fix
+
+# Clean any stale container from a previous run.
+ExecStartPre=-/usr/bin/docker rm -f b70-qwen36
+
+# Run the server in the foreground so systemd tracks it.
+ExecStart=/usr/bin/docker run --rm \
+    --privileged --net=host --ipc=host \
+    --device=/dev/dri \
+    -v /dev/dri/by-path:/dev/dri/by-path \
+    -v /mnt/llm_models:/llm/models \
+    --shm-size=32g \
+    --name b70-qwen36 \
+    -e ZES_ENABLE_SYSMAN=1 \
+    -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
+    -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
+    -e VLLM_OFFLOAD_WEIGHTS_BEFORE_QUANT=1 \
+    -e CCL_ZE_IPC_EXCHANGE=sockets \
+    --entrypoint /bin/bash \
+    b70-vllm-qwen36:latest \
+    -lc 'source /opt/intel/oneapi/setvars.sh --force && \
+         exec vllm serve \
+           --model /llm/models/Qwen3.6-27B-int4-GPTQ-compat \
+           --served-model-name qwen3.6-27b \
+           --dtype float16 \
+           --enforce-eager \
+           --trust-remote-code \
+           --host 0.0.0.0 --port 8010 \
+           --tensor-parallel-size 2 \
+           --gpu-memory-util 0.90 \
+           --max-model-len 32768 \
+           --max-num-batched-tokens 8192 \
+           --block-size 64 \
+           --no-enable-prefix-caching'
+
+ExecStop=/usr/bin/docker stop b70-qwen36
+
+# If vLLM crashes (e.g. a card wedges mid-run), restart — but back off so we
+# don't hammer a wedged GPU. The ExecStartPre gate re-runs on each restart.
+Restart=on-failure
+RestartSec=15
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

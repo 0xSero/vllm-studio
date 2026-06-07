@@ -100,7 +100,7 @@ function GpuMonitoringRow({ gpuMon }: { gpuMon?: SystemRuntimeInfo["gpu_monitori
   return (
     <SettingsRow
       label="GPU monitoring"
-      description="nvidia-smi, amd-smi, or rocm-smi discovery from the controller."
+      description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
       value={<SettingsValue mono>{gpuMonitorValue(gpuMon)}</SettingsValue>}
       status={
         <StatusPill tone={gpuMon?.available ? "good" : "warning"}>

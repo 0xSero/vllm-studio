@@ -1,5 +1,5 @@
-import { memo, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { memo, useMemo, useState, type ReactNode } from "react";
+import { Copy, GitFork, Search } from "lucide-react";
 import type {
   AssistantBlock,
   ChatMessage,
@@ -36,14 +36,13 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
   let reasoningGroup: ThinkingBlock[] = [];
   let toolGroup: ToolBlock[] = [];
 
-  // Positional ids keep React keys stable across streaming frames: blocks only
-  // ever append (their ids are derived from call+content index), so the routed
-  // sequence is a stable growing prefix and these positional ids never churn.
+  // Segment ids come from underlying block ids so collapsed reasoning state
+  // survives snapshot rebuilds and ordering normalization during long streams.
   const flushReasoningSegment = () => {
     if (reasoningGroup.length === 0) return;
     activitySegments.push({
       kind: "reasoning",
-      id: `reasoning-${activitySegments.length}`,
+      id: `reasoning-${reasoningGroup.map((block) => block.id).join("-")}`,
       blocks: reasoningGroup,
     });
     reasoningGroup = [];
@@ -53,7 +52,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (toolGroup.length === 0) return;
     activitySegments.push({
       kind: "tools",
-      id: `tools-${activitySegments.length}`,
+      id: `tools-${toolGroup.map((block) => block.id).join("-")}`,
       blocks: toolGroup,
     });
     toolGroup = [];
@@ -65,7 +64,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (activitySegments.length === 0) return;
     routed.push({
       kind: "activity-group",
-      id: `activity-${routed.length}`,
+      id: `activity-${activitySegments.map((segment) => segment.id).join("-")}`,
       segments: activitySegments.splice(0),
     });
   };
@@ -108,7 +107,17 @@ const MemoEventBlock = memo(function MemoEventBlock({ block }: { block: EventBlo
   return <EventBlockView block={block} />;
 });
 
-function SessionPaneBlockRouterInner({ message, live }: { message: ChatMessage; live: boolean }) {
+function SessionPaneBlockRouterInner({
+  message,
+  live,
+  running,
+  onForkSession,
+}: {
+  message: ChatMessage;
+  live: boolean;
+  running: boolean;
+  onForkSession?: () => void;
+}) {
   if (message.role === "user") {
     return (
       <article className="flex justify-end">
@@ -126,7 +135,14 @@ function SessionPaneBlockRouterInner({ message, live }: { message: ChatMessage; 
     );
   }
 
-  return <AssistantBlocks blocks={message.blocks ?? EMPTY_BLOCKS} live={live} />;
+  return (
+    <AssistantBlocks
+      blocks={message.blocks ?? EMPTY_BLOCKS}
+      live={live}
+      running={running}
+      onForkSession={onForkSession}
+    />
+  );
 }
 
 const EMPTY_BLOCKS: AssistantBlock[] = [];
@@ -139,23 +155,40 @@ const EMPTY_BLOCKS: AssistantBlock[] = [];
 const AssistantBlocks = memo(function AssistantBlocks({
   blocks,
   live,
+  running,
+  onForkSession,
 }: {
   blocks: AssistantBlock[];
   live: boolean;
+  running: boolean;
+  onForkSession?: () => void;
 }) {
   const routedBlocks = useMemo(() => groupAssistantBlocks(blocks), [blocks]);
   traceAgentReasoning("render.blocks", { blocks, routedBlocks });
+  const copyText = useMemo(() => assistantContentCopyText(blocks), [blocks]);
+  const lastContentIndex = useMemo(
+    () => routedBlocks.findLastIndex((item) => item.kind === "content"),
+    [routedBlocks],
+  );
+  const showActions = !running && copyText.trim().length > 0 && lastContentIndex >= 0;
 
   return (
     <article className="min-w-0">
       {routedBlocks.length === 0 ? null : (
         <div className="flex flex-col gap-3.5">
-          {routedBlocks.map((item) => {
+          {routedBlocks.map((item, index) => {
             if (item.kind === "activity-group") {
               return <AssistantActivityGroup key={item.id} segments={item.segments} live={live} />;
             }
             if (item.kind === "content") {
-              return <MemoContentBlock key={item.block.id} block={item.block} />;
+              return (
+                <div key={item.block.id} className="min-w-0">
+                  <MemoContentBlock block={item.block} />
+                  {showActions && index === lastContentIndex ? (
+                    <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
+                  ) : null}
+                </div>
+              );
             }
             return <MemoEventBlock key={item.block.id} block={item.block} />;
           })}
@@ -337,6 +370,72 @@ function ReasoningLeaf({ block }: { block: ThinkingBlock }) {
     <pre className="max-w-full overflow-x-auto whitespace-pre-wrap rounded-lg bg-(--surface)/40 px-3 py-2 font-mono text-[length:var(--fs-xs)] leading-[1.6] text-(--dim)/80">
       {block.text}
     </pre>
+  );
+}
+
+function assistantContentCopyText(blocks: AssistantBlock[]): string {
+  return blocks
+    .map((block) => (block.kind === "text" ? block.text : ""))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function AssistantMessageActions({
+  copyText,
+  onForkSession,
+}: {
+  copyText: string;
+  onForkSession?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!copyText.trim()) return;
+    await navigator.clipboard.writeText(copyText);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_200);
+  };
+  return (
+    <div className="mt-2 flex items-center gap-1 text-(--dim)/65">
+      <AssistantActionButton
+        label={copied ? "Copied" : "Copy response"}
+        onClick={() => void copy()}
+        disabled={!copyText.trim()}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </AssistantActionButton>
+      <AssistantActionButton
+        label="Fork session"
+        onClick={() => onForkSession?.()}
+        disabled={!onForkSession}
+      >
+        <GitFork className="h-3.5 w-3.5" />
+      </AssistantActionButton>
+    </div>
+  );
+}
+
+function AssistantActionButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim)/65 transition-colors hover:bg-(--surface) hover:text-(--fg)/85 disabled:pointer-events-none disabled:opacity-30"
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
   );
 }
 

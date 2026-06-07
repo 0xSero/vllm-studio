@@ -1,6 +1,7 @@
 import type { GpuInfo, RuntimeGpuMonitoringTool } from "../../models/types";
 import { runCommand } from "../../../core/command";
 import { getGpuInfoFromAmdSmi, getGpuInfoFromRocmSmi } from "./amd-gpu";
+import { getGpuInfoFromIntelSysfs, hasIntelSysfsGpus } from "./intel-gpu";
 import { resolveRocmSmiTool } from "./rocm-info";
 import { resolveForcedGpuMonitoringTool, resolveNvidiaSmiBinary } from "./smi-tools";
 
@@ -79,9 +80,16 @@ export const resolveGpuMonitoringTool = (): RuntimeGpuMonitoringTool | null => {
   if (forced === "amd-smi" || forced === "rocm-smi") {
     return forced;
   }
+  if (forced === "intel-sysfs") {
+    return "intel-sysfs";
+  }
 
   if (resolveNvidiaSmiBinary()) {
     return "nvidia-smi";
+  }
+
+  if (hasIntelSysfsGpus()) {
+    return "intel-sysfs";
   }
 
   return resolveRocmSmiTool();
@@ -97,6 +105,9 @@ export const getGpuInfo = (): GpuInfo[] => {
   }
   if (forced === "rocm-smi") {
     return getGpuInfoFromRocmSmi();
+  }
+  if (forced === "intel-sysfs") {
+    return getGpuInfoFromIntelSysfs();
   }
 
   const nvidia = getGpuInfoFromNvidiaSmi();
@@ -114,6 +125,11 @@ export const getGpuInfo = (): GpuInfo[] => {
     const rocm = getGpuInfoFromRocmSmi();
     if (rocm.length > 0) return rocm;
     return getGpuInfoFromAmdSmi();
+  }
+
+  const intel = getGpuInfoFromIntelSysfs();
+  if (intel.length > 0) {
+    return intel;
   }
 
   return [];

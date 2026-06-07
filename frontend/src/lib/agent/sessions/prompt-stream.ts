@@ -25,6 +25,7 @@ import type { Session, SessionId, SessionStatus } from "./types";
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
+const QUIET_STREAM_RESUME_MS = 45_000;
 
 type MutableRef<T> = { current: T };
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
@@ -83,6 +84,7 @@ type PromptTurnContext = {
 
 type PromptTurnState = {
   agentEnded: boolean;
+  quietFallbackArmed: boolean;
   streamError: string;
 };
 
@@ -163,9 +165,33 @@ async function streamPromptTurn(
   context: PromptTurnContext,
   args: SubmitArgs,
 ): Promise<PromptTurnState> {
-  const state: PromptTurnState = { agentEnded: false, streamError: "" };
+  const state: PromptTurnState = {
+    agentEnded: false,
+    quietFallbackArmed: false,
+    streamError: "",
+  };
   const controller = new AbortController();
   const streamOwnerId = `${context.sessionId}:${context.assistantId}`;
+  let quietFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearQuietFallback = () => {
+    if (quietFallbackTimer) clearTimeout(quietFallbackTimer);
+    quietFallbackTimer = null;
+  };
+  const armQuietFallback = () => {
+    state.quietFallbackArmed = true;
+    clearQuietFallback();
+    quietFallbackTimer = setTimeout(() => {
+      if (controller.signal.aborted || state.agentEnded) return;
+      void api
+        .loadRuntimeStatus(context.runtime, latestPiSessionId(deps, context, null))
+        .then((status) => {
+          if (controller.signal.aborted || state.agentEnded) return;
+          if (runtimeIsActiveForPiSession(status, latestPiSessionId(deps, context, null))) {
+            controller.abort();
+          }
+        });
+    }, QUIET_STREAM_RESUME_MS);
+  };
   deps.liveAssistantIdsRef.current.set(context.sessionId, context.assistantId);
   deps.promptStreamControllersRef.current.set(context.runtime, controller);
   claimRuntimePromptStream(context.runtime, streamOwnerId, controller);
@@ -173,7 +199,12 @@ async function streamPromptTurn(
   try {
     await api.submitTurnStream(
       promptTurnRequest(deps, context, args),
-      (payload) => applyPromptPayload(deps, context, state, controller, payload),
+      (payload) => {
+        if (state.quietFallbackArmed) armQuietFallback();
+        applyPromptPayload(deps, context, state, controller, payload);
+        if (payload.type === "status" && payload.phase === "running") armQuietFallback();
+        if (payload.type === "pi") armQuietFallback();
+      },
       { signal: controller.signal },
     );
   } catch (error) {
@@ -181,6 +212,7 @@ async function streamPromptTurn(
       state.streamError = error instanceof Error ? error.message : "Agent request failed";
     }
   } finally {
+    clearQuietFallback();
     await finalizePromptTurn(deps, context, state, streamOwnerId);
   }
 

@@ -13,6 +13,7 @@ import { ChatPane } from "./chat-pane";
 import { ComputerStatusPanel } from "./computer-status-panel";
 import { FilesystemPanel } from "./filesystem-panel";
 import { GitDiffPanel } from "./git-diff-panel";
+import { CloseIcon } from "@/ui/icons";
 
 type GitSummary = {
   isRepo: boolean;
@@ -88,33 +89,78 @@ function SideChatTab({
   sideChatSession,
   tools,
 }: ComputerTabPanelProps) {
+  const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
+  const cwd = sideChatSession.cwd ?? activeProject?.path ?? focusedSession?.cwd ?? "";
   return (
-    <ChatPane
-      paneId="computer-side-chat"
-      runtimeSessionId={sideChatSession.runtimeSessionId}
-      modelId={sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId}
-      modelName={activeModel?.name ?? null}
-      modelsLoading={false}
-      contextWindow={activeModel?.contextWindow ?? 0}
-      cwd={sideChatSession.cwd ?? activeProject?.path ?? focusedSession?.cwd ?? ""}
-      projectName={activeProject?.name ?? null}
-      browserToolEnabled={false}
-      browserBackend={tools.browser.backend}
-      onToggleBrowserBackend={tools.toggleBrowserBackend}
-      onToggleBrowserTool={() => tools.setComputerTab("browser")}
-      canvasEnabled={false}
-      onToggleCanvas={tools.toggleCanvas}
-      isFocused
-      onFocus={() => undefined}
-      tabs={[sideChatSession]}
-      activeTabId={sideChatSession.id}
-      onTabsChange={onUpdateSideChatTabs}
-      onRenameSession={onRenameSideChat}
-      onClose={onCloseSideChat}
-      rightPanelOpen
-      onToggleRightPanel={() => tools.setComputerOpen(false)}
-      showHeader={false}
-    />
+    <section className="flex min-h-0 flex-1 flex-col">
+      <SideChatHeader
+        modelLabel={activeModel?.name ?? modelId}
+        pathLabel={cwd}
+        onClose={onCloseSideChat}
+      />
+      <ChatPane
+        paneId="computer-side-chat"
+        runtimeSessionId={sideChatSession.runtimeSessionId}
+        modelId={modelId}
+        modelName={activeModel?.name ?? modelId}
+        modelsLoading={false}
+        contextWindow={activeModel?.contextWindow ?? 0}
+        cwd={cwd}
+        projectName={activeProject?.name ?? null}
+        browserToolEnabled={false}
+        browserBackend={tools.browser.backend}
+        onToggleBrowserBackend={tools.toggleBrowserBackend}
+        onToggleBrowserTool={() => tools.setComputerTab("browser")}
+        canvasEnabled={false}
+        onToggleCanvas={tools.toggleCanvas}
+        isFocused
+        onFocus={() => undefined}
+        tabs={[sideChatSession]}
+        activeTabId={sideChatSession.id}
+        onTabsChange={onUpdateSideChatTabs}
+        onRenameSession={onRenameSideChat}
+        onClose={onCloseSideChat}
+        rightPanelOpen
+        onToggleRightPanel={() => tools.setComputerOpen(false)}
+        showHeader={false}
+      />
+    </section>
+  );
+}
+
+function SideChatHeader({
+  modelLabel,
+  pathLabel,
+  onClose,
+}: {
+  modelLabel: string;
+  pathLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-[length:var(--fs-xs)]">
+      <MessageSquarePlus className="h-3.5 w-3.5 shrink-0 text-(--dim)/70" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-(--fg)/85" title={modelLabel}>
+          {modelLabel || "No model"}
+        </div>
+        <div
+          className="truncate font-mono text-[length:var(--fs-2xs)] text-(--dim)"
+          title={pathLabel}
+        >
+          {pathLabel || "No project path"}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+        aria-label="Close side chat"
+        title="Close side chat"
+      >
+        <CloseIcon className="h-2.5 w-2.5" />
+      </button>
+    </div>
   );
 }
 

@@ -8,21 +8,39 @@ import { MessageView } from "./message-view";
 type TimelineProps = {
   messages: ChatMessage[];
   running: boolean;
+  onForkSession?: () => void;
   emptyPrompt?: boolean;
   stickToBottom?: boolean;
   onStickToBottomChange?: (value: boolean) => void;
 };
 
 const MemoMessage = memo(
-  function MemoMessage({ message, live }: { message: ChatMessage; live: boolean }) {
-    return <MessageView message={message} live={live} />;
+  function MemoMessage({
+    message,
+    live,
+    running,
+    onForkSession,
+  }: {
+    message: ChatMessage;
+    live: boolean;
+    running: boolean;
+    onForkSession?: () => void;
+  }) {
+    return (
+      <MessageView message={message} live={live} running={running} onForkSession={onForkSession} />
+    );
   },
-  (prev, next) => prev.message === next.message && prev.live === next.live,
+  (prev, next) =>
+    prev.message === next.message &&
+    prev.live === next.live &&
+    prev.running === next.running &&
+    prev.onForkSession === next.onForkSession,
 );
 
 export function Timeline({
   messages,
   running,
+  onForkSession,
   emptyPrompt = false,
   stickToBottom = true,
   onStickToBottomChange,
@@ -74,7 +92,12 @@ export function Timeline({
               key={message.id}
               className={`[overflow-anchor:none] ${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""}`}
             >
-              <MemoMessage message={message} live={isLast && running} />
+              <MemoMessage
+                message={message}
+                live={isLast && running}
+                running={running}
+                onForkSession={onForkSession}
+              />
             </div>
           );
         })}

@@ -136,7 +136,10 @@ const components: Components = {
     />
   ),
   h4: ({ node: _n, ...props }) => (
-    <h4 className="mb-1 mt-3 text-[length:var(--fs-md)] font-semibold leading-snug text-(--fg)" {...props} />
+    <h4
+      className="mb-1 mt-3 text-[length:var(--fs-md)] font-semibold leading-snug text-(--fg)"
+      {...props}
+    />
   ),
   p: ({ node: _n, ...props }) => (
     <p
@@ -201,6 +204,12 @@ const components: Components = {
 // The remark/rehype plugin lists are constant. Hoisted out of render so the
 // `ReactMarkdown` reconciler sees the same array identity each commit.
 const REMARK_PLUGINS = [remarkGfm];
+
+function normalizeLooseMarkdownEmphasis(text: string): string {
+  return text
+    .replace(/\*\*([^\n*]*?\S)\s+\*\*/g, "**$1**")
+    .replace(/__([^\n_]*?\S)\s+__/g, "__$1__");
+}
 
 type ToolHandlers = {
   setComputerOpen: (open: boolean) => void;
@@ -281,6 +290,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
 
 function AssistantMarkdownInner({ text }: { text: string }) {
   const tools = useTools();
+  const normalizedText = useMemo(() => normalizeLooseMarkdownEmphasis(text), [text]);
   // Stable `components` map: only changes when any of the four tool callbacks
   // it captures changes identity (they're useCallback-stable in ToolsProvider).
   const componentsWithAppLinks = useMemo<Components>(
@@ -297,12 +307,12 @@ function AssistantMarkdownInner({ text }: { text: string }) {
       <MarkdownErrorBoundary
         fallback={
           <pre className="max-w-full whitespace-pre-wrap break-words text-[length:var(--fs-md)] leading-[19.2px] tracking-normal [font-family:var(--codex-chat-font-family)] [font-weight:var(--codex-chat-font-weight)] [overflow-wrap:anywhere]">
-            {text}
+            {normalizedText}
           </pre>
         }
       >
         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={componentsWithAppLinks}>
-          {text}
+          {normalizedText}
         </ReactMarkdown>
       </MarkdownErrorBoundary>
     </div>

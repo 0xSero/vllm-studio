@@ -19,7 +19,12 @@ export const resolveRocmSmiBinary = (): string | null =>
 
 export const resolveForcedGpuMonitoringTool = (): RuntimeGpuMonitoringTool | null => {
   const forced = process.env["VLLM_STUDIO_GPU_SMI_TOOL"]?.trim();
-  if (forced === "nvidia-smi" || forced === "amd-smi" || forced === "rocm-smi") {
+  if (
+    forced === "nvidia-smi" ||
+    forced === "amd-smi" ||
+    forced === "rocm-smi" ||
+    forced === "intel-sysfs"
+  ) {
     return forced;
   }
   return null;

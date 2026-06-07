@@ -22,6 +22,11 @@ import {
 
 type PinnedSession = SessionSummary & { project: ProjectEntry };
 type ActiveAgentSession = ActiveAgentSessionSnapshot;
+type PinnedActiveSession = ActiveAgentSession & {
+  id: string;
+  firstUserMessage: string | null;
+  project: ProjectEntry;
+};
 
 const getProjectsNavSnapshot = (): number => 0;
 
@@ -112,6 +117,7 @@ export function useActiveAgentSessionsEffect({
 
 export function usePinnedSessionsEffect({
   activePiSessionIdsKey,
+  activeSessions,
   expanded,
   hiddenPrefIdsKey,
   pinnedPrefIdsKey,
@@ -119,11 +125,12 @@ export function usePinnedSessionsEffect({
   setPinnedSessions,
 }: {
   activePiSessionIdsKey: string;
+  activeSessions: ActiveAgentSession[];
   expanded: boolean;
   hiddenPrefIdsKey: string;
   pinnedPrefIdsKey: string;
   projects: ProjectEntry[];
-  setPinnedSessions: Dispatch<SetStateAction<PinnedSession[]>>;
+  setPinnedSessions: Dispatch<SetStateAction<Array<PinnedSession | PinnedActiveSession>>>;
 }): void {
   const subscribePinnedSessions = useCallback(() => {
     if (!expanded || projects.length === 0) {
@@ -138,6 +145,26 @@ export function usePinnedSessionsEffect({
     const pinnedIdsList = pinnedPrefIdsKey.split("\u0000").filter(Boolean);
     const pinnedIds = new Set(pinnedIdsList);
     const hiddenIds = new Set(hiddenPrefIdsKey.split("\u0000").filter(Boolean));
+    const projectsById = new Map(projects.map((project) => [project.id, project] as const));
+    const activePinnedRows: PinnedActiveSession[] = activeSessions
+      .filter((session) => {
+        const keys = [session.piSessionId, `tab:${session.paneId}:${session.tabId}`].filter(
+          (id): id is string => Boolean(id),
+        );
+        return keys.some((id) => pinnedIds.has(id)) && !keys.some((id) => hiddenIds.has(id));
+      })
+      .flatMap((session) => {
+        const project = projectsById.get(session.projectId);
+        if (!project) return [];
+        return [
+          {
+            ...session,
+            id: session.piSessionId ?? `tab:${session.paneId}:${session.tabId}`,
+            firstUserMessage: session.title,
+            project,
+          },
+        ];
+      });
     const idsParam = encodeURIComponent(pinnedIdsList.join(","));
     (async () => {
       const rows = await Promise.all(
@@ -157,14 +184,16 @@ export function usePinnedSessionsEffect({
         }),
       );
       if (!cancelled) {
+        const activeIds = new Set(activePinnedRows.map((session) => session.piSessionId));
         setPinnedSessions(
-          rows
-            .flat()
-            .sort(
-              (a, b) =>
-                new Date(b.startedAt || b.updatedAt).getTime() -
-                new Date(a.startedAt || a.updatedAt).getTime(),
-            ),
+          [
+            ...activePinnedRows,
+            ...rows.flat().filter((session) => !activeIds.has(session.id)),
+          ].sort(
+            (a, b) =>
+              new Date(("startedAt" in b ? b.startedAt : undefined) || b.updatedAt).getTime() -
+              new Date(("startedAt" in a ? a.startedAt : undefined) || a.updatedAt).getTime(),
+          ),
         );
       }
     })();
@@ -173,6 +202,7 @@ export function usePinnedSessionsEffect({
     };
   }, [
     activePiSessionIdsKey,
+    activeSessions,
     expanded,
     hiddenPrefIdsKey,
     pinnedPrefIdsKey,

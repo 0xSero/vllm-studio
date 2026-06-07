@@ -1,0 +1,35 @@
+# intel-xe-power-cap.service
+#
+# Recovers + power-caps the Intel Arc Pro B70s (8086:e223) at boot.
+# See B70-RECOVERY-GUIDE.md.
+#
+# Install:
+#   sudo install -m 0755 set-intel-xe-power-cap /usr/local/sbin/set-intel-xe-power-cap
+#   sudo install -m 0644 intel-xe-power-cap.service /etc/systemd/system/intel-xe-power-cap.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now intel-xe-power-cap.service
+#
+# Re-run manually after a recovery edit:
+#   sudo systemctl restart intel-xe-power-cap.service
+#   journalctl -u intel-xe-power-cap.service -b --no-pager
+
+[Unit]
+Description=Intel Arc Pro B70 (xe) enable/bind + 150W power cap
+# Run after the graphics/driver stack and udev have settled so xe is loaded
+# and sysfs PCI nodes exist.
+After=systemd-udev-settle.service multi-user.target
+Wants=systemd-udev-settle.service
+# Best-effort: do not block boot if a card is missing.
+DefaultDependencies=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/set-intel-xe-power-cap
+# The script itself always exits 0; this is belt-and-suspenders.
+SuccessExitStatus=0
+# Re-assert cap after resume from suspend, in case xe reset the limit.
+# (Harmless if the host never suspends.)
+
+[Install]
+WantedBy=multi-user.target

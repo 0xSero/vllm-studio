@@ -131,6 +131,7 @@ export function AgentBrowserPanel({
         ? current
         : {
             ...current,
+            status: current.status === "loading" ? "idle" : current.status,
             cwd: activeProject?.path ?? focusedSession?.cwd,
             projectId: activeProject?.id ?? focusedSession?.projectId,
             modelId: current.modelId || focusedSession?.modelId || activeModelId,

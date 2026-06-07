@@ -327,6 +327,7 @@ export function ChatPane({
           onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={Boolean(running)}
+          onForkSession={onForkSession}
           emptyPrompt={Boolean(showEmptyPrompt)}
         />
       </div>
