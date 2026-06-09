@@ -1,3 +1,4 @@
+import { piEventIsSuccessfulCompaction } from "@/lib/agent/pi-runtime-compaction";
 import type { QueuedMessage, RuntimeLoggedEvent, SessionTab, TokenStats } from "./types";
 
 export function randomIdSegment(length: number): string {
@@ -85,38 +86,13 @@ export function usageFromEvent(event: Record<string, unknown>): TokenStats | nul
 }
 
 export function compactionTextFromEvent(event: Record<string, unknown>): string | null {
-  const type = typeof event.type === "string" ? event.type.toLowerCase() : "";
-  if (!type.includes("compact") && !type.includes("compaction")) return null;
-  if (type.includes("start") || type.includes("begin")) return null;
-  if (isFailedCompactionEvent(event)) return null;
+  if (!piEventIsSuccessfulCompaction(event)) return null;
   const result = asRecord(event.result);
   return (
     [event.message, event.summary, event.text, result?.summary].find(
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     ) ?? "Context compacted"
   );
-}
-
-function isFailedCompactionEvent(event: Record<string, unknown>): boolean {
-  if (
-    event.error ||
-    event.errorMessage ||
-    event.aborted ||
-    event.cancelled ||
-    event.canceled ||
-    event.failed
-  ) {
-    return true;
-  }
-  if (event.type === "compaction_end" && event.result == null) return true;
-  const result = asRecord(event.result);
-  const status =
-    typeof event.status === "string"
-      ? event.status
-      : typeof result?.status === "string"
-        ? result.status
-        : "";
-  return /abort|cancel|error|fail/.test(status.toLowerCase());
 }
 
 export function formatTokenCount(tokens: number): string {

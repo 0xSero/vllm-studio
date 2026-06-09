@@ -17,6 +17,7 @@ import {
   visibleUserTextFromPi,
 } from "@/lib/agent/session";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
+import { piEventIsSuccessfulCompaction } from "@/lib/agent/pi-runtime-compaction";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { Session, SessionId } from "./types";
 
@@ -47,7 +48,7 @@ export function reduceSessionEvent(
   if (afterUserMessage) return afterUserMessage;
 
   let next = session;
-  if (isSuccessfulCompactionEvent(event)) {
+  if (piEventIsSuccessfulCompaction(event)) {
     next = { ...next, contextUsage: null, tokenStats: undefined };
   }
 
@@ -102,35 +103,6 @@ function patchAssistantMessage(
     return next;
   });
   return changed ? { ...session, messages } : session;
-}
-
-function isSuccessfulCompactionEvent(event: Record<string, unknown>): boolean {
-  const type = typeof event.type === "string" ? event.type.toLowerCase() : "";
-  if (!type.includes("compact") && !type.includes("compaction")) return false;
-  if (isFailedCompactionEvent(event)) return false;
-  if (type.includes("start") || type.includes("begin")) return false;
-  return true;
-}
-
-function isFailedCompactionEvent(event: Record<string, unknown>): boolean {
-  if (
-    event.error ||
-    event.errorMessage ||
-    event.aborted ||
-    event.cancelled ||
-    event.canceled ||
-    event.failed
-  ) {
-    return true;
-  }
-  if (event.type === "compaction_end" && event.result == null) return true;
-  const status =
-    typeof event.status === "string"
-      ? event.status
-      : typeof (event.result as { status?: unknown } | undefined)?.status === "string"
-        ? (event.result as { status: string }).status
-        : "";
-  return /abort|cancel|error|fail/.test(status.toLowerCase());
 }
 
 // Accumulate one content snapshot per LLM call and rebuild the bubble's blocks
