@@ -5,7 +5,6 @@
 export const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
 export const PROJECTS_CHANGED_EVENT = "vllm-studio.agent.projectsChanged";
 export const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
-export const NEW_AGENT_SESSION_EVENT = "vllm-studio.agent.newSession";
 export const ACTIVE_AGENT_SESSION_RENAME_EVENT = "vllm-studio.agent.activeSessionRename";
 export const ACTIVE_AGENT_SESSION_OPEN_EVENT = "vllm-studio.agent.activeSessionOpen";
 export const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";

@@ -5,13 +5,7 @@ import type { PaneId, WorkspaceSessionPayload } from "./types";
 type SessionPayload = { tab?: Session };
 type RuntimePanePayload = { runtimeSessionId?: string };
 
-export type OpenNewSessionPayload = SessionPayload &
-  RuntimePanePayload & {
-    project?: Project;
-    paneId?: PaneId;
-    /** Explicit user choice for what to do when the focused pane is busy. */
-    mode?: "split" | "replace";
-  };
+export type OpenNewSessionPayload = SessionPayload & { project?: Project };
 export type ReplaySessionPayload = SessionPayload & { piSessionId: string; sessionTitle?: string };
 export type ReplaySessionInSplitPayload = ReplaySessionPayload &
   RuntimePanePayload & { paneId?: PaneId };

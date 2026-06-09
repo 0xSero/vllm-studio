@@ -16,14 +16,9 @@ import {
   closePane,
   focusPane,
   focusPaneSession,
-  openNewSessionInFocusedPane,
   openSessionPayloadInPane,
   patchActiveTab,
-  replaySessionInFocusedPane,
-  replaySessionInSplitPane,
-  restorePaneState as restorePaneWorkspaceState,
   setPaneSession,
-  setWorkspaceLayout,
   setWorkspaceSplitRatio,
   splitPaneWithPayload,
   splitTabIntoNewPane,
@@ -175,12 +170,8 @@ function reducePaneLayoutAction(
   action: WorkspaceAction,
 ): WorkspaceState | null {
   switch (action.type) {
-    case "setLayout":
-      return setWorkspaceLayout(state, { layout: action.layout });
     case "setSplitRatio":
       return setWorkspaceSplitRatio(state, { path: action.path, ratio: action.ratio });
-    case "restorePaneState":
-      return restorePaneWorkspaceState(state, action);
     case "focusPane":
       return focusPane(state, { paneId: action.paneId });
     case "focusPaneSession":
@@ -197,34 +188,6 @@ function reduceSessionOpenAction(
   action: WorkspaceAction,
 ): WorkspaceState | null {
   switch (action.type) {
-    case "openNewSession": {
-      const next = openNewSessionInFocusedPane(state, {
-        project: action.project,
-        tab: action.tab,
-        paneId: action.paneId,
-        runtimeSessionId: action.runtimeSessionId,
-        mode: action.mode,
-      });
-      // Explicitly opening a chat marks the workspace as user-touched so a late
-      // auto-restore can't swap it out for an old session (see
-      // hydrateActiveSessions). Only when the action actually changed state —
-      // a no-op returns the same reference.
-      return next === state ? state : { ...next, hydrated: true };
-    }
-    case "replaySession":
-      return replaySessionInFocusedPane(state, {
-        piSessionId: action.piSessionId,
-        sessionTitle: action.sessionTitle,
-        tab: action.tab,
-      });
-    case "replaySessionInSplit":
-      return replaySessionInSplitPane(state, {
-        piSessionId: action.piSessionId,
-        paneId: action.paneId,
-        runtimeSessionId: action.runtimeSessionId,
-        sessionTitle: action.sessionTitle,
-        tab: action.tab,
-      });
     case "openSessionPayloadInPane":
       return openSessionPayloadInPane(state, {
         paneId: action.paneId,
@@ -286,6 +249,10 @@ function reduceSessionEditAction(
         runtimeSessionId: action.runtimeSessionId,
         tab: action.tab,
       });
+      // Explicitly opening a chat marks the workspace as user-touched so a late
+      // auto-restore can't swap it out for an old session (see
+      // hydrateActiveSessions). Only when the navigation actually changed state
+      // — a deduped/no-op nav returns the same reference and must not latch.
       return next === state
         ? state
         : { ...next, hydrated: action.newSession || Boolean(action.sessionId) || next.hydrated };

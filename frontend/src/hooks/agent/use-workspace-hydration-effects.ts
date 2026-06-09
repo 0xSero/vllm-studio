@@ -52,9 +52,7 @@ export function useWorkspaceHydrationEffects({
         });
       }
 
-      return subscribeWorkspaceWindowEvents(window, dispatch, (id) =>
-        projectsRef.current.findById(id),
-      );
+      return subscribeWorkspaceWindowEvents(window, dispatch);
     },
     [dispatch, projectsRef, toolsRef],
   );

@@ -1,10 +1,5 @@
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
-import {
-  cleanSessionTitle,
-  makeFreshTab,
-  newPaneId,
-  newRuntimeId,
-} from "@/lib/agent/session/helpers";
+import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 import { findPaneByPiSessionId } from "@/lib/agent/sessions/selectors";
 import type { Project } from "@/lib/agent/projects/types";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
@@ -22,7 +17,6 @@ import {
   ACTIVE_AGENT_SESSION_OPEN_EVENT,
   ACTIVE_AGENT_SESSION_RENAME_EVENT,
   ACTIVE_AGENT_SESSIONS_EVENT,
-  NEW_AGENT_SESSION_EVENT,
   PROJECTS_LOADED_EVENT,
   SESSIONS_CHANGED_EVENT,
 } from "./events";
@@ -70,12 +64,7 @@ export type WorkspaceEffectDeps = {
 };
 
 const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
-  "setLayout",
   "setSplitRatio",
-  "restorePaneState",
-  "openNewSession",
-  "replaySession",
-  "replaySessionInSplit",
   "openSessionPayloadInPane",
   "splitPaneWithPayload",
   "focusPane",
@@ -88,9 +77,6 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
 ]);
 
 const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
-  "openNewSession",
-  "replaySession",
-  "replaySessionInSplit",
   "openSessionPayloadInPane",
   "splitPaneWithPayload",
   "renameTab",
@@ -134,23 +120,7 @@ function stringField(value: Record<string, unknown>, key: string): string | unde
 export function subscribeWorkspaceWindowEvents(
   workspaceWindow: WorkspaceWindow,
   dispatch: WorkspaceDispatch,
-  findProjectById: (id: string) => Project | null = () => null,
 ): () => void {
-  const onNewSession = (event: Event) => {
-    const detail = eventDetail(event);
-    const projectId = isRecord(detail) ? stringField(detail, "projectId") : undefined;
-    const project = projectId ? (findProjectById(projectId) ?? undefined) : undefined;
-    const rawMode = isRecord(detail) ? stringField(detail, "mode") : undefined;
-    const mode = rawMode === "split" || rawMode === "replace" ? rawMode : undefined;
-    dispatch({
-      type: "openNewSession",
-      project,
-      tab: makeFreshTab(),
-      paneId: newPaneId(),
-      runtimeSessionId: newRuntimeId(),
-      ...(mode ? { mode } : {}),
-    });
-  };
   const onRename = (event: Event) => {
     const detail = eventDetail(event);
     if (!isRecord(detail)) return;
@@ -160,41 +130,15 @@ export function subscribeWorkspaceWindowEvents(
     if (!paneId || !tabId || !title) return;
     dispatch({ type: "renameTab", paneId, tabId, title });
   };
+  // Sidebar rows with a piSessionId navigate via href (URL nav owns persisted
+  // session opening); only active local sessions without one fire this event,
+  // always with mode "focus".
   const onOpen = (event: Event) => {
     const detail = eventDetail(event);
     if (!isRecord(detail)) return;
     const paneId = stringField(detail, "paneId");
     const tabId = stringField(detail, "tabId");
-    const piSessionId = stringField(detail, "piSessionId");
-    const title = stringField(detail, "title");
-    const mode = stringField(detail, "mode");
     if (!paneId || !tabId) return;
-    if (mode === "split") {
-      if (piSessionId) {
-        dispatch({
-          type: "replaySessionInSplit",
-          piSessionId,
-          sessionTitle: title,
-          paneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
-          tab: makeFreshTab(),
-        });
-        return;
-      }
-      dispatch({
-        type: "splitTab",
-        sourcePaneId: paneId,
-        sourceTabId: tabId,
-        newPaneId: newPaneId(),
-        runtimeSessionId: newRuntimeId(),
-        tab: makeFreshTab(),
-      });
-      return;
-    }
-    if (piSessionId) {
-      dispatch({ type: "replaySession", piSessionId, sessionTitle: title, tab: makeFreshTab() });
-      return;
-    }
     dispatch({ type: "focusPaneSession", paneId, sessionId: tabId });
   };
   // Fired by ProjectsProvider once its first load settles. We hold off on
@@ -216,13 +160,11 @@ export function subscribeWorkspaceWindowEvents(
     });
   };
 
-  workspaceWindow.addEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
   workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
   workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
   workspaceWindow.addEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
 
   return () => {
-    workspaceWindow.removeEventListener(NEW_AGENT_SESSION_EVENT, onNewSession);
     workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
     workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
     workspaceWindow.removeEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
@@ -365,24 +307,6 @@ function queueLocatedReplay(
   if (located) deps.queueReplay(located.paneId, piSessionId);
 }
 
-function queueRecoverableActiveTabReplays(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
-  const queued = new Set<string>();
-  for (const [paneId, pane] of state.panesById.entries()) {
-    const activeTab = state.sessions.get(pane.sessionId);
-    if (
-      activeTab?.piSessionId &&
-      (activeTab.messages.length === 0 ||
-        activeTab.status === "loading" ||
-        activeTab.status === "running" ||
-        activeTab.status === "starting") &&
-      !queued.has(activeTab.piSessionId)
-    ) {
-      queued.add(activeTab.piSessionId);
-      deps.queueReplay(paneId, activeTab.piSessionId);
-    }
-  }
-}
-
 function queueReplayEffects(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -390,14 +314,6 @@ function queueReplayEffects(
   deps: WorkspaceEffectDeps,
 ): void {
   switch (action.type) {
-    case "replaySession":
-      queueLocatedReplay(action.piSessionId, nextState, deps);
-      return;
-    case "replaySessionInSplit":
-      if (!findPaneByPiSessionId(prevState, action.piSessionId)) {
-        queueLocatedReplay(action.piSessionId, nextState, deps);
-      }
-      return;
     case "openSessionPayloadInPane":
     case "splitPaneWithPayload":
       if (
@@ -409,9 +325,6 @@ function queueReplayEffects(
       return;
     case "urlNavRequested":
       if (action.sessionId) queueLocatedReplay(action.sessionId, nextState, deps);
-      return;
-    case "restorePaneState":
-      queueRecoverableActiveTabReplays(nextState, deps);
       return;
     case "hydrateActiveSessions": {
       const queued = new Set<string>();

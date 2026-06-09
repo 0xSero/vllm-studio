@@ -1008,33 +1008,6 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
   assert.equal(active?.modelId, "model-a");
 });
 
-test("active persisted sidebar rows replay by session id instead of stale pane focus", () => {
-  const actions: WorkspaceAction[] = [];
-  const { window } = makeWorkspaceWindowHarness();
-  const unsubscribe = subscribeWorkspaceWindowEvents(window, (action) =>
-    actions.push(action),
-  );
-
-  window.dispatchEvent(
-    new window.CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
-      detail: {
-        paneId: "p-main",
-        tabId: "s-old",
-        piSessionId: "pi-old",
-        title: "Old chat",
-        mode: "focus",
-      },
-    }),
-  );
-  unsubscribe();
-
-  assert.equal(actions.length, 2);
-  assert.equal(actions[0].type, "replaySession");
-  assert.equal(actions[0].piSessionId, "pi-old");
-  assert.equal(actions[0].sessionTitle, "Old chat");
-  assert.equal(actions[1].type, "workspaceUnmounted");
-});
-
 test("active local sidebar rows focus by pane and tab without cloning identity", () => {
   const actions: WorkspaceAction[] = [];
   const { window } = makeWorkspaceWindowHarness();
@@ -1081,11 +1054,13 @@ test("new chat replaces an empty starter with fresh identity", () => {
   assert.equal(isEmptyStarterSession(starter), true);
 
   const next = reducer(makeState(starter), {
-    type: "openNewSession",
-    tab: makeSession("s-fresh"),
+    type: "urlNavRequested",
+    key: "nav-new-chat",
+    project: null,
+    newSession: true,
     paneId: "p-new",
     runtimeSessionId: "rt-new",
-    mode: "replace",
+    tab: makeSession("s-fresh"),
   });
 
   const active = next.sessions.get(
@@ -1234,8 +1209,12 @@ test("unprojected active sessions hydrate with their cwd", () => {
 
 test("session replay into a starter adopts cwd and model metadata", () => {
   const next = reducer(makeState(), {
-    type: "replaySession",
-    piSessionId: "pi-replay",
+    type: "urlNavRequested",
+    key: "nav-replay",
+    project: null,
+    sessionId: "pi-replay",
+    paneId: "p-replay",
+    runtimeSessionId: "rt-replay-pane",
     tab: makeSession("tab-replay", {
       runtimeSessionId: "rt-replay",
       cwd: "/Users/sero/.vllm-studio",

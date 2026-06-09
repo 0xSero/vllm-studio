@@ -12,7 +12,7 @@ import {
   pruneSessions,
 } from "@/lib/agent/sessions/store";
 import { findPaneByPiSessionId, referencedSessionIds } from "@/lib/agent/sessions/selectors";
-import type { PaneId, PaneState, WorkspaceLayout, WorkspaceState } from "./types";
+import type { PaneId, PaneState, WorkspaceState } from "./types";
 import type {
   OpenNewSessionPayload,
   OpenSessionPayloadInPanePayload,
@@ -166,17 +166,6 @@ function openSessionAdjacentToFocusedPane(
   );
 }
 
-export function setWorkspaceLayout(
-  state: WorkspaceState,
-  payload: { layout: WorkspaceLayout },
-): WorkspaceState {
-  try {
-    return collectLeaves(payload.layout).length > 0 ? { ...state, layout: payload.layout } : state;
-  } catch {
-    return state;
-  }
-}
-
 export function setWorkspaceSplitRatio(
   state: WorkspaceState,
   payload: { path: number[]; ratio: number },
@@ -185,36 +174,9 @@ export function setWorkspaceSplitRatio(
   return { ...state, layout: setLayoutSplitRatio(state.layout, payload.path, payload.ratio) };
 }
 
-export function restorePaneState(
-  state: WorkspaceState,
-  payload: {
-    layout: WorkspaceLayout;
-    panesById: ReadonlyMap<PaneId, PaneState>;
-    sessions: SessionsMap;
-    focusedPaneId: PaneId;
-  },
-): WorkspaceState {
-  if (!payload.panesById.has(payload.focusedPaneId)) return state;
-  const leaves = collectLeaves(payload.layout);
-  if (leaves.length === 0 || leaves.some((id) => !payload.panesById.has(id))) return state;
-  const panesById = new Map<PaneId, PaneState>();
-  for (const paneId of leaves) {
-    const pane = payload.panesById.get(paneId);
-    if (!pane) return state;
-    if (!pane.sessionId || !payload.sessions.has(pane.sessionId)) return state;
-    panesById.set(paneId, pane);
-  }
-  return pruneOrphanSessions({
-    ...state,
-    layout: payload.layout,
-    panesById,
-    sessions: new Map(payload.sessions),
-    focusedPaneId: payload.focusedPaneId,
-    hydrated: true,
-  });
-}
-
-export function openNewSessionInFocusedPane(
+// Internal: the only entry point is applyUrlNavigation (`?new=1`), which
+// always replaces the focused pane.
+function openNewSessionInFocusedPane(
   state: WorkspaceState,
   payload: OpenNewSessionPayload,
 ): WorkspaceState {
@@ -227,21 +189,11 @@ export function openNewSessionInFocusedPane(
     cwd: payload.project?.path,
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
-  if (payload.mode === "split") {
-    return openSessionAdjacentToFocusedPane(
-      state,
-      session,
-      payload.paneId,
-      payload.runtimeSessionId,
-    );
-  }
-  if (payload.mode === "replace") {
-    return replacePaneSession(state, state.focusedPaneId, session);
-  }
   return replacePaneSession(state, state.focusedPaneId, session);
 }
 
-export function replaySessionInFocusedPane(
+// Internal: reached via applyUrlNavigation (`?session=`).
+function replaySessionInFocusedPane(
   state: WorkspaceState,
   payload: ReplaySessionPayload,
 ): WorkspaceState {
@@ -279,7 +231,8 @@ export function replaySessionInFocusedPane(
   return replacePaneSession(state, state.focusedPaneId, session);
 }
 
-export function replaySessionInSplitPane(
+// Internal: reached via applyUrlNavigation (`?session=&split=1`).
+function replaySessionInSplitPane(
   state: WorkspaceState,
   payload: ReplaySessionInSplitPayload,
 ): WorkspaceState {
@@ -450,13 +403,7 @@ export function applyUrlNavigation(
     // made the same URL produce different results depending on what the
     // focused pane currently held, which is the source of the "sometimes
     // opens, sometimes doesn't" complaint about new chats.
-    return openNewSessionInFocusedPane(marked, {
-      project,
-      tab,
-      paneId,
-      runtimeSessionId,
-      mode: "replace",
-    });
+    return openNewSessionInFocusedPane(marked, { project, tab });
   }
   if (payload.sessionId && payload.split) {
     return replaySessionInSplitPane(marked, {

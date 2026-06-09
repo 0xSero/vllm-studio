@@ -51,13 +51,9 @@ import {
 export type WorkspaceHandles = {
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
   registerComputerAside: (element: HTMLElement | null) => void;
-  openNewSessionInFocusedPane: (project?: Project) => void;
-  replaySessionInFocusedPane: (piSessionId: string) => void;
-  replaySessionInSplitPane: (piSessionId: string) => void;
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
-  selectProject: (project: Project | null) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
   compactFocusedSession: () => Promise<void>;
   runBrowserCommand: (
@@ -69,7 +65,6 @@ export type WorkspaceHandles = {
     paneId: PaneId,
     tabs: SessionTab[] | ((tabs: SessionTab[]) => SessionTab[]),
   ) => void;
-  patchActiveTab: (paneId: PaneId, patch: Partial<SessionTab>) => void;
   closePane: (paneId: PaneId) => void;
   splitPaneWithPayload: (
     paneId: PaneId,
@@ -77,7 +72,6 @@ export type WorkspaceHandles = {
     side: "a" | "b",
     payload: SessionDropPayload,
   ) => void;
-  selectPaneProject: (paneId: PaneId, project: Project) => void;
   selectPaneModel: (paneId: PaneId, modelId: string) => void;
   notifySessionsChanged: () => void;
   startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -325,26 +319,6 @@ export function useWorkspace(): UseWorkspaceResult {
       registerComputerAside: (element: HTMLElement | null) => {
         computerAsideRef.current = element;
       },
-      openNewSessionInFocusedPane: (project?: Project) => {
-        if (project) projectsRef.current.selectProject(project);
-        dispatch({
-          type: "openNewSession",
-          project,
-          tab: makeFreshTab(),
-          paneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
-        });
-      },
-      replaySessionInFocusedPane: (piSessionId: string) =>
-        dispatch({ type: "replaySession", piSessionId, tab: makeFreshTab() }),
-      replaySessionInSplitPane: (piSessionId: string) =>
-        dispatch({
-          type: "replaySessionInSplit",
-          piSessionId,
-          paneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
-          tab: makeFreshTab(),
-        }),
       openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) =>
         dispatch({ type: "openSessionPayloadInPane", paneId, payload, tab: makeFreshTab() }),
       renameTab: (paneId: PaneId, tabId: string, title: string) =>
@@ -358,7 +332,6 @@ export function useWorkspace(): UseWorkspaceResult {
           runtimeSessionId: newRuntimeId(),
           tab: makeFreshTab(),
         }),
-      selectProject: (project: Project | null) => projectsRef.current.selectProject(project),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
@@ -388,8 +361,6 @@ export function useWorkspace(): UseWorkspaceResult {
           session,
         });
       },
-      patchActiveTab: (paneId: PaneId, patch: Partial<SessionTab>) =>
-        dispatch({ type: "patchActiveTab", paneId, patch }),
       closePane: (paneId: PaneId) => dispatch({ type: "closePane", paneId }),
       splitPaneWithPayload: (
         paneId: PaneId,
@@ -406,12 +377,6 @@ export function useWorkspace(): UseWorkspaceResult {
           newPaneId: newPaneId(),
           runtimeSessionId: newRuntimeId(),
           tab: makeFreshTab(),
-        }),
-      selectPaneProject: (paneId: PaneId, project: Project) =>
-        dispatch({
-          type: "patchActiveTab",
-          paneId,
-          patch: { projectId: project.id, cwd: project.path },
         }),
       selectPaneModel: (paneId: PaneId, modelId: string) =>
         dispatch({ type: "patchActiveTab", paneId, patch: { modelId } }),

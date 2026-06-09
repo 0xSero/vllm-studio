@@ -52,39 +52,7 @@ export type WorkspaceAction =
   | { type: "setSelectedModel"; modelId: string }
   | { type: "setSetupWarning"; warning: string }
   | { type: "setError"; error: string }
-  | { type: "setLayout"; layout: WorkspaceLayout }
   | { type: "setSplitRatio"; path: number[]; ratio: number }
-  | {
-      type: "restorePaneState";
-      layout: WorkspaceLayout;
-      panesById: ReadonlyMap<PaneId, PaneState>;
-      sessions: SessionsMap;
-      focusedPaneId: PaneId;
-    }
-  | {
-      type: "openNewSession";
-      project?: Project;
-      tab: Session;
-      /** Pre-allocated pane id used when the focused pane is busy and we split right. */
-      paneId?: PaneId;
-      runtimeSessionId?: string;
-      /**
-       * Explicit user choice when the focused pane already has an active
-       * session. `"split"` forces a new sibling pane, `"replace"` reuses the
-       * focused pane and replaces its session. When omitted we replace the
-       * focused pane, matching the sidebar "New chat" behavior.
-       */
-      mode?: "split" | "replace";
-    }
-  | { type: "replaySession"; piSessionId: string; tab: Session; sessionTitle?: string }
-  | {
-      type: "replaySessionInSplit";
-      piSessionId: string;
-      paneId: PaneId;
-      runtimeSessionId: string;
-      tab: Session;
-      sessionTitle?: string;
-    }
   | {
       type: "openSessionPayloadInPane";
       paneId: PaneId;
