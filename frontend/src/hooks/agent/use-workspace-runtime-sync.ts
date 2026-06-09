@@ -2,23 +2,9 @@ import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
-import {
-  listRuntimeSessions,
-  loadRuntimeStatus,
-  subscribeRuntimeEvents,
-  type RuntimeEventSubscription,
-  type RuntimeStatus,
-} from "@/lib/agent/sessions/api";
-import { reduceSessionEvent } from "@/lib/agent/sessions/pi-event-applier";
-import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
-import {
-  acceptRuntimeSeq,
-  adoptExternalCursor,
-  commitRuntimeSeq,
-  shouldSubscribeRuntimeEvents,
-  type RuntimeCursor,
-} from "@/lib/agent/sessions/runtime-cursor";
-import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
+import { listRuntimeSessions, type RuntimeStatus } from "@/lib/agent/sessions/api";
+import { shouldSubscribeRuntimeEvents } from "@/lib/agent/sessions/runtime-cursor";
+import { sessionRuntimeController } from "@/lib/agent/sessions/session-runtime-controller";
 
 type UseWorkspaceRuntimeSyncDeps = {
   dispatch: WorkspaceDispatch;
@@ -41,10 +27,6 @@ function runtimeSubscriptionKey(sessions: Session[]): string {
     .filter((session) => shouldSubscribeRuntimeEvents(session.status))
     .map((session) => `${session.id}:${session.runtimeSessionId}:${session.piSessionId ?? ""}`)
     .join("\n");
-}
-
-function resumeConnectionKey(runtimeSessionId: string, piSessionId: string | null): string {
-  return `${runtimeSessionId}|${piSessionId ?? ""}`;
 }
 
 function runtimeRegistryKey(sessions: Session[]): string {
@@ -85,15 +67,12 @@ function sameRuntimePatch(
 // A constant snapshot guarantees they never trigger a re-render.
 const getRuntimeSyncSnapshot = (): number => 0;
 
+// React adapter for the session runtime controller: binds the workspace
+// dispatcher as the controller's commit boundary, mirrors session cursors,
+// reconciles SSE attachments against the live session set, and runs the 5s
+// status poll. All ordering decisions live in the controller, not here.
 export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRuntimeSyncDeps): void {
   const sessionsRef = useRef(sessions);
-  const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
-  const cursorsBySessionRef = useRef<Map<SessionId, RuntimeCursor>>(new Map());
-  // Live resume subscriptions, one per session, managed incrementally so a
-  // status flip never tears down and rebuilds unrelated connections.
-  const resumeSubsRef = useRef<Map<SessionId, { key: string; sub: RuntimeEventSubscription }>>(
-    new Map(),
-  );
 
   // Mirror the latest sessions into a ref in the commit phase (never during
   // render) so the long-lived subscriptions below read the current value
@@ -104,18 +83,6 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, [sessions]);
   useSyncExternalStore(subscribeSessionsRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Mirror the persisted cursor per session. Pi's per-runtime event sequence can
-  // reset when a new prompt starts on the same Pi session, so deliberate
-  // lastEventSeq resets must propagate into the in-memory gate too —
-  // adoptExternalCursor is intentionally non-monotonic.
-  const subscribeLastSeq = useCallback(() => {
-    for (const session of sessions) {
-      cursorsBySessionRef.current.set(session.id, adoptExternalCursor(session.lastEventSeq));
-    }
-    return () => undefined;
-  }, [sessions]);
-  useSyncExternalStore(subscribeLastSeq, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
-
   const updateSession = useCallback(
     (sessionId: SessionId, patch: (session: Session) => Session) => {
       dispatch({ type: "patchSession", sessionId, patch });
@@ -123,131 +90,33 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     [dispatch],
   );
 
-  const applyPiEvent = useCallback(
-    (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => {
-      // One reducer pass, one patchSession dispatch per applied event.
-      updateSession(sessionId, (session) =>
-        reduceSessionEvent(
-          session,
-          { liveAssistantIds: liveAssistantIdsRef.current },
-          assistantId,
-          event,
-        ),
-      );
-    },
-    [updateSession],
-  );
-  const applyPiEventRef = useRef(applyPiEvent);
-  const subscribeApplyPiEventRef = useCallback(() => {
-    applyPiEventRef.current = applyPiEvent;
-    return () => undefined;
-  }, [applyPiEvent]);
-  useSyncExternalStore(subscribeApplyPiEventRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
-
-  // Single coalescer per hook instance, created lazily in the commit phase (not
-  // during render, so the dispatcher's ref read stays lint-clean). It always
-  // routes through the latest applyPiEvent.
-  const coalescerRef = useRef<ReturnType<typeof createTextDeltaCoalescer> | null>(null);
-  const subscribeCoalescer = useCallback(() => {
-    coalescerRef.current ??= createTextDeltaCoalescer({
-      applyPiEvent: (sessionId, assistantId, event) =>
-        applyPiEventRef.current(sessionId, assistantId, event),
+  // Bind the controller's commit boundary to the workspace dispatcher.
+  const subscribeBinding = useCallback(() => {
+    sessionRuntimeController().bind({
+      commit: updateSession,
+      getSession: (sessionId) =>
+        sessionsRef.current.find((session) => session.id === sessionId),
     });
     return () => undefined;
-  }, []);
-  useSyncExternalStore(subscribeCoalescer, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
+  }, [updateSession]);
+  useSyncExternalStore(subscribeBinding, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  const flushPiEvents = useCallback((sessionId: SessionId) => {
-    coalescerRef.current?.flushNow(sessionId);
-  }, []);
-
-  const enqueuePiEvent = useCallback(
-    (
-      sessionId: SessionId,
-      assistantId: string,
-      event: Record<string, unknown>,
-      options: { flushNow?: boolean } = {},
-    ) => {
-      if (coalescerRef.current?.enqueuePiEvent(sessionId, assistantId, event, options)) {
-        return;
-      }
-      coalescerRef.current?.flushNow(sessionId);
-      if (options.flushNow) flushPiEvents(sessionId);
-      applyPiEvent(sessionId, assistantId, event);
-    },
-    [applyPiEvent, flushPiEvents],
-  );
-
-  const shouldApplySeq = useCallback(
-    (sessionId: SessionId, seq?: number): boolean => {
-      const current = cursorsBySessionRef.current.get(sessionId) ?? adoptExternalCursor(undefined);
-      const decision = acceptRuntimeSeq(current, seq);
-      if (!decision.accept) return false;
-      // Cursor still advances (and persists) at receive time here; the
-      // received/committed split lands with the session runtime controller.
-      cursorsBySessionRef.current.set(sessionId, commitRuntimeSeq(decision.cursor, seq));
-      updateSession(sessionId, (session) =>
-        typeof seq !== "number" ||
-        (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq)
-          ? session
-          : { ...session, lastEventSeq: seq },
-      );
-      return true;
-    },
-    [updateSession],
-  );
+  // Mirror the persisted cursor per session on every change. Pi's per-runtime
+  // event sequence can reset when a new prompt starts on the same Pi session,
+  // so deliberate lastEventSeq resets must propagate into the gate too.
+  const subscribeCursors = useCallback(() => {
+    sessionRuntimeController().mirrorCursors(sessions);
+    return () => undefined;
+  }, [sessions]);
+  useSyncExternalStore(subscribeCursors, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const subscriptionKey = useMemo(() => runtimeSubscriptionKey(sessions), [sessions]);
 
-  // Incremental reconciler: open a resume subscription when a session enters the
-  // live set, close it when it leaves, and recreate it only when its connection
-  // params (runtime/pi id) change. A transient status flip leaves every
-  // existing connection untouched.
+  // Reconcile SSE attachments when the live membership (not content) changes.
   const subscribeResume = useCallback(() => {
-    const desired = new Map<SessionId, { runtimeSessionId: string; piSessionId: string | null }>();
-    for (const session of sessionsRef.current) {
-      if (shouldSubscribeRuntimeEvents(session.status) && session.runtimeSessionId) {
-        desired.set(session.id, {
-          runtimeSessionId: session.runtimeSessionId,
-          piSessionId: session.piSessionId ?? null,
-        });
-      }
-    }
-
-    const subs = resumeSubsRef.current;
-    for (const [sessionId, entry] of [...subs]) {
-      const want = desired.get(sessionId);
-      const key = want ? resumeConnectionKey(want.runtimeSessionId, want.piSessionId) : "";
-      if (!want || entry.key !== key) {
-        entry.sub.close();
-        subs.delete(sessionId);
-      }
-    }
-
-    for (const [sessionId, want] of desired) {
-      if (subs.has(sessionId)) continue;
-      const after =
-        sessionsRef.current.find((session) => session.id === sessionId)?.lastEventSeq ?? 0;
-      const sub = subscribeResumeRuntimeSession({
-        after,
-        api: { loadRuntimeStatus, subscribeRuntimeEvents },
-        applyPiEvent: enqueuePiEvent,
-        flushPiEvents,
-        piSessionId: want.piSessionId,
-        runtime: want.runtimeSessionId,
-        sessionId,
-        shouldApplySeq,
-        submitPromptRef: { current: async () => undefined },
-        tabsRef: sessionsRef,
-        updateSession,
-      });
-      subs.set(sessionId, {
-        key: resumeConnectionKey(want.runtimeSessionId, want.piSessionId),
-        sub,
-      });
-    }
+    sessionRuntimeController().reconcile(sessionsRef.current);
     return () => undefined;
-  }, [subscriptionKey, enqueuePiEvent, flushPiEvents, shouldApplySeq, updateSession]);
+  }, [subscriptionKey]);
   useSyncExternalStore(subscribeResume, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
@@ -322,14 +191,12 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, [registryKey, updateSession]);
   useSyncExternalStore(subscribePoll, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Unmount cleanup: flush/dispose the coalescer and close any open resume
-  // subscriptions.
+  // Unmount cleanup: flush pending deltas, close every SSE attachment, and
+  // release the dispatcher binding.
   const subscribeCleanup = useCallback(
     () => () => {
-      coalescerRef.current?.flushAll();
-      coalescerRef.current?.dispose();
-      for (const entry of resumeSubsRef.current.values()) entry.sub.close();
-      resumeSubsRef.current.clear();
+      sessionRuntimeController().closeAll();
+      sessionRuntimeController().unbind();
     },
     [],
   );

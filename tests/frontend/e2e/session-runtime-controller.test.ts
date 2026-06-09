@@ -18,7 +18,6 @@ import type {
   RuntimeEventSubscription,
   RuntimeStatus,
 } from "@/lib/agent/sessions/api";
-import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
@@ -26,6 +25,7 @@ import {
   createRuntimeCursor,
   reconnectAfter,
 } from "@/lib/agent/sessions/runtime-cursor";
+import { createSessionRuntimeController } from "@/lib/agent/sessions/session-runtime-controller";
 import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 
@@ -287,26 +287,25 @@ test("coalescer flushes pending work when the assistant id changes", () => {
   assert.equal(applied[1]?.assistantId, "a-2");
 });
 
-// ----- resume subscription lifecycle (runtime-resume.ts) -----
+// ----- live attachment lifecycle (session-runtime-controller.ts) -----
 
-type ResumeHarness = {
-  session: Session;
+type ControllerHarness = {
+  session: () => Session;
   subscribeCalls: { after: number; piSessionId: string | null | undefined }[];
-  handlers: { onPayload: (payload: RuntimeEventPayload) => void; onError: () => void }[];
-  applied: { assistantId: string; event: Record<string, unknown>; flushNow: boolean }[];
   order: string[];
-  sub: RuntimeEventSubscription;
+  frames: FrameHarness;
   emit: (payload: RuntimeEventPayload) => void;
   fail: () => void;
+  close: () => void;
 };
 
-function createResumeHarness(options: {
-  after?: number;
-  status?: RuntimeStatus | null;
-  shouldApplySeq?: (sessionId: SessionId, seq?: number) => boolean;
-} = {}): ResumeHarness {
-  const harness = {} as ResumeHarness;
-  harness.session = {
+function createControllerHarness(
+  options: {
+    lastEventSeq?: number;
+    status?: RuntimeStatus | null;
+  } = {},
+): ControllerHarness {
+  let session: Session = {
     id: "s-1",
     runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
@@ -315,56 +314,74 @@ function createResumeHarness(options: {
     status: "running",
     error: "",
     input: "",
+    lastEventSeq: options.lastEventSeq,
   };
-  harness.subscribeCalls = [];
-  harness.handlers = [];
-  harness.applied = [];
-  harness.order = [];
+  const subscribeCalls: ControllerHarness["subscribeCalls"] = [];
+  const handlers: { onPayload: (payload: RuntimeEventPayload) => void; onError: () => void }[] = [];
+  const order: string[] = [];
+  const frames = frameHarness();
 
-  harness.sub = subscribeResumeRuntimeSession({
-    after: options.after ?? 0,
+  const controller = createSessionRuntimeController({
     api: {
       loadRuntimeStatus: async () => options.status ?? null,
-      subscribeRuntimeEvents: (_runtime, after, piSessionId, handlers) => {
-        harness.subscribeCalls.push({ after, piSessionId });
-        harness.handlers.push(handlers);
-        return { close: () => harness.order.push("transport-close") };
+      subscribeRuntimeEvents: (_runtime, after, piSessionId, eventHandlers) => {
+        subscribeCalls.push({ after, piSessionId });
+        handlers.push(eventHandlers);
+        return { close: () => order.push("transport-close") };
       },
     },
-    applyPiEvent: (_sessionId, assistantId, event, applyOptions = {}) => {
-      harness.order.push("apply");
-      harness.applied.push({ assistantId, event, flushNow: applyOptions.flushNow === true });
-    },
-    flushPiEvents: () => harness.order.push("flush"),
-    runtime: "rt-1",
-    piSessionId: "pi-1",
-    sessionId: "s-1",
-    shouldApplySeq: options.shouldApplySeq,
-    submitPromptRef: { current: async () => undefined },
-    tabsRef: {
-      get current() {
-        return [harness.session];
-      },
-    },
-    updateSession: (_sessionId, patch) => {
-      harness.session = patch(harness.session);
-      if (harness.session.status === "idle") harness.order.push("idle-patch");
-    },
+    scheduleFrame: frames.schedule,
   });
+  controller.bind({
+    commit: (sessionId, patch) => {
+      if (sessionId !== session.id) return;
+      const prev = session;
+      session = patch(session);
+      if (session === prev) return;
+      if (prev.status !== "idle" && session.status === "idle") order.push("idle-patch");
+      const joinedBlocks = (entry: Session) =>
+        (entry.messages.at(-1)?.blocks ?? []).map((block) => block.text).join("");
+      if (joinedBlocks(session) !== joinedBlocks(prev)) order.push(`blocks:${joinedBlocks(session)}`);
+    },
+    getSession: (sessionId) => (sessionId === session.id ? session : undefined),
+  });
+  controller.mirrorCursors([session]);
+  controller.reconcile([session]);
 
-  harness.emit = (payload) => harness.handlers.at(-1)?.onPayload(payload);
-  harness.fail = () => harness.handlers.at(-1)?.onError();
-  return harness;
+  return {
+    session: () => session,
+    subscribeCalls,
+    order,
+    frames,
+    emit: (payload) => handlers.at(-1)?.onPayload(payload),
+    fail: () => handlers.at(-1)?.onError(),
+    close: () => {
+      controller.closeAll();
+      controller.unbind();
+    },
+  };
+}
+
+function partialDeltaEvent(delta: string, full: string): Record<string, unknown> {
+  return {
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta,
+      contentIndex: 0,
+      partial: { role: "assistant", content: [{ type: "text", text: full }] },
+    },
+  };
 }
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-test("resume reconnects from the highest received seq, not the configured start", async (t) => {
+test("controller reconnects from the highest received seq, not the configured start", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const harness = createResumeHarness({ after: 0, status: { active: true } });
+  const harness = createControllerHarness({ status: { active: true } });
 
-  harness.emit({ type: "pi", seq: 5, event: { type: "message_update" } });
-  harness.emit({ type: "pi", seq: 3, event: { type: "message_update" } });
+  harness.emit({ type: "pi", seq: 5, event: partialDeltaEvent("a", "a") });
+  harness.emit({ type: "pi", seq: 3, event: partialDeltaEvent("b", "b") });
   harness.fail();
   await settle();
   t.mock.timers.tick(1_000);
@@ -373,70 +390,84 @@ test("resume reconnects from the highest received seq, not the configured start"
     harness.subscribeCalls.map((call) => call.after),
     [0, 5],
   );
-  harness.sub.close();
+  harness.close();
 });
 
-test("resume applies agent_end with flushNow and settles the session idle", () => {
-  const harness = createResumeHarness();
+test("controller applies agent_end immediately and settles the session idle", () => {
+  const harness = createControllerHarness();
 
   harness.emit({ type: "pi", seq: 1, event: { type: "agent_end" } });
 
-  assert.equal(harness.applied.length, 1);
-  assert.equal(harness.applied[0]?.event.type, "agent_end");
-  assert.equal(harness.applied[0]?.flushNow, true);
-  assert.equal(harness.session.status, "idle");
-  assert.equal(harness.session.activeAssistantId, undefined);
-  // ensureAssistantId appended a placeholder assistant message before applying.
-  assert.equal(harness.session.messages.at(-1)?.role, "assistant");
-  harness.sub.close();
+  assert.equal(harness.session().status, "idle");
+  assert.equal(harness.session().activeAssistantId, undefined);
+  // The controller ensured an assistant bubble before applying the event.
+  assert.equal(harness.session().messages.at(-1)?.role, "assistant");
+  assert.equal(harness.session().lastEventSeq, 1);
+  harness.close();
 });
 
-test("resume drops payloads the seq gate rejects without touching state", () => {
-  const harness = createResumeHarness({ shouldApplySeq: () => false });
-  const before = harness.session;
+test("controller drops payloads the seq gate rejects without touching state", () => {
+  const harness = createControllerHarness({ lastEventSeq: 5 });
+  const before = harness.session();
 
-  harness.emit({ type: "pi", seq: 1, event: { type: "agent_end" } });
+  harness.emit({ type: "pi", seq: 3, event: { type: "agent_end" } });
 
-  assert.equal(harness.applied.length, 0);
-  assert.equal(harness.session, before);
-  harness.sub.close();
+  assert.equal(harness.session(), before);
+  // The attachment also resumed from the persisted cursor.
+  assert.deepEqual(
+    harness.subscribeCalls.map((call) => call.after),
+    [5],
+  );
+  harness.close();
 });
 
-test("resume close() flushes pending pi events before closing the transport", () => {
-  const harness = createResumeHarness();
+test("closing attachments flushes pending coalesced deltas before the transport", () => {
+  const harness = createControllerHarness();
 
-  harness.sub.close();
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("abc", "abc") });
+  assert.equal(harness.order.includes("blocks:abc"), false);
 
-  assert.deepEqual(harness.order, ["flush", "transport-close"]);
+  harness.close();
+
+  const flushedAt = harness.order.indexOf("blocks:abc");
+  const closedAt = harness.order.indexOf("transport-close");
+  assert.notEqual(flushedAt, -1);
+  assert.notEqual(closedAt, -1);
+  assert.ok(flushedAt < closedAt, `flush must precede transport close: ${harness.order.join(",")}`);
 });
 
 test("inconclusive liveness probe reconnects and never idles the session", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const harness = createResumeHarness({ status: null });
+  const harness = createControllerHarness({ status: null });
 
   harness.fail();
   await settle();
-  assert.equal(harness.session.status, "running");
+  assert.equal(harness.session().status, "running");
   assert.equal(harness.order.includes("idle-patch"), false);
 
   t.mock.timers.tick(1_000);
   assert.equal(harness.subscribeCalls.length, 2);
-  harness.sub.close();
+  harness.close();
 });
 
-test("definitively inactive runtime closes, flushes, then idles — in that order", async () => {
-  const harness = createResumeHarness({ status: { active: false } });
+test("definitively inactive runtime closes, flushes pending text, then idles", async () => {
+  const harness = createControllerHarness({ status: { active: false } });
 
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("tail", "tail") });
   harness.fail();
   await settle();
 
-  assert.deepEqual(harness.order, ["transport-close", "flush", "idle-patch"]);
-  assert.equal(harness.session.status, "idle");
-  harness.sub.close();
+  const closedAt = harness.order.indexOf("transport-close");
+  const flushedAt = harness.order.indexOf("blocks:tail");
+  const idledAt = harness.order.indexOf("idle-patch");
+  assert.ok(closedAt !== -1 && flushedAt !== -1 && idledAt !== -1, harness.order.join(","));
+  assert.ok(closedAt < flushedAt && flushedAt < idledAt, harness.order.join(","));
+  assert.equal(harness.session().status, "idle");
+  harness.close();
 });
 
 test("done status payloads settle the session idle and keep the pi session id", () => {
-  const harness = createResumeHarness();
+  const harness = createControllerHarness();
 
   harness.emit({
     type: "status",
@@ -444,8 +475,8 @@ test("done status payloads settle the session idle and keep the pi session id", 
     session: { piSessionId: "pi-from-status" },
   });
 
-  assert.equal(harness.session.status, "idle");
-  assert.equal(harness.session.piSessionId, "pi-from-status");
-  assert.equal(harness.session.activeAssistantId, undefined);
-  harness.sub.close();
+  assert.equal(harness.session().status, "idle");
+  assert.equal(harness.session().piSessionId, "pi-from-status");
+  assert.equal(harness.session().activeAssistantId, undefined);
+  harness.close();
 });
