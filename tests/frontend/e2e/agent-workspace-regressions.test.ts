@@ -571,3 +571,15 @@ test("replay queue is last-wins per pane and immediate when the handle exists", 
   // newest queued id replays.
   assert.deepEqual(harness.replays, [{ paneId: "p-1", piSessionId: "pi-b" }]);
 });
+
+test("a replay queued for a pane that never mounts stays inert", () => {
+  const harness = makeReplayHarness();
+  harness.setSession("p-ghost", makeSession("s-ghost", { piSessionId: "pi-ghost" }));
+
+  harness.queue.queue("p-ghost", "pi-ghost");
+  harness.runTimers();
+
+  // No handle ever registers: nothing fires, nothing retries, nothing throws.
+  assert.deepEqual(harness.replays, []);
+  assert.equal(harness.timers.length, 1);
+});

@@ -21,9 +21,6 @@ export type SessionReplayQueue = {
   notifyHandleRegistered: (paneId: PaneId) => void;
 };
 
-const RETRY_DELAY_MS = 50;
-const MAX_ATTEMPTS = 100;
-
 // The replay drop guard is deliberately NARROWER than isEmptyStarterSession:
 // typed-but-unsent input or a startedAt stamp still counts as "fresh" here. A
 // "+" click (or any swap) replaces a pane's session in place under the same
@@ -42,16 +39,14 @@ function isFreshStarter(session: Session | undefined): boolean {
 export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionReplayQueue {
   const pending = new Map<PaneId, string>();
 
-  const drain = (paneId: PaneId, attempt: number) => {
+  const drain = (paneId: PaneId) => {
     const pendingSessionId = pending.get(paneId);
     if (!pendingSessionId) return;
     const handle = deps.getHandle(paneId);
-    if (!handle) {
-      if (attempt < MAX_ATTEMPTS) {
-        deps.setTimeout(() => drain(paneId, attempt + 1), RETRY_DELAY_MS);
-      }
-      return;
-    }
+    // No handle yet: leave the entry pending — notifyHandleRegistered drains
+    // it the moment the pane mounts. (This replaced a 50ms x100 polling loop;
+    // registration is the only wake-up needed.)
+    if (!handle) return;
     // Guard runs at DRAIN time, not queue time: the pane's session can be
     // swapped between the two (see isFreshStarter above).
     const pane = deps.getState().panesById.get(paneId);
@@ -68,10 +63,10 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     queue: (paneId, piSessionId) => {
       pending.set(paneId, piSessionId);
       // Defer past the dispatch/render that created the pane.
-      deps.setTimeout(() => drain(paneId, 0), 0);
+      deps.setTimeout(() => drain(paneId), 0);
     },
     notifyHandleRegistered: (paneId) => {
-      if (pending.has(paneId)) deps.setTimeout(() => drain(paneId, 0), 0);
+      if (pending.has(paneId)) deps.setTimeout(() => drain(paneId), 0);
     },
   };
 }
