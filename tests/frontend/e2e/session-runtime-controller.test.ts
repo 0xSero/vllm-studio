@@ -20,9 +20,12 @@ import type {
 } from "@/lib/agent/sessions/api";
 import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
 import {
-  mirrorSessionLastEventSeq,
-  shouldApplyRuntimeSeq,
-} from "@/lib/agent/sessions/runtime-subscription-state";
+  acceptRuntimeSeq,
+  adoptExternalCursor,
+  commitRuntimeSeq,
+  createRuntimeCursor,
+  reconnectAfter,
+} from "@/lib/agent/sessions/runtime-cursor";
 import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 
@@ -33,31 +36,50 @@ const fixture = JSON.parse(
   runtimeTail: RuntimeLoggedEvent[];
 };
 
-// ----- cursor gate (runtime-subscription-state.ts) -----
+// ----- cursor gate (runtime-cursor.ts) -----
 
 test("cursor gate passes seq-less payloads through without advancing", () => {
-  assert.deepEqual(shouldApplyRuntimeSeq(undefined, undefined), {
-    apply: true,
-    next: undefined,
-  });
-  assert.deepEqual(shouldApplyRuntimeSeq(7, undefined), { apply: true, next: 7 });
+  const cursor = createRuntimeCursor();
+  assert.deepEqual(acceptRuntimeSeq(cursor, undefined), { accept: true, cursor });
+  const at7 = createRuntimeCursor(7);
+  assert.deepEqual(acceptRuntimeSeq(at7, undefined), { accept: true, cursor: at7 });
 });
 
 test("cursor gate rejects equal and stale seqs, accepts strictly newer", () => {
-  assert.deepEqual(shouldApplyRuntimeSeq(5, 5), { apply: false, next: 5 });
-  assert.deepEqual(shouldApplyRuntimeSeq(5, 4), { apply: false, next: 5 });
-  assert.deepEqual(shouldApplyRuntimeSeq(5, 6), { apply: true, next: 6 });
+  const at5 = createRuntimeCursor(5);
+  assert.deepEqual(acceptRuntimeSeq(at5, 5), { accept: false, cursor: at5 });
+  assert.deepEqual(acceptRuntimeSeq(at5, 4), { accept: false, cursor: at5 });
+  assert.equal(acceptRuntimeSeq(at5, 6).accept, true);
+  assert.equal(acceptRuntimeSeq(at5, 6).cursor.receivedSeq, 6);
   // No persisted cursor behaves as 0.
-  assert.deepEqual(shouldApplyRuntimeSeq(undefined, 1), { apply: true, next: 1 });
+  assert.equal(acceptRuntimeSeq(createRuntimeCursor(), 1).accept, true);
 });
 
-test("cursor mirror moves the in-memory gate backwards unconditionally", () => {
-  // The mirror is deliberately an identity on the session value: it is the only
-  // channel by which a lastEventSeq reset (new prompt) or replay hydration can
-  // move the gate BACKWARDS. shouldApplyRuntimeSeq alone is monotonic.
-  assert.equal(mirrorSessionLastEventSeq(43, 0), 0);
-  assert.equal(mirrorSessionLastEventSeq(43, undefined), undefined);
-  assert.equal(mirrorSessionLastEventSeq(undefined, 43), 43);
+test("adopting an external cursor moves the in-memory gate backwards", () => {
+  // Deliberately non-monotonic: a lastEventSeq reset (new prompt on the same
+  // Pi session) or replay hydration must move the gate BACKWARDS, while
+  // acceptRuntimeSeq alone is monotonic.
+  const reset = adoptExternalCursor(0);
+  assert.equal(acceptRuntimeSeq(reset, 1).accept, true);
+  assert.deepEqual(adoptExternalCursor(undefined), {
+    receivedSeq: undefined,
+    committedSeq: undefined,
+  });
+  assert.equal(adoptExternalCursor(43).receivedSeq, 43);
+});
+
+test("committed cursor lags received and reconnect resumes from received", () => {
+  const cursor = acceptRuntimeSeq(createRuntimeCursor(2), 5).cursor;
+  assert.equal(cursor.receivedSeq, 5);
+  assert.equal(cursor.committedSeq, 2);
+  // Reconnect must use the highest RECEIVED seq: an unflushed coalesced delta
+  // is still in memory, so replaying it would double-apply.
+  assert.equal(reconnectAfter(cursor), 5);
+  const committed = commitRuntimeSeq(cursor, 5);
+  assert.equal(committed.committedSeq, 5);
+  // Commit is monotonic.
+  assert.equal(commitRuntimeSeq(committed, 3).committedSeq, 5);
+  assert.equal(reconnectAfter(createRuntimeCursor()), 0);
 });
 
 // ----- replay cursor after navigation hydration (session/helpers.ts) -----

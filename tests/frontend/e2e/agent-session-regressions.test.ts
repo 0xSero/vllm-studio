@@ -51,10 +51,10 @@ import {
 import type { Session } from "@/lib/agent/sessions/types";
 import { runtimeContextUsage } from "@/lib/agent/sessions/api";
 import {
-  mirrorSessionLastEventSeq,
-  shouldApplyRuntimeSeq,
+  acceptRuntimeSeq,
+  adoptExternalCursor,
   shouldSubscribeRuntimeEvents,
-} from "@/lib/agent/sessions/runtime-subscription-state";
+} from "@/lib/agent/sessions/runtime-cursor";
 import { ACTIVE_AGENT_SESSION_OPEN_EVENT } from "@/lib/agent/workspace/events";
 import { subscribeWorkspaceWindowEvents } from "@/lib/agent/workspace/effects";
 import { reducer } from "@/lib/agent/workspace/reducer";
@@ -1528,17 +1528,13 @@ test("runtime event subscriptions wait for accepted running turns", () => {
 });
 
 test("runtime event cursor resets for a new prompt on the same Pi session", () => {
-  const staleCursor = mirrorSessionLastEventSeq(undefined, 43);
-  assert.deepEqual(shouldApplyRuntimeSeq(staleCursor, 28), {
-    apply: false,
-    next: 43,
-  });
+  const staleCursor = adoptExternalCursor(43);
+  assert.equal(acceptRuntimeSeq(staleCursor, 28).accept, false);
 
-  const resetCursor = mirrorSessionLastEventSeq(staleCursor, 0);
-  assert.deepEqual(shouldApplyRuntimeSeq(resetCursor, 1), {
-    apply: true,
-    next: 1,
-  });
+  const resetCursor = adoptExternalCursor(0);
+  const decision = acceptRuntimeSeq(resetCursor, 1);
+  assert.equal(decision.accept, true);
+  assert.equal(decision.cursor.receivedSeq, 1);
 });
 
 test("control routing uses active turn state, not runtime process existence", () => {

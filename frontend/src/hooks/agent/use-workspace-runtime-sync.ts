@@ -13,10 +13,12 @@ import {
 import { applyPiEventToSession } from "@/lib/agent/sessions/pi-event-applier";
 import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
 import {
-  mirrorSessionLastEventSeq,
-  shouldApplyRuntimeSeq,
+  acceptRuntimeSeq,
+  adoptExternalCursor,
+  commitRuntimeSeq,
   shouldSubscribeRuntimeEvents,
-} from "@/lib/agent/sessions/runtime-subscription-state";
+  type RuntimeCursor,
+} from "@/lib/agent/sessions/runtime-cursor";
 import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 
 type UseWorkspaceRuntimeSyncDeps = {
@@ -87,7 +89,7 @@ const getRuntimeSyncSnapshot = (): number => 0;
 export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRuntimeSyncDeps): void {
   const sessionsRef = useRef(sessions);
   const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
-  const lastSeqBySessionRef = useRef<Map<SessionId, number>>(new Map());
+  const cursorsBySessionRef = useRef<Map<SessionId, RuntimeCursor>>(new Map());
   // Live resume subscriptions, one per session, managed incrementally so a
   // status flip never tears down and rebuilds unrelated connections.
   const resumeSubsRef = useRef<Map<SessionId, { key: string; sub: RuntimeEventSubscription }>>(
@@ -105,18 +107,11 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
 
   // Mirror the persisted cursor per session. Pi's per-runtime event sequence can
   // reset when a new prompt starts on the same Pi session, so deliberate
-  // lastEventSeq resets must propagate into the in-memory gate too.
+  // lastEventSeq resets must propagate into the in-memory gate too —
+  // adoptExternalCursor is intentionally non-monotonic.
   const subscribeLastSeq = useCallback(() => {
     for (const session of sessions) {
-      const next = mirrorSessionLastEventSeq(
-        lastSeqBySessionRef.current.get(session.id),
-        session.lastEventSeq,
-      );
-      if (typeof next === "number") {
-        lastSeqBySessionRef.current.set(session.id, next);
-      } else {
-        lastSeqBySessionRef.current.delete(session.id);
-      }
+      cursorsBySessionRef.current.set(session.id, adoptExternalCursor(session.lastEventSeq));
     }
     return () => undefined;
   }, [sessions]);
@@ -195,11 +190,12 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
 
   const shouldApplySeq = useCallback(
     (sessionId: SessionId, seq?: number): boolean => {
-      const current = lastSeqBySessionRef.current.get(sessionId);
-      const decision = shouldApplyRuntimeSeq(current, seq);
-      if (!decision.apply) return false;
-      if (typeof decision.next === "number")
-        lastSeqBySessionRef.current.set(sessionId, decision.next);
+      const current = cursorsBySessionRef.current.get(sessionId) ?? adoptExternalCursor(undefined);
+      const decision = acceptRuntimeSeq(current, seq);
+      if (!decision.accept) return false;
+      // Cursor still advances (and persists) at receive time here; the
+      // received/committed split lands with the session runtime controller.
+      cursorsBySessionRef.current.set(sessionId, commitRuntimeSeq(decision.cursor, seq));
       updateSession(sessionId, (session) =>
         typeof seq !== "number" ||
         (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq)
