@@ -47,15 +47,15 @@ export type AgentTurnRuntimeStatus = {
   } | null;
 };
 
-export type AgentTurnSsePayload =
-  | {
-      type: "status";
-      phase: string;
-      piSessionId?: string | null;
-      session?: AgentTurnRuntimeStatus;
-    }
-  | { type: "error"; error: string }
-  | { type: "pi"; seq?: number; event: Record<string, unknown> };
+export type AgentTurnCommandResult = {
+  type: "command";
+  outcome: "accepted" | "queued" | "rejected";
+  runtimeSessionId: string;
+  piSessionId?: string | null;
+  active: boolean;
+  status?: AgentTurnRuntimeStatus;
+  error?: string;
+};
 
 export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequest> {
   const body = objectRecord(input);
@@ -112,28 +112,25 @@ function sanitizeImages(value: unknown): AgentImageInput[] {
   });
 }
 
-export function parseAgentTurnSsePayload(line: string): AgentTurnSsePayload | null {
-  if (!line.startsWith("data: ")) return null;
-  try {
-    const payload = JSON.parse(line.slice(6)) as Partial<AgentTurnSsePayload>;
-    if (payload.type === "status" && typeof payload.phase === "string") {
-      return {
-        type: "status",
-        phase: payload.phase,
-        piSessionId: payload.piSessionId,
-        session: objectRecord(payload.session)
-          ? (payload.session as AgentTurnRuntimeStatus)
-          : undefined,
-      };
-    }
-    if (payload.type === "error" && typeof payload.error === "string") {
-      return { type: "error", error: payload.error };
-    }
-    if (payload.type === "pi" && objectRecord(payload.event)) {
-      return { type: "pi", seq: payload.seq, event: payload.event! };
-    }
-  } catch {
-    return null;
-  }
-  return null;
+export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandResult | null {
+  const payload = objectRecord(input);
+  if (!payload || payload.type !== "command") return null;
+  const outcome =
+    payload.outcome === "accepted" || payload.outcome === "queued" || payload.outcome === "rejected"
+      ? payload.outcome
+      : null;
+  const runtimeSessionId =
+    typeof payload.runtimeSessionId === "string" && payload.runtimeSessionId.trim()
+      ? payload.runtimeSessionId.trim()
+      : "";
+  if (!outcome || !runtimeSessionId) return null;
+  return {
+    type: "command",
+    outcome,
+    runtimeSessionId,
+    piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
+    active: payload.active === true,
+    status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,
+    error: typeof payload.error === "string" ? payload.error : undefined,
+  };
 }

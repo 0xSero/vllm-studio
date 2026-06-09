@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   attachmentDedupKey,
   attachmentPrompt,
+  createAttachment,
   createProjectFileAttachment,
 } from "@/app/agent/_components/chat-attachments";
 import {
@@ -77,9 +78,50 @@ test("truncated tagged files stay metadata-only while preserving the local path"
   assert.doesNotMatch(prompt, /binary payload should not be inlined/);
 });
 
+test("image attachments are described as metadata for non-vision models", () => {
+  const prompt = attachmentPrompt(
+    [
+      {
+        id: "img:screenshot",
+        name: "screenshot.png",
+        type: "image/png",
+        size: 1200,
+        mode: "data-url",
+        content: "data:image/png;base64,iVBORw0KGgo=",
+        previewKind: "image",
+        previewUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+    ],
+    { modelSupportsVision: false },
+  );
+
+  assert.match(prompt, /selected model does not accept image input/);
+  assert.match(prompt, /only attached as metadata/);
+  assert.match(prompt, /cannot see it because only metadata was attached/);
+  assert.doesNotMatch(prompt, /attached as multimodal input/);
+  assert.doesNotMatch(prompt, /iVBORw0KGgo=/);
+});
+
+test("oversized image attachments explain the inline image limit", async () => {
+  const file = new File([new Uint8Array(6_000_001)], "large-screenshot.png", {
+    type: "image/png",
+  });
+  const attachment = await createAttachment(file);
+
+  assert.equal(attachment.mode, "metadata");
+  assert.match(attachment.content, /above the 5\.7 MB inline image limit/);
+  assert.match(attachment.content, /only metadata is attached to the model/);
+});
+
 test("MCP plugin slash and at-mention context persist selected plugin state", () => {
-  const slashMention = detectComposerMention("/plugins browser", "/plugins browser".length);
-  const pluginMention = detectComposerMention("use @filesystem", "use @filesystem".length);
+  const slashMention = detectComposerMention(
+    "/plugins browser",
+    "/plugins browser".length,
+  );
+  const pluginMention = detectComposerMention(
+    "use @filesystem",
+    "use @filesystem".length,
+  );
   const plugins = [
     {
       id: "mcp-filesystem",

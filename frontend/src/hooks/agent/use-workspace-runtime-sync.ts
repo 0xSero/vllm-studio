@@ -13,10 +13,10 @@ import {
 import { applyPiEventToSession } from "@/lib/agent/sessions/pi-event-applier";
 import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
 import {
-  hasRuntimePromptStream,
-  runtimePromptStreamsSnapshot,
-  subscribeRuntimePromptStreams,
-} from "@/lib/agent/sessions/stream-ownership";
+  mirrorSessionLastEventSeq,
+  shouldApplyRuntimeSeq,
+  shouldSubscribeRuntimeEvents,
+} from "@/lib/agent/sessions/runtime-subscription-state";
 import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
 
 type UseWorkspaceRuntimeSyncDeps = {
@@ -30,23 +30,22 @@ type PiEventBatch = {
   timer: ReturnType<typeof setTimeout> | null;
 };
 
-function liveSessionStatus(status: string): boolean {
-  return status === "running" || status === "starting";
-}
-
 function runtimeStatusActive(status: RuntimeStatus | null | undefined): boolean {
   return status?.active === true;
 }
 
 // Membership key for the resume subscriptions. Deliberately excludes the raw
-// status string: starting/running are both "live", so a starting->running flip
-// must NOT churn connections. Only entering/leaving the live set, a changed
-// runtime/pi id, or an ownership change re-evaluates the subscription set.
-function runtimeSubscriptionKey(sessions: Session[], ownershipVersion: number): string {
-  return `${ownershipVersion}\n${sessions
-    .filter((session) => liveSessionStatus(session.status))
+// status string beyond the live/idle boundary. A prompt's optimistic
+// "starting" phase deliberately does not subscribe yet: the runtime can still
+// be idle from the previous turn, and subscribing too early can receive a final
+// idle status before `/turn` has restarted Pi. Once the command endpoint
+// returns, "running" opens the stream and replays any early events from the
+// runtime log.
+function runtimeSubscriptionKey(sessions: Session[]): string {
+  return sessions
+    .filter((session) => shouldSubscribeRuntimeEvents(session.status))
     .map((session) => `${session.id}:${session.runtimeSessionId}:${session.piSessionId ?? ""}`)
-    .join("\n")}`;
+    .join("\n");
 }
 
 function resumeConnectionKey(runtimeSessionId: string, piSessionId: string | null): string {
@@ -111,13 +110,19 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, [sessions]);
   useSyncExternalStore(subscribeSessionsRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Track the high-water lastEventSeq per session as sessions update.
+  // Mirror the persisted cursor per session. Pi's per-runtime event sequence can
+  // reset when a new prompt starts on the same Pi session, so deliberate
+  // lastEventSeq resets must propagate into the in-memory gate too.
   const subscribeLastSeq = useCallback(() => {
     for (const session of sessions) {
-      if (typeof session.lastEventSeq === "number") {
-        const current = lastSeqBySessionRef.current.get(session.id) ?? 0;
-        if (session.lastEventSeq > current)
-          lastSeqBySessionRef.current.set(session.id, session.lastEventSeq);
+      const next = mirrorSessionLastEventSeq(
+        lastSeqBySessionRef.current.get(session.id),
+        session.lastEventSeq,
+      );
+      if (typeof next === "number") {
+        lastSeqBySessionRef.current.set(session.id, next);
+      } else {
+        lastSeqBySessionRef.current.delete(session.id);
       }
     }
     return () => undefined;
@@ -205,12 +210,14 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
 
   const shouldApplySeq = useCallback(
     (sessionId: SessionId, seq?: number): boolean => {
-      if (typeof seq !== "number") return true;
-      const current = lastSeqBySessionRef.current.get(sessionId) ?? 0;
-      if (seq <= current) return false;
-      lastSeqBySessionRef.current.set(sessionId, seq);
+      const current = lastSeqBySessionRef.current.get(sessionId);
+      const decision = shouldApplyRuntimeSeq(current, seq);
+      if (!decision.apply) return false;
+      if (typeof decision.next === "number")
+        lastSeqBySessionRef.current.set(sessionId, decision.next);
       updateSession(sessionId, (session) =>
-        typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq
+        typeof seq !== "number" ||
+        (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq)
           ? session
           : { ...session, lastEventSeq: seq },
       );
@@ -219,28 +226,16 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     [updateSession],
   );
 
-  const ownershipVersion = useSyncExternalStore(
-    subscribeRuntimePromptStreams,
-    runtimePromptStreamsSnapshot,
-    runtimePromptStreamsSnapshot,
-  );
-  const subscriptionKey = useMemo(
-    () => runtimeSubscriptionKey(sessions, ownershipVersion),
-    [ownershipVersion, sessions],
-  );
+  const subscriptionKey = useMemo(() => runtimeSubscriptionKey(sessions), [sessions]);
 
   // Incremental reconciler: open a resume subscription when a session enters the
-  // live-and-unowned set, close it when it leaves, and recreate it only when its
-  // connection params (runtime/pi id) change. A transient status flip leaves
-  // every existing connection untouched.
+  // live set, close it when it leaves, and recreate it only when its connection
+  // params (runtime/pi id) change. A transient status flip leaves every
+  // existing connection untouched.
   const subscribeResume = useCallback(() => {
     const desired = new Map<SessionId, { runtimeSessionId: string; piSessionId: string | null }>();
     for (const session of sessionsRef.current) {
-      if (
-        liveSessionStatus(session.status) &&
-        session.runtimeSessionId &&
-        !hasRuntimePromptStream(session.runtimeSessionId)
-      ) {
+      if (shouldSubscribeRuntimeEvents(session.status) && session.runtimeSessionId) {
         desired.set(session.id, {
           runtimeSessionId: session.runtimeSessionId,
           piSessionId: session.piSessionId ?? null,
@@ -275,7 +270,10 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
         tabsRef: sessionsRef,
         updateSession,
       });
-      subs.set(sessionId, { key: resumeConnectionKey(want.runtimeSessionId, want.piSessionId), sub });
+      subs.set(sessionId, {
+        key: resumeConnectionKey(want.runtimeSessionId, want.piSessionId),
+        sub,
+      });
     }
     return () => undefined;
   }, [subscriptionKey, enqueuePiEvent, flushPiEvents, shouldApplySeq, updateSession]);

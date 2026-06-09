@@ -11,6 +11,7 @@ import {
 test("buildAgentSessionOptions resolves SDK extensions, skills, and env injections", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "pi-runtime-options-"));
   const timeoutExtension = path.join(root, "timeout.mjs");
+  const agentPolicyExtension = path.join(root, "agent-policy.mjs");
   const browserExtension = path.join(root, "browser.mjs");
   const parchiExtension = path.join(root, "parchi-browser.mjs");
   const canvasExtension = path.join(root, "canvas.mjs");
@@ -32,8 +33,15 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     mkdir(canvasSkill),
   ]);
   await Promise.all(
-    [timeoutExtension, browserExtension, parchiExtension, canvasExtension, mcpExtension].map(
-      (filePath) => writeFile(filePath, "export default function extensionFactory() {}\n", "utf8"),
+    [
+      timeoutExtension,
+      agentPolicyExtension,
+      browserExtension,
+      parchiExtension,
+      canvasExtension,
+      mcpExtension,
+    ].map((filePath) =>
+      writeFile(filePath, "export default function extensionFactory() {}\n", "utf8"),
     ),
   );
   await writeFile(mcpConfig, JSON.stringify({ mcpServers: { demo: { command: "demo" } } }), "utf8");
@@ -45,6 +53,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
 
   const previousEnv = {
     VLLM_STUDIO_TIMEOUT_EXTENSION_PATH: process.env.VLLM_STUDIO_TIMEOUT_EXTENSION_PATH,
+    VLLM_STUDIO_AGENT_POLICY_EXTENSION_PATH: process.env.VLLM_STUDIO_AGENT_POLICY_EXTENSION_PATH,
     VLLM_STUDIO_BROWSER_EXTENSION_PATH: process.env.VLLM_STUDIO_BROWSER_EXTENSION_PATH,
     VLLM_STUDIO_PARCHI_BROWSER_EXTENSION_PATH:
       process.env.VLLM_STUDIO_PARCHI_BROWSER_EXTENSION_PATH,
@@ -57,6 +66,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
   };
   Object.assign(process.env, {
     VLLM_STUDIO_TIMEOUT_EXTENSION_PATH: timeoutExtension,
+    VLLM_STUDIO_AGENT_POLICY_EXTENSION_PATH: agentPolicyExtension,
     VLLM_STUDIO_BROWSER_EXTENSION_PATH: browserExtension,
     VLLM_STUDIO_PARCHI_BROWSER_EXTENSION_PATH: parchiExtension,
     VLLM_STUDIO_CANVAS_EXTENSION_PATH: canvasExtension,
@@ -83,11 +93,12 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     });
 
     // SDK loads .ts/.js extensions via jiti; we hand it absolute paths instead
-    // of pre-imported factories. The four bundled extensions in this fixture
-    // are: timeout, mcp (since plugins[].mcpConfigPath exists), browser,
-    // canvas.
-    assert.equal(result.extensionPaths.length, 4);
+    // of pre-imported factories. The five bundled extensions in this fixture
+    // are: timeout, agent policy, mcp (since plugins[].mcpConfigPath exists),
+    // browser, canvas.
+    assert.equal(result.extensionPaths.length, 5);
     assert.deepEqual(result.extensionPaths.toSorted(), [
+      agentPolicyExtension,
       browserExtension,
       canvasExtension,
       mcpExtension,
@@ -111,7 +122,11 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
       },
       processEnv: { ...process.env },
     });
-    assert.deepEqual(parchiResult.extensionPaths.toSorted(), [parchiExtension, timeoutExtension]);
+    assert.deepEqual(parchiResult.extensionPaths.toSorted(), [
+      agentPolicyExtension,
+      parchiExtension,
+      timeoutExtension,
+    ]);
     assert.deepEqual(parchiResult.skills, [parchiSkill]);
     assert.equal(parchiResult.envInjections.PARCHI_RELAY_SESSION_ID, "parchi-session");
     assert.equal(parchiResult.envInjections.PARCHI_RELAY_URL, "http://127.0.0.1:17373/v1/rpc");

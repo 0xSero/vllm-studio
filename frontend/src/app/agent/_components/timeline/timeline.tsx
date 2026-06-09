@@ -1,9 +1,23 @@
 "use client";
 
-import { memo, useMemo, useRef } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTimelineScrollEffects } from "@/hooks/agent/use-timeline-scroll-effects";
-import type { ChatMessage } from "@/lib/agent/session";
+import type { AssistantBlock, ChatMessage } from "@/lib/agent/session";
 import { MessageView } from "./message-view";
+
+// Mirrors `groupAssistantBlocks`: a message renders something only if it has a
+// non-empty text block or any tool/thinking/event block. Assistant messages
+// that produce nothing (e.g. only whitespace text from a stream) would still
+// emit an empty article plus the wrapper's top padding, leaving a blank gap.
+function messageRenders(message: ChatMessage): boolean {
+  if (message.role === "system") return false;
+  if (message.role === "user") {
+    return message.text.trim().length > 0 || Boolean(message.attachments?.length);
+  }
+  return (message.blocks ?? []).some((block: AssistantBlock) =>
+    block.kind === "text" ? block.text.trim() !== "" : true,
+  );
+}
 
 type TimelineProps = {
   messages: ChatMessage[];
@@ -45,17 +59,14 @@ export function Timeline({
   stickToBottom = true,
   onStickToBottomChange,
 }: TimelineProps) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const [bottom, setBottom] = useState<HTMLDivElement | null>(null);
 
-  const visibleMessages = useMemo(
-    () => messages.filter((message) => message.role !== "system"),
-    [messages],
-  );
+  const visibleMessages = useMemo(() => messages.filter(messageRenders), [messages]);
 
   useTimelineScrollEffects({
-    scrollerRef,
-    bottomRef,
+    scroller,
+    bottom,
     stickToBottom,
     onStickToBottomChange,
   });
@@ -78,7 +89,7 @@ export function Timeline({
 
   return (
     <div
-      ref={scrollerRef}
+      ref={setScroller}
       data-timeline-scroller
       className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
     >
@@ -112,7 +123,7 @@ export function Timeline({
             </div>
           </div>
         ) : null}
-        <div ref={bottomRef} aria-hidden="true" className="[overflow-anchor:none]" />
+        <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
       </div>
     </div>
   );

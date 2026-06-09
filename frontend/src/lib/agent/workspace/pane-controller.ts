@@ -260,8 +260,10 @@ export function replaySessionInFocusedPane(
       // — replay carries the project context the workspace doesn't track.
       projectId: targetSession.projectId ?? payload.tab?.projectId,
       cwd: targetSession.cwd ?? payload.tab?.cwd,
+      modelId: targetSession.modelId ?? payload.tab?.modelId,
       piSessionId: payload.piSessionId,
       title: replaySessionTitle(payload.sessionTitle, targetSession.title || "Loading session"),
+      startedAt: targetSession.startedAt ?? payload.tab?.startedAt,
     });
     return setPane(withSessions(state, sessions), state.focusedPaneId, {
       ...pane,

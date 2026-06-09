@@ -169,10 +169,16 @@ export function useWorkspace(): UseWorkspaceResult {
   const queueSessionReplay = useMemo(
     () => (paneId: PaneId, sessionId: string) => {
       pendingSessionReplaysRef.current.set(paneId, sessionId);
-      window.setTimeout(() => {
+      const drain = (attempt: number) => {
         const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
         const handle = paneHandlesRef.current.get(paneId);
-        if (!pendingSessionId || !handle) return;
+        if (!pendingSessionId) return;
+        if (!handle) {
+          if (attempt < SESSION_REPLAY_MAX_ATTEMPTS) {
+            window.setTimeout(() => drain(attempt + 1), SESSION_REPLAY_RETRY_DELAY_MS);
+          }
+          return;
+        }
         // Only replay onto the session this replay was queued for. A "+" click
         // (or any swap) replaces a pane's session in place under the same paneId;
         // a fresh empty starter has nothing to replay, so a stale pending replay
@@ -191,7 +197,8 @@ export function useWorkspace(): UseWorkspaceResult {
         }
         pendingSessionReplaysRef.current.delete(paneId);
         void handle.loadAndReplay(pendingSessionId);
-      }, 0);
+      };
+      window.setTimeout(() => drain(0), 0);
     },
     [],
   );
@@ -468,3 +475,5 @@ export function useWorkspace(): UseWorkspaceResult {
 }
 
 const getWorkspaceModelStorageSnapshot = (): number => 0;
+const SESSION_REPLAY_RETRY_DELAY_MS = 50;
+const SESSION_REPLAY_MAX_ATTEMPTS = 100;

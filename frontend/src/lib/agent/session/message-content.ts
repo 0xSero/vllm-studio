@@ -70,12 +70,16 @@ export function blockFromContentPart(
 
 export function blocksFromMessageContent(
   content: string | Array<Record<string, unknown>> | undefined,
-  options: { stopReason?: string } = {},
+  options: { stopReason?: string; errorMessage?: string } = {},
 ): AssistantBlock[] {
+  const errorBlock = assistantErrorBlock(options.errorMessage);
   if (typeof content === "string") {
-    return content ? [{ kind: "text", id: newId("text"), text: content }] : [];
+    const blocks: AssistantBlock[] = content
+      ? [{ kind: "text", id: newId("text"), text: content }]
+      : [];
+    return errorBlock ? [...blocks, errorBlock] : blocks;
   }
-  if (!isRecordArray(content)) return [];
+  if (!isRecordArray(content)) return errorBlock ? [errorBlock] : [];
   const firstToolCallIndex = content.findIndex((part) => part.type === "toolCall");
   const movePreToolTextToThinking = options.stopReason === "toolUse" && firstToolCallIndex > -1;
   const blocks = content.flatMap((part, index) =>
@@ -83,8 +87,13 @@ export function blocksFromMessageContent(
       textAsThinking: movePreToolTextToThinking && index < firstToolCallIndex,
     }),
   );
-  if (firstToolCallIndex > -1) return blocks;
-  return reasoningBeforeText(blocks);
+  const ordered = firstToolCallIndex > -1 ? blocks : reasoningBeforeText(blocks);
+  return errorBlock ? [...ordered, errorBlock] : ordered;
+}
+
+function assistantErrorBlock(message: string | undefined): AssistantBlock | null {
+  const text = message?.trim();
+  return text ? { kind: "event", id: newId("error"), text } : null;
 }
 
 function reasoningBeforeText(blocks: AssistantBlock[]): AssistantBlock[] {
@@ -191,6 +200,9 @@ function mergeAdjacentTextLike(blocks: AssistantBlock[]): AssistantBlock[] {
       last.kind === block.kind &&
       (block.kind === "text" || block.kind === "thinking")
     ) {
+      // Snapshots carry each call's full accumulated text with whitespace
+      // intact, so adjacent same-kind fragments concatenate directly — no
+      // boundary guessing (that only existed to paper over dropped whitespace).
       out[out.length - 1] = { ...last, text: last.text + block.text };
     } else {
       out.push(block);
@@ -201,39 +213,6 @@ function mergeAdjacentTextLike(blocks: AssistantBlock[]): AssistantBlock[] {
 
 const callHasToolCall = (parts: PiContentPart[]): boolean =>
   parts.some((part) => part.type === "toolCall");
-
-const partHasReasoning = (part: PiContentPart): boolean => {
-  if (part.type === "thinking" || part.type === "reasoning") return true;
-  return (
-    part.type === "text" &&
-    typeof (part as { reasoning_content?: unknown }).reasoning_content === "string" &&
-    (part as { reasoning_content: string }).reasoning_content.trim() !== ""
-  );
-};
-
-/**
- * Some upstream reasoning parsers (e.g. SGLang's deepseek-v4 streaming) flush the
- * very first generated token as `content` *before* they start emitting
- * `reasoning_content`. pi-ai keeps a single text block per message, created on
- * that first token, so it lands ahead of the thinking block and — while the
- * model is still reasoning — renders as a stray content bubble ("##", "Let",
- * "17"). Detect that leaked token: a pre-reasoning text part that is still a
- * single unbroken token (no whitespace). Once real post-reasoning content
- * streams in, the same block gains whitespace and renders normally, so this only
- * hides the transient stray and never touches reasoning-first responses.
- */
-const leakedLeadingTokenIndices = (parts: PiContentPart[]): Set<number> | null => {
-  const firstReasoningIdx = parts.findIndex(partHasReasoning);
-  if (firstReasoningIdx < 1) return null; // no reasoning, or reasoning came first
-  const suppress = new Set<number>();
-  for (let i = 0; i < firstReasoningIdx; i += 1) {
-    const part = parts[i];
-    if (part?.type !== "text") continue;
-    const text = (part.text ?? "").trim();
-    if (text !== "" && !/\s/.test(text)) suppress.add(i);
-  }
-  return suppress.size > 0 ? suppress : null;
-};
 
 /**
  * Build the bubble's blocks from the per-call content snapshots of a turn.
@@ -250,13 +229,12 @@ export function blocksFromTurnSnapshots(calls: unknown[][]): AssistantBlock[] {
     // The final answer is the trailing call that made no tool calls. Only its
     // text renders as content; every other call's text is narration -> activity.
     const isFinalAnswerCall = callOrdinal === lastIndex && !callHasToolCall(parts);
-    const suppress = isFinalAnswerCall ? leakedLeadingTokenIndices(parts) : null;
     let blocks = parts.flatMap((part, index) =>
-      suppress?.has(index) ? [] : partToBlocks(part, callOrdinal, index, isFinalAnswerCall),
+      partToBlocks(part, callOrdinal, index, isFinalAnswerCall),
     );
     if (isFinalAnswerCall) {
-      // Pull reasoning above the answer and join answer text fragments that the
-      // model interleaved with thinking ("Looks" ... <think> ... " like ...").
+      // Pull reasoning above the answer and concatenate answer text fragments
+      // the model interleaved with thinking ("Looks" ... <think> ... " like").
       blocks = mergeAdjacentTextLike(reasoningBeforeText(blocks));
     }
     out.push(...blocks);

@@ -25,6 +25,9 @@ export type ProjectFileAttachmentInput = {
   size: number;
 };
 
+const MAX_INLINE_TEXT_ATTACHMENT_BYTES = 350_000;
+const MAX_INLINE_IMAGE_ATTACHMENT_BYTES = 6_000_000;
+
 export function attachmentDedupKey(file: Pick<ChatAttachment, "name" | "type" | "size" | "path">) {
   const path = file.path?.trim();
   if (path) return `path:${path}`;
@@ -202,7 +205,7 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
     previewKind === "image" || previewKind === "video" || previewKind === "pdf"
       ? objectUrlFor(file)
       : undefined;
-  if (isTextLike(file, name) && file.size <= 350_000) {
+  if (isTextLike(file, name) && file.size <= MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
     return {
       id,
       name,
@@ -215,7 +218,7 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
       previewUrl,
     };
   }
-  if (previewKind === "image" && file.size <= 1_500_000) {
+  if (previewKind === "image" && file.size <= MAX_INLINE_IMAGE_ATTACHMENT_BYTES) {
     return {
       id,
       name,
@@ -228,6 +231,19 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
       previewUrl,
     };
   }
+  const metadataContent =
+    previewKind === "image"
+      ? [
+          `Image is above the ${formatFileSize(MAX_INLINE_IMAGE_ATTACHMENT_BYTES)} inline image limit, so only metadata is attached to the model.`,
+          path ? `It is available on disk at ${path}.` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : path
+        ? `File is too large to inline; it is available on disk at ${path}.`
+        : previewKind === "pdf"
+          ? "PDF preview is visible in the chat UI, but only metadata is attached to the model."
+          : "File is too large to inline; only metadata is attached.";
   return {
     id,
     name,
@@ -235,11 +251,7 @@ export async function createAttachment(file: File): Promise<ChatAttachment> {
     size: file.size,
     path,
     mode: "metadata",
-    content: path
-      ? `File is too large to inline; it is available on disk at ${path}.`
-      : previewKind === "pdf"
-        ? "PDF preview is visible in the chat UI, but only metadata is attached to the model."
-        : "File is too large to inline; only metadata is attached.",
+    content: metadataContent,
     previewKind,
     previewUrl,
   };
@@ -261,14 +273,21 @@ export function createProjectFileAttachment(file: ProjectFileAttachmentInput): C
   };
 }
 
-export function attachmentPrompt(attachments: ChatAttachment[]) {
+export function attachmentPrompt(
+  attachments: ChatAttachment[],
+  options: { modelSupportsVision?: boolean } = {},
+) {
   if (attachments.length === 0) return "";
+  const modelSupportsVision = options.modelSupportsVision !== false;
   return attachments
     .map((file, index) => {
       const pathInfo = file.path ? `\nLocal path: ${file.path}` : "";
       const header = `Attachment ${index + 1}: ${file.name} (${file.type}, ${formatFileSize(file.size)})${pathInfo}`;
       if (file.mode === "text") return `${header}\n\`\`\`\n${file.content}\n\`\`\``;
       if (file.mode === "data-url" && file.type.startsWith("image/")) {
+        if (!modelSupportsVision) {
+          return `${header}\nThe selected model does not accept image input, so this image is only attached as metadata. If the user asks about the image or screenshot, say you cannot see it because only metadata was attached, and ask them to open the file with a vision-capable model or provide the visual details.`;
+        }
         return `${header}\nImage is attached as multimodal input. Do not print or transcribe its base64 data.`;
       }
       return `${header}\n${file.content}`;

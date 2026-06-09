@@ -166,8 +166,6 @@ export function messageText(
     .join(separator);
 }
 
-export { parseAgentTurnSsePayload } from "@/lib/agent/contracts/turn";
-
 export function runtimeStatusLooksActive(status: { active?: boolean }): boolean {
   return status.active === true;
 }
@@ -179,22 +177,6 @@ export function runtimeStatusAcceptsControl(
   if (!status) return true;
   if (!status.active) return false;
   return !status.piSessionId || !piSessionId || status.piSessionId === piSessionId;
-}
-
-export function statusAfterControlPhase(
-  current: SessionTab["status"],
-  phase?: string,
-  options: { queuedControlAccepted?: boolean } = {},
-): SessionTab["status"] {
-  if (phase === "starting" || phase === "running") return phase;
-  // A true steer/follow_up request has its own short SSE stream. Its final
-  // "done" only means the control message was accepted; the original Pi turn
-  // is still running on the owning stream. If the server promoted a stale
-  // control request to a normal prompt, there is no "queued" phase and "done"
-  // really means the streamed prompt has completed.
-  if (phase === "queued") return "running";
-  if (phase === "done") return options.queuedControlAccepted ? "running" : "idle";
-  return current;
 }
 
 export function replayCursorAfterRuntimeHydration(

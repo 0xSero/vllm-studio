@@ -117,6 +117,7 @@ sync_controller() {
 sync_frontend() {
   step "Syncing frontend"
   sync_dir frontend/src/ "$REMOTE_DIR/frontend/src/"
+  sync_dir frontend/scripts/ "$REMOTE_DIR/frontend/scripts/" 2>/dev/null || true
   local frontend_files=(
     frontend/package.json
     frontend/package-lock.json
@@ -174,6 +175,7 @@ install_controller() {
 install_frontend() {
   step "Installing frontend deps"
   remote "cd $REMOTE_DIR_SHELL/frontend && npm install --silent 2>&1 | tail -3"
+  remote "cd $REMOTE_DIR_SHELL/frontend && node scripts/patch-pi-ai-openai-text-boundaries.mjs"
   ok "npm install"
 }
 

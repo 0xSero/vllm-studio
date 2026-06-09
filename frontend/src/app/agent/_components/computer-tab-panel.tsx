@@ -103,6 +103,7 @@ function SideChatTab({
         runtimeSessionId={sideChatSession.runtimeSessionId}
         modelId={modelId}
         modelName={activeModel?.name ?? modelId}
+        modelSupportsVision={activeModel?.vision ?? false}
         modelsLoading={false}
         contextWindow={activeModel?.contextWindow ?? 0}
         cwd={cwd}

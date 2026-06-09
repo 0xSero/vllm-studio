@@ -54,6 +54,7 @@ export function inferVisionSupport(modelId: string): boolean {
   const patterns = [
     "mimo-v2.5",
     "mimo-v2-5",
+    "nex-n2",
     "gemma-4",
     "gemma4",
     "llava",

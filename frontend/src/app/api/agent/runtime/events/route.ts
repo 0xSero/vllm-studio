@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import { piRuntimeManager } from "@/lib/agent/pi-runtime";
 import type { LoggedPiEvent } from "@/lib/agent/pi-runtime-types";
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
+import {
+  initialRuntimeStatusPhase,
+  replayAfterCursor,
+  shouldSendTrailingIdleStatus,
+} from "./stream-order";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +23,11 @@ function encode(payload: unknown): Uint8Array {
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim() || "default";
   const piSessionId = request.nextUrl.searchParams.get("piSessionId")?.trim() || null;
-  const after = parseSeq(request.nextUrl.searchParams.get("after"));
-  const resolved = piRuntimeManager.getSessionForLookup(sessionId, piSessionId);
+  const requestedAfter = parseSeq(request.nextUrl.searchParams.get("after"));
+  const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
+  if (!resolved) {
+    return Response.json({ error: "Runtime session not found" }, { status: 404 });
+  }
   const session = resolved.session;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -30,6 +38,7 @@ export async function GET(request: NextRequest) {
       let replaying = true;
       const replayQueue: LoggedPiEvent[] = [];
       const sentSeqs = new Set<number>();
+      let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
       const safeSend = (payload: unknown) => {
         if (closed) return;
         try {
@@ -51,6 +60,7 @@ export async function GET(request: NextRequest) {
       };
 
       const sendLogged = (logged: LoggedPiEvent) => {
+        after = replayAfterCursor(after, session.status.eventSeq);
         if (logged.seq <= after || sentSeqs.has(logged.seq)) return;
         sentSeqs.add(logged.seq);
         safeSend({ type: "pi", seq: logged.seq, event: logged.event });
@@ -68,17 +78,33 @@ export async function GET(request: NextRequest) {
       };
 
       off = session.onLoggedEvent(onLiveEvent);
-      safeSend({
-        type: "status",
-        phase: session.status.active ? "running" : "idle",
-        session: session.status,
-      });
-      for (const logged of session.getEventsAfter(after)) {
+      const backlog = session.getEventsAfter(after);
+      const initialPhase = initialRuntimeStatusPhase(session.status.active, backlog.length);
+      if (initialPhase) {
+        safeSend({
+          type: "status",
+          phase: initialPhase,
+          session: session.status,
+        });
+      }
+      let sentTerminalStatus = false;
+      for (const logged of backlog) {
         sendLogged(logged);
+        if (isAgentEndEvent(logged.event)) sentTerminalStatus = true;
       }
       replaying = false;
       for (const logged of replayQueue) {
         sendLogged(logged);
+        if (isAgentEndEvent(logged.event)) sentTerminalStatus = true;
+      }
+      if (
+        shouldSendTrailingIdleStatus({
+          active: session.status.active,
+          replayBacklogCount: backlog.length + replayQueue.length,
+          sentTerminalStatus,
+        })
+      ) {
+        safeSend({ type: "status", phase: "idle", session: session.status });
       }
 
       ping = setInterval(() => {

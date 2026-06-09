@@ -1,11 +1,8 @@
-import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import {
   type ChatMessageAttachment,
   newId,
   nowLabel,
-  piSessionIdFromEvent,
   sessionTitleFromPrompt,
-  type AgentTurnSsePayload,
 } from "@/lib/agent/session";
 import {
   activeComposerPlugins,
@@ -15,17 +12,13 @@ import {
 } from "@/lib/agent/composer-context";
 import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { BrowserBackend, ToolSelection } from "@/lib/agent/tools/types";
-import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import * as api from "./api";
 import { runtimeIsActiveForPiSession } from "./engine-helpers";
-import { drainQueuedTurnAfterAgentEnd } from "./queue-drain";
-import { claimRuntimePromptStream, releaseRuntimePromptStream } from "./stream-ownership";
-import type { Session, SessionId, SessionStatus } from "./types";
+import type { Session, SessionId } from "./types";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
-const QUIET_STREAM_RESUME_MS = 45_000;
 
 type MutableRef<T> = { current: T };
 type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
@@ -51,21 +44,10 @@ export type PromptStreamDeps = {
   browserBackend: BrowserBackend;
   canvasEnabled: boolean;
   cwd: string;
-  enqueuePiEvent: (
-    sessionId: SessionId,
-    assistantId: string,
-    event: Record<string, unknown>,
-    options?: { flushNow?: boolean },
-  ) => void;
-  flushPiEventBatch: (sessionId: SessionId) => void;
-  liveAssistantIdsRef: MutableRef<Map<SessionId, string>>;
   modelId: string;
   onPiSessionIdChange?: (piSessionId: string) => void;
-  promptStreamControllersRef: MutableRef<Map<string, AbortController>>;
   runtimeSessionId: string;
   selectionFor: (sessionId: SessionId) => ToolSelection;
-  shouldApplyRuntimeSeq: (sessionId: SessionId, seq?: number) => boolean;
-  submitPromptRef: MutableRef<(args: SubmitArgs) => Promise<void>>;
   tabsRef: MutableRef<Session[]>;
   updateSession: UpdateSession;
 };
@@ -82,21 +64,12 @@ type PromptTurnContext = {
   userId: string;
 };
 
-type PromptTurnState = {
-  agentEnded: boolean;
-  quietFallbackArmed: boolean;
-  streamError: string;
-};
-
 export async function submitPromptTurn(deps: PromptStreamDeps, args: SubmitArgs): Promise<void> {
   const context = createPromptTurnContext(deps, args);
   if (!context) return;
 
   appendOptimisticPrompt(deps, context, args);
-  const state = await streamPromptTurn(deps, context, args);
-  if (state.agentEnded) {
-    drainQueuedTurnAfterAgentEnd(deps, context.sessionId);
-  }
+  await startPromptCommand(deps, context, args);
 }
 
 function createPromptTurnContext(
@@ -160,63 +133,45 @@ function appendOptimisticPrompt(
   }));
 }
 
-async function streamPromptTurn(
+async function startPromptCommand(
   deps: PromptStreamDeps,
   context: PromptTurnContext,
   args: SubmitArgs,
-): Promise<PromptTurnState> {
-  const state: PromptTurnState = {
-    agentEnded: false,
-    quietFallbackArmed: false,
-    streamError: "",
-  };
-  const controller = new AbortController();
-  const streamOwnerId = `${context.sessionId}:${context.assistantId}`;
-  let quietFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-  const clearQuietFallback = () => {
-    if (quietFallbackTimer) clearTimeout(quietFallbackTimer);
-    quietFallbackTimer = null;
-  };
-  const armQuietFallback = () => {
-    state.quietFallbackArmed = true;
-    clearQuietFallback();
-    quietFallbackTimer = setTimeout(() => {
-      if (controller.signal.aborted || state.agentEnded) return;
-      void api
-        .loadRuntimeStatus(context.runtime, latestPiSessionId(deps, context, null))
-        .then((status) => {
-          if (controller.signal.aborted || state.agentEnded) return;
-          if (runtimeIsActiveForPiSession(status, latestPiSessionId(deps, context, null))) {
-            controller.abort();
-          }
-        });
-    }, QUIET_STREAM_RESUME_MS);
-  };
-  deps.liveAssistantIdsRef.current.set(context.sessionId, context.assistantId);
-  deps.promptStreamControllersRef.current.set(context.runtime, controller);
-  claimRuntimePromptStream(context.runtime, streamOwnerId, controller);
-
+): Promise<void> {
   try {
-    await api.submitTurnStream(
-      promptTurnRequest(deps, context, args),
-      (payload) => {
-        if (state.quietFallbackArmed) armQuietFallback();
-        applyPromptPayload(deps, context, state, controller, payload);
-        if (payload.type === "status" && payload.phase === "running") armQuietFallback();
-        if (payload.type === "pi") armQuietFallback();
-      },
-      { signal: controller.signal },
-    );
+    const result = await api.submitTurnCommand(promptTurnRequest(deps, context, args));
+    deps.updateSession(context.sessionId, (session) => ({
+      ...session,
+      piSessionId: result.piSessionId || session.piSessionId,
+      contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
+      status: "running",
+      activeAssistantId: session.activeAssistantId ?? context.assistantId,
+      lastEventSeq: 0,
+    }));
+    if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
   } catch (error) {
-    if (!controller.signal.aborted) {
-      state.streamError = error instanceof Error ? error.message : "Agent request failed";
+    const currentPiSessionId = latestPiSessionId(deps, context, null);
+    const status = await api.loadRuntimeStatus(context.runtime, currentPiSessionId);
+    if (runtimeIsActiveForPiSession(status, currentPiSessionId)) {
+      deps.updateSession(context.sessionId, (session) => ({
+        ...session,
+        piSessionId: status?.piSessionId || session.piSessionId,
+        contextUsage: api.runtimeContextUsage(status, session.contextUsage),
+        status: "running",
+        activeAssistantId: session.activeAssistantId ?? context.assistantId,
+        lastEventSeq: 0,
+      }));
+      if (status?.piSessionId) deps.onPiSessionIdChange?.(status.piSessionId);
+      return;
     }
-  } finally {
-    clearQuietFallback();
-    await finalizePromptTurn(deps, context, state, streamOwnerId);
+    const message = error instanceof Error ? error.message : "Agent request failed";
+    deps.updateSession(context.sessionId, (session) => ({
+      ...session,
+      error: message,
+      status: "idle",
+      activeAssistantId: undefined,
+    }));
   }
-
-  return state;
 }
 
 function promptTurnRequest(
@@ -243,82 +198,6 @@ function promptTurnRequest(
   };
 }
 
-function applyPromptPayload(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  state: PromptTurnState,
-  controller: AbortController,
-  payload: AgentTurnSsePayload,
-): void {
-  if (controller.signal.aborted) return;
-  if (payload.type === "status") {
-    applyPromptStatusPayload(deps, context, payload);
-  } else if (payload.type === "error") {
-    applyPromptErrorPayload(deps, context, state, payload.error);
-  } else {
-    applyPromptPiPayload(deps, context, state, payload);
-  }
-}
-
-function applyPromptStatusPayload(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  payload: Extract<AgentTurnSsePayload, { type: "status" }>,
-): void {
-  const phase = payload.phase;
-  deps.updateSession(context.sessionId, (session) => ({
-    ...session,
-    piSessionId: payload.piSessionId || session.piSessionId,
-    contextUsage: api.runtimeContextUsage(payload.session, session.contextUsage),
-    status: (phase === "done" ? "idle" : phase) as SessionStatus,
-    activeAssistantId: phase === "done" ? undefined : session.activeAssistantId,
-  }));
-  if (payload.piSessionId) deps.onPiSessionIdChange?.(payload.piSessionId);
-}
-
-function applyPromptErrorPayload(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  state: PromptTurnState,
-  error: string,
-): void {
-  state.streamError = error;
-  deps.flushPiEventBatch(context.sessionId);
-  deps.updateSession(context.sessionId, (session) => ({
-    ...session,
-    error,
-    status: "idle",
-  }));
-}
-
-function applyPromptPiPayload(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  state: PromptTurnState,
-  payload: Extract<AgentTurnSsePayload, { type: "pi" }>,
-): void {
-  if (!deps.shouldApplyRuntimeSeq(context.sessionId, payload.seq)) return;
-  const piEvent = payload.event;
-  traceAgentReasoning("engine.pi", {
-    sessionId: context.sessionId,
-    assistantId: context.assistantId,
-    seq: payload.seq,
-    event: piEvent,
-  });
-  const eventId = piSessionIdFromEvent(piEvent);
-  if (eventId) {
-    deps.updateSession(context.sessionId, (session) => ({ ...session, piSessionId: eventId }));
-    deps.onPiSessionIdChange?.(eventId);
-  }
-  if (isAgentEndEvent(piEvent)) {
-    state.agentEnded = true;
-    deps.onPiSessionIdChange?.(latestPiSessionId(deps, context, eventId));
-  }
-  deps.enqueuePiEvent(context.sessionId, context.assistantId, piEvent, {
-    flushNow: state.agentEnded,
-  });
-}
-
 function latestPiSessionId(
   deps: PromptStreamDeps,
   context: PromptTurnContext,
@@ -330,32 +209,6 @@ function latestPiSessionId(
     context.selected.piSessionId ??
     ""
   );
-}
-
-async function finalizePromptTurn(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  state: PromptTurnState,
-  streamOwnerId: string,
-): Promise<void> {
-  deps.flushPiEventBatch(context.sessionId);
-  deps.promptStreamControllersRef.current.delete(context.runtime);
-  releaseRuntimePromptStream(context.runtime, streamOwnerId);
-  deps.liveAssistantIdsRef.current.delete(context.sessionId);
-  const currentPiSessionId =
-    deps.tabsRef.current.find((tab) => tab.id === context.sessionId)?.piSessionId ??
-    context.selected.piSessionId ??
-    null;
-  const runtimeStatus = await api.loadRuntimeStatus(context.runtime, currentPiSessionId);
-  const runtimeStillActive =
-    !state.agentEnded && runtimeIsActiveForPiSession(runtimeStatus, currentPiSessionId);
-  deps.updateSession(context.sessionId, (session) => ({
-    ...session,
-    status: runtimeStillActive ? "running" : "idle",
-    activeAssistantId: runtimeStillActive ? context.assistantId : undefined,
-    error: state.streamError && !runtimeStillActive ? state.streamError : session.error,
-    contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
-  }));
 }
 
 function mergeSkills(

@@ -10,7 +10,6 @@ import {
 } from "@/hooks/agent/use-chat-pane-effects";
 import type { ComposerMention } from "@/lib/agent/composer-context";
 import {
-  AgentTurnSsePayload,
   AssistantBlock,
   asRecord,
   ChatMessage,
@@ -38,7 +37,6 @@ import { useComposerMentionRows } from "./use-composer-mention-rows";
 import { useComposerMentionSelection } from "./use-composer-mention-selection";
 import { useComposerTextareaBehavior } from "./use-composer-textarea-behavior";
 export type {
-  AgentTurnSsePayload,
   AssistantBlock,
   ChatMessage,
   ChatPaneHandle,
@@ -65,6 +63,7 @@ type Props = {
   runtimeSessionId: string;
   modelId: string;
   modelName: string | null;
+  modelSupportsVision: boolean;
   modelsLoading: boolean;
   contextWindow: number;
   cwd: string;
@@ -103,6 +102,7 @@ export function ChatPane({
   runtimeSessionId,
   modelId,
   modelName,
+  modelSupportsVision,
   modelsLoading,
   contextWindow,
   cwd,
@@ -254,6 +254,7 @@ export function ChatPane({
       cwd,
       engine,
       modelId,
+      modelSupportsVision,
       readingAttachments,
       resetComposerHeight,
       running: Boolean(running),

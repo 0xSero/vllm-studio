@@ -149,6 +149,13 @@ export function resolveTimeoutExtensionPath(): string | null {
   );
 }
 
+export function resolveAgentPolicyExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "vllm-studio-agent-policy.ts",
+    process.env.VLLM_STUDIO_AGENT_POLICY_EXTENSION_PATH,
+  );
+}
+
 export function resolveMcpExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("mcp-plugin.ts", process.env.VLLM_STUDIO_MCP_EXTENSION_PATH);
 }
@@ -285,11 +292,13 @@ function runtimeExtensionPaths(
   mcpConfigs: RuntimeMcpConfig[],
 ): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
+  const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
   const browserExtensionPath = shouldLoadBrowserTool(options)
     ? browserExtensionPathFor(browserBackend(options))
     : null;
   return uniqueExistingPaths([
     timeoutExtensionPath,
+    agentPolicyExtensionPath,
     mcpConfigs.length ? resolveMcpExtensionPath() : null,
     browserExtensionPath,
     options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,

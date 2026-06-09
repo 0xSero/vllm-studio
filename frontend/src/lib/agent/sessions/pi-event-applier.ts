@@ -154,6 +154,7 @@ function applyAssistantSnapshotEvent(
 
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
   const callFailed = type === "message_end" && (stopReason === "error" || stopReason === "aborted");
+  const failureText = callFailed ? assistantFailureText(message, stopReason) : "";
 
   deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (current) => {
     const streamCalls = nextStreamCalls(current.streamCalls, type, content);
@@ -161,8 +162,15 @@ function applyAssistantSnapshotEvent(
     // An LLM call that errored/aborted will never execute the tools it declared
     // — settle them now instead of leaving a perpetual "running" badge.
     if (callFailed) blocks = finalizeRunningToolBlocks(blocks, "error");
+    if (failureText) blocks = appendFailureBlock(blocks, failureText);
     return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
   });
+  if (failureText) {
+    deps.updateSession(sessionId, (session) => ({
+      ...session,
+      error: failureText,
+    }));
+  }
   return true;
 }
 
@@ -227,12 +235,36 @@ function patchFinalAssistantMessageFromPiEvent(
   if (msg?.role !== "assistant") return false;
   const content = finalMessageContent(msg.content);
   const stopReason = typeof msg.stopReason === "string" ? msg.stopReason : undefined;
-  const blocks = blocksFromMessageContent(content, { stopReason });
+  const errorMessage = assistantFailureText(msg, stopReason);
+  const blocks = blocksFromMessageContent(content, { stopReason, errorMessage });
   const text = messageTextFromBlocks(blocks);
   deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (current) => {
     return reconcileFinalAssistantMessage(current, text, blocks);
   });
+  if (errorMessage) {
+    deps.updateSession(sessionId, (session) => ({
+      ...session,
+      error: errorMessage,
+    }));
+  }
   return true;
+}
+
+function assistantFailureText(
+  message: Record<string, unknown>,
+  stopReason: string | undefined,
+): string {
+  if (stopReason !== "error" && stopReason !== "aborted") return "";
+  const raw = [message.errorMessage, message.error, message.stopReason]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    ?.trim();
+  if (!raw) return stopReason === "aborted" ? "Assistant turn aborted." : "Assistant turn failed.";
+  return raw;
+}
+
+function appendFailureBlock(blocks: AssistantBlock[], text: string): AssistantBlock[] {
+  if (blocks.some((block) => block.kind === "event" && block.text === text)) return blocks;
+  return [...blocks, { kind: "event", id: newId("error"), text }];
 }
 
 function finalMessageContent(value: unknown): string | Array<Record<string, unknown>> | undefined {

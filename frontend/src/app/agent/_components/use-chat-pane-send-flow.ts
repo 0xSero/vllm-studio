@@ -2,14 +2,18 @@
 
 import { useCallback, useRef, type FormEvent } from "react";
 import { browserContextPrompt } from "@/lib/agent/browser/context";
-import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import {
   activeComposerPlugins,
   selectedContextPrompt,
   type ComposerMention,
   type ComposerPluginRef,
 } from "@/lib/agent/composer-context";
-import { isPlaceholderSessionTitle, newId, type SessionTab } from "@/lib/agent/session";
+import {
+  isPlaceholderSessionTitle,
+  newId,
+  runtimeStatusLooksActive,
+  type SessionTab,
+} from "@/lib/agent/session";
 import type { SessionEngine } from "@/lib/agent/sessions/engine";
 import {
   beginSessionSubmit,
@@ -33,6 +37,7 @@ type UseChatPaneSendFlowOptions = {
   cwd: string;
   engine: SessionEngine;
   modelId: string;
+  modelSupportsVision: boolean;
   readingAttachments: boolean;
   resetComposerHeight: () => void;
   running: boolean;
@@ -51,6 +56,7 @@ export function useChatPaneSendFlow({
   cwd,
   engine,
   modelId,
+  modelSupportsVision,
   readingAttachments,
   resetComposerHeight,
   running,
@@ -63,19 +69,10 @@ export function useChatPaneSendFlow({
   const composerSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   const controlSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
 
-  const ensureBrowserToolForText = useCallback(
-    (text: string) => {
-      if (!promptRequestsBrowser(text)) return;
-      tools.setComputerTab("browser");
-      tools.setBrowserEnabled(true);
-    },
-    [tools],
-  );
-
   const buildPromptArgs = useCallback(
     (sessionId: string, rawText: string, effectiveBrowserEnabled = browserToolEnabled) => {
       const text = rawText.trim();
-      const attachedText = attachmentPrompt(attachments);
+      const attachedText = attachmentPrompt(attachments, { modelSupportsVision });
       const attachmentSummary =
         attachments.length > 0
           ? `Attached: ${attachments.map((file) => file.name).join(", ")}`
@@ -95,10 +92,12 @@ export function useChatPaneSendFlow({
         modelId,
       });
       const prompt = [browserContextText, contextText, attachedText].filter(Boolean).join("\n\n");
-      const images = attachments.flatMap((file) => {
-        const image = imageInputFromAttachment(file);
-        return image ? [image] : [];
-      });
+      const images = modelSupportsVision
+        ? attachments.flatMap((file) => {
+            const image = imageInputFromAttachment(file);
+            return image ? [image] : [];
+          })
+        : [];
       const messageAttachments = attachments.map((file) => {
         // Prefer the durable inline data URL over the ephemeral blob: URL when
         // available; blob URLs are tied to the composer document and can go stale
@@ -132,7 +131,7 @@ export function useChatPaneSendFlow({
         promptTemplates: selection.promptTemplates,
       };
     },
-    [attachments, browserToolEnabled, modelId, tools],
+    [attachments, browserToolEnabled, modelId, modelSupportsVision, tools],
   );
 
   const submitPrompt = useCallback(
@@ -140,10 +139,7 @@ export function useChatPaneSendFlow({
       const targetId = targetTabId ?? activeTab?.id;
       if (!targetId) return;
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) return;
-      const browserRequested = promptRequestsBrowser(rawText);
-      const effectiveBrowserEnabled = browserToolEnabled || browserRequested;
-      const args = buildPromptArgs(targetId, rawText, effectiveBrowserEnabled);
-      if (browserRequested) ensureBrowserToolForText(args.userText);
+      const args = buildPromptArgs(targetId, rawText, browserToolEnabled);
       const currentSelection = tools.selectionFor(targetId);
       if (currentSelection.skills.length > 0 || currentSelection.plugins.length > 0) {
         tools.setSelection(targetId, { ...currentSelection, skills: [], plugins: [] });
@@ -160,7 +156,6 @@ export function useChatPaneSendFlow({
       buildPromptArgs,
       clearAttachments,
       engine,
-      ensureBrowserToolForText,
       modelId,
       readingAttachments,
       resetComposerHeight,
@@ -177,7 +172,6 @@ export function useChatPaneSendFlow({
       runtime: string,
       cwdHint?: string,
     ) => {
-      ensureBrowserToolForText(text);
       const queuedId = newId("queue");
       updateTab(tab.id, (t) => ({
         ...t,
@@ -197,7 +191,17 @@ export function useChatPaneSendFlow({
         ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
       }));
     },
-    [engine, ensureBrowserToolForText, resetComposerHeight, updateTab],
+    [engine, resetComposerHeight, updateTab],
+  );
+
+  const runtimeAcceptsControl = useCallback(
+    async (tab: SessionTab, runtime: string) => {
+      const status = await engine.loadRuntimeStatus(runtime, tab.piSessionId);
+      if (!status) return running;
+      if (!runtimeStatusLooksActive(status)) return false;
+      return !status.piSessionId || !tab.piSessionId || status.piSessionId === tab.piSessionId;
+    },
+    [engine, running],
   );
 
   const sendMessage = useCallback(
@@ -206,21 +210,6 @@ export function useChatPaneSendFlow({
       if (!activeTab) return;
       const text = activeTab.input.trim();
       const runtime = activeTab.runtimeSessionId || runtimeSessionId;
-      if (running) {
-        if (!text || isPlaceholderSessionTitle(text) || readingAttachments) return;
-        if (!modelId) {
-          updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
-          return;
-        }
-        if (!beginSessionSubmit(controlSubmitInFlightRef.current, activeTab.id)) return;
-        setMention(null);
-        try {
-          await queueAndSendControl("steer", text, activeTab, runtime);
-        } finally {
-          endSessionSubmit(controlSubmitInFlightRef.current, activeTab.id);
-        }
-        return;
-      }
       if (
         ((!text || isPlaceholderSessionTitle(text)) && attachments.length === 0) ||
         readingAttachments
@@ -229,6 +218,18 @@ export function useChatPaneSendFlow({
       }
       if (!modelId) {
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
+        return;
+      }
+      const sendAsControl = await runtimeAcceptsControl(activeTab, runtime);
+      if (sendAsControl) {
+        if (!text) return;
+        if (!beginSessionSubmit(controlSubmitInFlightRef.current, activeTab.id)) return;
+        setMention(null);
+        try {
+          await queueAndSendControl("steer", text, activeTab, runtime);
+        } finally {
+          endSessionSubmit(controlSubmitInFlightRef.current, activeTab.id);
+        }
         return;
       }
       if (!beginSessionSubmit(composerSubmitInFlightRef.current, activeTab.id)) return;
@@ -245,7 +246,7 @@ export function useChatPaneSendFlow({
       modelId,
       queueAndSendControl,
       readingAttachments,
-      running,
+      runtimeAcceptsControl,
       runtimeSessionId,
       setMention,
       submitPrompt,
@@ -261,11 +262,11 @@ export function useChatPaneSendFlow({
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
       return;
     }
-    if (running) {
+    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+    if (await runtimeAcceptsControl(activeTab, runtime)) {
       if (!beginSessionSubmit(controlSubmitInFlightRef.current, activeTab.id)) return;
       setMention(null);
       try {
-        const runtime = activeTab.runtimeSessionId || runtimeSessionId;
         await queueAndSendControl("follow_up", text, activeTab, runtime, cwd);
       } finally {
         endSessionSubmit(controlSubmitInFlightRef.current, activeTab.id);
@@ -284,7 +285,7 @@ export function useChatPaneSendFlow({
     cwd,
     modelId,
     queueAndSendControl,
-    running,
+    runtimeAcceptsControl,
     runtimeSessionId,
     setMention,
     submitPrompt,

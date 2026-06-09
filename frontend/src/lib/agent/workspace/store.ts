@@ -320,7 +320,6 @@ export function loadPersistedActiveAgentSessions(
       .filter(
         (entry) =>
           !prefs[entry.piSessionId ?? ""]?.hidden &&
-          Boolean(entry.projectId) &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId) &&
           Boolean(entry.tabId) &&

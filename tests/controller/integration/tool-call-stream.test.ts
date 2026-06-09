@@ -116,6 +116,53 @@ describe("createToolCallStream SSE framing", () => {
   });
 });
 
+/** Concatenate the `content` deltas the rewriter emits for incremental tokens. */
+async function streamContent(tokens: string[]): Promise<string> {
+  const lines: string[] = [`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "" } }] })}`, ""];
+  for (const content of tokens) {
+    lines.push(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}`, "");
+  }
+  lines.push("data: [DONE]", "");
+  const events = parseSseEvents(await runStream(lines.join("\n")));
+  let content = "";
+  for (const value of events) {
+    if (value === "[DONE]") continue;
+    const delta = (JSON.parse(value) as { choices?: Array<{ delta?: { content?: string } }> })
+      .choices?.[0]?.delta?.content;
+    if (typeof delta === "string") content += delta;
+  }
+  return content;
+}
+
+describe("createToolCallStream content fidelity", () => {
+  // Regression: standalone newline ("\n" / "\n\n") deltas were misread as a
+  // "replayed prefix" and dropped whenever the accumulated message started with
+  // a newline — collapsing every blank line and list break in the rendered
+  // answer (e.g. "it.\n\nI rewrote it as:\n- a\n- b" -> "it.I rewrote it as:- a- b").
+  test("preserves standalone newline deltas when the message starts with a newline", async () => {
+    const tokens = ["\n", "Fair — I overdesigned it.", "\n\n", "I rewrote it as:", "\n", "- a", "\n", "- b"];
+    expect(await streamContent(tokens)).toBe(tokens.join(""));
+  });
+
+  test("preserves newline deltas in a list when the message starts with text", async () => {
+    const tokens = ["Items:", "\n", "- one", "\n", "- two", "\n", "- three"];
+    expect(await streamContent(tokens)).toBe(tokens.join(""));
+  });
+
+  // A backend that restarts an incremental token stream from the top must still
+  // be de-duplicated (replay begins with real content, never whitespace).
+  test("deduplicates an incremental stream that restarts from the beginning", async () => {
+    expect(await streamContent(["Hello", " world", "Hello", " world", "!"])).toBe("Hello world!");
+  });
+
+  // A cumulative-snapshot backend (each delta is the full content so far) is
+  // sliced to the new suffix rather than duplicated.
+  test("slices cumulative snapshot deltas instead of duplicating them", async () => {
+    const got = await streamContent(["Hello", "Hello world", "Hello world\n\n- a", "Hello world\n\n- a\n- b"]);
+    expect(got).toBe("Hello world\n\n- a\n- b");
+  });
+});
+
 describe("think rewriter", () => {
   test("carries partial analysis tags across chunk boundaries", () => {
     const rewriter = createThinkRewriter();

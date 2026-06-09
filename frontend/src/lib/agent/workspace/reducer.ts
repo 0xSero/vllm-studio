@@ -83,8 +83,10 @@ function hydrateSessionSnapshots(
   );
   if (paneStateAlreadyRestored) return { ...state, hydrated: true };
 
-  const restorable = snapshots.filter((session) =>
-    projects.some((project) => project.id === session.projectId || project.path === session.cwd),
+  const restorable = snapshots.filter(
+    (session) =>
+      (!session.projectId && Boolean(session.cwd)) ||
+      projects.some((project) => project.id === session.projectId || project.path === session.cwd),
   );
   if (restorable.length === 0) return { ...state, hydrated: true };
 

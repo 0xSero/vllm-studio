@@ -10,7 +10,6 @@ import type {
   ToolBlock,
 } from "@/lib/agent/session";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
-import { TIMELINE_USER_LAYOUT_EVENT } from "@/hooks/agent/use-timeline-scroll-effects";
 import { AssistantMarkdown } from "../assistant-markdown";
 import { ToolBlockView } from "./tool-block-view";
 import {
@@ -42,7 +41,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (reasoningGroup.length === 0) return;
     activitySegments.push({
       kind: "reasoning",
-      id: `reasoning-${reasoningGroup.map((block) => block.id).join("-")}`,
+      id: `reasoning-${reasoningGroup[0]?.id ?? activitySegments.length}`,
       blocks: reasoningGroup,
     });
     reasoningGroup = [];
@@ -52,7 +51,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (toolGroup.length === 0) return;
     activitySegments.push({
       kind: "tools",
-      id: `tools-${toolGroup.map((block) => block.id).join("-")}`,
+      id: `tools-${toolGroup[0]?.id ?? activitySegments.length}`,
       blocks: toolGroup,
     });
     toolGroup = [];
@@ -64,7 +63,7 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
     if (activitySegments.length === 0) return;
     routed.push({
       kind: "activity-group",
-      id: `activity-${activitySegments.map((segment) => segment.id).join("-")}`,
+      id: `activity-${activitySegments[0]?.id ?? routed.length}`,
       segments: activitySegments.splice(0),
     });
   };
@@ -297,11 +296,6 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
         className="flex min-h-7 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1 text-[length:var(--fs-xs)] leading-4 text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)/80 [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
-          if (!expanded) {
-            event.currentTarget
-              .closest("[data-timeline-scroller]")
-              ?.dispatchEvent(new CustomEvent(TIMELINE_USER_LAYOUT_EVENT));
-          }
           setExpanded((value) => !value);
         }}
       >

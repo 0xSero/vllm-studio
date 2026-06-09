@@ -1,30 +1,37 @@
-import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 
-const AT_BOTTOM_THRESHOLD_PX = 64;
-export const TIMELINE_USER_LAYOUT_EVENT = "vllm-studio.timeline.user-layout-change";
+const AT_BOTTOM_THRESHOLD_PX = 80;
+const USER_HOLD_MS = 700;
 
 const getTimelineScrollSnapshot = (): number => 0;
 
 /**
- * Keeps the chat pinned to the latest message while streaming, yields to the
- * user the moment they intentionally scroll up to read history, and re-pins when
- * they return to the bottom.
+ * Keeps the chat locked to the latest message while streaming and re-pins after
+ * any layout growth (new tokens, expanded reasoning, async-loaded history), so
+ * the view never drifts off the bottom or shifts under the user.
  *
- * Detach is driven by genuine *user intent* (wheel-up, scrollbar drag, upward
- * touch drag, scroll-up keys, or expanding a detail block) rather than by a raw
- * decrease in `scrollTop`. Layout growth while streaming can momentarily shift
- * scroll geometry, so direction alone is noisy. Re-attach is driven by an
- * IntersectionObserver on the bottom sentinel, so reaching the bottom by any
- * means re-pins. Our own follow-writes never set intent, so they can't detach.
+ * Proximity to the bottom is the single source of truth: if the viewport is at
+ * the bottom we follow new content, otherwise we leave the user where they are.
+ * Content growth neither moves `scrollTop` nor fires a scroll event, so it can
+ * never be misread as "the user scrolled up"; only genuine user scrolls and our
+ * own pin writes change `scrollTop`, and both classify correctly via `atBottom`.
+ *
+ * Upward gestures (wheel/touch/keys) detach synchronously with a short hold
+ * window, so the user can still escape mid-stream even when a synchronous DOM
+ * mutation would otherwise re-pin before the async scroll event is delivered.
+ *
+ * The scroller and bottom-sentinel are passed as DOM nodes (not refs) so the
+ * observers re-attach whenever the elements mount — critical when a session
+ * mounts empty (history loads async) and the scroller appears after first paint.
  */
 export function useTimelineScrollEffects({
-  scrollerRef,
-  bottomRef,
+  scroller,
+  bottom,
   stickToBottom,
   onStickToBottomChange,
 }: {
-  scrollerRef: RefObject<HTMLDivElement | null>;
-  bottomRef: RefObject<HTMLDivElement | null>;
+  scroller: HTMLDivElement | null;
+  bottom: HTMLDivElement | null;
   stickToBottom: boolean;
   onStickToBottomChange?: (value: boolean) => void;
 }) {
@@ -33,9 +40,9 @@ export function useTimelineScrollEffects({
   // tab-change force a re-stick); `onChangeRef` reports our changes back to it.
   const stickRef = useRef(stickToBottom);
   const onChangeRef = useRef(onStickToBottomChange);
-  const programmaticScrollUntilRef = useRef(0);
-  const userScrollIntentUntilRef = useRef(0);
-  const lastScrollTopRef = useRef(0);
+  // While set, honor a deliberate upward scroll instead of snapping back to the
+  // bottom (e.g. the user grazes the threshold while reading recent history).
+  const userHoldUntilRef = useRef(0);
 
   // Mirror prop + callback into refs in the commit phase (never during render).
   const subscribeStickRef = useCallback(() => {
@@ -48,131 +55,71 @@ export function useTimelineScrollEffects({
   }, [onStickToBottomChange]);
 
   const subscribeScroll = useCallback(() => {
-    const el = scrollerRef.current;
+    const el = scroller;
     if (!el) return () => undefined;
 
     const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
-    let reattachTimer: number | null = null;
 
     const pinToBottom = () => {
-      programmaticScrollUntilRef.current = Date.now() + 200;
       el.scrollTop = el.scrollHeight;
-      lastScrollTopRef.current = el.scrollTop;
     };
     const setStick = (next: boolean) => {
       if (stickRef.current === next) return;
       stickRef.current = next;
       onChangeRef.current?.(next);
     };
-    const scheduleReattachAfterIntent = () => {
-      if (reattachTimer !== null) window.clearTimeout(reattachTimer);
-      const delay = Math.max(0, userScrollIntentUntilRef.current - Date.now() + 20);
-      reattachTimer = window.setTimeout(() => {
-        reattachTimer = null;
-        if (Date.now() < userScrollIntentUntilRef.current) {
-          scheduleReattachAfterIntent();
-          return;
-        }
-        if (atBottom()) setStick(true);
-      }, delay);
-    };
 
-    // User intent: an upward gesture detaches immediately. A downward gesture
-    // that lands at the bottom re-attaches (the sentinel observer also covers
-    // re-attach, but handling it here makes the wheel case feel instant).
-    const onWheel = (event: WheelEvent) => {
-      userScrollIntentUntilRef.current = Date.now() + 800;
-      if (event.deltaY < 0) setStick(false);
-      else if (atBottom()) setStick(true);
-    };
-    let pointerActive = false;
-    const onPointerDown = () => {
-      pointerActive = true;
-      userScrollIntentUntilRef.current = Date.now() + 1_200;
-    };
-    const onPointerMove = () => {
-      if (pointerActive) userScrollIntentUntilRef.current = Date.now() + 1_200;
-    };
-    const onPointerEnd = () => {
-      pointerActive = false;
-      userScrollIntentUntilRef.current = Date.now() + 300;
-    };
     const onScroll = () => {
-      const now = Date.now();
-      const previousScrollTop = lastScrollTopRef.current;
-      lastScrollTopRef.current = el.scrollTop;
-      if (now < programmaticScrollUntilRef.current) return;
-      const userIntentActive = now < userScrollIntentUntilRef.current;
-      const scrollingUp = el.scrollTop < previousScrollTop - 1;
-      if (scrollingUp) {
-        setStick(false);
-        return;
-      }
       if (atBottom()) {
-        if (userIntentActive) {
-          scheduleReattachAfterIntent();
-          return;
-        }
+        // Briefly respect a deliberate scroll-up near the bottom instead of
+        // immediately re-locking and fighting the user.
+        if (Date.now() < userHoldUntilRef.current) return;
         setStick(true);
         return;
       }
-      if (userIntentActive) {
-        setStick(false);
-      }
-    };
-    const onUserLayoutChange = () => {
-      userScrollIntentUntilRef.current = Date.now() + 2_000;
       setStick(false);
+    };
+
+    const holdAndDetach = () => {
+      userHoldUntilRef.current = Date.now() + USER_HOLD_MS;
+      setStick(false);
+    };
+    const releaseHold = () => {
+      userHoldUntilRef.current = 0;
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) holdAndDetach();
+      else if (event.deltaY > 0) releaseHold();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) holdAndDetach();
+      else if (["ArrowDown", "PageDown", "End"].includes(event.key)) releaseHold();
     };
     let touchY: number | null = null;
     const onTouchStart = (event: TouchEvent) => {
-      userScrollIntentUntilRef.current = Date.now() + 1_200;
       touchY = event.touches[0]?.clientY ?? null;
     };
     const onTouchMove = (event: TouchEvent) => {
-      userScrollIntentUntilRef.current = Date.now() + 800;
       const y = event.touches[0]?.clientY ?? null;
-      if (touchY !== null && y !== null && y - touchY > 2) setStick(false);
+      if (touchY !== null && y !== null) {
+        if (y - touchY > 2) holdAndDetach();
+        else if (touchY - y > 2) releaseHold();
+      }
       touchY = y;
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
-        userScrollIntentUntilRef.current = Date.now() + 800;
-        setStick(false);
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: true });
-    el.addEventListener("pointerdown", onPointerDown, { passive: true });
+
     el.addEventListener("scroll", onScroll, { passive: true });
-    el.addEventListener(TIMELINE_USER_LAYOUT_EVENT, onUserLayoutChange as EventListener);
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerup", onPointerEnd, { passive: true });
-    window.addEventListener("pointercancel", onPointerEnd, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("keydown", onKeyDown);
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: true });
-    el.addEventListener("keydown", onKeyDown);
-
-    // Re-attach whenever the bottom sentinel scrolls back into view by any means.
-    const sentinel = bottomRef.current;
-    const intersectionObserver =
-      typeof IntersectionObserver === "undefined" || !sentinel
-        ? null
-        : new IntersectionObserver(
-            (entries) => {
-              if (Date.now() < userScrollIntentUntilRef.current) {
-                scheduleReattachAfterIntent();
-                return;
-              }
-              if (entries.some((entry) => entry.isIntersecting)) setStick(true);
-            },
-            { root: el, rootMargin: `0px 0px ${AT_BOTTOM_THRESHOLD_PX}px 0px` },
-          );
-    if (sentinel) intersectionObserver?.observe(sentinel);
 
     // Follow content + viewport growth while pinned. Running synchronously in the
-    // observer callback means a growth never momentarily reads as "not at bottom".
-    const listEl = sentinel?.parentElement ?? el;
+    // observer callback (before paint) means streaming text and expanding a
+    // reasoning block re-pin without a visible shift.
+    const listEl = bottom?.parentElement ?? el;
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
@@ -192,44 +139,31 @@ export function useTimelineScrollEffects({
           });
     mutationObserver?.observe(listEl, { childList: true, subtree: true, characterData: true });
 
-    // Initial alignment.
-    lastScrollTopRef.current = el.scrollTop;
+    // Initial alignment (also covers async-loaded history once it renders, via
+    // the ResizeObserver above).
     if (stickRef.current) pinToBottom();
 
     return () => {
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("scroll", onScroll);
-      el.removeEventListener(TIMELINE_USER_LAYOUT_EVENT, onUserLayoutChange as EventListener);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerEnd);
-      window.removeEventListener("pointercancel", onPointerEnd);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("keydown", onKeyDown);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("keydown", onKeyDown);
-      if (reattachTimer !== null) window.clearTimeout(reattachTimer);
-      intersectionObserver?.disconnect();
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [bottomRef, scrollerRef]);
+  }, [bottom, scroller]);
 
-  // When the parent forces stick=true (submit, tab change, jump-to-latest) and we
-  // aren't already near the bottom, snap down. Guarded so re-sticking from a
-  // graze of the bottom doesn't cause a visible jump.
+  // When the parent forces stick=true (submit, tab change, session load), snap
+  // back to the bottom and clear any lingering hold.
   const subscribeForceStick = useCallback(() => {
-    const el = scrollerRef.current;
-    if (
-      stickToBottom &&
-      el &&
-      el.scrollHeight - el.scrollTop - el.clientHeight > AT_BOTTOM_THRESHOLD_PX
-    ) {
-      programmaticScrollUntilRef.current = Date.now() + 200;
-      el.scrollTop = el.scrollHeight;
-      lastScrollTopRef.current = el.scrollTop;
+    if (stickToBottom && scroller) {
+      stickRef.current = true;
+      userHoldUntilRef.current = 0;
+      scroller.scrollTop = scroller.scrollHeight;
     }
     return () => undefined;
-  }, [stickToBottom, scrollerRef]);
+  }, [stickToBottom, scroller]);
 
   useSyncExternalStore(subscribeStickRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
   useSyncExternalStore(subscribeOnChangeRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);

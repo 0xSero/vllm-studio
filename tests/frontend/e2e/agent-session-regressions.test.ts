@@ -1,20 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { convertMessages } from "../../../frontend/node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js";
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
 } from "@/lib/agent/active-sessions";
 import { runBrowserPanelCommand } from "@/lib/agent/browser/command";
-import { promptRequestsBrowser } from "@/lib/agent/browser/intent";
 import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
 import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
 import { hasExplicitSessionNavigation } from "@/hooks/agent/use-workspace-hydration-effects";
+import {
+  initialRuntimeStatusPhase,
+  replayAfterCursor,
+  shouldSendTrailingIdleStatus,
+} from "@/app/api/agent/runtime/events/stream-order";
 import {
   detectComposerMention,
   selectedContextInstructions,
   selectedContextPrompt,
 } from "@/lib/agent/composer-context";
-import { parseAgentTurnSsePayload } from "@/lib/agent/contracts/turn";
+import { parseAgentTurnCommandResult } from "@/lib/agent/contracts/turn";
 import {
   compactionTokensBefore,
   contextUsageAwaitingFreshCompactionUsage,
@@ -22,13 +27,12 @@ import {
   piEventIsSuccessfulCompaction,
   postCompactionUsageIsFresh,
 } from "@/lib/agent/pi-runtime-compaction";
+import { findRuntimeSessionForLookup } from "@/lib/agent/pi-runtime-lookup";
 import { piStatusFromEvents } from "@/lib/agent/pi-runtime-state";
-import { modelsToPiModels } from "@/lib/agent/models";
+import { modelsToPiModels, normalizeOpenAIModels } from "@/lib/agent/models";
 import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
-import {
-  runtimeStatusLooksActive,
-  statusAfterControlPhase,
-} from "@/lib/agent/session/helpers";
+import { runtimeStatusLooksActive } from "@/lib/agent/session/helpers";
+import { blocksFromTurnSnapshots } from "@/lib/agent/session/message-content";
 import { replaySessionEvents } from "@/lib/agent/session/replay";
 import {
   applyPiEventToSession,
@@ -46,6 +50,11 @@ import {
 } from "@/lib/agent/sessions/submit-guard";
 import type { Session } from "@/lib/agent/sessions/types";
 import { runtimeContextUsage } from "@/lib/agent/sessions/api";
+import {
+  mirrorSessionLastEventSeq,
+  shouldApplyRuntimeSeq,
+  shouldSubscribeRuntimeEvents,
+} from "@/lib/agent/sessions/runtime-subscription-state";
 import { ACTIVE_AGENT_SESSION_OPEN_EVENT } from "@/lib/agent/workspace/events";
 import { subscribeWorkspaceWindowEvents } from "@/lib/agent/workspace/effects";
 import { reducer } from "@/lib/agent/workspace/reducer";
@@ -54,12 +63,15 @@ import type {
   WorkspaceState,
 } from "@/lib/agent/workspace/types";
 import { collectLeaves } from "@/lib/agent/workspace/layout";
+import { groupAssistantBlocks } from "@/app/agent/_components/timeline/session-pane-block-router";
 import { resolveStatusSectionView } from "@/components/dashboard/control-panel/status-section-view";
 import { parseArgsText } from "@/ui/plugins/plugins-utils";
 
 declare global {
   var __VLLM_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
-    | ((hostname: string) => Promise<(string | { address: string; family: 4 | 6 })[]>)
+    | ((
+        hostname: string,
+      ) => Promise<(string | { address: string; family: 4 | 6 })[]>)
     | undefined;
   var __VLLM_STUDIO_BROWSER_READER_REQUEST_FOR_TEST:
     | ((
@@ -153,13 +165,6 @@ function makeWorkspaceWindowHarness() {
   };
 }
 
-test("browser intent catches direct user browser requests", () => {
-  assert.equal(
-    promptRequestsBrowser("please use the browser to find the current docs"),
-    true,
-  );
-});
-
 test("browser navigate primes the URL while the browser surface is mounting", async () => {
   let browserUrl = "";
   let browserInput = "";
@@ -219,7 +224,10 @@ test("status metrics fall back to stored peaks when current session peaks are ab
   assert.equal(view.metricColumns[0]?.detail, "max 137.4");
   assert.equal(view.metricColumns[2]?.detail, "max 62245.3");
   assert.equal(view.metricColumns[1]?.detail, "best 931 ms");
-  assert.match(view.metricColumns[1]?.detailTitle ?? "", /all-time best: 79 ms/);
+  assert.match(
+    view.metricColumns[1]?.detailTitle ?? "",
+    /all-time best: 79 ms/,
+  );
   assert.equal(view.sampleInput.generationPeak, 137.4226);
   assert.equal(view.sampleInput.prefillPeak, 62_245.2748);
   assert.equal(view.sampleInput.ttftPeak, 931.115);
@@ -261,21 +269,35 @@ test("runtime null context usage clears stale compaction warnings", () => {
   assert.equal(runtimeContextUsage({ contextUsage: null }, stale), null);
 });
 
-test("turn status SSE preserves runtime context usage", () => {
-  const payload = parseAgentTurnSsePayload(
-    'data: {"type":"status","phase":"done","piSessionId":"pi-1","session":{"piSessionId":"pi-1","contextUsage":null}}\n\n',
-  );
+test("turn command result parser preserves runtime status", () => {
+  const payload = parseAgentTurnCommandResult({
+    type: "command",
+    outcome: "accepted",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    active: true,
+    status: {
+      active: true,
+      piSessionId: "pi-1",
+      contextUsage: null,
+    },
+  });
 
-  assert.equal(payload?.type, "status");
-  assert.equal(payload?.piSessionId, "pi-1");
-  assert.equal(payload?.session?.contextUsage, null);
+  assert.equal(payload?.outcome, "accepted");
+  assert.equal(payload?.runtimeSessionId, "rt-1");
+  assert.equal(payload?.status?.active, true);
+  assert.equal(payload?.status?.contextUsage, null);
 });
 
 test("successful compaction suppresses stale runtime compaction warnings until fresh usage", () => {
   const usage = { tokens: 190_000, contextWindow: 200_000, percent: 95 };
   const compactionEvent = {
     type: "compaction_end",
-    result: { summary: "Compacted", firstKeptEntryId: "m2", tokensBefore: 190_000 },
+    result: {
+      summary: "Compacted",
+      firstKeptEntryId: "m2",
+      tokensBefore: 190_000,
+    },
     aborted: false,
   };
 
@@ -291,7 +313,11 @@ test("successful compaction suppresses stale runtime compaction warnings until f
 test("post-compaction usage stays suppressed when the next prompt reports stale high usage", () => {
   const compactionEvent = {
     type: "compaction_end",
-    result: { summary: "Compacted", firstKeptEntryId: "m2", tokensBefore: 190_000 },
+    result: {
+      summary: "Compacted",
+      firstKeptEntryId: "m2",
+      tokensBefore: 190_000,
+    },
     aborted: false,
   };
   const staleUsage = {
@@ -316,13 +342,22 @@ test("post-compaction usage stays suppressed when the next prompt reports stale 
   assert.equal(compactionTokensBefore(compactionEvent), 190_000);
   assert.equal(postCompactionUsageIsFresh(staleUsage, 190_000), false);
   assert.equal(postCompactionUsageIsFresh(freshUsage, 190_000), true);
-  assert.equal(postCompactionUsageIsFresh(freshButStillCompactableUsage, 190_000), true);
+  assert.equal(
+    postCompactionUsageIsFresh(freshButStillCompactableUsage, 190_000),
+    true,
+  );
 });
 
 test("post-compaction prompt guard normalizes replayed assistant timestamps", () => {
   const branch = [
-    { type: "message", timestamp: "2026-06-06T17:00:00.000Z" as string | number },
-    { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+    {
+      type: "message",
+      timestamp: "2026-06-06T17:00:00.000Z" as string | number,
+    },
+    {
+      type: "compaction",
+      timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+    },
   ];
   const sdkSession = {
     messages: [
@@ -335,19 +370,31 @@ test("post-compaction prompt guard normalizes replayed assistant timestamps", ()
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
-  assert.equal(sdkSession.messages[0]?.timestamp, Date.parse("2026-06-06T17:00:00.000Z"));
-  assert.equal(sdkSession.messages[2]?.timestamp, Date.parse("2026-06-06T17:02:00.000Z") - 1);
   assert.equal(
-    branch[1]?.timestamp,
-    Date.parse("2026-06-06T17:02:00.000Z"),
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
   );
+  assert.equal(
+    sdkSession.messages[0]?.timestamp,
+    Date.parse("2026-06-06T17:00:00.000Z"),
+  );
+  assert.equal(
+    sdkSession.messages[2]?.timestamp,
+    Date.parse("2026-06-06T17:02:00.000Z") - 1,
+  );
+  assert.equal(branch[1]?.timestamp, Date.parse("2026-06-06T17:02:00.000Z"));
 });
 
 test("post-compaction prompt guard normalizes resumed Pi agent state messages", () => {
   const branch = [
-    { type: "message", timestamp: "2026-06-06T17:00:00.000Z" as string | number },
-    { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+    {
+      type: "message",
+      timestamp: "2026-06-06T17:00:00.000Z" as string | number,
+    },
+    {
+      type: "compaction",
+      timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+    },
   ];
   const sdkSession = {
     agent: {
@@ -363,7 +410,10 @@ test("post-compaction prompt guard normalizes resumed Pi agent state messages", 
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
   assert.equal(
     sdkSession.agent.state.messages[0]?.timestamp,
     Date.parse("2026-06-06T17:00:00.000Z"),
@@ -377,15 +427,24 @@ test("post-compaction prompt guard normalizes resumed Pi agent state messages", 
 test("post-compaction prompt guard stamps missing pre-boundary assistant timestamps only", () => {
   const compactionMs = Date.parse("2026-06-06T17:02:00.000Z");
   const branch = [
-    { type: "message", timestamp: "2026-06-06T17:00:00.000Z" as string | number },
-    { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+    {
+      type: "message",
+      timestamp: "2026-06-06T17:00:00.000Z" as string | number,
+    },
+    {
+      type: "compaction",
+      timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+    },
   ];
   const sdkSession = {
     agent: {
       state: {
         messages: [
           { role: "compactionSummary", timestamp: compactionMs },
-          { role: "assistant", usage: { inputTokens: 180_000, outputTokens: 1_000 } },
+          {
+            role: "assistant",
+            usage: { inputTokens: 180_000, outputTokens: 1_000 },
+          },
           { role: "user", timestamp: compactionMs + 10_000 },
           { role: "assistant", timestamp: "2026-06-06T17:03:00.000Z" },
         ],
@@ -396,9 +455,15 @@ test("post-compaction prompt guard stamps missing pre-boundary assistant timesta
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
   assert.equal(sdkSession.agent.state.messages[1]?.timestamp, compactionMs - 1);
-  assert.equal(sdkSession.agent.state.messages[3]?.timestamp, compactionMs + 60_000);
+  assert.equal(
+    sdkSession.agent.state.messages[3]?.timestamp,
+    compactionMs + 60_000,
+  );
 });
 
 test("post-compaction prompt guard copies kept assistant timestamps from branch entries", () => {
@@ -429,12 +494,18 @@ test("post-compaction prompt guard copies kept assistant timestamps from branch 
           timestamp: "2026-06-06T17:00:00.000Z" as string | number,
           message: keptAssistant,
         },
-        { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+        {
+          type: "compaction",
+          timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+        },
       ],
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
   assert.equal(keptAssistant.timestamp, Date.parse("2026-06-06T17:00:00.000Z"));
 });
 
@@ -471,13 +542,22 @@ test("post-compaction prompt guard matches cloned kept messages by content", () 
             stopReason: "stop",
           },
         },
-        { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+        {
+          type: "compaction",
+          timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+        },
       ],
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
-  assert.equal(clonedAssistant.timestamp, Date.parse("2026-06-06T17:00:00.000Z"));
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
+  assert.equal(
+    clonedAssistant.timestamp,
+    Date.parse("2026-06-06T17:00:00.000Z"),
+  );
 });
 
 test("post-compaction prompt guard preserves duplicate cloned assistant order", () => {
@@ -521,7 +601,10 @@ test("post-compaction prompt guard preserves duplicate cloned assistant order", 
             stopReason: "stop",
           },
         },
-        { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+        {
+          type: "compaction",
+          timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+        },
         {
           type: "message",
           timestamp: "2026-06-06T17:03:00.000Z" as string | number,
@@ -535,9 +618,18 @@ test("post-compaction prompt guard preserves duplicate cloned assistant order", 
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
-  assert.equal(preCompactionClone.timestamp, Date.parse("2026-06-06T17:00:00.000Z"));
-  assert.equal(postCompactionClone.timestamp, Date.parse("2026-06-06T17:03:00.000Z"));
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
+  assert.equal(
+    preCompactionClone.timestamp,
+    Date.parse("2026-06-06T17:00:00.000Z"),
+  );
+  assert.equal(
+    postCompactionClone.timestamp,
+    Date.parse("2026-06-06T17:03:00.000Z"),
+  );
 });
 
 test("post-compaction prompt decision skips stale kept assistant usage", () => {
@@ -573,11 +665,17 @@ test("post-compaction prompt decision skips stale kept assistant usage", () => {
         stopReason: "stop",
       },
     },
-    { type: "compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+    {
+      type: "compaction",
+      timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+    },
   ];
   const sdkSession = {
     state: {
-      messages: [{ role: "compactionSummary", timestamp: compactionMs }, keptAssistant],
+      messages: [
+        { role: "compactionSummary", timestamp: compactionMs },
+        keptAssistant,
+      ],
     },
     sessionManager: {
       getBranch: () => branch,
@@ -590,7 +688,10 @@ test("post-compaction prompt decision skips stale kept assistant usage", () => {
     shouldCompact: true,
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
   assert.equal(keptAssistant.timestamp, Date.parse("2026-06-06T17:00:00.000Z"));
   assert.equal(
     keptAssistant.timestamp <= compactionMs,
@@ -598,7 +699,10 @@ test("post-compaction prompt decision skips stale kept assistant usage", () => {
     "SDK pre-prompt compaction check should treat kept assistant usage as pre-boundary",
   );
   assert.equal(
-    postCompactionUsageIsFresh(staleHighUsage, compactionTokensBefore(compactionEvent)),
+    postCompactionUsageIsFresh(
+      staleHighUsage,
+      compactionTokensBefore(compactionEvent),
+    ),
     false,
     "runtime status should keep stale high usage suppressed until fresh assistant usage arrives",
   );
@@ -607,17 +711,31 @@ test("post-compaction prompt decision skips stale kept assistant usage", () => {
 test("post-compaction prompt guard accepts compaction-like boundary entry types", () => {
   const compactionMs = Date.parse("2026-06-06T17:02:00.000Z");
   const branch = [
-    { type: "message", timestamp: "2026-06-06T17:00:00.000Z" as string | number },
-    { type: "context_compaction", timestamp: "2026-06-06T17:02:00.000Z" as string | number },
+    {
+      type: "message",
+      timestamp: "2026-06-06T17:00:00.000Z" as string | number,
+    },
+    {
+      type: "context_compaction",
+      timestamp: "2026-06-06T17:02:00.000Z" as string | number,
+    },
   ];
   const sdkSession = {
-    messages: [{ role: "assistant", usage: { inputTokens: 180_000, outputTokens: 1_000 } }],
+    messages: [
+      {
+        role: "assistant",
+        usage: { inputTokens: 180_000, outputTokens: 1_000 },
+      },
+    ],
     sessionManager: {
       getBranch: () => branch,
     },
   };
 
-  assert.equal(normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession), true);
+  assert.equal(
+    normalizeSdkMessageTimestampsForCompactionBoundary(sdkSession),
+    true,
+  );
   assert.equal(sdkSession.messages[0]?.timestamp, compactionMs - 1);
 });
 
@@ -637,13 +755,18 @@ test("desktop browser reader fetch renders public markdown and rejects private u
   let requestCount = 0;
   const connectedAddresses: string[] = [];
   process.env.VLLM_STUDIO_DATA_DIR = "/tmp/vllm-studio-desktop-test";
-  globalThis.__VLLM_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = async (hostname) =>
+  globalThis.__VLLM_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = async (
+    hostname,
+  ) =>
     hostname === "private-dns.test"
       ? ["127.0.0.1"]
       : hostname === "mapped-private.test"
         ? ["::ffff:127.0.0.1"]
         : ["93.184.216.34"];
-  globalThis.__VLLM_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = async (url, address) => {
+  globalThis.__VLLM_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = async (
+    url,
+    address,
+  ) => {
     requestCount += 1;
     connectedAddresses.push(address.address);
     if (url.includes("redirect.test")) {
@@ -675,72 +798,68 @@ test("desktop browser reader fetch renders public markdown and rejects private u
   };
   try {
     const { GET } = await import("@/app/api/agent/browser/fetch/route");
-    const response = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fexample.com%2F",
-        ),
-      } as never,
-    );
-    const body = (await response.json()) as { markdown?: string; title?: string };
+    const response = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fexample.com%2F",
+      ),
+    } as never);
+    const body = (await response.json()) as {
+      markdown?: string;
+      title?: string;
+    };
     assert.equal(response.status, 200);
     assert.equal(body.title, "Reader Works");
     assert.match(body.markdown ?? "", /Reader Works/);
 
-    const htmlResponse = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fhtml.test%2F",
-        ),
-      } as never,
-    );
-    const htmlBody = (await htmlResponse.json()) as { text?: string; title?: string };
+    const htmlResponse = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fhtml.test%2F",
+      ),
+    } as never);
+    const htmlBody = (await htmlResponse.json()) as {
+      text?: string;
+      title?: string;
+    };
     assert.equal(htmlResponse.status, 200);
     assert.equal(htmlBody.title, "HTML Works");
     assert.match(htmlBody.text ?? "", /Hello/);
     assert.doesNotMatch(htmlBody.text ?? "", /bad\(\)/);
 
-    const rejected = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=http%3A%2F%2Flocalhost%3A3000%2F",
-        ),
-      } as never,
-    );
+    const rejected = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=http%3A%2F%2Flocalhost%3A3000%2F",
+      ),
+    } as never);
     const rejectedBody = (await rejected.json()) as { error?: string };
     assert.equal(rejected.status, 400);
     assert.match(rejectedBody.error ?? "", /public http\/https/);
 
-    const redirectRejected = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fredirect.test%2F",
-        ),
-      } as never,
-    );
+    const redirectRejected = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fredirect.test%2F",
+      ),
+    } as never);
     const redirectBody = (await redirectRejected.json()) as { error?: string };
     assert.equal(redirectRejected.status, 502);
     assert.match(redirectBody.error ?? "", /Redirect rejected/);
 
-    const dnsRejected = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fprivate-dns.test%2F",
-        ),
-      } as never,
-    );
+    const dnsRejected = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fprivate-dns.test%2F",
+      ),
+    } as never);
     const dnsBody = (await dnsRejected.json()) as { error?: string };
     assert.equal(dnsRejected.status, 502);
     assert.match(dnsBody.error ?? "", /Resolved host rejected/);
 
-    const mappedDnsRejected = await GET(
-      {
-        nextUrl: new URL(
-          "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fmapped-private.test%2F",
-        ),
-      } as never,
-    );
-    const mappedDnsBody = (await mappedDnsRejected.json()) as { error?: string };
+    const mappedDnsRejected = await GET({
+      nextUrl: new URL(
+        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fmapped-private.test%2F",
+      ),
+    } as never);
+    const mappedDnsBody = (await mappedDnsRejected.json()) as {
+      error?: string;
+    };
     assert.equal(mappedDnsRejected.status, 502);
     assert.match(mappedDnsBody.error ?? "", /Resolved host rejected/);
     assert.equal(requestCount, 3);
@@ -789,7 +908,11 @@ test("curated local MCP servers require explicit target args", async () => {
   const urlTarget = handleMcpAction({
     action: "add_from_catalogue",
     catalogueId: "catalogue:filesystem",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "https://evil.example"],
+    args: [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "https://evil.example",
+    ],
   });
 
   assert.equal(urlTarget.status, 400);
@@ -798,7 +921,12 @@ test("curated local MCP servers require explicit target args", async () => {
   const mixedUrlTarget = handleMcpAction({
     action: "add_from_catalogue",
     catalogueId: "catalogue:filesystem",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp", "https://evil.example"],
+    args: [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/tmp",
+      "https://evil.example",
+    ],
   });
 
   assert.equal(mixedUrlTarget.status, 400);
@@ -812,11 +940,12 @@ test("curated local MCP servers require explicit target args", async () => {
 
   assert.equal(mixedPlainTarget.status, 400);
   assert.match(String(mixedPlainTarget.payload.error), /requires a local path/);
-  assert.deepEqual(parseArgsText('-y @modelcontextprotocol/server-filesystem "/Users/sero/My Project"'), [
-    "-y",
-    "@modelcontextprotocol/server-filesystem",
-    "/Users/sero/My Project",
-  ]);
+  assert.deepEqual(
+    parseArgsText(
+      '-y @modelcontextprotocol/server-filesystem "/Users/sero/My Project"',
+    ),
+    ["-y", "@modelcontextprotocol/server-filesystem", "/Users/sero/My Project"],
+  );
 });
 
 function makePiEventApplierHarness(
@@ -1004,14 +1133,21 @@ test("explicit new-session navigation blocks persisted active-session hydration"
 
   assert.equal(hasExplicitSessionNavigation(params), true);
 
-  const next = reducer({ ...makeState(), hydrated: false }, {
-    type: "hydrateActiveSessions",
-    projects: [{ id: "personal", name: "personal", path: "/workspace/personal" }],
-    snapshots: [oldSnapshot],
-    hasExplicitSessionNav: hasExplicitSessionNavigation(params),
-  });
+  const next = reducer(
+    { ...makeState(), hydrated: false },
+    {
+      type: "hydrateActiveSessions",
+      projects: [
+        { id: "personal", name: "personal", path: "/workspace/personal" },
+      ],
+      snapshots: [oldSnapshot],
+      hasExplicitSessionNav: hasExplicitSessionNavigation(params),
+    },
+  );
 
-  const active = next.sessions.get(next.panesById.get("p-main")?.sessionId ?? "");
+  const active = next.sessions.get(
+    next.panesById.get("p-main")?.sessionId ?? "",
+  );
   assert.equal(active?.piSessionId, null);
   assert.notEqual(active?.id, "tab-old");
   assert.equal(next.hydrated, true);
@@ -1078,6 +1214,59 @@ test("agent session navigation restores running SDK sessions with runtime identi
   assert.equal(restored?.piSessionId, "pi-deepseek");
   assert.equal(restored?.modelId, "deepseek-v4-flash");
   assert.deepEqual(restored?.usedSkills, usedSkills);
+});
+
+test("unprojected active sessions hydrate with their cwd", () => {
+  const state = { ...makeState(), hydrated: false };
+
+  const next = reducer(state, {
+    type: "hydrateActiveSessions",
+    projects: [],
+    snapshots: [
+      {
+        projectId: "",
+        cwd: "/Users/sero/.vllm-studio",
+        paneId: "p-main",
+        tabId: "tab-default",
+        runtimeSessionId: "rt-default",
+        piSessionId: "pi-default",
+        modelId: "nemotron-3-ultra",
+        title: "Default chat",
+        status: "idle",
+        focused: true,
+        updatedAt: "2026-06-08T04:00:00.000Z",
+      },
+    ],
+  });
+
+  const active = next.sessions.get(
+    next.panesById.get("p-main")?.sessionId ?? "",
+  );
+  assert.equal(active?.piSessionId, "pi-default");
+  assert.equal(active?.cwd, "/Users/sero/.vllm-studio");
+  assert.equal(active?.modelId, "nemotron-3-ultra");
+});
+
+test("session replay into a starter adopts cwd and model metadata", () => {
+  const next = reducer(makeState(), {
+    type: "replaySession",
+    piSessionId: "pi-replay",
+    tab: makeSession("tab-replay", {
+      runtimeSessionId: "rt-replay",
+      cwd: "/Users/sero/.vllm-studio",
+      modelId: "nemotron-3-ultra",
+      title: "Persisted replay",
+      startedAt: "2026-06-08T04:00:00.000Z",
+    }),
+  });
+
+  const active = next.sessions.get(
+    next.panesById.get("p-main")?.sessionId ?? "",
+  );
+  assert.equal(active?.piSessionId, "pi-replay");
+  assert.equal(active?.cwd, "/Users/sero/.vllm-studio");
+  assert.equal(active?.modelId, "nemotron-3-ultra");
+  assert.equal(active?.startedAt, "2026-06-08T04:00:00.000Z");
 });
 
 test("agent session merge upgrades tab identity to pi identity without dropping focus", () => {
@@ -1205,8 +1394,14 @@ test("agent session merge clears stale focused rows when another session is focu
 
   const merged = mergeActiveAgentSessions(previous, incoming);
 
-  assert.equal(merged.find((session) => session.piSessionId === "pi-new")?.focused, true);
-  assert.equal(merged.find((session) => session.piSessionId === "pi-old")?.focused, false);
+  assert.equal(
+    merged.find((session) => session.piSessionId === "pi-new")?.focused,
+    true,
+  );
+  assert.equal(
+    merged.find((session) => session.piSessionId === "pi-old")?.focused,
+    false,
+  );
   assert.equal(merged.filter((session) => session.focused === true).length, 1);
 });
 
@@ -1261,6 +1456,91 @@ test("runtime status stays active while a prompt is in flight", () => {
   assert.equal(runtimeStatusLooksActive(status), true);
 });
 
+test("runtime status stays active while SDK is streaming after prompt handoff", () => {
+  const status = piStatusFromEvents({
+    running: true,
+    activePromptCount: 0,
+    sdkActive: true,
+    modelId: "deepseek-v4-flash",
+    cwd: "/workspace",
+    piSessionId: "pi-live",
+    agentDir: "/tmp/pi",
+    eventSeq: 2,
+    lastError: null,
+    eventLog: [],
+  });
+
+  assert.equal(status.active, true);
+  assert.equal(runtimeStatusLooksActive(status), true);
+});
+
+test("runtime lookup by unknown pi session does not create an empty runtime", () => {
+  const sessions = [
+    {
+      sessionId: "rt-existing",
+      session: { status: { piSessionId: "pi-existing" } },
+    },
+  ];
+  const before = sessions.length;
+  const resolved = findRuntimeSessionForLookup(
+    sessions,
+    "rt-missing-for-test",
+    "pi-missing-for-test",
+  );
+  const after = sessions.length;
+
+  assert.equal(resolved, null);
+  assert.equal(after, before);
+});
+
+test("finished runtime event streams replay missed pi events before idle status", () => {
+  assert.equal(initialRuntimeStatusPhase(false, 3), null);
+  assert.equal(
+    shouldSendTrailingIdleStatus({
+      active: false,
+      replayBacklogCount: 3,
+      sentTerminalStatus: false,
+    }),
+    true,
+  );
+  assert.equal(initialRuntimeStatusPhase(false, 0), "idle");
+  assert.equal(initialRuntimeStatusPhase(true, 3), "running");
+  assert.equal(
+    shouldSendTrailingIdleStatus({
+      active: false,
+      replayBacklogCount: 3,
+      sentTerminalStatus: true,
+    }),
+    false,
+  );
+});
+
+test("runtime event streams restart replay when SDK event sequence resets", () => {
+  assert.equal(replayAfterCursor(42, 38), 0);
+  assert.equal(replayAfterCursor(42, 42), 42);
+  assert.equal(replayAfterCursor(0, 38), 0);
+});
+
+test("runtime event subscriptions wait for accepted running turns", () => {
+  assert.equal(shouldSubscribeRuntimeEvents("starting"), false);
+  assert.equal(shouldSubscribeRuntimeEvents("running"), true);
+  assert.equal(shouldSubscribeRuntimeEvents("idle"), false);
+});
+
+test("runtime event cursor resets for a new prompt on the same Pi session", () => {
+  const staleCursor = mirrorSessionLastEventSeq(undefined, 43);
+  assert.deepEqual(shouldApplyRuntimeSeq(staleCursor, 28), {
+    apply: false,
+    next: 43,
+  });
+
+  const resetCursor = mirrorSessionLastEventSeq(staleCursor, 0);
+  assert.deepEqual(shouldApplyRuntimeSeq(resetCursor, 1), {
+    apply: true,
+    next: 1,
+  });
+});
+
 test("control routing uses active turn state, not runtime process existence", () => {
   assert.equal(
     controlTargetHasActiveTurn({ active: true, running: true }),
@@ -1269,16 +1549,6 @@ test("control routing uses active turn state, not runtime process existence", ()
   assert.equal(
     controlTargetHasActiveTurn({ active: false, running: true }),
     false,
-  );
-});
-
-test("control status returns idle when a stale control is promoted to a prompt", () => {
-  assert.equal(statusAfterControlPhase("idle", "starting"), "starting");
-  assert.equal(statusAfterControlPhase("starting", "running"), "running");
-  assert.equal(statusAfterControlPhase("running", "done"), "idle");
-  assert.equal(
-    statusAfterControlPhase("running", "done", { queuedControlAccepted: true }),
-    "running",
   );
 });
 
@@ -1736,6 +2006,45 @@ test("text delta coalescer preserves alternating text and reasoning order", () =
   );
 });
 
+test("final answer snapshots preserve paragraph and list boundaries between text parts", () => {
+  // Snapshots now carry the model's whitespace verbatim (the controller no
+  // longer drops repeated-prefix tokens), so adjacent text parts concatenate
+  // exactly — no boundary guessing.
+  const parts = [
+    "The lamp looks static.\n\n",
+    "Specific things that feel wrong:\n",
+    "- The wax is one continuous blob.\n",
+    "- There is no visible liquid medium.\n\n",
+    "So: the wax behavior is the biggest problem.",
+  ];
+  const blocks = blocksFromTurnSnapshots([parts.map((text) => ({ type: "text", text }))]);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]?.kind === "text" ? blocks[0].text : "", parts.join(""));
+});
+
+test("final answer snapshots concatenate text parts verbatim without synthesizing whitespace", () => {
+  const parts = ["Examples:\n- ", "General software engineering skills.\n- ", "UI/docs skills."];
+  const blocks = blocksFromTurnSnapshots([parts.map((text) => ({ type: "text", text }))]);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]?.kind === "text" ? blocks[0].text : "", parts.join(""));
+});
+
+test("final answer snapshot merge keeps word continuations together", () => {
+  const blocks = blocksFromTurnSnapshots([
+    [
+      { type: "text", text: "Spec" },
+      { type: "text", text: "ulative decoding optimizes inference latency." },
+    ],
+  ]);
+
+  assert.equal(
+    blocks[0]?.kind === "text" ? blocks[0].text : "",
+    "Speculative decoding optimizes inference latency.",
+  );
+});
+
 test("live pre-tool text collapses with the following tool call", () => {
   const textEvent = {
     type: "message_update",
@@ -1850,6 +2159,192 @@ test("vllm pi model config uses pi openai-compatible parsing without reasoning c
   assert.equal(model?.compat?.supportsReasoningEffort, false);
   assert.equal(model?.compat?.maxTokensField, "max_tokens");
   assert.equal(model?.compat?.supportsUsageInStreaming, true);
+});
+
+test("nex n2 models infer vision support from sparse openai model rows", () => {
+  const [model] = normalizeOpenAIModels({
+    data: [
+      {
+        id: "nex-n2-pro",
+        object: "model",
+        max_model_len: 262_144,
+      },
+    ],
+  });
+
+  assert.equal(model?.vision, true);
+  assert.deepEqual(modelsToPiModels(model ? [model] : [])[0]?.input, ["text", "image"]);
+});
+
+test("vllm pi openai serialization keeps tool calls out of assistant content", () => {
+  const [model] = modelsToPiModels([
+    {
+      id: "nex-n2-pro",
+      name: "Nex N2 Pro",
+      provider: "vllm-studio",
+      contextWindow: 262_144,
+      maxTokens: 65_536,
+      reasoning: true,
+      vision: false,
+      active: true,
+    },
+  ]);
+  assert.ok(model);
+
+  const compat = {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    supportsReasoningEffort: false,
+    supportsUsageInStreaming: true,
+    maxTokensField: "max_tokens",
+    requiresToolResultName: false,
+    requiresAssistantAfterToolResult: false,
+    requiresThinkingAsText: false,
+    requiresReasoningContentOnAssistantMessages: false,
+    thinkingFormat: "openai",
+    openRouterRouting: {},
+    vercelGatewayRouting: {},
+    zaiToolStream: false,
+    supportsStrictMode: false,
+    sendSessionAffinityHeaders: false,
+    supportsLongCacheRetention: true,
+  } as Parameters<typeof convertMessages>[2];
+
+  const messages = convertMessages(
+    model as Parameters<typeof convertMessages>[0],
+    {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-write",
+              name: "write",
+              arguments: { path: "/tmp/file.txt", content: "hello" },
+            },
+          ],
+          api: "openai-completions",
+          provider: "vllm-studio",
+          model: "nex-n2-pro",
+          stopReason: "toolUse",
+          timestamp: Date.now(),
+        },
+        {
+          role: "toolResult",
+          toolCallId: "call-write",
+          toolName: "write",
+          content: [{ type: "text", text: "Successfully wrote /tmp/file.txt" }],
+          isError: false,
+          timestamp: Date.now(),
+        },
+        {
+          role: "user",
+          content: "What did you change?",
+          timestamp: Date.now(),
+        },
+      ],
+    } as Parameters<typeof convertMessages>[1],
+    compat,
+  );
+
+  assert.equal(messages.length, 3);
+  const assistant = messages[0] as Record<string, unknown>;
+  assert.equal(assistant.role, "assistant");
+  assert.equal(assistant.content, null);
+  assert.deepEqual(assistant.tool_calls, [
+    {
+      id: "call-write",
+      type: "function",
+      function: {
+        name: "write",
+        arguments: JSON.stringify({ path: "/tmp/file.txt", content: "hello" }),
+      },
+    },
+  ]);
+  assert.equal((messages[1] as Record<string, unknown>).role, "tool");
+  assert.equal(
+    (messages[1] as Record<string, unknown>).tool_call_id,
+    "call-write",
+  );
+  assert.equal((messages[2] as Record<string, unknown>).role, "user");
+});
+
+test("vllm pi openai serialization preserves assistant text part boundaries", () => {
+  const [model] = modelsToPiModels([
+    {
+      id: "nex-n2-pro",
+      name: "Nex N2 Pro",
+      provider: "vllm-studio",
+      contextWindow: 262_144,
+      maxTokens: 65_536,
+      reasoning: false,
+      vision: false,
+      active: true,
+    },
+  ]);
+  assert.ok(model);
+
+  const compat = {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    supportsReasoningEffort: false,
+    supportsUsageInStreaming: true,
+    maxTokensField: "max_tokens",
+    requiresToolResultName: false,
+    requiresAssistantAfterToolResult: false,
+    requiresThinkingAsText: false,
+    requiresReasoningContentOnAssistantMessages: false,
+    thinkingFormat: "openai",
+    openRouterRouting: {},
+    vercelGatewayRouting: {},
+    zaiToolStream: false,
+    supportsStrictMode: false,
+    sendSessionAffinityHeaders: false,
+    supportsLongCacheRetention: true,
+  } as Parameters<typeof convertMessages>[2];
+
+  const messages = convertMessages(
+    model as Parameters<typeof convertMessages>[0],
+    {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "The lamp looks static." },
+            { type: "text", text: "Specific things that feel wrong:" },
+            { type: "text", text: "- The wax is one continuous blob." },
+            { type: "text", text: "-There is no visible liquid medium." },
+            { type: "text", text: "So: the wax behavior is the biggest problem." },
+          ],
+          api: "openai-completions",
+          provider: "vllm-studio",
+          model: "nex-n2-pro",
+          stopReason: "stop",
+          timestamp: Date.now(),
+        },
+        {
+          role: "user",
+          content: "Keep going.",
+          timestamp: Date.now(),
+        },
+      ],
+    } as Parameters<typeof convertMessages>[1],
+    compat,
+  );
+
+  assert.equal(
+    (messages[0] as Record<string, unknown>).content,
+    [
+      "The lamp looks static.",
+      "",
+      "Specific things that feel wrong:",
+      "- The wax is one continuous blob.",
+      "- There is no visible liquid medium.",
+      "",
+      "So: the wax behavior is the biggest problem.",
+    ].join("\n"),
+  );
 });
 
 test("reasoning then pre-tool narration then tool keeps activity together", () => {
@@ -2203,6 +2698,118 @@ test("live final assistant messages reconcile partial streamed text", () => {
     assistant?.blocks?.[1]?.text,
     "Speculative decoding optimizes inference latency.",
   );
+});
+
+test("assistant message_end error becomes visible without replay navigation", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "continue" },
+        {
+          id: "a-main",
+          role: "assistant",
+          text: "",
+          blocks: [],
+        },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "fetch failed",
+      content: [{ type: "text", text: "Partial answer" }],
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  assert.equal(harness.session().error, "fetch failed");
+  assert.equal(assistant?.blocks?.at(-1)?.kind, "event");
+  assert.equal(assistant?.blocks?.at(-1)?.text, "fetch failed");
+});
+
+test("settled assistant error messages hydrate visible error blocks", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "continue" },
+        {
+          id: "a-main",
+          role: "assistant",
+          text: "",
+          blocks: [],
+        },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+    type: "message",
+    message: {
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "provider overloaded",
+      content: [],
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  assert.equal(harness.session().error, "provider overloaded");
+  assert.equal(assistant?.blocks?.[0]?.kind, "event");
+  assert.equal(assistant?.blocks?.[0]?.text, "provider overloaded");
+});
+
+test("activity group ids stay stable as streaming blocks append", () => {
+  const first = groupAssistantBlocks([
+    { kind: "thinking", id: "0:0:thinking", text: "Thinking" },
+    {
+      kind: "tool",
+      id: "call-read",
+      name: "read",
+      status: "running",
+      text: "{}",
+      argsText: "{}",
+    },
+  ]);
+  const second = groupAssistantBlocks([
+    { kind: "thinking", id: "0:0:thinking", text: "Thinking" },
+    { kind: "thinking", id: "0:1:thinking", text: " more" },
+    {
+      kind: "tool",
+      id: "call-read",
+      name: "read",
+      status: "running",
+      text: "{}",
+      argsText: "{}",
+    },
+    {
+      kind: "tool",
+      id: "call-write",
+      name: "write",
+      status: "running",
+      text: "{}",
+      argsText: "{}",
+    },
+  ]);
+
+  const firstActivity = first[0];
+  const secondActivity = second[0];
+  if (
+    firstActivity?.kind !== "activity-group" ||
+    secondActivity?.kind !== "activity-group"
+  ) {
+    throw new Error("expected activity groups");
+  }
+  assert.equal(firstActivity.id, secondActivity.id);
 });
 
 test("skill mentions and selected skill context survive composer prompt construction", () => {

@@ -3,6 +3,7 @@ import type { LoggedPiEvent, PiAgentStatus, PiContextUsage } from "./pi-runtime-
 export function piStatusFromEvents(input: {
   running: boolean;
   activePromptCount: number;
+  sdkActive?: boolean;
   modelId: string;
   cwd: string;
   piSessionId: string | null;
@@ -14,7 +15,7 @@ export function piStatusFromEvents(input: {
 }): PiAgentStatus {
   return {
     running: input.running,
-    active: input.activePromptCount > 0,
+    active: input.activePromptCount > 0 || input.sdkActive === true,
     modelId: input.modelId,
     cwd: input.cwd,
     piSessionId: input.piSessionId,

@@ -265,9 +265,14 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   get status() {
+    const sdkSession = this.runtime?.session;
     return piStatusFromEvents({
       running: Boolean(this.runtime),
       activePromptCount: this.activePromptCount,
+      sdkActive:
+        Boolean(sdkSession?.isStreaming) ||
+        Boolean(sdkSession?.isCompacting) ||
+        (sdkSession?.pendingMessageCount ?? 0) > 0,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,

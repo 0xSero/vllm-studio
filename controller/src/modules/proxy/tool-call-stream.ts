@@ -66,7 +66,15 @@ export const createToolCallStream = (
         else replayCursors.set(key, nextCursor);
         return "";
       }
+      // The supposed replay diverged, so the prefix we suppressed was never a
+      // replay — it was real content whose leading tokens happened to repeat an
+      // earlier prefix (e.g. a new sentence starting with "The "/"Hello"/"\n").
+      // Resurrect exactly what we withheld so no token is silently dropped.
       replayCursors.delete(key);
+      const resurrected = previous.text.slice(0, replayCursor);
+      const merged = resurrected + text;
+      history.set(key, { text: previous.text + merged, snapshot: false });
+      return merged;
     }
     const isCumulative =
       previous.text.length > 0 &&
@@ -79,6 +87,10 @@ export const createToolCallStream = (
       return isCumulative ? text.slice(previous.text.length) : text;
     }
 
+    // A shorter delta that matches the start of the accumulated text *might* be
+    // an upstream stream replaying from the top. Speculatively suppress it, but
+    // the divergence branch above resurrects it if the replay never pans out, so
+    // genuine repeated content (incl. whitespace-only deltas) is never lost.
     if (previous.text.length > text.length && previous.text.startsWith(text)) {
       replayCursors.set(key, text.length);
       return "";

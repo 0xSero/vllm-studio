@@ -287,6 +287,7 @@ function renderWorkspacePane({
       runtimeSessionId={view.pane.runtimeSessionId}
       modelId={view.modelId}
       modelName={view.model?.name ?? view.modelId ?? null}
+      modelSupportsVision={view.model?.vision ?? false}
       modelsLoading={state.modelsLoading}
       contextWindow={view.model?.contextWindow ?? 0}
       cwd={view.cwd}

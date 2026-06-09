@@ -1,4 +1,5 @@
 import { PiSdkSession } from "./pi-sdk-runtime";
+import { findRuntimeSessionForLookup } from "./pi-runtime-lookup";
 import type { PiAgentSession } from "./pi-runtime-types";
 
 export { refreshPiModels } from "./pi-runtime-models";
@@ -21,13 +22,19 @@ class PiRuntimeManager {
     sessionId = DEFAULT_SESSION_ID,
     piSessionId?: string | null,
   ): { sessionId: string; session: PiAgentSession } {
-    const target = piSessionId?.trim();
-    if (target) {
-      for (const [id, session] of this.sessions.entries()) {
-        if (session.status.piSessionId === target) return { sessionId: id, session };
+    return (
+      this.findSessionForLookup(sessionId, piSessionId) ?? {
+        sessionId,
+        session: this.getSession(sessionId),
       }
-    }
-    return { sessionId, session: this.getSession(sessionId) };
+    );
+  }
+
+  findSessionForLookup(
+    sessionId = DEFAULT_SESSION_ID,
+    piSessionId?: string | null,
+  ): { sessionId: string; session: PiAgentSession } | null {
+    return findRuntimeSessionForLookup(this.listSessions(), sessionId, piSessionId);
   }
 
   listSessions(): Array<{ sessionId: string; session: PiAgentSession }> {
