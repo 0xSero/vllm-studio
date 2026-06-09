@@ -37,11 +37,14 @@ type TextDeltaSnapshot = {
 };
 
 // Coalesces assistant streaming updates to at most one render per animation
-// frame. Each pi `message_update` carries the FULL accumulated message snapshot,
-// so superseded snapshots can be dropped losslessly — we keep only the latest
-// per session and apply it on the next frame. Every non-`message_update` event
-// (call boundaries, tool execution, agent_end) is left for the caller to flush
-// the pending snapshot and apply immediately, preserving event order.
+// frame. Pi `text_delta`/`thinking_delta` events carry INCREMENTAL chunks (the
+// new text only, not a cumulative snapshot), so we merge every same-kind delta
+// batched into a frame by concatenating their `delta` strings — dropping any of
+// them would silently lose tokens (most visibly the standalone "\n"/"\n\n"
+// deltas models emit between paragraphs and table rows). A kind switch (text vs
+// thinking) or any non-delta `message_update` flushes the pending merge first
+// so ordering is preserved. Every non-`message_update` event (call boundaries,
+// tool execution, agent_end) is left for the caller to flush and apply.
 export function createTextDeltaCoalescer({
   applyPiEvent,
   scheduleFrame = defaultScheduleFrame,
@@ -76,12 +79,22 @@ export function createTextDeltaCoalescer({
     if (existing && existing.assistantId !== assistantId) flushNow(sessionId);
     const normalizedEvent = normalizeDeltaEvent(event);
     const incomingDelta = textDeltaFromPiEvent(normalizedEvent);
-    const existingDelta = existing ? textDeltaFromPiEvent(existing.event) : null;
-    if (existingDelta && incomingDelta && existingDelta.kind !== incomingDelta.kind) {
-      flushNow(sessionId);
-    }
+    const current = pending.get(sessionId);
+    const existingDelta = current ? textDeltaFromPiEvent(current.event) : null;
+    // Only same-kind text deltas can merge. A kind switch or a non-delta
+    // message_update must flush the pending merge so we never reorder events.
+    const canMerge =
+      Boolean(current) &&
+      existingDelta !== null &&
+      incomingDelta !== null &&
+      existingDelta.kind === incomingDelta.kind;
+    if (current && !canMerge) flushNow(sessionId);
     const carriedFrame = pending.get(sessionId)?.frame ?? null;
-    pending.set(sessionId, { assistantId, event: normalizedEvent, frame: carriedFrame });
+    const nextEvent =
+      canMerge && existingDelta && incomingDelta
+        ? mergeTextDeltaEvent(normalizedEvent, existingDelta.delta + incomingDelta.delta)
+        : normalizedEvent;
+    pending.set(sessionId, { assistantId, event: nextEvent, frame: carriedFrame });
     traceAgentReasoning("coalescer.snapshot", {
       sessionId,
       assistantId,
@@ -121,6 +134,20 @@ export function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaS
     return { kind: "thinking", delta };
   }
   return null;
+}
+
+function mergeTextDeltaEvent(
+  event: Record<string, unknown>,
+  combinedDelta: string,
+): Record<string, unknown> {
+  const assistantMessageEvent = asRecord(event.assistantMessageEvent) ?? {};
+  return {
+    ...event,
+    assistantMessageEvent: {
+      ...assistantMessageEvent,
+      delta: combinedDelta,
+    },
+  };
 }
 
 function normalizeDeltaEvent(event: Record<string, unknown>): Record<string, unknown> {
