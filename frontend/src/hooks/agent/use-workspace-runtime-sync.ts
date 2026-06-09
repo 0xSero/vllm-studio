@@ -24,12 +24,6 @@ type UseWorkspaceRuntimeSyncDeps = {
   sessions: Session[];
 };
 
-type PiEventBatch = {
-  assistantId: string;
-  events: Record<string, unknown>[];
-  timer: ReturnType<typeof setTimeout> | null;
-};
-
 function runtimeStatusActive(status: RuntimeStatus | null | undefined): boolean {
   return status?.active === true;
 }
@@ -93,7 +87,6 @@ const getRuntimeSyncSnapshot = (): number => 0;
 export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRuntimeSyncDeps): void {
   const sessionsRef = useRef(sessions);
   const liveAssistantIdsRef = useRef<Map<SessionId, string>>(new Map());
-  const piEventBatchesRef = useRef<Map<SessionId, PiEventBatch>>(new Map());
   const lastSeqBySessionRef = useRef<Map<SessionId, number>>(new Map());
   // Live resume subscriptions, one per session, managed incrementally so a
   // status flip never tears down and rebuilds unrelated connections.
@@ -179,17 +172,9 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, []);
   useSyncExternalStore(subscribeCoalescer, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  const flushPiEvents = useCallback(
-    (sessionId: SessionId) => {
-      coalescerRef.current?.flushNow(sessionId);
-      const batch = piEventBatchesRef.current.get(sessionId);
-      if (!batch) return;
-      if (batch.timer) clearTimeout(batch.timer);
-      piEventBatchesRef.current.delete(sessionId);
-      for (const event of batch.events) applyPiEvent(sessionId, batch.assistantId, event);
-    },
-    [applyPiEvent],
-  );
+  const flushPiEvents = useCallback((sessionId: SessionId) => {
+    coalescerRef.current?.flushNow(sessionId);
+  }, []);
 
   const enqueuePiEvent = useCallback(
     (
@@ -351,16 +336,12 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, [registryKey, updateSession]);
   useSyncExternalStore(subscribePoll, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Unmount cleanup: flush/dispose the coalescer, clear pending batches, and
-  // close any open resume subscriptions.
+  // Unmount cleanup: flush/dispose the coalescer and close any open resume
+  // subscriptions.
   const subscribeCleanup = useCallback(
     () => () => {
       coalescerRef.current?.flushAll();
       coalescerRef.current?.dispose();
-      for (const batch of piEventBatchesRef.current.values()) {
-        if (batch.timer) clearTimeout(batch.timer);
-      }
-      piEventBatchesRef.current.clear();
       for (const entry of resumeSubsRef.current.values()) entry.sub.close();
       resumeSubsRef.current.clear();
     },
