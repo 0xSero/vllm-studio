@@ -1,4 +1,4 @@
-import { existsSync, promises as fs, readdirSync, statSync } from "node:fs";
+import { existsSync, promises as fs, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { FsEntry } from "@/lib/agent/filesystem-types";
 
@@ -16,13 +16,63 @@ const IGNORE_DIRS = new Set([
   ".vllm-studio",
 ]);
 
-// Reject any path that escapes the project root, including via symlinks.
+// Filesystem roots and top-level system directories that must never serve as a
+// workspace root — otherwise a caller could set cwd="/" and read "etc/passwd"
+// while staying nominally "inside" the root.
+const SYSTEM_ROOTS = new Set([
+  "/",
+  "/bin",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/lib",
+  "/lib32",
+  "/lib64",
+  "/libx32",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/sys",
+  "/usr",
+  "/var",
+]);
+
+// Reject the filesystem root and system directories as workspace roots. Returns
+// the symlink-resolved absolute path. Used by the filesystem and terminal
+// routes before any read/list/exec against a caller-supplied cwd.
+export function assertWorkspaceRoot(rootCwd: string): string {
+  const resolved = path.resolve(rootCwd);
+  const real = (() => {
+    try {
+      return realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
+  })();
+  if (SYSTEM_ROOTS.has(real) || real === path.parse(real).root) {
+    throw new Error("Path is not an allowed workspace root");
+  }
+  return real;
+}
+
+// Reject any path that escapes the project root, resolving symlinks on both the
+// root and the target so a symlink inside the root cannot point outside it.
 function ensureInside(rootCwd: string, target: string): string {
-  const rel = path.relative(rootCwd, target);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  const realRoot = realpathSync(assertWorkspaceRoot(rootCwd));
+  let realTarget: string;
+  try {
+    realTarget = realpathSync(target);
+  } catch {
+    // Target may not exist yet; fall back to a lexical resolution.
+    realTarget = path.resolve(target);
+  }
+  const rel = path.relative(realRoot, realTarget);
+  if (rel !== "" && (rel.startsWith("..") || path.isAbsolute(rel))) {
     throw new Error("Path escapes project root");
   }
-  return target;
+  return realTarget;
 }
 
 export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {

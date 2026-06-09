@@ -106,35 +106,14 @@ function getTrustedOverrideOrigins(defaultBackendUrl: string): Set<string> {
   return trusted;
 }
 
-function isPrivateUrl(urlString: string): boolean {
-  try {
-    const url = new URL(urlString);
-    const hostname = url.hostname.toLowerCase();
-    if (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "::1" ||
-      hostname === "0.0.0.0"
-    )
-      return true;
-    if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return true;
-    // Check private IP ranges
-    const parts = hostname.split(".");
-    if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
-      const [a, b] = parts.map(Number);
-      if (a === 10) return true;
-      if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 169 && b === 254) return true;
-    }
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-function isTrustedPrivateOverride(urlString: string, defaultBackendUrl: string): boolean {
-  // Desktop app (Electron) runs entirely locally — all private IPs are trusted.
+// A backend override is trusted only if its origin matches the default backend
+// or an allowlisted origin (or the desktop app, which is loopback-local). This
+// applies to *every* override target — public or private — so the configured
+// API key is never attached to a request aimed at an untrusted host. An earlier
+// version gated only private addresses, which let a public `x-backend-url` (e.g.
+// https://attacker.example) receive the configured bearer key.
+function isTrustedOverride(urlString: string, defaultBackendUrl: string): boolean {
+  // Desktop app (Electron) runs entirely locally — trust private targets.
   if (process.env.VLLM_STUDIO_DATA_DIR) return true;
 
   const targetOrigin = normalizeOrigin(urlString);
@@ -180,28 +159,25 @@ async function resolveProxyTarget(
   const defaultBackendUrl = normalizeBackendUrl(settings.backendUrl) ?? settings.backendUrl;
   let overrideUrl = overrideHeaderUrl ?? overrideCookieUrl;
 
-  if (overrideUrl && isPrivateUrl(overrideUrl)) {
-    const trusted = isTrustedPrivateOverride(overrideUrl, defaultBackendUrl);
-    if (!trusted && overrideHeaderUrl) {
+  if (overrideUrl && !isTrustedOverride(overrideUrl, defaultBackendUrl)) {
+    if (overrideHeaderUrl) {
       console.warn(
-        `[PROXY BLOCKED] ip=${client.ip} | override=redacted | reason=private-address-not-allowlisted`,
+        `[PROXY BLOCKED] ip=${client.ip} | override=redacted | reason=origin-not-allowlisted`,
       );
       return { blockedResponse: blockedHeaderOverrideResponse() };
     }
-    if (!trusted) {
-      console.warn(
-        `[PROXY OVERRIDE IGNORED] ip=${client.ip} | override=redacted | reason=private-cookie-not-allowlisted`,
-      );
-      overrideUrl = null;
-      return {
-        apiKey: settings.apiKey,
-        backendUrl: defaultBackendUrl,
-        blockedOverrideCleared: true,
-        defaultBackendUrl,
-        overrideUrl,
-        strictOverride,
-      };
-    }
+    console.warn(
+      `[PROXY OVERRIDE IGNORED] ip=${client.ip} | override=redacted | reason=origin-not-allowlisted`,
+    );
+    overrideUrl = null;
+    return {
+      apiKey: settings.apiKey,
+      backendUrl: defaultBackendUrl,
+      blockedOverrideCleared: true,
+      defaultBackendUrl,
+      overrideUrl,
+      strictOverride,
+    };
   }
 
   return {
@@ -323,7 +299,10 @@ async function fetchWithOptionalFallback(
     const timeoutMs = getUpstreamTimeoutMs(context.path);
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(url, { ...init, signal: controller.signal });
+      // Do not auto-follow redirects: a compromised/misbehaving upstream must
+      // not be able to bounce the proxy (with its bearer key) to an arbitrary
+      // location. Redirects are surfaced to the caller as-is.
+      return await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
     } finally {
       clearTimeout(timeoutId);
     }

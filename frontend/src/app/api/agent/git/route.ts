@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { parseGitAction } from "@/lib/agent/contracts/git";
 import { assertGitCwd, loadGitState, runGitAction } from "@/lib/agent/git/service";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const { cwd, error } = assertGitCwd(request.nextUrl.searchParams.get("cwd"));
   if (error) return error;
   let body: unknown;

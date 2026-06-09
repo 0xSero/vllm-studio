@@ -17,6 +17,10 @@ extraResources:
     to: app/frontend/.next/standalone
     filter:
       - "**/*"
+      # Never bundle runtime state into the shipped app — standalone/**/data can
+      # contain api-settings.json (live API key) and pi-agent/auth.json.
+      - "!**/data/**"
+      - "!**/*.log"
   - from: .next/static
     to: app/frontend/.next/standalone/.next/static
     filter:

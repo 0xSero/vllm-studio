@@ -1,0 +1,34 @@
+# Tailnet-only TLS reverse proxy for the homelab.
+#
+# DNS: app.homelabai.org and api.homelabai.org are pointed at the pop-os
+# Tailscale IP (100.90.62.80), so only tailnet devices can route to them.
+# Caddy binds to that same Tailscale IP and terminates TLS with a Cloudflare
+# DNS-01 certificate (HTTP-01 is impossible since the hosts aren't publicly
+# reachable). The frontend and controller listen on loopback behind Caddy.
+#
+# Requires a Caddy build that includes the Cloudflare DNS module, e.g.:
+#   xcaddy build --with github.com/caddy-dns/cloudflare
+# and CLOUDFLARE_API_TOKEN in the environment (Zone:DNS:Edit + Zone:Read on
+# homelabai.org).
+
+{
+	email admin@serotonindesigns.com
+}
+
+app.homelabai.org {
+	bind 100.90.62.80
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+api.homelabai.org {
+	bind 100.90.62.80
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}

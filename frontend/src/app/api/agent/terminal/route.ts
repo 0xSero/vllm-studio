@@ -4,6 +4,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { NextRequest } from "next/server";
 import { parseTerminalRunRequest } from "@/lib/agent/contracts/terminal";
+import { requireApiAccess } from "@/lib/auth/guard";
+import { assertWorkspaceRoot } from "@/lib/agent/fs-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +26,24 @@ function assertTerminalCwd(
   } catch {
     return { error: Response.json({ error: "cwd not found" }, { status: 404 }) };
   }
+  // Refuse to run shell commands rooted at the filesystem root or a system
+  // directory, even for an authenticated caller.
+  try {
+    assertWorkspaceRoot(cwd);
+  } catch (err) {
+    return {
+      error: Response.json(
+        { error: err instanceof Error ? err.message : "cwd is not an allowed workspace" },
+        { status: 403 },
+      ),
+    };
+  }
   return { cwd };
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const { cwd, error } = assertTerminalCwd(request.nextUrl.searchParams.get("cwd"));
   if (error) return error;
   let body: unknown;

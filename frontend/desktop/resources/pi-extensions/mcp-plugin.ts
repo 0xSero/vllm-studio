@@ -11,6 +11,21 @@ type McpServerConfig = {
   env?: Record<string, string>;
 };
 
+// MCP servers can be launched from config the caller influences, so the child
+// process must not inherit the host's secrets. Strip anything that looks like a
+// credential from the inherited environment; servers that genuinely need a key
+// receive it via their explicit `config.env`, which is applied on top.
+const SENSITIVE_ENV_PATTERN = /(TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|COOKIE|SESSION)/i;
+
+function sanitizedParentEnv(): NodeJS.ProcessEnv {
+  const safe: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (SENSITIVE_ENV_PATTERN.test(name)) continue;
+    safe[name] = value;
+  }
+  return safe;
+}
+
 type McpPluginConfig = {
   pluginName: string;
   configPath: string;
@@ -123,7 +138,7 @@ class McpClient {
     const command = resolveServerCommand(config.command ?? "", cwd);
     this.child = spawn(command, config.args ?? [], {
       cwd,
-      env: { ...process.env, ...(config.env ?? {}) },
+      env: { ...sanitizedParentEnv(), ...(config.env ?? {}) },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.onData(chunk));

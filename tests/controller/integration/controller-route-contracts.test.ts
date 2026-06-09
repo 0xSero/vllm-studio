@@ -1052,9 +1052,11 @@ world"}</arguments></tool_call>`,
       },
     });
 
+    const target = `http://127.0.0.1:${upstream.port}`;
+    // Cross-controller passthrough is deny-by-default; allowlist the test target.
+    process.env.VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST = target;
     try {
       const app = await createTestApp();
-      const target = `http://127.0.0.1:${upstream.port}`;
       const response = await app.request(
         `/controllers/route/v1/models?target=${encodeURIComponent(target)}&limit=2`,
         { headers: { authorization: "Bearer proxy-test" } },
@@ -1089,6 +1091,7 @@ world"}</arguments></tool_call>`,
         ]),
       );
     } finally {
+      delete process.env.VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST;
       await upstream.stop(true);
     }
   });
@@ -1120,9 +1123,11 @@ world"}</arguments></tool_call>`,
       },
     });
 
+    const target = `http://127.0.0.1:${upstream.port}`;
+    // Cross-controller passthrough is deny-by-default; allowlist the test target.
+    process.env.VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST = target;
     try {
       const app = await createTestApp();
-      const target = `http://127.0.0.1:${upstream.port}`;
       const payload = {
         model: "mock-model",
         messages: [{ role: "user", content: "hi" }],
@@ -1161,6 +1166,7 @@ world"}</arguments></tool_call>`,
         ]),
       );
     } finally {
+      delete process.env.VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST;
       await upstream.stop(true);
     }
   });

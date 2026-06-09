@@ -13,6 +13,23 @@ function setUpdateState(nextState: DesktopUpdateSnapshot): void {
 function resolveFeedUrl(): string | null {
   const raw = process.env.VLLM_STUDIO_UPDATE_URL?.trim();
   if (!raw) return null;
+  // Refuse cleartext update feeds — auto-update over http is trivially
+  // MITM-able into shipping an arbitrary binary. Allow http only for loopback
+  // (local testing of an update server).
+  try {
+    const parsed = new URL(raw);
+    const isLoopback =
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "::1";
+    if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLoopback)) {
+      log.warn(`[update] Ignoring non-https update feed: ${parsed.protocol}//${parsed.host}`);
+      return null;
+    }
+  } catch {
+    log.warn("[update] Ignoring malformed VLLM_STUDIO_UPDATE_URL");
+    return null;
+  }
   return raw.replace(/\/+$/, "");
 }
 

@@ -23,7 +23,9 @@ jobs:
           fetch-depth: 0
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        # Pin to a release tag, not the moving `main` branch — a compromised
+        # upstream main would otherwise run in CI on every push/PR/schedule.
+        uses: trufflesecurity/trufflehog@v3
         with:
           path: ./
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}

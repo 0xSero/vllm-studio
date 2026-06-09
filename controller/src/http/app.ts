@@ -14,12 +14,33 @@ import { createOpenApiSpec } from "./openapi-spec";
 import {
   createMutatingAuthMiddleware,
   createMutatingRateLimitMiddleware,
+  createReadRateLimitMiddleware,
 } from "./security-middleware";
 import { createControllerRequestObservabilityMiddleware } from "./observability-middleware";
+
+// Parse a comma-separated list of controller URLs into a set of origins. Used to
+// allowlist cross-controller passthrough targets so the route cannot be turned
+// into an SSRF/credential-reflection primitive against arbitrary hosts.
+const parseOriginAllowlist = (raw: string | undefined): Set<string> => {
+  const origins = new Set<string>();
+  for (const entry of (raw ?? "").split(",")) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    try {
+      origins.add(new URL(trimmed).origin);
+    } catch {
+      // Ignore malformed entries.
+    }
+  }
+  return origins;
+};
 
 export const createApp = (context: AppContext): Hono => {
   const app = new Hono();
   const allowedCorsOrigins = context.config.cors_origins ?? [];
+  const allowedControllerOrigins = parseOriginAllowlist(
+    process.env["VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST"]
+  );
 
   app.use(
     "*",
@@ -47,6 +68,7 @@ export const createApp = (context: AppContext): Hono => {
 
   app.use("*", createControllerRequestObservabilityMiddleware(context));
   app.use("*", createMutatingRateLimitMiddleware(context));
+  app.use("*", createReadRateLimitMiddleware(context));
   app.use("*", createMutatingAuthMiddleware(context));
 
   registerSystemRoutes(app, context);
@@ -70,6 +92,20 @@ export const createApp = (context: AppContext): Hono => {
     } catch {
       return ctx.json({ detail: "target must be an http(s) controller URL" }, { status: 400 });
     }
+    // SSRF guard: only forward to controller origins the operator has explicitly
+    // allowlisted. Without this, `target` could point at internal services
+    // (cloud metadata, RFC1918 hosts) and the forwarded Authorization header
+    // would leak the controller key to an attacker-chosen host. The feature is
+    // off by default (empty allowlist => all targets rejected).
+    if (!allowedControllerOrigins.has(targetUrl.origin)) {
+      return ctx.json(
+        {
+          detail:
+            "target controller origin is not allowlisted; set VLLM_STUDIO_CONTROLLER_ROUTE_ALLOWLIST",
+        },
+        { status: 403 }
+      );
+    }
     const suffix = ctx.req.path.replace(/^\/controllers\/route\/?/, "");
     const upstream = new URL(suffix, `${targetUrl.toString().replace(/\/+$/, "")}/`);
     for (const [key, value] of new URL(ctx.req.url).searchParams.entries()) {
@@ -85,6 +121,9 @@ export const createApp = (context: AppContext): Hono => {
     if (ctx.req.method !== "GET" && ctx.req.method !== "HEAD") {
       init.body = await ctx.req.raw.clone().arrayBuffer();
     }
+    // Do not auto-follow redirects: an allowlisted-but-compromised target must
+    // not be able to bounce this request (with the forwarded key) elsewhere.
+    init.redirect = "manual";
     const response = await fetch(upstream, init);
     return new Response(response.body, {
       status: response.status,

@@ -1,10 +1,71 @@
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  STUDIO_TOKEN_COOKIE,
+  STUDIO_TOKEN_HEADER,
+  presentedToken,
+  resolveAccessPosture,
+  timingSafeStringEqual,
+} from "@/lib/auth/access";
+
+const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+function denyResponse(isApi: boolean, status: number, message: string): NextResponse {
+  if (isApi) {
+    return new NextResponse(JSON.stringify({ error: message }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new NextResponse(message, { status });
+}
+
+// Broad access gate. The frontend hosts an in-process agent with shell/filesystem
+// tools, so every route is privileged. See `@/lib/auth/access` for posture rules;
+// crown-jewel API routes additionally self-check via `@/lib/auth/guard`. Returns
+// a response when access is denied (or a cookie-setting redirect for the one-time
+// `?token=` bootstrap), or null when the request may proceed.
+function enforceAccess(request: NextRequest): NextResponse | null {
+  const posture = resolveAccessPosture();
+  if (posture.kind === "allow") return null;
+
+  const url = request.nextUrl;
+  const isApi = url.pathname.startsWith("/api/");
+
+  // One-time bootstrap: `?token=<secret>` on a navigation sets an http-only
+  // cookie and redirects to the clean URL.
+  const queryToken = url.searchParams.get("token");
+  if (queryToken && timingSafeStringEqual(queryToken.trim(), posture.token)) {
+    const clean = url.clone();
+    clean.searchParams.delete("token");
+    const redirect = NextResponse.redirect(clean);
+    redirect.cookies.set(STUDIO_TOKEN_COOKIE, posture.token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: url.protocol === "https:",
+      path: "/",
+      maxAge: TOKEN_MAX_AGE_SECONDS,
+    });
+    return redirect;
+  }
+
+  const presented = presentedToken(
+    request.headers.get(STUDIO_TOKEN_HEADER),
+    request.cookies.get(STUDIO_TOKEN_COOKIE)?.value,
+  );
+  if (presented && timingSafeStringEqual(presented, posture.token)) return null;
+
+  return denyResponse(isApi, 401, "Unauthorized");
+}
 
 /**
- * Access logging proxy for security monitoring.
- * Logs all requests with IP, path, user agent, and auth status.
+ * Access gate + logging proxy for security monitoring.
+ * Enforces the token posture, then logs allowed requests with IP, path, user
+ * agent, and auth status.
  */
 export function proxy(request: NextRequest) {
+  const denied = enforceAccess(request);
+  if (denied) return denied;
+
   const start = Date.now();
 
   const clientIp =

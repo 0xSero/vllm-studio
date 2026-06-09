@@ -9,6 +9,7 @@ import {
 } from "@/lib/agent/contracts/turn";
 import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
 import type { PiAgentSession, PiAgentStatus } from "@/lib/agent/pi-runtime-types";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -136,6 +137,8 @@ function commandResult(
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   let rawBody: unknown;
   try {
     rawBody = await request.json();

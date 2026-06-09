@@ -178,6 +178,12 @@ const getLaunchCommandOverride = (recipe: Recipe): string[] | null => {
   if (typeof override !== "string" || !override.trim()) {
     return null;
   }
+  // A recipe launch_command/custom_command is arbitrary-binary execution as the
+  // controller user. Honour it only when the operator has opted in; otherwise
+  // ignore the override and build the command from the structured recipe fields.
+  if (process.env["VLLM_STUDIO_ALLOW_CUSTOM_LAUNCH_COMMAND"] !== "true") {
+    return null;
+  }
   const command = splitLaunchCommand(override);
   return command.length > 0 ? command : null;
 };

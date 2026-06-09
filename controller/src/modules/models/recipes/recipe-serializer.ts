@@ -104,7 +104,13 @@ export const recipeSchema = z.object({
   gpu_memory_utilization: z.coerce.number().default(0.9),
   kv_cache_dtype: z.string().default("auto"),
   max_num_seqs: z.coerce.number().int().default(256),
-  trust_remote_code: z.coerce.boolean().default(true),
+  // Defaults to true (unchanged from before) so launching models that need
+  // custom modeling code keeps working out of the box. Security-conscious
+  // operators can flip the default off with
+  // VLLM_STUDIO_DEFAULT_TRUST_REMOTE_CODE=false.
+  trust_remote_code: z.coerce
+    .boolean()
+    .default(process.env["VLLM_STUDIO_DEFAULT_TRUST_REMOTE_CODE"] !== "false"),
   tool_call_parser: z.string().nullable().optional(),
   reasoning_parser: z.string().nullable().optional(),
   enable_auto_tool_choice: z.coerce.boolean().default(false),

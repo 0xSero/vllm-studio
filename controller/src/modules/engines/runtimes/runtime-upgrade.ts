@@ -24,7 +24,12 @@ export interface RuntimeUpgradeOptions {
 }
 
 const resolveCommand = (command: string | undefined, envKey: string): string | null => {
-  if (command?.trim()) return command.trim();
+  // A request-supplied command is arbitrary-binary execution as the controller
+  // user. Ignore it unless the operator has explicitly opted in; the
+  // operator-configured env command (and the built-in pip/uv path) still work.
+  const allowRequestCommand =
+    process.env["VLLM_STUDIO_ALLOW_RUNTIME_UPGRADE_COMMAND"] === "true";
+  if (allowRequestCommand && command?.trim()) return command.trim();
   return getUpgradeCommandFromEnvironment(envKey);
 };
 

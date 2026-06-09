@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSettings, saveApiSettings, maskApiKey, ApiSettings } from "@/lib/api-settings";
+import { requireApiAccess } from "@/lib/auth/guard";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
@@ -21,6 +24,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { backendUrl, apiKey, voiceUrl, voiceModel } = body as Partial<ApiSettings>;

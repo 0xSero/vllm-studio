@@ -6,12 +6,15 @@ services:
   postgres:
     image: postgres:16
     container_name: vllm-studio-postgres
+    # Bind to loopback only — the native controller connects from the same host.
+    # Do not expose Postgres on all interfaces.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=vllm_studio
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      # Set POSTGRES_PASSWORD in .env.local; the default is for local dev only.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-vllm_studio}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     restart: unless-stopped

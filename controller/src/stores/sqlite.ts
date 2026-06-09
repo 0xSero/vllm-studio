@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { chmodSync } from "node:fs";
 
 const OBSOLETE_TABLES = [
   "jobs",
@@ -21,6 +22,15 @@ const dropObsoleteTables = (db: Database): void => {
 export const openSqliteDatabase = (dbPath: string): Database => {
   const db = new Database(dbPath);
   db.run("PRAGMA busy_timeout = 5000");
+  // The DB can hold recipe env_vars / launch_command (potential secrets); keep
+  // it owner-only rather than relying on the process umask.
+  if (dbPath !== ":memory:") {
+    try {
+      chmodSync(dbPath, 0o600);
+    } catch {
+      // Best effort: some filesystems (or in-memory paths) do not support chmod.
+    }
+  }
   dropObsoleteTables(db);
   return db;
 };
