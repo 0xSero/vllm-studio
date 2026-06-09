@@ -22,7 +22,6 @@ import {
   acceptRuntimeSeq,
   adoptExternalCursor,
   commitRuntimeSeq,
-  createRuntimeCursor,
   reconnectAfter,
 } from "@/lib/agent/sessions/runtime-cursor";
 import { createSessionRuntimeController } from "@/lib/agent/sessions/session-runtime-controller";
@@ -39,20 +38,20 @@ const fixture = JSON.parse(
 // ----- cursor gate (runtime-cursor.ts) -----
 
 test("cursor gate passes seq-less payloads through without advancing", () => {
-  const cursor = createRuntimeCursor();
+  const cursor = adoptExternalCursor();
   assert.deepEqual(acceptRuntimeSeq(cursor, undefined), { accept: true, cursor });
-  const at7 = createRuntimeCursor(7);
+  const at7 = adoptExternalCursor(7);
   assert.deepEqual(acceptRuntimeSeq(at7, undefined), { accept: true, cursor: at7 });
 });
 
 test("cursor gate rejects equal and stale seqs, accepts strictly newer", () => {
-  const at5 = createRuntimeCursor(5);
+  const at5 = adoptExternalCursor(5);
   assert.deepEqual(acceptRuntimeSeq(at5, 5), { accept: false, cursor: at5 });
   assert.deepEqual(acceptRuntimeSeq(at5, 4), { accept: false, cursor: at5 });
   assert.equal(acceptRuntimeSeq(at5, 6).accept, true);
   assert.equal(acceptRuntimeSeq(at5, 6).cursor.receivedSeq, 6);
   // No persisted cursor behaves as 0.
-  assert.equal(acceptRuntimeSeq(createRuntimeCursor(), 1).accept, true);
+  assert.equal(acceptRuntimeSeq(adoptExternalCursor(), 1).accept, true);
 });
 
 test("adopting an external cursor moves the in-memory gate backwards", () => {
@@ -69,7 +68,7 @@ test("adopting an external cursor moves the in-memory gate backwards", () => {
 });
 
 test("committed cursor lags received and reconnect resumes from received", () => {
-  const cursor = acceptRuntimeSeq(createRuntimeCursor(2), 5).cursor;
+  const cursor = acceptRuntimeSeq(adoptExternalCursor(2), 5).cursor;
   assert.equal(cursor.receivedSeq, 5);
   assert.equal(cursor.committedSeq, 2);
   // Reconnect must use the highest RECEIVED seq: an unflushed coalesced delta
@@ -79,7 +78,7 @@ test("committed cursor lags received and reconnect resumes from received", () =>
   assert.equal(committed.committedSeq, 5);
   // Commit is monotonic.
   assert.equal(commitRuntimeSeq(committed, 3).committedSeq, 5);
-  assert.equal(reconnectAfter(createRuntimeCursor()), 0);
+  assert.equal(reconnectAfter(adoptExternalCursor()), 0);
 });
 
 // ----- replay cursor after navigation hydration (session/helpers.ts) -----

@@ -6,7 +6,7 @@
 // events or gate event seqs.
 
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
-import { newId, nowLabel, piSessionIdFromEvent } from "@/lib/agent/session";
+import { drainQueueAfterAgentEnd, newId, nowLabel, piSessionIdFromEvent } from "@/lib/agent/session";
 import {
   loadRuntimeStatus,
   runtimeContextUsage,
@@ -16,7 +16,6 @@ import {
   type RuntimeStatus,
 } from "./api";
 import { reduceSessionEvent, type SessionStreamContext } from "./pi-event-applier";
-import { drainQueuedTurnAfterAgentEnd } from "./queue-drain";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
@@ -222,19 +221,12 @@ export function createSessionRuntimeController(
         activeAssistantId: undefined,
       }));
       // Queue display reconciliation only: Pi drains its own follow_up queue
-      // server-side, so the local submit is deliberately inert.
-      drainQueuedTurnAfterAgentEnd(
-        {
-          submitPromptRef: { current: async () => undefined },
-          tabsRef: {
-            get current() {
-              const session = getSession(sessionId);
-              return session ? [session] : [];
-            },
-          },
-          updateSession: commit,
-        },
-        sessionId,
+      // server-side, so locally we just drop the drained head and any
+      // already-sent items from the visible queue.
+      commit(sessionId, (session) =>
+        (session.queue ?? []).length === 0
+          ? session
+          : { ...session, queue: drainQueueAfterAgentEnd(session.queue ?? []).remaining },
       );
       return;
     }

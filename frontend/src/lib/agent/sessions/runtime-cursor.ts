@@ -13,10 +13,6 @@ export type RuntimeCursor = {
   committedSeq: number | undefined;
 };
 
-export function createRuntimeCursor(committedSeq?: number): RuntimeCursor {
-  return { receivedSeq: committedSeq, committedSeq };
-}
-
 /**
  * Gate an incoming payload. Seq-less payloads (status frames) always pass and
  * never advance the cursor. A seq at or below the highest received one is a
@@ -45,7 +41,7 @@ export function commitRuntimeSeq(cursor: RuntimeCursor, seq: number | undefined)
  * gate backwards. Making this monotonic reintroduces the dropped-second-turn
  * bug.
  */
-export function adoptExternalCursor(sessionLastEventSeq: number | undefined): RuntimeCursor {
+export function adoptExternalCursor(sessionLastEventSeq?: number): RuntimeCursor {
   return { receivedSeq: sessionLastEventSeq, committedSeq: sessionLastEventSeq };
 }
 

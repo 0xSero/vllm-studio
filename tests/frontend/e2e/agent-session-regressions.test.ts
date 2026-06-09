@@ -38,7 +38,7 @@ import {
   reduceSessionEvent,
   type SessionStreamContext,
 } from "@/lib/agent/sessions/pi-event-applier";
-import { drainQueuedTurnAfterAgentEnd } from "@/lib/agent/sessions/queue-drain";
+import { drainQueueAfterAgentEnd } from "@/lib/agent/session/helpers";
 import {
   createTextDeltaCoalescer,
   textDeltaFromPiEvent,
@@ -1663,51 +1663,19 @@ test("forking while already split replaces the sibling pane instead of adding a 
   );
 });
 
-test("follow-up queue drains after agent end while steer messages stay out of the next turn", async () => {
-  let session = makeSession("s-main", {
-    queue: [
-      { id: "q-steer", mode: "steer", text: "adjust course" },
-      { id: "q-next", mode: "follow_up", text: "next prompt" },
-      { id: "q-after", mode: "follow_up", text: "after that" },
-    ],
-  });
-  const scheduled: Array<() => void> = [];
-  const submitted: unknown[] = [];
-
-  drainQueuedTurnAfterAgentEnd(
-    {
-      tabsRef: {
-        get current() {
-          return [session];
-        },
-      },
-      updateSession: (_sessionId, patch) => {
-        session = patch(session);
-      },
-      schedule: (callback) => scheduled.push(callback),
-      submitPromptRef: {
-        current: async (args) => {
-          submitted.push(args);
-        },
-      },
-    },
-    "s-main",
-  );
-
-  assert.deepEqual(session.queue, [
+test("follow-up queue drains after agent end while steer messages stay out of the next turn", () => {
+  // Pi drains its own follow_up queue server-side; the client reconciles the
+  // visible queue: the drained head leaves, later unsent follow-ups stay, and
+  // steer items never carry into the next turn.
+  const { next, remaining } = drainQueueAfterAgentEnd([
+    { id: "q-steer", mode: "steer", text: "adjust course" },
+    { id: "q-next", mode: "follow_up", text: "next prompt" },
     { id: "q-after", mode: "follow_up", text: "after that" },
   ]);
-  assert.equal(scheduled.length, 1);
-  scheduled[0]?.();
-  await Promise.resolve();
-  assert.deepEqual(submitted, [
-    {
-      text: "next prompt",
-      prompt: "next prompt",
-      displayText: "next prompt",
-      userText: "next prompt",
-      targetSessionId: "s-main",
-    },
+
+  assert.equal(next?.text, "next prompt");
+  assert.deepEqual(remaining, [
+    { id: "q-after", mode: "follow_up", text: "after that" },
   ]);
 });
 
