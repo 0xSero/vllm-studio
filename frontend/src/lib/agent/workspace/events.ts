@@ -3,10 +3,7 @@
 // receivers reference the same string.
 
 export const SESSIONS_CHANGED_EVENT = "vllm-studio.agent.sessionsChanged";
-export const PROJECTS_CHANGED_EVENT = "vllm-studio.agent.projectsChanged";
 export const ACTIVE_AGENT_SESSIONS_EVENT = "vllm-studio.agent.activeSessions";
-export const ACTIVE_AGENT_SESSION_RENAME_EVENT = "vllm-studio.agent.activeSessionRename";
-export const ACTIVE_AGENT_SESSION_OPEN_EVENT = "vllm-studio.agent.activeSessionOpen";
 export const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";
 export const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
 

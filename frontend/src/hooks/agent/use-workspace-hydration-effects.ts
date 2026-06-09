@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore, type RefObject } from "react";
 
 import type { ProjectsContextValue } from "@/lib/agent/projects/context";
 import type { ToolsContextValue } from "@/lib/agent/tools/context";
+import { workspaceCommands } from "@/lib/agent/workspace/commands";
 import {
   subscribeWorkspaceWindowEvents,
   type WorkspaceDispatch,
@@ -52,7 +53,12 @@ export function useWorkspaceHydrationEffects({
         });
       }
 
-      return subscribeWorkspaceWindowEvents(window, dispatch);
+      workspaceCommands().bind(dispatch);
+      const unsubscribe = subscribeWorkspaceWindowEvents(window, dispatch);
+      return () => {
+        workspaceCommands().unbind();
+        unsubscribe();
+      };
     },
     [dispatch, projectsRef, toolsRef],
   );

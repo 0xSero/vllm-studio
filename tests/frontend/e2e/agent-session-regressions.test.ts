@@ -55,8 +55,7 @@ import {
   adoptExternalCursor,
   shouldSubscribeRuntimeEvents,
 } from "@/lib/agent/sessions/runtime-cursor";
-import { ACTIVE_AGENT_SESSION_OPEN_EVENT } from "@/lib/agent/workspace/events";
-import { subscribeWorkspaceWindowEvents } from "@/lib/agent/workspace/effects";
+import { workspaceCommands } from "@/lib/agent/workspace/commands";
 import { reducer } from "@/lib/agent/workspace/reducer";
 import type {
   WorkspaceAction,
@@ -120,50 +119,6 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
   };
 }
 
-function makeWorkspaceWindowHarness() {
-  const listeners = new Map<string, Set<(event: Event) => void>>();
-  class HarnessCustomEvent<T> extends Event {
-    detail: T;
-    constructor(type: string, init: { detail: T }) {
-      super(type);
-      this.detail = init.detail;
-    }
-  }
-  return {
-    window: {
-      Event,
-      CustomEvent: HarnessCustomEvent as typeof CustomEvent,
-      dispatchEvent: (event: Event) => {
-        for (const listener of listeners.get(event.type) ?? []) listener(event);
-        return true;
-      },
-      addEventListener: (
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-      ) => {
-        const set = listeners.get(type) ?? new Set<(event: Event) => void>();
-        set.add(
-          typeof listener === "function"
-            ? listener
-            : (event: Event) => listener.handleEvent(event),
-        );
-        listeners.set(type, set);
-      },
-      removeEventListener: (
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-      ) => {
-        const set = listeners.get(type);
-        if (!set) return;
-        set.delete(
-          typeof listener === "function"
-            ? listener
-            : (event: Event) => listener.handleEvent(event),
-        );
-      },
-    },
-  };
-}
 
 test("browser navigate primes the URL while the browser surface is mounting", async () => {
   let browserUrl = "";
@@ -1008,31 +963,24 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
 });
 
 test("active local sidebar rows focus by pane and tab without cloning identity", () => {
+  // Sidebar commands dispatch directly into the bound workspace; while
+  // unbound (workspace unmounted) they no-op silently, matching the old
+  // no-listener window-event semantics.
   const actions: WorkspaceAction[] = [];
-  const { window } = makeWorkspaceWindowHarness();
-  const unsubscribe = subscribeWorkspaceWindowEvents(window, (action) =>
-    actions.push(action),
-  );
+  workspaceCommands().focusSession("p-unbound", "s-unbound");
+  assert.equal(actions.length, 0);
 
-  window.dispatchEvent(
-    new window.CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
-      detail: {
-        paneId: "p-main",
-        tabId: "s-local",
-        projectId: "project-a",
-        cwd: "/workspace/project-a",
-        title: "Local chat",
-        mode: "focus",
-      },
-    }),
-  );
-  unsubscribe();
+  workspaceCommands().bind((action) => actions.push(action));
+  workspaceCommands().focusSession("p-main", "s-local");
+  workspaceCommands().renameSession("p-main", "s-local", "Renamed chat");
+  workspaceCommands().renameSession("p-main", "s-local", "   ");
+  workspaceCommands().unbind();
+  workspaceCommands().focusSession("p-main", "s-local");
 
-  assert.equal(actions.length, 2);
-  assert.equal(actions[0].type, "focusPaneSession");
-  assert.equal(actions[0].paneId, "p-main");
-  assert.equal(actions[0].sessionId, "s-local");
-  assert.equal(actions[1].type, "workspaceUnmounted");
+  assert.deepEqual(actions, [
+    { type: "focusPaneSession", paneId: "p-main", sessionId: "s-local" },
+    { type: "renameTab", paneId: "p-main", tabId: "s-local", title: "Renamed chat" },
+  ]);
 });
 
 test("new chat replaces an empty starter with fresh identity", () => {

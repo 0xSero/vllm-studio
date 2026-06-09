@@ -14,8 +14,6 @@ import {
 } from "./store";
 import { writeActiveSessions, writePaneState } from "./persistence";
 import {
-  ACTIVE_AGENT_SESSION_OPEN_EVENT,
-  ACTIVE_AGENT_SESSION_RENAME_EVENT,
   ACTIVE_AGENT_SESSIONS_EVENT,
   PROJECTS_LOADED_EVENT,
   SESSIONS_CHANGED_EVENT,
@@ -112,35 +110,10 @@ function eventDetail(event: Event): unknown {
   return "detail" in event ? event.detail : undefined;
 }
 
-function stringField(value: Record<string, unknown>, key: string): string | undefined {
-  const field = value[key];
-  return typeof field === "string" && field.trim() ? field : undefined;
-}
-
 export function subscribeWorkspaceWindowEvents(
   workspaceWindow: WorkspaceWindow,
   dispatch: WorkspaceDispatch,
 ): () => void {
-  const onRename = (event: Event) => {
-    const detail = eventDetail(event);
-    if (!isRecord(detail)) return;
-    const paneId = stringField(detail, "paneId");
-    const tabId = stringField(detail, "tabId");
-    const title = stringField(detail, "title");
-    if (!paneId || !tabId || !title) return;
-    dispatch({ type: "renameTab", paneId, tabId, title });
-  };
-  // Sidebar rows with a piSessionId navigate via href (URL nav owns persisted
-  // session opening); only active local sessions without one fire this event,
-  // always with mode "focus".
-  const onOpen = (event: Event) => {
-    const detail = eventDetail(event);
-    if (!isRecord(detail)) return;
-    const paneId = stringField(detail, "paneId");
-    const tabId = stringField(detail, "tabId");
-    if (!paneId || !tabId) return;
-    dispatch({ type: "focusPaneSession", paneId, sessionId: tabId });
-  };
   // Fired by ProjectsProvider once its first load settles. We hold off on
   // hydrating active-session snapshots until then so we can filter sessions
   // whose project is no longer installed.
@@ -160,13 +133,9 @@ export function subscribeWorkspaceWindowEvents(
     });
   };
 
-  workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
-  workspaceWindow.addEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
   workspaceWindow.addEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
 
   return () => {
-    workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_RENAME_EVENT, onRename);
-    workspaceWindow.removeEventListener(ACTIVE_AGENT_SESSION_OPEN_EVENT, onOpen);
     workspaceWindow.removeEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
     dispatch({ type: "workspaceUnmounted" });
   };

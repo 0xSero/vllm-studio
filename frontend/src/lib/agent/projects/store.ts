@@ -1,8 +1,4 @@
-import {
-  PROJECTS_CHANGED_EVENT,
-  PROJECTS_LOADED_EVENT,
-  SESSIONS_CHANGED_EVENT,
-} from "@/lib/agent/workspace/events";
+import { PROJECTS_LOADED_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
 import * as defaultApi from "./api";
 import { readSelectedProjectId, writeSelectedProjectId } from "./persistence";
 import { projectPathById, resolveSelectedProjectId } from "./selection";
@@ -56,7 +52,6 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
   const writeSelection = dependencies.writeSelectedProjectId ?? writeSelectedProjectId;
   const getWindow = dependencies.getWindow ?? getBrowserWindow;
   const listeners = new Set<() => void>();
-  let windowTarget: BrowserWindowLike | null = null;
   let started = false;
   let firstLoad = false;
   let lastGitFetch: string | null = null;
@@ -127,22 +122,14 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     }
   };
 
-  const onProjectsChanged = (): void => {
-    void refresh();
-  };
-
   const start = (): void => {
     if (started) return;
     started = true;
-    windowTarget = getWindow();
-    windowTarget?.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged);
     void refresh();
   };
 
   const stop = (): void => {
     if (!started || listeners.size > 0) return;
-    windowTarget?.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged);
-    windowTarget = null;
     started = false;
   };
 
@@ -163,7 +150,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     },
     upsertProject: (project) => {
       replaceProjects([project, ...snapshot.projects.filter((entry) => entry.id !== project.id)]);
-      notify(getWindow(), PROJECTS_CHANGED_EVENT);
+      void refresh();
     },
     removeProject: async (id) => {
       await api.removeProject(id);
@@ -172,7 +159,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       const selectedId = previousSelectedId === id ? null : previousSelectedId;
       update({ ...snapshot, projects, selectedId });
       if (selectedId !== previousSelectedId) writeSelection(selectedId);
-      notify(getWindow(), PROJECTS_CHANGED_EVENT);
+      void refresh();
     },
     loadGitSummary,
     initGitForActiveProject: async () => {
@@ -180,7 +167,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       if (!cwd) return;
       await api.initGit(cwd);
       await loadGitSummary(cwd);
-      notify(getWindow(), PROJECTS_CHANGED_EVENT);
+      void refresh();
       notify(getWindow(), SESSIONS_CHANGED_EVENT);
     },
   };

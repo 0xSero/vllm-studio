@@ -7,10 +7,7 @@ import { safeJson } from "@/lib/agent/safe-json";
 import { cleanSessionTitle } from "@/lib/agent/session/helpers";
 import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/lib/agent/session/prefs";
 import { useProjectSessionsReloadEffect } from "@/hooks/agent/use-projects-nav-section-effects";
-import {
-  ACTIVE_AGENT_SESSION_OPEN_EVENT,
-  ACTIVE_AGENT_SESSION_RENAME_EVENT,
-} from "@/lib/agent/workspace/events";
+import { workspaceCommands } from "@/lib/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
@@ -262,33 +259,15 @@ export function ActiveSessionRow({
           ? `/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`
           : undefined
       }
-      onOpen={() => {
-        window.dispatchEvent(
-          new CustomEvent(ACTIVE_AGENT_SESSION_OPEN_EVENT, {
-            detail: {
-              paneId: session.paneId,
-              tabId: session.tabId,
-              piSessionId: session.piSessionId,
-              projectId: project.id,
-              cwd: session.cwd || project.path,
-              title: label,
-              mode: "focus",
-            },
-          }),
-        );
-      }}
+      onOpen={() => workspaceCommands().focusSession(session.paneId, session.tabId)}
       onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
-      onRenameCommit={(trimmed) => {
-        window.dispatchEvent(
-          new CustomEvent(ACTIVE_AGENT_SESSION_RENAME_EVENT, {
-            detail: {
-              paneId: session.paneId,
-              tabId: session.tabId,
-              title: cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label,
-            },
-          }),
-        );
-      }}
+      onRenameCommit={(trimmed) =>
+        workspaceCommands().renameSession(
+          session.paneId,
+          session.tabId,
+          cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label,
+        )
+      }
       onRememberTitle={() => rememberAgentSessionNavTitle(session.piSessionId, label)}
       onDragStart={(event) => setAgentSessionDragData(event, session)}
       isRunning={session.status !== "idle" && session.status !== "done"}
