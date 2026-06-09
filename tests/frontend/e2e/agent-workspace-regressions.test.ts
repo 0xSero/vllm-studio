@@ -1,0 +1,471 @@
+// Characterization tests for the workspace/pane layer ahead of its ownership
+// consolidation. These pin CURRENT behavior of persistence round-trips, the
+// legacy layout fallback, the active-sessions broadcast, the hydration
+// one-shot guard, the sessions-refresh double fire, and URL-nav dedup — so the
+// refactor can verify against a fixed contract instead of live users.
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { runWorkspaceEffect, type WorkspaceEffectDeps } from "@/lib/agent/workspace/effects";
+import { ACTIVE_AGENT_SESSIONS_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
+import { loadInitialFromStorage, writePaneState } from "@/lib/agent/workspace/persistence";
+import { reducer } from "@/lib/agent/workspace/reducer";
+import {
+  PANE_LAYOUT_KEY,
+  PANE_STATE_KEY,
+  restorePersistedPaneState,
+  type WorkspaceStorage,
+} from "@/lib/agent/workspace/store";
+import type { WorkspaceState } from "@/lib/agent/workspace/types";
+import { makeFreshTab } from "@/lib/agent/session/helpers";
+import type { Session } from "@/lib/agent/sessions/types";
+import type { ToolSelection } from "@/lib/agent/tools/types";
+
+function makeSession(id: string, patch: Partial<Session> = {}): Session {
+  return {
+    id,
+    runtimeSessionId: `rt-${id}`,
+    piSessionId: null,
+    title: "New session",
+    messages: [],
+    status: "idle",
+    error: "",
+    input: "",
+    ...patch,
+  };
+}
+
+function makeState(session = makeSession("s-main")): WorkspaceState {
+  return {
+    sessions: new Map([[session.id, session]]),
+    models: [],
+    selectedModel: "",
+    modelsLoading: false,
+    layout: { kind: "leaf", paneId: "p-main" },
+    panesById: new Map([["p-main", { sessionId: session.id, runtimeSessionId: "rt-pane-main" }]]),
+    focusedPaneId: "p-main",
+    setupWarning: "",
+    error: "",
+    hydrated: true,
+    lastHandledNavKey: "",
+  };
+}
+
+function makeStorage(): WorkspaceStorage & { writes: string[]; map: Map<string, string> } {
+  const map = new Map<string, string>();
+  const writes: string[] = [];
+  return {
+    map,
+    writes,
+    getItem: (key) => map.get(key) ?? null,
+    setItem: (key, value) => {
+      writes.push(key);
+      map.set(key, value);
+    },
+    removeItem: (key) => void map.delete(key),
+  };
+}
+
+type TimerRecord = { handler: () => void; delay: number };
+
+function makeWindowHarness() {
+  const listeners = new Map<string, Set<(event: Event) => void>>();
+  const fired: { type: string; detail?: unknown }[] = [];
+  const timers: TimerRecord[] = [];
+  class HarnessCustomEvent<T> extends Event {
+    detail: T;
+    constructor(type: string, init: { detail: T }) {
+      super(type);
+      this.detail = init.detail;
+    }
+  }
+  const window = {
+    Event,
+    CustomEvent: HarnessCustomEvent as typeof CustomEvent,
+    dispatchEvent: (event: Event) => {
+      fired.push({ type: event.type, detail: "detail" in event ? event.detail : undefined });
+      for (const listener of listeners.get(event.type) ?? []) listener(event);
+      return true;
+    },
+    addEventListener: ((type: string, listener: EventListenerOrEventListenerObject) => {
+      const set = listeners.get(type) ?? new Set<(event: Event) => void>();
+      set.add(
+        typeof listener === "function" ? listener : (event: Event) => listener.handleEvent(event),
+      );
+      listeners.set(type, set);
+    }) as Window["addEventListener"],
+    removeEventListener: (() => undefined) as Window["removeEventListener"],
+    setTimeout: (handler: () => void, timeout: number) => {
+      timers.push({ handler, delay: timeout });
+      return timers.length;
+    },
+  };
+  return { window, fired, timers };
+}
+
+function makeEffectDeps(overrides: Partial<WorkspaceEffectDeps> = {}) {
+  const storage = makeStorage();
+  const harness = makeWindowHarness();
+  const replays: { paneId: string; piSessionId: string }[] = [];
+  const deps: WorkspaceEffectDeps = {
+    storage,
+    window: harness.window,
+    api: {},
+    queueReplay: (paneId, piSessionId) => replays.push({ paneId, piSessionId }),
+    ...overrides,
+  };
+  return { deps, storage, harness, replays };
+}
+
+// ----- persistence round-trip (writePaneState -> loadInitialFromStorage) -----
+
+test("pane state round-trips durable session metadata and drops transcripts", () => {
+  const rich = makeSession("s-rich", {
+    runtimeSessionId: "rt-rich",
+    piSessionId: "pi-rich",
+    title: "GPU planning",
+    input: "draft text",
+    lastEventSeq: 17,
+    status: "running",
+    startedAt: "2026-06-09T10:00:00.000Z",
+    tokenStats: { read: 10, write: 5, current: 15 },
+    queue: [{ id: "q-1", mode: "follow_up", text: "next", sent: true }],
+    messages: [{ id: "m-1", role: "user", text: "hello" }],
+  });
+  const starter = makeSession("s-starter");
+  const state: WorkspaceState = {
+    ...makeState(rich),
+    sessions: new Map([
+      [rich.id, rich],
+      [starter.id, starter],
+    ]),
+    layout: {
+      kind: "split",
+      direction: "vertical",
+      ratio: 0.5,
+      a: { kind: "leaf", paneId: "p-main" },
+      b: { kind: "leaf", paneId: "p-side" },
+    },
+    panesById: new Map([
+      ["p-main", { sessionId: rich.id, runtimeSessionId: "rt-pane-main" }],
+      ["p-side", { sessionId: starter.id, runtimeSessionId: "rt-pane-side" }],
+    ]),
+    focusedPaneId: "p-side",
+  };
+  const storage = makeStorage();
+  const selection: ToolSelection = {
+    plugins: [{ id: "plug-1" } as ToolSelection["plugins"][number]],
+    skills: [],
+    promptTemplates: [],
+  };
+
+  writePaneState(storage, state, (sessionId) => (sessionId === rich.id ? selection : null));
+  const loaded = loadInitialFromStorage(storage);
+
+  assert.deepEqual(loaded.workspace.layout, state.layout);
+  assert.equal(loaded.workspace.focusedPaneId, "p-side");
+  const restoredRich = loaded.workspace.sessions?.get("s-rich");
+  assert.equal(restoredRich?.piSessionId, "pi-rich");
+  assert.equal(restoredRich?.runtimeSessionId, "rt-rich");
+  assert.equal(restoredRich?.title, "GPU planning");
+  assert.equal(restoredRich?.input, "draft text");
+  assert.equal(restoredRich?.lastEventSeq, 17);
+  assert.deepEqual(restoredRich?.queue, [{ id: "q-1", mode: "follow_up", text: "next", sent: true }]);
+  // Transcripts live in canonical session storage, never pane-state.
+  assert.deepEqual(restoredRich?.messages, []);
+  assert.equal(loaded.workspace.panesById?.get("p-main")?.sessionId, "s-rich");
+  assert.deepEqual(loaded.selections.get("s-rich"), selection);
+});
+
+test("restore mints a fresh runtime id when the persisted pane lacks one", () => {
+  // CURRENT behavior, intentionally changed later by the consolidation: a
+  // missing pane-level runtimeSessionId gets a brand-new id on restore, which
+  // orphans a still-running runtime after a crash. The session-level id is the
+  // durable one.
+  const tab = { id: "s-1", runtimeSessionId: "rt-tab-1", title: "T" };
+  const persisted = (paneRuntime: string | undefined) =>
+    JSON.stringify({
+      version: 1,
+      layout: { kind: "leaf", paneId: "p-1" },
+      focusedPaneId: "p-1",
+      panes: {
+        "p-1": { activeTabId: "s-1", tabs: [tab], ...(paneRuntime ? { runtimeSessionId: paneRuntime } : {}) },
+      },
+    });
+
+  const minted = restorePersistedPaneState(persisted(undefined));
+  assert.match(minted?.panesById.get("p-1")?.runtimeSessionId ?? "", /^rt-/);
+  assert.notEqual(minted?.panesById.get("p-1")?.runtimeSessionId, "rt-tab-1");
+
+  const kept = restorePersistedPaneState(persisted("rt-keep"));
+  assert.equal(kept?.panesById.get("p-1")?.runtimeSessionId, "rt-keep");
+  // The session itself always restores its own id.
+  assert.equal(kept?.sessions.get("s-1")?.runtimeSessionId, "rt-tab-1");
+});
+
+test("legacy PANE_LAYOUT_KEY fallback restores layout with fresh starters", () => {
+  const storage = makeStorage();
+  storage.setItem(
+    PANE_LAYOUT_KEY,
+    JSON.stringify({
+      kind: "split",
+      direction: "vertical",
+      ratio: 0.5,
+      a: { kind: "leaf", paneId: "p-a" },
+      b: { kind: "leaf", paneId: "p-b" },
+    }),
+  );
+
+  const loaded = loadInitialFromStorage(storage);
+  assert.deepEqual(
+    [...(loaded.workspace.panesById?.keys() ?? [])],
+    ["p-a", "p-b"],
+  );
+  for (const pane of loaded.workspace.panesById?.values() ?? []) {
+    const session = loaded.workspace.sessions?.get(pane.sessionId);
+    assert.equal(session?.piSessionId, null);
+    assert.equal(session?.messages.length, 0);
+    assert.match(pane.runtimeSessionId, /^rt-/);
+  }
+
+  // Corrupt legacy data degrades to an empty workspace, not a crash.
+  const broken = makeStorage();
+  broken.setItem(PANE_LAYOUT_KEY, "{not json");
+  assert.deepEqual(loadInitialFromStorage(broken).workspace, {});
+
+  // PANE_STATE_KEY always wins over the legacy key.
+  const both = makeStorage();
+  both.setItem(PANE_LAYOUT_KEY, JSON.stringify({ kind: "leaf", paneId: "p-legacy" }));
+  both.setItem(
+    PANE_STATE_KEY,
+    JSON.stringify({
+      version: 1,
+      layout: { kind: "leaf", paneId: "p-modern" },
+      focusedPaneId: "p-modern",
+      panes: { "p-modern": { activeTabId: "s-m", tabs: [{ id: "s-m", runtimeSessionId: "rt-m" }] } },
+    }),
+  );
+  assert.equal(loadInitialFromStorage(both).workspace.focusedPaneId, "p-modern");
+});
+
+// ----- active sessions broadcast (effects.ts) -----
+
+test("active-session broadcasts persist before the event and dedup by content", () => {
+  const session = makeSession("s-live", { runtimeSessionId: "rt-live" });
+  const prev = makeState(session);
+  const withPi = { ...session, piSessionId: "pi-live", title: "Live chat" };
+  const next: WorkspaceState = {
+    ...prev,
+    sessions: new Map([[withPi.id, withPi]]),
+  };
+  const { deps, storage, harness } = makeEffectDeps();
+  const order: string[] = [];
+  const originalSet = storage.setItem.bind(storage);
+  storage.setItem = (key, value) => {
+    if (key === "vllm-studio.agent.activeSessions.snapshot") order.push("persist");
+    originalSet(key, value);
+  };
+  harness.window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, () => order.push("event"));
+
+  const action = {
+    type: "patchSession",
+    sessionId: "s-live",
+    patch: { piSessionId: "pi-live" },
+  } as const;
+  runWorkspaceEffect(action, prev, next, deps);
+
+  const broadcasts = harness.fired.filter((entry) => entry.type === ACTIVE_AGENT_SESSIONS_EVENT);
+  assert.equal(broadcasts.length, 1);
+  const detail = broadcasts[0]?.detail as { sessions: { tabId: string; focused: boolean }[] };
+  assert.equal(detail.sessions.length, 1);
+  assert.equal(detail.sessions[0]?.tabId, "s-live");
+  assert.equal(detail.sessions[0]?.focused, true);
+  assert.deepEqual(order, ["persist", "event"]);
+
+  // Identical prev/next: content key unchanged -> no second broadcast.
+  runWorkspaceEffect(action, next, next, deps);
+  assert.equal(
+    harness.fired.filter((entry) => entry.type === ACTIVE_AGENT_SESSIONS_EVENT).length,
+    1,
+  );
+});
+
+test("broadcasts skip loading placeholders, fall back to pane runtime ids, and wait for hydration", () => {
+  const loading = makeSession("s-loading", { piSessionId: "pi-x", status: "loading" });
+  const ready = makeSession("s-ready", { piSessionId: "pi-y", runtimeSessionId: "" });
+  const base = makeState(ready);
+  const next: WorkspaceState = {
+    ...base,
+    sessions: new Map([
+      [ready.id, ready],
+      [loading.id, loading],
+    ]),
+    layout: {
+      kind: "split",
+      direction: "vertical",
+      ratio: 0.5,
+      a: { kind: "leaf", paneId: "p-main" },
+      b: { kind: "leaf", paneId: "p-loading" },
+    },
+    panesById: new Map([
+      ["p-main", { sessionId: ready.id, runtimeSessionId: "rt-pane-main" }],
+      ["p-loading", { sessionId: loading.id, runtimeSessionId: "rt-pane-loading" }],
+    ]),
+  };
+  const prev: WorkspaceState = { ...next, sessions: new Map([[ready.id, { ...ready, piSessionId: null }]]) };
+  const { deps, harness } = makeEffectDeps();
+
+  runWorkspaceEffect(
+    { type: "patchSession", sessionId: "s-ready", patch: { piSessionId: "pi-y" } },
+    prev,
+    next,
+    deps,
+  );
+  const detail = harness.fired.find((entry) => entry.type === ACTIVE_AGENT_SESSIONS_EVENT)
+    ?.detail as { sessions: { tabId: string; runtimeSessionId: string }[] };
+  assert.deepEqual(
+    detail.sessions.map((entry) => entry.tabId),
+    ["s-ready"],
+  );
+  // Session has no runtime id -> the pane's id is the broadcast fallback.
+  assert.equal(detail.sessions[0]?.runtimeSessionId, "rt-pane-main");
+
+  // Unhydrated workspaces never broadcast (placeholder titles must not
+  // overwrite the snapshot store before replay completes).
+  const { deps: deps2, harness: harness2 } = makeEffectDeps();
+  runWorkspaceEffect(
+    { type: "patchSession", sessionId: "s-ready", patch: { piSessionId: "pi-y" } },
+    { ...prev, hydrated: false },
+    { ...next, hydrated: false },
+    deps2,
+  );
+  assert.equal(
+    harness2.fired.filter((entry) => entry.type === ACTIVE_AGENT_SESSIONS_EVENT).length,
+    0,
+  );
+});
+
+// ----- hydration one-shot guard (reducer.ts) -----
+
+function snapshotFor(paneId: string, tabId: string) {
+  return {
+    projectId: "",
+    cwd: "/workspace/demo",
+    paneId,
+    tabId,
+    runtimeSessionId: `rt-${tabId}`,
+    piSessionId: `pi-${tabId}`,
+    title: "Restored chat",
+    status: "idle",
+    focused: true,
+    updatedAt: "2026-06-09T10:00:00.000Z",
+  };
+}
+
+test("any session content anywhere blocks the entire snapshot restore", () => {
+  // CURRENT (deliberately too-broad) behavior: one pane with content causes
+  // hydrateActiveSessions to skip restoring EVERY pane and just latch
+  // hydrated. The consolidation will narrow this per-pane; update this test
+  // when that lands.
+  const withContent = makeSession("s-content", { piSessionId: "pi-content" });
+  const state = { ...makeState(withContent), hydrated: false };
+
+  const next = reducer(state, {
+    type: "hydrateActiveSessions",
+    snapshots: [snapshotFor("p-other", "s-restored")],
+    projects: [],
+    hasExplicitSessionNav: false,
+  });
+
+  assert.equal(next.hydrated, true);
+  assert.equal(next.sessions, state.sessions);
+  assert.equal(next.panesById, state.panesById);
+});
+
+test("url navigation latches hydration so late restores cannot clobber a fresh chat", () => {
+  const state = { ...makeState(), hydrated: false };
+  const fresh = makeFreshTab();
+
+  const opened = reducer(state, {
+    type: "urlNavRequested",
+    key: "nav-1",
+    project: null,
+    newSession: true,
+    paneId: "p-url",
+    runtimeSessionId: "rt-url",
+    tab: fresh,
+  });
+  assert.equal(opened.hydrated, true);
+  assert.equal(opened.sessions.has(fresh.id), true);
+
+  // The '+ opens an old chat' guard: a late-arriving snapshot restore is a
+  // full no-op once hydrated.
+  const afterRestore = reducer(opened, {
+    type: "hydrateActiveSessions",
+    snapshots: [snapshotFor("p-old", "s-old")],
+    projects: [],
+    hasExplicitSessionNav: false,
+  });
+  assert.equal(afterRestore, opened);
+
+  // A deduped (no-op) navigation must NOT latch hydration.
+  const unhydrated = { ...makeState(), hydrated: false, lastHandledNavKey: "nav-dup" };
+  const deduped = reducer(unhydrated, {
+    type: "urlNavRequested",
+    key: "nav-dup",
+    project: null,
+    newSession: true,
+    paneId: "p-x",
+    runtimeSessionId: "rt-x",
+    tab: makeFreshTab(),
+  });
+  assert.equal(deduped, unhydrated);
+  assert.equal(deduped.hydrated, false);
+});
+
+test("explicit session navigation skips the snapshot restore entirely", () => {
+  const state = { ...makeState(), hydrated: false };
+  const next = reducer(state, {
+    type: "hydrateActiveSessions",
+    snapshots: [snapshotFor("p-old", "s-old")],
+    projects: [],
+    hasExplicitSessionNav: true,
+  });
+  assert.equal(next.hydrated, true);
+  assert.equal(next.sessions, state.sessions);
+});
+
+// ----- sessions-changed refresh double fire (effects.ts) -----
+
+test("session list refreshes fire immediately and again after the settle delay", () => {
+  const session = makeSession("s-named", { piSessionId: "pi-named", title: "Before" });
+  const prev = makeState(session);
+  const renamed = { ...session, title: "After" };
+  const next = { ...prev, sessions: new Map([[renamed.id, renamed]]) };
+  const { deps, harness } = makeEffectDeps();
+
+  runWorkspaceEffect(
+    { type: "renameTab", paneId: "p-main", tabId: "s-named", title: "After" },
+    prev,
+    next,
+    deps,
+  );
+
+  const countFired = () =>
+    harness.fired.filter((entry) => entry.type === SESSIONS_CHANGED_EVENT).length;
+  assert.equal(countFired(), 1);
+  // The delayed re-fire exists because pi flushes session files (titles)
+  // AFTER the workspace action; removing it leaves ghost "New session" rows.
+  assert.equal(harness.timers.length, 1);
+  assert.equal(harness.timers[0]?.delay, 1_500);
+  harness.timers[0]?.handler();
+  assert.equal(countFired(), 2);
+
+  // No content change -> no fire at all.
+  const { deps: deps2, harness: harness2 } = makeEffectDeps();
+  runWorkspaceEffect({ type: "focusPane", paneId: "p-main" }, prev, prev, deps2);
+  assert.equal(
+    harness2.fired.filter((entry) => entry.type === SESSIONS_CHANGED_EVENT).length,
+    0,
+  );
+});
