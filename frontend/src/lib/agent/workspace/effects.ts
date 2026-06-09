@@ -245,7 +245,7 @@ function computeActiveSessionBroadcast(
       cwd: tab.cwd ?? "",
       paneId,
       tabId: tab.id,
-      runtimeSessionId: tab.runtimeSessionId || pane.runtimeSessionId,
+      runtimeSessionId: tab.runtimeSessionId,
       piSessionId: tab.piSessionId,
       modelId: tab.modelId ?? state.selectedModel,
       title: cleanSessionTitle(tab.title) || "Current session",
@@ -368,7 +368,6 @@ function paneMetadataKey(
   for (const [paneId, pane] of state.panesById.entries()) {
     panes[paneId] = {
       sessionId: pane.sessionId,
-      runtimeSessionId: pane.runtimeSessionId,
       tab: state.sessions.get(pane.sessionId)
         ? sessionMetaForPersistence(
             state.sessions.get(pane.sessionId)!,

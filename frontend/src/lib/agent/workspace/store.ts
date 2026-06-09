@@ -4,7 +4,7 @@ import {
   type ActiveAgentSessionSnapshot,
   type ActiveSessionPrefs,
 } from "@/lib/agent/active-sessions";
-import { cleanSessionTitle, makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
+import { cleanSessionTitle, makeFreshTab } from "@/lib/agent/session/helpers";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
 import type { ComposerPluginRef, ComposerSkillRef } from "@/lib/agent/composer-context";
@@ -43,15 +43,7 @@ export function createInitialState(): WorkspaceState {
     selectedModel: "",
     modelsLoading: true,
     layout: { kind: "leaf", paneId: "p-init" },
-    panesById: new Map([
-      [
-        "p-init",
-        {
-          sessionId: session.id,
-          runtimeSessionId: newRuntimeId(),
-        },
-      ],
-    ]),
+    panesById: new Map([["p-init", { sessionId: session.id }]]),
     focusedPaneId: "p-init",
     setupWarning: "",
     error: "",
@@ -81,13 +73,18 @@ export type PersistedSessionMeta = Omit<Session, "messages" | "error"> & {
 export function normalizePersistedTab(value: unknown): Session | null {
   if (!value || typeof value !== "object") return null;
   const tab = value as PersistedTabShape;
-  if (typeof tab.id !== "string" || typeof tab.runtimeSessionId !== "string") return null;
+  if (typeof tab.id !== "string") return null;
   const fallback = makeFreshTab();
   return {
     ...fallback,
     ...tab,
     id: tab.id,
-    runtimeSessionId: tab.runtimeSessionId,
+    // The session-level runtime id is the durable one; legacy records missing
+    // it get a fresh mint via the fallback.
+    runtimeSessionId:
+      typeof tab.runtimeSessionId === "string" && tab.runtimeSessionId.trim()
+        ? tab.runtimeSessionId
+        : fallback.runtimeSessionId,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
     // The canonical session log is the transcript source of truth. Legacy
@@ -171,13 +168,6 @@ function activePersistedTabId(
   return tabs[0].id;
 }
 
-function persistedRuntimeSessionId(pane: PersistedPaneState["panes"][string]): string {
-  const runtimeSessionId = pane.runtimeSessionId;
-  return typeof runtimeSessionId === "string" && runtimeSessionId.trim()
-    ? runtimeSessionId
-    : newRuntimeId();
-}
-
 function focusedPersistedPaneId(focusedPaneId: unknown, leaves: PaneId[]): PaneId {
   return typeof focusedPaneId === "string" && leaves.includes(focusedPaneId)
     ? focusedPaneId
@@ -206,10 +196,10 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     sessions.set(session.id, session);
     const selection = restored.selections.get(session.id);
     if (selection) selections.set(session.id, selection);
-    panesById.set(paneId, {
-      sessionId: session.id,
-      runtimeSessionId: persistedRuntimeSessionId(pane),
-    });
+    // The persisted pane-level runtimeSessionId is ignored: the session's own
+    // id is the durable runtime identity, so a crash/reload reattaches to the
+    // still-running runtime instead of minting a fresh orphan.
+    panesById.set(paneId, { sessionId: session.id });
   }
 
   return {

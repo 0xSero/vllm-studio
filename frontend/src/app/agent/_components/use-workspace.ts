@@ -12,7 +12,7 @@ import { safeJson } from "@/lib/agent/safe-json";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/lib/agent/tools/persistence";
 import { createInitialState, reducer } from "@/lib/agent/workspace/store";
 import { createSessionReplayQueue } from "@/lib/agent/workspace/replay-queue";
-import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
+import { makeFreshTab, newPaneId } from "@/lib/agent/session/helpers";
 import {
   runWorkspaceEffect,
   type BrowserEventsSubscription,
@@ -303,7 +303,6 @@ export function useWorkspace(): UseWorkspaceResult {
           sourcePaneId: paneId,
           sourceTabId: tabId,
           newPaneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
           tab: makeFreshTab(),
         }),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
@@ -348,7 +347,6 @@ export function useWorkspace(): UseWorkspaceResult {
           side,
           payload,
           newPaneId: newPaneId(),
-          runtimeSessionId: newRuntimeId(),
           tab: makeFreshTab(),
         }),
       selectPaneModel: (paneId: PaneId, modelId: string) =>

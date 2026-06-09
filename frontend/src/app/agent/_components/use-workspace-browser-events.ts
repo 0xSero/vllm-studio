@@ -38,14 +38,11 @@ export function focusedBrowserSessionId(state: WorkspaceState): string | null {
   const pane = state.panesById.get(state.focusedPaneId);
   if (!pane) return null;
   const activeSession = state.sessions.get(pane.sessionId);
-  return activeSession?.runtimeSessionId || pane.runtimeSessionId || null;
+  return activeSession?.runtimeSessionId || null;
 }
 
 export function browserSessionIsKnown(state: WorkspaceState, sessionId: string): boolean {
   if (!sessionId) return false;
-  for (const pane of state.panesById.values()) {
-    if (pane.runtimeSessionId === sessionId) return true;
-  }
   for (const session of state.sessions.values()) {
     if (session.runtimeSessionId === sessionId) return true;
   }

@@ -12,7 +12,7 @@ import {
   sessionMetaForPersistence,
   type WorkspaceStorage,
 } from "./store";
-import { makeFreshTab, newRuntimeId } from "@/lib/agent/session/helpers";
+import { makeFreshTab } from "@/lib/agent/session/helpers";
 
 const SESSIONS_COLLAPSED_KEY = "vllm-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "vllm-studio.agent.sessionsCollapsedCleaned";
@@ -57,10 +57,7 @@ function restoreLegacyLayout(rawLayout: string): {
     for (const paneId of leaves) {
       const session = makeFreshTab();
       sessions.set(session.id, session);
-      panesById.set(paneId, {
-        sessionId: session.id,
-        runtimeSessionId: newRuntimeId(),
-      });
+      panesById.set(paneId, { sessionId: session.id });
     }
     return { layout, panesById, sessions, focusedPaneId: leaves[0] };
   } catch {
@@ -120,7 +117,9 @@ export function writePaneState(
       : [];
     panes[paneId] = {
       activeTabId: pane.sessionId,
-      runtimeSessionId: pane.runtimeSessionId,
+      // Denormalized for downgrade-compat with builds that read a pane-level
+      // runtime id; the read path uses the session's own id.
+      runtimeSessionId: session?.runtimeSessionId ?? "",
       tabs,
     };
   }

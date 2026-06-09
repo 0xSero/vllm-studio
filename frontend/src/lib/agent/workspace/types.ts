@@ -12,10 +12,13 @@ export type WorkspaceLayout = Layout;
 
 export type { GitSummary } from "@/lib/agent/projects/types";
 
-/** A pane is a layout slot pointing at one visible session — it doesn't carry session content. */
+/**
+ * A pane is a layout slot pointing at one visible session — it carries no
+ * session content. Runtime identity (`runtimeSessionId`) lives on the Session
+ * only.
+ */
 export type PaneState = {
   sessionId: SessionId;
-  runtimeSessionId: string;
 };
 
 export type WorkspaceState = {
@@ -66,7 +69,6 @@ export type WorkspaceAction =
       side: "a" | "b";
       payload: WorkspaceSessionPayload;
       newPaneId: PaneId;
-      runtimeSessionId: string;
       tab: Session;
     }
   | { type: "focusPane"; paneId: PaneId }
@@ -77,7 +79,6 @@ export type WorkspaceAction =
       sourcePaneId: PaneId;
       sourceTabId: SessionId;
       newPaneId: PaneId;
-      runtimeSessionId: string;
       tab: Session;
     }
   | { type: "closePane"; paneId: PaneId }
@@ -101,7 +102,6 @@ export type WorkspaceAction =
       newSession?: boolean;
       split?: boolean;
       paneId: PaneId;
-      runtimeSessionId: string;
       tab: Session;
     }
   | {

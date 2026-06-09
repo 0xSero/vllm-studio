@@ -37,13 +37,8 @@ function replaySessionTitle(sessionTitle?: string, fallback = "Loading session")
   return sessionTitle?.trim() || fallback;
 }
 
-function validPaneRuntime(paneId: PaneId | undefined, runtimeSessionId: string | undefined) {
-  return Boolean(
-    paneId &&
-    typeof paneId === "string" &&
-    runtimeSessionId &&
-    typeof runtimeSessionId === "string",
-  );
+function validPaneId(paneId: PaneId | undefined): paneId is PaneId {
+  return Boolean(paneId && typeof paneId === "string");
 }
 
 function paneExists(state: WorkspaceState, paneId: PaneId): boolean {
@@ -61,7 +56,7 @@ function setPane(state: WorkspaceState, paneId: PaneId, pane: PaneState): Worksp
 }
 
 function paneWithSession(pane: PaneState, session: Session): PaneState {
-  return { ...pane, sessionId: session.id, runtimeSessionId: session.runtimeSessionId };
+  return { ...pane, sessionId: session.id };
 }
 
 function withSessions(state: WorkspaceState, sessions: SessionsMap): WorkspaceState {
@@ -107,39 +102,27 @@ function copySession(source: Session, fallback: Session | undefined): Session | 
   return { ...source, id: fallback.id, runtimeSessionId: fallback.runtimeSessionId };
 }
 
-function createPane(session: Session, runtimeSessionId: string): PaneState {
-  return { sessionId: session.id, runtimeSessionId: session.runtimeSessionId || runtimeSessionId };
-}
-
 function splitPaneWithSession(
   state: WorkspaceState,
   payload: {
     sourcePaneId: PaneId;
     session: Session;
     newPaneId: PaneId | undefined;
-    runtimeSessionId: string | undefined;
     direction?: "vertical" | "horizontal";
     side?: "a" | "b";
   },
 ): WorkspaceState | null {
-  const {
-    sourcePaneId,
-    session,
-    newPaneId,
-    runtimeSessionId,
-    direction = "vertical",
-    side = "b",
-  } = payload;
-  if (!validPaneRuntime(newPaneId, runtimeSessionId)) return null;
+  const { sourcePaneId, session, newPaneId, direction = "vertical", side = "b" } = payload;
+  if (!validPaneId(newPaneId)) return null;
   if (!leafExists(state, sourcePaneId)) return null;
   const nextPanes = new Map(state.panesById);
-  nextPanes.set(newPaneId!, createPane(session, runtimeSessionId!));
+  nextPanes.set(newPaneId, { sessionId: session.id });
   return {
     ...state,
     sessions: setSessionInMap(state.sessions, session),
     panesById: nextPanes,
-    layout: splitLeaf(state.layout, sourcePaneId, newPaneId!, direction, side),
-    focusedPaneId: newPaneId!,
+    layout: splitLeaf(state.layout, sourcePaneId, newPaneId, direction, side),
+    focusedPaneId: newPaneId,
   };
 }
 
@@ -152,7 +135,6 @@ function openSessionAdjacentToFocusedPane(
   state: WorkspaceState,
   session: Session,
   newPaneId: PaneId | undefined,
-  runtimeSessionId: string | undefined,
 ): WorkspaceState {
   const target = siblingPaneId(state, state.focusedPaneId);
   if (target) return replacePaneSession(state, target, session);
@@ -161,7 +143,6 @@ function openSessionAdjacentToFocusedPane(
       sourcePaneId: state.focusedPaneId,
       session,
       newPaneId,
-      runtimeSessionId,
     }) ?? state
   );
 }
@@ -245,7 +226,7 @@ function replaySessionInSplitPane(
     piSessionId: payload.piSessionId,
     title: replaySessionTitle(payload.sessionTitle),
   };
-  return openSessionAdjacentToFocusedPane(state, session, payload.paneId, payload.runtimeSessionId);
+  return openSessionAdjacentToFocusedPane(state, session, payload.paneId);
 }
 
 export function openSessionPayloadInPane(
@@ -284,7 +265,7 @@ export function splitPaneWithPayload(
     if (existing) return focusExistingSession(state, existing.paneId, existing.session.id);
   }
   if (collectLeaves(state.layout).length >= 2) return state;
-  if (!validPaneRuntime(payload.newPaneId, payload.runtimeSessionId)) return state;
+  if (!validPaneId(payload.newPaneId)) return state;
   if (!isSession(payload.tab)) return state;
   const baseSession: Session = {
     ...payload.tab,
@@ -303,7 +284,6 @@ export function splitPaneWithPayload(
       sourcePaneId: payload.paneId,
       session,
       newPaneId: payload.newPaneId,
-      runtimeSessionId: payload.runtimeSessionId,
       direction: payload.direction,
       side: payload.side,
     }) ?? state
@@ -349,7 +329,6 @@ export function splitTabIntoNewPane(
       sourcePaneId: state.focusedPaneId,
       session,
       newPaneId: payload.newPaneId,
-      runtimeSessionId: payload.runtimeSessionId,
     }) ?? state
   );
 }
@@ -395,7 +374,7 @@ export function applyUrlNavigation(
   if (state.lastHandledNavKey === payload.key) return state;
   if (!payload.project && !payload.sessionId && !payload.newSession) return state;
   const marked: WorkspaceState = { ...state, lastHandledNavKey: payload.key };
-  const { paneId, runtimeSessionId, tab, sessionTitle } = payload;
+  const { paneId, tab, sessionTitle } = payload;
   const project = payload.project ?? undefined;
   if (payload.newSession && !payload.sessionId) {
     // URL-driven `new=1` shares the dropdown's default "New session" intent:
@@ -411,7 +390,6 @@ export function applyUrlNavigation(
       sessionTitle,
       tab,
       paneId,
-      runtimeSessionId,
     });
   }
   if (payload.sessionId) {

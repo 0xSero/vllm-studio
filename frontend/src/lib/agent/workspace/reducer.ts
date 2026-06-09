@@ -102,10 +102,7 @@ function hydrateSessionSnapshots(
     const session =
       restored.find((tab) => tab.id === focusedSessionId) ?? restored[0] ?? makeFreshTab();
     sessions.set(session.id, session);
-    panesById.set(paneId, {
-      sessionId: session.id,
-      runtimeSessionId: session.runtimeSessionId,
-    });
+    panesById.set(paneId, { sessionId: session.id });
   }
 
   const focusedSnapshot = restorable.find((session) => session.focused) ?? restorable[0];
@@ -201,7 +198,6 @@ function reduceSessionOpenAction(
         side: action.side,
         payload: action.payload,
         newPaneId: action.newPaneId,
-        runtimeSessionId: action.runtimeSessionId,
         tab: action.tab,
       });
     default:
@@ -225,7 +221,6 @@ function reduceSessionEditAction(
         sourcePaneId: action.sourcePaneId,
         sourceTabId: action.sourceTabId,
         newPaneId: action.newPaneId,
-        runtimeSessionId: action.runtimeSessionId,
         tab: action.tab,
       });
     case "setPaneSession":
@@ -246,7 +241,6 @@ function reduceSessionEditAction(
         newSession: action.newSession,
         split: action.split,
         paneId: action.paneId,
-        runtimeSessionId: action.runtimeSessionId,
         tab: action.tab,
       });
       // Explicitly opening a chat marks the workspace as user-touched so a late

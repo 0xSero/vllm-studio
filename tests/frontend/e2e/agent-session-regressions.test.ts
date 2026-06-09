@@ -110,7 +110,7 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     modelsLoading: false,
     layout: { kind: "leaf", paneId: "p-main" },
     panesById: new Map([
-      ["p-main", { sessionId: session.id, runtimeSessionId: "rt-pane-main" }],
+      ["p-main", { sessionId: session.id }],
     ]),
     focusedPaneId: "p-main",
     setupWarning: "",
@@ -992,13 +992,12 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
     project: null,
     newSession: true,
     paneId: "p-url-new",
-    runtimeSessionId: "rt-url-new",
     tab: freshSession,
   });
 
   const pane = next.panesById.get("p-main");
   assert.equal(pane?.sessionId, "s-fresh");
-  assert.equal(pane?.runtimeSessionId, "rt-fresh");
+  assert.equal(next.sessions.get("s-fresh")?.runtimeSessionId, "rt-fresh");
   assert.equal(next.sessions.has("s-old"), false);
   const active = next.sessions.get("s-fresh");
   assert.equal(active?.title, "New session");
@@ -1059,7 +1058,6 @@ test("new chat replaces an empty starter with fresh identity", () => {
     project: null,
     newSession: true,
     paneId: "p-new",
-    runtimeSessionId: "rt-new",
     tab: makeSession("s-fresh"),
   });
 
@@ -1168,7 +1166,6 @@ test("agent session navigation restores running SDK sessions with runtime identi
   assert.equal(next.hydrated, true);
   assert.equal(next.focusedPaneId, "p-main");
   assert.equal(restoredPane?.sessionId, "tab-deepseek");
-  assert.equal(restoredPane?.runtimeSessionId, "rt-deepseek");
   const restored = next.sessions.get("tab-deepseek");
   assert.equal(restored?.runtimeSessionId, "rt-deepseek");
   assert.equal(restored?.piSessionId, "pi-deepseek");
@@ -1214,7 +1211,6 @@ test("session replay into a starter adopts cwd and model metadata", () => {
     project: null,
     sessionId: "pi-replay",
     paneId: "p-replay",
-    runtimeSessionId: "rt-replay-pane",
     tab: makeSession("tab-replay", {
       runtimeSessionId: "rt-replay",
       cwd: "/Users/sero/.vllm-studio",
@@ -1526,7 +1522,6 @@ test("splitting a session is idempotent when navigating to an already open pi se
     direction: "vertical",
     side: "b",
     newPaneId: "p-side",
-    runtimeSessionId: "rt-side",
     payload: {
       projectId: "personal",
       cwd: "/workspace/personal",
@@ -1546,7 +1541,6 @@ test("splitting a session is idempotent when navigating to an already open pi se
     direction: "vertical",
     side: "b",
     newPaneId: "p-third",
-    runtimeSessionId: "rt-third",
     payload: {
       projectId: "personal",
       cwd: "/workspace/personal",
@@ -1583,7 +1577,6 @@ test("forking a tab into a split pane copies session content with fresh identity
     sourcePaneId: "p-main",
     sourceTabId: "s-main",
     newPaneId: "p-fork",
-    runtimeSessionId: "rt-fork-pane",
     tab: makeSession("s-fork", { runtimeSessionId: "rt-fork-session" }),
   });
 
@@ -1617,7 +1610,6 @@ test("forking while already split replaces the sibling pane instead of adding a 
       sourcePaneId: "p-main",
       sourceTabId: "s-main",
       newPaneId: "p-side",
-      runtimeSessionId: "rt-side-pane",
       tab: makeSession("s-side", { runtimeSessionId: "rt-side-session" }),
     },
   );
