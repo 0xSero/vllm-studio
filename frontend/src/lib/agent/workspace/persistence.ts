@@ -1,3 +1,7 @@
+// Workspace localStorage IO. writePaneState/writeActiveSessions are the ONLY
+// workspace writers of browser storage, and runWorkspaceEffect is their only
+// caller — persistence happens as a post-dispatch effect, never inline.
+
 import { collectLeaves } from "@/lib/agent/workspace/layout";
 import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
 import type { Session, SessionId, SessionsMap } from "@/lib/agent/sessions/types";
