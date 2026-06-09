@@ -35,7 +35,12 @@ function appendToTextLikeBlock(
 ): AssistantBlock[] {
   const block = blocks[index];
   if (!block || (block.kind !== "text" && block.kind !== "thinking")) return blocks;
-  if (block.text.startsWith(delta)) return blocks;
+  // Only dedup genuine replay restarts, which always re-send real content from
+  // the top. A whitespace-only delta (e.g. a standalone "\n" between table rows
+  // or paragraphs) is never a replayed prefix, but `startsWith` would treat it
+  // as one whenever the accumulated text begins with a newline — silently
+  // dropping every blank line and collapsing the answer onto one line.
+  if (delta.trim() !== "" && block.text.startsWith(delta)) return blocks;
   const append = delta.startsWith(block.text) ? delta.slice(block.text.length) : delta;
   if (!append) return blocks;
   const next = blocks.slice();
