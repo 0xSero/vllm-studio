@@ -11,6 +11,7 @@ import {
 import { safeJson } from "@/lib/agent/safe-json";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/lib/agent/tools/persistence";
 import { createInitialState, reducer } from "@/lib/agent/workspace/store";
+import { createSessionReplayQueue } from "@/lib/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId, newRuntimeId } from "@/lib/agent/session/helpers";
 import {
   runWorkspaceEffect,
@@ -156,46 +157,19 @@ export function useWorkspace(): UseWorkspaceResult {
   const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
-  const pendingSessionReplaysRef = useRef<Map<PaneId, string>>(new Map());
   const browserRef = useRef<AgentBrowserHandle | null>(null);
   const computerAsideRef = useRef<HTMLElement | null>(null);
 
-  const queueSessionReplay = useMemo(
-    () => (paneId: PaneId, sessionId: string) => {
-      pendingSessionReplaysRef.current.set(paneId, sessionId);
-      const drain = (attempt: number) => {
-        const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
-        const handle = paneHandlesRef.current.get(paneId);
-        if (!pendingSessionId) return;
-        if (!handle) {
-          if (attempt < SESSION_REPLAY_MAX_ATTEMPTS) {
-            window.setTimeout(() => drain(attempt + 1), SESSION_REPLAY_RETRY_DELAY_MS);
-          }
-          return;
-        }
-        // Only replay onto the session this replay was queued for. A "+" click
-        // (or any swap) replaces a pane's session in place under the same paneId;
-        // a fresh empty starter has nothing to replay, so a stale pending replay
-        // landing here would overwrite the new chat with the old transcript —
-        // the "+ opens the old chat" bug. Drop the replay in that case.
-        const pane = stateRef.current.panesById.get(paneId);
-        const current = pane ? stateRef.current.sessions.get(pane.sessionId) : undefined;
-        const isFreshStarter =
-          !!current &&
-          current.piSessionId == null &&
-          current.messages.length === 0 &&
-          current.status === "idle";
-        if (!current || isFreshStarter) {
-          pendingSessionReplaysRef.current.delete(paneId);
-          return;
-        }
-        pendingSessionReplaysRef.current.delete(paneId);
-        void handle.loadAndReplay(pendingSessionId);
-      };
-      window.setTimeout(() => drain(0), 0);
-    },
+  const replayQueue = useMemo(
+    () =>
+      createSessionReplayQueue({
+        getHandle: (paneId) => paneHandlesRef.current.get(paneId),
+        getState: () => stateRef.current,
+        setTimeout: (handler, delay) => window.setTimeout(handler, delay),
+      }),
     [],
   );
+  const queueSessionReplay = replayQueue.queue;
 
   const controller = useMemo(() => {
     let browserEvents: BrowserEventsSubscription | null = null;
@@ -335,8 +309,7 @@ export function useWorkspace(): UseWorkspaceResult {
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
-        const pendingSessionId = pendingSessionReplaysRef.current.get(paneId);
-        if (handle && pendingSessionId) queueSessionReplay(paneId, pendingSessionId);
+        if (handle) replayQueue.notifyHandleRegistered(paneId);
       },
       compactFocusedSession: async () => {
         const handle = paneHandlesRef.current.get(stateRef.current.focusedPaneId);
@@ -430,7 +403,7 @@ export function useWorkspace(): UseWorkspaceResult {
         }
       },
     }),
-    [dispatch, queueSessionReplay, runBrowserCommand],
+    [dispatch, replayQueue, runBrowserCommand],
   );
 
   useWorkspaceHydrationEffects({ dispatch, projectsRef, toolsRef });
@@ -440,5 +413,3 @@ export function useWorkspace(): UseWorkspaceResult {
 }
 
 const getWorkspaceModelStorageSnapshot = (): number => 0;
-const SESSION_REPLAY_RETRY_DELAY_MS = 50;
-const SESSION_REPLAY_MAX_ATTEMPTS = 100;

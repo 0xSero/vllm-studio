@@ -18,6 +18,7 @@ import {
 } from "@/lib/agent/workspace/store";
 import type { WorkspaceState } from "@/lib/agent/workspace/types";
 import { makeFreshTab } from "@/lib/agent/session/helpers";
+import { createSessionReplayQueue } from "@/lib/agent/workspace/replay-queue";
 import type { Session } from "@/lib/agent/sessions/types";
 import type { ToolSelection } from "@/lib/agent/tools/types";
 
@@ -468,4 +469,105 @@ test("session list refreshes fire immediately and again after the settle delay",
     harness2.fired.filter((entry) => entry.type === SESSIONS_CHANGED_EVENT).length,
     0,
   );
+});
+
+// ----- session replay queue (workspace/replay-queue.ts) -----
+
+type ReplayHarness = {
+  queue: ReturnType<typeof createSessionReplayQueue>;
+  replays: { paneId: string; piSessionId: string }[];
+  timers: TimerRecord[];
+  runTimers: () => void;
+  setHandle: (paneId: string, present: boolean) => void;
+  setSession: (paneId: string, session: Session | undefined) => void;
+};
+
+function makeReplayHarness(): ReplayHarness {
+  const handles = new Set<string>();
+  const replays: ReplayHarness["replays"] = [];
+  const timers: TimerRecord[] = [];
+  const panesById = new Map<string, { sessionId: string; runtimeSessionId: string }>();
+  const sessions = new Map<string, Session>();
+  const queue = createSessionReplayQueue({
+    getHandle: (paneId) =>
+      handles.has(paneId)
+        ? { loadAndReplay: (piSessionId: string) => void replays.push({ paneId, piSessionId }) }
+        : undefined,
+    getState: () => ({ panesById, sessions }),
+    setTimeout: (handler, delay) => void timers.push({ handler, delay }),
+  });
+  return {
+    queue,
+    replays,
+    timers,
+    runTimers: () => {
+      // Run timers as they accumulate (drain can schedule retries).
+      for (let i = 0; i < timers.length; i += 1) timers[i]?.handler();
+    },
+    setHandle: (paneId, present) => {
+      if (present) handles.add(paneId);
+      else handles.delete(paneId);
+    },
+    setSession: (paneId, session) => {
+      if (!session) {
+        panesById.delete(paneId);
+        return;
+      }
+      panesById.set(paneId, { sessionId: session.id, runtimeSessionId: "rt-pane" });
+      sessions.set(session.id, session);
+    },
+  };
+}
+
+test("queued replays drop onto fresh starters instead of resurrecting old chats", () => {
+  const harness = makeReplayHarness();
+  harness.setHandle("p-1", true);
+  // The '+' guard: the pane's session was swapped to a fresh starter between
+  // queue and drain — replaying would overwrite the new chat.
+  harness.setSession("p-1", makeSession("s-fresh"));
+
+  harness.queue.queue("p-1", "pi-old");
+  harness.runTimers();
+
+  assert.deepEqual(harness.replays, []);
+  // The pending entry is consumed, not retried forever.
+  harness.setSession("p-1", makeSession("s-restored", { piSessionId: "pi-old", status: "loading" }));
+  harness.queue.notifyHandleRegistered("p-1");
+  harness.runTimers();
+  assert.deepEqual(harness.replays, []);
+});
+
+test("replays onto restored loading sessions fire exactly once when the handle registers", () => {
+  const harness = makeReplayHarness();
+  harness.setSession("p-1", makeSession("s-restored", { piSessionId: "pi-keep", status: "loading" }));
+
+  // Queued before the pane mounted: nothing fires yet.
+  harness.queue.queue("p-1", "pi-keep");
+  harness.runTimers();
+  assert.deepEqual(harness.replays, []);
+
+  // Mount drains it exactly once.
+  harness.setHandle("p-1", true);
+  harness.queue.notifyHandleRegistered("p-1");
+  harness.runTimers();
+  assert.deepEqual(harness.replays, [{ paneId: "p-1", piSessionId: "pi-keep" }]);
+
+  // A registration with nothing pending is a no-op.
+  harness.queue.notifyHandleRegistered("p-1");
+  harness.runTimers();
+  assert.equal(harness.replays.length, 1);
+});
+
+test("replay queue is last-wins per pane and immediate when the handle exists", () => {
+  const harness = makeReplayHarness();
+  harness.setHandle("p-1", true);
+  harness.setSession("p-1", makeSession("s-a", { piSessionId: "pi-a", status: "loading" }));
+
+  harness.queue.queue("p-1", "pi-a");
+  harness.queue.queue("p-1", "pi-b");
+  harness.runTimers();
+
+  // Two drains ran but the pending slot was consumed by the first; only the
+  // newest queued id replays.
+  assert.deepEqual(harness.replays, [{ paneId: "p-1", piSessionId: "pi-b" }]);
 });
