@@ -20,73 +20,66 @@ import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import { traceAgentReasoning } from "@/lib/agent/trace-reasoning";
 import type { Session, SessionId } from "./types";
 
-type MutableRef<T> = { current: T };
-type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
-type PatchAssistant = (
-  sessionId: SessionId,
-  assistantId: string,
-  patch: (msg: ChatMessage) => ChatMessage,
-) => void;
-
-export type PiEventApplierDeps = {
-  liveAssistantIdsRef: MutableRef<Map<SessionId, string>>;
-  patchAssistant: PatchAssistant;
-  tabsRef: MutableRef<Session[]>;
-  updateSession: UpdateSession;
+export type SessionStreamContext = {
+  // Sync channel for the live assistant id. React state commits lag the event
+  // stream within a tick, so when a mid-stream user message opens the next
+  // assistant bubble, later events in the same tick must find that id here
+  // rather than on the (possibly stale) session snapshot.
+  liveAssistantIds: Map<SessionId, string>;
 };
 
-export function applyPiEventToSession(
-  deps: PiEventApplierDeps,
-  sessionId: SessionId,
+/**
+ * Pure live-event reducer: fold one runtime pi event into a session. The only
+ * side channel is `ctx.liveAssistantIds` (see above). Callers dispatch the
+ * returned session in a single state commit.
+ */
+export function reduceSessionEvent(
+  session: Session,
+  ctx: SessionStreamContext,
   assistantId: string,
   event: Record<string, unknown>,
-): void {
+): Session {
   if (event.type === "queue_update") {
-    deps.updateSession(sessionId, (session) => ({
-      ...session,
-      queue: reconcileQueueWithPiEvent(session.queue ?? [], event),
-    }));
-    return;
+    return { ...session, queue: reconcileQueueWithPiEvent(session.queue ?? [], event) };
   }
 
-  if (appendUserMessageFromPiEvent(deps, sessionId, event)) return;
+  const afterUserMessage = reduceUserMessageEvent(session, ctx, event);
+  if (afterUserMessage) return afterUserMessage;
 
+  let next = session;
   if (isSuccessfulCompactionEvent(event)) {
-    deps.updateSession(sessionId, (session) => ({
-      ...session,
-      contextUsage: null,
-      tokenStats: undefined,
-    }));
+    next = { ...next, contextUsage: null, tokenStats: undefined };
   }
 
   const usage = usageFromEvent(event);
-  if (usage) {
-    deps.updateSession(sessionId, (session) => ({ ...session, tokenStats: usage }));
-  }
+  if (usage) next = { ...next, tokenStats: usage };
+
+  const targetId = ctx.liveAssistantIds.get(session.id) ?? assistantId;
 
   // Assistant message lifecycle -> rebuild blocks from accumulated per-call
   // snapshots (NOT from token deltas). This owns message_start/update/end.
-  if (applyAssistantSnapshotEvent(deps, sessionId, assistantId, event)) return;
+  const afterSnapshot = reduceAssistantSnapshotEvent(next, targetId, event);
+  if (afterSnapshot) return afterSnapshot;
 
   // Turn finished: settle any still-"running" tool badges and drop the
   // transient per-call snapshots.
   if (isAgentEndEvent(event)) {
-    deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (msg) => ({
+    return patchAssistantMessage(next, targetId, (msg) => ({
       ...msg,
       blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
       streamCalls: undefined,
     }));
-    return;
   }
 
-  if (patchFinalAssistantMessageFromPiEvent(deps, sessionId, assistantId, event)) return;
+  const afterFinalMessage = reduceFinalAssistantMessageEvent(next, targetId, event);
+  if (afterFinalMessage) return afterFinalMessage;
 
-  if (!assistantPiEventAffectsBlocks(event)) return;
-  traceAgentReasoning("pi-event-applier.before", { sessionId, assistantId, event });
-  deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (msg) => {
+  if (!assistantPiEventAffectsBlocks(event)) return next;
+  traceAgentReasoning("pi-event-applier.before", { sessionId: session.id, assistantId, event });
+  return patchAssistantMessage(next, targetId, (msg) => {
     const blocks = applyAssistantPiEventToBlocks(msg.blocks ?? [], event);
     traceAgentReasoning("pi-event-applier.after", {
-      sessionId,
+      sessionId: session.id,
       assistantId,
       event,
       beforeBlocks: msg.blocks ?? [],
@@ -94,6 +87,21 @@ export function applyPiEventToSession(
     });
     return blocks ? { ...msg, blocks } : msg;
   });
+}
+
+function patchAssistantMessage(
+  session: Session,
+  assistantId: string,
+  patch: (msg: ChatMessage) => ChatMessage,
+): Session {
+  let changed = false;
+  const messages = session.messages.map((message) => {
+    if (message.id !== assistantId) return message;
+    const next = patch(message);
+    if (next !== message) changed = true;
+    return next;
+  });
+  return changed ? { ...session, messages } : session;
 }
 
 function isSuccessfulCompactionEvent(event: Record<string, unknown>): boolean {
@@ -125,29 +133,20 @@ function isFailedCompactionEvent(event: Record<string, unknown>): boolean {
   return /abort|cancel|error|fail/.test(status.toLowerCase());
 }
 
-function currentAssistantId(
-  deps: PiEventApplierDeps,
-  sessionId: SessionId,
-  assistantId: string,
-): string {
-  return deps.liveAssistantIdsRef.current.get(sessionId) ?? assistantId;
-}
-
 // Accumulate one content snapshot per LLM call and rebuild the bubble's blocks
 // from all of them. `message_start` opens a new call slot; `message_update` /
 // `message_end` replace the current slot with the call's full accumulated
 // content. Tool results (from tool_execution_* events) are preserved across
 // rebuilds via mergeExistingToolState.
-function applyAssistantSnapshotEvent(
-  deps: PiEventApplierDeps,
-  sessionId: SessionId,
-  assistantId: string,
+function reduceAssistantSnapshotEvent(
+  session: Session,
+  targetId: string,
   event: Record<string, unknown>,
-): boolean {
+): Session | null {
   const type = event.type;
-  if (type !== "message_start" && type !== "message_update" && type !== "message_end") return false;
+  if (type !== "message_start" && type !== "message_update" && type !== "message_end") return null;
   const message = asRecord(event.message);
-  if (message?.role !== "assistant") return false;
+  if (message?.role !== "assistant") return null;
   const content = Array.isArray(message.content)
     ? (message.content as Array<Record<string, unknown>>)
     : [];
@@ -156,7 +155,7 @@ function applyAssistantSnapshotEvent(
   const callFailed = type === "message_end" && (stopReason === "error" || stopReason === "aborted");
   const failureText = callFailed ? assistantFailureText(message, stopReason) : "";
 
-  deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (current) => {
+  let next = patchAssistantMessage(session, targetId, (current) => {
     const streamCalls = nextStreamCalls(current.streamCalls, type, content);
     let blocks = mergeExistingToolState(current.blocks ?? [], blocksFromTurnSnapshots(streamCalls));
     // An LLM call that errored/aborted will never execute the tools it declared
@@ -165,13 +164,8 @@ function applyAssistantSnapshotEvent(
     if (failureText) blocks = appendFailureBlock(blocks, failureText);
     return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
   });
-  if (failureText) {
-    deps.updateSession(sessionId, (session) => ({
-      ...session,
-      error: failureText,
-    }));
-  }
-  return true;
+  if (failureText) next = { ...next, error: failureText };
+  return next;
 }
 
 function nextStreamCalls(
@@ -192,62 +186,56 @@ function nextStreamCalls(
   return calls;
 }
 
-function appendUserMessageFromPiEvent(
-  deps: PiEventApplierDeps,
-  sessionId: SessionId,
+function reduceUserMessageEvent(
+  session: Session,
+  ctx: SessionStreamContext,
   event: Record<string, unknown>,
-): boolean {
-  if (event.type !== "message_start" && event.type !== "message_end") return false;
+): Session | null {
+  if (event.type !== "message_start" && event.type !== "message_end") return null;
   const msg = event.message as { role?: string; content?: string | Record<string, unknown>[] };
-  if (msg?.role !== "user") return false;
+  if (msg?.role !== "user") return null;
   const text = visibleUserTextFromPi(messageText(msg.content));
-  if (!text) return true;
-  let appended = false;
-  deps.updateSession(sessionId, (session) => {
-    const queue = removeDeliveredQueuedMessage(session.queue ?? [], text);
-    if (hasMatchingLastUserMessage(session.messages, text)) {
-      return { ...session, queue };
-    }
-    appended = true;
-    return {
-      ...session,
-      queue,
-      messages: [
-        ...session.messages,
-        { id: newId("user"), role: "user", text, timestamp: nowLabel() },
-      ],
-    };
-  });
-  if (appended) ensureNextAssistant(deps, sessionId);
-  return true;
+  if (!text) return session;
+  const queue = removeDeliveredQueuedMessage(session.queue ?? [], text);
+  if (hasMatchingLastUserMessage(session.messages, text)) {
+    return { ...session, queue };
+  }
+  // A mid-stream user message (steer/follow-up) opens the next assistant
+  // bubble; later events in this turn target it via ctx.liveAssistantIds.
+  const nextAssistantId = newId("assistant");
+  ctx.liveAssistantIds.set(session.id, nextAssistantId);
+  return {
+    ...session,
+    queue,
+    activeAssistantId: nextAssistantId,
+    messages: [
+      ...session.messages,
+      { id: newId("user"), role: "user", text, timestamp: nowLabel() },
+      { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
+    ],
+  };
 }
 
-function patchFinalAssistantMessageFromPiEvent(
-  deps: PiEventApplierDeps,
-  sessionId: SessionId,
-  assistantId: string,
+function reduceFinalAssistantMessageEvent(
+  session: Session,
+  targetId: string,
   event: Record<string, unknown>,
-): boolean {
+): Session | null {
   // `message_end` is owned by the snapshot path; this only handles the canonical
   // `message` event shape (replayed/settled messages).
-  if (event.type !== "message") return false;
+  if (event.type !== "message") return null;
   const msg = asRecord(event.message);
-  if (msg?.role !== "assistant") return false;
+  if (msg?.role !== "assistant") return null;
   const content = finalMessageContent(msg.content);
   const stopReason = typeof msg.stopReason === "string" ? msg.stopReason : undefined;
   const errorMessage = assistantFailureText(msg, stopReason);
   const blocks = blocksFromMessageContent(content, { stopReason, errorMessage });
   const text = messageTextFromBlocks(blocks);
-  deps.patchAssistant(sessionId, currentAssistantId(deps, sessionId, assistantId), (current) => {
-    return reconcileFinalAssistantMessage(current, text, blocks);
-  });
-  if (errorMessage) {
-    deps.updateSession(sessionId, (session) => ({
-      ...session,
-      error: errorMessage,
-    }));
-  }
-  return true;
+  let next = patchAssistantMessage(session, targetId, (current) =>
+    reconcileFinalAssistantMessage(current, text, blocks),
+  );
+  if (errorMessage) next = { ...next, error: errorMessage };
+  return next;
 }
 
 function assistantFailureText(
@@ -370,18 +358,4 @@ function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): bool
       Boolean(text && lastUser.text.includes(text)) ||
       Boolean(!text && lastUser.attachments?.length)),
   );
-}
-
-function ensureNextAssistant(deps: PiEventApplierDeps, sessionId: SessionId): string {
-  const id = newId("assistant");
-  deps.liveAssistantIdsRef.current.set(sessionId, id);
-  deps.updateSession(sessionId, (session) => ({
-    ...session,
-    activeAssistantId: id,
-    messages: [
-      ...session.messages,
-      { id, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-    ],
-  }));
-  return id;
 }

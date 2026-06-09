@@ -35,8 +35,8 @@ import { runtimeStatusLooksActive } from "@/lib/agent/session/helpers";
 import { blocksFromTurnSnapshots } from "@/lib/agent/session/message-content";
 import { replaySessionEvents } from "@/lib/agent/session/replay";
 import {
-  applyPiEventToSession,
-  type PiEventApplierDeps,
+  reduceSessionEvent,
+  type SessionStreamContext,
 } from "@/lib/agent/sessions/pi-event-applier";
 import { drainQueuedTurnAfterAgentEnd } from "@/lib/agent/sessions/queue-drain";
 import {
@@ -951,34 +951,19 @@ test("curated local MCP servers require explicit target args", async () => {
 function makePiEventApplierHarness(
   initialSession: Session,
   assistantId = "a-main",
-): { deps: PiEventApplierDeps; session: () => Session } {
+): {
+  apply: (sessionId: string, assistantId: string, event: Record<string, unknown>) => void;
+  session: () => Session;
+} {
   let session = initialSession;
-  const tabsRef = { current: [session] };
-  const sync = () => {
-    tabsRef.current = [session];
+  const ctx: SessionStreamContext = {
+    liveAssistantIds: new Map([[initialSession.id, assistantId]]),
   };
-  const deps: PiEventApplierDeps = {
-    liveAssistantIdsRef: {
-      current: new Map([[initialSession.id, assistantId]]),
-    },
-    patchAssistant: (sessionId, targetAssistantId, patch) => {
-      if (sessionId !== session.id) return;
-      session = {
-        ...session,
-        messages: session.messages.map((message) =>
-          message.id === targetAssistantId ? patch(message) : message,
-        ),
-      };
-      sync();
-    },
-    tabsRef,
-    updateSession: (sessionId, patch) => {
-      if (sessionId !== session.id) return;
-      session = patch(session);
-      sync();
-    },
+  const apply = (sessionId: string, targetAssistantId: string, event: Record<string, unknown>) => {
+    if (sessionId !== session.id) return;
+    session = reduceSessionEvent(session, ctx, targetAssistantId, event);
   };
-  return { deps, session: () => session };
+  return { apply, session: () => session };
 }
 
 test("new chat url navigation replaces the focused chat with a fresh runtime", () => {
@@ -1776,7 +1761,7 @@ test("successful compaction_end renders the completed result summary", () => {
 });
 
 test("compaction events clear stale token and context usage", () => {
-  const { deps, session } = makePiEventApplierHarness(
+  const { apply, session } = makePiEventApplierHarness(
     makeSession("s-compact", {
       tokenStats: { read: 1, write: 2, current: 3 },
       contextUsage: {
@@ -1789,7 +1774,7 @@ test("compaction events clear stale token and context usage", () => {
     }),
   );
 
-  applyPiEventToSession(deps, "s-compact", "a-main", {
+  apply("s-compact", "a-main", {
     type: "compaction_end",
     reason: "threshold",
     result: {
@@ -1811,7 +1796,7 @@ test("failed compaction events preserve stale token and context usage", () => {
     shouldCompact: true,
   };
   const tokenStats = { read: 1, write: 2, current: 3 };
-  const { deps, session } = makePiEventApplierHarness(
+  const { apply, session } = makePiEventApplierHarness(
     makeSession("s-compact-failed", {
       tokenStats,
       contextUsage,
@@ -1819,7 +1804,7 @@ test("failed compaction events preserve stale token and context usage", () => {
     }),
   );
 
-  applyPiEventToSession(deps, "s-compact-failed", "a-main", {
+  apply("s-compact-failed", "a-main", {
     type: "compaction_end",
     status: "aborted",
     error: "Compaction was interrupted",
@@ -1837,7 +1822,7 @@ test("failed compaction_end with errorMessage preserves stale token and context 
     shouldCompact: true,
   };
   const tokenStats = { read: 1, write: 2, current: 3 };
-  const { deps, session } = makePiEventApplierHarness(
+  const { apply, session } = makePiEventApplierHarness(
     makeSession("s-compact-error-message", {
       tokenStats,
       contextUsage,
@@ -1845,7 +1830,7 @@ test("failed compaction_end with errorMessage preserves stale token and context 
     }),
   );
 
-  applyPiEventToSession(deps, "s-compact-error-message", "a-main", {
+  apply("s-compact-error-message", "a-main", {
     type: "compaction_end",
     errorMessage: "Compaction failed before producing a result",
     result: undefined,
@@ -2587,7 +2572,7 @@ test("live final assistant messages hydrate placeholders when no deltas streamed
     }),
   );
 
-  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+  harness.apply("s-main", "a-main", {
     type: "message",
     message: {
       role: "assistant",
@@ -2630,7 +2615,7 @@ test("live final assistant messages do not duplicate streamed blocks", () => {
     }),
   );
 
-  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+  harness.apply("s-main", "a-main", {
     type: "message",
     message: {
       role: "assistant",
@@ -2662,7 +2647,7 @@ test("live final assistant messages reconcile partial streamed text", () => {
     }),
   );
 
-  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+  harness.apply("s-main", "a-main", {
     type: "message",
     message: {
       role: "assistant",
@@ -2712,7 +2697,7 @@ test("assistant message_end error becomes visible without replay navigation", ()
     }),
   );
 
-  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+  harness.apply("s-main", "a-main", {
     type: "message_end",
     message: {
       role: "assistant",
@@ -2746,7 +2731,7 @@ test("settled assistant error messages hydrate visible error blocks", () => {
     }),
   );
 
-  applyPiEventToSession(harness.deps, "s-main", "a-main", {
+  harness.apply("s-main", "a-main", {
     type: "message",
     message: {
       role: "assistant",

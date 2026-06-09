@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { WorkspaceDispatch } from "@/lib/agent/workspace/effects";
-import type { ChatMessage } from "@/lib/agent/session";
 import type { Session, SessionId } from "@/lib/agent/sessions/types";
 import {
   listRuntimeSessions,
@@ -10,7 +9,7 @@ import {
   type RuntimeEventSubscription,
   type RuntimeStatus,
 } from "@/lib/agent/sessions/api";
-import { applyPiEventToSession } from "@/lib/agent/sessions/pi-event-applier";
+import { reduceSessionEvent } from "@/lib/agent/sessions/pi-event-applier";
 import { subscribeResumeRuntimeSession } from "@/lib/agent/sessions/runtime-resume";
 import {
   acceptRuntimeSeq,
@@ -124,28 +123,19 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     [dispatch],
   );
 
-  const patchAssistant = useCallback(
-    (sessionId: SessionId, assistantId: string, patch: (message: ChatMessage) => ChatMessage) => {
-      updateSession(sessionId, (session) => ({
-        ...session,
-        messages: session.messages.map((message) =>
-          message.id === assistantId ? patch(message) : message,
-        ),
-      }));
-    },
-    [updateSession],
-  );
-
   const applyPiEvent = useCallback(
     (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => {
-      applyPiEventToSession(
-        { liveAssistantIdsRef, patchAssistant, tabsRef: sessionsRef, updateSession },
-        sessionId,
-        assistantId,
-        event,
+      // One reducer pass, one patchSession dispatch per applied event.
+      updateSession(sessionId, (session) =>
+        reduceSessionEvent(
+          session,
+          { liveAssistantIds: liveAssistantIdsRef.current },
+          assistantId,
+          event,
+        ),
       );
     },
-    [patchAssistant, updateSession],
+    [updateSession],
   );
   const applyPiEventRef = useRef(applyPiEvent);
   const subscribeApplyPiEventRef = useCallback(() => {
