@@ -14,6 +14,7 @@ import type { AgentImageInput } from "@/lib/agent/contracts/turn";
 import type { BrowserBackend, ToolSelection } from "@/lib/agent/tools/types";
 import * as api from "./api";
 import { runtimeIsActiveForPiSession } from "./engine-helpers";
+import { sessionRuntimeController } from "./session-runtime-controller";
 import type { Session, SessionId } from "./types";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
@@ -146,8 +147,8 @@ async function startPromptCommand(
       contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
       status: "running",
       activeAssistantId: session.activeAssistantId ?? context.assistantId,
-      lastEventSeq: 0,
     }));
+    sessionRuntimeController().noteTurnAccepted(context.sessionId);
     if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
   } catch (error) {
     const currentPiSessionId = latestPiSessionId(deps, context, null);
@@ -159,8 +160,8 @@ async function startPromptCommand(
         contextUsage: api.runtimeContextUsage(status, session.contextUsage),
         status: "running",
         activeAssistantId: session.activeAssistantId ?? context.assistantId,
-        lastEventSeq: 0,
       }));
+      sessionRuntimeController().noteTurnAccepted(context.sessionId);
       if (status?.piSessionId) deps.onPiSessionIdChange?.(status.piSessionId);
       return;
     }

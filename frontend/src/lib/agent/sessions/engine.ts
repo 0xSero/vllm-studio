@@ -19,6 +19,7 @@ import type { BrowserBackend, ToolSelection } from "@/lib/agent/tools/types";
 import * as api from "./api";
 import { resolveRuntimeSessionId, runtimeCanHydrateCanonicalSession } from "./engine-helpers";
 import { submitPromptTurn, type SubmitArgs } from "./prompt-stream";
+import { sessionRuntimeController } from "./session-runtime-controller";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -233,9 +234,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
           status: runtimeActive ? "running" : "idle",
           activeAssistantId: undefined,
-          lastEventSeq: replaySeq,
           error: "",
         }));
+        // Reattach the live stream from the hydrated cursor so EventSource
+        // does not replay already-rendered content.
+        sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
       } catch (err) {
         updateSession(sessionId, (session) => ({
           ...session,

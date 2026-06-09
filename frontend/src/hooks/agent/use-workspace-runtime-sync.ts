@@ -101,15 +101,6 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   }, [updateSession]);
   useSyncExternalStore(subscribeBinding, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Mirror the persisted cursor per session on every change. Pi's per-runtime
-  // event sequence can reset when a new prompt starts on the same Pi session,
-  // so deliberate lastEventSeq resets must propagate into the gate too.
-  const subscribeCursors = useCallback(() => {
-    sessionRuntimeController().mirrorCursors(sessions);
-    return () => undefined;
-  }, [sessions]);
-  useSyncExternalStore(subscribeCursors, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
-
   const subscriptionKey = useMemo(() => runtimeSubscriptionKey(sessions), [sessions]);
 
   // Reconcile SSE attachments when the live membership (not content) changes.

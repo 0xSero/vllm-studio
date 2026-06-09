@@ -21,6 +21,7 @@ import {
   acceptRuntimeSeq,
   adoptExternalCursor,
   commitRuntimeSeq,
+  reconnectAfter,
   shouldSubscribeRuntimeEvents,
   type RuntimeCursor,
 } from "./runtime-cursor";
@@ -53,17 +54,24 @@ export type SessionRuntimeController = {
   bind(binding: SessionRuntimeBinding): void;
   unbind(): void;
   /**
-   * Adopt persisted session cursors into the in-memory gate. Deliberately
-   * non-monotonic (see adoptExternalCursor): prompt resets and replay
-   * hydration must move the gate backwards. Call on every sessions change.
-   */
-  mirrorCursors(sessions: readonly Session[]): void;
-  /**
    * Reconcile live SSE attachments against the session set: attach sessions
    * entering the live set, detach those leaving, recreate only when the
    * connection params (runtime/pi id) change.
    */
   reconcile(sessions: readonly Session[]): void;
+  /**
+   * A `/turn` command was accepted: Pi's per-runtime event seq restarts, so
+   * reset the cursor to 0, drop any pending deltas from the previous epoch,
+   * and persist the reset. The deliberate backwards move — without it the
+   * gate silently drops the entire next turn.
+   */
+  noteTurnAccepted(sessionId: SessionId): void;
+  /**
+   * loadAndReplay hydrated the transcript from canonical + runtime logs up to
+   * `committedSeq` (undefined when the runtime is idle): reattach from there
+   * so EventSource does not replay already-rendered content.
+   */
+  noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
   /** Apply any coalesced-but-unflushed deltas for a session right now. */
   flush(sessionId: SessionId): void;
   /** Flush everything and close every SSE attachment (workspace unmount). */
@@ -93,8 +101,29 @@ export function createSessionRuntimeController(
   };
   const getSession = (sessionId: SessionId) => binding?.getSession(sessionId);
 
-  const applyEvent = (sessionId: SessionId, assistantId: string, event: Record<string, unknown>) => {
-    commit(sessionId, (session) => reduceSessionEvent(session, streamContext, assistantId, event));
+  // Stamp the committed cursor onto the session in the SAME commit that
+  // applies the event's effects — content and cursor land atomically, so a
+  // teardown can never persist a cursor ahead of rendered content.
+  const stampSeq = (session: Session, seq: number | undefined): Session => {
+    if (typeof seq !== "number") return session;
+    if (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq) return session;
+    return { ...session, lastEventSeq: seq };
+  };
+
+  const applyEvent = (
+    sessionId: SessionId,
+    assistantId: string,
+    event: Record<string, unknown>,
+    seq?: number,
+    decorate: (session: Session) => Session = (session) => session,
+  ) => {
+    commit(sessionId, (session) =>
+      decorate(stampSeq(reduceSessionEvent(session, streamContext, assistantId, event), seq)),
+    );
+    cursors.set(
+      sessionId,
+      commitRuntimeSeq(cursors.get(sessionId) ?? adoptExternalCursor(undefined), seq),
+    );
   };
 
   const coalescer = createTextDeltaCoalescer({
@@ -106,28 +135,30 @@ export function createSessionRuntimeController(
     sessionId: SessionId,
     assistantId: string,
     event: Record<string, unknown>,
-    options: { flushNow?: boolean } = {},
+    seq: number | undefined,
   ) => {
-    if (coalescer.enqueuePiEvent(sessionId, assistantId, event, options)) return;
+    if (coalescer.enqueuePiEvent(sessionId, assistantId, event, { seq })) return;
     // Non-delta events flush any pending merge first so ordering is preserved.
     coalescer.flushNow(sessionId);
-    applyEvent(sessionId, assistantId, event);
+    applyEvent(sessionId, assistantId, event, seq);
   };
 
-  const shouldApplySeq = (sessionId: SessionId, seq?: number): boolean => {
+  // Receive gate: advance receivedSeq immediately (dedup + reconnect cursor);
+  // committedSeq — and the persisted lastEventSeq — only advance when the
+  // event's effects are actually committed (see applyEvent).
+  const acceptSeq = (sessionId: SessionId, seq?: number): boolean => {
     const current = cursors.get(sessionId) ?? adoptExternalCursor(undefined);
     const decision = acceptRuntimeSeq(current, seq);
-    if (!decision.accept) return false;
-    // Cursor still advances (and persists) at receive time; the
-    // received/committed split is the next step of the consolidation.
-    cursors.set(sessionId, commitRuntimeSeq(decision.cursor, seq));
+    if (decision.accept) cursors.set(sessionId, decision.cursor);
+    return decision.accept;
+  };
+
+  const adoptCursor = (sessionId: SessionId, committedSeq: number | undefined) => {
+    coalescer.discard(sessionId);
+    cursors.set(sessionId, adoptExternalCursor(committedSeq));
     commit(sessionId, (session) =>
-      typeof seq !== "number" ||
-      (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq)
-        ? session
-        : { ...session, lastEventSeq: seq },
+      session.lastEventSeq === committedSeq ? session : { ...session, lastEventSeq: committedSeq },
     );
-    return true;
   };
 
   // Resolve (or create) the assistant bubble that live events should target.
@@ -139,7 +170,9 @@ export function createSessionRuntimeController(
         current.activeAssistantId) ||
       [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")?.id;
     if (existing) {
-      commit(sessionId, (session) => ({ ...session, activeAssistantId: existing }));
+      commit(sessionId, (session) =>
+        session.activeAssistantId === existing ? session : { ...session, activeAssistantId: existing },
+      );
       return existing;
     }
 
@@ -174,17 +207,20 @@ export function createSessionRuntimeController(
     payload: Extract<RuntimeEventPayload, { type: "pi" }>,
   ) => {
     const eventId = piSessionIdFromEvent(payload.event);
-    if (!shouldApplySeq(sessionId, payload.seq)) return;
+    if (!acceptSeq(sessionId, payload.seq)) return;
     const assistantId = ensureAssistantId(sessionId);
-    const agentEnded = isAgentEndEvent(payload.event);
-    commit(sessionId, (session) => ({
-      ...session,
-      piSessionId: eventId || session.piSessionId,
-      status: agentEnded ? "idle" : "running",
-      activeAssistantId: agentEnded ? undefined : assistantId,
-    }));
-    enqueueEvent(sessionId, assistantId, payload.event, agentEnded ? { flushNow: true } : {});
-    if (agentEnded) {
+
+    if (isAgentEndEvent(payload.event)) {
+      // Flush pending deltas first, then settle the turn in ONE commit:
+      // finalize tool blocks, stamp the cursor, and clear the live status
+      // together.
+      coalescer.flushNow(sessionId);
+      applyEvent(sessionId, assistantId, payload.event, payload.seq, (session) => ({
+        ...session,
+        piSessionId: eventId || session.piSessionId,
+        status: "idle",
+        activeAssistantId: undefined,
+      }));
       // Queue display reconciliation only: Pi drains its own follow_up queue
       // server-side, so the local submit is deliberately inert.
       drainQueuedTurnAfterAgentEnd(
@@ -200,7 +236,22 @@ export function createSessionRuntimeController(
         },
         sessionId,
       );
+      return;
     }
+
+    commit(sessionId, (session) =>
+      session.status === "running" &&
+      session.activeAssistantId === assistantId &&
+      (!eventId || session.piSessionId === eventId)
+        ? session
+        : {
+            ...session,
+            piSessionId: eventId || session.piSessionId,
+            status: "running",
+            activeAssistantId: assistantId,
+          },
+    );
+    enqueueEvent(sessionId, assistantId, payload.event, payload.seq);
   };
 
   // One SSE attachment per live session: connect, reconnect with a fixed
@@ -209,13 +260,11 @@ export function createSessionRuntimeController(
     sessionId: SessionId,
     runtime: string,
     piSessionId: string | null,
-    after: number,
   ): Attachment => {
     let closed = false;
     let reconnecting = false;
     let sub: RuntimeEventSubscription | null = null;
     let lastPayloadAt = Date.now();
-    let cursorAfter = after;
 
     const reconnect = () => {
       if (closed || reconnecting) return;
@@ -265,13 +314,13 @@ export function createSessionRuntimeController(
     };
 
     const connect = () => {
-      sub = api.subscribeRuntimeEvents(runtime, cursorAfter, piSessionId, {
+      // (Re)connect from the highest RECEIVED seq — an unflushed coalesced
+      // delta is still in memory, so replaying it would double-apply.
+      const after = reconnectAfter(cursors.get(sessionId) ?? adoptExternalCursor(undefined));
+      sub = api.subscribeRuntimeEvents(runtime, after, piSessionId, {
         onPayload: (payload) => {
           if (closed) return;
           lastPayloadAt = Date.now();
-          if (payload.type === "pi" && typeof payload.seq === "number" && payload.seq > cursorAfter) {
-            cursorAfter = payload.seq;
-          }
           if (payload.type === "status") applyStatusPayload(sessionId, payload);
           else applyPiPayload(sessionId, payload);
         },
@@ -307,22 +356,19 @@ export function createSessionRuntimeController(
     unbind: () => {
       binding = null;
     },
-    mirrorCursors: (sessions) => {
-      for (const session of sessions) {
-        cursors.set(session.id, adoptExternalCursor(session.lastEventSeq));
-      }
-    },
+    noteTurnAccepted: (sessionId) => adoptCursor(sessionId, 0),
+    noteReplayHydrated: (sessionId, committedSeq) => adoptCursor(sessionId, committedSeq),
     reconcile: (sessions) => {
       const desired = new Map<
         SessionId,
-        { runtimeSessionId: string; piSessionId: string | null; after: number }
+        { runtimeSessionId: string; piSessionId: string | null; lastEventSeq: number | undefined }
       >();
       for (const session of sessions) {
         if (shouldSubscribeRuntimeEvents(session.status) && session.runtimeSessionId) {
           desired.set(session.id, {
             runtimeSessionId: session.runtimeSessionId,
             piSessionId: session.piSessionId ?? null,
-            after: session.lastEventSeq ?? 0,
+            lastEventSeq: session.lastEventSeq,
           });
         }
       }
@@ -338,9 +384,12 @@ export function createSessionRuntimeController(
 
       for (const [sessionId, want] of desired) {
         if (attachments.has(sessionId)) continue;
+        // Seed the gate from the persisted cursor when a session (re)enters
+        // the live set — e.g. restored from storage as "running".
+        cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
         attachments.set(
           sessionId,
-          openAttachment(sessionId, want.runtimeSessionId, want.piSessionId, want.after),
+          openAttachment(sessionId, want.runtimeSessionId, want.piSessionId),
         );
       }
     },

@@ -5,6 +5,7 @@ type ApplyPiEvent = (
   sessionId: SessionId,
   assistantId: string,
   event: Record<string, unknown>,
+  seq?: number,
 ) => void;
 
 type FrameToken = {
@@ -18,17 +19,21 @@ export type TextDeltaCoalescer = {
     sessionId: SessionId,
     assistantId: string,
     event: Record<string, unknown>,
-    options?: { flushNow?: boolean },
+    options?: { flushNow?: boolean; seq?: number },
   ) => boolean;
   flushNow: (sessionId: SessionId) => void;
   flushAll: () => void;
-  dispose: () => void;
+  /** Drop a session's pending merge without applying it (cursor epoch reset). */
+  discard: (sessionId: SessionId) => void;
 };
 
 type PendingSnapshot = {
   assistantId: string;
   event: Record<string, unknown>;
   frame: FrameToken | null;
+  // Highest event seq merged into this snapshot — stamped onto the session as
+  // lastEventSeq in the same commit that applies the flushed event.
+  seq: number | undefined;
 };
 
 type TextDeltaSnapshot = {
@@ -59,7 +64,7 @@ export function createTextDeltaCoalescer({
     if (!snapshot) return;
     snapshot.frame?.cancel();
     pending.delete(sessionId);
-    applyPiEvent(sessionId, snapshot.assistantId, snapshot.event);
+    applyPiEvent(sessionId, snapshot.assistantId, snapshot.event, snapshot.seq);
   };
 
   const scheduleSessionFlush = (sessionId: SessionId) => {
@@ -89,12 +94,17 @@ export function createTextDeltaCoalescer({
       incomingDelta !== null &&
       existingDelta.kind === incomingDelta.kind;
     if (current && !canMerge) flushNow(sessionId);
-    const carriedFrame = pending.get(sessionId)?.frame ?? null;
+    const carried = pending.get(sessionId);
     const nextEvent =
       canMerge && existingDelta && incomingDelta
         ? mergeTextDeltaEvent(normalizedEvent, existingDelta.delta + incomingDelta.delta)
         : normalizedEvent;
-    pending.set(sessionId, { assistantId, event: nextEvent, frame: carriedFrame });
+    pending.set(sessionId, {
+      assistantId,
+      event: nextEvent,
+      frame: carried?.frame ?? null,
+      seq: options.seq ?? carried?.seq,
+    });
     traceAgentReasoning("coalescer.snapshot", {
       sessionId,
       assistantId,
@@ -116,9 +126,11 @@ export function createTextDeltaCoalescer({
     enqueuePiEvent,
     flushNow,
     flushAll,
-    dispose: () => {
-      for (const snapshot of pending.values()) snapshot.frame?.cancel();
-      pending.clear();
+    discard: (sessionId: SessionId) => {
+      const snapshot = pending.get(sessionId);
+      if (!snapshot) return;
+      snapshot.frame?.cancel();
+      pending.delete(sessionId);
     },
   };
 }

@@ -248,11 +248,9 @@ test("coalescer flushNow applies pending once and a stale frame is harmless", ()
   assert.equal(applied.length, 1);
 });
 
-test("coalescer dispose drops pending deltas without applying them", () => {
-  // Current behavior: dispose is cancellation-only. The hook compensates by
-  // calling flushAll() first on unmount. Step 7 of the refactor intentionally
-  // changes this to flush — this test documents the BEFORE state and must be
-  // updated when that lands.
+test("coalescer discard drops a session's pending deltas without applying them", () => {
+  // Cursor epoch resets (new prompt, replay hydration) discard stale pending
+  // merges instead of flushing them into the new epoch's transcript.
   const applied: Record<string, unknown>[] = [];
   const frames = frameHarness();
   const coalescer = createTextDeltaCoalescer({
@@ -261,7 +259,7 @@ test("coalescer dispose drops pending deltas without applying them", () => {
   });
 
   coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "lost"));
-  coalescer.dispose();
+  coalescer.discard("s-1");
   frames.runAll();
   assert.equal(applied.length, 0);
   assert.equal(frames.cancelled, 1);
@@ -294,6 +292,7 @@ type ControllerHarness = {
   subscribeCalls: { after: number; piSessionId: string | null | undefined }[];
   order: string[];
   frames: FrameHarness;
+  controller: ReturnType<typeof createSessionRuntimeController>;
   emit: (payload: RuntimeEventPayload) => void;
   fail: () => void;
   close: () => void;
@@ -345,7 +344,6 @@ function createControllerHarness(
     },
     getSession: (sessionId) => (sessionId === session.id ? session : undefined),
   });
-  controller.mirrorCursors([session]);
   controller.reconcile([session]);
 
   return {
@@ -353,6 +351,7 @@ function createControllerHarness(
     subscribeCalls,
     order,
     frames,
+    controller,
     emit: (payload) => handlers.at(-1)?.onPayload(payload),
     fail: () => handlers.at(-1)?.onError(),
     close: () => {
@@ -478,5 +477,104 @@ test("done status payloads settle the session idle and keep the pi session id", 
   assert.equal(harness.session().status, "idle");
   assert.equal(harness.session().piSessionId, "pi-from-status");
   assert.equal(harness.session().activeAssistantId, undefined);
+  harness.close();
+});
+
+// ----- received/committed cursor split (step 6 behavior guards) -----
+
+test("reconnect mid-coalesce replays nothing and commits the merged text exactly once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const harness = createControllerHarness({ status: { active: true } });
+
+  // Three deltas received, none flushed (no frame has run).
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("a", "a") });
+  harness.emit({ type: "pi", seq: 2, event: partialDeltaEvent("b", "ab") });
+  harness.emit({ type: "pi", seq: 3, event: partialDeltaEvent("c", "abc") });
+
+  // Committed cursor lags received: nothing persisted yet.
+  assert.equal(harness.session().lastEventSeq, undefined);
+
+  // Transport error: must resubscribe AFTER the highest RECEIVED seq.
+  harness.fail();
+  await settle();
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(
+    harness.subscribeCalls.map((call) => call.after),
+    [0, 3],
+  );
+
+  // Server replays the same seqs anyway (overlap) — the gate rejects them all.
+  const blocksBefore = harness.order.filter((entry) => entry.startsWith("blocks:")).length;
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("a", "a") });
+  harness.emit({ type: "pi", seq: 2, event: partialDeltaEvent("b", "ab") });
+  harness.emit({ type: "pi", seq: 3, event: partialDeltaEvent("c", "abc") });
+  assert.equal(
+    harness.order.filter((entry) => entry.startsWith("blocks:")).length,
+    blocksBefore,
+  );
+
+  // The frame fires: exactly one commit applies "abc" and stamps the cursor.
+  harness.frames.runAll();
+  assert.deepEqual(
+    harness.order.filter((entry) => entry.startsWith("blocks:")),
+    ["blocks:abc"],
+  );
+  assert.equal(harness.session().lastEventSeq, 3);
+  harness.close();
+});
+
+test("flushed deltas stamp the committed cursor in the same commit as their content", () => {
+  const harness = createControllerHarness();
+  let stampedWithContent = false;
+
+  harness.emit({ type: "pi", seq: 7, event: partialDeltaEvent("hello", "hello") });
+  assert.equal(harness.session().lastEventSeq, undefined);
+
+  // Inspect the commit that lands the text: it must already carry the cursor.
+  const before = harness.order.length;
+  harness.frames.runAll();
+  stampedWithContent =
+    harness.order.slice(before).includes("blocks:hello") && harness.session().lastEventSeq === 7;
+  assert.equal(stampedWithContent, true);
+  harness.close();
+});
+
+test("noteTurnAccepted resets the cursor, drops stale pending deltas, and persists 0", () => {
+  const harness = createControllerHarness({ lastEventSeq: 43 });
+
+  // A leftover delta from the previous epoch is pending but unflushed.
+  harness.emit({ type: "pi", seq: 44, event: partialDeltaEvent("stale", "stale") });
+
+  harness.controller.noteTurnAccepted("s-1");
+  assert.equal(harness.session().lastEventSeq, 0);
+
+  // The stale pending delta must NOT leak into the new epoch.
+  harness.frames.runAll();
+  assert.equal(harness.order.includes("blocks:stale"), false);
+
+  // The new prompt's restarted seq numbering is accepted from 1.
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("fresh", "fresh") });
+  harness.frames.runAll();
+  assert.equal(harness.order.includes("blocks:fresh"), true);
+  assert.equal(harness.session().lastEventSeq, 1);
+  harness.close();
+});
+
+test("agent_end lands tool finalization, idle status, and cursor in one commit", () => {
+  const harness = createControllerHarness();
+  const commits: Session[] = [];
+
+  harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("answer", "answer") });
+  harness.frames.runAll();
+
+  // Track the exact commits produced by agent_end.
+  const sessionBefore = harness.session();
+  harness.emit({ type: "pi", seq: 2, event: { type: "agent_end" } });
+  const sessionAfter = harness.session();
+  commits.push(sessionBefore, sessionAfter);
+
+  assert.equal(sessionAfter.status, "idle");
+  assert.equal(sessionAfter.activeAssistantId, undefined);
+  assert.equal(sessionAfter.lastEventSeq, 2);
   harness.close();
 });
