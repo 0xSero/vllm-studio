@@ -1,0 +1,37 @@
+{
+  "title": "vLLM Studio — Security, Standards & State",
+  "purpose": "Companion audit wiki to droid-wiki, assessing security posture, engineering standards, and project state.",
+  "generatedAt": "2026-06-09T00:00:00Z",
+  "commitHash": "d9ede391bb110c348cf55651669cf424f04a8d1f",
+  "branch": "main",
+  "complementsWiki": "droid-wiki",
+  "pageCount": 20,
+  "topLevelSections": [
+    "security",
+    "standards",
+    "state"
+  ],
+  "pageOrder": [
+    "index.md",
+    "security/index.md",
+    "security/threat-model.md",
+    "security/controller.md",
+    "security/frontend-and-proxy.md",
+    "security/desktop-and-cli.md",
+    "security/supply-chain-and-ci.md",
+    "security/risk-register.md",
+    "standards/index.md",
+    "standards/typescript-and-lint.md",
+    "standards/contracts-and-structure.md",
+    "standards/process-and-releases.md",
+    "standards/testing.md",
+    "standards/enforcement-matrix.md",
+    "state/index.md",
+    "state/by-the-numbers.md",
+    "state/activity-and-momentum.md",
+    "state/debt-and-hygiene.md",
+    "state/roadmap.md"
+  ],
+  "methodology": "Five read-only analysis passes over the working tree (controller security, frontend + agent-runtime security, desktop/CLI/supply-chain security, standards-and-process, state-and-metrics), cross-checked against source and the existing droid-wiki. All claims cite file:line.",
+  "scope": "Code-level review of the working tree only; does not observe the live production deployment's environment configuration."
+}
