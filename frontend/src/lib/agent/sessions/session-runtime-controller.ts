@@ -32,6 +32,7 @@ import type { Session, SessionId } from "./types";
 const RESUME_IDLE_RECONNECT_MS = 15_000;
 const RESUME_RECONNECT_DELAY_MS = 1_000;
 const RUNTIME_POLL_INTERVAL_MS = 5_000;
+const RUNTIME_POLL_IDLE_GRACE_MS = 10_000;
 
 type ScheduleFrame = (callback: () => void) => { cancel: () => void };
 
@@ -54,6 +55,7 @@ export type SessionRuntimeControllerDeps = {
   reconnectDelayMs?: number;
   idleReconnectMs?: number;
   pollIntervalMs?: number;
+  pollIdleGraceMs?: number;
 };
 
 export type SessionRuntimeController = {
@@ -127,6 +129,7 @@ export function createSessionRuntimeController(
   const reconnectDelayMs = deps.reconnectDelayMs ?? RESUME_RECONNECT_DELAY_MS;
   const idleReconnectMs = deps.idleReconnectMs ?? RESUME_IDLE_RECONNECT_MS;
   const pollIntervalMs = deps.pollIntervalMs ?? RUNTIME_POLL_INTERVAL_MS;
+  const pollIdleGraceMs = deps.pollIdleGraceMs ?? RUNTIME_POLL_IDLE_GRACE_MS;
 
   let binding: SessionRuntimeBinding | null = null;
   const cursors = new Map<SessionId, RuntimeCursor>();
@@ -134,6 +137,7 @@ export function createSessionRuntimeController(
   const attachments = new Map<SessionId, Attachment>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollEpoch = 0;
+  const turnAcceptedAt = new Map<SessionId, number>();
 
   const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
     binding?.commit(sessionId, patch);
@@ -291,7 +295,7 @@ export function createSessionRuntimeController(
   // it promotes sessions whose runtime is active (including adopting a new
   // runtimeSessionId via the pi-session match) and idles sessions the runtime
   // no longer reports as active.
-  const applyRuntimeList = (runtimeSessions: RuntimeSessionSummary[]) => {
+  const applyRuntimeList = (runtimeSessions: RuntimeSessionSummary[], fetchStartedAt: number) => {
     const byRuntime = new Map(runtimeSessions.map((entry) => [entry.sessionId, entry.status]));
     const byPi = new Map(
       runtimeSessions
@@ -327,6 +331,13 @@ export function createSessionRuntimeController(
         // working indicator for several seconds until the first token lands.
         // The prompt stream's own `finally` owns the starting->terminal
         // transition, so the poll must not race it.
+        //
+        // Accept-vs-poll grace: a list snapshot fetched before — or shortly
+        // after — a `/turn` acceptance cannot speak for the new turn, so it
+        // may not idle the session either. Only the idle branch is suppressed;
+        // the active branch is the recovery path and must always apply.
+        const acceptedAt = turnAcceptedAt.get(session.id);
+        if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) continue;
         const patch = patchRuntimeStatus(status);
         commit(session.id, (current) => {
           if (current.status !== "running") return current;
@@ -354,9 +365,10 @@ export function createSessionRuntimeController(
 
   const pollOnce = async () => {
     const epoch = pollEpoch;
+    const fetchStartedAt = Date.now();
     const entries = await api.listRuntimeSessions();
     if (epoch !== pollEpoch || !binding) return;
-    applyRuntimeList(entries);
+    applyRuntimeList(entries, fetchStartedAt);
   };
 
   // One SSE attachment per live session: connect, reconnect with a fixed
@@ -462,7 +474,10 @@ export function createSessionRuntimeController(
       stopPoll();
       binding = null;
     },
-    noteTurnAccepted: (sessionId) => adoptCursor(sessionId, 0),
+    noteTurnAccepted: (sessionId) => {
+      turnAcceptedAt.set(sessionId, Date.now());
+      adoptCursor(sessionId, 0);
+    },
     noteReplayHydrated: (sessionId, committedSeq) => adoptCursor(sessionId, committedSeq),
     reconcile: (sessions) => {
       const desired = new Map<

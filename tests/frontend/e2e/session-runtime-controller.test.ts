@@ -726,3 +726,24 @@ test("pollNow with no sessions does not start a poll", async (t) => {
   assert.equal(harness.fetchCount(), 0);
   harness.controller.unbind();
 });
+
+test("poll-idle is suppressed inside the accept grace window, allowed after it", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_000 });
+  const harness = createPollHarness([pollSession({ status: "running" })]);
+
+  // /turn was just accepted; a snapshot fetched moments later may still lag
+  // the new turn and must not idle the session.
+  harness.controller.noteTurnAccepted("s-1");
+  harness.controller.pollNow();
+  await harness.resolveFetch(0, [{ sessionId: "rt-1", status: { active: false } }]);
+  assert.equal(harness.sessions()[0].status, "running");
+
+  // Two poll periods later the runtime list speaks for the turn again.
+  t.mock.timers.setTime(12_000);
+  harness.controller.pollNow();
+  await harness.resolveFetch(1, [{ sessionId: "rt-1", status: { active: false } }]);
+  assert.equal(harness.sessions()[0].status, "idle");
+
+  harness.controller.closeAll();
+  harness.controller.unbind();
+});
