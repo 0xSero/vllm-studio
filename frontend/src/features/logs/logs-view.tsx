@@ -3,7 +3,7 @@
 import { ChevronRight, Download, Menu, RefreshCw } from "lucide-react";
 import { Button, Checkbox, SearchInput } from "@/ui";
 import type { LogSession } from "@/lib/types";
-import { LogsSessionsSidebar } from "./logs-view/logs-sessions-sidebar";
+import { LogsSessionsSidebar } from "./logs-sessions-sidebar";
 
 interface LogsViewProps {
   sessions: LogSession[];

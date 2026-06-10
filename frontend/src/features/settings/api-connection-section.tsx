@@ -11,7 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { ApiConnectionSettings, ConnectionStatus } from "@/lib/configs/types";
+import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import {
   loadSavedControllers,
   normalizeControllerUrl,

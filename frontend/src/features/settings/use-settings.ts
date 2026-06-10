@@ -9,7 +9,7 @@ import { getStoredBackendUrl, setStoredBackendUrl, clearStoredBackendUrl } from 
 import { normalizeControllerUrl } from "@/lib/controllers";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
-import type { ApiConnectionSettings, ConnectionStatus } from "@/lib/configs/types";
+import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const CONNECTION_TEST_REQUEST = { timeout: 10_000, retries: 0 } as const;
@@ -42,7 +42,7 @@ const mergeApiSettings = (
   };
 };
 
-export function useConfigs() {
+export function useSettings() {
   const [data, setData] = useState<ConfigData | null>(null);
   const [compatibilityReport, setCompatibilityReport] = useState<CompatibilityReport | null>(null);
   const [loading, setLoading] = useState(true);

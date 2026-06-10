@@ -1,11 +1,24 @@
-// Frontend uses extensive barrel exports (index.ts) which knip doesn't handle well.
-// This config is deliberately lenient to avoid false positives.
 const config = {
-  entry: ["src/app/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
+  entry: [
+    // src/proxy.ts is picked up by knip's Next.js plugin; no explicit entry needed.
+    "src/app/**/{page,layout,route,error,global-error,loading,not-found,template,default}.{ts,tsx}",
+    "desktop/main.ts",
+    "desktop/preload.ts",
+    "desktop/app-identity.ts",
+    "desktop/resources/pi-extensions/*.ts",
+  ],
   project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
-  ignore: [".next/**", "node_modules/**"],
+  ignore: [
+    ".next/**",
+    "node_modules/**",
+    // Deliberate forward shim: re-exports desktop/helpers/fs-json writeJsonAtomic for
+    // src-side adoption (desktop tsc rootDir can't import from src/). No consumers yet.
+    "src/lib/fs-json.ts",
+  ],
   ignoreIssues: {
-    "src/ui/**/*.{ts,tsx}": ["exports"],
+    // IpcRequestMap is unreferenced; desktop/ is outside the frontend cleanup scope,
+    // so it is flagged here instead of deleted.
+    "desktop/interfaces.ts": ["types"],
   },
   // Some tooling is used implicitly (CSS/postcss pipeline, git hooks), which knip can't reliably
   // infer from source imports. Keep this list small and intentional.

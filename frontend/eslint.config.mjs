@@ -29,7 +29,7 @@ const eslintConfig = defineConfig([
         { type: "features", pattern: "src/features/**" },
         { type: "hooks", pattern: "src/hooks/**" },
         { type: "lib", pattern: "src/lib/**" },
-        { type: "store", pattern: "src/store/**" },
+        { type: "store", pattern: "src/store.ts" },
       ],
     },
     rules: {
@@ -80,22 +80,6 @@ const eslintConfig = defineConfig([
                 "src/lib is a lower-level seam and must not import app/UI modules. Move shared types or helpers into src/lib first.",
             },
           ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["src/features/agent/ui/**/*.{ts,tsx}"],
-    // Test files and lint fixtures stay exempt — production component files
-    // (including chat-pane, use-workspace, agent-workspace-shell) MUST obey
-    // the global React effect hook ban. No carve-outs.
-    ignores: ["src/features/agent/ui/**/*.test.ts", "src/features/agent/ui/__lint__/**"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: bannedReactEffectCallSelector,
-          message: "Agent workspace component files must not call React effect hooks.",
         },
       ],
     },

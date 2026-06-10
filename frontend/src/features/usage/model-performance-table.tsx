@@ -1,7 +1,7 @@
 "use client";
 
 import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Table, TBody, TCell, THead, TH, TRow } from "@/ui";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
@@ -12,7 +12,6 @@ import {
   type ModelData,
   type SpeedDisplay,
 } from "./model-performance-table-model";
-import { SortHeader, StatusPill } from "./model-performance-table/components";
 
 interface ModelPerformanceTableProps {
   sortedModels: ModelData[];
@@ -227,6 +226,66 @@ export function ModelPerformanceTable({
         </TBody>
       </Table>
     </section>
+  );
+}
+
+function SortHeader({
+  field,
+  currentField,
+  direction,
+  onClick,
+  children,
+  align = "left",
+}: {
+  field: SortField;
+  currentField: SortField;
+  direction: SortDirection;
+  onClick: () => void;
+  children: ReactNode;
+  align?: "left" | "right";
+}) {
+  const isActive = currentField === field;
+
+  return (
+    <TH
+      align={align}
+      className={`cursor-pointer select-none px-3 py-2 font-mono text-[length:var(--fs-xs)] font-normal uppercase tracking-[0.14em] text-(--dim) transition-colors hover:text-(--fg) ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+      onClick={onClick}
+    >
+      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+        {children}
+        {isActive && <span>{direction === "asc" ? "↑" : "↓"}</span>}
+      </div>
+    </TH>
+  );
+}
+
+function StatusPill({ value, type }: { value: number | null; type: "success" | "latency" }) {
+  if (value === null) {
+    return (
+      <span className="font-mono text-[length:var(--fs-md)] tabular-nums text-(--dim)">
+        {type === "success" ? "0.0%" : "0ms"}
+      </span>
+    );
+  }
+
+  const getColor = () => {
+    if (type === "success") {
+      if (value >= 95) return "text-(--hl2)";
+      if (value >= 90) return "text-(--hl3)";
+      return "text-(--err)";
+    }
+    if (value < 500) return "text-(--hl2)";
+    if (value < 1500) return "text-(--hl3)";
+    return "text-(--err)";
+  };
+
+  return (
+    <span className={`font-mono text-[length:var(--fs-md)] tabular-nums ${getColor()}`}>
+      {type === "success" ? `${value.toFixed(1)}%` : formatDurationOrUnavailable(value)}
+    </span>
   );
 }
 

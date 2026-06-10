@@ -1,5 +1,5 @@
 import type { RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
-export { ENGINE_META } from "@/ui";
+export { ENGINE_META } from "./runtime-targets";
 
 export const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "mlx"] as const;
 

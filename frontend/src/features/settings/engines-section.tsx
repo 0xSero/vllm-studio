@@ -6,20 +6,22 @@ import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import api from "@/lib/api";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
 import {
-  ENGINE_META,
-  MANAGED_RUNTIME_BACKENDS,
-  ManagedRuntimeInstallRows,
   RowDetailLine,
-  RuntimeTargetRows,
-  RuntimeTargetStatus,
   SettingsButton,
   SettingsGroup,
   SettingsRow,
   SettingsValue,
   StatusPill,
+} from "@/ui";
+import {
+  ENGINE_META,
+  MANAGED_RUNTIME_BACKENDS,
+  ManagedRuntimeInstallRows,
+  RuntimeTargetRows,
+  RuntimeTargetStatus,
   isManagedRuntimeTarget,
   type ManagedRuntimeInstallBackend,
-} from "@/ui";
+} from "./runtime-targets";
 import {
   hasHydratedEngineRows,
   resolveEngineRowsView,

@@ -3,10 +3,9 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
-import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
+import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
 import {
   engagementTier,
-  isRecentHuggingFaceModel,
   isDerivativeModel,
   modelFamilyName,
   modelRecencyMs,
@@ -69,17 +68,21 @@ export function derivativeScore(model: HuggingFaceModel, search: string): number
 }
 
 export function useExplore() {
-  const [models, setModels] = useState<HuggingFaceModel[]>([]);
   const [gpus, setGpus] = useState<GPU[]>([]);
   const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
   const [poolOverrideGb, setPoolOverrideGbState] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
-  const PAGE_SIZE = 50;
+
+  const configureExploreParams = useCallback((params: URLSearchParams, isBrowsing: boolean) => {
+    params.set("filter", "text-generation");
+    params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : "downloads");
+  }, []);
+
+  const { models, loading, error, hasMore, loadMore, fetchModels } = useHuggingFaceModelSearch(
+    search,
+    configureExploreParams,
+  );
 
   const subscribePoolOverride = useCallback((_notify: () => void) => {
     setPoolOverrideGbState(readExplorePoolOverrideGb());
@@ -132,42 +135,6 @@ export function useExplore() {
     }
   }, []);
 
-  const fetchModels = useCallback(
-    async (append: boolean, pageIndex: number) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams();
-        const isBrowsing = search.trim().length === 0;
-        if (!isBrowsing) params.set("search", search);
-        params.set("filter", "text-generation");
-        params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : "downloads");
-        params.set("limit", String(PAGE_SIZE));
-        params.set("full", "false");
-        params.set("offset", String(pageIndex * PAGE_SIZE));
-
-        const data = await fetchHuggingFaceModels(params);
-        const visibleData = isBrowsing ? data.filter(isRecentHuggingFaceModel) : data;
-
-        if (append) {
-          setModels((prev) => [...prev, ...visibleData]);
-          setPage(pageIndex);
-        } else {
-          setModels(visibleData);
-          setPage(0);
-        }
-        setHasMore(
-          data.length === PAGE_SIZE && (!isBrowsing || visibleData.length === data.length),
-        );
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [search],
-  );
-
   const subscribeRecommendations = useCallback(
     (_notify: () => void) => {
       void loadRecommendationsAndGpus();
@@ -176,25 +143,7 @@ export function useExplore() {
     [loadRecommendationsAndGpus],
   );
 
-  const subscribeModelSearch = useCallback(
-    (_notify: () => void) => {
-      setPage(0);
-      const debounce = setTimeout(() => {
-        void fetchModels(false, 0);
-      }, 300);
-      return () => clearTimeout(debounce);
-    },
-    [search, fetchModels],
-  );
-
   useSyncExternalStore(subscribeRecommendations, getExploreSnapshot, getExploreSnapshot);
-  useSyncExternalStore(subscribeModelSearch, getExploreSnapshot, getExploreSnapshot);
-
-  const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      void fetchModels(true, page + 1);
-    }
-  }, [loading, hasMore, page, fetchModels]);
 
   const recByKey = useMemo(() => {
     const m = new Map<string, ModelRecommendation>();

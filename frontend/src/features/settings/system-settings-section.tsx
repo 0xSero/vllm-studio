@@ -7,7 +7,7 @@ import {
   type SettingsFactRow,
   type StatusTone,
 } from "@/ui";
-import type { ApiConnectionSettings } from "@/lib/configs/types";
+import type { ApiConnectionSettings } from "./types";
 import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
 
 export function ServicesSettings({

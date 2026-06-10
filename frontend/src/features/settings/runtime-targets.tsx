@@ -2,9 +2,16 @@
 
 import { ArrowUpCircle, DownloadCloud, Loader2 } from "lucide-react";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "@/lib/types";
-import { RowDetailLine, RowFacts, type RowFact } from "./list";
-import { SettingsButton, SettingsRow, SettingsValue } from "./settings";
-import { StatusPill, type UiTone } from "./status";
+import {
+  RowDetailLine,
+  RowFacts,
+  SettingsButton,
+  SettingsRow,
+  SettingsValue,
+  StatusPill,
+  type RowFact,
+  type UiTone,
+} from "@/ui";
 
 export const ENGINE_META: Record<string, { label: string; description: string }> = {
   vllm: {

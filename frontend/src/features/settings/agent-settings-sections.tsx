@@ -9,7 +9,7 @@ import {
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import { useSidebarStatus } from "@/hooks/use-sidebar-status";
-import { getConfigsViewSnapshot } from "./configs-view-snapshot";
+import { getSettingsViewSnapshot } from "./settings-view-snapshot";
 
 export function ArchivedChatsSettings() {
   type Session = {
@@ -51,7 +51,7 @@ export function ArchivedChatsSettings() {
     [loadArchivedSessions],
   );
 
-  useSyncExternalStore(subscribeArchivedSessions, getConfigsViewSnapshot, getConfigsViewSnapshot);
+  useSyncExternalStore(subscribeArchivedSessions, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const unarchive = async (session: Session) => {
     setRestoringId(session.id);
     setError("");
@@ -139,7 +139,7 @@ export function SkillsSettings() {
     return () => {};
   }, []);
 
-  useSyncExternalStore(subscribeSkills, getConfigsViewSnapshot, getConfigsViewSnapshot);
+  useSyncExternalStore(subscribeSkills, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const skillRows: SettingsFactRow[] =
     skills.length === 0
       ? [
@@ -185,7 +185,7 @@ export function SetupChecksSettings() {
     return () => {};
   }, []);
 
-  useSyncExternalStore(subscribeSetupChecks, getConfigsViewSnapshot, getConfigsViewSnapshot);
+  useSyncExternalStore(subscribeSetupChecks, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const controllerCheck: Check = {
     id: "controller",
     label: "Controller connection",

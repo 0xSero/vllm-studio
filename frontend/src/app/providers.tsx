@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ContextManagementProvider } from "@/lib/services/context-management";
 import { useControllerEvents } from "@/hooks/use-controller-events";
 import { ProjectsProvider } from "@/features/agent/projects/context";
 import { ToolsProvider } from "@/features/agent/tools/context";
@@ -13,13 +12,11 @@ function ControllerEventsListener() {
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <ContextManagementProvider>
-      <ProjectsProvider>
-        <ToolsProvider>
-          <ControllerEventsListener />
-          {children}
-        </ToolsProvider>
-      </ProjectsProvider>
-    </ContextManagementProvider>
+    <ProjectsProvider>
+      <ToolsProvider>
+        <ControllerEventsListener />
+        {children}
+      </ToolsProvider>
+    </ProjectsProvider>
   );
 }

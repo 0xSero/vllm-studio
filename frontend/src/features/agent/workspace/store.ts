@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/guards";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import {
   mergeActiveAgentSessions,
@@ -8,7 +9,12 @@ import { cleanSessionTitle, makeFreshTab } from "@/features/agent/messages/helpe
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerPluginRef, ComposerSkillRef } from "@/features/agent/composer-context";
-import type { PaneId, PaneState, WorkspaceLayout, WorkspaceState } from "@/features/agent/workspace/types";
+import type {
+  PaneId,
+  PaneState,
+  WorkspaceLayout,
+  WorkspaceState,
+} from "@/features/agent/workspace/types";
 // Computer/browser tool state moved to features/agent/tools/ — workspace no longer
 // owns or mutates it.
 
@@ -248,10 +254,6 @@ export function sessionMetaForPersistence(
     };
   }
   return base;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function defaultWorkspaceStorage(): WorkspaceStorage | null {

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "@/ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
-import type { ApiConnectionSettings, ConnectionStatus } from "@/lib/configs/types";
+import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
 import {
   ArchivedChatsSettings,
@@ -23,8 +23,8 @@ import { AppearanceSettings } from "./appearance-settings";
 import { EnginesSection } from "./engines-section";
 import { PluginsSettingsSection } from "@/features/plugins/plugins-page";
 import { ServicesSettings, SystemSettings } from "./system-settings-section";
-import { getConfigsViewSnapshot } from "./configs-view-snapshot";
-interface ConfigsViewProps {
+import { getSettingsViewSnapshot } from "./settings-view-snapshot";
+interface SettingsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
   loading: boolean;
@@ -69,7 +69,7 @@ const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (value === "engines" || value === "services") return "system";
   return null;
 };
-export function ConfigsView({
+export function SettingsView({
   data,
   compatibilityReport,
   loading,
@@ -86,7 +86,7 @@ export function ConfigsView({
   onApiSettingsChange,
   onTestConnection,
   onSaveSettings,
-}: ConfigsViewProps) {
+}: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() => {
     if (typeof window === "undefined") return "connection";
     const hash = window.location.hash.replace("#", "");
@@ -103,7 +103,7 @@ export function ConfigsView({
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  useSyncExternalStore(subscribeHashSection, getConfigsViewSnapshot, getConfigsViewSnapshot);
+  useSyncExternalStore(subscribeHashSection, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
     if (typeof window !== "undefined") {

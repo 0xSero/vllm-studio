@@ -1,19 +1,14 @@
 "use client";
 
 import { ChevronRight, Cpu } from "lucide-react";
+import { Button, Card, Checkbox, FactGrid, SettingsGroup, SettingsNotice } from "@/ui";
 import {
-  Button,
-  Card,
-  Checkbox,
-  FactGrid,
   MANAGED_RUNTIME_BACKENDS,
   ManagedRuntimeInstallRows,
   RuntimeTargetRows,
-  SettingsGroup,
-  SettingsNotice,
   isManagedRuntimeTarget,
   type ManagedRuntimeInstallBackend,
-} from "@/ui";
+} from "@/features/settings/runtime-targets";
 import type { EngineJob, RuntimeTarget, StudioDiagnostics } from "@/lib/types";
 import { buildHardwareSummary } from "./step-hardware-model";
 

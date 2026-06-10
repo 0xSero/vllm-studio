@@ -2,31 +2,39 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
-import type { HuggingFaceModel, ModelInfo, ModelRecommendation } from "@/lib/types";
-import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
-import { isRecentHuggingFaceModel, RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
+import type { ModelInfo, ModelRecommendation } from "@/lib/types";
+import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
+import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 import { extractProvider, extractQuantizations, normalizeModelId } from "@/features/discover/utils";
 
 export function useDiscover() {
-  const [models, setModels] = useState<HuggingFaceModel[]>([]);
   const [localModels, setLocalModels] = useState<ModelInfo[]>([]);
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
   const [maxVramGb, setMaxVramGb] = useState(0);
   const [selectedVramGb, setSelectedVramGb] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [task, setTask] = useState("");
   const [sort, setSort] = useState("");
   const [library, setLibrary] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [providerFilter, setProviderFilter] = useState("");
   const [excludedQuantizations, setExcludedQuantizations] = useState<string[]>([]);
 
-  const PAGE_SIZE = 50;
+  const configureDiscoverParams = useCallback(
+    (params: URLSearchParams, isBrowsing: boolean) => {
+      if (task) params.set("filter", task);
+      if (library) params.set("filter", library);
+      const nextSort = isBrowsing ? RECENT_HF_MODEL_SORT : sort;
+      if (nextSort) params.set("sort", nextSort);
+    },
+    [library, sort, task],
+  );
+
+  const { models, loading, error, hasMore, loadMore, fetchModels } = useHuggingFaceModelSearch(
+    search,
+    configureDiscoverParams,
+  );
 
   const loadRecommendations = useCallback(async () => {
     try {
@@ -92,65 +100,6 @@ export function useDiscover() {
     },
     [localModelMap],
   );
-
-  const fetchModels = useCallback(
-    async (append = false, pageIndex = 0) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams();
-        const isBrowsing = search.trim().length === 0;
-        if (!isBrowsing) params.set("search", search);
-        if (task) params.set("filter", task);
-        if (library) params.set("filter", library);
-        const nextSort = isBrowsing ? RECENT_HF_MODEL_SORT : sort;
-        if (nextSort) params.set("sort", nextSort);
-        params.set("limit", String(PAGE_SIZE));
-        params.set("full", "false");
-        params.set("offset", String(pageIndex * PAGE_SIZE));
-
-        const data = await fetchHuggingFaceModels(params);
-        const visibleData = isBrowsing ? data.filter(isRecentHuggingFaceModel) : data;
-
-        if (append) {
-          setModels((prev) => [...prev, ...visibleData]);
-          setPage(pageIndex);
-        } else {
-          setModels(visibleData);
-          setPage(0);
-        }
-
-        setHasMore(
-          data.length === PAGE_SIZE && (!isBrowsing || visibleData.length === data.length),
-        );
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [library, search, sort, task],
-  );
-
-  const subscribeModelSearch = useCallback(
-    (_notify: () => void) => {
-      setPage(0);
-      const debounce = setTimeout(() => {
-        void fetchModels(false, 0);
-      }, 300);
-      return () => clearTimeout(debounce);
-    },
-    [fetchModels, library, search, sort, task],
-  );
-
-  useSyncExternalStore(subscribeModelSearch, getDiscoverSnapshot, getDiscoverSnapshot);
-
-  const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      const nextPage = page + 1;
-      void fetchModels(true, nextPage);
-    }
-  }, [page, loading, hasMore, fetchModels]);
 
   const copyModelId = useCallback((modelId: string) => {
     navigator.clipboard.writeText(modelId);

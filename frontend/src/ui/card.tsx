@@ -11,11 +11,6 @@ interface CardProps {
   bordered?: boolean;
 }
 
-interface CardHeaderProps {
-  children: ReactNode;
-  className?: string;
-}
-
 const paddingClasses: Record<CardPadding, string> = {
   sm: "p-3",
   md: "p-4",
@@ -32,9 +27,5 @@ function Card({ padding = "md", children, className = "", bordered = true }: Car
   );
 }
 
-function CardHeader({ children, className = "" }: CardHeaderProps) {
-  return <div className={`flex items-start justify-between ${className}`}>{children}</div>;
-}
-
-export { Card, CardHeader };
-export type { CardProps, CardHeaderProps, CardPadding };
+export { Card };
+export type { CardProps, CardPadding };

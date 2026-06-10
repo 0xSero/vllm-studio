@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ConfigsView } from "@/features/settings/configs-view";
-import { useConfigs } from "@/features/settings/use-configs";
+import { SettingsView } from "@/features/settings/settings-view";
+import { useSettings } from "@/features/settings/use-settings";
 import { SetupView } from "@/features/setup/setup-view";
 import { useSetup } from "@/features/setup/use-setup";
 
@@ -12,7 +12,7 @@ const hasSettingsHash = () => {
 };
 
 export default function SettingsPage() {
-  const configs = useConfigs();
+  const configs = useSettings();
   const setup = useSetup();
   const [setupComplete] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -31,7 +31,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <ConfigsView
+    <SettingsView
       data={configs.data}
       compatibilityReport={configs.compatibilityReport}
       loading={configs.loading}
