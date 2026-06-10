@@ -1,7 +1,7 @@
 // Pure HTTP/SSE clients for the agent session endpoints. No React state, no
 // component coupling — engine code calls into these and reacts to the results.
 
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import {
   parseAgentTurnCommandResult,
   type AgentTurnCommandResult,

@@ -1,5 +1,5 @@
 import type { McpCatalogueEntry } from "@/features/agent/mcp/types";
-import { fetchWithTimeout } from "@/lib/http";
+import { fetchWithTimeout } from "@/lib/api/http";
 import type { McpRegistrySource } from "@/features/agent/mcp/registry-sources";
 
 const DEFAULT_LIMIT = 24;

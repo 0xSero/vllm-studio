@@ -9,7 +9,7 @@ import {
 } from "./explore-tab-sections";
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import { HuggingFaceModelCardPanel } from "@/ui";
 import type { ModelFit } from "./hardware-profile";
 

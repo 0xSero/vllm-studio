@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchWithTimeout } from "@/lib/http";
+import { fetchWithTimeout } from "@/lib/api/http";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
 
 export const runtime = "nodejs";

@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,

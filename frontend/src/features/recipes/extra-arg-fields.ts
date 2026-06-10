@@ -1,4 +1,4 @@
-import type { RecipeEditor } from "@/lib/types";
+import type { RecipeEditor } from "./recipe-editor";
 
 export type ExtraArgType = "string" | "number" | "boolean";
 

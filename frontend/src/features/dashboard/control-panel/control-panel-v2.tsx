@@ -5,18 +5,18 @@ import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
 import { createApiClient } from "@/lib/api/create-api-client";
-import { setApiKey } from "@/lib/api-key";
 import {
   BACKEND_URL_CHANGED_EVENT,
   getStoredBackendUrl,
+  setApiKey,
   setStoredBackendUrl,
-} from "@/lib/backend-url";
+} from "@/lib/api/connection";
 import {
   CONTROLLERS_CHANGED_EVENT,
   loadSavedControllers,
   normalizeControllerUrl,
   type SavedController,
-} from "@/lib/controllers";
+} from "@/lib/api/controllers";
 import type { GPU, ProcessInfo } from "@/lib/types";
 
 const CONTROLLER_POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
-import { useRealtimeStatus } from "./use-realtime-status";
+import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 
 type ModelLifecycleStatus = "idle" | "starting" | "ready" | "error";
 

@@ -1,4 +1,4 @@
-import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
 
 const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
 

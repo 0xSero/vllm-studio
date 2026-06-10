@@ -16,7 +16,7 @@ import {
   applyFontSizeToDocument,
   applyStoredUiControls,
   applyThemeToDocument,
-} from "@/lib/theme/runtime";
+} from "@/lib/theme-runtime";
 
 // --- App slice ---
 

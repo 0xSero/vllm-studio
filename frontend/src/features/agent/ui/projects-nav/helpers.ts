@@ -1,5 +1,5 @@
 import type { DragEvent } from "react";
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
 import { ADD_PROJECT_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";

@@ -6,7 +6,7 @@ import {
   loadSavedControllers,
   normalizeControllerUrl,
   saveSavedControllers,
-} from "@/lib/controllers";
+} from "@/lib/api/controllers";
 
 type WindowLike = {
   localStorage: {

@@ -8,13 +8,7 @@ const config = {
     "desktop/resources/pi-extensions/*.ts",
   ],
   project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
-  ignore: [
-    ".next/**",
-    "node_modules/**",
-    // Deliberate forward shim: re-exports desktop/helpers/fs-json writeJsonAtomic for
-    // src-side adoption (desktop tsc rootDir can't import from src/). No consumers yet.
-    "src/lib/fs-json.ts",
-  ],
+  ignore: [".next/**", "node_modules/**"],
   ignoreIssues: {
     // IpcRequestMap is unreferenced; desktop/ is outside the frontend cleanup scope,
     // so it is flagged here instead of deleted.

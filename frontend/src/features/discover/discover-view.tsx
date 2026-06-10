@@ -7,7 +7,7 @@ import { DiscoverSearchToolbar } from "./discover/discover-search-toolbar";
 import { DiscoverFiltersPanel } from "./discover/discover-filters-panel";
 import { DiscoverSortChips } from "./discover/discover-sort-chips";
 import { DiscoverDownloadQueue } from "./discover/discover-download-queue";
-import { DiscoverResults } from "./discover/discover-results";
+import { DiscoverResults } from "./discover/discover-results/discover-results";
 
 interface DiscoverViewProps {
   models: HuggingFaceModel[];

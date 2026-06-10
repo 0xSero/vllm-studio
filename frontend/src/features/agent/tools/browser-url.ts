@@ -3,7 +3,7 @@
 // fallback for free-text input. Keep the fallback away from Google because the
 // embedded WebKit view can get trapped on Google bot-protection refresh loops.
 
-import { sanitizeLocalFileUrl } from "@/lib/sanitize-embedded-browser-url";
+import { sanitizeLocalFileUrl } from "@/features/agent/sanitize-embedded-browser-url";
 import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
 
 function encodeFilePath(pathValue: string): string {

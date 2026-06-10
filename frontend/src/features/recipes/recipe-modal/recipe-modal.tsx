@@ -4,18 +4,18 @@ import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } 
 import { Cpu, HardDrive, Network, RefreshCw, Save } from "lucide-react";
 import { Button, StatusPill } from "@/ui";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
-import api from "@/lib/api";
-import type { Backend, ModelInfo, Recipe, RecipeEditor, RecipeWithStatus } from "@/lib/types";
-import { formatBackendLabel } from "@/lib/recipes/recipe-labels";
-import { generateCommand } from "@/lib/recipes/recipe-command";
+import api from "@/lib/api/client";
+import type { Backend, ModelInfo, Recipe, RecipeWithStatus } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
+import { formatBackendLabel } from "@/features/recipes/recipe-labels";
+import { generateCommand } from "@/features/recipes/recipe-command";
 import {
   filterExtraArgsForEditor,
-  getExtraArgValueForKey,
   mergeExtraArgsFromEditor,
-  normalizeRecipeForEditor,
-  prepareRecipeForSave,
-  setExtraArgValueForKey,
-} from "@/lib/recipes/recipe-utils";
+} from "@/features/recipes/editor-extra-args";
+import { getExtraArgValueForKey, setExtraArgValueForKey } from "@/features/recipes/extra-args";
+import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
+import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 import { RecipeModalTabBar } from "./recipe-modal-tab-bar";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 import { RecipeModalTabContent } from "./tabs/tab-content";

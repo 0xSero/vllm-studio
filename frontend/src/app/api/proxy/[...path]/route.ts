@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings } from "@/lib/api-settings";
+import { getApiSettings } from "@/lib/api/api-settings";
 import { getUpstreamTimeoutMs } from "./proxy-timeouts";
 
 const OVERRIDE_ALLOWLIST_ENV_KEY = "VLLM_STUDIO_PROXY_OVERRIDE_ALLOWLIST";

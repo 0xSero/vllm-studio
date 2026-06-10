@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { SettingsView } from "@/features/settings/settings-view";
 import { useSettings } from "@/features/settings/use-settings";
-import { SetupView } from "@/features/setup/setup-view";
+import { SetupView } from "@/features/setup/setup-view/setup-view";
 import { useSetup } from "@/features/setup/use-setup";
 
 const hasSettingsHash = () => {

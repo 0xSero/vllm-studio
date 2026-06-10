@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 

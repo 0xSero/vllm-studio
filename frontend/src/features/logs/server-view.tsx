@@ -5,7 +5,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
 import { useLogs } from "@/features/logs/use-logs";
 import { useSidebarStatus } from "@/hooks/use-sidebar-status";
-import { getStoredBackendUrl } from "@/lib/backend-url";
+import { getStoredBackendUrl } from "@/lib/api/connection";
 
 type Tab = "logs" | "docs";
 

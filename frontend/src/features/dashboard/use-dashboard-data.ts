@@ -1,5 +1,5 @@
 import { useRouter } from "next/navigation";
-import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
+import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import { metricsWithProcessIdentity, scopedMetrics } from "./dashboard-metrics";
 import { useDashboardActions } from "./use-dashboard-actions";

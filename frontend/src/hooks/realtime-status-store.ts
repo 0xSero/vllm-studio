@@ -18,8 +18,8 @@ import type {
   RuntimeBackendInfo,
 } from "@/lib/types";
 
-import api from "@/lib/api";
-import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
+import api from "@/lib/api/client";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/api/connection";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const FAST_COMPAT_REQUEST = { timeout: 5_000, retries: 0 } as const;

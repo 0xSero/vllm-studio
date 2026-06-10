@@ -1,4 +1,5 @@
-import type { Recipe, RecipeEditor } from "@/lib/types";
+import type { Recipe } from "@/lib/types";
+import type { RecipeEditor } from "./recipe-editor";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
 import {
   getCandidateKeys,

@@ -1,4 +1,4 @@
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import type { GitState } from "@/features/agent/contracts";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 

@@ -2,7 +2,7 @@
 
 import { Cpu, Database, GitBranch } from "lucide-react";
 import { CheckboxRow, FormField, FormSection, Input, Slider } from "@/ui";
-import type { RecipeEditor } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { LlamacppOptionsSection } from "../llamacpp-options-section";
 
 export function RecipeModalTabResources({

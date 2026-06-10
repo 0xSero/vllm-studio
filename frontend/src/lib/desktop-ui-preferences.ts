@@ -51,7 +51,7 @@ function collectDurableUiPreferences(): Record<string, string> {
 
 async function loadControllerUiPreferences(): Promise<Record<string, string>> {
   try {
-    const { default: api } = await import("@/lib/api");
+    const { default: api } = await import("@/lib/api/client");
     const settings = await api.getStudioSettings();
     return settings.persisted.ui_preferences ?? {};
   } catch {
@@ -61,7 +61,7 @@ async function loadControllerUiPreferences(): Promise<Record<string, string>> {
 
 async function saveControllerUiPreferences(prefs: Record<string, string>): Promise<void> {
   try {
-    const { default: api } = await import("@/lib/api");
+    const { default: api } = await import("@/lib/api/client");
     await api.updateStudioSettings({ ui_preferences: prefs });
   } catch {
     // The controller can be unavailable during first boot/offline desktop use.

@@ -7,9 +7,11 @@ import {
   type ControllerBrowserEventChannel,
 } from "@/lib/controller-events-contract";
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
-import { getApiKey } from "@/lib/api-key";
-import { BACKEND_URL_CHANGED_EVENT } from "@/lib/backend-url";
-import { resolveControllerEventsBaseUrl } from "@/lib/backend-config";
+import {
+  BACKEND_URL_CHANGED_EVENT,
+  getApiKey,
+  resolveControllerEventsBaseUrl,
+} from "@/lib/api/connection";
 
 interface SSEPayload<T = unknown> {
   data: T;

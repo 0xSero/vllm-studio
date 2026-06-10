@@ -1,5 +1,5 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {

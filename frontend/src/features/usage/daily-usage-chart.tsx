@@ -1,7 +1,7 @@
 "use client";
 
 import { formatNumber, formatDate } from "@/lib/formatters";
-import { getModelColor } from "@/lib/colors";
+import { getModelColor } from "@/features/usage/colors";
 
 interface DailyStat {
   date: string;

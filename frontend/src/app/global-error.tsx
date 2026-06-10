@@ -1,6 +1,6 @@
 "use client";
 
-import { isChunkLoadError, recoverByReload } from "@/lib/chunk-recovery";
+import { isChunkLoadError, recoverByReload } from "@/app/chunk-recovery";
 
 // Last-resort boundary: catches errors thrown by the root layout itself
 // (including a stale shared chunk that the layout depends on), which the

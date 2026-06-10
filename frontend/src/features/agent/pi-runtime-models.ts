@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { getApiSettings, type ApiSettings } from "@/lib/api-settings";
+import { getApiSettings, type ApiSettings } from "@/lib/api/api-settings";
 import { resolveDataDir } from "@/lib/data-dir";
 import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "@/features/agent/models";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import type { ModelDownload } from "@/lib/types";
 
 type StartDownloadParams = {

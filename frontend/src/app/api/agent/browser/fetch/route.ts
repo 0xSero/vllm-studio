@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { lookup } from "node:dns/promises";
 import { request as httpRequest, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

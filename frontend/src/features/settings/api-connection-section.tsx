@@ -17,9 +17,8 @@ import {
   normalizeControllerUrl,
   saveSavedControllers,
   type SavedController,
-} from "@/lib/controllers";
-import { getStoredBackendUrl, setStoredBackendUrl } from "@/lib/backend-url";
-import { setApiKey } from "@/lib/api-key";
+} from "@/lib/api/controllers";
+import { getStoredBackendUrl, setApiKey, setStoredBackendUrl } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import {
   SettingsButton,

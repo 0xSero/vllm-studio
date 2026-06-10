@@ -1,4 +1,4 @@
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@/features/agent/guards";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import {
   mergeActiveAgentSessions,

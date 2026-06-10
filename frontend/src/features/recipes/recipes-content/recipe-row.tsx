@@ -4,7 +4,7 @@ import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Play, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelButton, ModelRow, ModelStatus, ModelValue, type ModelStatusTone } from "@/ui";
-import { formatBackendLabel } from "@/lib/recipes/recipe-labels";
+import { formatBackendLabel } from "@/features/recipes/recipe-labels";
 
 type Props = {
   recipe: RecipeWithStatus;

@@ -1,6 +1,7 @@
 "use client";
 
-import type { ModelInfo, RecipeEditor } from "@/lib/types";
+import type { ModelInfo } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import type { RecipeModalTabId } from "./tab-id";
 import { RecipeModalTabCommand } from "./tab-command";
 import { RecipeModalTabEnvironment } from "./tab-environment";

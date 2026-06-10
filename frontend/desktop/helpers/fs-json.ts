@@ -9,7 +9,7 @@ import path from "node:path";
  * `space` matches JSON.stringify's third argument (omit for compact output).
  *
  * Lives under desktop/ because the desktop build (tsc rootDir = desktop/)
- * cannot import from src/; web code reaches it via src/lib/fs-json.ts.
+ * cannot import from src/.
  */
 export function writeJsonAtomic(filePath: string, payload: unknown, space?: number): void {
   mkdirSync(path.dirname(filePath), { recursive: true });

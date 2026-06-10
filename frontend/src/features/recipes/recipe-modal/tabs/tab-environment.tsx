@@ -2,7 +2,7 @@
 
 import { Code, Plus, Terminal, Variable } from "lucide-react";
 import { Button, Card, FormSection, Input, Textarea } from "@/ui";
-import type { RecipeEditor } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 
 export function RecipeModalTabEnvironment({
   recipe,

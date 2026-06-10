@@ -1,5 +1,5 @@
-import type { ApiSettings } from "@/lib/api-settings";
-import { normalizeHttpUrl } from "@/lib/http";
+import type { ApiSettings } from "@/lib/api/api-settings";
+import { normalizeHttpUrl } from "@/lib/api/http";
 
 export type VoiceTargetKind = "controller-local" | "external-voice";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings } from "@/lib/api-settings";
+import { getApiSettings } from "@/lib/api/api-settings";
 import { resolveVoiceTarget } from "../voice-target";
 
 const buildSilentWav = (durationMs = 650): Uint8Array => {

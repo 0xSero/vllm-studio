@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Info, Moon, Square, Sun } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/ui/model-stop-confirm";
-import { useModelLifecycle } from "@/hooks/use-model-lifecycle";
+import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
 import type { ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
 import { useAppStore } from "@/store";
 import { ModelsDropdown } from "./status-section-models-dropdown";

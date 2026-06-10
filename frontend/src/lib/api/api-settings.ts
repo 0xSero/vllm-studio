@@ -1,7 +1,7 @@
 import { chmod, readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
-import { resolveSettingsDefaultBackendUrl } from "./backend-config";
-import { resolveDataDir, resolveSettingsFilePath } from "./data-dir";
+import { resolveSettingsDefaultBackendUrl } from "./connection";
+import { resolveDataDir, resolveSettingsFilePath } from "../data-dir";
 
 export interface ApiSettings {
   backendUrl: string;

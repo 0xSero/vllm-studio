@@ -5,7 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { originalModelKey } from "@/lib/huggingface";
-import { ModelRow } from "./discover-results/model-row";
+import { ModelRow } from "./model-row";
 
 export function DiscoverResults({
   models,

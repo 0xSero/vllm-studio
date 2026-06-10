@@ -1,5 +1,5 @@
 import { useState } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 
 export function useDashboardActions() {
   const [benchmarking, setBenchmarking] = useState(false);

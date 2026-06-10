@@ -11,13 +11,13 @@ import type {
   StudioDiagnostics,
   StudioSettings,
 } from "@/lib/types";
-import { SetupStepper } from "./setup-view/setup-stepper";
-import { StepBenchmark } from "./setup-view/step-benchmark";
-import { StepDownload } from "./setup-view/step-download";
-import { StepHardware } from "./setup-view/step-hardware";
-import { StepLaunch } from "./setup-view/step-launch";
-import { StepModel } from "./setup-view/step-model";
-import { StepWelcome } from "./setup-view/step-welcome";
+import { SetupStepper } from "./setup-stepper";
+import { StepBenchmark } from "./step-benchmark";
+import { StepDownload } from "./step-download";
+import { StepHardware } from "./step-hardware";
+import { StepLaunch } from "./step-launch";
+import { StepModel } from "./step-model";
+import { StepWelcome } from "./step-welcome";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;

@@ -5,7 +5,7 @@ import { Fragment, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Table, TBody, TCell, THead, TH, TRow } from "@/ui";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
-import { getModelColor } from "@/lib/colors";
+import { getModelColor } from "@/features/usage/colors";
 import {
   modelDisplayName,
   resolveSpeedDisplay,

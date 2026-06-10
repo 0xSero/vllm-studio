@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 
 // Aggregated session row returned by /api/agent/sessions/all. Mirrored here
 // so the component is decoupled from the API module.

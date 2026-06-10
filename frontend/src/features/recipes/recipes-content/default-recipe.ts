@@ -1,4 +1,4 @@
-import type { RecipeEditor } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 
 export const DEFAULT_RECIPE: RecipeEditor = {
   id: "",

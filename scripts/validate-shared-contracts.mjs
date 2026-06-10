@@ -61,8 +61,7 @@ const allowedFiles = new Set([
   "shared/contracts/usage.ts",
   "controller/src/modules/shared/recipe-types.ts",
   "controller/src/modules/shared/system-types.ts",
-  "frontend/src/lib/types/recipes.ts",
-  "frontend/src/lib/types/system.ts",
+  "frontend/src/lib/types.ts",
   "frontend/src/lib/controller-events-contract.ts",
 ]);
 const scanRoots = ["shared", "controller/src", "frontend/src", "cli/src"];

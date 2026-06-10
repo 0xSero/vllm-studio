@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings } from "@/lib/api-settings";
+import { getApiSettings } from "@/lib/api/api-settings";
 import { resolveVoiceTarget } from "../voice-target";
 
 export async function POST(request: NextRequest) {

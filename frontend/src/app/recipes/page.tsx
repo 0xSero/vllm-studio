@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { RecipesContent } from "@/features/recipes/recipes-content";
+import { RecipesContent } from "@/features/recipes/recipes-content/recipes-content";
 
 export default function RecipesPage() {
   return (

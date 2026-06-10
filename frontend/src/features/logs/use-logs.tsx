@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
-import { getApiKey } from "@/lib/api-key";
+import api from "@/lib/api/client";
+import { getApiKey } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
 
 const MAX_RENDERED_LINES = 20_000;

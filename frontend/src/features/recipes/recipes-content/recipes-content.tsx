@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import type { RecipesTableProps } from "./recipes-content/types";
-import { useRecipesContentModel } from "./recipes-content/recipes-content-model";
-import { RecipesContentView } from "./recipes-content/recipes-content-view";
+import type { RecipesTableProps } from "./types";
+import { useRecipesContentModel } from "./recipes-content-model";
+import { RecipesContentView } from "./recipes-content-view";
 
 export function RecipesContent() {
   const model = useRecipesContentModel();

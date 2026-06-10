@@ -2,8 +2,7 @@
 
 import { useCallback, useState, useSyncExternalStore } from "react";
 import type { HuggingFaceModel } from "@/lib/types";
-import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
-import { isRecentHuggingFaceModel } from "@/lib/huggingface";
+import { fetchHuggingFaceModels, isRecentHuggingFaceModel } from "@/lib/huggingface";
 
 const PAGE_SIZE = 50;
 

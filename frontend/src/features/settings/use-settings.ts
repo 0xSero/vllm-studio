@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import { createApiClient } from "@/lib/api/create-api-client";
-import { getApiKey, setApiKey, clearApiKey } from "@/lib/api-key";
-import { resolveSettingsDefaultBackendUrl } from "@/lib/backend-config";
-import { getStoredBackendUrl, setStoredBackendUrl, clearStoredBackendUrl } from "@/lib/backend-url";
-import { normalizeControllerUrl } from "@/lib/controllers";
+import {
+  clearApiKey,
+  clearStoredBackendUrl,
+  getApiKey,
+  getStoredBackendUrl,
+  resolveSettingsDefaultBackendUrl,
+  setApiKey,
+  setStoredBackendUrl,
+} from "@/lib/api/connection";
+import { normalizeControllerUrl } from "@/lib/api/controllers";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";

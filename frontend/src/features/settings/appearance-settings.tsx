@@ -11,7 +11,7 @@ import {
   type ThemeMeta,
   type ThemeTokens,
 } from "@/lib/themes";
-import { applyTokensToDocument, applyUiControl } from "@/lib/theme/runtime";
+import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
 import { ColorField, ListGroup, ListRow, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
 
 /* ------------------------------------------------------------------ */

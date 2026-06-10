@@ -1,5 +1,5 @@
 import type { HuggingFaceModel, ModelRecommendation } from "@/lib/types";
-import { estimateModelSizeMb, type QuantFormat } from "@/lib/vram-estimator";
+import { estimateModelSizeMb, type QuantFormat } from "@/features/recipes/vram-estimator";
 
 const QUANT_TAG_MATCHERS: Array<{ quant: QuantFormat; tags: string[] }> = [
   { quant: "q6_k", tags: ["q6", "oq6", "6-bit"] },

@@ -1,5 +1,4 @@
-import { getApiKey } from "../api-key";
-import { clearStoredBackendUrl, getStoredBackendUrl } from "../backend-url";
+import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
 import { delay } from "../async";
 
 const DEFAULT_TIMEOUT_MS = 30_000;

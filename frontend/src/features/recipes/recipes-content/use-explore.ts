@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
+import api from "@/lib/api/client";
 import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
 import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
 import {

@@ -1,5 +1,6 @@
-import type { RecipeEditor } from "@/lib/types";
-import { normalizeExtraArgKey, prepareRecipeForSave } from "./recipe-utils";
+import type { RecipeEditor } from "./recipe-editor";
+import { normalizeExtraArgKey } from "./extra-args";
+import { prepareRecipeForSave } from "./prepare-recipe";
 
 const appendExtraArgsToCommand = (args: string[], extraArgs: Record<string, unknown>): string[] => {
   const internalKeys = new Set([

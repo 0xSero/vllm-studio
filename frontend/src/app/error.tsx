@@ -1,6 +1,6 @@
 "use client";
 
-import { isChunkLoadError, recoverByReload } from "@/lib/chunk-recovery";
+import { isChunkLoadError, recoverByReload } from "@/app/chunk-recovery";
 
 // Root error boundary for the whole app. Two jobs:
 //

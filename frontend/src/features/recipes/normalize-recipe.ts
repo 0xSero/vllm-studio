@@ -1,4 +1,5 @@
-import type { Recipe, RecipeEditor } from "@/lib/types";
+import type { Recipe } from "@/lib/types";
+import type { RecipeEditor } from "./recipe-editor";
 import { coerceValue } from "./coercion";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
 import { extractThinkingBudget, getExtraArgValue } from "./extra-args";

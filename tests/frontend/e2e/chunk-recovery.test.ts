@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isChunkLoadError, recoverByReload } from "@/lib/chunk-recovery";
+import { isChunkLoadError, recoverByReload } from "@/app/chunk-recovery";
 
 test("isChunkLoadError matches webpack / Next dynamic-import failures", () => {
   assert.equal(

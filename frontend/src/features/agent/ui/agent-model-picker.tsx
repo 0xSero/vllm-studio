@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore, type MouseEvent, type PointerEvent } from "react";
-import { getStoredBackendUrl } from "@/lib/backend-url";
-import { loadSavedControllers } from "@/lib/controllers";
+import { getStoredBackendUrl } from "@/lib/api/connection";
+import { loadSavedControllers } from "@/lib/api/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { ChevronDownIcon } from "@/ui/icons";
 import { cx } from "@/ui/utils";

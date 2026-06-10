@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api";
-import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
+import api from "@/lib/api/client";
+import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
 import { delay } from "@/lib/async";
-import { normalizeRecipeForEditor, prepareRecipeForSave } from "@/lib/recipes/recipe-utils";
+import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
+import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 import { DEFAULT_RECIPE } from "./default-recipe";
 import { useRecipesDerived } from "./use-recipes-derived";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings, saveApiSettings, maskApiKey, ApiSettings } from "@/lib/api-settings";
+import { getApiSettings, saveApiSettings, maskApiKey, ApiSettings } from "@/lib/api/api-settings";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";

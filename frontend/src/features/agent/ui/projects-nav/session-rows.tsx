@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";

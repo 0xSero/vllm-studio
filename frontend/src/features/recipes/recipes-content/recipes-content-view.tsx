@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import { Compass, Download, HardDrive, RefreshCw } from "lucide-react";
-import type { ModelInfo, RecipeEditor, RecipeWithStatus } from "@/lib/types";
+import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";

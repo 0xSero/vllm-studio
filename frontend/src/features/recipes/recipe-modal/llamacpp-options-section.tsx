@@ -2,7 +2,7 @@
 
 import { Settings } from "lucide-react";
 import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
-import { LLAMACPP_OPTIONS } from "@/lib/recipes/llamacpp-options";
+import { LLAMACPP_OPTIONS } from "@/features/recipes/llamacpp-options";
 
 type LlamacppTab = "model" | "resources" | "performance" | "features";
 

@@ -16,7 +16,7 @@ import {
 import { CloseIcon } from "@/ui/icons";
 import { clearPersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
 import { useTools } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import type { Project } from "@/features/agent/projects/types";

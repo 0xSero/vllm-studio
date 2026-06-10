@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
 import type { GitAction, GitRef, GitState } from "@/features/agent/contracts";
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import {
   diffLineClassName,
   diffLinePrefix,

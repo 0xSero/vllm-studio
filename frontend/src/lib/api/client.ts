@@ -1,13 +1,8 @@
 /**
- * API client for vLLM Studio Controller.
- *
- * Keep this file small: implementation lives under `frontend/src/lib/api/`.
+ * Default API client singleton for the vLLM Studio controller.
  */
-
-import { createApiClient } from "./api/create-api-client";
-import { resolveApiServerBaseUrl } from "./backend-config";
-export type { ChatRunStreamEvent } from "./api/core";
-export { scrubTransportFetchErrorMessage } from "./api/core";
+import { createApiClient } from "./create-api-client";
+import { resolveApiServerBaseUrl } from "./connection";
 
 // For client-side calls, use the proxy which handles authentication
 // The proxy adds the API key server-side, avoiding CORS and auth issues

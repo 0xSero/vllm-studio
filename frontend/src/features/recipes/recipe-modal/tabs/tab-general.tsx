@@ -2,7 +2,8 @@
 
 import { Info, Server } from "lucide-react";
 import { FormField, FormSection, Input, SegmentedControl, Select, type SegmentedItem } from "@/ui";
-import type { Backend, ModelInfo, RecipeEditor } from "@/lib/types";
+import type { Backend, ModelInfo } from "@/lib/types";
+import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 
 const BACKENDS: SegmentedItem<Backend>[] = [
   { id: "vllm", label: "vLLM" },

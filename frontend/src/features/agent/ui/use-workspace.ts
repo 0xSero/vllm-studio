@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
-import { safeJson } from "@/lib/safe-json";
+import { safeJson } from "@/features/agent/safe-json";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import {
   createInitialState,
@@ -36,10 +36,9 @@ import type {
 } from "@/features/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools, type ToolsContextValue } from "@/features/agent/tools/context";
-import { getApiKey } from "@/lib/api-key";
-import { getStoredBackendUrl } from "@/lib/backend-url";
-import { loadSavedControllers, normalizeControllerUrl } from "@/lib/controllers";
-import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
+import { getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
+import { loadSavedControllers, normalizeControllerUrl } from "@/lib/api/controllers";
+import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
 import type { Project } from "@/features/agent/projects/types";
 import { paneSessions } from "@/features/agent/runtime/selectors";
 import type { Session, SessionId } from "@/features/agent/runtime/types";

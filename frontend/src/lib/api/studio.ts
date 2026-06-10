@@ -5,18 +5,47 @@ import type {
   ModelRecommendation,
   StorageInfo,
   StudioDiagnostics,
-  StudioModelsRoot,
   StudioSettings,
   RuntimeBackendInfo,
-  RuntimeCommandPayload,
   RuntimeCudaInfo,
-  RuntimeJobResponse,
   RuntimeRocmInfo,
   RuntimeTarget,
-  VllmRuntimeConfig,
-  VllmRuntimeInfo,
 } from "../types";
 import { encodePathSegments, type ApiCore } from "./core";
+
+export interface StudioModelsRoot {
+  path: string;
+  exists: boolean;
+  sources?: string[];
+  recipe_ids?: string[];
+}
+
+export interface VllmRuntimeInfo {
+  installed: boolean;
+  version: string | null;
+  python_path: string | null;
+  vllm_bin: string | null;
+  upgrade_command_available?: boolean;
+  bundled_wheel: {
+    path: string;
+    version: string | null;
+  } | null;
+}
+
+export interface VllmRuntimeConfig {
+  config: string | null;
+  error?: string | null;
+}
+
+export interface RuntimeJobResponse {
+  job_id: string;
+  job: EngineJob;
+}
+
+export interface RuntimeCommandPayload {
+  command?: string;
+  args?: string[];
+}
 
 export function createStudioApi(core: ApiCore) {
   return {
