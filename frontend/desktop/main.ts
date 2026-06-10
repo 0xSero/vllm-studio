@@ -1,8 +1,9 @@
 import "./app-identity";
 import { app, dialog, ipcMain, shell, type BrowserWindow } from "electron";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { DesktopAppState } from "./types";
+import { writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
@@ -410,8 +411,7 @@ function readSessionPrefsFile(): Record<string, unknown> {
 }
 
 function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
-  const filePath = sessionPrefsFilePath();
-  writeJsonFile(filePath, prefs);
+  writeJsonAtomic(sessionPrefsFilePath(), prefs);
 }
 
 function readUiPreferencesFile(): Record<string, string> {
@@ -433,14 +433,5 @@ function readUiPreferencesFile(): Record<string, string> {
 }
 
 function writeUiPreferencesFile(prefs: Record<string, string>): void {
-  const filePath = uiPreferencesFilePath();
-  writeJsonFile(filePath, prefs);
-}
-
-function writeJsonFile(filePath: string, payload: Record<string, unknown>): void {
-  const directory = path.dirname(filePath);
-  mkdirSync(directory, { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(payload)}\n`, "utf8");
-  renameSync(tempPath, filePath);
+  writeJsonAtomic(uiPreferencesFilePath(), prefs);
 }

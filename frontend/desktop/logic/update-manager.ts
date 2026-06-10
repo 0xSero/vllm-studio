@@ -3,6 +3,7 @@ import { autoUpdater } from "electron-updater";
 import { DESKTOP_CONFIG } from "../configs";
 import type { DesktopUpdateSnapshot } from "../types";
 import { log } from "../helpers/logger";
+import { isLoopbackHttpUrl } from "../helpers/url";
 
 let latestUpdateState: DesktopUpdateSnapshot = { status: "idle" };
 
@@ -18,11 +19,7 @@ function resolveFeedUrl(): string | null {
   // (local testing of an update server).
   try {
     const parsed = new URL(raw);
-    const isLoopback =
-      parsed.hostname === "127.0.0.1" ||
-      parsed.hostname === "localhost" ||
-      parsed.hostname === "::1";
-    if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLoopback)) {
+    if (parsed.protocol !== "https:" && !isLoopbackHttpUrl(raw)) {
       log.warn(`[update] Ignoring non-https update feed: ${parsed.protocol}//${parsed.host}`);
       return null;
     }
