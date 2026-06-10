@@ -1,5 +1,6 @@
-import { createAppContext } from "./app-context";
+import { createAppContext, getModelsDirectoryState } from "./app-context";
 import { createApp } from "./http/app";
+import { detectGpuMonitoringTool } from "./modules/system/platform/gpu";
 import { startMetricsCollector } from "./modules/system/metrics-collector";
 
 const metricsDisabled = (): boolean => {
@@ -34,7 +35,25 @@ const start = (): void => {
   });
 
   context.logger.info(`Controller listening on ${context.config.host}:${server.port}`);
+  logBootSummary(server.port ?? context.config.port);
   stopMetrics = startBackgroundMetrics();
+};
+
+const logBootSummary = (port: number): void => {
+  const { config } = context;
+  const modelsDirectoryState = getModelsDirectoryState();
+  const authMode = config.api_key ? "api-key" : "unauthenticated (no VLLM_STUDIO_API_KEY)";
+  context.logger.info(
+    [
+      "Boot summary:",
+      `listen=${config.host}:${port}`,
+      `data_dir=${config.data_dir}`,
+      `db_path=${config.db_path}`,
+      `models_dir=${config.models_dir} (${modelsDirectoryState === "missing" ? "MISSING" : modelsDirectoryState})`,
+      `auth=${authMode}`,
+      `gpu_tool=${detectGpuMonitoringTool() ?? "none detected"}`,
+    ].join(" ")
+  );
 };
 
 const shutdown = (): void => {

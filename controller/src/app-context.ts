@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AppContext } from "./types/context";
 import { createConfig } from "./config/env";
@@ -16,6 +16,23 @@ import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
+
+export type ModelsDirectoryState = "exists" | "created" | "missing";
+
+let modelsDirectoryState: ModelsDirectoryState = "missing";
+
+export const getModelsDirectoryState = (): ModelsDirectoryState => modelsDirectoryState;
+
+const ensureModelsDirectory = (modelsDirectory: string): ModelsDirectoryState => {
+  if (existsSync(modelsDirectory)) return "exists";
+  try {
+    mkdirSync(modelsDirectory, { recursive: true });
+    return "created";
+  } catch {
+    // Read-only or unwritable locations (e.g. the /models default on macOS) must not block boot.
+    return "missing";
+  }
+};
 
 export const createAppContext = (): AppContext => {
   const config = createConfig();
@@ -35,6 +52,13 @@ export const createAppContext = (): AppContext => {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
     onLine: (line) => eventManager.publishLogLine("controller", line),
   });
+  modelsDirectoryState = ensureModelsDirectory(config.models_dir);
+  if (modelsDirectoryState === "missing") {
+    logger.warn(
+      `Models directory ${config.models_dir} does not exist and could not be created; set VLLM_STUDIO_MODELS_DIR to a writable path`
+    );
+  }
+
   const launchState = createLaunchState();
   const { registry: metricsRegistry, metrics } = createMetrics();
   const processManager = createProcessManager(config, logger, eventManager);

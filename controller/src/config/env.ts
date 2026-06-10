@@ -1,7 +1,8 @@
 import { config as loadEnvironment } from "dotenv";
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 import { parseBooleanFlag } from "../core/validation";
 
@@ -41,14 +42,10 @@ export const loadDotEnvironment = (): string | undefined => {
 export const createConfig = (): Config => {
   loadDotEnvironment();
 
-  const cwd = process.cwd();
-  const localDataDirectory = resolve(cwd, "data");
-  const parentDataDirectory = resolve(cwd, "..", "data");
-  const defaultDataDirectory =
-    basename(cwd) === "controller" && existsSync(parentDataDirectory)
-      ? parentDataDirectory
-      : localDataDirectory;
-  const defaultDatabasePath = resolve(defaultDataDirectory, "controller.db");
+  // Anchor defaults to the controller package root (two levels up from src/config/)
+  // so the data dir lands at <repo>/data regardless of the cwd the process started from.
+  const controllerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const defaultDataDirectory = resolve(controllerRoot, "..", "data");
 
   const isLoopbackHost = (value: string): boolean => {
     const normalized = value.trim().toLowerCase();
@@ -94,7 +91,7 @@ export const createConfig = (): Config => {
     VLLM_STUDIO_INFERENCE_PORT: z.coerce.number().int().positive().default(8000),
 
     VLLM_STUDIO_DATA_DIR: z.string().default(defaultDataDirectory),
-    VLLM_STUDIO_DB_PATH: z.string().default(defaultDatabasePath),
+    VLLM_STUDIO_DB_PATH: z.string().optional(),
     VLLM_STUDIO_MODELS_DIR: z.string().default("/models"),
     VLLM_STUDIO_SGLANG_PYTHON: z.string().optional(),
     VLLM_STUDIO_TABBY_API_DIR: z.string().optional(),
@@ -108,14 +105,19 @@ export const createConfig = (): Config => {
 
   const strictOpenAIModelsEnabled = parseBooleanFlag(parsed.VLLM_STUDIO_STRICT_OPENAI_MODELS);
 
+  // The db default follows the resolved data dir so overriding VLLM_STUDIO_DATA_DIR
+  // alone keeps the database inside it.
+  const dataDirectory = resolve(parsed.VLLM_STUDIO_DATA_DIR);
+  const databasePath = resolve(parsed.VLLM_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"));
+
   const config: Config = {
     host,
     port: parsed.VLLM_STUDIO_PORT,
     inference_host: parsed.VLLM_STUDIO_INFERENCE_HOST.trim() || "localhost",
     inference_port: parsed.VLLM_STUDIO_INFERENCE_PORT,
 
-    data_dir: resolve(parsed.VLLM_STUDIO_DATA_DIR),
-    db_path: resolve(parsed.VLLM_STUDIO_DB_PATH),
+    data_dir: dataDirectory,
+    db_path: databasePath,
     models_dir: resolve(parsed.VLLM_STUDIO_MODELS_DIR),
     strict_openai_models: strictOpenAIModelsEnabled,
     cors_origins: parseCorsOrigins(parsed.VLLM_STUDIO_CORS_ORIGINS),
