@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommand } from "../../../core/command";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 
 export const getLlamacppConfigHelp = async (
@@ -12,7 +12,9 @@ export const getLlamacppConfigHelp = async (
     resolveBinary(configured) ?? (existsSync(configured) ? resolve(configured) : null);
   const binary = resolved ?? configured;
 
-  const result = runCommand(binary, ["--help"], LLAMACPP_HELP_TIMEOUT_MS);
+  const result = await runCommandAsync(binary, ["--help"], {
+    timeoutMs: LLAMACPP_HELP_TIMEOUT_MS,
+  });
   if (result.status !== 0) {
     return {
       config: result.stdout || null,

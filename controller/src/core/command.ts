@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -8,7 +8,18 @@ export type CommandResult = {
   stderr: string;
 };
 
+export type AsyncCommandResult = CommandResult & {
+  timedOut: boolean;
+};
+
+export type AsyncCommandOptions = {
+  timeoutMs: number;
+  onOutput?: (chunk: string) => void;
+  onSpawn?: (child: ChildProcess) => void;
+};
+
 const DEFAULT_TIMEOUT_MS = 3_000;
+const TIMEOUT_KILL_GRACE_MS = 5_000;
 
 export const runCommand = (
   command: string,
@@ -29,6 +40,47 @@ export const runCommand = (
       stderr: error instanceof Error ? error.message : String(error),
     };
   }
+};
+
+export const runCommandAsync = (
+  command: string,
+  args: string[],
+  options: AsyncCommandOptions
+): Promise<AsyncCommandResult> => {
+  return new Promise((resolveResult) => {
+    const child = spawn(command, args, { env: process.env });
+    options.onSpawn?.(child);
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), TIMEOUT_KILL_GRACE_MS);
+    }, options.timeoutMs);
+    const settle = (result: AsyncCommandResult): void => {
+      clearTimeout(timeoutTimer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      resolveResult(result);
+    };
+    child.stdout?.on("data", (data: Buffer) => {
+      const chunk = data.toString("utf-8");
+      stdout += chunk;
+      options.onOutput?.(chunk);
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      const chunk = data.toString("utf-8");
+      stderr += chunk;
+      options.onOutput?.(chunk);
+    });
+    child.on("error", (error) => {
+      settle({ status: null, stdout: stdout.trim(), stderr: error.message, timedOut });
+    });
+    child.on("close", (code) => {
+      settle({ status: code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut });
+    });
+  });
 };
 
 const isExecutableFile = (filePath: string): boolean => {

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { resolveBinary, runCommand } from "../../../core/command";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
 
 const PYTHON_VERSION_PROBES: Record<"vllm" | "sglang" | "mlx", string> = {
   vllm: "import json, sys\ntry:\n import vllm\n print(json.dumps({'version': vllm.__version__, 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",
@@ -51,16 +51,16 @@ export const parseCommandBinary = (args: string[]): string | null => {
   return resolvePathOrBinary(first) ?? first;
 };
 
-export const probePythonRuntime = (
+export const probePythonRuntime = async (
   backend: "vllm" | "sglang" | "mlx",
   python: string
-): {
+): Promise<{
   installed: boolean;
   version: string | null;
   pythonPath: string | null;
   message?: string | undefined;
-} => {
-  const check = runCommand(python, ["--version"], 2_000);
+}> => {
+  const check = await runCommandAsync(python, ["--version"], { timeoutMs: 2_000 });
   if (check.status !== 0) {
     return {
       installed: false,
@@ -69,7 +69,9 @@ export const probePythonRuntime = (
       message: "Python executable is not runnable",
     };
   }
-  const result = runCommand(python, ["-c", PYTHON_VERSION_PROBES[backend]], 5_000);
+  const result = await runCommandAsync(python, ["-c", PYTHON_VERSION_PROBES[backend]], {
+    timeoutMs: 5_000,
+  });
   if (result.status !== 0) {
     return {
       installed: false,
@@ -144,17 +146,17 @@ const resolvePythonFromScript = (scriptPath: string | null | undefined): string 
   }
 };
 
-export const probeBinaryRuntime = (
+export const probeBinaryRuntime = async (
   binary: string
-): {
+): Promise<{
   installed: boolean;
   version: string | null;
   binaryPath: string | null;
   message?: string;
-} => {
+}> => {
   const resolved = resolvePathOrBinary(binary);
   const command = resolved ?? binary;
-  const version = runCommand(command, ["--version"], 3_000);
+  const version = await runCommandAsync(command, ["--version"], { timeoutMs: 3_000 });
   if (version.status === 0) {
     return {
       installed: true,
@@ -162,7 +164,7 @@ export const probeBinaryRuntime = (
       binaryPath: resolved ?? command,
     };
   }
-  const help = runCommand(command, ["--help"], 3_000);
+  const help = await runCommandAsync(command, ["--help"], { timeoutMs: 3_000 });
   if (help.status === 0) {
     return {
       installed: true,
@@ -178,18 +180,18 @@ export const probeBinaryRuntime = (
   };
 };
 
-export const probeVllmBinaryRuntime = (
+export const probeVllmBinaryRuntime = async (
   binary: string
-): {
+): Promise<{
   installed: boolean;
   version: string | null;
   binaryPath: string | null;
   pythonPath: string | null;
   message?: string;
-} => {
+}> => {
   const resolved = resolvePathOrBinary(binary);
   const command = resolved ?? binary;
-  const version = runCommand(command, ["--version"], 3_000);
+  const version = await runCommandAsync(command, ["--version"], { timeoutMs: 3_000 });
   const pythonPath = resolvePythonFromScript(resolved ?? command);
   if (version.status === 0) {
     return {

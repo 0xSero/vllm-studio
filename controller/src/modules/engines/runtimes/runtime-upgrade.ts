@@ -1,5 +1,5 @@
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommand } from "../../../core/command";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { getLlamacppRuntimeInfo, getCudaInfo } from "./runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info";
 import { resolveVllmPythonPath } from "./vllm-python-path";
@@ -41,14 +41,21 @@ const parseCommandInput = (args: unknown): string[] | null => {
   return parsed.length > 0 ? parsed : null;
 };
 
-const runCommandUpgrade = (command: string, args: string[]): RuntimeUpgradeResult => {
-  const result = runCommand(command, args, RUNTIME_UPGRADE_TIMEOUT_MS);
+const upgradeTimeoutMessage = (): string =>
+  `Upgrade command timed out after ${Math.round(RUNTIME_UPGRADE_TIMEOUT_MS / 60_000)} minutes`;
+
+const runCommandUpgrade = async (command: string, args: string[]): Promise<RuntimeUpgradeResult> => {
+  const result = await runCommandAsync(command, args, { timeoutMs: RUNTIME_UPGRADE_TIMEOUT_MS });
   const success = result.status === 0;
   return {
     success,
     version: null,
     output: result.stdout || null,
-    error: success ? null : result.stderr || "Upgrade command failed",
+    error: success
+      ? null
+      : result.timedOut
+        ? upgradeTimeoutMessage()
+        : result.stderr || "Upgrade command failed",
     used_command: `${command} ${args.join(" ")}`.trim(),
   };
 };
@@ -72,15 +79,19 @@ export const upgradeSglangRuntime = async (
   const args = uv
     ? ["pip", "install", "--python", python, "--upgrade", "sglang"]
     : ["-m", "pip", "install", "--upgrade", "sglang"];
-  const commandResult = runCommand(uv ?? python, args, RUNTIME_UPGRADE_TIMEOUT_MS);
-  const runtime = probePythonRuntime("sglang", python);
+  const commandResult = await runCommandAsync(uv ?? python, args, {
+    timeoutMs: RUNTIME_UPGRADE_TIMEOUT_MS,
+  });
+  const runtime = await probePythonRuntime("sglang", python);
   const usedCommand = uv ? `${uv} ${args.join(" ")}` : `${python} ${args.join(" ")}`;
   if (commandResult.status !== 0) {
     return {
       success: false,
       version: runtime.version,
       output: commandResult.stdout || null,
-      error: commandResult.stderr || "Failed to upgrade SGLang",
+      error: commandResult.timedOut
+        ? upgradeTimeoutMessage()
+        : commandResult.stderr || "Failed to upgrade SGLang",
       used_command: usedCommand,
     };
   }
@@ -107,15 +118,15 @@ export const upgradeLlamacppRuntime = async (
       used_command: null,
     };
   const parsedArguments = parseCommandInput(options.args);
-  const result = runCommandUpgrade(command, parsedArguments ?? []);
+  const result = await runCommandUpgrade(command, parsedArguments ?? []);
   const runtime = getLlamacppRuntimeInfo(config);
   return { ...result, success: result.success && runtime.installed, version: runtime.version };
 };
 
-export const runPlatformUpgrade = (
+export const runPlatformUpgrade = async (
   platform: "cuda" | "rocm",
   options: RuntimeUpgradeOptions
-): RuntimeUpgradeResult => {
+): Promise<RuntimeUpgradeResult> => {
   const envKey = platform === "cuda" ? CUDA_UPGRADE_ENV : ROCM_UPGRADE_ENV;
   const command = resolveCommand(options.command, envKey);
   if (!command)
@@ -127,7 +138,7 @@ export const runPlatformUpgrade = (
       used_command: null,
     };
   const parsedArguments = parseCommandInput(options.args);
-  const result = runCommandUpgrade(command, parsedArguments ?? []);
+  const result = await runCommandUpgrade(command, parsedArguments ?? []);
   if (!result.success) return result;
   if (platform === "cuda") {
     const info = getCudaInfo();

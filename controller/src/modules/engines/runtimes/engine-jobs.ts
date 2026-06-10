@@ -1,8 +1,9 @@
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommand } from "../../../core/command";
+import { resolveBinary, runCommandAsync, type AsyncCommandResult } from "../../../core/command";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "../../shared/system-types";
 import { upgradeVllmRuntime } from "./vllm-runtime";
 import {
@@ -17,7 +18,7 @@ import {
   getRuntimeTarget,
 } from "./runtime-targets";
 import type { ProcessInfo } from "../../models/types";
-import { RUNTIME_UPGRADE_TIMEOUT_MS } from "../configs";
+import { ENGINE_INSTALL_TIMEOUT_MS, RUNTIME_UPGRADE_TIMEOUT_MS } from "../configs";
 import { probePythonRuntime } from "./runtime-target-probes";
 
 type RuntimeJobBackend = EngineBackend | "cuda" | "rocm";
@@ -34,7 +35,12 @@ type CreateEngineJobOptions = {
 };
 
 const MAX_OUTPUT_TAIL_LENGTH = 4000;
+const JOB_OUTPUT_THROTTLE_MS = 1_000;
+const PIP_PREFLIGHT_TIMEOUT_MS = 10_000;
+const UV_INSTALL_HINT = "curl -LsSf https://astral.sh/uv/install.sh | sh";
 const jobs = new Map<string, EngineJob>();
+// Live subprocess per job so cancelEngineJob can actually kill the work.
+const jobChildren = new Map<string, ChildProcess>();
 
 const tailOutput = (value: string | null | undefined): string | undefined => {
   if (!value) return undefined;
@@ -42,6 +48,24 @@ const tailOutput = (value: string | null | undefined): string | undefined => {
 };
 
 const nowIso = (): string => new Date().toISOString();
+
+const timeoutMinutes = (timeoutMs: number): number => Math.round(timeoutMs / 60_000);
+
+const runJobCommand = async (
+  jobId: string,
+  command: string,
+  args: string[],
+  options: { timeoutMs: number; onOutput?: (chunk: string) => void }
+): Promise<AsyncCommandResult> => {
+  try {
+    return await runCommandAsync(command, args, {
+      ...options,
+      onSpawn: (child) => jobChildren.set(jobId, child),
+    });
+  } finally {
+    jobChildren.delete(jobId);
+  }
+};
 
 const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
   id: randomUUID(),
@@ -61,6 +85,14 @@ const updateJob = (id: string, updates: Partial<EngineJob>): EngineJob | null =>
   const next = { ...current, ...updates };
   jobs.set(id, next);
   return next;
+};
+
+// Progress updates and final transitions must not overwrite a job the user
+// already cancelled (the killed subprocess still resolves with a failure).
+const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
+  const current = jobs.get(id);
+  if (!current || current.status !== "running") return;
+  jobs.set(id, { ...current, ...updates });
 };
 
 const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
@@ -104,7 +136,8 @@ export const managedPackageSpec = (
 const runManagedPythonInstall = async (
   config: Config,
   backend: ManagedPythonBackend,
-  options: RuntimeUpgradeOptions
+  options: RuntimeUpgradeOptions,
+  jobId: string
 ): Promise<{
   success: boolean;
   version: string | null;
@@ -127,17 +160,18 @@ const runManagedPythonInstall = async (
   const venvPython = join(venvDirectory, "bin", "python");
   mkdirSync(dirname(venvDirectory), { recursive: true });
   if (!existsSync(venvPython)) {
-    const create = runCommand(
-      basePython,
-      ["-m", "venv", venvDirectory],
-      RUNTIME_UPGRADE_TIMEOUT_MS
-    );
+    updateRunningJob(jobId, { message: `Creating ${backend} virtual environment...` });
+    const create = await runJobCommand(jobId, basePython, ["-m", "venv", venvDirectory], {
+      timeoutMs: RUNTIME_UPGRADE_TIMEOUT_MS,
+    });
     if (create.status !== 0) {
       return {
         success: false,
         version: null,
         output: create.stdout || null,
-        error: create.stderr || `Failed to create managed ${backend} virtual environment`,
+        error: create.timedOut
+          ? `Creating the ${backend} virtual environment timed out after ${timeoutMinutes(RUNTIME_UPGRADE_TIMEOUT_MS)} minutes`
+          : create.stderr || `Failed to create managed ${backend} virtual environment`,
         used_command: `${basePython} -m venv ${venvDirectory}`,
       };
     }
@@ -145,23 +179,59 @@ const runManagedPythonInstall = async (
 
   const packageSpec = managedPackageSpec(backend, options.version);
   const uv = resolveBinary("uv");
+  if (!uv) {
+    const pipCheck = await runJobCommand(jobId, venvPython, ["-m", "pip", "--version"], {
+      timeoutMs: PIP_PREFLIGHT_TIMEOUT_MS,
+    });
+    if (pipCheck.status !== 0) {
+      return {
+        success: false,
+        version: null,
+        output: pipCheck.stdout || null,
+        error: `Neither uv nor a working pip is available to install ${packageSpec}. Install uv with: ${UV_INSTALL_HINT}`,
+        used_command: `${venvPython} -m pip --version`,
+      };
+    }
+  }
+  const installer = uv ? "uv" : "pip";
   const command = uv ?? venvPython;
   const args = uv
     ? ["pip", "install", "--python", venvPython, "--upgrade", packageSpec]
     : ["-m", "pip", "install", "--upgrade", packageSpec];
-  const install = runCommand(command, args, RUNTIME_UPGRADE_TIMEOUT_MS);
   const usedCommand = [command, ...args].join(" ");
+
+  let outputTail = "";
+  let progress = 0.2;
+  let lastUpdateAt = 0;
+  updateRunningJob(jobId, { progress, message: `Installing ${packageSpec} with ${installer}...` });
+  const install = await runJobCommand(jobId, command, args, {
+    timeoutMs: ENGINE_INSTALL_TIMEOUT_MS,
+    onOutput: (chunk) => {
+      outputTail = (outputTail + chunk).slice(-MAX_OUTPUT_TAIL_LENGTH);
+      const now = Date.now();
+      if (now - lastUpdateAt < JOB_OUTPUT_THROTTLE_MS) return;
+      lastUpdateAt = now;
+      progress = Math.min(0.9, progress + 0.01);
+      updateRunningJob(jobId, {
+        progress,
+        message: `Installing ${packageSpec} with ${installer}...`,
+        outputTail,
+      });
+    },
+  });
   if (install.status !== 0) {
     return {
       success: false,
       version: null,
       output: install.stdout || null,
-      error: install.stderr || `Failed to install ${packageSpec}`,
+      error: install.timedOut
+        ? `Install of ${packageSpec} timed out after ${timeoutMinutes(ENGINE_INSTALL_TIMEOUT_MS)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
+        : install.stderr || `Failed to install ${packageSpec}`,
       used_command: usedCommand,
     };
   }
 
-  const probe = probePythonRuntime(backend, venvPython);
+  const probe = await probePythonRuntime(backend, venvPython);
   return {
     success: probe.installed,
     version: probe.version,
@@ -176,6 +246,7 @@ const runJob = async (
   job: EngineJob,
   options: CreateEngineJobOptions
 ): Promise<void> => {
+  if (jobs.get(job.id)?.status !== "queued") return;
   updateJob(job.id, {
     status: "running",
     progress: 0.05,
@@ -205,7 +276,7 @@ const runJob = async (
     };
     const result =
       options.type === "install" && !options.targetId && isManagedPythonBackend(options.backend)
-        ? await runManagedPythonInstall(config, options.backend, upgradeOptions)
+        ? await runManagedPythonInstall(config, options.backend, upgradeOptions, job.id)
         : options.backend === "vllm"
           ? await upgradeVllmRuntime({
               preferBundled: options.preferBundled ?? false,
@@ -217,9 +288,9 @@ const runJob = async (
             : options.backend === "llamacpp"
               ? await upgradeLlamacppRuntime(config, upgradeOptions)
               : options.backend === "cuda"
-                ? runPlatformUpgrade("cuda", upgradeOptions)
+                ? await runPlatformUpgrade("cuda", upgradeOptions)
                 : options.backend === "rocm"
-                  ? runPlatformUpgrade("rocm", upgradeOptions)
+                  ? await runPlatformUpgrade("rocm", upgradeOptions)
                   : {
                       success: false,
                       version: null,
@@ -234,7 +305,7 @@ const runJob = async (
     const outputTail = tailOutput(result.output ?? result.error);
     const command = result.used_command ?? job.command;
     if (!result.success) {
-      updateJob(job.id, {
+      updateRunningJob(job.id, {
         status: "error",
         progress: 1,
         message: result.error ?? `${options.type} failed`,
@@ -246,7 +317,7 @@ const runJob = async (
       return;
     }
 
-    updateJob(job.id, {
+    updateRunningJob(job.id, {
       status: "success",
       progress: 1,
       message: result.version
@@ -258,7 +329,7 @@ const runJob = async (
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updateJob(job.id, {
+    updateRunningJob(job.id, {
       status: "error",
       progress: 1,
       message,
@@ -285,10 +356,11 @@ export const cancelEngineJob = (id: string): EngineJob | null => {
   const job = jobs.get(id);
   if (!job) return null;
   if (job.status === "success" || job.status === "error" || job.status === "cancelled") return job;
+  jobChildren.get(id)?.kill("SIGTERM");
   return updateJob(id, {
     status: "cancelled",
     progress: 1,
-    message: "Job cancellation requested",
+    message: "cancelled by user",
     finishedAt: nowIso(),
   });
 };

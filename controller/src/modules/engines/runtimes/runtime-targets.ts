@@ -131,11 +131,24 @@ const collectVenvPythonFiles = (config: Config): string[] => {
   return candidates;
 };
 
-const collectPythonTargets = (
+// Probes independent candidates concurrently; the returned pairs preserve
+// candidate order so addTarget keeps its order-dependent dedupe behavior.
+const probePythonCandidates = (
+  backend: "vllm" | "sglang" | "mlx",
+  candidates: string[]
+): Promise<Array<{ candidate: string; probe: Awaited<ReturnType<typeof probePythonRuntime>> }>> =>
+  Promise.all(
+    candidates.map(async (candidate) => ({
+      candidate,
+      probe: await probePythonRuntime(backend, candidate),
+    }))
+  );
+
+const collectPythonTargets = async (
   backend: "vllm" | "sglang" | "mlx",
   config: Config,
   runningProcess?: ProcessInfo | null
-): RuntimeTarget[] => {
+): Promise<RuntimeTarget[]> => {
   const targets: RuntimeTarget[] = [];
   const running = collectRunningTargets(runningProcess).filter(
     (target) => target.backend === backend
@@ -152,8 +165,7 @@ const collectPythonTargets = (
       : backend === "sglang"
         ? [config.sglang_python, ...splitEnvironmentList(process.env["VLLM_STUDIO_SGLANG_PYTHONS"])]
         : [config.mlx_python, ...splitEnvironmentList(process.env["VLLM_STUDIO_MLX_PYTHONS"])];
-  for (const candidate of unique(configured)) {
-    const probe = probePythonRuntime(backend, candidate);
+  for (const { candidate, probe } of await probePythonCandidates(backend, unique(configured))) {
     addTarget(
       targets,
       makeRuntimeTarget({
@@ -178,8 +190,7 @@ const collectPythonTargets = (
           resolveVllmPythonPath(),
           ...collectVenvPythonFiles(config),
         ]);
-  for (const candidate of projectManaged) {
-    const probe = probePythonRuntime(backend, candidate);
+  for (const { candidate, probe } of await probePythonCandidates(backend, projectManaged)) {
     addTarget(
       targets,
       makeRuntimeTarget({
@@ -201,7 +212,7 @@ const collectPythonTargets = (
       ? null
       : (resolveBinary("python3") ?? resolveBinary("python"));
   if (systemPython) {
-    const probe = probePythonRuntime(backend, systemPython);
+    const probe = await probePythonRuntime(backend, systemPython);
     addTarget(
       targets,
       makeRuntimeTarget({
@@ -222,7 +233,7 @@ const collectPythonTargets = (
     const binary =
       process.env["VLLM_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1" ? null : resolveBinary("vllm");
     if (binary) {
-      const probe = probeVllmBinaryRuntime(binary);
+      const probe = await probeVllmBinaryRuntime(binary);
       addTarget(
         targets,
         makeRuntimeTarget({
@@ -244,10 +255,10 @@ const collectPythonTargets = (
   return targets;
 };
 
-const collectLlamacppTargets = (
+const collectLlamacppTargets = async (
   config: Config,
   runningProcess?: ProcessInfo | null
-): RuntimeTarget[] => {
+): Promise<RuntimeTarget[]> => {
   const targets: RuntimeTarget[] = [];
   const running = collectRunningTargets(runningProcess).filter(
     (target) => target.backend === "llamacpp"
@@ -255,7 +266,7 @@ const collectLlamacppTargets = (
   for (const target of running) addTarget(targets, target);
 
   for (const candidate of unique([config.llama_bin])) {
-    const probe = probeBinaryRuntime(candidate);
+    const probe = await probeBinaryRuntime(candidate);
     addTarget(
       targets,
       makeRuntimeTarget({
@@ -275,7 +286,7 @@ const collectLlamacppTargets = (
   const systemBinary =
     process.env["VLLM_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1" ? null : resolveBinary("llama-server");
   if (systemBinary) {
-    const probe = probeBinaryRuntime(systemBinary);
+    const probe = await probeBinaryRuntime(systemBinary);
     addTarget(
       targets,
       makeRuntimeTarget({
@@ -416,15 +427,20 @@ export const getRuntimeTargets = async (
   }
   const backends: EngineBackend[] = ["vllm", "sglang", "llamacpp", "mlx"];
   const targets: RuntimeTarget[] = [];
-  for (const backend of backends) {
-    const backendTargets =
+  // Probe backends concurrently, but merge in the fixed backend order so
+  // addTarget's order-dependent dedupe/priority behavior is unchanged.
+  const backendTargetGroups = await Promise.all(
+    backends.map((backend) =>
       backend === "llamacpp"
         ? collectLlamacppTargets(config, runningProcess)
-        : collectPythonTargets(backend, config, runningProcess);
-    for (const target of backendTargets) addTarget(targets, target);
+        : collectPythonTargets(backend, config, runningProcess)
+    )
+  );
+  backends.forEach((backend, index) => {
+    for (const target of backendTargetGroups[index] ?? []) addTarget(targets, target);
     for (const target of collectDockerTargets(backend)) addTarget(targets, target);
     for (const target of collectBundledTargets(backend)) addTarget(targets, target);
-  }
+  });
   const selectedTargets = sortTargets(withSelection(targets, config));
   targetsCache = {
     expiresAt: now + TARGET_CACHE_TTL_MS,

@@ -1,7 +1,6 @@
-import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { resolveBinary } from "../../../core/command";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { resolveVllmPythonPath } from "./vllm-python-path";
 import {
   getUpgradeCommandFromEnvironment,
@@ -9,12 +8,6 @@ import {
   VLLM_UPGRADE_ENV,
 } from "./upgrade-config";
 import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS, VLLM_UPGRADE_TIMEOUT_MS } from "../configs";
-
-type CommandResult = {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-};
 
 const parseCommandInput = (args: unknown): string[] | null => {
   if (!Array.isArray(args)) return null;
@@ -64,35 +57,6 @@ const resolveVllmUpgradeCommand = (
   return { command: pythonPath, args: ["-m", "pip", "install", "--upgrade", packageSpec] };
 };
 
-const runCommand = (
-  command: string,
-  args: string[],
-  timeoutMs = VLLM_RUNTIME_COMMAND_TIMEOUT_MS
-): Promise<CommandResult> => {
-  return new Promise((resolveResult) => {
-    const child = spawn(command, args, { env: process.env });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    child.stdout?.on("data", (data) => {
-      stdout += data.toString();
-    });
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolveResult({ code: null, stdout: stdout.trim(), stderr: error.message });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolveResult({ code, stdout: stdout.trim(), stderr: stderr.trim() });
-    });
-  });
-};
-
 const resolvePythonFromScript = (scriptPath: string | null | undefined): string | null => {
   if (!scriptPath || !existsSync(scriptPath)) return null;
   try {
@@ -109,7 +73,7 @@ const resolvePythonFromScript = (scriptPath: string | null | undefined): string 
   }
 };
 
-const resolvePythonBinary = (preferredPython?: string | null): string | null => {
+const resolvePythonBinary = async (preferredPython?: string | null): Promise<string | null> => {
   const candidates: string[] = [];
   if (preferredPython) candidates.push(preferredPython);
   const override = process.env["VLLM_STUDIO_RUNTIME_PYTHON"];
@@ -121,12 +85,8 @@ const resolvePythonBinary = (preferredPython?: string | null): string | null => 
   if (runtimePython) candidates.push(runtimePython);
   if (!skipSystem) candidates.push("python3", "python");
   for (const candidate of candidates) {
-    try {
-      const result = spawnSync(candidate, ["--version"], { timeout: 2000 });
-      if (result.status === 0) return candidate;
-    } catch {
-      continue;
-    }
+    const result = await runCommandAsync(candidate, ["--version"], { timeoutMs: 2_000 });
+    if (result.status === 0) return candidate;
   }
   return null;
 };
@@ -186,14 +146,12 @@ export const getVllmRuntimeInfo = async (preferredPython?: string | null): Promi
   const bundledWheel = resolveBundledWheel();
   const candidates = collectPythonCandidates(preferredPython);
   for (const candidate of candidates) {
-    try {
-      const check = spawnSync(candidate, ["--version"], { timeout: 2000 });
-      if (check.status !== 0) continue;
-    } catch {
-      continue;
-    }
-    const result = await runCommand(candidate, ["-c", VLLM_IMPORT_PROBE]);
-    if (result.code !== 0) continue;
+    const check = await runCommandAsync(candidate, ["--version"], { timeoutMs: 2_000 });
+    if (check.status !== 0) continue;
+    const result = await runCommandAsync(candidate, ["-c", VLLM_IMPORT_PROBE], {
+      timeoutMs: VLLM_RUNTIME_COMMAND_TIMEOUT_MS,
+    });
+    if (result.status !== 0) continue;
     let parsed: { version?: string | null; python?: string | null } | null = null;
     try {
       parsed = JSON.parse(result.stdout) as { version?: string | null; python?: string | null };
@@ -212,7 +170,7 @@ export const getVllmRuntimeInfo = async (preferredPython?: string | null): Promi
       };
     }
   }
-  const fallbackPython = resolvePythonBinary();
+  const fallbackPython = await resolvePythonBinary();
   const vllmBin = resolveVllmBinary(fallbackPython);
   return {
     installed: false,
@@ -228,15 +186,15 @@ export const getVllmConfigHelp = async (): Promise<{
   config: string | null;
   error: string | null;
 }> => {
-  const pythonPath = resolvePythonBinary();
+  const pythonPath = await resolvePythonBinary();
   const vllmBin = resolveVllmBinary(pythonPath);
   if (!pythonPath && !vllmBin) return { config: null, error: "vLLM runtime not available" };
   const command = vllmBin ?? pythonPath ?? "";
   const args = vllmBin
     ? ["serve", "--help"]
     : ["-m", "vllm.entrypoints.openai.api_server", "--help"];
-  const result = await runCommand(command, args, 15_000);
-  if (result.code !== 0)
+  const result = await runCommandAsync(command, args, { timeoutMs: 15_000 });
+  if (result.status !== 0)
     return { config: result.stdout || null, error: result.stderr || "Failed to fetch vLLM config" };
   return { config: result.stdout || null, error: null };
 };
@@ -259,7 +217,7 @@ export const upgradeVllmRuntime = async (
   used_wheel: string | null;
   used_command: string | null;
 }> => {
-  const pythonPath = resolvePythonBinary(options.pythonPath);
+  const pythonPath = await resolvePythonBinary(options.pythonPath);
   if (!pythonPath)
     return {
       success: false,
@@ -284,19 +242,19 @@ export const upgradeVllmRuntime = async (
       preferBundled,
       bundledWheel
     );
-    const result = await runCommand(
-      resolvedCommand.command,
-      resolvedCommand.args,
-      VLLM_UPGRADE_TIMEOUT_MS
-    );
+    const result = await runCommandAsync(resolvedCommand.command, resolvedCommand.args, {
+      timeoutMs: VLLM_UPGRADE_TIMEOUT_MS,
+    });
     const usedCommand = [resolvedCommand.command, ...resolvedCommand.args].join(" ");
-    if (result.code !== 0) {
+    if (result.status !== 0) {
       const usedWheel = preferBundled ? (bundledWheel?.path ?? null) : null;
       return {
         success: false,
         version: null,
         output: result.stdout || null,
-        error: result.stderr || "Upgrade failed",
+        error: result.timedOut
+          ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
+          : result.stderr || "Upgrade failed",
         used_wheel: usedWheel,
         used_command: usedCommand,
       };
@@ -313,14 +271,18 @@ export const upgradeVllmRuntime = async (
     };
   }
   const customArguments = parsedArguments ?? [];
-  const result = await runCommand(command, customArguments, VLLM_UPGRADE_TIMEOUT_MS);
+  const result = await runCommandAsync(command, customArguments, {
+    timeoutMs: VLLM_UPGRADE_TIMEOUT_MS,
+  });
   const usedCommand = [command, ...customArguments].join(" ");
-  if (result.code !== 0)
+  if (result.status !== 0)
     return {
       success: false,
       version: null,
       output: result.stdout || null,
-      error: result.stderr || "Upgrade failed",
+      error: result.timedOut
+        ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
+        : result.stderr || "Upgrade failed",
       used_wheel: null,
       used_command: usedCommand,
     };
