@@ -8,11 +8,13 @@
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import { drainQueueAfterAgentEnd, newId, nowLabel, piSessionIdFromEvent } from "@/lib/agent/session";
 import {
+  listRuntimeSessions,
   loadRuntimeStatus,
   runtimeContextUsage,
   subscribeRuntimeEvents,
   type RuntimeEventPayload,
   type RuntimeEventSubscription,
+  type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "./api";
 import { reduceSessionEvent, type SessionStreamContext } from "./pi-event-applier";
@@ -29,6 +31,7 @@ import type { Session, SessionId } from "./types";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
 const RESUME_RECONNECT_DELAY_MS = 1_000;
+const RUNTIME_POLL_INTERVAL_MS = 5_000;
 
 type ScheduleFrame = (callback: () => void) => { cancel: () => void };
 
@@ -37,16 +40,20 @@ export type SessionRuntimeBinding = {
   commit: (sessionId: SessionId, patch: (session: Session) => Session) => void;
   /** Read the current session snapshot (never cached by the controller). */
   getSession: (sessionId: SessionId) => Session | undefined;
+  /** Read all current workspace sessions (the binding's live ref). */
+  getSessions: () => readonly Session[];
 };
 
 export type SessionRuntimeControllerDeps = {
-  api?: {
+  api?: Partial<{
+    listRuntimeSessions: typeof listRuntimeSessions;
     loadRuntimeStatus: typeof loadRuntimeStatus;
     subscribeRuntimeEvents: typeof subscribeRuntimeEvents;
-  };
+  }>;
   scheduleFrame?: ScheduleFrame;
   reconnectDelayMs?: number;
   idleReconnectMs?: number;
+  pollIntervalMs?: number;
 };
 
 export type SessionRuntimeController = {
@@ -73,6 +80,12 @@ export type SessionRuntimeController = {
   noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
   /** Apply any coalesced-but-unflushed deltas for a session right now. */
   flush(sessionId: SessionId): void;
+  /**
+   * Reconcile every session against the runtime list right now, then restart
+   * the steady poll. Called by the React binding when poll-relevant session
+   * identity (membership / runtime id / pi id / status) changes.
+   */
+  pollNow(): void;
   /** Flush everything and close every SSE attachment (workspace unmount). */
   closeAll(): void;
 };
@@ -83,17 +96,44 @@ function resumeConnectionKey(runtimeSessionId: string, piSessionId: string | nul
   return `${runtimeSessionId}|${piSessionId ?? ""}`;
 }
 
+function patchRuntimeStatus(status: RuntimeStatus): Partial<Session> {
+  return {
+    ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
+    ...(status.modelId ? { modelId: status.modelId } : {}),
+    ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
+  };
+}
+
+function sameRuntimePatch(
+  session: Session,
+  patch: Partial<Session>,
+  status: string,
+  runtimeSessionId = session.runtimeSessionId,
+): boolean {
+  return (
+    session.status === status &&
+    session.runtimeSessionId === runtimeSessionId &&
+    (patch.piSessionId === undefined || session.piSessionId === patch.piSessionId) &&
+    (patch.modelId === undefined || session.modelId === patch.modelId) &&
+    (patch.contextUsage === undefined ||
+      JSON.stringify(session.contextUsage ?? null) === JSON.stringify(patch.contextUsage ?? null))
+  );
+}
+
 export function createSessionRuntimeController(
   deps: SessionRuntimeControllerDeps = {},
 ): SessionRuntimeController {
-  const api = deps.api ?? { loadRuntimeStatus, subscribeRuntimeEvents };
+  const api = { listRuntimeSessions, loadRuntimeStatus, subscribeRuntimeEvents, ...deps.api };
   const reconnectDelayMs = deps.reconnectDelayMs ?? RESUME_RECONNECT_DELAY_MS;
   const idleReconnectMs = deps.idleReconnectMs ?? RESUME_IDLE_RECONNECT_MS;
+  const pollIntervalMs = deps.pollIntervalMs ?? RUNTIME_POLL_INTERVAL_MS;
 
   let binding: SessionRuntimeBinding | null = null;
   const cursors = new Map<SessionId, RuntimeCursor>();
   const streamContext: SessionStreamContext = { liveAssistantIds: new Map() };
   const attachments = new Map<SessionId, Attachment>();
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollEpoch = 0;
 
   const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
     binding?.commit(sessionId, patch);
@@ -246,6 +286,79 @@ export function createSessionRuntimeController(
     enqueueEvent(sessionId, assistantId, payload.event, payload.seq);
   };
 
+  // Reconcile the workspace sessions against one runtime-list snapshot. The
+  // poll is the second leg of status arbitration next to the SSE attachments:
+  // it promotes sessions whose runtime is active (including adopting a new
+  // runtimeSessionId via the pi-session match) and idles sessions the runtime
+  // no longer reports as active.
+  const applyRuntimeList = (runtimeSessions: RuntimeSessionSummary[]) => {
+    const byRuntime = new Map(runtimeSessions.map((entry) => [entry.sessionId, entry.status]));
+    const byPi = new Map(
+      runtimeSessions
+        .filter((entry) => entry.status.piSessionId)
+        .map((entry) => [
+          entry.status.piSessionId!,
+          { runtimeSessionId: entry.sessionId, status: entry.status },
+        ]),
+    );
+    for (const session of binding?.getSessions() ?? []) {
+      const direct = byRuntime.get(session.runtimeSessionId);
+      const piMatch = session.piSessionId ? byPi.get(session.piSessionId) : undefined;
+      const status = direct ?? piMatch?.status;
+      if (!status) continue;
+      if (status.active === true) {
+        const patch = patchRuntimeStatus(status);
+        const nextRuntimeSessionId = piMatch?.runtimeSessionId ?? session.runtimeSessionId;
+        commit(session.id, (current) => {
+          if (sameRuntimePatch(current, patch, "running", nextRuntimeSessionId)) return current;
+          return {
+            ...current,
+            ...(current.runtimeSessionId !== nextRuntimeSessionId
+              ? { runtimeSessionId: nextRuntimeSessionId }
+              : {}),
+            ...patch,
+            status: "running",
+          };
+        });
+      } else if (session.status === "running") {
+        // Only a session the runtime once acknowledged (status "running") may be
+        // idled by the poll. A freshly-sent "starting" turn is not yet in the
+        // runtime list during prefill/TTFT; idling it here would hide the
+        // working indicator for several seconds until the first token lands.
+        // The prompt stream's own `finally` owns the starting->terminal
+        // transition, so the poll must not race it.
+        const patch = patchRuntimeStatus(status);
+        commit(session.id, (current) => {
+          if (current.status !== "running") return current;
+          if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
+            return current;
+          }
+          return {
+            ...current,
+            ...patch,
+            status: "idle",
+            activeAssistantId: undefined,
+          };
+        });
+      }
+    }
+  };
+
+  const stopPoll = () => {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    // Invalidate any in-flight fetch: a stale snapshot from the previous
+    // session registry must not apply after a fresher immediate reconcile.
+    pollEpoch += 1;
+  };
+
+  const pollOnce = async () => {
+    const epoch = pollEpoch;
+    const entries = await api.listRuntimeSessions();
+    if (epoch !== pollEpoch || !binding) return;
+    applyRuntimeList(entries);
+  };
+
   // One SSE attachment per live session: connect, reconnect with a fixed
   // delay, watchdog the stream, and probe runtime liveness on errors.
   const openAttachment = (
@@ -346,6 +459,7 @@ export function createSessionRuntimeController(
       binding = next;
     },
     unbind: () => {
+      stopPoll();
       binding = null;
     },
     noteTurnAccepted: (sessionId) => adoptCursor(sessionId, 0),
@@ -386,7 +500,14 @@ export function createSessionRuntimeController(
       }
     },
     flush: (sessionId) => coalescer.flushNow(sessionId),
+    pollNow: () => {
+      stopPoll();
+      if (!binding || binding.getSessions().length === 0) return;
+      void pollOnce();
+      pollTimer = setInterval(() => void pollOnce(), pollIntervalMs);
+    },
     closeAll: () => {
+      stopPoll();
       for (const attachment of attachments.values()) attachment.close();
       attachments.clear();
       coalescer.flushAll();

@@ -16,6 +16,7 @@ import type { RuntimeLoggedEvent } from "@/lib/agent/session";
 import type {
   RuntimeEventPayload,
   RuntimeEventSubscription,
+  RuntimeSessionSummary,
   RuntimeStatus,
 } from "@/lib/agent/sessions/api";
 import {
@@ -342,6 +343,7 @@ function createControllerHarness(
       if (joinedBlocks(session) !== joinedBlocks(prev)) order.push(`blocks:${joinedBlocks(session)}`);
     },
     getSession: (sessionId) => (sessionId === session.id ? session : undefined),
+    getSessions: () => [session],
   });
   controller.reconcile([session]);
 
@@ -576,4 +578,151 @@ test("agent_end lands tool finalization, idle status, and cursor in one commit",
   assert.equal(sessionAfter.activeAssistantId, undefined);
   assert.equal(sessionAfter.lastEventSeq, 2);
   harness.close();
+});
+
+// ----- runtime-list poll (session-runtime-controller.ts pollNow) -----
+
+type PollHarness = {
+  controller: ReturnType<typeof createSessionRuntimeController>;
+  sessions: () => Session[];
+  fetchCount: () => number;
+  resolveFetch: (index: number, entries: RuntimeSessionSummary[]) => Promise<void>;
+};
+
+function pollSession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "New session",
+    messages: [],
+    status: "running",
+    error: "",
+    input: "",
+    ...overrides,
+  };
+}
+
+function createPollHarness(initial: Session[]): PollHarness {
+  let sessions = initial;
+  const pendingFetches: ((entries: RuntimeSessionSummary[]) => void)[] = [];
+
+  const controller = createSessionRuntimeController({
+    api: {
+      listRuntimeSessions: () =>
+        new Promise<RuntimeSessionSummary[]>((resolve) => {
+          pendingFetches.push(resolve);
+        }),
+      loadRuntimeStatus: async () => null,
+      subscribeRuntimeEvents: () => ({ close: () => undefined }),
+    },
+  });
+  controller.bind({
+    commit: (sessionId, patch) => {
+      sessions = sessions.map((entry) => (entry.id === sessionId ? patch(entry) : entry));
+    },
+    getSession: (sessionId) => sessions.find((entry) => entry.id === sessionId),
+    getSessions: () => sessions,
+  });
+
+  return {
+    controller,
+    sessions: () => sessions,
+    fetchCount: () => pendingFetches.length,
+    resolveFetch: async (index, entries) => {
+      pendingFetches[index]?.(entries);
+      await settle();
+    },
+  };
+}
+
+test("poll promotes an active runtime to running and adopts its id via the pi match", async () => {
+  const harness = createPollHarness([
+    pollSession({ status: "idle", runtimeSessionId: "rt-old", piSessionId: "pi-1" }),
+  ]);
+  harness.controller.pollNow();
+  assert.equal(harness.fetchCount(), 1);
+
+  await harness.resolveFetch(0, [
+    {
+      sessionId: "rt-new",
+      status: { active: true, piSessionId: "pi-1", modelId: "deepseek-v4-flash" },
+    },
+  ]);
+
+  const session = harness.sessions()[0];
+  assert.equal(session.status, "running");
+  assert.equal(session.runtimeSessionId, "rt-new");
+  assert.equal(session.modelId, "deepseek-v4-flash");
+  harness.controller.closeAll();
+  harness.controller.unbind();
+});
+
+test("poll never idles a starting session; a running one it may settle", async () => {
+  const harness = createPollHarness([
+    pollSession({ id: "s-starting", runtimeSessionId: "rt-a", status: "starting" }),
+    pollSession({ id: "s-running", runtimeSessionId: "rt-b", piSessionId: "pi-b" }),
+  ]);
+  harness.controller.pollNow();
+  await harness.resolveFetch(0, [
+    { sessionId: "rt-a", status: { active: false } },
+    { sessionId: "rt-b", status: { active: false } },
+  ]);
+
+  // The optimistic "starting" phase is owned by the prompt stream — the
+  // runtime list not knowing the turn yet must not hide the working spinner.
+  assert.equal(harness.sessions()[0].status, "starting");
+  assert.equal(harness.sessions()[1].status, "idle");
+  assert.equal(harness.sessions()[1].activeAssistantId, undefined);
+  harness.controller.closeAll();
+  harness.controller.unbind();
+});
+
+test("poll ignores sessions absent from the runtime list", async () => {
+  const harness = createPollHarness([pollSession({ status: "running" })]);
+  harness.controller.pollNow();
+  await harness.resolveFetch(0, []);
+  assert.equal(harness.sessions()[0].status, "running");
+  harness.controller.closeAll();
+  harness.controller.unbind();
+});
+
+test("a stale in-flight poll snapshot is dropped after pollNow restarts the epoch", async () => {
+  const harness = createPollHarness([pollSession({ status: "running" })]);
+  harness.controller.pollNow(); // fetch 0 — will resolve LAST with a stale idle list
+  harness.controller.pollNow(); // fetch 1 — fresher snapshot, runtime active
+  assert.equal(harness.fetchCount(), 2);
+
+  await harness.resolveFetch(1, [{ sessionId: "rt-1", status: { active: true } }]);
+  assert.equal(harness.sessions()[0].status, "running");
+
+  // The pre-restart snapshot must not idle the session it no longer speaks for.
+  await harness.resolveFetch(0, [{ sessionId: "rt-1", status: { active: false } }]);
+  assert.equal(harness.sessions()[0].status, "running");
+  harness.controller.closeAll();
+  harness.controller.unbind();
+});
+
+test("poll keeps firing on its interval and stops on unbind", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const harness = createPollHarness([pollSession()]);
+  harness.controller.pollNow();
+  assert.equal(harness.fetchCount(), 1);
+
+  t.mock.timers.tick(5_000);
+  assert.equal(harness.fetchCount(), 2);
+
+  harness.controller.unbind();
+  t.mock.timers.tick(15_000);
+  assert.equal(harness.fetchCount(), 2);
+  harness.controller.closeAll();
+});
+
+test("pollNow with no sessions does not start a poll", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const harness = createPollHarness([]);
+  harness.controller.pollNow();
+  t.mock.timers.tick(15_000);
+  assert.equal(harness.fetchCount(), 0);
+  harness.controller.unbind();
 });
