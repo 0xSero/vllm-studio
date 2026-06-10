@@ -1,8 +1,7 @@
 "use client";
 
-import { CONTROLLER_STREAM_EVENT_TYPES as CONTROLLER_EVENT_TYPES } from "@/lib/controller-events-contract";
-
 import {
+  CONTROLLER_STREAM_EVENT_TYPES as CONTROLLER_EVENT_TYPES,
   getBrowserEventChannelForControllerEvent,
   isControllerStreamEventType,
   type ControllerBrowserEventChannel,

@@ -17,8 +17,12 @@ import {
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
-import { resolveRuntimeSessionId, runtimeCanHydrateCanonicalSession } from "@/features/agent/runtime/prompt-stream";
-import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
+import {
+  resolveRuntimeSessionId,
+  runtimeCanHydrateCanonicalSession,
+  submitPromptTurn,
+  type SubmitArgs,
+} from "@/features/agent/runtime/prompt-stream";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
