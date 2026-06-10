@@ -1,9 +1,12 @@
-// THE single owner of live session event ordering. This module — and only
-// this module — opens runtime SSE subscriptions, tracks per-session event
-// cursors, reconnects, flushes the text-delta coalescer, and reduces runtime
-// events into session state. React integrates through a thin binding
-// (use-workspace-runtime-sync.ts); nothing else may subscribe to runtime
-// events or gate event seqs.
+// THE single owner of live session event ordering AND of runtime-derived
+// session status. This module — and only this module — opens runtime SSE
+// subscriptions, tracks per-session event cursors, reconnects, flushes the
+// text-delta coalescer, reduces runtime events into session state, and runs
+// the runtime-list poll that arbitrates running/idle. React integrates
+// through a thin binding (use-workspace-runtime-sync.ts); nothing else may
+// subscribe to runtime events, gate event seqs, or settle a session's
+// runtime status. (Turn-intent status — "starting", accept, abort — stays
+// with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentEndEvent } from "@/lib/agent/pi-events";
 import { drainQueueAfterAgentEnd, newId, nowLabel, piSessionIdFromEvent } from "@/lib/agent/session";

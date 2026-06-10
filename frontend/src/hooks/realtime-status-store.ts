@@ -1,5 +1,12 @@
 "use client";
 
+// THE single owner of controller-level status: reachability, running process,
+// GPUs, metrics, launch progress, runtime summary. Fed by the controller SSE
+// (vllm:controller-event, dispatched by use-controller-events) with a 5s
+// poll+backoff fallback. Views derive from the snapshot via
+// realtime-status-store/derive.ts — nothing else may poll getStatus or listen
+// to controller events for status.
+
 import { useSyncExternalStore } from "react";
 import type {
   GPU,
