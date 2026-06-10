@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { piRuntimeManager } from "@/features/agent/pi-runtime";
 import type { LoggedPiEvent } from "@/features/agent/pi-runtime-types";
-import { isAgentEndEvent } from "@/features/agent/pi-events";
+import { isAgentEndEvent } from "@/features/agent/pi-runtime-state";
 import {
   initialRuntimeStatusPhase,
   replayAfterCursor,

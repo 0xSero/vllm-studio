@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { GitAction, GitRef, GitState, GitStatusEntry } from "@/features/agent/contracts/git";
+import type { GitAction, GitRef, GitState, GitStatusEntry } from "@/features/agent/contracts";
 
 const execFileAsync = promisify(execFile);
 

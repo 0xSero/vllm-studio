@@ -8,8 +8,8 @@ import test from "node:test";
 import {
   isActiveLaunchStage,
   sidebarStatusFromSnapshot,
-} from "@/hooks/realtime-status-store/derive";
-import type { StatusData } from "@/hooks/realtime-status-store/types";
+} from "@/hooks/realtime-status-store";
+import type { StatusData } from "@/hooks/realtime-status-store";
 import type { LaunchProgressData, ProcessInfo } from "@/lib/types";
 
 function makeProcess(overrides: Partial<ProcessInfo> = {}): ProcessInfo {

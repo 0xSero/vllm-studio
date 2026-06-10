@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeUsageStats } from "@/app/usage/lib/normalize-usage-stats";
+import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 import type { UsageStats } from "@/lib/types";
 
 test("usage normalization preserves controller observability payload", () => {

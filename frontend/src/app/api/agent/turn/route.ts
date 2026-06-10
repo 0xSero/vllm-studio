@@ -6,7 +6,7 @@ import {
   type AgentImageInput,
   type AgentTurnCommandResult,
   type AgentTurnRequest,
-} from "@/features/agent/contracts/turn";
+} from "@/features/agent/contracts";
 import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
 import type { PiAgentSession, PiAgentStatus } from "@/features/agent/pi-runtime-types";
 import { requireApiAccess } from "@/lib/auth/guard";

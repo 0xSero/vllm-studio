@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
-import { useLogs } from "@/app/logs/hooks/use-logs";
+import { useLogs } from "@/features/logs/use-logs";
 import { useSidebarStatus } from "@/hooks/use-sidebar-status";
 import { getStoredBackendUrl } from "@/lib/backend-url";
 

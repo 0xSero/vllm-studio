@@ -19,7 +19,7 @@ import {
   selectedContextInstructions,
   selectedContextPrompt,
 } from "@/features/agent/composer-context";
-import { parseAgentTurnCommandResult } from "@/features/agent/contracts/turn";
+import { parseAgentTurnCommandResult } from "@/features/agent/contracts";
 import {
   compactionTokensBefore,
   contextUsageAwaitingFreshCompactionUsage,
@@ -29,7 +29,10 @@ import {
 } from "@/features/agent/pi-runtime-compaction";
 import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-state";
 import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
-import { modelsToPiModels, normalizeOpenAIModels } from "@/features/agent/models";
+import {
+  modelsToPiModels,
+  normalizeOpenAIModels,
+} from "@/features/agent/models";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
 import { runtimeStatusLooksActive } from "@/features/agent/messages/helpers";
 import { blocksFromTurnSnapshots } from "@/features/agent/messages/message-content";
@@ -108,9 +111,7 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     selectedModel: "",
     modelsLoading: false,
     layout: { kind: "leaf", paneId: "p-main" },
-    panesById: new Map([
-      ["p-main", { sessionId: session.id }],
-    ]),
+    panesById: new Map([["p-main", { sessionId: session.id }]]),
     focusedPaneId: "p-main",
     setupWarning: "",
     error: "",
@@ -118,7 +119,6 @@ function makeState(session = makeSession("s-main")): WorkspaceState {
     lastHandledNavKey: "",
   };
 }
-
 
 test("browser navigate primes the URL while the browser surface is mounting", async () => {
   let browserUrl = "";
@@ -907,14 +907,22 @@ function makePiEventApplierHarness(
   initialSession: Session,
   assistantId = "a-main",
 ): {
-  apply: (sessionId: string, assistantId: string, event: Record<string, unknown>) => void;
+  apply: (
+    sessionId: string,
+    assistantId: string,
+    event: Record<string, unknown>,
+  ) => void;
   session: () => Session;
 } {
   let session = initialSession;
   const ctx: SessionStreamContext = {
     liveAssistantIds: new Map([[initialSession.id, assistantId]]),
   };
-  const apply = (sessionId: string, targetAssistantId: string, event: Record<string, unknown>) => {
+  const apply = (
+    sessionId: string,
+    targetAssistantId: string,
+    event: Record<string, unknown>,
+  ) => {
     if (sessionId !== session.id) return;
     session = reduceSessionEvent(session, ctx, targetAssistantId, event);
   };
@@ -979,7 +987,12 @@ test("active local sidebar rows focus by pane and tab without cloning identity",
 
   assert.deepEqual(actions, [
     { type: "focusPaneSession", paneId: "p-main", sessionId: "s-local" },
-    { type: "renameTab", paneId: "p-main", tabId: "s-local", title: "Renamed chat" },
+    {
+      type: "renameTab",
+      paneId: "p-main",
+      tabId: "s-local",
+      title: "Renamed chat",
+    },
   ]);
 });
 
@@ -1885,18 +1898,32 @@ test("final answer snapshots preserve paragraph and list boundaries between text
     "- There is no visible liquid medium.\n\n",
     "So: the wax behavior is the biggest problem.",
   ];
-  const blocks = blocksFromTurnSnapshots([parts.map((text) => ({ type: "text", text }))]);
+  const blocks = blocksFromTurnSnapshots([
+    parts.map((text) => ({ type: "text", text })),
+  ]);
 
   assert.equal(blocks.length, 1);
-  assert.equal(blocks[0]?.kind === "text" ? blocks[0].text : "", parts.join(""));
+  assert.equal(
+    blocks[0]?.kind === "text" ? blocks[0].text : "",
+    parts.join(""),
+  );
 });
 
 test("final answer snapshots concatenate text parts verbatim without synthesizing whitespace", () => {
-  const parts = ["Examples:\n- ", "General software engineering skills.\n- ", "UI/docs skills."];
-  const blocks = blocksFromTurnSnapshots([parts.map((text) => ({ type: "text", text }))]);
+  const parts = [
+    "Examples:\n- ",
+    "General software engineering skills.\n- ",
+    "UI/docs skills.",
+  ];
+  const blocks = blocksFromTurnSnapshots([
+    parts.map((text) => ({ type: "text", text })),
+  ]);
 
   assert.equal(blocks.length, 1);
-  assert.equal(blocks[0]?.kind === "text" ? blocks[0].text : "", parts.join(""));
+  assert.equal(
+    blocks[0]?.kind === "text" ? blocks[0].text : "",
+    parts.join(""),
+  );
 });
 
 test("final answer snapshot merge keeps word continuations together", () => {
@@ -2041,7 +2068,10 @@ test("nex n2 models infer vision support from sparse openai model rows", () => {
   });
 
   assert.equal(model?.vision, true);
-  assert.deepEqual(modelsToPiModels(model ? [model] : [])[0]?.input, ["text", "image"]);
+  assert.deepEqual(modelsToPiModels(model ? [model] : [])[0]?.input, [
+    "text",
+    "image",
+  ]);
 });
 
 test("vllm pi openai serialization keeps tool calls out of assistant content", () => {
@@ -2183,7 +2213,10 @@ test("vllm pi openai serialization preserves assistant text part boundaries", ()
             { type: "text", text: "Specific things that feel wrong:" },
             { type: "text", text: "- The wax is one continuous blob." },
             { type: "text", text: "-There is no visible liquid medium." },
-            { type: "text", text: "So: the wax behavior is the biggest problem." },
+            {
+              type: "text",
+              text: "So: the wax behavior is the biggest problem.",
+            },
           ],
           api: "openai-completions",
           provider: "vllm-studio",

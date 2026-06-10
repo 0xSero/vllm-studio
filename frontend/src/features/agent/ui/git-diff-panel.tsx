@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
-import type { GitAction, GitRef, GitState } from "@/features/agent/contracts/git";
+import type { GitAction, GitRef, GitState } from "@/features/agent/contracts";
 import { safeJson } from "@/lib/safe-json";
 import {
   diffLineClassName,

@@ -16,7 +16,7 @@ import {
   usageFromEvent,
   visibleUserTextFromPi,
 } from "@/features/agent/messages";
-import { isAgentEndEvent } from "@/features/agent/pi-events";
+import { isAgentEndEvent } from "@/features/agent/pi-runtime-state";
 import { piEventIsSuccessfulCompaction } from "@/features/agent/pi-runtime-compaction";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import type { Session, SessionId } from "@/features/agent/runtime/types";

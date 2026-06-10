@@ -10,7 +10,7 @@ import type {
   LeaseInfo,
   RuntimeSummaryData,
   ServiceEntry,
-} from "@/hooks/realtime-status-store/types";
+} from "@/hooks/realtime-status-store";
 
 export interface DashboardLayoutProps {
   currentProcess: ProcessInfo | null;

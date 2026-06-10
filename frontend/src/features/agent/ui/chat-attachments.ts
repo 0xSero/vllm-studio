@@ -1,7 +1,7 @@
 "use client";
 
 import { newId, randomIdSegment } from "@/features/agent/messages/helpers";
-import type { AgentImageInput } from "@/features/agent/contracts/turn";
+import type { AgentImageInput } from "@/features/agent/contracts";
 import { formatBytes } from "@/lib/formatters";
 
 export type ChatAttachment = {

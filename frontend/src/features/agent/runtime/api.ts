@@ -7,7 +7,7 @@ import {
   type AgentTurnCommandResult,
   type RuntimeLoggedEvent,
 } from "@/features/agent/messages";
-import type { AgentImageInput } from "@/features/agent/contracts/turn";
+import type { AgentImageInput } from "@/features/agent/contracts";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type {
   ComposerPluginRef,

@@ -1,7 +1,7 @@
 "use client";
 
 import { DiscoverView } from "@/features/discover/discover-view";
-import { useDiscover } from "./hooks/use-discover";
+import { useDiscover } from "@/features/discover/use-discover";
 import { useDownloads } from "@/hooks/use-downloads";
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 

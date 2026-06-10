@@ -1,5 +1,5 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { AgentImageInput } from "@/features/agent/contracts/turn";
+import type { AgentImageInput } from "@/features/agent/contracts";
 import type { RuntimeStartOptions } from "@/features/agent/pi-runtime-helpers";
 
 // Pi event surface seen by the rest of the app. Upstream consumers

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { parseGitAction } from "@/features/agent/contracts/git";
+import { parseGitAction } from "@/features/agent/contracts";
 import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";

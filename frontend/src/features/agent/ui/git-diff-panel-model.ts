@@ -1,4 +1,4 @@
-import type { GitState } from "@/features/agent/contracts/git";
+import type { GitState } from "@/features/agent/contracts";
 
 export type GitDiffPayload = Partial<GitState>;
 

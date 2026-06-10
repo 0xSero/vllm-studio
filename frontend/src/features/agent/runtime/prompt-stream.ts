@@ -2,6 +2,7 @@ import {
   type ChatMessageAttachment,
   newId,
   nowLabel,
+  runtimeStatusLooksActive,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
 import {
@@ -10,13 +11,12 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { AgentImageInput } from "@/features/agent/contracts/turn";
+import type { AgentImageInput } from "@/features/agent/contracts";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { runtimeStatusLooksActive } from "@/features/agent/messages";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];

@@ -6,9 +6,9 @@ import { DailyUsageChart } from "@/features/usage/daily-usage-chart";
 import { ModelPerformanceTable } from "@/features/usage/model-performance-table";
 import { PerformanceDetails } from "@/features/usage/performance-details";
 import { SecondaryMetrics } from "@/features/usage/secondary-metrics";
-import { useUsage, type UsageSource } from "./hooks/use-usage";
+import { useUsage, type UsageSource } from "@/features/usage/use-usage";
 import { formatNumber } from "@/lib/formatters";
-import { normalizeUsageStats } from "./lib/normalize-usage-stats";
+import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 
 const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
   { id: "provider", label: "Provider", sublabel: "this controller" },

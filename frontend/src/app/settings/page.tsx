@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { ConfigsView } from "@/features/settings/configs-view";
-import { useConfigs } from "../configs/hooks/use-configs";
+import { useConfigs } from "@/features/settings/use-configs";
 import { SetupView } from "@/features/setup/setup-view";
-import { useSetup } from "../setup/hooks/use-setup";
+import { useSetup } from "@/features/setup/use-setup";
 
 const hasSettingsHash = () => {
   if (typeof window === "undefined") return true;

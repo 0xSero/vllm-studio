@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
-import { normalizeUsageStats } from "../lib/normalize-usage-stats";
+import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 
 function normalizePeakNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;

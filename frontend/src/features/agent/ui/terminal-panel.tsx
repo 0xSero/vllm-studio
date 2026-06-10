@@ -3,7 +3,7 @@
 import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { TerminalRunResult } from "@/features/agent/contracts/terminal";
+import type { TerminalRunResult } from "@/features/agent/contracts";
 
 export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
