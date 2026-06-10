@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git/service";
+import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";

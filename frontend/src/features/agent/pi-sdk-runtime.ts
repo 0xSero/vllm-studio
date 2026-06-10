@@ -17,7 +17,7 @@ import {
   type RuntimeStartOptions,
 } from "@/features/agent/pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection } from "@/features/agent/pi-runtime-models";
-import { piEventsAfter, piStatusFromEvents } from "@/features/agent/pi-runtime-state";
+import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
 import {
   compactionTokensBefore,
   contextUsageAwaitingFreshCompactionUsage,
@@ -26,7 +26,12 @@ import {
   postCompactionUsageIsFresh,
 } from "@/features/agent/pi-runtime-compaction";
 import { findSessionFile } from "@/features/agent/sessions-store";
-import type { LoggedPiEvent, PiAgentSession } from "@/features/agent/pi-runtime-types";
+import type {
+  LoggedPiEvent,
+  PiAgentSession,
+  PiAgentStatus,
+  PiContextUsage,
+} from "@/features/agent/pi-runtime-types";
 
 type PiEvent = LoggedPiEvent["event"];
 
@@ -365,4 +370,9 @@ export class PiSdkSession extends EventEmitter implements PiAgentSession {
       );
     }
   }
+}
+
+function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] {
+  const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
+  return eventLog.filter((entry) => entry.seq > floor);
 }

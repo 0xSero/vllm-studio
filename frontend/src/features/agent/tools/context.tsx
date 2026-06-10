@@ -7,15 +7,16 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import type {
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import { useCanvasEffects } from "@/features/agent/hooks/use-canvas-effects";
-import { useToolsCatalogueEffects } from "@/features/agent/hooks/use-tools-catalogue-effects";
 import type { SessionId } from "@/features/agent/runtime/types";
 import {
   EMPTY_SELECTION,
@@ -484,3 +485,91 @@ export type {
   ComputerState,
   ComputerTab,
 };
+
+function useCanvasEffects({
+  setComputer,
+  sessionId,
+}: {
+  setComputer: Dispatch<SetStateAction<ComputerState>>;
+  sessionId?: SessionId | null;
+}): void {
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      let cancelled = false;
+      const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+      fetch(`/api/agent/canvas${query}`, { cache: "no-store" })
+        .then((res) =>
+          res.ok
+            ? (res.json() as Promise<{ enabled?: boolean; text?: string }>)
+            : Promise.reject(new Error("Canvas fetch failed")),
+        )
+        .then((payload) => {
+          if (cancelled) return;
+          setComputer((current) => ({
+            ...current,
+            canvasEnabled: payload.enabled ?? current.canvasEnabled,
+            canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
+          }));
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    },
+    [setComputer, sessionId],
+  );
+
+  useSyncExternalStore(subscribe, getCanvasSnapshot, getCanvasSnapshot);
+}
+
+const getCanvasSnapshot = (): number => 0;
+
+// One-shot fetch of the workspace-global plugin and skill catalogues.
+
+type UseToolsCatalogueEffectsOptions = {
+  onLoaded: (payload: {
+    plugins: ComposerPluginRef[];
+    skills: ComposerSkillRef[];
+    promptTemplates: ComposerPromptTemplateRef[];
+  }) => void;
+};
+
+function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions): void {
+  const onLoadedRef = useRef(onLoaded);
+  const subscribe = useCallback((_notify: () => void) => {
+    let cancelled = false;
+    void loadToolsCatalogue().then((payload) => {
+      if (!cancelled) onLoadedRef.current(payload);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useSyncExternalStore(subscribe, getToolsCatalogueSnapshot, getToolsCatalogueSnapshot);
+}
+
+async function loadToolsCatalogue(): Promise<{
+  plugins: ComposerPluginRef[];
+  skills: ComposerSkillRef[];
+  promptTemplates: ComposerPromptTemplateRef[];
+}> {
+  const [plugins, skills, promptTemplates] = await Promise.all([
+    fetch("/api/agent/plugins?includeDisabled=1", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ plugins?: ComposerPluginRef[] }>)
+      .then((payload) => payload.plugins ?? [])
+      .catch(() => [] as ComposerPluginRef[]),
+    fetch("/api/agent/skills", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
+      .then((payload) => payload.skills ?? [])
+      .catch(() => [] as ComposerSkillRef[]),
+    fetch("/api/agent/prompt-templates", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ templates?: ComposerPromptTemplateRef[] }>)
+      .then((payload) => payload.templates ?? [])
+      .catch(() => [] as ComposerPromptTemplateRef[]),
+  ]);
+
+  return { plugins, skills, promptTemplates };
+}
+
+const getToolsCatalogueSnapshot = (): number => 0;

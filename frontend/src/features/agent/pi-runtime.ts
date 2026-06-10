@@ -1,5 +1,5 @@
 import { PiSdkSession } from "@/features/agent/pi-sdk-runtime";
-import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-lookup";
+import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-state";
 import type { PiAgentSession } from "@/features/agent/pi-runtime-types";
 
 export { refreshPiModels } from "@/features/agent/pi-runtime-models";

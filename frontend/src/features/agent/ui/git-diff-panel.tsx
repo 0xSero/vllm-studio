@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
 import type { GitAction, GitRef, GitState } from "@/features/agent/contracts/git";
-import { loadGitState, runGitAction } from "@/features/agent/git/client";
-import { useGitDiffPanelEffects } from "@/features/agent/hooks/use-git-diff-panel-effects";
+import { safeJson } from "@/lib/safe-json";
 import {
   diffLineClassName,
   diffLinePrefix,
@@ -492,4 +491,38 @@ function pairDiffLines(file: DiffFile): Array<{
   }
   while (pendingDeletes.length > 0) rows.push({ left: pendingDeletes.shift() });
   return rows;
+}
+
+function useGitDiffPanelEffects(load: () => Promise<void>): void {
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      void load().finally(notify);
+      return () => {};
+    },
+    [load],
+  );
+
+  useSyncExternalStore(subscribe, getGitDiffPanelSnapshot, getGitDiffPanelSnapshot);
+}
+
+const getGitDiffPanelSnapshot = (): number => 0;
+
+async function loadGitState(cwd: string): Promise<GitState> {
+  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
+    cache: "no-store",
+  });
+  const payload = await safeJson<GitState & { error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || "Failed to load git state");
+  return payload;
+}
+
+async function runGitAction(cwd: string, action: GitAction): Promise<GitState> {
+  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action),
+  });
+  const payload = await safeJson<GitState & { error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || "Git action failed");
+  return payload;
 }

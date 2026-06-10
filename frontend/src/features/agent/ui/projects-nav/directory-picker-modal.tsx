@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { Button, UiModal, UiModalHeader } from "@/ui";
 import { Folder } from "@/ui/icons";
-import { useProjectDirectoryPickerModalEffects } from "@/features/agent/hooks/use-projects-nav-section-effects";
+import { useProjectDirectoryPickerModalEffects } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import type { DirectoryBrowserEntry, DirectoryBrowserPayload } from "./types";
 
 export function ProjectDirectoryPickerModal({

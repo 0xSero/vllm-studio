@@ -12,16 +12,13 @@ import {
   pruneSessions,
 } from "@/features/agent/runtime/store";
 import { findPaneByPiSessionId, referencedSessionIds } from "@/features/agent/runtime/selectors";
-import type { PaneId, PaneState, WorkspaceState } from "@/features/agent/workspace/types";
+import type { Project } from "@/features/agent/projects/types";
 import type {
-  OpenNewSessionPayload,
-  OpenSessionPayloadInPanePayload,
-  ReplaySessionInSplitPayload,
-  ReplaySessionPayload,
-  SplitPaneWithPayloadPayload,
-  SplitTabPayload,
-  UrlNavigationPayload,
-} from "@/features/agent/workspace/pane-controller-types";
+  PaneId,
+  PaneState,
+  WorkspaceSessionPayload,
+  WorkspaceState,
+} from "@/features/agent/workspace/types";
 
 function isSession(value: Session | undefined): value is Session {
   return Boolean(
@@ -401,3 +398,34 @@ export function applyUrlNavigation(
   }
   return marked;
 }
+
+type SessionPayload = { tab?: Session };
+
+type OpenNewSessionPayload = SessionPayload & { project?: Project };
+type ReplaySessionPayload = SessionPayload & { piSessionId: string; sessionTitle?: string };
+type ReplaySessionInSplitPayload = ReplaySessionPayload & { paneId?: PaneId };
+type OpenSessionPayloadInPanePayload = SessionPayload & {
+  paneId: PaneId;
+  payload: WorkspaceSessionPayload;
+};
+type SplitPaneWithPayloadPayload = SessionPayload & {
+  paneId: PaneId;
+  newPaneId?: PaneId;
+  direction: "vertical" | "horizontal";
+  side: "a" | "b";
+  payload: WorkspaceSessionPayload;
+};
+type SplitTabPayload = SessionPayload & {
+  sourcePaneId: PaneId;
+  sourceTabId: SessionId;
+  newPaneId?: PaneId;
+};
+type UrlNavigationPayload = SessionPayload & {
+  key: string;
+  project: Project | null;
+  sessionId?: string | null;
+  sessionTitle?: string;
+  newSession?: boolean;
+  split?: boolean;
+  paneId?: PaneId;
+};

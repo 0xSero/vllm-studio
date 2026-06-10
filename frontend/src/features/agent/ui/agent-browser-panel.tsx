@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { CloseIcon } from "@/ui/icons";
-import { clearPersistentTerminalOwners } from "@/features/agent/hooks/use-persistent-terminal-owners";
+import { clearPersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { sanitizePublicBrowserUrl } from "@/lib/sanitize-embedded-browser-url";
 import { useTools } from "@/features/agent/tools/context";

@@ -8,7 +8,7 @@ import {
   usePinnedSessionsEffect,
   useProjectsNavAddProjectEffect,
   useProjectsNavSessionPrefs,
-} from "@/features/agent/hooks/use-projects-nav-section-effects";
+} from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { loadPersistedActiveAgentSessions } from "@/features/agent/workspace/store";
 import { useProjects } from "@/features/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";

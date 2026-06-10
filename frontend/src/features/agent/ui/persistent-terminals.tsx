@@ -1,6 +1,6 @@
 "use client";
 
-import { usePersistentTerminalOwners } from "@/features/agent/hooks/use-persistent-terminal-owners";
+import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { terminalKeysMatch, type TerminalOwner } from "@/features/agent/terminal-owners";
 import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
 

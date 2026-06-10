@@ -13,9 +13,10 @@ import {
 import type { AgentImageInput } from "@/features/agent/contracts/turn";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
-import { runtimeIsActiveForPiSession } from "@/features/agent/runtime/engine-helpers";
+import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
+import { runtimeStatusLooksActive } from "@/features/agent/messages";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -221,4 +222,32 @@ function mergeSkills(
   for (const skill of existing ?? []) byId.set(skill.id || skill.path || skill.name, skill);
   for (const skill of next) byId.set(skill.id || skill.path || skill.name, skill);
   return [...byId.values()];
+}
+
+export function resolveRuntimeSessionId(
+  session: Pick<Session, "runtimeSessionId"> | null | undefined,
+  fallbackRuntimeSessionId: string,
+): string {
+  return session?.runtimeSessionId || fallbackRuntimeSessionId;
+}
+
+export function runtimeIsActiveForPiSession(
+  runtimeStatus: RuntimeStatus | null | undefined,
+  piSessionId: string | null | undefined,
+): boolean {
+  return Boolean(
+    runtimeStatus &&
+    runtimeStatusLooksActive(runtimeStatus) &&
+    (!runtimeStatus.piSessionId || !piSessionId || runtimeStatus.piSessionId === piSessionId),
+  );
+}
+
+export function runtimeCanHydrateCanonicalSession(
+  runtimeStatus: RuntimeStatus | null | undefined,
+  piSessionId: string,
+): boolean {
+  return Boolean(
+    runtimeStatus?.active === true &&
+    (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId),
+  );
 }

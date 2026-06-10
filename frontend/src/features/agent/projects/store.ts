@@ -1,7 +1,5 @@
 import { PROJECTS_LOADED_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import * as defaultApi from "@/features/agent/projects/api";
-import { readSelectedProjectId, writeSelectedProjectId } from "@/features/agent/projects/persistence";
-import { projectPathById, resolveSelectedProjectId } from "@/features/agent/projects/selection";
 import type { GitSummary, Project, ProjectId } from "@/features/agent/projects/types";
 
 export type ProjectsSnapshot = {
@@ -171,4 +169,37 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       notify(getWindow(), SESSIONS_CHANGED_EVENT);
     },
   };
+}
+
+function resolveSelectedProjectId(
+  current: ProjectId | null,
+  projects: readonly Project[],
+): ProjectId | null {
+  if (current && projects.some((project) => project.id === current)) return current;
+  return projects[0]?.id ?? null;
+}
+
+function projectPathById(projects: readonly Project[], projectId: ProjectId | null): string {
+  return projects.find((project) => project.id === projectId)?.path ?? "";
+}
+
+const SELECTED_PROJECT_KEY = "vllm-studio.agent.selectedProjectId";
+
+function readSelectedProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(SELECTED_PROJECT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedProjectId(id: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) window.localStorage.setItem(SELECTED_PROJECT_KEY, id);
+    else window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+  } catch {
+    // Ignore storage failures; selection persists in memory.
+  }
 }

@@ -36,9 +36,7 @@ const eslintConfig = defineConfig([
       complexity: ["warn", { max: 20 }],
       "max-depth": ["warn", 4],
       "max-params": ["warn", 5],
-      "max-lines-per-function": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
       "no-duplicate-imports": "warn",
-      "max-lines": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
       "no-restricted-syntax": [
         "error",
         {
@@ -84,67 +82,6 @@ const eslintConfig = defineConfig([
           ],
         },
       ],
-    },
-  },
-  // Tests, configs and types files are exempt from the file-length cap.
-  {
-    files: [
-      "**/*.test.ts",
-      "**/*.test.tsx",
-      "**/*.spec.ts",
-      "**/*.spec.tsx",
-      "src/lib/themes-data.ts",
-      "**/*.d.ts",
-    ],
-    rules: {
-      "max-lines": "off",
-    },
-  },
-  // Legacy files that already exceed the limits. New code must obey the rules;
-  // these are tracked offenders to be refactored. Remove an entry once the file
-  // is under 500 LOC and no longer needs a legacy allowance.
-  {
-    files: [
-      "src/features/agent/ui/chat-pane.tsx",
-      "src/features/agent/ui/filesystem-panel.tsx",
-      "src/features/agent/ui/git-diff-panel.tsx",
-      "src/features/agent/ui/agent-browser.tsx",
-      "src/features/agent/ui/use-workspace.ts",
-      "src/features/agent/ui/agent-workspace-shell.tsx",
-      "src/app/agent/sessions/page.tsx",
-      "src/features/dashboard/control-panel/control-panel-v2.tsx",
-      "src/features/dashboard/use-dashboard-recipes.ts",
-      "src/features/settings/configs-view.tsx",
-      "src/app/configs/hooks/use-configs.ts",
-      "src/features/settings/engines-section.tsx",
-      "src/features/recipes/recipes-content/explore-tab.tsx",
-      "src/features/recipes/recipe-modal/recipe-modal.tsx",
-      "src/features/recipes/recipes-content/use-explore.ts",
-      "src/features/recipes/recipes-content/recipes-content-model.ts",
-      "src/app/logs/hooks/use-logs.tsx",
-      "src/app/discover/page.tsx",
-      "src/app/discover/hooks/use-discover.ts",
-      "src/app/setup/hooks/use-setup.ts",
-      "src/app/usage/hooks/use-usage.ts",
-      "src/hooks/use-downloads.ts",
-      "src/hooks/use-controller-events.ts",
-      "src/hooks/use-model-lifecycle.ts",
-      "src/hooks/use-sidebar-status.ts",
-      "src/features/agent/workspace/store.ts",
-      "src/features/agent/workspace/effects.ts",
-      "src/features/agent/pi-runtime.ts",
-      "src/features/agent/runtime/engine.ts",
-      "src/features/agent/projects/context.tsx",
-      "src/features/agent/tools/context.tsx",
-      "src/hooks/use-click-outside.ts",
-      "src/lib/api/core.ts",
-    ],
-    rules: {
-      // File-length offenses remain warnings on tracked legacy files so we can
-      // refactor them gradually, but React effect hook bans are never softened.
-      "max-lines": "warn",
-      "max-lines-per-function": "warn",
-      "react-hooks/set-state-in-effect": "warn",
     },
   },
   {

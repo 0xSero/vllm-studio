@@ -7,8 +7,8 @@ import {
 } from "@/features/agent/active-sessions";
 import { runBrowserPanelCommand } from "@/features/agent/browser/command";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { controlTargetHasActiveTurn } from "@/features/agent/control-routing";
-import { hasExplicitSessionNavigation } from "@/features/agent/hooks/use-workspace-hydration-effects";
+import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
+import { hasExplicitSessionNavigation } from "@/features/agent/ui/use-workspace";
 import {
   initialRuntimeStatusPhase,
   replayAfterCursor,
@@ -27,7 +27,7 @@ import {
   piEventIsSuccessfulCompaction,
   postCompactionUsageIsFresh,
 } from "@/features/agent/pi-runtime-compaction";
-import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-lookup";
+import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-state";
 import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
 import { modelsToPiModels, normalizeOpenAIModels } from "@/features/agent/models";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
@@ -47,7 +47,7 @@ import { isEmptyStarterSession } from "@/features/agent/runtime/store";
 import {
   beginSessionSubmit,
   endSessionSubmit,
-} from "@/features/agent/runtime/submit-guard";
+} from "@/features/agent/runtime/selectors";
 import type { Session } from "@/features/agent/runtime/types";
 import { runtimeContextUsage } from "@/features/agent/runtime/api";
 import {

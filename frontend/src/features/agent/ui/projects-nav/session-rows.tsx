@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { safeJson } from "@/lib/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
-import { useProjectSessionsReloadEffect } from "@/features/agent/hooks/use-projects-nav-section-effects";
+import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";

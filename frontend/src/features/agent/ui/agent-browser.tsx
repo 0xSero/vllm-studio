@@ -23,12 +23,14 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
+  type Dispatch,
   type FormEvent,
+  type RefObject,
+  type SetStateAction,
 } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/ui/icons";
 import { MarkdownContent } from "@/ui/markdown-content";
-import { useAgentBrowserEffects } from "@/features/agent/hooks/use-agent-browser-effects";
-import { useLocalhostSitesEffects } from "@/features/agent/hooks/use-localhost-sites-effects";
 import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
 
 export type WebviewElement = HTMLElement & {
@@ -610,3 +612,115 @@ function browserHost(url: string): string {
     return url;
   }
 }
+
+type UseLocalhostSitesEffectsParams = {
+  enabled: boolean;
+  onLoadingChange: Dispatch<SetStateAction<boolean>>;
+  onSitesChange: Dispatch<SetStateAction<LocalhostSite[]>>;
+  onErrorChange: Dispatch<SetStateAction<string | null>>;
+};
+
+function useLocalhostSitesEffects({
+  enabled,
+  onLoadingChange,
+  onSitesChange,
+  onErrorChange,
+}: UseLocalhostSitesEffectsParams): void {
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (!enabled) return () => {};
+      let cancelled = false;
+      onLoadingChange(true);
+      onErrorChange(null);
+      void fetch("/api/agent/browser/localhosts", { cache: "no-store" })
+        .then(async (response) => {
+          const payload = (await response.json()) as { sites?: LocalhostSite[]; error?: string };
+          if (!response.ok || payload.error) throw new Error(payload.error || "Failed to scan");
+          if (!cancelled) onSitesChange(payload.sites ?? []);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            onSitesChange([]);
+            onErrorChange(error instanceof Error ? error.message : "Failed to scan localhost");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            onLoadingChange(false);
+            notify();
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    },
+    [enabled, onErrorChange, onLoadingChange, onSitesChange],
+  );
+
+  useSyncExternalStore(subscribe, getLocalhostSitesSnapshot, getLocalhostSitesSnapshot);
+}
+
+const getLocalhostSitesSnapshot = (): number => 0;
+
+type BrowserWebview = HTMLElement & {
+  executeJavaScript: (script: string, userGesture?: boolean) => Promise<unknown>;
+  getURL: () => string;
+};
+
+type UseAgentBrowserEffectsParams = {
+  url: string;
+  readingMode: boolean;
+  isElectron: boolean;
+  webviewRef: RefObject<BrowserWebview | null>;
+  fetchReadable: (target: string) => Promise<void>;
+  onLocationChange?: (value: string) => void;
+  enabled?: boolean;
+};
+
+function useAgentBrowserEffects({
+  url,
+  readingMode,
+  isElectron,
+  webviewRef,
+  fetchReadable,
+  onLocationChange,
+  enabled = true,
+}: UseAgentBrowserEffectsParams): void {
+  const subscribeReadable = useCallback(
+    (_notify: () => void) => {
+      if (enabled && url && readingMode) {
+        void fetchReadable(url);
+      }
+      return () => {};
+    },
+    [enabled, fetchReadable, readingMode, url],
+  );
+
+  const subscribeLocationSync = useCallback(
+    (_notify: () => void) => {
+      if (!enabled || !isElectron || readingMode || !onLocationChange) return () => {};
+      const webview = webviewRef.current;
+      if (!webview) return () => {};
+      const syncUrl = () => {
+        try {
+          const current = webview.getURL();
+          if (current) onLocationChange(current);
+        } catch {
+          // Ignore transient webview state while navigating.
+        }
+      };
+      webview.addEventListener("did-navigate", syncUrl as EventListener);
+      webview.addEventListener("did-navigate-in-page", syncUrl as EventListener);
+      return () => {
+        webview.removeEventListener("did-navigate", syncUrl as EventListener);
+        webview.removeEventListener("did-navigate-in-page", syncUrl as EventListener);
+      };
+    },
+    [enabled, isElectron, onLocationChange, readingMode, url, webviewRef],
+  );
+
+  useSyncExternalStore(subscribeReadable, getAgentBrowserSnapshot, getAgentBrowserSnapshot);
+  useSyncExternalStore(subscribeLocationSync, getAgentBrowserSnapshot, getAgentBrowserSnapshot);
+}
+
+const getAgentBrowserSnapshot = (): number => 0;
