@@ -41,6 +41,8 @@ export interface LeaseInfo {
 export interface RealtimeStatusSnapshot {
   status: StatusData | null;
   statusLoading: boolean;
+  /** Controller reachability: the last poll succeeded or a live event arrived. */
+  connected: boolean;
   gpus: GPU[];
   metrics: Metrics | null;
   launchProgress: LaunchProgressData | null;

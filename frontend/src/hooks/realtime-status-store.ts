@@ -16,6 +16,7 @@ import type {
   RuntimeSummaryData,
   ServiceEntry,
 } from "./realtime-status-store/types";
+import { isActiveLaunchStage } from "./realtime-status-store/derive";
 import {
   areGpusEqual,
   areLaunchProgressEqual,
@@ -61,6 +62,7 @@ function normalizeRuntimeBackends(
 const initialSnapshot: RealtimeStatusSnapshot = {
   status: null,
   statusLoading: true,
+  connected: false,
   gpus: [],
   metrics: null,
   launchProgress: null,
@@ -111,6 +113,7 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
   const changed =
     !areStatusEqual(snapshot.status, next.status) ||
     snapshot.statusLoading !== next.statusLoading ||
+    snapshot.connected !== next.connected ||
     !areGpusEqual(snapshot.gpus, next.gpus) ||
     !areMetricsEqual(snapshot.metrics, next.metrics) ||
     !areLaunchProgressEqual(snapshot.launchProgress, next.launchProgress) ||
@@ -123,12 +126,6 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
   if (!changed) return;
 
   for (const l of listeners) l();
-}
-
-function isActiveLaunchStage(stage: LaunchProgressData["stage"] | null | undefined): boolean {
-  return (
-    stage === "preempting" || stage === "evicting" || stage === "launching" || stage === "waiting"
-  );
 }
 
 function reconcileLaunchProgress(
@@ -219,6 +216,7 @@ function emitNoPolledStatus() {
   emitIfChanged({
     ...snapshot,
     statusLoading: false,
+    connected: false,
     lastEventAt: Date.now(),
   });
 }
@@ -230,6 +228,7 @@ function emitPolledStatus({ compatibility, gpus, metrics, status }: PollResults)
   emitIfChanged({
     status: { running, process, inference_port, launching },
     statusLoading: false,
+    connected: true,
     gpus,
     metrics,
     launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
@@ -270,6 +269,7 @@ function handleStatusEvent(data: Record<string, unknown>, now: number) {
     ...snapshot,
     status,
     statusLoading: false,
+    connected: true,
     metrics: metricsForEventProcess(status.process),
     launchProgress: reconcileLaunchProgress(snapshot.launchProgress, {
       process: status.process,
@@ -301,6 +301,9 @@ function handleLaunchProgressEvent(data: Record<string, unknown>, now: number) {
   scheduleLaunchClear(progress.stage);
   emitIfChanged({
     ...snapshot,
+    // A live launch event proves the controller is reachable even before the
+    // first successful status poll.
+    connected: true,
     launchProgress: progress,
     lastEventAt: now,
   });
@@ -326,6 +329,7 @@ function handleRuntimeSummaryEvent(data: Record<string, unknown>, now: number) {
   emitIfChanged({
     status: snapshot.status,
     statusLoading: snapshot.statusLoading,
+    connected: snapshot.connected,
     gpus: snapshot.gpus,
     metrics: snapshot.metrics,
     launchProgress: snapshot.launchProgress,
