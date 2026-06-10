@@ -1,4 +1,4 @@
-import type { AppContext } from "../types/context";
+import type { AppContext } from "../app-context";
 
 export const createOpenApiSpec = (context: AppContext): Record<string, unknown> => ({
   openapi: "3.1.0",

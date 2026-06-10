@@ -1,4 +1,4 @@
-import type { AppContext } from "../../types/context";
+import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import { delay } from "../../core/async";

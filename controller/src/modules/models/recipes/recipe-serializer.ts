@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Recipe } from "../types";
-import { asRecipeId } from "../../../types/brand";
+import { asRecipeId } from "../types";
 
 /**
  * Normalize raw recipe input before validation.

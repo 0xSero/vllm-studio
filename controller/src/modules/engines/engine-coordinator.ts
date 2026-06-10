@@ -1,5 +1,5 @@
 import { AsyncLock, delay } from "../../core/async"; import { primaryLogPathFor, readFileTailBytes } from "../../core/log-files";
-import { Event, type EventManager } from "../system/event-manager"; import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
+import { Event, type EventManager } from "../system/event-manager"; import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-events";
 import { pidExists } from "./process/process-utilities"; import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import type { ProcessInfo, Recipe } from "../models/types"; import type { Config } from "../../config/env";
 import type { Logger } from "../../core/logger"; import type { ProcessManager } from "./process/process-manager";

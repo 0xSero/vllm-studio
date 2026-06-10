@@ -5,7 +5,7 @@ import { buildSseHeaders } from "../../http/sse";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../engines/process/model-runtime-defaults";
-import { buildInferenceUrl } from "../../services/inference/inference-client";
+import { buildInferenceUrl } from "../../services/inference-client";
 import {
   DEFAULT_CHAT_PROVIDER,
   parseProviderModel,

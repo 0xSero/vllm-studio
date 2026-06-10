@@ -1,14 +1,13 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AppContext } from "./types/context";
-import { createConfig } from "./config/env";
-import { createEventManager } from "./modules/system/event-manager";
-import { createLaunchState } from "./modules/engines/process/launch-state";
-import { createMetrics } from "./modules/system/metrics";
-import { createProcessManager } from "./modules/engines/process/process-manager";
+import { createConfig, type Config } from "./config/env";
+import { createEventManager, type EventManager } from "./modules/system/event-manager";
+import { createLaunchState, type LaunchState } from "./modules/engines/process/launch-state";
+import { createMetrics, type ControllerMetrics, type MetricsRegistry } from "./modules/system/metrics";
+import { createProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
-import { createEngineCoordinator } from "./modules/engines/engine-coordinator";
-import { createLogger, resolveLogLevel } from "./core/logger";
+import { createEngineCoordinator, type EngineCoordinator } from "./modules/engines/engine-coordinator";
+import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
 import { primaryLogPathFor } from "./core/log-files";
 import { DownloadStore } from "./modules/engines/downloads/download-store";
 import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics-store";
@@ -16,6 +15,27 @@ import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
+
+export interface AppContext {
+  config: Config;
+  logger: Logger;
+  eventManager: EventManager;
+  launchState: LaunchState;
+  metrics: ControllerMetrics;
+  metricsRegistry: MetricsRegistry;
+  processManager: ProcessManager;
+  downloadManager: DownloadManager;
+  engineService: EngineCoordinator;
+  stores: {
+    recipeStore: RecipeStore;
+    downloadStore: DownloadStore;
+    peakMetricsStore: PeakMetricsStore;
+    lifetimeMetricsStore: LifetimeMetricsStore;
+    inferenceRequestStore: InferenceRequestStore;
+    controllerSettingsStore: ControllerSettingsStore;
+    controllerRequestStore: ControllerRequestStore;
+  };
+}
 
 export type ModelsDirectoryState = "exists" | "created" | "missing";
 

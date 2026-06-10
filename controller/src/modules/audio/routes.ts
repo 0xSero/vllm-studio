@@ -3,13 +3,13 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
-import type { AppContext } from "../../types/context";
+import type { AppContext } from "../../app-context";
 import { resolveBinary } from "../../core/command";
-import { runCliCommand } from "../../services/integrations/cli/cli-runner";
-import { SttIntegrationError, transcribeAudio } from "../../services/integrations/stt";
-import type { SttMode } from "../../services/integrations/stt";
-import { synthesizeSpeech, TtsIntegrationError } from "../../services/integrations/tts";
-import type { TtsMode } from "../../services/integrations/tts";
+import { runCliCommand } from "../../services/cli-runner";
+import { SttIntegrationError, transcribeAudio } from "../../services/stt";
+import type { SttMode } from "../../services/stt";
+import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
+import type { TtsMode } from "../../services/tts";
 import type { AudioRouteDependencies } from "./interfaces";
 import {
   AUDIO_DEFAULT_MODE,

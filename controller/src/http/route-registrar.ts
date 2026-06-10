@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import type { AppContext } from "../types/context";
+import type { AppContext } from "../app-context";
 
 /**
  * Common shape for every module's route registration entry point. Modules

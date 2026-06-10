@@ -1,5 +1,5 @@
-import type { SttTranscriptionResult } from "../../services/integrations/stt";
-import type { TtsSynthesisRequest } from "../../services/integrations/tts";
+import type { SttTranscriptionResult } from "../../services/stt";
+import type { TtsSynthesisRequest } from "../../services/tts";
 
 export interface AudioRouteDependencies {
   transcribe?: (request: {

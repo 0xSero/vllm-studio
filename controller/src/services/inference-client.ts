@@ -1,5 +1,5 @@
-import type { AppContext } from "../../types/context";
-import { buildLocalUrl, fetchLocal, type LocalFetchOptions } from "../../http/local-fetch";
+import type { AppContext } from "../app-context";
+import { buildLocalUrl, fetchLocal, type LocalFetchOptions } from "../http/local-fetch";
 
 export const buildInferenceUrl = (context: AppContext, path: string): string =>
   buildLocalUrl(context.config.inference_port, path, context.config.inference_host);

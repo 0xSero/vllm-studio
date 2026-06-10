@@ -1,9 +1,9 @@
 import { performance } from "node:perf_hooks";
 import { observeControllerFunction } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
-import type { AppContext } from "../../types/context";
+import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
-import { fetchInference } from "../../services/inference/inference-client";
+import { fetchInference } from "../../services/inference-client";
 import { fetchLocal } from "../../http/local-fetch";
 
 type UsageAggregate = {

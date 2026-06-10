@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { swaggerUI } from "@hono/swagger-ui";
 import { cors } from "hono/cors";
-import type { AppContext } from "../types/context";
+import type { AppContext } from "../app-context";
 import { isHttpStatus } from "../core/errors";
 import { registerEngineRoutes } from "../modules/engines/routes";
 import { registerSystemRoutes } from "../modules/system/routes";

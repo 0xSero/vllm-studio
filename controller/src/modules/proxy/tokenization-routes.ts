@@ -1,6 +1,6 @@
 import { observeControllerFunction } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
-import { fetchInference } from "../../services/inference/inference-client";
+import { fetchInference } from "../../services/inference-client";
 
 export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
   app.post("/v1/tokenize", async (ctx) => {

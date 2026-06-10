@@ -1,4 +1,4 @@
-import type { AppContext } from "../types/context";
+import type { AppContext } from "../app-context";
 
 function elapsedMs(start: number): number {
   return Math.round(performance.now() - start);

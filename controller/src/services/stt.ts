@@ -1,7 +1,38 @@
-import { resolveBinary } from "../../../core/command";
-import { runCliCommand } from "../cli/cli-runner";
-import type { SttTranscriptionRequest, SttTranscriptionResult } from "./types";
-import { SttIntegrationError } from "./types";
+import { resolveBinary } from "../core/command";
+import { runCliCommand } from "./cli-runner";
+
+export type SttMode = "strict" | "best_effort";
+
+export interface SttTranscriptionRequest {
+  audioPath: string;
+  modelPath: string;
+  language?: string;
+  timeoutMs?: number;
+}
+
+export interface SttTranscriptionResult {
+  text: string;
+  stdout: string;
+  stderr: string;
+}
+
+export class SttIntegrationError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+  public readonly details: Record<string, unknown>;
+
+  public constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 
@@ -26,7 +57,7 @@ const parseWhisperOutput = (stdout: string, stderr: string): string => {
   return lines.join(" ").replace(/\s+/g, " ").trim();
 };
 
-export const transcribeWithWhisperCpp = async (
+const transcribeWithWhisperCpp = async (
   request: SttTranscriptionRequest
 ): Promise<SttTranscriptionResult> => {
   const configuredPath = process.env["VLLM_STUDIO_STT_CLI"];
@@ -87,4 +118,19 @@ export const transcribeWithWhisperCpp = async (
     stdout: result.stdout,
     stderr: result.stderr,
   };
+};
+
+export const transcribeAudio = async (
+  request: SttTranscriptionRequest
+): Promise<SttTranscriptionResult> => {
+  const backend = (process.env["VLLM_STUDIO_STT_BACKEND"] ?? "whispercpp").toLowerCase();
+
+  if (backend === "whispercpp" || backend === "whisper.cpp") {
+    return transcribeWithWhisperCpp(request);
+  }
+
+  throw new SttIntegrationError(400, "stt_backend_unsupported", "Unsupported STT backend", {
+    backend,
+    supported_backends: ["whispercpp"],
+  });
 };

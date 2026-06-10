@@ -1,4 +1,3 @@
-import type { RecipeId } from "../../types/brand";
 import type { Backend as SharedBackend, RecipeBase } from "../shared/recipe-types";
 import type { ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
 import type { ConfigData } from "../shared/system-types";
@@ -27,6 +26,14 @@ export type {
   CompatibilityReport,
   ConfigData,
 } from "../shared/system-types";
+
+export type Brand<Primitive, Label extends string> = Primitive & {
+  readonly __brand: Label;
+};
+
+export type RecipeId = Brand<string, "RecipeId">;
+
+export const asRecipeId = (value: string): RecipeId => value as RecipeId;
 
 export interface ControllerRecipe extends Omit<RecipeBase, "id"> {
   id: RecipeId;

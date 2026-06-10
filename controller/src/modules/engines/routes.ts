@@ -5,8 +5,8 @@ import { optionalEnum, optionalStringArray, parseJsonObjectBody } from "../../co
 import { observeControllerFunction } from "../../core/function-observability";
 import { parseRecipe } from "../models/recipes/recipe-serializer";
 import { Event } from "../system/event-manager";
-import { CONTROLLER_EVENTS } from "../../contracts/controller-events";
-import { fetchInference } from "../../services/inference/inference-client";
+import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-events";
+import { fetchInference } from "../../services/inference-client";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 import { getLlamacppConfigHelp } from "./runtimes/llamacpp-runtime";
