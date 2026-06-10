@@ -3,6 +3,7 @@
   "version": "0.2.9",
   "private": true,
   "scripts": {
+    "doctor": "bash scripts/doctor.sh",
     "release:notes": "node scripts/release-statement.mjs",
     "release:check-commits": "node scripts/check-conventional-commits.mjs --range origin/main..HEAD",
     "setup:git-hooks": "git config core.hooksPath .githooks && chmod +x .githooks/*",

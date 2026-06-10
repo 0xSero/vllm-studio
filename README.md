@@ -15,16 +15,53 @@ The controller owns:
 
 You can run one controller locally or connect the frontend to a remote controller on a GPU host.
 
-## Prerequisites
+## Quick Start
 
-- macOS or Linux for local development.
-- Node.js 20+ and npm for the frontend and desktop build.
-- Bun 1.x for the controller and CLI.
-- Optional NVIDIA GPU stack for CUDA model serving: NVIDIA driver, CUDA-compatible runtime, and whichever serving backend your recipe uses.
-- Optional Apple Silicon stack for MLX recipes: macOS on Apple Silicon and a Python environment with `mlx-lm`.
-- Optional llama.cpp binary for GGUF recipes: a runnable `llama-server` on `PATH` or configured through `VLLM_STUDIO_LLAMA_BIN`.
-- Optional Docker if you run infrastructure through `docker-compose.yml`.
-- SSH access plus `.env.local` deployment variables when deploying to the remote GPU host.
+Prerequisites:
+
+- Bun 1.x (controller and CLI).
+- Node.js 20+ and npm (frontend).
+- Python 3.10+ on `PATH` (the controller creates engine virtualenvs with it). `uv` is strongly recommended; engine installs fall back to pip, which is much slower.
+- Git.
+- For vLLM/SGLang serving on Linux: NVIDIA driver + CUDA. Apple Silicon uses the MLX backend instead.
+
+Run the preflight check first — it verifies the toolchain, ports, directories, and network reachability:
+
+```bash
+npm run doctor
+```
+
+Start the controller:
+
+```bash
+cd controller
+bun install
+bun src/main.ts
+```
+
+The controller listens on `127.0.0.1:8080`. Its data directory and SQLite database are created automatically. Model weights live in `VLLM_STUDIO_MODELS_DIR` (default `/models`); the controller tries to create it on startup and warns if it cannot, so make sure that path is writable or point the variable somewhere that is.
+
+Start the frontend in a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+`npm ci` runs a postinstall patch against `@earendil-works/pi-ai`. If that step prints a warning, agent streaming may misrender.
+
+Then open <http://localhost:3000/setup>. The recipes database starts empty; the setup wizard walks through choosing a models directory, installing an engine for your hardware, downloading a model, launching it, and running a benchmark. (You can also create recipes manually on the recipes page.)
+
+Engine installs (vLLM/SGLang/MLX) are managed by the controller into `<data dir>/runtime/venvs/<backend>-latest`, using `uv` when present and pip otherwise. llama.cpp, CUDA, and ROCm upgrades require operator-configured env commands (`VLLM_STUDIO_LLAMACPP_UPGRADE_CMD`, etc.).
+
+Optional CLI:
+
+```bash
+cd cli
+bun install
+bun src/main.ts status
+```
 
 Sensitive deployment values belong in `.env.local`, not in Git. See `.env.example` for the expected variable names.
 
@@ -92,33 +129,25 @@ flowchart TB
 - [`scripts/`](scripts/): repo-level operational scripts, including remote deployment and daemon helpers.
 - [`data/`](data/): local runtime data. Treat generated contents as machine-local state.
 
-## Run Locally
+## Production
 
-Controller:
-
-```bash
-cd controller
-bun install
-bun src/main.ts
-```
-
-Frontend:
+Build the frontend, then serve it with the standalone server:
 
 ```bash
 cd frontend
-npm ci
-npm run dev
+npm run build
+npm run start
 ```
 
-CLI:
+`npm run start` launches the standalone server (`scripts/start-standalone.mjs`). Never use plain `next start` — it breaks SSE streaming.
 
-```bash
-cd cli
-bun install
-bun src/main.ts status
-```
+The controller runs in production the same way as in development: `bun src/main.ts`.
 
-The default controller URL is `http://localhost:8080`. The default frontend URL is `http://localhost:3000` unless you choose another port.
+## Remote / LAN Deployment
+
+The controller binds to `127.0.0.1` by default. Binding a non-loopback host (for example `VLLM_STUDIO_HOST=0.0.0.0`) requires `VLLM_STUDIO_API_KEY` to be set — startup throws without it. On a trusted LAN you can instead set `VLLM_STUDIO_ALLOW_UNAUTHENTICATED=true` explicitly to opt out of authentication.
+
+Point the frontend at a remote controller with `BACKEND_URL` or `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
 
 ## Deploy A Controller
 
