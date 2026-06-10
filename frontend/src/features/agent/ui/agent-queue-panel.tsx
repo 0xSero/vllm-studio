@@ -2,8 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import type { QueuedMessage } from "@/features/agent/messages";
-import { CloseIcon, SendIcon } from "./icons";
-import { cx } from "./utils";
+import { CloseIcon, SendIcon } from "@/ui/icons";
+import { cx } from "@/ui/utils";
 
 type AgentQueuePanelProps = {
   items: QueuedMessage[];

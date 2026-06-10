@@ -8,7 +8,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { FileMentionRow, MentionRow } from "@/ui/agent-composer-context";
+import type { FileMentionRow, MentionRow } from "@/features/agent/ui/agent-composer-context";
 
 type UseComposerMentionRowsOptions = {
   fileMentionRows: FileMentionRow[];

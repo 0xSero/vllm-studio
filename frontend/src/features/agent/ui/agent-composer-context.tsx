@@ -7,7 +7,7 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import { CloseIcon } from "./icons";
+import { CloseIcon } from "@/ui/icons";
 
 export type FileMentionRow = {
   id: string;

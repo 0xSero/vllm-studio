@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useAppStore } from "@/store";
-import { CloseIcon, MoreIcon } from "./icons";
+import { CloseIcon, MoreIcon } from "@/ui/icons";
 
 const CHAT_HEADER_MENU_CLASS =
   "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";

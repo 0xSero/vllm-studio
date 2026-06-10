@@ -1,7 +1,7 @@
 "use client";
 
 import { formatBytes } from "@/lib/formatters";
-import { CloseIcon, FileIcon } from "./icons";
+import { CloseIcon, FileIcon } from "@/ui/icons";
 
 export type AgentComposerAttachment = {
   id: string;

@@ -106,27 +106,8 @@ export type { ManagedRuntimeInstallBackend } from "./runtime-targets";
 
 export { ModelLogo } from "./model-logo";
 export { HuggingFaceModelCardPanel } from "./huggingface-model-card";
-export { AgentModelPicker } from "./agent-model-picker";
-export { AgentQueuePanel } from "./agent-queue-panel";
-export { AgentAttachmentTray } from "./agent-attachment-tray";
-export type { AgentComposerAttachment } from "./agent-attachment-tray";
-export { AgentComposerActions } from "./agent-composer-actions";
-export { AgentComposerTextArea } from "./agent-composer-textarea";
-export { AgentChatPaneHeader } from "./agent-chat-pane-header";
-export { AgentComposerStatusBar } from "./agent-composer-status-bar";
-export { AgentLoadedContextTabs, AgentMentionPicker } from "./agent-composer-context";
-export type { FileMentionRow, MentionRow } from "./agent-composer-context";
 
-export { LeftSidebar } from "./left-sidebar";
 export { ModelStopConfirm } from "./model-stop-confirm";
-export {
-  ProjectsNavSection,
-  consumeAgentSessionNavTitle,
-  mergeActiveSessionPref,
-  rememberAgentSessionNavTitle,
-  triggerAddProjectFlow,
-} from "./projects-nav-section";
-export { SessionsCommand } from "./sessions-command";
 
 // Page-specialized adapters kept in /ui so library swaps happen in one place.
 export {

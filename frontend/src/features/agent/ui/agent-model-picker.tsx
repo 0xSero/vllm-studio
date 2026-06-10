@@ -4,8 +4,8 @@ import { useMemo, useState, useSyncExternalStore, type MouseEvent, type PointerE
 import { getStoredBackendUrl } from "@/lib/backend-url";
 import { loadSavedControllers } from "@/lib/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";
-import { ChevronDownIcon } from "./icons";
-import { cx } from "./utils";
+import { ChevronDownIcon } from "@/ui/icons";
+import { cx } from "@/ui/utils";
 
 type AgentModelPickerProps = {
   models: AgentModel[];

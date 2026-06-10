@@ -27,7 +27,7 @@ import {
 import { AgentComposerStatusBar } from "./agent-composer-status-bar";
 import { AgentComposerTextArea } from "./agent-composer-textarea";
 import { AgentQueuePanel } from "./agent-queue-panel";
-import { cx } from "./utils";
+import { cx } from "@/ui/utils";
 
 type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
 

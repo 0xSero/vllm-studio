@@ -12,7 +12,7 @@ import {
 } from "react";
 import { detectComposerMention, type ComposerMention } from "@/features/agent/composer-context";
 import type { SessionTab } from "@/features/agent/messages";
-import type { MentionRow } from "@/ui/agent-composer-context";
+import type { MentionRow } from "@/features/agent/ui/agent-composer-context";
 import { filesFromDataTransfer, imageFileFromDataUrlText } from "@/features/agent/ui/chat-attachments";
 
 type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;

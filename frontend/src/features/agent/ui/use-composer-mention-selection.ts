@@ -11,7 +11,7 @@ import {
 } from "@/features/agent/composer-context";
 import type { SessionTab } from "@/features/agent/messages";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
-import type { MentionRow } from "@/ui/agent-composer-context";
+import type { MentionRow } from "@/features/agent/ui/agent-composer-context";
 import {
   attachmentDedupKey,
   createProjectFileAttachment,

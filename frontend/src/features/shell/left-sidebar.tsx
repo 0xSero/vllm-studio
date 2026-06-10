@@ -28,8 +28,8 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
-import { ProjectsNavSection } from "@/ui/projects-nav-section";
-import { SessionsCommand } from "@/ui/sessions-command";
+import { ProjectsNavSection } from "@/features/agent/ui/projects-nav-section";
+import { SessionsCommand } from "@/features/agent/ui/sessions-command";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 type ActiveSessionDetail = {

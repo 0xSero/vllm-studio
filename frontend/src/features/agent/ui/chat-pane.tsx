@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { AgentChatPaneHeader } from "@/ui/agent-chat-pane-header";
-import { AgentComposerFrame } from "@/ui/agent-composer-frame";
-import { type FileMentionRow } from "@/ui/agent-composer-context";
+import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
+import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
+import { type FileMentionRow } from "@/features/agent/ui/agent-composer-context";
 import {
   useChatPaneContextAttachEffect,
   useChatPaneMentionEffects,

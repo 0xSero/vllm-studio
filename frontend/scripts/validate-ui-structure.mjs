@@ -10,24 +10,8 @@ import { join, relative, resolve, sep } from "node:path";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const srcRoot = join(projectRoot, "src");
-// Agent-coupled components still living in src/ui; they predate the
-// features/ convention and are tracked offenders, mirroring the eslint
-// legacy list. Remove an entry once the file moves into features/agent/ui.
-const legacyPrimitivePurityFiles = new Set([
-  `ui${sep}agent-composer-actions.tsx`,
-  `ui${sep}agent-composer-context.tsx`,
-  `ui${sep}agent-composer-frame.tsx`,
-  `ui${sep}agent-composer-status-bar.tsx`,
-  `ui${sep}agent-model-picker.tsx`,
-  `ui${sep}agent-queue-panel.tsx`,
-  `ui${sep}projects-nav-section.tsx`,
-  `ui${sep}projects-nav${sep}directory-picker-modal.tsx`,
-  `ui${sep}projects-nav${sep}helpers.ts`,
-  `ui${sep}projects-nav${sep}session-nav-row.tsx`,
-  `ui${sep}projects-nav${sep}session-rows.tsx`,
-  `ui${sep}projects-nav${sep}types.ts`,
-  `ui${sep}sessions-command.tsx`,
-]);
+// src/ui holds zero feature-coupled files; primitive purity has no exceptions.
+const legacyPrimitivePurityFiles = new Set([]);
 const retiredUiFeatureDirs = new Set([
   "recipes",
   "discover",

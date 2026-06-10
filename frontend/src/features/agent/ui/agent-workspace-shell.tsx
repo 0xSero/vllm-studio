@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { triggerAddProjectFlow } from "@/ui/projects-nav-section";
-import { AgentModelPicker } from "@/ui/agent-model-picker";
+import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav-section";
+import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type { AgentModel, PaneId, PaneState, WorkspaceState } from "@/features/agent/workspace/types";

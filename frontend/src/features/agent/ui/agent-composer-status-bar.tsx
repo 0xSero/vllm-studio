@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { formatTokenCount } from "@/features/agent/messages";
-import { GitBranchIcon } from "./icons";
+import { GitBranchIcon } from "@/ui/icons";
 
 type GitSummary = {
   isRepo: boolean;

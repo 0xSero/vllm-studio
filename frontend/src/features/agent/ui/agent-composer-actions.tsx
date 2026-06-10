@@ -3,7 +3,7 @@
 import type { RefObject } from "react";
 import { Code2, Loader2, Plus } from "lucide-react";
 import type { BrowserBackend } from "@/features/agent/tools/types";
-import { GlobeIcon, SendIcon, StopIcon } from "./icons";
+import { GlobeIcon, SendIcon, StopIcon } from "@/ui/icons";
 
 export function AgentComposerActions({
   fileInputRef,
