@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/http";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
 
 export const runtime = "nodejs";
@@ -67,28 +68,26 @@ function readmeUrl(modelId: string): string {
 }
 
 async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetchWithTimeout(url, { headers: { accept: "application/json" } });
+  const response = await fetchWithTimeout(
+    url,
+    { headers: { accept: "application/json" } },
+    TIMEOUT_MS,
+  );
   if (!response.ok) throw new Error(`Hugging Face returned ${response.status}.`);
   return response.json();
 }
 
 async function fetchReadme(modelId: string): Promise<string | undefined> {
-  const response = await fetchWithTimeout(readmeUrl(modelId), {
-    headers: { accept: "text/plain" },
-  });
+  const response = await fetchWithTimeout(
+    readmeUrl(modelId),
+    {
+      headers: { accept: "text/plain" },
+    },
+    TIMEOUT_MS,
+  );
   if (!response.ok) return undefined;
   const text = await response.text();
   return text.slice(0, MAX_README_CHARS);
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

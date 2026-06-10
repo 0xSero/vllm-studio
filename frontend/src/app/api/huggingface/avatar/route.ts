@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +24,13 @@ export async function GET(request: NextRequest) {
 
 async function resolveAvatarUrl(owner: string): Promise<string | null> {
   for (const kind of ["organizations", "users"]) {
-    const response = await fetchWithTimeout(`${HF}/${kind}/${encodeURIComponent(owner)}/overview`, {
-      headers: { accept: "application/json" },
-    });
+    const response = await fetchWithTimeout(
+      `${HF}/${kind}/${encodeURIComponent(owner)}/overview`,
+      {
+        headers: { accept: "application/json" },
+      },
+      TIMEOUT_MS,
+    );
     if (!response.ok) continue;
     const data = (await response.json()) as { avatarUrl?: unknown };
     if (typeof data.avatarUrl === "string" && data.avatarUrl.startsWith("https://")) {
@@ -33,14 +38,4 @@ async function resolveAvatarUrl(owner: string): Promise<string | null> {
     }
   }
   return null;
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
 }

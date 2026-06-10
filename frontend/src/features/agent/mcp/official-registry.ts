@@ -1,4 +1,5 @@
 import type { McpCatalogueEntry } from "@/features/agent/mcp/types";
+import { fetchWithTimeout } from "@/lib/http";
 import type { McpRegistrySource } from "@/features/agent/mcp/registry-sources";
 
 const DEFAULT_LIMIT = 24;
@@ -71,9 +72,13 @@ export async function searchOfficialCompatibleRegistry({
   url.searchParams.set("version", "latest");
   url.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 100)));
 
-  const response = await fetchWithTimeout(url.toString(), {
-    headers: { accept: "application/json" },
-  });
+  const response = await fetchWithTimeout(
+    url.toString(),
+    {
+      headers: { accept: "application/json" },
+    },
+    TIMEOUT_MS,
+  );
   if (!response.ok) throw new Error(`${source.name} returned ${response.status}.`);
   const payload = (await response.json()) as RegistryResponse;
   return {
@@ -236,14 +241,4 @@ function versionUrl(baseUrl: string, serverName: string, version: string): strin
   return `${baseUrl.replace(/\/+$/, "")}/v0/servers/${encodeURIComponent(
     serverName,
   )}/versions/${encodeURIComponent(version || "latest")}`;
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
