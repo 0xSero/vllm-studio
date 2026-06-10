@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadSkillInstructions } from "@/lib/agent/skill-discovery";
+import { loadSkillInstructions } from "@/features/agent/skill-discovery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

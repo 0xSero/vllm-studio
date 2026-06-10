@@ -8,11 +8,11 @@ import {
   usePinnedSessionsEffect,
   useProjectsNavAddProjectEffect,
   useProjectsNavSessionPrefs,
-} from "@/hooks/agent/use-projects-nav-section-effects";
-import { loadPersistedActiveAgentSessions } from "@/lib/agent/workspace/store";
-import { useProjects } from "@/lib/agent/projects/context";
-import { addProjectFromPath, openProjectDirectory } from "@/lib/agent/projects/api";
-import { isChatsProject, type Project as ProjectEntry } from "@/lib/agent/projects/types";
+} from "@/features/agent/hooks/use-projects-nav-section-effects";
+import { loadPersistedActiveAgentSessions } from "@/features/agent/workspace/store";
+import { useProjects } from "@/features/agent/projects/context";
+import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
+import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ProjectDirectoryPickerModal } from "./projects-nav/directory-picker-modal";
 import {
   ActiveSessionRow,

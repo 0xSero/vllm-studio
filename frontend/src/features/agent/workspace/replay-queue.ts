@@ -1,0 +1,72 @@
+import type { Session, SessionsMap } from "@/features/agent/runtime/types";
+import type { PaneId, PaneState } from "@/features/agent/workspace/types";
+
+type PaneReplayHandle = {
+  loadAndReplay: (piSessionId: string) => Promise<void> | void;
+};
+
+export type SessionReplayQueueDeps = {
+  getHandle: (paneId: PaneId) => PaneReplayHandle | undefined;
+  getState: () => {
+    panesById: ReadonlyMap<PaneId, PaneState>;
+    sessions: SessionsMap;
+  };
+  setTimeout: (handler: () => void, delay: number) => void;
+};
+
+export type SessionReplayQueue = {
+  /** Queue (last-wins per pane) a canonical-session replay for a pane. */
+  queue: (paneId: PaneId, piSessionId: string) => void;
+  /** A pane handle mounted — drain any replay queued before it existed. */
+  notifyHandleRegistered: (paneId: PaneId) => void;
+};
+
+// The replay drop guard is deliberately NARROWER than isEmptyStarterSession:
+// typed-but-unsent input or a startedAt stamp still counts as "fresh" here. A
+// "+" click (or any swap) replaces a pane's session in place under the same
+// paneId; a fresh empty starter has nothing to replay, so a stale pending
+// replay landing on it would overwrite the new chat with the old transcript —
+// the "+ opens the old chat" bug.
+function isFreshStarter(session: Session | undefined): boolean {
+  return (
+    !!session &&
+    session.piSessionId == null &&
+    session.messages.length === 0 &&
+    session.status === "idle"
+  );
+}
+
+export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionReplayQueue {
+  const pending = new Map<PaneId, string>();
+
+  const drain = (paneId: PaneId) => {
+    const pendingSessionId = pending.get(paneId);
+    if (!pendingSessionId) return;
+    const handle = deps.getHandle(paneId);
+    // No handle yet: leave the entry pending — notifyHandleRegistered drains
+    // it the moment the pane mounts. (This replaced a 50ms x100 polling loop;
+    // registration is the only wake-up needed.)
+    if (!handle) return;
+    // Guard runs at DRAIN time, not queue time: the pane's session can be
+    // swapped between the two (see isFreshStarter above).
+    const pane = deps.getState().panesById.get(paneId);
+    const current = pane ? deps.getState().sessions.get(pane.sessionId) : undefined;
+    if (!current || isFreshStarter(current)) {
+      pending.delete(paneId);
+      return;
+    }
+    pending.delete(paneId);
+    void handle.loadAndReplay(pendingSessionId);
+  };
+
+  return {
+    queue: (paneId, piSessionId) => {
+      pending.set(paneId, piSessionId);
+      // Defer past the dispatch/render that created the pane.
+      deps.setTimeout(() => drain(paneId), 0);
+    },
+    notifyHandleRegistered: (paneId) => {
+      if (pending.has(paneId)) deps.setTimeout(() => drain(paneId), 0);
+    },
+  };
+}

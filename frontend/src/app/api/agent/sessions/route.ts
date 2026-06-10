@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listSessions } from "@/lib/agent/sessions-store";
+import { listSessions } from "@/features/agent/sessions-store";
 import { archiveQueryOptions, parseRelativeSince } from "./session-query";
+import { jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +19,12 @@ export async function GET(request: NextRequest) {
         .map((id) => id.trim())
         .filter(Boolean)
     : undefined;
-  if (!cwdParam) return Response.json({ error: "cwd is required" }, { status: 400 });
+  if (!cwdParam) return jsonError("cwd is required");
   if (sinceParam && !since) {
-    return Response.json({ error: "since must use a relative value like 7d" }, { status: 400 });
+    return jsonError("since must use a relative value like 7d");
   }
   if (!path.isAbsolute(cwdParam)) {
-    return Response.json({ error: "cwd must be absolute" }, { status: 400 });
+    return jsonError("cwd must be absolute");
   }
   if (!existsSync(cwdParam) || !statSync(cwdParam).isDirectory()) {
     return Response.json({ sessions: [] });
@@ -37,8 +38,5 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE() {
-  return Response.json(
-    { error: "Session deletion is disabled. Archive sessions from the UI instead." },
-    { status: 405 },
-  );
+  return jsonError("Session deletion is disabled. Archive sessions from the UI instead.", 405);
 }

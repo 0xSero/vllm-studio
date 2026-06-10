@@ -1,5 +1,5 @@
-import type { Hono } from "hono";
 import { observeControllerFunction } from "../../core/function-observability";
+import type { RouteRegistrar } from "../../http/route-registrar";
 import type { AppContext } from "../../types/context";
 import { getUsageFromPiSessions } from "./usage/pi-sessions";
 import { emptyResponse } from "./usage/usage-utilities";
@@ -20,7 +20,7 @@ const collectKnownModels = async (context: AppContext): Promise<Set<string>> => 
   return knownModels;
 };
 
-export const registerUsageRoutes = (app: Hono, context: AppContext): void => {
+export const registerUsageRoutes: RouteRegistrar = (app, context) => {
   app.get("/usage", async (ctx) => {
     try {
       const knownModels = await observeControllerFunction(context, "usage.collectKnownModels", () =>

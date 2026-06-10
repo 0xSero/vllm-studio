@@ -7,8 +7,9 @@ import {
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
   selectedContextInstructions,
-} from "@/lib/agent/composer-context";
-import { piRuntimeManager } from "@/lib/agent/pi-runtime";
+} from "@/features/agent/composer-context";
+import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,13 +46,13 @@ function compactInstructions(
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as CompactRequest | null;
-  if (!body) return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  if (!body) return jsonError("Invalid JSON body");
 
   const sessionId = body.sessionId?.trim() || "default";
   const modelId = body.modelId?.trim();
   const cwd = body.cwd?.trim() || undefined;
   const piSessionId = body.piSessionId?.trim() || null;
-  if (!modelId) return Response.json({ error: "modelId is required" }, { status: 400 });
+  if (!modelId) return jsonError("modelId is required");
 
   try {
     const session = piRuntimeManager.getSession(sessionId);
@@ -73,9 +74,6 @@ export async function POST(request: NextRequest) {
     );
     return Response.json({ ok: true, result, status: session.status });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Compaction failed" },
-      { status: 409 },
-    );
+    return jsonError(errorMessage(error, "Compaction failed"), 409);
   }
 }

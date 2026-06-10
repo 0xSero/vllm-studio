@@ -1,4 +1,1 @@
-import type { Hono } from "hono";
-import type { AppContext } from "../../types/context";
-
-export type ProxyRouteRegistrar = (app: Hono, context: AppContext) => void;
+export type { RouteRegistrar as ProxyRouteRegistrar } from "../../http/route-registrar";

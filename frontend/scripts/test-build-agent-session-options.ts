@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptions,
-} from "../src/lib/agent/pi-runtime-helpers";
+} from "../src/features/agent/pi-runtime-helpers";
 
 test("buildAgentSessionOptions resolves SDK extensions, skills, and env injections", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "pi-runtime-options-"));

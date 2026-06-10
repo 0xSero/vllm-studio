@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ConfigsView } from "@/ui/configs/configs-view";
+import { ConfigsView } from "@/features/settings/configs-view";
 import { useConfigs } from "../configs/hooks/use-configs";
-import { SetupView } from "@/ui/setup/setup-view";
+import { SetupView } from "@/features/setup/setup-view";
 import { useSetup } from "../setup/hooks/use-setup";
 
 const hasSettingsHash = () => {

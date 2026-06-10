@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { assertGitCwd, loadGitState, runGitAction } from "@/lib/agent/git/service";
+import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git/service";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     return Response.json(await loadGitState(cwd));
   } catch (err) {
-    return Response.json({ error: message(err) }, { status: 400 });
+    return jsonError(errorMessage(err, "Git operation failed"));
   }
 }
 
@@ -20,10 +21,6 @@ export async function POST(request: NextRequest) {
   try {
     return Response.json(await runGitAction(cwd, { action: "init" }));
   } catch (err) {
-    return Response.json({ error: message(err) }, { status: 400 });
+    return jsonError(errorMessage(err, "Git operation failed"));
   }
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : "Git operation failed";
 }

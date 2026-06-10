@@ -1,9 +1,8 @@
-import type { Hono } from "hono";
 import { spawn, spawnSync } from "node:child_process";
 import { unlinkSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
-import type { AppContext } from "../../types/context";
+import type { RouteRegistrar } from "../../http/route-registrar";
 import { badRequest, notFound } from "../../core/errors";
 import { observeControllerFunction } from "../../core/function-observability";
 import { streamAsyncStrings, buildSseHeaders, withSseHeartbeat } from "../../http/sse";
@@ -21,7 +20,7 @@ import {
   tailFileLines,
 } from "../../core/log-files";
 
-export const registerLogsRoutes = (app: Hono, context: AppContext): void => {
+export const registerLogsRoutes: RouteRegistrar = (app, context) => {
   let lastCleanupAt = 0;
 
   const maybeCleanup = (): void => {

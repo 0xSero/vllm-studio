@@ -1,9 +1,8 @@
-import type { Hono } from "hono";
 import { observeControllerFunction } from "../../core/function-observability";
-import type { AppContext } from "../../types/context";
+import type { RouteRegistrar } from "../../http/route-registrar";
 import { fetchInference } from "../../services/inference/inference-client";
 
-export const registerTokenizationRoutes = (app: Hono, context: AppContext): void => {
+export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
   app.post("/v1/tokenize", async (ctx) => {
     const current = await observeControllerFunction(context, "tokenize.findInferenceProcess", () =>
       context.processManager.findInferenceProcess(context.config.inference_port)

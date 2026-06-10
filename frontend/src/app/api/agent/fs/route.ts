@@ -1,26 +1,18 @@
 import { NextRequest } from "next/server";
-import path from "node:path";
-import { existsSync } from "node:fs";
-import { listDirectory } from "@/lib/agent/fs-store";
+import { listDirectory } from "@/features/agent/fs-store";
+import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
+  const result = requireAbsoluteCwd(request, { mustExist: true });
+  if (result.response) return result.response;
   const relPath = request.nextUrl.searchParams.get("path")?.trim() ?? "";
-  if (!cwd) return Response.json({ error: "cwd is required" }, { status: 400 });
-  if (!path.isAbsolute(cwd)) {
-    return Response.json({ error: "cwd must be absolute" }, { status: 400 });
-  }
-  if (!existsSync(cwd)) return Response.json({ error: "cwd not found" }, { status: 404 });
   try {
-    const entries = listDirectory(cwd, relPath);
+    const entries = listDirectory(result.cwd, relPath);
     return Response.json({ entries });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "List failed" },
-      { status: 400 },
-    );
+    return jsonError(errorMessage(error, "List failed"));
   }
 }

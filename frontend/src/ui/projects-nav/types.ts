@@ -1,8 +1,8 @@
-import type { ActiveAgentSessionSnapshot } from "@/lib/agent/active-sessions";
-import type { SessionSummary } from "@/lib/agent/session-summary";
-import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
+import type { ActiveAgentSessionSnapshot } from "@/features/agent/active-sessions";
+import type { SessionSummary } from "@/features/agent/session-summary";
+import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 
-export type { SessionSummary } from "@/lib/agent/session-summary";
+export type { SessionSummary } from "@/features/agent/session-summary";
 
 export type PinnedSession = SessionSummary & { project: ProjectEntry };
 export type PinnedActiveSession = ActiveAgentSessionSnapshot & {

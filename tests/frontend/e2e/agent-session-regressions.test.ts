@@ -4,11 +4,11 @@ import { convertMessages } from "../../../frontend/node_modules/@earendil-works/
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
-} from "@/lib/agent/active-sessions";
-import { runBrowserPanelCommand } from "@/lib/agent/browser/command";
-import { normalizeBrowserInput } from "@/lib/agent/tools/browser-url";
-import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
-import { hasExplicitSessionNavigation } from "@/hooks/agent/use-workspace-hydration-effects";
+} from "@/features/agent/active-sessions";
+import { runBrowserPanelCommand } from "@/features/agent/browser/command";
+import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
+import { controlTargetHasActiveTurn } from "@/features/agent/control-routing";
+import { hasExplicitSessionNavigation } from "@/features/agent/hooks/use-workspace-hydration-effects";
 import {
   initialRuntimeStatusPhase,
   replayAfterCursor,
@@ -18,53 +18,53 @@ import {
   detectComposerMention,
   selectedContextInstructions,
   selectedContextPrompt,
-} from "@/lib/agent/composer-context";
-import { parseAgentTurnCommandResult } from "@/lib/agent/contracts/turn";
+} from "@/features/agent/composer-context";
+import { parseAgentTurnCommandResult } from "@/features/agent/contracts/turn";
 import {
   compactionTokensBefore,
   contextUsageAwaitingFreshCompactionUsage,
   normalizeSdkMessageTimestampsForCompactionBoundary,
   piEventIsSuccessfulCompaction,
   postCompactionUsageIsFresh,
-} from "@/lib/agent/pi-runtime-compaction";
-import { findRuntimeSessionForLookup } from "@/lib/agent/pi-runtime-lookup";
-import { piStatusFromEvents } from "@/lib/agent/pi-runtime-state";
-import { modelsToPiModels, normalizeOpenAIModels } from "@/lib/agent/models";
-import { applyAssistantPiEventToBlocks } from "@/lib/agent/session/block-event";
-import { runtimeStatusLooksActive } from "@/lib/agent/session/helpers";
-import { blocksFromTurnSnapshots } from "@/lib/agent/session/message-content";
-import { replaySessionEvents } from "@/lib/agent/session/replay";
+} from "@/features/agent/pi-runtime-compaction";
+import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-lookup";
+import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
+import { modelsToPiModels, normalizeOpenAIModels } from "@/features/agent/models";
+import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
+import { runtimeStatusLooksActive } from "@/features/agent/messages/helpers";
+import { blocksFromTurnSnapshots } from "@/features/agent/messages/message-content";
+import { replaySessionEvents } from "@/features/agent/messages/replay";
 import {
   reduceSessionEvent,
   type SessionStreamContext,
-} from "@/lib/agent/sessions/pi-event-applier";
-import { drainQueueAfterAgentEnd } from "@/lib/agent/session/helpers";
+} from "@/features/agent/runtime/pi-event-applier";
+import { drainQueueAfterAgentEnd } from "@/features/agent/messages/helpers";
 import {
   createTextDeltaCoalescer,
   textDeltaFromPiEvent,
-} from "@/lib/agent/sessions/text-delta-coalescer";
-import { isEmptyStarterSession } from "@/lib/agent/sessions/store";
+} from "@/features/agent/runtime/text-delta-coalescer";
+import { isEmptyStarterSession } from "@/features/agent/runtime/store";
 import {
   beginSessionSubmit,
   endSessionSubmit,
-} from "@/lib/agent/sessions/submit-guard";
-import type { Session } from "@/lib/agent/sessions/types";
-import { runtimeContextUsage } from "@/lib/agent/sessions/api";
+} from "@/features/agent/runtime/submit-guard";
+import type { Session } from "@/features/agent/runtime/types";
+import { runtimeContextUsage } from "@/features/agent/runtime/api";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
   shouldSubscribeRuntimeEvents,
-} from "@/lib/agent/sessions/runtime-cursor";
-import { workspaceCommands } from "@/lib/agent/workspace/commands";
-import { reducer } from "@/lib/agent/workspace/reducer";
+} from "@/features/agent/runtime/runtime-cursor";
+import { workspaceCommands } from "@/features/agent/workspace/commands";
+import { reducer } from "@/features/agent/workspace/reducer";
 import type {
   WorkspaceAction,
   WorkspaceState,
-} from "@/lib/agent/workspace/types";
-import { collectLeaves } from "@/lib/agent/workspace/layout";
-import { groupAssistantBlocks } from "@/app/agent/_components/timeline/session-pane-block-router";
-import { resolveStatusSectionView } from "@/components/dashboard/control-panel/status-section-view";
-import { parseArgsText } from "@/ui/plugins/plugins-utils";
+} from "@/features/agent/workspace/types";
+import { collectLeaves } from "@/features/agent/workspace/layout";
+import { groupAssistantBlocks } from "@/features/agent/ui/timeline/session-pane-block-router";
+import { resolveStatusSectionView } from "@/features/dashboard/control-panel/status-section-view";
+import { parseArgsText } from "@/features/plugins/plugins-utils";
 
 declare global {
   var __VLLM_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
@@ -832,7 +832,7 @@ test("desktop browser reader fetch renders public markdown and rejects private u
 });
 
 test("curated local MCP servers require explicit target args", async () => {
-  const { handleMcpAction } = await import("@/lib/agent/mcp/api");
+  const { handleMcpAction } = await import("@/features/agent/mcp/api");
   const missing = handleMcpAction({
     action: "add_from_catalogue",
     catalogueId: "catalogue:filesystem",

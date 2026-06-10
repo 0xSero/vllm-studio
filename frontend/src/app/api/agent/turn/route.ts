@@ -1,15 +1,16 @@
 import { NextRequest } from "next/server";
-import { listSessions } from "@/lib/agent/sessions-store";
-import { piRuntimeManager } from "@/lib/agent/pi-runtime";
+import { listSessions } from "@/features/agent/sessions-store";
+import { piRuntimeManager } from "@/features/agent/pi-runtime";
 import {
   parseAgentTurnRequest,
   type AgentImageInput,
   type AgentTurnCommandResult,
   type AgentTurnRequest,
-} from "@/lib/agent/contracts/turn";
-import { controlTargetHasActiveTurn } from "@/lib/agent/control-routing";
-import type { PiAgentSession, PiAgentStatus } from "@/lib/agent/pi-runtime-types";
+} from "@/features/agent/contracts/turn";
+import { controlTargetHasActiveTurn } from "@/features/agent/control-routing";
+import type { PiAgentSession, PiAgentStatus } from "@/features/agent/pi-runtime-types";
 import { requireApiAccess } from "@/lib/auth/guard";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -143,10 +144,10 @@ export async function POST(request: NextRequest) {
   try {
     rawBody = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return jsonError("Invalid JSON body");
   }
   const parsed = parseAgentTurnRequest(rawBody);
-  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+  if (!parsed.ok) return jsonError(parsed.error);
   const turn = parsed.value;
   const commandImages = turn.images.length ? turn.images : undefined;
 
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
         runtimeSessionId: turn.sessionId,
         piSessionId: turn.piSessionId,
         active: false,
-        error: error instanceof Error ? error.message : "Pi agent turn failed",
+        error: errorMessage(error, "Pi agent turn failed"),
       } satisfies AgentTurnCommandResult,
       { status: 500 },
     );

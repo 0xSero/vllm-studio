@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { parseGitAction } from "@/lib/agent/contracts/git";
-import { assertGitCwd, loadGitState, runGitAction } from "@/lib/agent/git/service";
+import { parseGitAction } from "@/features/agent/contracts/git";
+import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git/service";
 import { requireApiAccess } from "@/lib/auth/guard";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     return Response.json(await loadGitState(cwd));
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 400 });
+    return jsonError(errorMessage(err, "Git operation failed"));
   }
 }
 
@@ -25,17 +26,13 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return jsonError("Invalid JSON body");
   }
   const action = parseGitAction(body);
-  if (!action.ok) return Response.json({ error: action.error }, { status: 400 });
+  if (!action.ok) return jsonError(action.error);
   try {
     return Response.json(await runGitAction(cwd, action.value));
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 400 });
+    return jsonError(errorMessage(err, "Git operation failed"));
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Git operation failed";
 }

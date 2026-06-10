@@ -1,4 +1,4 @@
-import { PluginsPage } from "@/ui/plugins/plugins-page";
+import { PluginsPage } from "@/features/plugins/plugins-page";
 
 export default function PluginsRoute() {
   return <PluginsPage />;

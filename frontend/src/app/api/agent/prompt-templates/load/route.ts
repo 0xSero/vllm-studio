@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadPromptTemplateInstructions } from "@/lib/agent/prompt-templates-store";
+import { loadPromptTemplateInstructions } from "@/features/agent/prompt-templates-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

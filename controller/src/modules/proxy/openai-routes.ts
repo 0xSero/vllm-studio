@@ -1,9 +1,8 @@
 import { performance } from "node:perf_hooks";
-import type { Hono } from "hono";
 import { HttpStatus, notFound, serviceUnavailable } from "../../core/errors";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { buildSseHeaders } from "../../http/sse";
-import type { AppContext } from "../../types/context";
+import type { RouteRegistrar } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../engines/process/model-runtime-defaults";
 import { buildInferenceUrl } from "../../services/inference/inference-client";
@@ -89,7 +88,7 @@ const shouldBufferImplicitReasoningContent = (
   );
 };
 
-export const registerOpenAIRoutes = (app: Hono, context: AppContext): void => {
+export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
   const nonRunningModelWarnings = new Map<string, NonRunningModelWarningState>();
 
   const warnNonRunningModel = (details: {

@@ -15,8 +15,8 @@ async function loadSessionModules() {
     { listSessions },
     { listArchivedSessionMetadata, setSessionArchived },
   ] = await Promise.all([
-    import("@/lib/agent/sessions-store"),
-    import("@/lib/agent/session-metadata-store"),
+    import("@/features/agent/sessions-store"),
+    import("@/features/agent/session-metadata-store"),
   ]);
   return { listArchivedSessionMetadata, listSessions, setSessionArchived };
 }

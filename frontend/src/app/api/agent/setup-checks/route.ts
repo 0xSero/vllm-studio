@@ -3,7 +3,7 @@ import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { piResourceDiagnostics } from "@/lib/agent/pi-sdk-runtime";
+import { piResourceDiagnostics } from "@/features/agent/pi-sdk-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

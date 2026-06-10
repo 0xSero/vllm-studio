@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { refreshPiModels, resolvePiModelSelection } from "@/lib/agent/pi-runtime-models";
+import { refreshPiModels, resolvePiModelSelection } from "@/features/agent/pi-runtime-models";
 
 test("Pi model refresh pulls and writes models from every configured controller", async () => {
   const previousDataDir = process.env.VLLM_STUDIO_DATA_DIR;

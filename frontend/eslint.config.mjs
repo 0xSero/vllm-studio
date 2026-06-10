@@ -26,7 +26,7 @@ const eslintConfig = defineConfig([
     settings: {
       "boundaries/elements": [
         { type: "app", pattern: "src/app/**" },
-        { type: "components", pattern: "src/components/**" },
+        { type: "features", pattern: "src/features/**" },
         { type: "hooks", pattern: "src/hooks/**" },
         { type: "lib", pattern: "src/lib/**" },
         { type: "store", pattern: "src/store/**" },
@@ -93,7 +93,7 @@ const eslintConfig = defineConfig([
       "**/*.test.tsx",
       "**/*.spec.ts",
       "**/*.spec.tsx",
-      "src/lib/themes.ts",
+      "src/lib/themes-data.ts",
       "**/*.d.ts",
     ],
     rules: {
@@ -105,22 +105,22 @@ const eslintConfig = defineConfig([
   // is under 500 LOC and no longer needs a legacy allowance.
   {
     files: [
-      "src/app/agent/_components/chat-pane.tsx",
-      "src/app/agent/_components/filesystem-panel.tsx",
-      "src/app/agent/_components/git-diff-panel.tsx",
-      "src/app/agent/_components/agent-browser.tsx",
-      "src/app/agent/_components/use-workspace.ts",
-      "src/app/agent/_components/agent-workspace-shell.tsx",
+      "src/features/agent/ui/chat-pane.tsx",
+      "src/features/agent/ui/filesystem-panel.tsx",
+      "src/features/agent/ui/git-diff-panel.tsx",
+      "src/features/agent/ui/agent-browser.tsx",
+      "src/features/agent/ui/use-workspace.ts",
+      "src/features/agent/ui/agent-workspace-shell.tsx",
       "src/app/agent/sessions/page.tsx",
-      "src/components/dashboard/control-panel/control-panel-v2.tsx",
-      "src/components/dashboard/use-dashboard-recipes.ts",
-      "src/ui/configs/configs-view.tsx",
-      "src/app/configs/_components/engines-section.tsx",
+      "src/features/dashboard/control-panel/control-panel-v2.tsx",
+      "src/features/dashboard/use-dashboard-recipes.ts",
+      "src/features/settings/configs-view.tsx",
       "src/app/configs/hooks/use-configs.ts",
-      "src/ui/recipes/recipes-content/explore-tab.tsx",
-      "src/app/recipes/_components/recipe-modal/recipe-modal.tsx",
-      "src/app/recipes/_components/recipes-content/use-explore.ts",
-      "src/app/recipes/_components/recipes-content/recipes-content-model.ts",
+      "src/features/settings/engines-section.tsx",
+      "src/features/recipes/recipes-content/explore-tab.tsx",
+      "src/features/recipes/recipe-modal/recipe-modal.tsx",
+      "src/features/recipes/recipes-content/use-explore.ts",
+      "src/features/recipes/recipes-content/recipes-content-model.ts",
       "src/app/logs/hooks/use-logs.tsx",
       "src/app/discover/page.tsx",
       "src/app/discover/hooks/use-discover.ts",
@@ -130,12 +130,12 @@ const eslintConfig = defineConfig([
       "src/hooks/use-controller-events.ts",
       "src/hooks/use-model-lifecycle.ts",
       "src/hooks/use-sidebar-status.ts",
-      "src/lib/agent/workspace/store.ts",
-      "src/lib/agent/workspace/effects.ts",
-      "src/lib/agent/pi-runtime.ts",
-      "src/lib/agent/sessions/engine.ts",
-      "src/lib/agent/projects/context.tsx",
-      "src/lib/agent/tools/context.tsx",
+      "src/features/agent/workspace/store.ts",
+      "src/features/agent/workspace/effects.ts",
+      "src/features/agent/pi-runtime.ts",
+      "src/features/agent/runtime/engine.ts",
+      "src/features/agent/projects/context.tsx",
+      "src/features/agent/tools/context.tsx",
       "src/hooks/use-click-outside.ts",
       "src/lib/api/core.ts",
     ],
@@ -148,11 +148,11 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["src/app/agent/_components/**/*.{ts,tsx}"],
+    files: ["src/features/agent/ui/**/*.{ts,tsx}"],
     // Test files and lint fixtures stay exempt — production component files
     // (including chat-pane, use-workspace, agent-workspace-shell) MUST obey
     // the global React effect hook ban. No carve-outs.
-    ignores: ["src/app/agent/_components/**/*.test.ts", "src/app/agent/_components/__lint__/**"],
+    ignores: ["src/features/agent/ui/**/*.test.ts", "src/features/agent/ui/__lint__/**"],
     rules: {
       "no-restricted-syntax": [
         "error",

@@ -3,9 +3,10 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextRequest } from "next/server";
-import { parseTerminalRunRequest } from "@/lib/agent/contracts/terminal";
+import { parseTerminalRunRequest } from "@/features/agent/contracts/terminal";
 import { requireApiAccess } from "@/lib/auth/guard";
-import { assertWorkspaceRoot } from "@/lib/agent/fs-store";
+import { assertWorkspaceRoot } from "@/features/agent/fs-store";
+import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,30 +14,22 @@ export const dynamic = "force-dynamic";
 const execAsync = promisify(exec);
 
 function assertTerminalCwd(
-  input: string | null | undefined,
+  request: NextRequest,
 ): { cwd: string; error?: never } | { cwd?: never; error: Response } {
-  const requested = input?.trim();
-  if (!requested) return { error: Response.json({ error: "cwd is required" }, { status: 400 }) };
-  if (!path.isAbsolute(requested))
-    return { error: Response.json({ error: "cwd must be absolute" }, { status: 400 }) };
-  const cwd = path.resolve(requested);
+  const required = requireAbsoluteCwd(request);
+  if (required.response) return { error: required.response };
+  const cwd = path.resolve(required.cwd);
   try {
-    if (!statSync(cwd).isDirectory())
-      return { error: Response.json({ error: "cwd is not a directory" }, { status: 400 }) };
+    if (!statSync(cwd).isDirectory()) return { error: jsonError("cwd is not a directory") };
   } catch {
-    return { error: Response.json({ error: "cwd not found" }, { status: 404 }) };
+    return { error: jsonError("cwd not found", 404) };
   }
   // Refuse to run shell commands rooted at the filesystem root or a system
   // directory, even for an authenticated caller.
   try {
     assertWorkspaceRoot(cwd);
   } catch (err) {
-    return {
-      error: Response.json(
-        { error: err instanceof Error ? err.message : "cwd is not an allowed workspace" },
-        { status: 403 },
-      ),
-    };
+    return { error: jsonError(errorMessage(err, "cwd is not an allowed workspace"), 403) };
   }
   return { cwd };
 }
@@ -44,16 +37,16 @@ function assertTerminalCwd(
 export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
-  const { cwd, error } = assertTerminalCwd(request.nextUrl.searchParams.get("cwd"));
+  const { cwd, error } = assertTerminalCwd(request);
   if (error) return error;
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return jsonError("Invalid JSON body");
   }
   const parsed = parseTerminalRunRequest(body);
-  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+  if (!parsed.ok) return jsonError(parsed.error);
   try {
     const { stdout, stderr } = await execAsync(parsed.value.command, {
       cwd,

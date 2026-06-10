@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchOfficialCompatibleRegistry } from "@/lib/agent/mcp/official-registry";
+import { searchOfficialCompatibleRegistry } from "@/features/agent/mcp/official-registry";
 import {
   addRegistrySource,
   listRegistrySources,
   removeRegistrySource,
   setRegistrySourceEnabled,
-} from "@/lib/agent/mcp/registry-sources";
+} from "@/features/agent/mcp/registry-sources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

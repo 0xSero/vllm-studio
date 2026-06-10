@@ -1,6 +1,6 @@
 "use client";
 
-import { formatFileSize } from "@/lib/file-size";
+import { formatBytes } from "@/lib/formatters";
 import { CloseIcon, FileIcon } from "./icons";
 
 export type AgentComposerAttachment = {
@@ -30,11 +30,11 @@ export function AgentAttachmentTray({
         <span
           key={file.id}
           className="inline-flex max-w-[220px] items-center gap-1 px-1 py-0.5 text-[length:var(--fs-sm)] text-(--dim)"
-          title={`${file.name} · ${file.type} · ${formatFileSize(file.size)}${file.path ? ` · ${file.path}` : ""}`}
+          title={`${file.name} · ${file.type} · ${formatBytes(file.size)}${file.path ? ` · ${file.path}` : ""}`}
         >
           <AttachmentPreview file={file} />
           <span className="truncate">{file.name}</span>
-          <span className="shrink-0 opacity-70">{formatFileSize(file.size)}</span>
+          <span className="shrink-0 opacity-70">{formatBytes(file.size)}</span>
           <button
             type="button"
             onClick={() => onRemove(file.id)}

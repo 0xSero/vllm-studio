@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { readAgentCanvas, writeAgentCanvas } from "@/lib/agent/canvas-store";
+import { readAgentCanvas, writeAgentCanvas } from "@/features/agent/canvas-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

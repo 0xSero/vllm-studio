@@ -6,7 +6,7 @@ import type {
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
-} from "@/lib/agent/composer-context";
+} from "@/features/agent/composer-context";
 import { CloseIcon } from "./icons";
 
 export type FileMentionRow = {

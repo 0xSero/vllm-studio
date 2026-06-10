@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { formatTokenCount } from "@/lib/agent/session";
+import { formatTokenCount } from "@/features/agent/messages";
 import { GitBranchIcon } from "./icons";
 
 type GitSummary = {

@@ -6,17 +6,17 @@ import {
   attachmentPrompt,
   createAttachment,
   createProjectFileAttachment,
-} from "@/app/agent/_components/chat-attachments";
+} from "@/features/agent/ui/chat-attachments";
 import {
   byQuery,
   consumeComposerMention,
   detectComposerMention,
-} from "@/lib/agent/composer-context";
+} from "@/features/agent/composer-context";
 import {
   selectionFromPersistedTab,
   sessionMetaForPersistence,
-} from "@/lib/agent/workspace/store";
-import type { Session } from "@/lib/agent/sessions/types";
+} from "@/features/agent/workspace/store";
+import type { Session } from "@/features/agent/runtime/types";
 
 test("file tagging turns an @ mention into one durable project-file attachment", () => {
   const input = "please inspect @src/app.ts";

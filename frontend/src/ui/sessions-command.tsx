@@ -4,8 +4,8 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { ChatIcon, Folder } from "@/ui/icons";
-import { cleanSessionTitle } from "@/lib/agent/session/helpers";
-import { safeJson } from "@/lib/agent/safe-json";
+import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { safeJson } from "@/lib/safe-json";
 
 // Aggregated session row returned by /api/agent/sessions/all. Mirrored here
 // so the component is decoupled from the API module.

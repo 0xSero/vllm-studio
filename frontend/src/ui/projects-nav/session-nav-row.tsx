@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
-import type { SessionPref } from "@/lib/agent/session/prefs";
+import type { SessionPref } from "@/features/agent/messages/prefs";
 
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";

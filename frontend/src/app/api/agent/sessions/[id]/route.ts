@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listSessions, loadSession } from "@/lib/agent/sessions-store";
-import { setSessionArchived } from "@/lib/agent/session-metadata-store";
+import { listSessions, loadSession } from "@/features/agent/sessions-store";
+import { setSessionArchived } from "@/features/agent/session-metadata-store";
+import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,14 +13,11 @@ export const dynamic = "force-dynamic";
 // holding the entire history in memory at once.
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
-  if (!cwd) return Response.json({ error: "cwd is required" }, { status: 400 });
-  if (!path.isAbsolute(cwd)) {
-    return Response.json({ error: "cwd must be absolute" }, { status: 400 });
-  }
-  if (!id) return Response.json({ error: "session id is required" }, { status: 400 });
+  const result = requireAbsoluteCwd(request);
+  if (result.response) return result.response;
+  if (!id) return jsonError("session id is required");
 
-  const events = await loadSession(cwd, id);
+  const events = await loadSession(result.cwd, id);
   return Response.json({ events });
 }
 
@@ -49,14 +47,10 @@ type ArchiveLookup = {
   summary: ArchiveSummary | null;
 };
 
-function jsonError(error: string, status: number): Response {
-  return Response.json({ error }, { status });
-}
-
 function validatePatchSessionId(id: string): Response | null {
-  if (!id) return Response.json({ error: "session id is required" }, { status: 400 });
+  if (!id) return jsonError("session id is required");
   if (!isValidSessionId(id)) {
-    return Response.json({ error: "session id is invalid" }, { status: 400 });
+    return jsonError("session id is invalid");
   }
   return null;
 }
@@ -66,10 +60,10 @@ async function readArchivePatchBody(request: NextRequest): Promise<ArchivePatchB
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return jsonError("Invalid JSON body");
   }
   if (!isRecord(body) || typeof body.archived !== "boolean") {
-    return Response.json({ error: "archived boolean is required" }, { status: 400 });
+    return jsonError("archived boolean is required");
   }
   return body as ArchivePatchBody;
 }
@@ -80,7 +74,7 @@ async function resolveArchiveLookup(
 ): Promise<ArchiveLookup | Response> {
   const cwd = typeof body.cwd === "string" ? body.cwd.trim() : "";
   if (body.archived && !cwd) {
-    return Response.json({ error: "cwd is required to archive a session" }, { status: 400 });
+    return jsonError("cwd is required to archive a session");
   }
   if (!cwd) return { cwd, summary: null };
   const cwdError = validateExistingCwd(cwd);
@@ -88,13 +82,13 @@ async function resolveArchiveLookup(
   const matches = await listSessions(cwd, { ids: [id], includeArchived: true });
   const summary = matches.find((session) => session.id === id) ?? null;
   if (body.archived && !summary) {
-    return Response.json({ error: "session not found" }, { status: 404 });
+    return jsonError("session not found", 404);
   }
   return { cwd, summary };
 }
 
 function validateExistingCwd(cwd: string): Response | null {
-  if (!path.isAbsolute(cwd)) return jsonError("cwd must be absolute", 400);
+  if (!path.isAbsolute(cwd)) return jsonError("cwd must be absolute");
   if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
     return jsonError("cwd does not exist", 404);
   }
@@ -131,9 +125,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     );
     return Response.json({ session: { id, ...archiveState } });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to update session archive" },
-      { status: 500 },
-    );
+    return jsonError(errorMessage(error, "Failed to update session archive"), 500);
   }
 }

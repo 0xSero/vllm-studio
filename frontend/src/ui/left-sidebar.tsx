@@ -30,7 +30,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { ProjectsNavSection } from "@/ui/projects-nav-section";
 import { SessionsCommand } from "@/ui/sessions-command";
-import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
+import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 type ActiveSessionDetail = {
   projectId: string;

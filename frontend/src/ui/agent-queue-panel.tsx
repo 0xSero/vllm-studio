@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { QueuedMessage } from "@/lib/agent/session";
+import type { QueuedMessage } from "@/features/agent/messages";
 import { CloseIcon, SendIcon } from "./icons";
 import { cx } from "./utils";
 

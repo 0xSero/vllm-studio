@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { safeJson } from "@/lib/agent/safe-json";
-import { cleanSessionTitle } from "@/lib/agent/session/helpers";
-import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/lib/agent/session/prefs";
-import { useProjectSessionsReloadEffect } from "@/hooks/agent/use-projects-nav-section-effects";
-import { workspaceCommands } from "@/lib/agent/workspace/commands";
-import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
+import { safeJson } from "@/lib/safe-json";
+import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
+import { useProjectSessionsReloadEffect } from "@/features/agent/hooks/use-projects-nav-section-effects";
+import { workspaceCommands } from "@/features/agent/workspace/commands";
+import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
   activeSessionPref,

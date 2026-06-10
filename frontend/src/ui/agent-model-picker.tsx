@@ -3,7 +3,7 @@
 import { useMemo, useState, useSyncExternalStore, type MouseEvent, type PointerEvent } from "react";
 import { getStoredBackendUrl } from "@/lib/backend-url";
 import { loadSavedControllers } from "@/lib/controllers";
-import type { AgentModel } from "@/lib/agent/workspace/types";
+import type { AgentModel } from "@/features/agent/workspace/types";
 import { ChevronDownIcon } from "./icons";
 import { cx } from "./utils";
 

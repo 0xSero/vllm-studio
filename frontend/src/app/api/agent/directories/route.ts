@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import os from "node:os";
 import path from "node:path";
 import { readdir, stat } from "node:fs/promises";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,19 +55,16 @@ export async function GET(request: NextRequest) {
   const roots = configuredRoots();
   const remoteBrowserEnabled = process.env.VLLM_STUDIO_ENABLE_REMOTE_DIRECTORY_BROWSER === "1";
   if (!isLoopbackHost(request.headers.get("host")) && !(remoteBrowserEnabled && roots.length > 0)) {
-    return Response.json(
-      { error: "Directory browsing is only available locally" },
-      { status: 403 },
-    );
+    return jsonError("Directory browsing is only available locally", 403);
   }
 
   const directoryPath = resolveAllowedPath(request.nextUrl.searchParams.get("path"), roots);
   if (!directoryPath) {
-    return Response.json({ error: "Path is outside the allowed directories" }, { status: 403 });
+    return jsonError("Path is outside the allowed directories", 403);
   }
 
   if (!(await isDirectory(directoryPath))) {
-    return Response.json({ error: "Path is not a directory" }, { status: 400 });
+    return jsonError("Path is not a directory");
   }
 
   try {
@@ -94,9 +92,6 @@ export async function GET(request: NextRequest) {
       entries,
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to list directories" },
-      { status: 400 },
-    );
+    return jsonError(errorMessage(error, "Failed to list directories"));
   }
 }

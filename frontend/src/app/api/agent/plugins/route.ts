@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleMcpAction, mcpSnapshot } from "@/lib/agent/mcp/api";
+import { handleMcpAction, mcpSnapshot } from "@/features/agent/mcp/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

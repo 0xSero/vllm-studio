@@ -4,7 +4,8 @@ import {
   listProjectsFromStore,
   removeProjectFromStore,
   type ProjectEntry,
-} from "@/lib/agent/projects-store";
+} from "@/features/agent/projects-store";
+import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +15,7 @@ export async function GET() {
     const projects = listProjectsFromStore();
     return NextResponse.json({ projects });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to read projects" },
-      { status: 500 },
-    );
+    return jsonError(errorMessage(error, "Failed to read projects"), 500);
   }
 }
 
@@ -26,35 +24,29 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as { path?: unknown };
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return jsonError("Invalid JSON body");
   }
   const directoryPath = typeof body.path === "string" ? body.path.trim() : "";
   if (!directoryPath) {
-    return NextResponse.json({ error: "path is required" }, { status: 400 });
+    return jsonError("path is required");
   }
   try {
     const project: ProjectEntry = addProjectToStore(directoryPath);
     return NextResponse.json({ project });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to add project" },
-      { status: 400 },
-    );
+    return jsonError(errorMessage(error, "Failed to add project"));
   }
 }
 
 export async function DELETE(request: NextRequest) {
   const id = new URL(request.url).searchParams.get("id");
   if (!id) {
-    return NextResponse.json({ error: "id is required" }, { status: 400 });
+    return jsonError("id is required");
   }
   try {
     removeProjectFromStore(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to remove project" },
-      { status: 500 },
-    );
+    return jsonError(errorMessage(error, "Failed to remove project"), 500);
   }
 }

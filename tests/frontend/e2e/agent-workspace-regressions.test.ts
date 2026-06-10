@@ -6,21 +6,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runWorkspaceEffect, type WorkspaceEffectDeps } from "@/lib/agent/workspace/effects";
-import { ACTIVE_AGENT_SESSIONS_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
-import { loadInitialFromStorage, writePaneState } from "@/lib/agent/workspace/persistence";
-import { reducer } from "@/lib/agent/workspace/reducer";
+import { runWorkspaceEffect, type WorkspaceEffectDeps } from "@/features/agent/workspace/effects";
+import { ACTIVE_AGENT_SESSIONS_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
+import { loadInitialFromStorage, writePaneState } from "@/features/agent/workspace/persistence";
+import { reducer } from "@/features/agent/workspace/reducer";
 import {
   PANE_LAYOUT_KEY,
   PANE_STATE_KEY,
   restorePersistedPaneState,
   type WorkspaceStorage,
-} from "@/lib/agent/workspace/store";
-import type { WorkspaceState } from "@/lib/agent/workspace/types";
-import { makeFreshTab } from "@/lib/agent/session/helpers";
-import { createSessionReplayQueue } from "@/lib/agent/workspace/replay-queue";
-import type { Session } from "@/lib/agent/sessions/types";
-import type { ToolSelection } from "@/lib/agent/tools/types";
+} from "@/features/agent/workspace/store";
+import type { WorkspaceState } from "@/features/agent/workspace/types";
+import { makeFreshTab } from "@/features/agent/messages/helpers";
+import { createSessionReplayQueue } from "@/features/agent/workspace/replay-queue";
+import type { Session } from "@/features/agent/runtime/types";
+import type { ToolSelection } from "@/features/agent/tools/types";
 
 function makeSession(id: string, patch: Partial<Session> = {}): Session {
   return {

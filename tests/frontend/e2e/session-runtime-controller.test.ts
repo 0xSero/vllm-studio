@@ -10,24 +10,24 @@ import test from "node:test";
 import {
   mergeCanonicalAndRuntimeEvents,
   replayCursorAfterRuntimeHydration,
-} from "@/lib/agent/session/helpers";
-import { replaySessionEvents } from "@/lib/agent/session/replay";
-import type { RuntimeLoggedEvent } from "@/lib/agent/session";
+} from "@/features/agent/messages/helpers";
+import { replaySessionEvents } from "@/features/agent/messages/replay";
+import type { RuntimeLoggedEvent } from "@/features/agent/messages";
 import type {
   RuntimeEventPayload,
   RuntimeEventSubscription,
   RuntimeSessionSummary,
   RuntimeStatus,
-} from "@/lib/agent/sessions/api";
+} from "@/features/agent/runtime/api";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
   commitRuntimeSeq,
   reconnectAfter,
-} from "@/lib/agent/sessions/runtime-cursor";
-import { createSessionRuntimeController } from "@/lib/agent/sessions/session-runtime-controller";
-import { createTextDeltaCoalescer } from "@/lib/agent/sessions/text-delta-coalescer";
-import type { Session, SessionId } from "@/lib/agent/sessions/types";
+} from "@/features/agent/runtime/runtime-cursor";
+import { createSessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { createTextDeltaCoalescer } from "@/features/agent/runtime/text-delta-coalescer";
+import type { Session, SessionId } from "@/features/agent/runtime/types";
 
 const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/session-event-log.json", import.meta.url), "utf8"),

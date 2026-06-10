@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "lucide-react";
-import { cleanSessionTitle } from "@/lib/agent/session/helpers";
-import { safeJson } from "@/lib/agent/safe-json";
-import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/agent/workspace/events";
+import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { safeJson } from "@/lib/safe-json";
+import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 // Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
 // page doesn't import server-only modules into the client bundle.

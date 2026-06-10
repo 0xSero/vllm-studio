@@ -14,9 +14,9 @@ import type {
   ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
-} from "@/lib/agent/composer-context";
-import type { QueuedMessage } from "@/lib/agent/session";
-import type { BrowserBackend } from "@/lib/agent/tools/types";
+} from "@/features/agent/composer-context";
+import type { QueuedMessage } from "@/features/agent/messages";
+import type { BrowserBackend } from "@/features/agent/tools/types";
 import { AgentAttachmentTray, type AgentComposerAttachment } from "./agent-attachment-tray";
 import { AgentComposerActions } from "./agent-composer-actions";
 import {

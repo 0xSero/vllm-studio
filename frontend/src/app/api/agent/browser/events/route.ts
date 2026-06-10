@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { browserBridge, type BrowserCommand } from "@/lib/agent/browser-bridge";
+import { browserBridge, type BrowserCommand } from "@/features/agent/browser-bridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import type { HuggingFaceModel, ModelInfo, ModelRecommendation } from "@/lib/types";
 import { fetchHuggingFaceModels } from "@/lib/huggingface-client";
 import { isRecentHuggingFaceModel, RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
-import { extractProvider, extractQuantizations, normalizeModelId } from "@/ui/discover/utils";
+import { extractProvider, extractQuantizations, normalizeModelId } from "@/features/discover/utils";
 
 export function useDiscover() {
   const [models, setModels] = useState<HuggingFaceModel[]>([]);

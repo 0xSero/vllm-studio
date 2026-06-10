@@ -1,8 +1,7 @@
-import type { Hono } from "hono";
 import { basename, dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import type { AppContext } from "../../types/context";
+import type { RouteRegistrar } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 
 /**
@@ -28,13 +27,11 @@ interface OpenAIModelList {
 import { buildModelInfo, discoverModelDirectories } from "./model-browser";
 import { notFound } from "../../core/errors";
 import { observeControllerFunction } from "../../core/function-observability";
+import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../services/inference/inference-client";
 
 function isMockInferenceEnabled(): boolean {
-  const raw = process.env["VLLM_STUDIO_MOCK_INFERENCE"];
-  if (!raw) return false;
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+  return parseBooleanFlag(process.env["VLLM_STUDIO_MOCK_INFERENCE"]);
 }
 
 function recipeMetadata(recipe: Recipe): Record<string, unknown> | undefined {
@@ -45,7 +42,7 @@ function recipeMetadata(recipe: Recipe): Record<string, unknown> | undefined {
   return metadata as Record<string, unknown>;
 }
 
-export const registerModelsRoutes = (app: Hono, context: AppContext): void => {
+export const registerModelsRoutes: RouteRegistrar = (app, context) => {
   app.get("/v1/models", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
     const current = await observeControllerFunction(

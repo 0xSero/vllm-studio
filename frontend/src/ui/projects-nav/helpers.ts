@@ -1,9 +1,9 @@
 import type { DragEvent } from "react";
-import { safeJson } from "@/lib/agent/safe-json";
-import { cleanSessionTitle } from "@/lib/agent/session/helpers";
-import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/lib/agent/session/prefs";
-import { ADD_PROJECT_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/agent/workspace/events";
-import type { Project as ProjectEntry } from "@/lib/agent/projects/types";
+import { safeJson } from "@/lib/safe-json";
+import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
+import { ADD_PROJECT_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
+import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import type { ActiveAgentSession, SessionSummary } from "./types";
 
 const SESSION_NAV_TITLE_PREFIX = "vllm-studio.agent.sessionNavTitle:";
