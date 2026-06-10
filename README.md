@@ -169,7 +169,6 @@ Recipes can launch through the controller runtime layer. The currently wired bac
 - `sglang`: SGLang launch-server recipes through configured or discovered Python targets.
 - `llamacpp`: llama.cpp `llama-server` recipes for GGUF models.
 - `mlx`: MLX `mlx_lm.server` recipes for Apple Silicon environments.
-- `exllamav3`: ExLlama v3 through an explicit command override.
 
 Runtime target discovery is surfaced in Settings, and selected targets are persisted in the controller data directory.
 
@@ -182,4 +181,4 @@ npm run check
 npm run test:e2e
 ```
 
-`npm run check` runs the frontend production quality gate plus controller and CLI typechecks. The configured pre-push hook runs the frontend quality gate before pushing.
+`npm run check` runs shared-contracts validation, the frontend production quality gate, and controller and CLI typechecks. The configured pre-push hook runs the frontend quality gate before pushing.

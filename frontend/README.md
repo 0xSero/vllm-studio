@@ -102,12 +102,13 @@ Settings also renders controller-provided runtime targets. The target rows come 
 
 ## Where To Look
 
-- `src/app/agent/`: agent workspace routes and components.
+- `src/app/`: thin route shells (e.g. `src/app/agent/page.tsx`, `src/app/settings/page.tsx`) that delegate to feature modules in `src/features/*`.
+- `src/features/agent/`: agent workspace runtime, messages, hooks, and UI.
 - `src/app/api/agent/`: local agent/session/browser/runtime API routes.
 - `src/app/api/proxy/`: controller proxy route.
-- `src/app/settings/`: settings UI.
-- `src/app/configs/_components/engines-section*`: runtime target rows and settings models.
+- `src/features/settings/`: settings UI.
+- `src/features/settings/engines-section.tsx` and `src/features/settings/engines-section-model.ts`: runtime target rows and settings models.
 - `src/app/usage/`: usage UI.
 - `src/lib/backend-config.ts`: controller URL selection.
-- `src/components/ui-kit/README.md`: shared frontend UI primitives.
+- `src/ui/`: shared frontend UI primitives.
 - `desktop/`: Electron main process and desktop build config.

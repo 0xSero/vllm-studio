@@ -94,7 +94,7 @@ After finishing a feature, you **MUST** complete the appropriate deployment step
 
 After finishing a feature, follow this checklist:
 
-1. **Build check**: `cd frontend && npx next build`
+1. **Build check**: `cd frontend && npm run build`
 2. **Verify local app**: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/agent` (should be 200 when the local dev server is running)
 3. **Remote deploy** (if needed): `./scripts/deploy-remote.sh` (syncs, builds, restarts)
 4. **Verify remote**: check production URLs (see `.env.local` for REMOTE_HOST)
@@ -159,6 +159,6 @@ find /Applications "$HOME/Applications" -maxdepth 1 -type d -iname "*v*llm*studi
 
 ## Notes
 
-- Remote server specs: AMD EPYC, 8x RTX 3090, CUDA 12.8 (see `.env.local` for host)
-- rsync/scp fail due to remote shell output; deploy script uses tar+ssh pipe as workaround
+- Remote server specs: AMD EPYC, 4x RTX PRO 6000 Blackwell + 1x RTX 3090, CUDA 12.8 (see `.env.local` for host)
+- The deploy script syncs sources to the remote with `rsync` over ssh (no tar pipe)
 - Remote `next build` may fail (turbopack + redis permissions); the deploy script builds locally and ships `.next/`

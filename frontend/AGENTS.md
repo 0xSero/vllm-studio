@@ -26,8 +26,8 @@ This addendum introduces commit hygiene rules for agent execution.
 ## Pi runtime
 
 - The agent page uses the `@earendil-works/pi-coding-agent` SDK directly in the Next.js Node process. There is no `pi --mode rpc` subprocess and no bundled CLI.
-- Entry point: `src/lib/agent/pi-runtime.ts` exposes `piRuntimeManager.getSession(sessionId)` returning a `PiAgentSession` (interface in `pi-runtime-types.ts`). The implementation is `PiSdkSession` in `pi-sdk-runtime.ts`.
-- Extensions (browser/parchi/canvas/timeouts/mcp-plugin) and skills are loaded via `buildAgentSessionOptions` in `pi-runtime-helpers.ts`. Extensions are dynamically imported as ESM (`pathToFileURL`); skills are passed as filesystem paths through `resourceLoaderOptions`.
+- Entry point: `src/features/agent/pi-runtime.ts` exposes `piRuntimeManager.getSession(sessionId)` returning a `PiAgentSession` (interface in `src/features/agent/pi-runtime-types.ts`). The implementation is `PiSdkSession`, defined in the same `pi-runtime.ts` file.
+- Extensions (browser/parchi/canvas/timeouts/mcp-plugin) and skills are loaded via `buildAgentSessionOptions` in `src/features/agent/pi-runtime-helpers.ts`. Extensions are dynamically imported as ESM (`pathToFileURL`); skills are passed as filesystem paths through `resourceLoaderOptions`.
 - Agent directory is `<dataDir>/pi-agent` (`refreshPiModels` writes `models.json` there, the SDK colocates `auth.json` and `settings.json`). Do not point the runtime at the user's `~/.pi/agent`.
 - Resume: when the API route passes a `piSessionId`, `PiSdkSession.ensureStarted` locates the JSONL via `findSessionFile(cwd, id)` and calls `sessionManager.setSessionFile(...)` before constructing the runtime. `sessionStartEvent.reason` reflects whether the file was found (`"resume"` vs `"startup"`).
 - Do not reintroduce the legacy RPC subprocess, `pi-binary.ts`, `buildPiLaunchPlan`, or the `desktop:prepare-pi` script.

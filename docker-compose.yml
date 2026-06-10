@@ -1,4 +1,6 @@
-# Infrastructure services only.
+# Infrastructure services only — provisions remote-host infra (postgres,
+# consumed by litellm on that host). The vLLM Studio app itself does not
+# consume postgres.
 # Controller and frontend run natively on the host (not in Docker)
 # because they need nvidia-smi access and host process visibility.
 

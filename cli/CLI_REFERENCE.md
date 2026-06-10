@@ -30,7 +30,7 @@
    - [Proxy / Inference Endpoints](#55-proxy--inference-endpoints)
    - [Monitoring Endpoints](#56-monitoring-endpoints)
    - [Logs & Events Endpoints](#57-logs--events-endpoints)
-   - [Jobs Endpoints](#58-jobs-endpoints)
+   - [Runtime Job Endpoints](#58-runtime-job-endpoints)
    - [Audio Endpoints](#59-audio-endpoints)
 6. [Error Handling & Exit Codes](#6-error-handling--exit-codes)
 7. [Environment Variables](#7-environment-variables)
@@ -61,8 +61,8 @@
 │  │ System  │ Engines  │  Models       │    │
 │  │ Routes  │ Routes   │  Routes       │    │
 │  ├─────────┼──────────┼───────────────┤    │
-│  │ Studio  │ Proxy    │  Jobs/Audio   │    │
-│  │ Routes  │ Routes   │  Routes       │    │
+│  │ Studio  │ Proxy    │ Runtime Jobs/ │    │
+│  │ Routes  │ Routes   │ Audio Routes  │    │
 │  └─────────┴──────────┴───────────────┘    │
 │                                             │
 │  Proxies inference requests to active       │
@@ -579,11 +579,11 @@ Run `vllm-studio` (no arguments) for a live-updating curses-like dashboard.
 | `GET` | `/studio/recommendations` | `studio/routes.ts` | VRAM-based model recommendations | No |
 | `POST` | `/studio/models/delete` | `studio/routes.ts` | Delete model files from disk | Yes |
 | `POST` | `/studio/models/move` | `studio/routes.ts` | Move model files within models_dir | Yes |
-| `GET` | `/studio/providers` | `studio/routes.ts` | List configured API providers | Yes |
-| `POST` | `/studio/providers` | `studio/routes.ts` | Create a new API provider | Yes |
-| `PUT` | `/studio/providers/:id` | `studio/routes.ts` | Update an API provider | Yes |
-| `DELETE` | `/studio/providers/:id` | `studio/routes.ts` | Delete an API provider | Yes |
-| `GET` | `/studio/provider-models` | `studio/routes.ts` | Fetch models from all enabled providers | Yes |
+| `GET` | `/studio/providers` | `studio/provider-routes.ts` | List configured API providers | Yes |
+| `POST` | `/studio/providers` | `studio/provider-routes.ts` | Create a new API provider | Yes |
+| `PUT` | `/studio/providers/:id` | `studio/provider-routes.ts` | Update an API provider | Yes |
+| `DELETE` | `/studio/providers/:id` | `studio/provider-routes.ts` | Delete an API provider | Yes |
+| `GET` | `/studio/provider-models` | `studio/provider-routes.ts` | Fetch models from all enabled providers | Yes |
 | `GET` | `/studio/downloads` | `engines/routes.ts` | List active/finished model downloads | Yes |
 | `GET` | `/studio/downloads/:id` | `engines/routes.ts` | Single download status | Yes |
 | `POST` | `/studio/downloads` | `engines/routes.ts` | Start a model download from HuggingFace | Yes |
@@ -593,18 +593,17 @@ Run `vllm-studio` (no arguments) for a live-updating curses-like dashboard.
 
 ### 5.5 Proxy / Inference Endpoints
 
-All proxy endpoints forward to the active inference backend. Auth is controller-level.
+Proxy endpoints forward to the active inference backend (`/health` is answered by the controller itself). Auth is controller-level.
 
 | Method | Path | Source | Description | Auth |
 |---|---|---|---|---|
 | `POST` | `/v1/chat/completions` | `proxy/openai-routes.ts` | Chat completions (with tool call streaming, content normalization) | Yes |
-| `POST` | `/v1/completions` | `proxy/openai-routes.ts` | Text completions | Yes |
-| `GET` | `/v1/models` | `proxy/openai-routes.ts` | Model list (from active backend) | Yes |
-| `GET` | `/health` | `proxy/openai-routes.ts` | Inference backend health check | No |
-| `POST` | `/v1/embeddings` | `proxy/openai-routes.ts` | Embeddings | Yes |
-| `POST` | `/v1/rerank` | `proxy/openai-routes.ts` | Cross-encoder reranking | Yes |
+| `GET` | `/health` | `http/app.ts` | Controller liveness check (`{ "status": "ok" }`) | No (skip list) |
 | `POST` | `/v1/tokenize` | `proxy/tokenization-routes.ts` | Tokenize text | Yes |
 | `POST` | `/v1/detokenize` | `proxy/tokenization-routes.ts` | Detokenize IDs | Yes |
+| `POST` | `/v1/count-tokens` | `proxy/tokenization-routes.ts` | Count tokens for text | Yes |
+| `POST` | `/v1/tokenize-chat-completions` | `proxy/tokenization-routes.ts` | Tokenize a chat-completions payload | Yes |
+| `POST` | `/api/title` | `proxy/tokenization-routes.ts` | Generate a short title via the active model | Yes |
 
 ### 5.6 Monitoring Endpoints
 
@@ -627,14 +626,14 @@ All proxy endpoints forward to the active inference backend. Auth is controller-
 | `GET` | `/events` | `logs-routes.ts` | SSE stream of all controller events | No (skip list) |
 | `GET` | `/events/stats` | `logs-routes.ts` | Event manager statistics | No |
 
-### 5.8 Jobs Endpoints
+### 5.8 Runtime Job Endpoints
 
 | Method | Path | Source | Description | Auth |
 |---|---|---|---|---|
-| `POST` | `/jobs` | `jobs/routes.ts` | Create a background job (type + input) | Yes |
-| `GET` | `/jobs` | `jobs/routes.ts` | List all jobs | Yes |
-| `GET` | `/jobs/:id` | `jobs/routes.ts` | Get job status | Yes |
-| `POST` | `/jobs/:id/cancel` | `jobs/routes.ts` | Cancel a running job | Yes |
+| `POST` | `/runtime/jobs` | `engines/routes.ts` | Create a runtime job for an engine backend (install/update) | Yes |
+| `GET` | `/runtime/jobs` | `engines/routes.ts` | List all runtime jobs | No |
+| `GET` | `/runtime/jobs/:jobId` | `engines/routes.ts` | Get runtime job status | No |
+| `POST` | `/runtime/jobs/:jobId/cancel` | `engines/routes.ts` | Cancel a running runtime job | Yes |
 
 ### 5.9 Audio Endpoints
 
@@ -652,7 +651,11 @@ All proxy endpoints forward to the active inference backend. Auth is controller-
 | `GET` | `/runtime/sglang` | `engines/routes.ts` | SGLang runtime info | No |
 | `GET` | `/runtime/llamacpp` | `engines/routes.ts` | llama.cpp runtime info | No |
 | `GET` | `/runtime/llamacpp/config` | `engines/routes.ts` | llama.cpp configuration help | No |
-| `GET` | `/runtime/exllamav3` | `engines/routes.ts` | ExLlamaV3 runtime info | No |
+| `GET` | `/runtime/mlx` | `engines/routes.ts` | MLX runtime info | No |
+| `GET` | `/runtime/targets` | `engines/routes.ts` | List runtime targets with current process info | No |
+| `GET` | `/runtime/targets/:targetId` | `engines/routes.ts` | Single runtime target detail | No |
+| `POST` | `/runtime/targets/:targetId/select` | `engines/routes.ts` | Select a runtime target | Yes |
+| `GET` | `/runtime/targets/:targetId/health` | `engines/routes.ts` | Runtime target health | No |
 | `GET` | `/runtime/cuda` | `engines/routes.ts` | CUDA toolkit info (nvcc version, devices) | No |
 | `GET` | `/runtime/rocm` | `engines/routes.ts` | ROCm toolkit info | No |
 | `POST` | `/runtime/vllm/upgrade` | `engines/routes.ts` | Upgrade vLLM installation | Yes |
