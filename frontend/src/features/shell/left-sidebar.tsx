@@ -246,24 +246,25 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 </div>
               </div>
 
-              {/* Primary nav */}
-              <nav className="flex-1 min-h-0 flex flex-col px-1 py-0.5 overflow-y-auto overflow-x-hidden">
+              {/* Primary nav — Codex sidebar idiom: 14px rows with quiet icons,
+                  rounded-lg hover, normal-case muted section labels. */}
+              <nav className="flex-1 min-h-0 flex flex-col px-2 py-0.5 overflow-y-auto overflow-x-hidden">
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mb-1.5 flex h-7 items-center gap-2.5 rounded-md px-2 text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/90"
+                  className="mb-1 flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)/90"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal">
+                  <SearchIcon className="h-4 w-4 shrink-0 opacity-60" strokeWidth={1.5} />
+                  <span className="flex-1 truncate text-left text-[length:var(--fs-lg)] font-normal">
                     Search
                   </span>
-                  <kbd className="px-1.5 py-0.5 text-[length:var(--fs-xs)] font-mono text-(--dim)/50 bg-transparent rounded border border-(--border)/30">
+                  <kbd className="rounded-md border border-(--border)/40 bg-transparent px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim)/50">
                     ⌘K
                   </kbd>
                 </button>
 
-                <div className="mb-0.5 mt-3 px-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--dim)/60">
+                <div className="mb-1 mt-4 px-2.5 text-[length:var(--fs-sm)] font-medium text-(--dim)/65">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -279,16 +280,23 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 <ProjectsNavSection expanded={isExpanded} />
               </nav>
 
-              <div className="shrink-0 px-1 py-2">
+              <div className="shrink-0 px-2 py-2">
                 <Link
                   href="/settings"
                   title="Settings"
-                  className={`group relative flex h-7 shrink-0 items-center gap-2.5 rounded-md px-2 text-(--dim)/80 transition-colors hover:bg-(--hover) hover:text-(--fg)/90 ${
-                    isRouteActive(pathname, "/settings") ? "bg-(--hover) text-(--fg)" : ""
+                  className={`group relative flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${
+                    isRouteActive(pathname, "/settings")
+                      ? "bg-(--fg)/8 font-medium text-(--fg)"
+                      : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)/90"
                   }`}
                 >
-                  <Settings className="h-[15px] w-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
-                  <span className="whitespace-nowrap text-[length:var(--fs-base)] font-normal">
+                  <Settings
+                    className={`h-4 w-4 shrink-0 ${
+                      isRouteActive(pathname, "/settings") ? "opacity-90" : "opacity-60"
+                    }`}
+                    strokeWidth={1.5}
+                  />
+                  <span className="whitespace-nowrap text-[length:var(--fs-lg)] font-normal">
                     Settings
                   </span>
                 </Link>
@@ -443,15 +451,18 @@ function NavItemDesktop({
     <Link
       href={href}
       title={label}
-      className={`group relative flex h-7 items-center gap-2.5 rounded-md px-2 transition-colors shrink-0 ${
+      className={`group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 transition-colors shrink-0 ${
         active
-          ? "bg-(--hover) text-(--fg)"
-          : "text-(--dim)/80 hover:bg-(--hover) hover:text-(--fg)/90"
+          ? "bg-(--fg)/8 font-medium text-(--fg)"
+          : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)/90"
       }`}
     >
-      <Icon className="w-[15px] h-[15px] shrink-0 opacity-50" strokeWidth={1.5} />
+      <Icon
+        className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-60"}`}
+        strokeWidth={1.5}
+      />
       <span
-        className={`text-[length:var(--fs-base)] font-normal whitespace-nowrap transition-opacity duration-100 ${
+        className={`text-[length:var(--fs-lg)] whitespace-nowrap transition-opacity duration-100 ${
           expanded ? "opacity-100" : "opacity-0"
         }`}
       >
