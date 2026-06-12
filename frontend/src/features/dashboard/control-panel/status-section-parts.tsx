@@ -207,13 +207,22 @@ export function StatusMetricStrip({
   compactMetrics: CompactMetricView[];
   metricColumns: MetricColumnView[];
 }) {
+  // Mirrors the usage page's header strip exactly: six even columns of mono
+  // stats separated by hairline rules, values at a fixed type size.
   return (
-    <dl className="status-metric-strip mt-5 grid w-full grid-cols-[minmax(0,1.05fr)_minmax(0,0.92fr)_minmax(0,1.18fr)_minmax(0,0.58fr)_minmax(0,0.88fr)_minmax(0,0.88fr)] border-b border-(--border)/40 pb-5">
+    <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--border)/40 pb-5 sm:grid-cols-3 lg:grid-cols-6">
       {metricColumns.map((metric) => (
-        <MetricColumn key={metric.label} {...metric} />
+        <MetricCell
+          key={metric.label}
+          label={metric.label}
+          value={metric.value ?? "0"}
+          unit={metric.value ? metric.unit : undefined}
+          detail={metric.detail ?? undefined}
+          detailTitle={metric.detailTitle ?? undefined}
+        />
       ))}
       {compactMetrics.map((metric) => (
-        <CompactMetric key={metric.label} {...metric} />
+        <MetricCell key={metric.label} label={metric.label} value={metric.value ?? "0"} />
       ))}
     </dl>
   );
@@ -246,27 +255,36 @@ function RuntimeMetric({ label, title, value }: RuntimeMetricView) {
   );
 }
 
-function MetricColumn({ label, value, unit, detail, detailTitle }: MetricColumnView) {
-  const displayValue = value ?? "0";
-
+/* One cell shape for all six stats, identical to the usage page's HeaderStat:
+   mono 2xs label, fixed 2xl mono value, optional mono detail line. */
+function MetricCell({
+  label,
+  value,
+  unit,
+  detail,
+  detailTitle,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  detail?: string;
+  detailTitle?: string;
+}) {
   return (
-    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 sm:pr-4 sm:pl-5 last:border-r-0 [container-type:inline-size]">
-      <div className="truncate text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
+    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
+      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
-      </div>
-      <div className="mt-2 flex min-w-0 items-baseline gap-1.5 font-mono tabular-nums">
-        <span
-          className={`min-w-0 shrink overflow-hidden leading-none text-(--fg) ${metricValueSizeClass(displayValue)}`}
-          title={displayValue}
-        >
-          {displayValue}
+      </dt>
+      <dd className="mt-1 flex min-w-0 items-baseline gap-1 font-mono text-[length:var(--fs-2xl)] leading-none tabular-nums text-(--fg)">
+        <span className="truncate" title={value}>
+          {value}
         </span>
-        {value ? (
-          <span className="shrink-0 text-[length:var(--fs-sm)] text-(--dim)">{unit}</span>
+        {unit ? (
+          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)">{unit}</span>
         ) : null}
-      </div>
+      </dd>
       {detail ? (
-        <div className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)">
+        <dd className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)">
           <span className="truncate">{detail}</span>
           {detailTitle ? (
             <Info
@@ -276,41 +294,10 @@ function MetricColumn({ label, value, unit, detail, detailTitle }: MetricColumnV
               <title>{detailTitle}</title>
             </Info>
           ) : null}
-        </div>
+        </dd>
       ) : null}
     </div>
   );
-}
-
-function CompactMetric({ label, value }: CompactMetricView) {
-  const displayValue = value ?? "0";
-
-  return (
-    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-1.5 pl-2 font-mono tabular-nums first:pl-0 sm:pr-3 sm:pl-4 last:border-r-0 [container-type:inline-size]">
-      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-[0.1em] text-(--dim)">
-        {label}
-      </div>
-      <div
-        className={`mt-3 overflow-hidden whitespace-nowrap leading-none text-(--fg)/90 ${compactMetricSizeClass(displayValue)}`}
-        title={displayValue}
-      >
-        {displayValue}
-      </div>
-    </div>
-  );
-}
-
-function metricValueSizeClass(value: string): string {
-  if (value.length >= 8) return "text-[clamp(0.72rem,12cqw,1.2rem)]";
-  if (value.length >= 7) return "text-[clamp(0.78rem,14cqw,1.35rem)]";
-  if (value.length >= 6) return "text-[clamp(0.84rem,15cqw,1.55rem)]";
-  return "text-[clamp(0.9rem,17cqw,1.875rem)]";
-}
-
-function compactMetricSizeClass(value: string): string {
-  if (value.length >= 12) return "text-[clamp(0.48rem,6cqw,0.68rem)]";
-  if (value.length >= 9) return "text-[clamp(0.5rem,7cqw,0.72rem)]";
-  return "text-[clamp(0.62rem,10cqw,0.95rem)]";
 }
 
 function StatusDot({ running, loading }: { running: boolean; loading?: boolean }) {
