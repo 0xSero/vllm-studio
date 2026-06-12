@@ -32,6 +32,10 @@ import {
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/ui/icons";
 import { MarkdownContent } from "@/ui/markdown-content";
 import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
+import {
+  ScreencastSurface,
+  type BrowserPaneState,
+} from "@/features/agent/ui/agent-browser-screencast";
 
 export type WebviewElement = HTMLElement & {
   goBack: () => void;
@@ -85,7 +89,11 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
 ) {
   const webviewRef = useRef<WebviewElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [readingMode, setReadingMode] = useState(!isElectron);
+  // Live mode is the server-side screencast; it is the default everywhere and
+  // falls back to reading mode only when the host has no Chromium.
+  const [readingMode, setReadingMode] = useState(false);
+  const [liveUnavailable, setLiveUnavailable] = useState<string | null>(null);
+  const [navState, setNavState] = useState<BrowserPaneState | null>(null);
   const [readable, setReadable] = useState<ReadablePage | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
   const [readingLoading, setReadingLoading] = useState(false);
@@ -148,13 +156,16 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     onErrorChange: setLocalSitesError,
   });
 
+  const postLiveVerb = useCallback((verb: "back" | "forward" | "reload") => {
+    void fetch(`/api/agent/browser/${verb}`, { method: "POST" }).catch(() => undefined);
+  }, []);
   const handleBack = () => {
     if (readingMode) return;
-    if (isElectron) webviewRef.current?.goBack();
+    postLiveVerb("back");
   };
   const handleForward = () => {
     if (readingMode) return;
-    if (isElectron) webviewRef.current?.goForward();
+    postLiveVerb("forward");
   };
   const handleReload = () => {
     if (showStartPage) {
@@ -177,11 +188,7 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
       void fetchReadable(url);
       return;
     }
-    if (isElectron) webviewRef.current?.reload();
-    else if (iframeRef.current) {
-      const current = iframeRef.current.src;
-      iframeRef.current.src = current;
-    }
+    postLiveVerb("reload");
   };
   const navigateFromBrowser = (value: string) => {
     const clean = value.trim();
@@ -203,7 +210,7 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
         <button
           type="button"
           onClick={handleBack}
-          disabled={readingMode}
+          disabled={readingMode || navState?.canGoBack === false}
           className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg) disabled:opacity-30"
           title="Back"
           aria-label="Back"
@@ -213,7 +220,7 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
         <button
           type="button"
           onClick={handleForward}
-          disabled={readingMode}
+          disabled={readingMode || navState?.canGoForward === false}
           className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg) disabled:opacity-30"
           title="Forward"
           aria-label="Forward"
@@ -239,13 +246,23 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
         />
         <button
           type="button"
-          onClick={() => setReadingMode((value) => !value)}
-          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide ${
+          onClick={() => {
+            if (liveUnavailable && readingMode) return;
+            setReadingMode((value) => !value);
+          }}
+          disabled={Boolean(liveUnavailable && readingMode)}
+          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide disabled:opacity-40 ${
             readingMode
               ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
               : "border-(--border) text-(--dim) hover:text-(--fg)"
           }`}
-          title={readingMode ? "Switch to live view" : "Switch to reading mode"}
+          title={
+            liveUnavailable && readingMode
+              ? `Live view unavailable: ${liveUnavailable}`
+              : readingMode
+                ? "Switch to live view"
+                : "Switch to reading mode"
+          }
         >
           {readingMode ? "Reader" : "Live"}
         </button>
@@ -291,33 +308,17 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
             loading={readingLoading}
             onLinkClick={onNavigate}
           />
-        ) : isElectron ? (
-          <>
-            {}
-            {(() => {
-              type AnyTag = "webview";
-              const Tag = "webview" as AnyTag;
-              return (
-                <Tag
-                  ref={(node: WebviewElement | null) => {
-                    webviewRef.current = node;
-                  }}
-                  src={url}
-                  // @ts-expect-error — Electron-specific attribute.
-                  allowpopups="true"
-                  className="size-full"
-                  style={{ width: "100%", height: "100%", display: "flex" }}
-                />
-              );
-            })()}
-          </>
         ) : (
-          <iframe
-            ref={iframeRef}
-            src={url}
-            className="size-full bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="Agent browser"
+          <ScreencastSurface
+            url={url}
+            onState={(state) => {
+              setNavState(state);
+              if (state.url && state.url !== url) onLocationChange(state.url);
+            }}
+            onUnavailable={(error) => {
+              setLiveUnavailable(error);
+              setReadingMode(true);
+            }}
           />
         )}
       </div>
@@ -376,7 +377,7 @@ function BrowserContextStrip({
           />
           <ContextRow
             label="type"
-            value={page?.contentType || (readingMode ? "unknown" : "live webview")}
+            value={page?.contentType || (readingMode ? "unknown" : "live browser")}
           />
         </dl>
       ) : null}

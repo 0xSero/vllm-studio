@@ -11,12 +11,22 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   // Keep the Pi SDK out of the webpack/turbopack bundle so it loads from
   // node_modules at runtime (Node-only deps, dynamic jiti loader, etc.).
+  //
+  // `ws` (CDP browser host transport) must also stay external: when webpack
+  // bundles it, the late `module.exports.mask = …` reassignment in ws's
+  // buffer-util.js (the bufferutil-optional path) is mangled so the frame masker
+  // resolves to a non-function. Outgoing WebSocket frames then either corrupt on
+  // the wire (Chromium replies JSON-RPC -32700) or throw "b.mask is not a
+  // function", and every Page.startScreencast / Input.dispatchMouseEvent call
+  // hangs until it times out. Loaded from node_modules, the unbundled masker
+  // works and the screencast/input paths are solid.
   serverExternalPackages: [
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",
     "@earendil-works/pi-ai",
     "@earendil-works/pi-tui",
     "jiti",
+    "ws",
   ],
   turbopack: {
     root: path.join(__dirname, ".."),

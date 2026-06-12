@@ -91,6 +91,29 @@ export function sanitizePublicBrowserUrl(raw: string): string | null {
   return isBlockedPublicHost(host) ? null : url.toString();
 }
 
+function isLoopbackHost(host: string): boolean {
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  const octets = ipv4Octets(host);
+  if (octets) return octets[0] === 127;
+  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
+  return normalized === "::1";
+}
+
+/**
+ * The browser pane's navigate rules: public URLs plus loopback — the pane
+ * exists to preview the dev servers the agent is running on this machine.
+ * Other private ranges stay blocked (the agent drives this browser; don't
+ * hand it the LAN).
+ */
+export function sanitizeBrowserPaneUrl(raw: string): string | null {
+  const url = parseUrl(raw);
+  if (!url) return null;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  const host = url.hostname.toLowerCase();
+  if (isLoopbackHost(host)) return url.toString();
+  return isBlockedPublicHost(host) ? null : url.toString();
+}
+
 export function sanitizeLocalFileUrl(raw: string): string | null {
   const url = parseUrl(raw);
   if (!url || url.protocol !== "file:") return null;
