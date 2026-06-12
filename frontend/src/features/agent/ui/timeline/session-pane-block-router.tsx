@@ -20,7 +20,12 @@ import type {
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
-import { classifyTool } from "@/features/agent/ui/timeline/tool-metadata";
+import {
+  classifyTool,
+  compactToolText,
+  toolArg,
+  toolVerb,
+} from "@/features/agent/ui/timeline/tool-metadata";
 
 type ActivitySegment =
   | { kind: "reasoning"; id: string; blocks: ThinkingBlock[] }
@@ -120,11 +125,11 @@ function SessionPaneBlockRouterInner({
   onForkSession?: () => void;
 }) {
   if (message.role === "user") {
-    // Codex user turns: a quiet foreground-tinted block in the same reading
-    // column — no right-alignment, no chrome, capped at 80ch.
+    // User turns: a quiet foreground-tinted block sized to its content,
+    // capped at 60% of the composer column.
     return (
       <article className="flex justify-start">
-        <div className="min-w-0 max-w-[80ch] rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
+        <div className="min-w-0 max-w-[60%] rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
             <div className="mt-2 grid gap-2">
@@ -397,6 +402,10 @@ function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] {
   return items;
 }
 
+/* Every run of thoughts+tools between two content blocks collapses into ONE
+   disclosure. Collapsed it reads as a Codex-style summary ("Ran 6 commands ·
+   read 3 files"); while streaming it shows a shimmering "Working" plus a live
+   preview of the current action. Expanding reveals the individual rows. */
 const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments,
   live,
@@ -405,23 +414,117 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   live: boolean;
 }) {
   const items = useMemo(() => buildActivityItems(segments), [segments]);
+  const [expanded, setExpanded] = useState(false);
+  const working =
+    live &&
+    segments.some(
+      (segment) =>
+        segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
+    );
+  const summary = useMemo(() => summarizeActivity(segments), [segments]);
+  const preview = live ? activityPreview(segments) : null;
+
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      {items.map((item, index) => {
-        const isLastItem = index === items.length - 1;
-        if (item.kind === "reasoning") {
-          return (
-            <ReasoningDisclosure key={item.id} block={item.block} active={live && isLastItem} />
-          );
-        }
-        if (item.kind === "explore") {
-          return <ExploreAccordion key={item.id} blocks={item.blocks} live={live} />;
-        }
-        return <ToolBlockView key={item.id} block={item.block} />;
-      })}
-    </div>
+    <details className="group min-w-0" open={expanded}>
+      <summary
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        onClick={(event) => {
+          event.preventDefault();
+          setExpanded((value) => !value);
+        }}
+      >
+        <span
+          className={`shrink-0 text-[13px] font-medium leading-5 ${
+            working || live ? "codex-shimmer-text" : "text-(--fg)/55"
+          }`}
+        >
+          {working || live ? "Working" : summary}
+        </span>
+        {!expanded && (working || live) && preview ? (
+          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--dim)/70">
+            {preview}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
+        <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        {items.map((item, index) => {
+          const isLastItem = index === items.length - 1;
+          if (item.kind === "reasoning") {
+            return (
+              <ReasoningDisclosure key={item.id} block={item.block} active={live && isLastItem} />
+            );
+          }
+          if (item.kind === "explore") {
+            return <ExploreAccordion key={item.id} blocks={item.blocks} live={live} />;
+          }
+          return <ToolBlockView key={item.id} block={item.block} />;
+        })}
+      </div>
+    </details>
   );
 });
+
+/* Codex's collapsed-turn summary: tool counts joined with " · ", first segment
+   capitalized — "Ran 3 commands · edited 2 files · searched 4 times". */
+function summarizeActivity(segments: ActivitySegment[]): string {
+  let thoughts = 0;
+  const counts: Record<string, number> = {};
+  for (const segment of segments) {
+    if (segment.kind === "reasoning") {
+      thoughts += segment.blocks.length;
+      continue;
+    }
+    for (const block of segment.blocks) {
+      const kind = classifyTool(block);
+      counts[kind] = (counts[kind] ?? 0) + 1;
+    }
+  }
+  const pieces: string[] = [];
+  const add = (count: number | undefined, verb: string, singular: string, plural: string) => {
+    if (!count) return;
+    pieces.push(`${verb} ${count} ${count === 1 ? singular : plural}`);
+  };
+  add(counts["exec"], "ran", "command", "commands");
+  add(counts["edit"], "edited", "file", "files");
+  add(counts["read"], "read", "file", "files");
+  add(counts["search"], "searched", "time", "times");
+  add(counts["browser"], "browsed", "page", "pages");
+  add(counts["generic"], "called", "tool", "tools");
+  if (pieces.length === 0) return thoughts > 0 ? "Thought" : "Worked";
+  const joined = pieces.join(" · ");
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
+}
+
+/* Latest in-flight action, for the live preview in the collapsed summary. */
+function activityPreview(segments: ActivitySegment[]): string | null {
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index];
+    if (!segment) continue;
+    if (segment.kind === "tools") {
+      const runningTool = [...segment.blocks].reverse().find((block) => block.status === "running");
+      const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
+      if (latestTool) {
+        const detail = toolArg(latestTool, [
+          "cmd",
+          "command",
+          "path",
+          "file_path",
+          "query",
+          "url",
+        ]);
+        return [toolVerb(latestTool), compactToolText(detail, 72)].filter(Boolean).join(" ");
+      }
+      continue;
+    }
+    const latestReasoning = segment.blocks[segment.blocks.length - 1];
+    const text = compactToolText(latestReasoning?.text, 72);
+    if (text) return text;
+  }
+  return null;
+}
 
 function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: boolean }) {
   return (
