@@ -6,8 +6,10 @@ import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 
+/* Codex elevated popover: translucent surface over backdrop blur, hairline
+   border, soft shadow — themed, so it works in both light and dark. */
 const CHAT_HEADER_MENU_CLASS =
-  "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
+  "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-lg border border-(--border) bg-(--surface-2)/95 p-1 text-xs text-(--fg) opacity-100 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md";
 
 export function AgentChatPaneHeader({
   title,
@@ -174,7 +176,7 @@ function HeaderMenuItem({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="block w-full rounded-sm px-2.5 py-1.5 text-left text-xs text-(--fg) hover:bg-[#2a2a2a] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+      className="block w-full rounded-sm px-2.5 py-1.5 text-left text-xs text-(--fg) hover:bg-(--active) disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       role="menuitem"
     >
       {children}

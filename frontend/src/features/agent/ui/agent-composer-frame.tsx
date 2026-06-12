@@ -153,12 +153,14 @@ export function AgentComposerFrame({
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
         className={cx(
-          "mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-2xl border border-(--border)/20 bg-(--sidebar-bg) transition-colors",
-          composerDragActive && "outline outline-1 outline-(--accent)/50",
+          // The Codex composer: a big-radius surface over a hairline border and
+          // a soft shadow — the most "designed" object in the pane.
+          "mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] border border-(--border)/60 bg-(--composer) shadow-[var(--composer-shadow)] transition-colors",
+          composerDragActive && "outline outline-1 outline-(--link)/50",
         )}
       >
         {composerDragActive ? (
-          <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--accent)">
+          <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--link)">
             Drop files to attach to the next message.
           </div>
         ) : null}
@@ -198,14 +200,16 @@ export function AgentComposerFrame({
           onToggleCanvas={onToggleCanvas}
           onQueueMessage={onQueueMessage}
           onAbortTurn={onAbortTurn}
+          modelSelector={modelSelector}
         />
       </div>
+      {/* Codex keeps the model picker inside the composer footer; the status
+          line below carries workspace context (cwd, branch, diff, tokens). */}
       <AgentComposerStatusBar
         cwd={cwd}
         gitBranch={gitBranch}
         gitSummary={gitSummary}
         onInitGit={onInitGit}
-        modelSelector={modelSelector}
         currentContextTokens={currentContextTokens}
         contextWindow={contextWindow}
         onOpenStatus={onOpenStatus}

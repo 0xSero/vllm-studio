@@ -111,15 +111,12 @@ export function Timeline({
             </div>
           );
         })}
-        {running ? (
+        {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
+          // Codex waiting state: a cadenced text shimmer, no spinner. Only shown
+          // before the assistant produces its first block — once blocks stream,
+          // the activity rows carry their own live states.
           <div className="pt-6 pb-4 [overflow-anchor:none]">
-            <div className="flex items-center gap-2.5 text-[length:var(--fs-xs)] leading-4 text-(--dim)">
-              <span className="relative inline-flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--accent)/40 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-(--accent)/60" />
-              </span>
-              <span className="animate-pulse">Thinking…</span>
-            </div>
+            <span className="codex-shimmer-text text-[13px] font-medium leading-5">Thinking</span>
           </div>
         ) : null}
         <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />

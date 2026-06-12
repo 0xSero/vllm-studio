@@ -1,5 +1,13 @@
-import { memo, useMemo, useState, type ReactNode } from "react";
-import { Copy, GitFork, Search } from "lucide-react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
+import { ChevronRight, Copy, GitFork } from "lucide-react";
 import type {
   AssistantBlock,
   ChatMessage,
@@ -12,13 +20,7 @@ import type {
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
-import {
-  classifyTool,
-  compactToolText,
-  fileBasename,
-  humanizeToolName,
-  toolArg,
-} from "@/features/agent/ui/timeline/tool-metadata";
+import { classifyTool } from "@/features/agent/ui/timeline/tool-metadata";
 
 type ActivitySegment =
   | { kind: "reasoning"; id: string; blocks: ThinkingBlock[] }
@@ -118,9 +120,11 @@ function SessionPaneBlockRouterInner({
   onForkSession?: () => void;
 }) {
   if (message.role === "user") {
+    // Codex user turns: a quiet foreground-tinted block in the same reading
+    // column — no right-alignment, no chrome, capped at 80ch.
     return (
-      <article className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-(--surface-2)/70 px-3.5 py-2 text-[length:var(--fs-xs)] leading-[1.55] tracking-normal text-(--fg)/95">
+      <article className="flex justify-start">
+        <div className="min-w-0 max-w-[80ch] rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
             <div className="mt-2 grid gap-2">
@@ -170,35 +174,118 @@ const AssistantBlocks = memo(function AssistantBlocks({
     [routedBlocks],
   );
   const showActions = !running && copyText.trim().length > 0 && lastContentIndex >= 0;
+  const hasActivity = routedBlocks.some((item) => item.kind === "activity-group");
+  // The work phase ends the moment the final response starts streaming.
+  const working = live && lastContentIndex === -1;
+
+  if (routedBlocks.length === 0) {
+    return <article className="min-w-0" />;
+  }
+
+  const nodes: ReactNode[] = [];
+  routedBlocks.forEach((item, index) => {
+    if (index === lastContentIndex && hasActivity) {
+      nodes.push(
+        <WorkedForDivider key="turn-divider" working={working} hasActivity={hasActivity} />,
+      );
+    }
+    if (item.kind === "activity-group") {
+      nodes.push(
+        <AssistantActivityGroup
+          key={item.id}
+          segments={item.segments}
+          live={live && index === routedBlocks.length - 1}
+        />,
+      );
+      return;
+    }
+    if (item.kind === "content") {
+      nodes.push(
+        <div key={item.block.id} className="min-w-0">
+          <MemoContentBlock block={item.block} />
+          {showActions && index === lastContentIndex ? (
+            <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
+          ) : null}
+        </div>,
+      );
+      return;
+    }
+    nodes.push(<MemoEventBlock key={item.block.id} block={item.block} />);
+  });
+  // No content yet: the divider ticks "Working for…" below the activity.
+  if (lastContentIndex === -1 && live && hasActivity) {
+    nodes.push(<WorkedForDivider key="turn-divider" working={working} hasActivity={hasActivity} />);
+  }
 
   return (
     <article className="min-w-0">
-      {routedBlocks.length === 0 ? null : (
-        <div className="flex flex-col gap-3.5">
-          {routedBlocks.map((item, index) => {
-            if (item.kind === "activity-group") {
-              return <AssistantActivityGroup key={item.id} segments={item.segments} live={live} />;
-            }
-            if (item.kind === "content") {
-              return (
-                <div key={item.block.id} className="min-w-0">
-                  <MemoContentBlock block={item.block} />
-                  {showActions && index === lastContentIndex ? (
-                    <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
-                  ) : null}
-                </div>
-              );
-            }
-            return <MemoEventBlock key={item.block.id} block={item.block} />;
-          })}
-        </div>
-      )}
+      <div className="flex flex-col gap-3">{nodes}</div>
     </article>
   );
 });
 
 export const SessionPaneBlockRouter = memo(SessionPaneBlockRouterInner);
 SessionPaneBlockRouter.displayName = "SessionPaneBlockRouter";
+
+/* ── Turn status divider ──────────────────────────────────────────────────
+   Codex separates agent activity from the final response with a labeled rule:
+   "Working for 1m 23s" while streaming, frozen to "Worked for 1m 23s" once the
+   response begins. Durations only exist for turns observed live in this mount —
+   history reloads render without the divider, matching Codex's own fallback. */
+
+function useNowTicker(active: boolean): number {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!active) return () => undefined;
+      const id = window.setInterval(onStoreChange, 1_000);
+      return () => window.clearInterval(id);
+    },
+    [active],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => (active ? Math.floor(Date.now() / 1_000) : 0),
+    () => 0,
+  );
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1_000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem > 0 ? `${hours}h ${rem}m` : `${hours}h`;
+}
+
+function WorkedForDivider({ working, hasActivity }: { working: boolean; hasActivity: boolean }) {
+  // Refs (not state) so the start/end capture never triggers extra renders;
+  // both are write-once per mount.
+  const startRef = useRef<number | null>(null);
+  const endRef = useRef<number | null>(null);
+  if (working && startRef.current === null) startRef.current = Date.now();
+  if (!working && startRef.current !== null && endRef.current === null) {
+    endRef.current = Date.now();
+  }
+  useNowTicker(working);
+
+  if (startRef.current === null) return null;
+  const elapsedMs = (endRef.current ?? Date.now()) - startRef.current;
+  if (!hasActivity && elapsedMs < 2_000) return null;
+  const label = working
+    ? `Working for ${formatElapsed(elapsedMs)}`
+    : `Worked for ${formatElapsed(elapsedMs)}`;
+
+  return (
+    <div className="flex items-center gap-3 py-1 text-[length:var(--fs-sm)] text-(--fg)/35">
+      <span className="h-px flex-1 bg-(--border)/60" />
+      <span className={working ? "codex-shimmer-text" : undefined}>{label}</span>
+      <span className="h-px flex-1 bg-(--border)/60" />
+    </div>
+  );
+}
 
 function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachment }) {
   const size = formatAttachmentSize(attachment.size);
@@ -267,6 +354,49 @@ function formatAttachmentSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/* ── Activity rendering ───────────────────────────────────────────────────
+   Codex shows agent actions inline as one-line rows rather than hiding them
+   behind a single summary. Reasoning bursts become "Thinking"/"Thought"
+   disclosures; consecutive reads and searches compact into one "Explored"
+   accordion; everything else (commands, edits) stands on its own row. */
+
+type ActivityItem =
+  | { kind: "reasoning"; id: string; block: ThinkingBlock }
+  | { kind: "tool"; id: string; block: ToolBlock }
+  | { kind: "explore"; id: string; blocks: ToolBlock[] };
+
+function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] {
+  const items: ActivityItem[] = [];
+  for (const segment of segments) {
+    if (segment.kind === "reasoning") {
+      for (const block of segment.blocks) {
+        items.push({ kind: "reasoning", id: block.id, block });
+      }
+      continue;
+    }
+    let run: ToolBlock[] = [];
+    const flushRun = () => {
+      if (run.length >= 2) {
+        items.push({ kind: "explore", id: `explore-${run[0]?.id}`, blocks: run });
+      } else {
+        for (const block of run) items.push({ kind: "tool", id: block.id, block });
+      }
+      run = [];
+    };
+    for (const block of segment.blocks) {
+      const kind = classifyTool(block);
+      if (kind === "read" || kind === "search") {
+        run.push(block);
+        continue;
+      }
+      flushRun();
+      items.push({ kind: "tool", id: block.id, block });
+    }
+    flushRun();
+  }
+  return items;
+}
+
 const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments,
   live,
@@ -274,97 +404,83 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments: ActivitySegment[];
   live: boolean;
 }) {
-  // A tool only counts as "active" while the session is actually streaming.
-  // Once the turn ends, a block left in "running" (e.g. an errored call, or a
-  // stream that dropped its tool_execution_end) must not show a perpetual badge.
-  const hasActiveTool =
-    live &&
-    segments.some(
-      (segment) =>
-        segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
-    );
-  // Default collapsed: tool calls + reasoning are progress detail, not the
-  // primary signal. The summary row already shows what happened ("Explored 1
-  // search, read 2 files") plus a live "running" badge while a tool is in
-  // flight, so the timeline stays scannable. Users can click to expand.
-  const [expanded, setExpanded] = useState(false);
-  const preview = activityPreview(segments);
-
+  const items = useMemo(() => buildActivityItems(segments), [segments]);
   return (
-    <details className="group min-w-0 overflow-hidden" open={expanded}>
-      <summary
-        className="flex min-h-7 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1 text-[length:var(--fs-xs)] leading-4 text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)/80 [&::-webkit-details-marker]:hidden"
-        onClick={(event) => {
-          event.preventDefault();
-          setExpanded((value) => !value);
-        }}
-      >
-        <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)/50" />
-        <span className="shrink-0 font-medium text-(--fg)/50">{activityLabel(segments)}</span>
-        {!expanded ? (
-          <span
-            className={`agent-activity-preview min-w-0 flex-1 truncate text-(--dim)/50 ${hasActiveTool ? "agent-activity-preview-running" : ""}`}
-            data-preview={preview}
-          >
-            {preview}
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1" />
-        )}
-        {hasActiveTool ? (
-          <span className="shrink-0 text-[length:var(--fs-2xs)] font-medium text-(--accent)/60">
-            running
-          </span>
-        ) : null}
-      </summary>
-      {expanded ? (
-        <div
-          className="ml-3 mt-2 flex min-w-0 cursor-pointer flex-col gap-1.5 border-l border-(--border)/50 pl-3"
-          onClick={(event) => {
-            // Collapse when the user clicks anywhere in the reasoning area, but
-            // not when clicking a tool section (kept interactive) or when they
-            // were selecting text.
-            if (window.getSelection()?.toString()) return;
-            if ((event.target as HTMLElement).closest("[data-activity-tool]")) return;
-            setExpanded(false);
-          }}
-        >
-          {segments.flatMap(activitySegmentItems).map((item) => (
-            <ActivityTreeItem key={item.id} item={item} />
-          ))}
-        </div>
-      ) : null}
-    </details>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      {items.map((item, index) => {
+        const isLastItem = index === items.length - 1;
+        if (item.kind === "reasoning") {
+          return (
+            <ReasoningDisclosure key={item.id} block={item.block} active={live && isLastItem} />
+          );
+        }
+        if (item.kind === "explore") {
+          return <ExploreAccordion key={item.id} blocks={item.blocks} live={live} />;
+        }
+        return <ToolBlockView key={item.id} block={item.block} />;
+      })}
+    </div>
   );
 });
 
-type ActivityTreeItem =
-  | { kind: "reasoning"; id: string; block: ThinkingBlock }
-  | { kind: "tool"; id: string; block: ToolBlock };
+function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: boolean }) {
+  return (
+    <details className="group min-w-0">
+      <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden">
+        <span
+          className={`text-[13px] font-medium leading-5 ${
+            active ? "codex-shimmer-text" : "text-(--fg)/55"
+          }`}
+        >
+          {active ? "Thinking" : "Thought"}
+        </span>
+        <ChevronRight className="h-3 w-3 text-(--dim)/50 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="mb-1.5 ml-1.5 mt-1 min-w-0 whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[13px] leading-[1.6] text-(--fg)/60">
+        {block.text}
+      </div>
+    </details>
+  );
+}
 
-function activitySegmentItems(segment: ActivitySegment): ActivityTreeItem[] {
-  if (segment.kind === "reasoning") {
-    return segment.blocks.map((block) => ({ kind: "reasoning", id: block.id, block }));
+function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean }) {
+  const running = live && blocks.some((block) => block.status === "running");
+  const counts = exploreCounts(blocks);
+  return (
+    <details className="group min-w-0">
+      <summary className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden">
+        <span
+          className={`shrink-0 text-[13px] font-medium leading-5 ${
+            running ? "codex-shimmer-text" : "text-(--fg)/55"
+          }`}
+        >
+          {running ? "Exploring" : "Explored"}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-(--dim)/80">
+          {counts}
+        </span>
+        <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        {blocks.map((block) => (
+          <ToolBlockView key={block.id} block={block} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function exploreCounts(blocks: ToolBlock[]): string {
+  let files = 0;
+  let searches = 0;
+  for (const block of blocks) {
+    if (classifyTool(block) === "search") searches += 1;
+    else files += 1;
   }
-  return segment.blocks.map((block) => ({ kind: "tool", id: block.id, block }));
-}
-
-function ActivityTreeItem({ item }: { item: ActivityTreeItem }) {
-  if (item.kind === "reasoning") return <ReasoningLeaf block={item.block} />;
-  // Tool sections stay interactive: clicks here must not collapse the group.
-  return (
-    <div data-activity-tool onClick={(event) => event.stopPropagation()}>
-      <ToolBlockView block={item.block} />
-    </div>
-  );
-}
-
-function ReasoningLeaf({ block }: { block: ThinkingBlock }) {
-  return (
-    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap px-3 py-1.5 font-mono text-[length:var(--fs-xs)] leading-[1.6] text-(--dim)/80">
-      {block.text}
-    </pre>
-  );
+  const pieces: string[] = [];
+  if (files > 0) pieces.push(`${files} ${files === 1 ? "file" : "files"}`);
+  if (searches > 0) pieces.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
+  return pieces.join(", ");
 }
 
 function assistantContentCopyText(blocks: AssistantBlock[]): string {
@@ -398,7 +514,7 @@ function AssistantMessageActions({
         <Copy className="h-3.5 w-3.5" />
       </AssistantActionButton>
       <AssistantActionButton
-        label="Fork session"
+        label="Fork from this point"
         onClick={() => onForkSession?.()}
         disabled={!onForkSession}
       >
@@ -435,102 +551,10 @@ function AssistantActionButton({
 
 function EventBlockView({ block }: { block: EventBlock }) {
   return (
-    <div className="flex items-center gap-3 py-2 text-[length:var(--fs-2xs)] text-(--dim)/70">
-      <span className="h-px flex-1 bg-(--border)/50" />
-      <span className="font-medium">{block.text}</span>
-      <span className="h-px flex-1 bg-(--border)/50" />
+    <div className="flex items-center gap-3 py-1 text-[length:var(--fs-sm)] text-(--fg)/35">
+      <span className="h-px flex-1 bg-(--border)/60" />
+      <span>{block.text}</span>
+      <span className="h-px flex-1 bg-(--border)/60" />
     </div>
   );
-}
-
-function activityLabel(segments: ActivitySegment[]): string {
-  const reasoningCount = segments
-    .filter((segment) => segment.kind === "reasoning")
-    .reduce((count, segment) => count + segment.blocks.length, 0);
-  const tools = segments
-    .filter((segment) => segment.kind === "tools")
-    .flatMap((segment) => segment.blocks);
-  const toolCount = tools.length;
-  const toolSummary = summarizeTools(tools);
-  const pieces = [];
-  if (reasoningCount > 0)
-    pieces.push(reasoningCount === 1 ? "Reasoned" : `${reasoningCount} reasoning`);
-  if (toolSummary) pieces.push(toolSummary);
-  if (!toolSummary && toolCount > 0) pieces.push(toolCount === 1 ? "1 tool" : `${toolCount} tools`);
-  return pieces.join(", ");
-}
-
-function summarizeTools(blocks: ToolBlock[]): string {
-  const counts = blocks.reduce<Record<string, number>>((acc, block) => {
-    const kind = classifyTool(block);
-    acc[kind] = (acc[kind] ?? 0) + 1;
-    return acc;
-  }, {});
-  return [
-    pluralAction(counts.search, "Explored", "search", "searches"),
-    pluralAction(counts.read, "read", "file", "files"),
-    pluralAction(counts.exec, "ran", "command", "commands"),
-    pluralAction(counts.edit, "edited", "file", "files"),
-    pluralAction(counts.browser, "used", "browser", "browser"),
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function pluralAction(
-  count: number | undefined,
-  verb: string,
-  singular: string,
-  plural: string,
-): string | null {
-  if (!count) return null;
-  return `${verb} ${count} ${count === 1 ? singular : plural}`;
-}
-
-function activityPreview(segments: ActivitySegment[]): string {
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index];
-    if (!segment) continue;
-    if (segment.kind === "tools") {
-      const runningTool = [...segment.blocks].reverse().find((block) => block.status === "running");
-      const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
-      if (latestTool) return toolPreview(latestTool);
-      continue;
-    }
-    const latestReasoning = segment.blocks[segment.blocks.length - 1];
-    const preview = latestReasoning ? compactToolText(latestReasoning.text, 96) : null;
-    if (preview) return preview;
-  }
-  return "";
-}
-
-function toolPreview(block: ToolBlock): string {
-  const path = toolArg(block, [
-    "path",
-    "file_path",
-    "filePath",
-    "file",
-    "filename",
-    "target_file",
-    "uri",
-    "ref_id",
-  ]);
-  const query = toolArg(block, ["query", "q", "pattern", "search", "search_query", "needle"]);
-  const command = toolArg(block, ["cmd", "command", "script", "shell", "input"]);
-  const basename = fileBasename(path);
-
-  switch (classifyTool(block)) {
-    case "edit":
-      return basename ? `edit ${basename}` : humanizeToolName(block.name);
-    case "read":
-      return basename ? `read ${basename}` : humanizeToolName(block.name);
-    case "search":
-      return compactToolText(query, 42) ? `search ${compactToolText(query, 42)}` : "search";
-    case "exec":
-      return compactToolText(command, 42) ?? "command";
-    case "browser":
-      return "browser";
-    default:
-      return humanizeToolName(block.name);
-  }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Code2, Loader2, Plus } from "lucide-react";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, SendIcon, StopIcon } from "@/ui/icons";
@@ -21,6 +21,7 @@ export function AgentComposerActions({
   onToggleCanvas,
   onQueueMessage,
   onAbortTurn,
+  modelSelector,
 }: {
   fileInputRef: RefObject<HTMLInputElement | null>;
   onAttachFiles: (files: FileList | null) => void;
@@ -37,6 +38,7 @@ export function AgentComposerActions({
   onToggleCanvas: () => void;
   onQueueMessage: () => void;
   onAbortTurn: () => void;
+  modelSelector?: ReactNode;
 }) {
   const inputHasText = Boolean(input.trim());
   const starting = status === "starting";
@@ -83,7 +85,7 @@ export function AgentComposerActions({
           type="button"
           onClick={onToggleBrowserBackend}
           aria-label={`Browser backend: ${browserBackendLabel}. Switch to ${browserBackendTarget}.`}
-          className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10px] uppercase tracking-normal text-(--dim) hover:bg-(--bg-soft) hover:text-(--fg)/85"
+          className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10px] uppercase tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)/85"
           title={
             browserBackend === "parchi"
               ? "Browser backend: Parchi relay. Click to use embedded panel."
@@ -107,6 +109,9 @@ export function AgentComposerActions({
       >
         <Code2 className="h-3.5 w-3.5" />
       </button>
+      {modelSelector ? (
+        <div className="agent-model-slot min-w-0 shrink">{modelSelector}</div>
+      ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {running ? (
           <>
@@ -137,13 +142,14 @@ export function AgentComposerActions({
                 </button>
               </>
             ) : null}
+            {/* Codex's morphing submit: while streaming the circle becomes Stop. */}
             <button
               type="button"
               onClick={onAbortTurn}
               disabled={starting}
-              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim) hover:text-(--fg) disabled:opacity-30 disabled:hover:text-(--dim)"
-              aria-label="Pause"
-              title="Pause (Esc)"
+              className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:opacity-30"
+              aria-label="Stop"
+              title="Stop (Esc)"
             >
               <StopIcon className="h-3 w-3" />
             </button>
@@ -152,7 +158,7 @@ export function AgentComposerActions({
           <button
             type="submit"
             disabled={(!inputHasText && attachmentsCount === 0) || readingAttachments}
-            className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim)/85 hover:text-(--fg)/85 disabled:opacity-30"
+            className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:opacity-25"
             aria-label="Send"
             title="Send (Enter) · Queue (Tab)"
           >

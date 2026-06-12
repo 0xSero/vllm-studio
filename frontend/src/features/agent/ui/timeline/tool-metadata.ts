@@ -145,3 +145,27 @@ export function classifyTool(block: ToolBlock): ToolKind {
   if (hasAnyNeedle(name, ["browser", "web", "open_url", "navigate"])) return "browser";
   return "generic";
 }
+
+/* Codex action rows morph tense with tool status: present participle while the
+   call is in flight ("Running", "Editing"), simple past once it lands ("Ran",
+   "Edited"). The verb is the emphasized part of the row; the detail stays muted. */
+export function toolVerb(block: ToolBlock): string {
+  const running = block.status === "running";
+  const name = block.name.toLowerCase();
+  switch (classifyTool(block)) {
+    case "edit":
+      if (hasAnyNeedle(name, ["create", "write"])) return running ? "Creating" : "Created";
+      return running ? "Editing" : "Edited";
+    case "read":
+      if (hasAnyNeedle(name, ["list"])) return running ? "Listing" : "Listed";
+      return running ? "Reading" : "Read";
+    case "search":
+      return running ? "Searching" : "Searched";
+    case "exec":
+      return running ? "Running" : "Ran";
+    case "browser":
+      return running ? "Browsing" : "Browsed";
+    default:
+      return running ? "Calling" : "Called";
+  }
+}

@@ -28,8 +28,8 @@ export function AgentComposerTextArea({
       onPaste={onPaste}
       onChange={onChange}
       onKeyDown={onKeyDown}
-      placeholder=""
-      className="min-h-[44px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 py-2.5 text-[length:var(--fs-lg)] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/60"
+      placeholder="Ask anything. @ to mention files or plugins"
+      className="min-h-[52px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1.5 pt-3 text-[length:var(--fs-lg)] leading-[1.6] tracking-normal text-(--fg) outline-none placeholder:text-(--dim)/50"
     />
   );
 }

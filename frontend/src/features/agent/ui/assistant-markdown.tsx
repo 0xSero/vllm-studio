@@ -101,14 +101,14 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border)/40 bg-[#1e1e1e]">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border)/40 bg-[#181818]">
       <div className="flex h-8 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
         <span className="font-mono text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3.5 py-2.5 text-[length:var(--fs-xs)] leading-[1.6]">
+      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-4 py-3 text-[length:var(--codex-chat-code-font-size)] leading-[1.5]">
         <code className={codeClassName} dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -116,41 +116,43 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
 });
 FencedCodeBlock.displayName = "FencedCodeBlock";
 
+/* Codex prose scale: 14px body at 1.625 leading, headings 18/16/14/13
+   semibold, 12px between blocks. */
 const components: Components = {
   h1: ({ node: _n, ...props }) => (
     <h1
-      className="mb-2 mt-5 text-[length:var(--fs-xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-2 mt-5 text-[18px] font-semibold leading-tight tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h2: ({ node: _n, ...props }) => (
     <h2
-      className="mb-1.5 mt-4 text-[length:var(--fs-lg)] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-4 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h3: ({ node: _n, ...props }) => (
     <h3
-      className="mb-1.5 mt-3.5 text-[length:var(--fs-base)] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
+      className="mb-1.5 mt-3.5 text-[14px] font-semibold leading-snug tracking-[-0.01em] text-(--fg) first:mt-0"
       {...props}
     />
   ),
   h4: ({ node: _n, ...props }) => (
-    <h4
-      className="mb-1 mt-3 text-[length:var(--fs-md)] font-semibold leading-snug text-(--fg)"
-      {...props}
-    />
+    <h4 className="mb-1 mt-3 text-[13px] font-semibold leading-snug text-(--fg)" {...props} />
   ),
   p: ({ node: _n, ...props }) => (
     <p
-      className="my-2.5 max-w-full break-words text-[length:var(--fs-md)] leading-[1.6] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
+      className="my-3 max-w-full break-words text-[length:var(--codex-chat-font-size)] leading-[1.625] tracking-normal first:mt-0 last:mb-0 [overflow-wrap:anywhere]"
       {...props}
     />
   ),
-  ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-5" {...props} />,
-  ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-5" {...props} />,
+  ul: ({ node: _n, ...props }) => <ul className="my-2 list-disc pl-4" {...props} />,
+  ol: ({ node: _n, ...props }) => <ol className="my-2 list-decimal pl-4" {...props} />,
   li: ({ node: _n, ...props }) => (
-    <li className="text-[length:var(--fs-md)] leading-[1.6] tracking-normal" {...props} />
+    <li
+      className="text-[length:var(--codex-chat-font-size)] leading-[1.625] tracking-normal"
+      {...props}
+    />
   ),
   code: ({ node: _n, className, children, ...props }) => {
     const isBlock = typeof className === "string" && /\blanguage-/.test(className);
@@ -163,7 +165,7 @@ const components: Components = {
     }
     return (
       <code
-        className="rounded-md bg-(--surface-2)/60 px-[5px] py-[1px] font-mono text-[length:var(--fs-sm)] leading-[16px] text-(--fg)/85 [overflow-wrap:anywhere]"
+        className="rounded-[var(--rad-sm)] bg-(--fg)/10 px-1.5 py-0.5 font-mono text-[length:var(--codex-chat-code-font-size)] leading-[1.4] text-(--fg)/88 [overflow-wrap:anywhere]"
         {...props}
       >
         {children}
@@ -185,11 +187,11 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="text-(--accent) underline underline-offset-2 hover:opacity-80"
+      className="text-(--link) underline underline-offset-2 hover:opacity-80"
     />
   ),
   blockquote: ({ node: _n, ...props }) => (
-    <blockquote className="my-2 border-l-2 border-(--border) pl-3 italic text-(--dim)" {...props} />
+    <blockquote className="my-3 border-l-2 border-(--separator) pl-4 text-(--fg)/65" {...props} />
   ),
   hr: ({ node: _n, ...props }) => <hr className="my-3 border-(--border)" {...props} />,
   // Cells/rows are styled entirely via `.chat-markdown` in chat.css; only the

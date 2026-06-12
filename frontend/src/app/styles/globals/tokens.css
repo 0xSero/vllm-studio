@@ -7,34 +7,38 @@
    Design philosophy: quiet, grayscale-first, low-saturation. Accents are
    pulled from the foreground ramp itself so the UI never screams. */
 :root {
-  /* Core surfaces — light mode (quiet, clean, no warm tint) */
-  --bg: #fafafa;
-  --fg: #111111;
-  --dim: #666666;
-  --surface: #f3f3f3;
-  --surface-2: #ececec;
+  /* Core surfaces — light mode. Values mirror the Codex desktop light theme:
+     pure-white editor canvas, near-white rail, gray-50/100 surface steps. */
+  --bg: #ffffff;
+  --fg: #0d0d0d;
+  --dim: #5d5d5d;
+  --surface: #f9f9f9;
+  --surface-2: #ededed;
   --surface-3: #e3e3e3;
-  --rail: #f7f7f7;
+  --rail: #fcfcfc;
   --agent-bg: var(--bg);
   --sidebar-bg: var(--rail);
 
-  --border: rgba(0, 0, 0, 0.06);
-  --separator: rgba(0, 0, 0, 0.09);
+  /* Codex separates panes with ~8% foreground hairlines, 12% for heavy rules */
+  --border: rgba(0, 0, 0, 0.08);
+  --separator: rgba(0, 0, 0, 0.12);
 
   --hover: rgba(0, 0, 0, 0.04);
   --active: rgba(0, 0, 0, 0.07);
-  --composer: var(--sidebar-bg);
-  --composer-footer: var(--sidebar-bg);
+  --composer: var(--bg);
+  --composer-footer: var(--bg);
 
-  /* Accents — pulled from the gray ramp, extremely quiet */
+  /* Accents — grayscale ramp plus the single sanctioned chroma: Codex blue.
+     Everything else stays monochrome so the one color reads as meaning. */
   --accent: #1a1a1a;
   --hl1: #525252;
   --hl2: #404040;
   --hl3: #616161;
-  --err: #b34040;
-  /* Reference accent — the one sanctioned spot of color, used by file/URL
-     chips inside chat content so references read as actionable. */
-  --link: #2f6fdb;
+  --err: #e02e2a;
+  --ok: #00a240;
+  --warn: #e25507;
+  /* Reference accent — links, file/URL chips, focus, live status. */
+  --link: #0169cc;
 
   /* Density / dimensions */
   --sidebar-w: 250px;
@@ -42,9 +46,11 @@
   --row-h: 28px;
   --row-h-sm: 24px;
   --row-radius: var(--rad-md);
-  --composer-w: 560px;
-  --thread-w: 532px;
-  --composer-radius: 14px;
+  /* Codex thread geometry: 48rem (768px) centered reading column; the
+     composer spans the same column and wears a 24px squircle-ish radius. */
+  --composer-w: 768px;
+  --thread-w: 768px;
+  --composer-radius: var(--rad-3xl);
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
 
   /* Typography */
@@ -85,13 +91,16 @@
   --fs-4xl: calc(24px * var(--ui-scale));
   --fs-display: calc(34px * var(--ui-scale));
 
-  /* Radius ramp — proportional to --radius-base */
+  /* Radius ramp — proportional to --radius-base. Steps track Codex's scale
+     (md 10, lg 12.5, xl 15, 2xl 20, 3xl 25 at base 8). */
   --rad-2xs: calc(var(--radius-base) * 0.25);
   --rad-xs: calc(var(--radius-base) * 0.5);
   --rad-sm: calc(var(--radius-base) * 0.75);
   --rad-md: var(--radius-base);
   --rad-lg: calc(var(--radius-base) * 1.3);
   --rad-xl: calc(var(--radius-base) * 1.75);
+  --rad-2xl: calc(var(--radius-base) * 2.5);
+  --rad-3xl: calc(var(--radius-base) * 3);
   --rad-full: 9999px;
 
   /* UI adapter tokens
@@ -141,43 +150,45 @@
 
 @media (min-width: 1024px) {
   :root {
-    --composer-w: 560px;
-    --thread-w: 532px;
+    --composer-w: 768px;
+    --thread-w: 768px;
   }
 }
 
 :root[data-theme="omlx-dark"],
 .dark {
-  /* Codex-inspired gray ladder, quieter than the original app.
-     Ladder: #0d0d0d #121212 #181818 #212121 #282828 #303030
-             #414141 #5d5d5d #8a8a8a #afafaf #d6d6d6 */
-  --bg: #121212;
-  --fg: #e0e0e0;
-  --dim: #888888;
+  /* Codex dark, exact: editor canvas #111111, sidebar #131313 — surfaces sit
+     only two luminance steps apart so panes divide by contrast, not lines.
+     Gray ladder: #0d0d0d #111111 #131313 #181818 #212121 #282828 #303030
+                  #414141 #4f4f4f #5d5d5d #8f8f8f #afafaf */
+  --bg: #111111;
+  --fg: #fcfcfc;
+  --dim: #8f8f8f;
   --surface: #181818;
   --surface-2: #212121;
   --surface-3: #282828;
-  --rail: #0d0d0d;
-  --agent-bg: var(--rail);
-  --sidebar-bg: var(--bg);
+  --rail: #131313;
+  --agent-bg: var(--bg);
+  --sidebar-bg: var(--rail);
 
-  --border: rgba(255, 255, 255, 0.06);
-  --separator: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.08);
+  --separator: rgba(255, 255, 255, 0.12);
 
   --hover: rgba(255, 255, 255, 0.05);
   --active: rgba(255, 255, 255, 0.08);
-  --composer: var(--sidebar-bg);
-  --composer-footer: var(--sidebar-bg);
+  --composer: var(--surface);
+  --composer-footer: var(--surface);
 
   /* Accents — grayscale only, no colored noise */
   --accent: #d6d6d6;
   --hl1: #5d5d5d;
   --hl2: #414141;
   --hl3: #303030;
-  --err: #a85050;
-  /* Muted blue for reference chips — visible against the dark ladder without
-     screaming. */
-  --link: #6ea8fe;
+  --err: #ff6764;
+  --ok: #40c977;
+  --warn: #ff8549;
+  /* Codex blue, one step up the ramp for dark-canvas legibility. */
+  --link: #339cff;
 
   --composer-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
 }
@@ -211,6 +222,8 @@
   --radius-md: var(--rad-md);
   --radius-lg: var(--rad-lg);
   --radius-xl: var(--rad-xl);
+  --radius-2xl: var(--rad-2xl);
+  --radius-3xl: var(--rad-3xl);
 
   /* Weights */
   --font-weight-normal: var(--weight-normal);
