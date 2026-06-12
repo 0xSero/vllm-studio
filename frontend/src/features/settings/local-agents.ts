@@ -1,20 +1,18 @@
 /**
  * Server-only support for attaching a vLLM Studio model to locally installed
- * coding-agent CLIs (pi, opencode, droid). Detection inspects well-known
+ * coding-agent CLIs (pi, opencode, droid, hermes). Detection inspects well-known
  * config directories under a given home dir; attachment merges a provider /
  * model entry into each agent's own config file, preserving everything else
  * in the file and backing the file up before the first modification.
- *
- * This module is a leaf: node builtins only, no SDK imports, so the e2e
- * harness can load it directly under tsx.
  */
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import YAML from "yaml";
 
-export type LocalAgentId = "pi" | "opencode" | "droid";
+export type LocalAgentId = "pi" | "opencode" | "droid" | "hermes";
 
-export const LOCAL_AGENT_IDS: readonly LocalAgentId[] = ["pi", "opencode", "droid"];
+export const LOCAL_AGENT_IDS: readonly LocalAgentId[] = ["pi", "opencode", "droid", "hermes"];
 
 export interface LocalAgentTarget {
   agent: LocalAgentId;
@@ -99,11 +97,30 @@ async function readJsonFile(
 
 const piConfigPath = (home: string): string => path.join(home, ".pi", "agent", "models.json");
 const droidConfigPath = (home: string): string => path.join(home, ".factory", "settings.json");
+const hermesConfigPath = (home: string): string => path.join(home, ".hermes", "config.yaml");
 
 const opencodeCandidatePaths = (home: string): { xdg: string; dot: string } => ({
   xdg: path.join(home, ".config", "opencode", "opencode.json"),
   dot: path.join(home, ".opencode", "config.json"),
 });
+
+async function readYamlFile(
+  file: string,
+): Promise<{ exists: boolean; document?: YAML.Document; error?: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf-8");
+  } catch {
+    return { exists: false };
+  }
+  try {
+    const document = YAML.parseDocument(raw);
+    return { exists: true, document };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { exists: true, error: `${file} is not valid YAML (${message}); refusing to modify it` };
+  }
+}
 
 /**
  * Pick the opencode config file to write. Prefers an existing file whose
@@ -132,6 +149,10 @@ async function resolveOpencodeConfigPath(home: string, baseUrl?: string): Promis
   return dot;
 }
 
+function resolveHermesConfigPath(home: string): string {
+  return hermesConfigPath(home);
+}
+
 export async function detectLocalAgents(home: string): Promise<LocalAgentTarget[]> {
   const targets: LocalAgentTarget[] = [];
 
@@ -156,6 +177,16 @@ export async function detectLocalAgents(home: string): Promise<LocalAgentTarget[
     targets.push({
       agent: "droid",
       label: "droid (Factory)",
+      configPath,
+      exists: await pathExists(configPath),
+    });
+  }
+
+  if (await pathExists(path.join(home, ".hermes"))) {
+    const configPath = hermesConfigPath(home);
+    targets.push({
+      agent: "hermes",
+      label: "hermes",
       configPath,
       exists: await pathExists(configPath),
     });
@@ -291,6 +322,50 @@ function mergeDroidConfig(config: JsonRecord, model: LocalAgentModel): AttachAct
   return "added";
 }
 
+function mergeHermesConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
+  if (!Array.isArray(config["custom_models"])) config["custom_models"] = [];
+  const customModels = config["custom_models"] as unknown[];
+
+  const normaliseKey = (entry: unknown, key: "model" | "name") =>
+    isRecord(entry) && typeof entry[key] === "string" ? entry[key] : "";
+
+  const existing = customModels.find((entry) => {
+    if (!isRecord(entry)) return false;
+    const modelKey = normaliseKey(entry, "model");
+    const nameKey = normaliseKey(entry, "name");
+    return (
+      (modelKey === model.modelId || nameKey === model.modelId) &&
+      sameBaseUrl(entry["base_url"], model.baseUrl)
+    );
+  });
+  if (isRecord(existing)) {
+    existing["model"] = model.modelId;
+    existing["name"] = model.displayName;
+    existing["base_url"] = model.baseUrl;
+    existing["api_key"] = model.apiKey;
+    existing["provider"] = existing["provider"] ?? "custom";
+    if (model.reasoning) existing["reasoning_effort"] = "high";
+    return "updated";
+  }
+
+  const indexes = customModels
+    .filter(isRecord)
+    .map((entry) => entry["index"])
+    .filter((value): value is number => typeof value === "number");
+  const index = indexes.length > 0 ? Math.max(...indexes) + 1 : 0;
+  const entry: JsonRecord = {
+    name: model.displayName,
+    model: model.modelId,
+    base_url: model.baseUrl,
+    api_key: model.apiKey,
+    provider: "custom",
+    index,
+  };
+  if (model.reasoning) entry["reasoning_effort"] = "high";
+  customModels.push(entry);
+  return "added";
+}
+
 // --- write behavior ---
 
 function backupTimestamp(now: Date): string {
@@ -322,6 +397,15 @@ async function writeJsonAtomic(file: string, config: JsonRecord, mode: number): 
   await rename(tmp, file);
 }
 
+async function writeYamlAtomic(file: string, config: JsonRecord, mode: number): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${randomBytes(6).toString("hex")}`;
+  const yamlText = YAML.stringify(config, { indent: 2, lineWidth: 0 });
+  await writeFile(tmp, yamlText, { encoding: "utf-8", mode });
+  await chmod(tmp, mode);
+  await rename(tmp, file);
+}
+
 async function existingFileMode(file: string): Promise<number | null> {
   try {
     return (await stat(file)).mode & 0o777;
@@ -333,6 +417,7 @@ async function existingFileMode(file: string): Promise<number | null> {
 interface AgentAttachPlan {
   configPath: string;
   detected: boolean;
+  format: "json" | "yaml";
   /** Object to start from when the config file does not exist yet. */
   emptyConfig: () => JsonRecord;
   merge: (config: JsonRecord, model: LocalAgentModel) => AttachAction;
@@ -347,6 +432,7 @@ async function planFor(
     return {
       configPath: piConfigPath(home),
       detected: await pathExists(path.join(home, ".pi")),
+      format: "json",
       emptyConfig: () => ({ providers: {} }),
       merge: mergePiConfig,
     };
@@ -357,13 +443,24 @@ async function planFor(
     return {
       configPath: await resolveOpencodeConfigPath(home, model.baseUrl),
       detected,
+      format: "json",
       emptyConfig: () => ({ $schema: "https://opencode.ai/config.json" }),
       merge: mergeOpencodeConfig,
+    };
+  }
+  if (agent === "hermes") {
+    return {
+      configPath: hermesConfigPath(home),
+      detected: await pathExists(path.join(home, ".hermes")),
+      format: "yaml",
+      emptyConfig: () => ({ custom_models: [] }),
+      merge: mergeHermesConfig,
     };
   }
   return {
     configPath: droidConfigPath(home),
     detected: await pathExists(path.join(home, ".factory")),
+    format: "json",
     emptyConfig: () => ({ customModels: [] }),
     merge: mergeDroidConfig,
   };
@@ -375,12 +472,21 @@ async function attachToAgent(
   model: LocalAgentModel,
 ): Promise<AttachResult> {
   const plan = await planFor(agent, home, model);
-  const { configPath } = plan;
+  const { configPath, format } = plan;
   if (!plan.detected) {
     return { agent, ok: false, configPath, error: `${agent} is not installed (config directory not found)` };
   }
 
-  const file = await readJsonFile(configPath);
+  let file: { exists: boolean; config?: JsonRecord; error?: string };
+  if (format === "yaml") {
+    const yamlFile = await readYamlFile(configPath);
+    if (yamlFile.error) {
+      return { agent, ok: false, configPath, error: yamlFile.error };
+    }
+    file = { exists: yamlFile.exists, config: (yamlFile.document?.toJS() as JsonRecord | undefined) };
+  } else {
+    file = await readJsonFile(configPath);
+  }
   if (file.error) {
     return { agent, ok: false, configPath, error: file.error };
   }
@@ -394,7 +500,11 @@ async function attachToAgent(
   }
 
   const mode = file.exists ? ((await existingFileMode(configPath)) ?? 0o600) : 0o600;
-  await writeJsonAtomic(configPath, config, mode);
+  if (format === "yaml") {
+    await writeYamlAtomic(configPath, config, mode);
+  } else {
+    await writeJsonAtomic(configPath, config, mode);
+  }
 
   const action: AttachAction = file.exists ? mergeAction : "created-file";
   return { agent, ok: true, configPath, backupPath, action };

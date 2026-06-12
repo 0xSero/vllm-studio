@@ -1,6 +1,6 @@
 // E2E coverage for the "attach a model to local coding agents" core module.
 // Every test builds a throwaway fake home dir under os.tmpdir(); the user's
-// real ~/.pi / ~/.opencode / ~/.config/opencode / ~/.factory are never read
+// real ~/.pi / ~/.opencode / ~/.config/opencode / ~/.factory / ~/.hermes are never read
 // or written.
 import assert from "node:assert/strict";
 import {
@@ -49,13 +49,16 @@ function makeModel(overrides: Partial<LocalAgentModel> = {}): LocalAgentModel {
 }
 
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf-8"));
+const readYaml = (file: string) => JSON.parse(readFileSync(file, "utf-8")); // yaml output is still JSON-like
 
-test("detect: home with all three agents present, and a home with none", async () => {
+test("detect: home with all four agents present, and a home with none", async () => {
   const home = makeHome();
   mkdirSync(path.join(home, ".pi"), { recursive: true });
   mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
   mkdirSync(path.join(home, ".factory"), { recursive: true });
+  mkdirSync(path.join(home, ".hermes"), { recursive: true });
   writeFileSync(path.join(home, ".factory", "settings.json"), '{"customModels": []}\n');
+  writeFileSync(path.join(home, ".hermes", "config.yaml"), 'custom_models: []\n');
 
   const targets = await detectLocalAgents(home);
   assert.deepEqual(
@@ -64,6 +67,7 @@ test("detect: home with all three agents present, and a home with none", async (
       ["pi", path.join(home, ".pi", "agent", "models.json"), false],
       ["opencode", path.join(home, ".config", "opencode", "opencode.json"), false],
       ["droid", path.join(home, ".factory", "settings.json"), true],
+      ["hermes", path.join(home, ".hermes", "config.yaml"), true],
     ],
   );
 
@@ -156,6 +160,29 @@ test("pi: creates models.json with a vllm-studio provider when only ~/.pi exists
 
   // Atomic write must not leave tmp files behind.
   assert.deepEqual(readdirSync(path.join(home, ".pi", "agent")), ["models.json"]);
+});
+
+test("pi: writes image input for image-capable models", async () => {
+  const home = makeHome();
+  mkdirSync(path.join(home, ".pi"), { recursive: true });
+
+  const [result] = await attachModelToAgents({
+    home,
+    targets: ["pi"],
+    model: makeModel({
+      modelId: "step-3.7-flash",
+      displayName: "Step 3.7 Flash",
+      contextWindow: 262144,
+      maxTokens: 131072,
+      images: true,
+    }),
+  });
+  assert.equal(result.ok, true);
+
+  const configPath = path.join(home, ".pi", "agent", "models.json");
+  const model = readJson(configPath).providers["vllm-studio"].models[0];
+  assert.equal(model.id, "step-3.7-flash");
+  assert.deepEqual(model.input, ["text", "image"]);
 });
 
 test("opencode: adds a new provider and preserves every other key", async () => {
@@ -312,6 +339,38 @@ test("droid: appends with next index + slug id; re-attach updates in place", asy
   assert.equal(updated.maxContextLimit, 200000);
 });
 
+test("hermes: appends to custom_models and updates existing entry by model+base_url", async () => {
+  const home = makeHome();
+  mkdirSync(path.join(home, ".hermes"), { recursive: true });
+  const configPath = path.join(home, ".hermes", "config.yaml");
+  const fixture = `model:\n  default: old-model\n  provider: custom\n  base_url: https://other.example.com/v1\n  api_key: sk-other\n  api_mode: anthropic_messages\n  extra_headers: null\ncustom_models:\n  - name: Old Model\n    model: old-model\n    base_url: https://other.example.com/v1\n    api_key: sk-other\n    provider: openai\n    reasoning_effort: medium\n    index: 0\n`;
+  writeFileSync(configPath, fixture);
+
+  const [result] = await attachModelToAgents({ home, targets: ["hermes"], model: makeModel() });
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "added");
+
+  const written = readFileSync(configPath, "utf-8");
+  assert.ok(written.includes("name: HomeLab DeepSeek-V4-Flash"));
+  assert.ok(written.includes("model: deepseek-v4-flash"));
+  assert.ok(written.includes("base_url: https://api.homelabai.org/v1"));
+  assert.ok(written.includes("api_key: sk-studio-key"));
+  assert.ok(written.includes("provider: custom"));
+  assert.ok(written.includes("reasoning_effort: high"));
+  assert.ok(written.includes("index: 1"));
+  assert.ok(written.includes("index: 0"), "old entry preserved");
+
+  // Re-attach same model: updated in place, no duplicate.
+  const [second] = await attachModelToAgents({ home, targets: ["hermes"], model: makeModel() });
+  assert.equal(second.ok, true);
+  assert.equal(second.action, "updated");
+
+  const updated = readFileSync(configPath, "utf-8");
+  const match = updated.match(/name: HomeLab DeepSeek-V4-Flash[\s\S]*?index: (\d+)/);
+  assert.ok(match);
+  assert.equal(updated.match(/name: HomeLab DeepSeek-V4-Flash/g)?.length, 1, "no duplicate entry");
+});
+
 test("invalid JSON: that target fails, others succeed, broken file is untouched", async () => {
   const home = makeHome();
   const agentDir = path.join(home, ".pi", "agent");
@@ -345,7 +404,7 @@ test("targets that are not detected fail cleanly without touching the filesystem
 
   const results = await attachModelToAgents({
     home,
-    targets: ["pi", "opencode", "droid"],
+    targets: ["pi", "opencode", "droid", "hermes"],
     model: makeModel(),
   });
   assert.deepEqual(
@@ -354,6 +413,7 @@ test("targets that are not detected fail cleanly without touching the filesystem
       ["pi", false],
       ["opencode", false],
       ["droid", true],
+      ["hermes", false],
     ],
   );
   assert.match(results[0].error ?? "", /not installed/);

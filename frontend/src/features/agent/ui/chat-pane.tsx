@@ -261,6 +261,12 @@ export function ChatPane({
     lastAppliedComposerHeightRef.current = 0;
     lastComposerValueLengthRef.current = 0;
   }, []);
+  useComposerTextareaHeightSync({
+    value: activeTab?.input ?? "",
+    textareaRef,
+    lastAppliedComposerHeightRef,
+    lastComposerValueLengthRef,
+  });
   const { selectedPlugins, selectedSkills, selectedPromptTemplates, removeLoadedContext } =
     useComposerLoadedContext({ activeTab, tools });
 
@@ -1337,6 +1343,40 @@ function jsonOrNull<T>(url: string): Promise<T | null> {
   return fetch(url, { cache: "no-store" })
     .then((response) => (response.ok ? (response.json() as Promise<T>) : null))
     .catch(() => null);
+}
+
+function useComposerTextareaHeightSync({
+  value,
+  textareaRef,
+  lastAppliedComposerHeightRef,
+  lastComposerValueLengthRef,
+}: {
+  value: string;
+  textareaRef: RefObject<HTMLTextAreaElement | null>;
+  lastAppliedComposerHeightRef: MutableRefObject<number>;
+  lastComposerValueLengthRef: MutableRefObject<number>;
+}) {
+  const subscribeHeightSync = useCallback(() => {
+    const node = textareaRef.current;
+    if (!node) return () => undefined;
+
+    if (!value) {
+      node.style.height = "";
+      node.scrollTop = 0;
+      lastAppliedComposerHeightRef.current = 0;
+      lastComposerValueLengthRef.current = 0;
+      return () => undefined;
+    }
+
+    node.style.height = "auto";
+    const next = node.scrollHeight;
+    node.style.height = `${next}px`;
+    lastAppliedComposerHeightRef.current = next;
+    lastComposerValueLengthRef.current = value.length;
+    return () => undefined;
+  }, [lastAppliedComposerHeightRef, lastComposerValueLengthRef, textareaRef, value]);
+
+  useSyncExternalStore(subscribeHeightSync, getChatPaneSnapshot, getChatPaneSnapshot);
 }
 
 function useComposerTextareaBehavior({

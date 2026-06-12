@@ -2,8 +2,13 @@ import os from "node:os";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSettings } from "@/lib/api/api-settings";
 import { requireApiAccess } from "@/lib/auth/guard";
-import { createApiCore } from "@/lib/api/core";
+import { createApiCore, type ApiCore } from "@/lib/api/core";
 import type { RecipeWithStatus } from "@/lib/types";
+import {
+  inferVisionSupport,
+  normalizeOpenAIModels,
+  type OpenAIModelsResponse,
+} from "@/features/agent/models";
 import {
   attachModelToAgents,
   detectLocalAgents,
@@ -26,6 +31,22 @@ export async function GET() {
 const isLocalAgentId = (value: unknown): value is LocalAgentId =>
   typeof value === "string" && (LOCAL_AGENT_IDS as readonly string[]).includes(value);
 
+async function resolveModelImages(core: ApiCore, recipe: RecipeWithStatus, modelId: string) {
+  try {
+    const payload = await core.request<OpenAIModelsResponse>("/v1/models", {
+      timeout: 10_000,
+      retries: 0,
+    });
+    const model = normalizeOpenAIModels(payload).find((entry) => entry.id === modelId);
+    if (model) return model.vision;
+  } catch {
+    // Some controller targets may expose recipes before /v1/models is reachable.
+    // Fall back to the same stable name/path inference used by the agent model picker.
+  }
+
+  return inferVisionSupport(`${modelId} ${recipe.name} ${recipe.model_path}`);
+}
+
 export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
@@ -46,14 +67,14 @@ export async function POST(request: NextRequest) {
 
   const settings = await getApiSettings();
   const backendUrl = settings.backendUrl.replace(/\/+$/, "");
+  const core = createApiCore({
+    baseUrl: backendUrl,
+    useProxy: false,
+    apiKeyOverride: settings.apiKey,
+  });
 
   let recipes: RecipeWithStatus[];
   try {
-    const core = createApiCore({
-      baseUrl: backendUrl,
-      useProxy: false,
-      apiKeyOverride: settings.apiKey,
-    });
     const data = await core.request<RecipeWithStatus[]>("/recipes", {
       timeout: 10_000,
       retries: 0,
@@ -70,6 +91,7 @@ export async function POST(request: NextRequest) {
   if (!recipe) return jsonError(`Model not found: ${modelId}`, 404);
 
   const contextWindow = recipe.max_model_len || 131072;
+  const images = await resolveModelImages(core, recipe, modelId);
   try {
     const results = await attachModelToAgents({
       home: os.homedir(),
@@ -82,7 +104,7 @@ export async function POST(request: NextRequest) {
         contextWindow,
         maxTokens: Math.min(contextWindow, 131072),
         reasoning: true,
-        images: false,
+        images,
       },
     });
     return NextResponse.json({ results });

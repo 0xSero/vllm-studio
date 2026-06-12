@@ -21,6 +21,7 @@ import { parseAgentTurnCommandResult } from "@/features/agent/contracts";
 import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-state";
 import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
 import {
+  inferVisionSupport,
   modelsToPiModels,
   normalizeOpenAIModels,
 } from "@/features/agent/models";
@@ -1149,6 +1150,25 @@ test("nex n2 models infer vision support from sparse openai model rows", () => {
     ],
   });
 
+  assert.equal(model?.vision, true);
+  assert.deepEqual(modelsToPiModels(model ? [model] : [])[0]?.input, [
+    "text",
+    "image",
+  ]);
+});
+
+test("step 3.7 flash models infer vision support from sparse openai model rows", () => {
+  const [model] = normalizeOpenAIModels({
+    data: [
+      {
+        id: "step-3.7-flash",
+        object: "model",
+        max_model_len: 262_144,
+      },
+    ],
+  });
+
+  assert.equal(inferVisionSupport("step-3.7-flash"), true);
   assert.equal(model?.vision, true);
   assert.deepEqual(modelsToPiModels(model ? [model] : [])[0]?.input, [
     "text",
