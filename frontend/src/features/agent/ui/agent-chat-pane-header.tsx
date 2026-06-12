@@ -55,11 +55,11 @@ export function AgentChatPaneHeader({
   };
   return (
     <div
-      className={`grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden border-b border-(--border) py-0 pr-2 text-xs ${
+      className={`grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border) py-0 pr-2 text-xs ${
         sidebarCollapsed ? "pl-12" : "pl-2"
       }`}
     >
-      <div ref={ref} className="relative flex min-w-0 items-center gap-1.5 overflow-hidden">
+      <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
         {renaming ? (
           <input
             autoFocus
