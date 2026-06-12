@@ -74,12 +74,11 @@ export function Timeline({
     return (
       <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
         <div className="agent-thread-shell mx-auto flex flex-1">
-          <div className="flex flex-1 items-center justify-center text-center text-[length:var(--fs-4xl)] font-medium leading-[1.35] text-(--fg)">
-            <p className="max-w-[680px]">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
               A dream is something you build for yourself.
-              <br />
-              Just talk to it.
             </p>
+            <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
           </div>
         </div>
       </div>
