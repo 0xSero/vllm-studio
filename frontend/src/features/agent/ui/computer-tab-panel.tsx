@@ -36,6 +36,7 @@ type ComputerTabPanelProps = {
   onCompactSession?: () => Promise<void>;
   onNavigateBrowser: (value: string) => void;
   onOpenSideChat: () => void;
+  onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
   registerBrowserHandle: (handle: AgentBrowserHandle | null) => void;
@@ -198,6 +199,7 @@ function FilesTab({ cwd }: { cwd: string | null }) {
 function ComputerLauncherPanel({
   activeTab,
   onOpenSideChat,
+  onOpenTerminal,
   tools,
 }: ComputerTabPanelProps & { activeTab: ComputerTab }) {
   const cards = [
@@ -234,7 +236,7 @@ function ComputerLauncherPanel({
       title: "Terminal",
       description: "Start an interactive shell",
       icon: TerminalSquare,
-      onClick: () => tools.setComputerTab("terminal"),
+      onClick: onOpenTerminal,
     },
   ] as const;
   return (

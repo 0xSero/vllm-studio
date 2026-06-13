@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ function expandTilde(target: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   let body: unknown;
   try {
     body = await request.json();
