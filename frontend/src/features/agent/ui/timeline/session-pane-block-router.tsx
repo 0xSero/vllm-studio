@@ -126,10 +126,10 @@ function SessionPaneBlockRouterInner({
 }) {
   if (message.role === "user") {
     // User turns: a quiet foreground-tinted block sized to its content,
-    // capped at 60% of the composer column and anchored to the right edge.
+    // capped by the same composer-width column and anchored to its right edge.
     return (
       <article className="flex justify-end">
-        <div className="min-w-0 max-w-[60%] rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
+        <div className="min-w-0 max-w-full rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
             <div className="mt-2 grid gap-2">

@@ -72,6 +72,7 @@ import {
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
 import { Timeline } from "@/features/agent/ui/timeline/timeline";
+import { CloseIcon } from "@/ui/icons";
 export type {
   AssistantBlock,
   ChatMessage,
@@ -88,10 +89,13 @@ export { visibleQueuedMessages };
 
 const FINALIZATION_RETRY_ERROR_RE =
   /Model did not produce a valid final response\.?\s+Retrying finalization/i;
+const BENIGN_TRANSPORT_ERROR_RE = /^(?:terminated|abort(?:ed)?|network error|load failed)$/i;
 
 function visibleSessionError(error?: string): string {
   const value = error?.trim() ?? "";
-  return FINALIZATION_RETRY_ERROR_RE.test(value) ? "" : value;
+  return FINALIZATION_RETRY_ERROR_RE.test(value) || BENIGN_TRANSPORT_ERROR_RE.test(value)
+    ? ""
+    : value;
 }
 
 type Props = {
@@ -338,6 +342,10 @@ export function ChatPane({
     running: Boolean(running),
   });
   const visibleError = visibleSessionError(activeTab?.error);
+  const dismissVisibleError = useCallback(() => {
+    if (!activeTab) return;
+    updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
+  }, [activeTab, updateTab]);
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -359,8 +367,20 @@ export function ChatPane({
         />
       ) : null}
       {visibleError ? (
-        <div className="border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
-          {visibleError}
+        <div
+          className="flex shrink-0 items-start gap-3 border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)"
+          role="alert"
+        >
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{visibleError}</span>
+          <button
+            type="button"
+            onClick={dismissVisibleError}
+            className="-my-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--err)/75 hover:bg-(--err)/10 hover:text-(--err)"
+            aria-label="Dismiss error"
+            title="Dismiss error"
+          >
+            <CloseIcon className="h-3 w-3 pointer-events-none" />
+          </button>
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">

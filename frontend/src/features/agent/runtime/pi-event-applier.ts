@@ -6,6 +6,7 @@ import {
   blocksFromTurnSnapshots,
   finalizeRunningToolBlocks,
   messageTextFromBlocks,
+  toolCallSnapshotFromUpdate,
   type AssistantBlock,
   type ChatMessage,
   messageText,
@@ -119,9 +120,7 @@ function reduceAssistantSnapshotEvent(
   if (type !== "message_start" && type !== "message_update" && type !== "message_end") return null;
   const message = asRecord(event.message);
   if (message?.role !== "assistant") return null;
-  const content = Array.isArray(message.content)
-    ? (message.content as Array<Record<string, unknown>>)
-    : [];
+  const content = assistantSnapshotContent(event, message);
 
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
   const callFailed = type === "message_end" && (stopReason === "error" || stopReason === "aborted");
@@ -129,7 +128,9 @@ function reduceAssistantSnapshotEvent(
 
   let next = patchAssistantMessage(session, targetId, (current) => {
     const streamCalls = nextStreamCalls(current.streamCalls, type, content);
-    let blocks = mergeExistingToolState(current.blocks ?? [], blocksFromTurnSnapshots(streamCalls));
+    const existingBlocks = current.blocks ?? [];
+    let blocks = mergeExistingToolState(existingBlocks, blocksFromTurnSnapshots(streamCalls));
+    blocks = applyLegacyToolCallDeltaIfSnapshotMissedIt(blocks, existingBlocks, event, content);
     // An LLM call that errored/aborted will never execute the tools it declared
     // — settle them now instead of leaving a perpetual "running" badge.
     if (callFailed) blocks = finalizeRunningToolBlocks(blocks, "error");
@@ -138,6 +139,116 @@ function reduceAssistantSnapshotEvent(
   });
   if (failureText) next = { ...next, error: failureText };
   return next;
+}
+
+function assistantSnapshotContent(
+  event: Record<string, unknown>,
+  message: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const messageContent = recordArray(message.content);
+  if (event.type !== "message_update") return messageContent;
+
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const partialContent = partial?.role === "assistant" ? recordArray(partial.content) : [];
+  if (partialContent.length === 0) return messageContent;
+
+  const messageHasTool = hasToolCallPart(messageContent);
+  const partialHasTool = hasToolCallPart(partialContent);
+  if (messageContent.length === 0) return partialContent;
+  if (partialHasTool && !messageHasTool) return partialContent;
+  if (
+    partialHasTool &&
+    messageHasTool &&
+    partialContent.length >= messageContent.length &&
+    contentPayloadLength(partialContent) > contentPayloadLength(messageContent)
+  ) {
+    return partialContent;
+  }
+  return messageContent;
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((part): Array<Record<string, unknown>> => {
+    const record = asRecord(part);
+    return record ? [record] : [];
+  });
+}
+
+function hasToolCallPart(content: Array<Record<string, unknown>>): boolean {
+  return content.some((part) => part.type === "toolCall");
+}
+
+function contentPayloadLength(content: Array<Record<string, unknown>>): number {
+  try {
+    return JSON.stringify(content).length;
+  } catch {
+    return content.length;
+  }
+}
+
+function snapshotToolArgsText(
+  content: Array<Record<string, unknown>>,
+  toolCallId: string,
+): string | null {
+  for (const part of content) {
+    if (part.type !== "toolCall" || part.id !== toolCallId) continue;
+    const args = part.arguments;
+    if (typeof args === "string") {
+      const text = usefulToolArgsText(args);
+      if (text) return text;
+      continue;
+    }
+    if (args && typeof args === "object" && Object.keys(args).length > 0) {
+      try {
+        return JSON.stringify(args, null, 2);
+      } catch {
+        return String(args);
+      }
+    }
+  }
+  return null;
+}
+
+function applyLegacyToolCallDeltaIfSnapshotMissedIt(
+  blocks: AssistantBlock[],
+  existingBlocks: AssistantBlock[],
+  event: Record<string, unknown>,
+  content: Array<Record<string, unknown>>,
+): AssistantBlock[] {
+  if (event.type !== "message_update") return blocks;
+  const assistantMessageEvent = asRecord(event.assistantMessageEvent);
+  const eventType = assistantMessageEvent?.type;
+  if (
+    eventType !== "toolcall_start" &&
+    eventType !== "toolcall_delta" &&
+    eventType !== "toolcall_end"
+  ) {
+    return blocks;
+  }
+  const snapshot = toolCallSnapshotFromUpdate(assistantMessageEvent ?? undefined, event.message);
+  if (snapshot?.id) {
+    const snapshotArgsText = snapshotToolArgsText(content, snapshot.id);
+    const existingTool = existingBlocks.find(
+      (block): block is Extract<AssistantBlock, { kind: "tool" }> =>
+        block.kind === "tool" && block.id === snapshot.id,
+    );
+    const existingArgsText = usefulToolArgsText(existingTool?.argsText);
+    if (snapshotArgsText && snapshotArgsText.length > existingArgsText.length) return blocks;
+  }
+  const blocksWithPreviousTools = preserveMissingToolBlocks(blocks, existingBlocks);
+  return applyAssistantPiEventToBlocks(blocksWithPreviousTools, event) ?? blocksWithPreviousTools;
+}
+
+function preserveMissingToolBlocks(
+  blocks: AssistantBlock[],
+  existingBlocks: AssistantBlock[],
+): AssistantBlock[] {
+  const ids = new Set(blocks.filter((block) => block.kind === "tool").map((block) => block.id));
+  const missingTools = existingBlocks.filter(
+    (block) => block.kind === "tool" && !ids.has(block.id),
+  );
+  return missingTools.length ? [...blocks, ...missingTools] : blocks;
 }
 
 function nextStreamCalls(
@@ -297,6 +408,24 @@ function isMeaningfulAssistantText(text: string): boolean {
   return Boolean(trimmed && !/^(?:\.{3}|…)+$/.test(trimmed));
 }
 
+function usefulToolArgsText(value: string | undefined): string {
+  const text = value ?? "";
+  return text.trim() === "{}" ? "" : text;
+}
+
+function mergedToolArgsText(
+  existingArgsText: string | undefined,
+  incomingArgsText: string | undefined,
+): string | undefined {
+  const existing = usefulToolArgsText(existingArgsText);
+  const incoming = usefulToolArgsText(incomingArgsText);
+  if (!existing) return incoming || undefined;
+  if (!incoming) return existing;
+  if (incoming.startsWith(existing) || incoming.length >= existing.length) return incoming;
+  if (existing.startsWith(incoming)) return existing;
+  return incoming;
+}
+
 function mergeExistingToolState(
   existingBlocks: AssistantBlock[],
   incomingBlocks: AssistantBlock[],
@@ -310,13 +439,14 @@ function mergeExistingToolState(
     if (block.kind !== "tool") return block;
     const existing = existingTools.get(block.id);
     if (!existing) return block;
+    const argsText = mergedToolArgsText(existing.argsText, block.argsText);
     return {
       ...block,
       args: block.args ?? existing.args,
-      argsText: block.argsText ?? existing.argsText,
+      argsText,
       resultText: existing.resultText ?? block.resultText,
       status: existing.status,
-      text: block.text || existing.text,
+      text: argsText || block.text || existing.text,
     };
   });
 }

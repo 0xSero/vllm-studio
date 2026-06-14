@@ -67,7 +67,7 @@
 }
 
 .agent-thread-shell {
-  width: min(95%, var(--thread-w));
+  width: min(100%, var(--composer-w));
 }
 
 @media (max-width: 768px) {

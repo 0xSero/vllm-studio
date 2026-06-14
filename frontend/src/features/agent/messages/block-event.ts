@@ -314,8 +314,9 @@ function applyToolCallDelta(
     blocks,
     snapshot.id,
     (existing) => {
+      const existingArgsText = existing.argsText?.trim() === "{}" ? "" : (existing.argsText ?? "");
       const argsText = delta
-        ? (existing.argsText ?? "") + delta
+        ? existingArgsText + delta
         : existing.argsText || stringifyToolArgs(snapshot.args);
       return {
         ...existing,

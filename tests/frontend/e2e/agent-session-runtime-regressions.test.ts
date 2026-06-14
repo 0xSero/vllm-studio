@@ -1119,6 +1119,117 @@ test("tool call deltas use pi-provided partial arguments", () => {
   assert.equal(tool?.kind === "tool" ? tool.args?.content : undefined, "hello");
 });
 
+test("live assistant snapshots keep streaming file tool previews from partial tool calls", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "create a file" },
+        { id: "a-main", role: "assistant", text: "", blocks: [] },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  harness.apply("s-main", "a-main", {
+    type: "message_update",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "I'll create it." }],
+    },
+    assistantMessageEvent: {
+      type: "toolcall_delta",
+      toolCallId: "call-create",
+      toolName: "createfile",
+      delta: '{"path":"/tmp/demo.txt","content":"hel',
+      partial: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "I'll create it." },
+          {
+            type: "toolCall",
+            id: "call-create",
+            name: "createfile",
+            arguments: { path: "/tmp/demo.txt", content: "hel" },
+          },
+        ],
+      },
+    },
+  });
+
+  harness.apply("s-main", "a-main", {
+    type: "message_update",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "I'll create it." }],
+    },
+    assistantMessageEvent: {
+      type: "toolcall_delta",
+      toolCallId: "call-create",
+      toolName: "createfile",
+      delta: 'lo"}',
+      partial: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "I'll create it." },
+          {
+            type: "toolCall",
+            id: "call-create",
+            name: "createfile",
+            arguments: { path: "/tmp/demo.txt", content: "hello" },
+          },
+        ],
+      },
+    },
+  });
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  const tool = assistant?.blocks?.find((block) => block.kind === "tool");
+  assert.equal(tool?.kind, "tool");
+  assert.equal(tool?.kind === "tool" ? tool.name : undefined, "createfile");
+  assert.equal(tool?.kind === "tool" ? tool.args?.path : undefined, "/tmp/demo.txt");
+  assert.equal(tool?.kind === "tool" ? tool.args?.content : undefined, "hello");
+});
+
+test("live assistant snapshots preserve legacy tool-call argument deltas", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "create a file" },
+        { id: "a-main", role: "assistant", text: "", blocks: [] },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  for (const delta of ['{"path":"/tmp/demo.txt","content":"hel', 'lo"}']) {
+    harness.apply("s-main", "a-main", {
+      type: "message_update",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "I'll create it." }],
+      },
+      assistantMessageEvent: {
+        type: "toolcall_delta",
+        toolCallId: "call-create",
+        toolName: "createfile",
+        delta,
+      },
+    });
+  }
+
+  const assistant = harness
+    .session()
+    .messages.find((message) => message.id === "a-main");
+  const tool = assistant?.blocks?.find((block) => block.kind === "tool");
+  assert.equal(tool?.kind, "tool");
+  assert.equal(
+    tool?.kind === "tool" ? tool.argsText : undefined,
+    '{"path":"/tmp/demo.txt","content":"hello"}',
+  );
+});
+
 test("vllm pi model config uses pi openai-compatible parsing without reasoning controls", () => {
   const [model] = modelsToPiModels([
     {

@@ -188,7 +188,10 @@ function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   // Shares the curated highlight.js core instance (a dozen languages) via the
   // memoizing cache — using the full `highlight.js` package here pulled ~190
   // languages (≈1 MB) into the agent route bundle.
-  const highlighted = useMemo(() => (body ? highlightFenced(lang || null, body) : ""), [body, lang]);
+  const highlighted = useMemo(
+    () => (body ? highlightFenced(lang || null, body) : ""),
+    [body, lang],
+  );
 
   const className =
     "max-h-[420px] max-w-full overflow-auto px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)";
@@ -209,20 +212,52 @@ type FileWritePreviewData = {
   patchContent: string | null;
 };
 
+type EditEntry = {
+  oldText?: unknown;
+  newText?: unknown;
+};
+
+function editsToDiff(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const hunks = value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const edit = entry as EditEntry;
+    const oldText = typeof edit.oldText === "string" ? edit.oldText : "";
+    const newText = typeof edit.newText === "string" ? edit.newText : "";
+    if (!oldText && !newText) return [];
+    const removed = oldText.split("\n").map((line) => `-${line}`);
+    const added = newText.split("\n").map((line) => `+${line}`);
+    return [`@@ edit ${index + 1} @@`, ...removed, ...added].join("\n");
+  });
+  return hunks.length ? hunks.join("\n") : null;
+}
+
+function patchPreviewFromArgs(block: ToolBlock): string | null {
+  const direct = extractFromArgs(block.args, block.argsText, ["patch", "diff"]);
+  if (direct) return direct;
+  const editsDiff = editsToDiff(block.args?.edits);
+  if (editsDiff) return editsDiff;
+  return block.argsText ? extractFromArgs(undefined, block.argsText, ["edits"]) : null;
+}
+
 function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
   const filePath = extractFromArgs(block.args, block.argsText, [
     "path",
     "file_path",
     "filePath",
     "file",
+    "target_file",
   ]);
-  const fileContent = extractFromArgs(block.args, block.argsText, [
-    "content",
-    "text",
-    "newText",
-    "new_content",
-  ]);
-  const patchContent = extractFromArgs(block.args, block.argsText, ["patch", "diff", "edits"]);
+  const patchContent = patchPreviewFromArgs(block);
+  const fileContent = patchContent
+    ? null
+    : extractFromArgs(block.args, block.argsText, [
+        "content",
+        "text",
+        "newText",
+        "new_text",
+        "new_content",
+      ]);
 
   if (fileContent === null && patchContent === null) return null;
   return { filePath, fileContent, patchContent };

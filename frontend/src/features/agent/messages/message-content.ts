@@ -81,12 +81,7 @@ export function blocksFromMessageContent(
   }
   if (!isRecordArray(content)) return errorBlock ? [errorBlock] : [];
   const firstToolCallIndex = content.findIndex((part) => part.type === "toolCall");
-  const movePreToolTextToThinking = options.stopReason === "toolUse" && firstToolCallIndex > -1;
-  const blocks = content.flatMap((part, index) =>
-    blockFromContentPart(part, {
-      textAsThinking: movePreToolTextToThinking && index < firstToolCallIndex,
-    }),
-  );
+  const blocks = content.flatMap((part) => blockFromContentPart(part));
   const ordered = firstToolCallIndex > -1 ? blocks : reasoningBeforeText(blocks);
   return errorBlock ? [...ordered, errorBlock] : ordered;
 }
@@ -121,11 +116,10 @@ export const messageTextFromBlocks = (blocks: AssistantBlock[]): string =>
 // nothing remounts/flickers mid-stream.
 //
 // Grouping contract (what the user expects):
-//   activity group  = ALL reasoning + ALL tool calls + any narration text from
-//                     tool-using steps, in chronological order.
-//   content bubbles = ONLY the final answer: the trailing call that made no
-//                     tool calls. A text run followed by more reasoning/tools is
-//                     never rendered as content.
+//   activity group  = reasoning + tool calls in chronological order.
+//   content bubbles = assistant text, including narration between tool rounds.
+//                     Text is a real boundary: it closes the previous activity
+//                     preview and lets a later tool/reasoning burst start a new one.
 // ---------------------------------------------------------------------------
 
 // One entry of a pi assistant message's `content`. Pi's settled union is
@@ -139,12 +133,7 @@ type PiContentPart =
   | (Omit<ToolCall, "arguments"> & { arguments?: string | Record<string, unknown> })
   | { type: "reasoning"; reasoning?: string; thinking?: string; text?: string };
 
-function partToBlocks(
-  part: PiContentPart,
-  callOrdinal: number,
-  index: number,
-  textAsContent: boolean,
-): AssistantBlock[] {
+function partToBlocks(part: PiContentPart, callOrdinal: number, index: number): AssistantBlock[] {
   const idBase = `${callOrdinal}:${index}`;
   if (part.type === "toolCall") {
     const args = toolArgs(part);
@@ -178,13 +167,7 @@ function partToBlocks(
     const text = part.text ?? "";
     const blocks: AssistantBlock[] = [];
     if (reasoning) blocks.push({ kind: "thinking", id: `${idBase}:rthinking`, text: reasoning });
-    if (text) {
-      blocks.push(
-        textAsContent
-          ? { kind: "text", id: `${idBase}:text`, text }
-          : { kind: "thinking", id: `${idBase}:text`, text },
-      );
-    }
+    if (text) blocks.push({ kind: "text", id: `${idBase}:text`, text });
     return blocks;
   }
   return [];
@@ -211,9 +194,6 @@ function mergeAdjacentTextLike(blocks: AssistantBlock[]): AssistantBlock[] {
   return out;
 }
 
-const callHasToolCall = (parts: PiContentPart[]): boolean =>
-  parts.some((part) => part.type === "toolCall");
-
 /**
  * Build the bubble's blocks from the per-call content snapshots of a turn.
  * `calls[i]` is the full accumulated `content` array of the i-th LLM call.
@@ -221,22 +201,13 @@ const callHasToolCall = (parts: PiContentPart[]): boolean =>
  * loose and `asRecordPart` narrows each one to a typed `PiContentPart`.
  */
 export function blocksFromTurnSnapshots(calls: unknown[][]): AssistantBlock[] {
-  const lastIndex = calls.length - 1;
   const out: AssistantBlock[] = [];
   calls.forEach((content, callOrdinal) => {
     if (!Array.isArray(content)) return;
     const parts = content.map(asRecordPart);
-    // The final answer is the trailing call that made no tool calls. Only its
-    // text renders as content; every other call's text is narration -> activity.
-    const isFinalAnswerCall = callOrdinal === lastIndex && !callHasToolCall(parts);
-    let blocks = parts.flatMap((part, index) =>
-      partToBlocks(part, callOrdinal, index, isFinalAnswerCall),
+    const blocks = mergeAdjacentTextLike(
+      parts.flatMap((part, index) => partToBlocks(part, callOrdinal, index)),
     );
-    if (isFinalAnswerCall) {
-      // Pull reasoning above the answer and concatenate answer text fragments
-      // the model interleaved with thinking ("Looks" ... <think> ... " like").
-      blocks = mergeAdjacentTextLike(reasoningBeforeText(blocks));
-    }
     out.push(...blocks);
   });
   return out;
