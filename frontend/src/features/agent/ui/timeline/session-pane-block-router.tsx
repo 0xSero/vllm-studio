@@ -498,23 +498,20 @@ function summarizeActivity(segments: ActivitySegment[]): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
-/* Latest in-flight action, for the live preview in the collapsed summary. */
+/* Latest in-flight action, for the live preview in the collapsed summary.
+   Reasoning is deliberately excluded — model chain-of-thought should never
+   leak into the visible chat, even as a one-line preview; the user can still
+   expand the activity group to read it if they want. */
 function activityPreview(segments: ActivitySegment[]): string | null {
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index];
-    if (!segment) continue;
-    if (segment.kind === "tools") {
-      const runningTool = [...segment.blocks].reverse().find((block) => block.status === "running");
-      const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
-      if (latestTool) {
-        const detail = toolArg(latestTool, ["cmd", "command", "path", "file_path", "query", "url"]);
-        return [toolVerb(latestTool), compactToolText(detail, 72)].filter(Boolean).join(" ");
-      }
-      continue;
+    if (!segment || segment.kind === "reasoning") continue;
+    const runningTool = [...segment.blocks].reverse().find((block) => block.status === "running");
+    const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
+    if (latestTool) {
+      const detail = toolArg(latestTool, ["cmd", "command", "path", "file_path", "query", "url"]);
+      return [toolVerb(latestTool), compactToolText(detail, 72)].filter(Boolean).join(" ");
     }
-    const latestReasoning = segment.blocks[segment.blocks.length - 1];
-    const text = compactToolText(latestReasoning?.text, 72);
-    if (text) return text;
   }
   return null;
 }
