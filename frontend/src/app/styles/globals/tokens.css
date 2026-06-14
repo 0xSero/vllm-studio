@@ -48,8 +48,10 @@
   --row-radius: var(--rad-md);
   /* Codex thread geometry: reading column is 57.6rem (922px), right-aligned.
      The composer is its own narrower, centered measure (48rem) so the box
-     does not dominate the pane; it wears a ~24px squircle-ish radius. */
-  --composer-w: 768px;
+     does not dominate the pane; it wears a ~24px squircle-ish radius.
+     Viewport bounds keep the box from stretching past half the screen on
+     ultrawide monitors and from collapsing below a quarter on narrow panes. */
+  --composer-w: clamp(25vw, 48rem, 50vw);
   --thread-w: 922px;
   --composer-radius: var(--rad-3xl);
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
@@ -151,7 +153,7 @@
 
 @media (min-width: 1024px) {
   :root {
-    --composer-w: 768px;
+    --composer-w: clamp(25vw, 48rem, 50vw);
     --thread-w: 922px;
   }
 }
