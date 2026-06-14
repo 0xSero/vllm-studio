@@ -7,6 +7,7 @@ import {
   compactToolText,
   detectLang,
   extractFromArgs,
+  extractPartialField,
   fileBasename,
   humanizeToolName,
   toolArg,
@@ -232,12 +233,32 @@ function editsToDiff(value: unknown): string | null {
   return hunks.length ? hunks.join("\n") : null;
 }
 
+// Stream a diff preview out of partially-streamed args JSON. Some edit tools
+// (str_replace_editor, apply_patch) emit `"old_str": "...`, `"new_str": "..."`
+// fields before the surrounding object closes — find every such pair and
+// render an incremental diff so the user sees the edit as it streams.
+function partialEditsDiffFromArgsText(argsText: string | undefined): string | null {
+  if (!argsText) return null;
+  const oldKey = extractPartialField(argsText, ["old_str", "old_text", "oldText"]);
+  const newKey = extractPartialField(argsText, ["new_str", "new_text", "newText", "replacement"]);
+  if (oldKey === null && newKey === null) return null;
+  const oldText = oldKey ?? "";
+  const newText = newKey ?? "";
+  if (!oldText && !newText) return null;
+  const removed = oldText.split("\n").map((line: string) => `-${line}`);
+  const added = newText.split("\n").map((line: string) => `+${line}`);
+  return ["@@ edit @@", ...removed, ...added].join("\n");
+}
+
 function patchPreviewFromArgs(block: ToolBlock): string | null {
   const direct = extractFromArgs(block.args, block.argsText, ["patch", "diff"]);
   if (direct) return direct;
   const editsDiff = editsToDiff(block.args?.edits);
   if (editsDiff) return editsDiff;
-  return block.argsText ? extractFromArgs(undefined, block.argsText, ["edits"]) : null;
+  return (
+    partialEditsDiffFromArgsText(block.argsText) ??
+    (block.argsText ? extractFromArgs(undefined, block.argsText, ["edits"]) : null)
+  );
 }
 
 function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
@@ -253,10 +274,17 @@ function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
     ? null
     : extractFromArgs(block.args, block.argsText, [
         "content",
+        "contents",
         "text",
+        "body",
+        "source",
+        "payload",
         "newText",
         "new_text",
         "new_content",
+        "new_str",
+        "replacement",
+        "insert",
       ]);
 
   if (fileContent === null && patchContent === null) return null;
