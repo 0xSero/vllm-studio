@@ -1,11 +1,86 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { getApiSettings, type ApiSettings } from "@/lib/api/api-settings";
 import { resolveDataDir } from "@/lib/data-dir";
-import { normalizeOpenAIModels, modelsToPiModels, type AgentModel } from "@/features/agent/models";
+import {
+  normalizeOpenAIModels,
+  modelsToPiModels,
+  inferReasoningSupport,
+  inferVisionSupport,
+  type AgentModel,
+} from "@/features/agent/models";
 
 const PROVIDER_ID = "vllm-studio";
+const USER_PI_PREFIX = "user-pi-";
+
+function userPiAgentDir(): string {
+  return path.join(homedir(), ".pi", "agent");
+}
+
+function userPiModelsPath(): string {
+  return path.join(userPiAgentDir(), "models.json");
+}
+
+type PiProviderModel = {
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: Record<string, number>;
+  compat?: Record<string, unknown>;
+};
+
+type PiProviderConfig = {
+  baseUrl: string;
+  apiKey?: string;
+  api?: string;
+  authHeader?: boolean;
+  models?: PiProviderModel[];
+  compat?: Record<string, unknown>;
+};
+
+type UserPiProviders = Record<string, PiProviderConfig>;
+
+async function loadUserPiProviders(): Promise<UserPiProviders> {
+  const modelsPath = userPiModelsPath();
+  if (!existsSync(modelsPath)) return {};
+  try {
+    const parsed = JSON.parse(await readFile(modelsPath, "utf-8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const providers = (parsed as { providers?: unknown }).providers;
+    if (!providers || typeof providers !== "object" || Array.isArray(providers)) return {};
+    return providers as UserPiProviders;
+  } catch {
+    return {};
+  }
+}
+
+function userPiModelToAgentModel(
+  providerName: string,
+  qualifiedProviderId: string,
+  model: PiProviderModel,
+): AgentModel {
+  const rawId = model.id;
+  const name = model.name ?? rawId;
+  const inputs = model.input ?? ["text"];
+  return {
+    id: `${qualifiedProviderId}/${rawId}`,
+    rawId,
+    name: `${name} · ${providerName}`,
+    provider: "vllm-studio",
+    providerId: qualifiedProviderId,
+    controllerName: providerName,
+    contextWindow: model.contextWindow ?? 128_000,
+    maxTokens: model.maxTokens ?? 65_536,
+    reasoning: model.reasoning ?? inferReasoningSupport(rawId),
+    vision: inputs.includes("image") || inferVisionSupport(rawId),
+    active: false,
+  };
+}
 
 export type PiControllerModelsRequest = {
   url: string;
@@ -190,30 +265,48 @@ async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Pr
   return { models: models.sort((a, b) => a.name.localeCompare(b.name)), controllerModels };
 }
 
-async function writePiModelsConfig(controllerModels: ControllerModels[]): Promise<string> {
+async function writePiModelsConfig(
+  controllerModels: ControllerModels[],
+  userPiProviders: UserPiProviders,
+): Promise<string> {
   const dataDir = resolveDataDir();
   const agentDir = path.join(dataDir, "pi-agent");
   await mkdir(agentDir, { recursive: true });
   await chmod(agentDir, 0o700).catch(() => undefined);
 
-  const config = {
-    providers: Object.fromEntries(
-      controllerModels.map(({ controller, models, providerId }) => [
-        providerId,
-        {
-          baseUrl: `${controller.url}/v1`,
-          api: "openai-completions",
-          apiKey: controller.apiKey || "vllm-studio",
-          authHeader: Boolean(controller.apiKey),
-          compat: {
-            supportsDeveloperRole: false,
-            supportsReasoningEffort: false,
-          },
-          models: modelsToPiModels(models),
+  const vllmProviders = Object.fromEntries(
+    controllerModels.map(({ controller, models, providerId }) => [
+      providerId,
+      {
+        baseUrl: `${controller.url}/v1`,
+        api: "openai-completions",
+        apiKey: controller.apiKey || "vllm-studio",
+        authHeader: Boolean(controller.apiKey),
+        compat: {
+          supportsDeveloperRole: false,
+          supportsReasoningEffort: false,
         },
-      ]),
-    ),
-  };
+        models: modelsToPiModels(models),
+      },
+    ]),
+  );
+
+  // Merge user-pi providers so the SDK runtime can route to them.
+  // Each provider ID is prefixed to avoid colliding with vLLM Studio's own.
+  const mergedProviders: Record<string, unknown> = { ...vllmProviders };
+  for (const [name, config] of Object.entries(userPiProviders)) {
+    const qualifiedId = `${USER_PI_PREFIX}${name}`;
+    mergedProviders[qualifiedId] = {
+      baseUrl: config.baseUrl,
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      ...(config.api ? { api: config.api } : {}),
+      ...(config.authHeader !== undefined ? { authHeader: config.authHeader } : {}),
+      ...(config.compat ? { compat: config.compat } : {}),
+      models: config.models ?? [],
+    };
+  }
+
+  const config = { providers: mergedProviders };
 
   const modelsPath = path.join(agentDir, "models.json");
   await writeFile(modelsPath, JSON.stringify(config, null, 2), "utf-8");
@@ -225,7 +318,7 @@ export function resolvePiModelSelection(modelId: string): { providerId: string; 
   const separator = modelId.indexOf("/");
   if (separator > 0) {
     const maybeProvider = modelId.slice(0, separator);
-    if (maybeProvider.startsWith(`${PROVIDER_ID}-`)) {
+    if (maybeProvider.startsWith(USER_PI_PREFIX) || maybeProvider.startsWith(`${PROVIDER_ID}-`)) {
       return { providerId: maybeProvider, modelId: modelId.slice(separator + 1) };
     }
   }
@@ -247,6 +340,20 @@ export async function refreshPiModels(
   const controllers = mergeControllers(settings, persisted);
   await savePersistedControllers(agentDir, controllers);
   const { models, controllerModels } = await fetchModelsFromControllers(controllers);
-  const writtenAgentDir = await writePiModelsConfig(controllerModels);
-  return { models, agentDir: writtenAgentDir };
+
+  // Load providers from ~/.pi/agent/models.json so models configured in the
+  // user's standalone Pi install (kimi, openrouter, cerebras, etc.) are
+  // available in the agent model picker alongside vLLM Studio's own backend.
+  const userPiProviders = await loadUserPiProviders();
+  const userPiModels: AgentModel[] = [];
+  for (const [providerName, config] of Object.entries(userPiProviders)) {
+    const qualifiedProviderId = `${USER_PI_PREFIX}${providerName}`;
+    for (const model of config.models ?? []) {
+      userPiModels.push(userPiModelToAgentModel(providerName, qualifiedProviderId, model));
+    }
+  }
+
+  const allModels = [...models, ...userPiModels];
+  const writtenAgentDir = await writePiModelsConfig(controllerModels, userPiProviders);
+  return { models: allModels, agentDir: writtenAgentDir };
 }
