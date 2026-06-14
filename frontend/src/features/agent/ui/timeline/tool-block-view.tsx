@@ -304,8 +304,10 @@ function FileWritePreview({
 }) {
   const lang = detectLang(filePath);
   const isHtml = lang === "html";
-  const [showPreview, setShowPreview] = useState(false);
   const body = fileContent ?? patchContent ?? "";
+  const isSvg = /\.svg$/i.test(filePath ?? "") || /^\s*<svg[\s>]/i.test(body);
+  const canPreview = isHtml || isSvg;
+  const [showPreview, setShowPreview] = useState(isSvg);
   const sourceLang = fileContent === null && patchContent !== null ? "diff" : lang;
 
   return (
@@ -315,7 +317,7 @@ function FileWritePreview({
           <span className="truncate font-mono">
             {fileBasename(filePath) ?? sourceLang ?? "source"}
           </span>
-          {isHtml ? (
+          {canPreview ? (
             <button
               type="button"
               onClick={() => setShowPreview((value) => !value)}
@@ -325,7 +327,15 @@ function FileWritePreview({
             </button>
           ) : null}
         </div>
-        {isHtml && showPreview ? (
+        {isSvg && showPreview ? (
+          <div className="flex max-h-80 items-center justify-center overflow-auto bg-white p-4">
+            <img
+              src={`data:image/svg+xml;utf8,${encodeURIComponent(body)}`}
+              alt={fileBasename(filePath) ?? "svg preview"}
+              className="max-h-72 max-w-full object-contain"
+            />
+          </div>
+        ) : isHtml && showPreview ? (
           <iframe
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"

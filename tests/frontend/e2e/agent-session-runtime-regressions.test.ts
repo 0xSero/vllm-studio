@@ -1915,8 +1915,8 @@ test("activity group ids stay stable as streaming blocks append", () => {
     },
   ]);
 
-  const firstActivity = first[0];
-  const secondActivity = second[0];
+  const firstActivity = first.find((item) => item.kind === "activity-group");
+  const secondActivity = second.find((item) => item.kind === "activity-group");
   if (
     firstActivity?.kind !== "activity-group" ||
     secondActivity?.kind !== "activity-group"
@@ -1924,6 +1924,9 @@ test("activity group ids stay stable as streaming blocks append", () => {
     throw new Error("expected activity groups");
   }
   assert.equal(firstActivity.id, secondActivity.id);
+  // Reasoning is surfaced as its own top-level collapsible item, not buried
+  // inside the tool activity group.
+  assert.equal(first[0]?.kind, "reasoning");
 });
 
 test("skill mentions and selected skill context survive composer prompt construction", () => {

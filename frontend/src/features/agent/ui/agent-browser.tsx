@@ -41,6 +41,8 @@ export type WebviewElement = HTMLElement & {
   goBack: () => void;
   goForward: () => void;
   reload: () => void;
+  canGoBack: () => boolean;
+  canGoForward: () => boolean;
   src: string;
   loadURL: (url: string) => Promise<void>;
   getURL: () => string;
@@ -147,6 +149,7 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     webviewRef,
     fetchReadable,
     onLocationChange,
+    onNavState: setNavState,
     enabled: !showStartPage,
   });
   useLocalhostSitesEffects({
@@ -161,10 +164,18 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
   }, []);
   const handleBack = () => {
     if (readingMode) return;
+    if (isElectron) {
+      webviewRef.current?.goBack();
+      return;
+    }
     postLiveVerb("back");
   };
   const handleForward = () => {
     if (readingMode) return;
+    if (isElectron) {
+      webviewRef.current?.goForward();
+      return;
+    }
     postLiveVerb("forward");
   };
   const handleReload = () => {
@@ -186,6 +197,10 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     }
     if (readingMode) {
       void fetchReadable(url);
+      return;
+    }
+    if (isElectron) {
+      webviewRef.current?.reload();
       return;
     }
     postLiveVerb("reload");
@@ -308,6 +323,25 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
             loading={readingLoading}
             onLinkClick={onNavigate}
           />
+        ) : isElectron ? (
+          // Desktop: a real embedded Chromium webview. Loads file://, localhost,
+          // and the public web directly — the same surface the agent drives.
+          (() => {
+            type AnyTag = "webview";
+            const Tag = "webview" as AnyTag;
+            return (
+              <Tag
+                ref={(node: WebviewElement | null) => {
+                  webviewRef.current = node;
+                }}
+                src={url}
+                // @ts-expect-error — Electron-specific attribute.
+                allowpopups="true"
+                className="size-full"
+                style={{ width: "100%", height: "100%", display: "flex" }}
+              />
+            );
+          })()
         ) : (
           <ScreencastSurface
             url={url}
@@ -666,6 +700,9 @@ const getLocalhostSitesSnapshot = (): number => 0;
 type BrowserWebview = HTMLElement & {
   executeJavaScript: (script: string, userGesture?: boolean) => Promise<unknown>;
   getURL: () => string;
+  getTitle?: () => string;
+  canGoBack?: () => boolean;
+  canGoForward?: () => boolean;
 };
 
 type UseAgentBrowserEffectsParams = {
@@ -675,6 +712,7 @@ type UseAgentBrowserEffectsParams = {
   webviewRef: RefObject<BrowserWebview | null>;
   fetchReadable: (target: string) => Promise<void>;
   onLocationChange?: (value: string) => void;
+  onNavState?: (state: BrowserPaneState) => void;
   enabled?: boolean;
 };
 
@@ -685,6 +723,7 @@ function useAgentBrowserEffects({
   webviewRef,
   fetchReadable,
   onLocationChange,
+  onNavState,
   enabled = true,
 }: UseAgentBrowserEffectsParams): void {
   const subscribeReadable = useCallback(
@@ -699,25 +738,34 @@ function useAgentBrowserEffects({
 
   const subscribeLocationSync = useCallback(
     (_notify: () => void) => {
-      if (!enabled || !isElectron || readingMode || !onLocationChange) return () => {};
+      if (!enabled || !isElectron || readingMode) return () => {};
       const webview = webviewRef.current;
       if (!webview) return () => {};
-      const syncUrl = () => {
+      const sync = () => {
         try {
           const current = webview.getURL();
-          if (current) onLocationChange(current);
+          if (current) onLocationChange?.(current);
+          onNavState?.({
+            url: current || url,
+            title: typeof webview.getTitle === "function" ? webview.getTitle() : "",
+            canGoBack: typeof webview.canGoBack === "function" ? webview.canGoBack() : false,
+            canGoForward:
+              typeof webview.canGoForward === "function" ? webview.canGoForward() : false,
+          });
         } catch {
           // Ignore transient webview state while navigating.
         }
       };
-      webview.addEventListener("did-navigate", syncUrl as EventListener);
-      webview.addEventListener("did-navigate-in-page", syncUrl as EventListener);
+      webview.addEventListener("did-navigate", sync as EventListener);
+      webview.addEventListener("did-navigate-in-page", sync as EventListener);
+      webview.addEventListener("did-stop-loading", sync as EventListener);
       return () => {
-        webview.removeEventListener("did-navigate", syncUrl as EventListener);
-        webview.removeEventListener("did-navigate-in-page", syncUrl as EventListener);
+        webview.removeEventListener("did-navigate", sync as EventListener);
+        webview.removeEventListener("did-navigate-in-page", sync as EventListener);
+        webview.removeEventListener("did-stop-loading", sync as EventListener);
       };
     },
-    [enabled, isElectron, onLocationChange, readingMode, url, webviewRef],
+    [enabled, isElectron, onLocationChange, onNavState, readingMode, url, webviewRef],
   );
 
   useSyncExternalStore(subscribeReadable, getAgentBrowserSnapshot, getAgentBrowserSnapshot);
