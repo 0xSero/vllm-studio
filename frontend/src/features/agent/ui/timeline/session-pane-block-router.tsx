@@ -126,9 +126,9 @@ function SessionPaneBlockRouterInner({
 }) {
   if (message.role === "user") {
     // User turns: a quiet foreground-tinted block sized to its content,
-    // capped at 60% of the composer column.
+    // capped at 60% of the composer column and anchored to the right edge.
     return (
-      <article className="flex justify-start">
+      <article className="flex justify-end">
         <div className="min-w-0 max-w-[60%] rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
           <div className="whitespace-pre-wrap break-words">{message.text}</div>
           {message.attachments?.length ? (
@@ -507,14 +507,7 @@ function activityPreview(segments: ActivitySegment[]): string | null {
       const runningTool = [...segment.blocks].reverse().find((block) => block.status === "running");
       const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
       if (latestTool) {
-        const detail = toolArg(latestTool, [
-          "cmd",
-          "command",
-          "path",
-          "file_path",
-          "query",
-          "url",
-        ]);
+        const detail = toolArg(latestTool, ["cmd", "command", "path", "file_path", "query", "url"]);
         return [toolVerb(latestTool), compactToolText(detail, 72)].filter(Boolean).join(" ");
       }
       continue;

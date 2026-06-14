@@ -61,7 +61,10 @@ export function Timeline({
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const [bottom, setBottom] = useState<HTMLDivElement | null>(null);
 
-  const visibleMessages = useMemo(() => messages.filter(messageRenders), [messages]);
+  const visibleMessages = useMemo(
+    () => mergeConsecutiveAssistantMessages(messages.filter(messageRenders)),
+    [messages],
+  );
 
   useTimelineScrollEffects({
     scroller,
@@ -122,6 +125,26 @@ export function Timeline({
       </div>
     </div>
   );
+}
+
+function mergeConsecutiveAssistantMessages(messages: ChatMessage[]): ChatMessage[] {
+  const merged: ChatMessage[] = [];
+  for (const message of messages) {
+    const previous = merged[merged.length - 1];
+    if (message.role !== "assistant" || previous?.role !== "assistant") {
+      merged.push(message);
+      continue;
+    }
+    merged[merged.length - 1] = {
+      ...previous,
+      id: `${previous.id}:${message.id}`,
+      text: [previous.text, message.text].filter(Boolean).join("\n"),
+      blocks: [...(previous.blocks ?? []), ...(message.blocks ?? [])],
+      streamCalls: [...(previous.streamCalls ?? []), ...(message.streamCalls ?? [])],
+      timestamp: message.timestamp ?? previous.timestamp,
+    };
+  }
+  return merged;
 }
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
