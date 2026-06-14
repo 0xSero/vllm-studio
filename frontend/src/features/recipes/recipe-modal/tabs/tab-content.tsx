@@ -2,6 +2,7 @@
 
 import type { ModelInfo } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
+import type { EngineCapabilities } from "@/features/recipes/engine-capabilities";
 import type { RecipeModalTabId } from "./tab-id";
 import { RecipeModalTabCommand } from "./tab-command";
 import { RecipeModalTabEnvironment } from "./tab-environment";
@@ -17,7 +18,7 @@ export function RecipeModalTabContent({
   onChange,
   availableModels,
   modelServedNames,
-  isLlamacpp,
+  capabilities,
   getExtraArgValueForKey,
   setExtraArgValueForKey,
   envVarEntries,
@@ -44,7 +45,7 @@ export function RecipeModalTabContent({
   onChange: (next: RecipeEditor) => void;
   availableModels: ModelInfo[];
   modelServedNames: Record<string, string>;
-  isLlamacpp: boolean;
+  capabilities: EngineCapabilities;
   getExtraArgValueForKey: (key: string) => unknown;
   setExtraArgValueForKey: (key: string, value: unknown) => void;
   envVarEntries: Array<{ key: string; value: string }>;
@@ -81,7 +82,7 @@ export function RecipeModalTabContent({
         <RecipeModalTabModel
           recipe={recipe}
           onChange={onChange}
-          isLlamacpp={isLlamacpp}
+          capabilities={capabilities}
           getExtraArgValueForKey={getExtraArgValueForKey}
           setExtraArgValueForKey={setExtraArgValueForKey}
         />
@@ -91,7 +92,7 @@ export function RecipeModalTabContent({
         <RecipeModalTabResources
           recipe={recipe}
           onChange={onChange}
-          isLlamacpp={isLlamacpp}
+          capabilities={capabilities}
           getExtraArgValueForKey={getExtraArgValueForKey}
           setExtraArgValueForKey={setExtraArgValueForKey}
         />
@@ -101,7 +102,7 @@ export function RecipeModalTabContent({
         <RecipeModalTabPerformance
           recipe={recipe}
           onChange={onChange}
-          isLlamacpp={isLlamacpp}
+          capabilities={capabilities}
           getExtraArgValueForKey={getExtraArgValueForKey}
           setExtraArgValueForKey={setExtraArgValueForKey}
         />
@@ -111,7 +112,7 @@ export function RecipeModalTabContent({
         <RecipeModalTabFeatures
           recipe={recipe}
           onChange={onChange}
-          isLlamacpp={isLlamacpp}
+          capabilities={capabilities}
           getExtraArgValueForKey={getExtraArgValueForKey}
           setExtraArgValueForKey={setExtraArgValueForKey}
         />
@@ -121,7 +122,7 @@ export function RecipeModalTabContent({
         <RecipeModalTabEnvironment
           recipe={recipe}
           onChange={onChange}
-          isLlamacpp={isLlamacpp}
+          capabilities={capabilities}
           envVarEntries={envVarEntries}
           onAddEnvVar={onAddEnvVar}
           onChangeEnvVar={onChangeEnvVar}

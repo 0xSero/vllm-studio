@@ -1,13 +1,14 @@
 "use client";
 
-import { Code, Plus, Terminal, Variable } from "lucide-react";
+import { Code, Plus, Terminal, Trash2, Variable } from "lucide-react";
 import { Button, Card, FormSection, Input, Textarea } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
+import type { EngineCapabilities } from "@/features/recipes/engine-capabilities";
 
 export function RecipeModalTabEnvironment({
   recipe,
   onChange,
-  isLlamacpp,
+  capabilities,
   envVarEntries,
   onAddEnvVar,
   onChangeEnvVar,
@@ -20,7 +21,7 @@ export function RecipeModalTabEnvironment({
 }: {
   recipe: RecipeEditor;
   onChange: (next: RecipeEditor) => void;
-  isLlamacpp: boolean;
+  capabilities: EngineCapabilities;
   envVarEntries: Array<{ key: string; value: string }>;
   onAddEnvVar: () => void;
   onChangeEnvVar: (index: number, field: "key" | "value", value: string) => void;
@@ -31,10 +32,12 @@ export function RecipeModalTabEnvironment({
   llamaConfigLoading: boolean;
   llamaConfigHelp: { config: string | null; error?: string | null } | null;
 }) {
+  const isLlamacpp = capabilities.backend === "llamacpp";
+
   return (
-    <div className="space-y-5">
-      {!isLlamacpp && (
-        <FormSection icon={<Terminal className="h-4 w-4" />} title="Runtime Configuration">
+    <div className="space-y-6">
+      {capabilities.pythonPath ? (
+        <FormSection icon={<Terminal className="h-4 w-4" />} title="Runtime">
           <Input
             label="Python Path"
             type="text"
@@ -43,35 +46,19 @@ export function RecipeModalTabEnvironment({
             placeholder="/usr/bin/python or venv/bin/python"
           />
         </FormSection>
-      )}
-      {isLlamacpp && (
+      ) : null}
+
+      {isLlamacpp ? (
         <p className="text-xs text-(--ui-muted)">
           llama.cpp uses the configured server binary. Set{" "}
           <span className="font-mono">VLLM_STUDIO_LLAMA_BIN</span> if you need a custom path.
         </p>
-      )}
+      ) : null}
 
-      {/* Environment Variables */}
-      <FormSection
-        icon={<Variable className="h-4 w-4" />}
-        title="Environment Variables"
-        className="space-y-3"
-      >
-        <div className="-mt-12 flex justify-end">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onAddEnvVar}
-            icon={<Plus className="h-3 w-3" />}
-          >
-            Add
-          </Button>
-        </div>
-
+      <FormSection icon={<Variable className="h-4 w-4" />} title="Environment Variables">
         <div className="space-y-2">
           {envVarEntries.map((entry, index) => (
-            <div key={`${entry.key}-${index}`} className="grid grid-cols-[1fr,1fr,auto] gap-2">
+            <div key={`${entry.key}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
               <Input
                 type="text"
                 value={entry.key}
@@ -85,55 +72,71 @@ export function RecipeModalTabEnvironment({
                 onChange={(e) => onChangeEnvVar(index, "value", e.target.value)}
                 placeholder="value"
               />
-              <Button variant="secondary" type="button" onClick={() => onRemoveEnvVar(index)}>
-                Remove
+              <Button
+                variant="icon"
+                type="button"
+                onClick={() => onRemoveEnvVar(index)}
+                aria-label="Remove variable"
+                title="Remove variable"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           ))}
         </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onAddEnvVar}
+          icon={<Plus className="h-3 w-3" />}
+        >
+          Add variable
+        </Button>
       </FormSection>
 
-      {/* Extra Args */}
       <FormSection icon={<Code className="h-4 w-4" />} title="Extra CLI Arguments">
         <Card padding="sm" className="overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 bg-(--ui-surface) border-b border-(--ui-border)">
-            <span className="text-xs text-(--ui-muted)">JSON Editor</span>
-            {extraArgsError && <span className="text-xs text-(--ui-danger)">Invalid JSON</span>}
+          <div className="flex items-center justify-between border-b border-(--ui-border) bg-(--ui-surface) px-3 py-2">
+            <span className="text-xs text-(--ui-muted)">JSON editor</span>
+            {extraArgsError ? (
+              <span className="text-xs text-(--ui-danger)">Invalid JSON</span>
+            ) : null}
           </div>
           <Textarea
             value={extraArgsText}
             onChange={(e) => onExtraArgsChange(e.target.value)}
-            rows={10}
+            rows={8}
             spellCheck={false}
             className="border-0 bg-transparent px-3 py-2 font-mono text-xs"
-            placeholder='{\"custom-flag\": true}'
+            placeholder={'{"custom-flag": true}'}
           />
         </Card>
         <p className="text-xs text-(--ui-muted)">
-          Extra arguments are passed directly to the CLI. These override form fields.
+          Passed directly to the {capabilities.backend} CLI. These override form fields.
         </p>
       </FormSection>
 
-      {isLlamacpp && (
-        <details className="bg-(--ui-bg) border border-(--ui-border) rounded-md overflow-hidden">
-          <summary className="cursor-pointer px-3 py-2 text-xs text-(--ui-muted) bg-(--ui-surface) border-b border-(--ui-border)">
+      {isLlamacpp ? (
+        <details className="overflow-hidden rounded-md border border-(--ui-border) bg-(--ui-bg)">
+          <summary className="cursor-pointer border-b border-(--ui-border) bg-(--ui-surface) px-3 py-2 text-xs text-(--ui-muted)">
             llama.cpp CLI Reference
           </summary>
           <div className="px-3 py-2">
-            {llamaConfigLoading && (
+            {llamaConfigLoading ? (
               <div className="text-xs text-(--ui-muted)">Loading llama.cpp config…</div>
-            )}
-            {!llamaConfigLoading && llamaConfigHelp?.error && (
+            ) : null}
+            {!llamaConfigLoading && llamaConfigHelp?.error ? (
               <div className="text-xs text-(--ui-danger)">{llamaConfigHelp.error}</div>
-            )}
-            {!llamaConfigLoading && !llamaConfigHelp?.error && (
-              <pre className="text-xs text-(--ui-muted) whitespace-pre-wrap">
+            ) : null}
+            {!llamaConfigLoading && !llamaConfigHelp?.error ? (
+              <pre className="whitespace-pre-wrap text-xs text-(--ui-muted)">
                 {llamaConfigHelp?.config ?? "No config data returned."}
               </pre>
-            )}
+            ) : null}
           </div>
         </details>
-      )}
+      ) : null}
     </div>
   );
 }

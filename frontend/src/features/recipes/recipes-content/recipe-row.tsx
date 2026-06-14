@@ -3,7 +3,15 @@
 import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Play, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
-import { ModelButton, ModelRow, ModelStatus, ModelValue, type ModelStatusTone } from "@/ui";
+import {
+  ModelButton,
+  ModelLogo,
+  ModelRow,
+  ModelStatus,
+  ModelValue,
+  type ModelStatusTone,
+} from "@/ui";
+import { modelIdFromPath } from "@/lib/huggingface";
 import { formatBackendLabel } from "@/features/recipes/recipe-labels";
 
 type Props = {
@@ -77,6 +85,7 @@ export const RecipeRow = memo(function RecipeRow({
     <ModelRow
       label={recipe.name}
       description={description}
+      leading={<ModelLogo modelId={modelIdFromPath(recipe.model_path)} size="sm" />}
       value={<ModelValue mono>{`${recipe.model_path} · tp/pp ${tp}/${pp}`}</ModelValue>}
       status={<ModelStatus tone={statusTone(status)}>{status}</ModelStatus>}
       actions={

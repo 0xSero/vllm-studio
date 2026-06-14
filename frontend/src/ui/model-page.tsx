@@ -10,6 +10,7 @@ export type ModelRowHighlight = "none" | "success";
 type ModelRowProps = {
   label: string;
   description?: string;
+  leading?: ReactNode;
   value?: ReactNode;
   control?: ReactNode;
   status?: ReactNode;
@@ -50,6 +51,7 @@ export function ModelSection({
 export function ModelRow({
   label,
   description,
+  leading,
   value,
   control,
   status,
@@ -85,21 +87,24 @@ export function ModelRow({
       tabIndex={interactive ? 0 : undefined}
     >
       <div className="grid min-h-7 grid-cols-1 gap-2 md:grid-cols-[minmax(150px,0.44fr)_minmax(0,1fr)] md:items-center md:gap-5">
-        <div className="min-w-0">
-          <div
-            className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
-            title={label}
-          >
-            {label}
-          </div>
-          {description ? (
+        <div className="flex min-w-0 items-center gap-2.5">
+          {leading ? <span className="shrink-0">{leading}</span> : null}
+          <div className="min-w-0">
             <div
-              className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
-              title={description}
+              className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
+              title={label}
             >
-              {description}
+              {label}
             </div>
-          ) : null}
+            {description ? (
+              <div
+                className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
+                title={description}
+              >
+                {description}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div

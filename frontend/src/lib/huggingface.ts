@@ -70,6 +70,20 @@ export function hfAvatarUrl(modelId: string, author?: string | null): string {
   return `/api/huggingface/avatar?owner=${encodeURIComponent(owner)}`;
 }
 
+/**
+ * Best-effort Hugging Face id from a local model path or an already-qualified
+ * id. Keeps the trailing `owner/model` segments (e.g.
+ * `/data/models/Qwen/Qwen2.5-7B` -> `Qwen/Qwen2.5-7B`) so the avatar resolver
+ * can find an org logo; falls back gracefully when no owner is present.
+ */
+export function modelIdFromPath(modelPath: string): string {
+  const parts = modelPath.split(/[\\/]/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+  }
+  return parts[parts.length - 1] ?? modelPath;
+}
+
 export function normalizeModelId(modelId: string): string {
   return modelId
     .toLowerCase()

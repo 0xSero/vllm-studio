@@ -1,4 +1,5 @@
 import type { Recipe } from "@/lib/types";
+import { stripForeignFlagKeys } from "../../../../shared/contracts/engine-args";
 import type { RecipeEditor } from "./recipe-editor";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
 import {
@@ -63,6 +64,9 @@ export const prepareRecipeForSave = (recipe: RecipeEditor): Recipe => {
   delete (payload as unknown as Record<string, unknown>)["status"];
   delete (payload as unknown as Record<string, unknown>)["thinking_budget"];
 
-  payload.extra_args = extraArgs;
+  // Drop any vLLM-only flags that would otherwise leak into a non-vLLM engine
+  // (e.g. after switching a recipe's backend). The active engine is the
+  // authority for which extra args are valid.
+  payload.extra_args = stripForeignFlagKeys(payload.backend ?? "vllm", extraArgs);
   return payload;
 };

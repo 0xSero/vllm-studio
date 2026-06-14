@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Cpu, HardDrive, Network, RefreshCw, Save } from "lucide-react";
-import { Button, StatusPill } from "@/ui";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { RefreshCw, Save } from "lucide-react";
+import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem } from "@/ui";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import api from "@/lib/api/client";
+import { modelIdFromPath } from "@/lib/huggingface";
 import type { Backend, ModelInfo, Recipe, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
-import { formatBackendLabel } from "@/features/recipes/recipe-labels";
+import { ENGINE_LABEL, getEngineCapabilities } from "@/features/recipes/engine-capabilities";
 import { generateCommand } from "@/features/recipes/recipe-command";
 import {
   filterExtraArgsForEditor,
@@ -58,8 +59,10 @@ export function RecipeModal({
   } | null>(null);
 
   const backend = recipe.backend ?? "vllm";
+  const capabilities = useMemo(() => getEngineCapabilities(backend), [backend]);
   const isLlamacpp = backend === "llamacpp";
   const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
+  const safeActiveTab = capabilities.tabs.includes(activeTab) ? activeTab : "general";
 
   const subscribeLlamaConfigHelp = useCallback(
     (_notify: () => void) => {
@@ -220,33 +223,38 @@ export function RecipeModal({
   };
 
   return (
-    <Drawer width={860}>
+    <Drawer width={880}>
       <DrawerHeader
         title={recipe.id ? recipe.name || "Edit recipe" : "New recipe"}
         badge={
           <StatusPill tone="info" variant="badge" className="shrink-0">
-            {formatBackendLabel(recipe.backend)}
+            {ENGINE_LABEL[backend]}
           </StatusPill>
         }
         onClose={onClose}
       />
 
-      <RecipeModalTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
+      <RecipeModalTabBar
+        tabs={capabilities.tabs}
+        activeTab={safeActiveTab}
+        onSelectTab={setActiveTab}
+      />
 
       <DrawerBody>
-        <div className="space-y-4">
+        <div className="space-y-5">
           <RecipeModalSummary
             recipe={recipe}
             backend={backend}
             commandOverridden={hasCommandOverride}
+            onBackendChange={(next) => applyRecipeChange({ ...recipe, backend: next })}
           />
           <RecipeModalTabContent
-            activeTab={activeTab}
+            activeTab={safeActiveTab}
             recipe={recipe}
             onChange={applyRecipeChange}
             availableModels={availableModels}
             modelServedNames={modelServedNames}
-            isLlamacpp={isLlamacpp}
+            capabilities={capabilities}
             getExtraArgValueForKey={getExtraArgValueForKeyLocal}
             setExtraArgValueForKey={setExtraArgValueForKeyLocal}
             envVarEntries={envVarEntries}
@@ -308,60 +316,61 @@ export function RecipeModal({
   );
 }
 
+const BACKEND_ITEMS: SegmentedItem<Backend>[] = [
+  { id: "vllm", label: "vLLM" },
+  { id: "sglang", label: "SGLang" },
+  { id: "llamacpp", label: "llama.cpp" },
+  { id: "mlx", label: "MLX" },
+];
+
 function RecipeModalSummary({
   recipe,
   backend,
   commandOverridden,
+  onBackendChange,
 }: {
   recipe: RecipeEditor;
   backend: Backend;
   commandOverridden: boolean;
+  onBackendChange: (backend: Backend) => void;
 }) {
   return (
-    <div className="grid gap-2 md:grid-cols-3">
-      <SummaryCell
-        icon={<Cpu className="h-3.5 w-3.5" />}
-        label="Backend"
-        value={formatBackendLabel(backend)}
-      />
-      <SummaryCell
-        icon={<HardDrive className="h-3.5 w-3.5" />}
-        label="Model"
-        value={recipe.model_path || "Select a model"}
-      />
-      <SummaryCell
-        icon={<Network className="h-3.5 w-3.5" />}
-        label="API name"
-        value={recipe.served_model_name || recipe.name || "Generated"}
-        badge={commandOverridden ? "command override" : undefined}
-      />
-    </div>
-  );
-}
-
-function SummaryCell({
-  icon,
-  label,
-  value,
-  badge,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  badge?: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-md border border-(--ui-border) bg-(--ui-surface) px-3 py-2">
-      <div className="mb-1 flex items-center gap-1.5 text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
-        {icon}
-        {label}
+    <div className="rounded-md border border-(--ui-border) bg-(--ui-surface) p-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <ModelLogo
+          modelId={recipe.model_path ? modelIdFromPath(recipe.model_path) : "model"}
+          size="lg"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
+              {recipe.name?.trim() || "Untitled recipe"}
+            </span>
+            {commandOverridden ? (
+              <StatusPill tone="warning" variant="badge" className="shrink-0">
+                command override
+              </StatusPill>
+            ) : null}
+          </div>
+          <div
+            className="mt-0.5 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)"
+            title={recipe.model_path || undefined}
+          >
+            {recipe.model_path || "No model selected"}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
+            Engine
+          </span>
+          <SegmentedControl
+            items={BACKEND_ITEMS}
+            value={backend}
+            onChange={onBackendChange}
+            size="sm"
+          />
+        </div>
       </div>
-      <div className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)" title={value}>
-        {value}
-      </div>
-      {badge ? (
-        <div className="mt-1 text-[length:var(--fs-xs)] text-(--ui-warning)">{badge}</div>
-      ) : null}
     </div>
   );
 }

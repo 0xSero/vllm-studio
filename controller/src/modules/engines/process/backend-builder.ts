@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Recipe } from "../../models/types";
 import type { Config } from "../../../config/env";
+import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
 import {
@@ -272,7 +273,7 @@ export const buildMlxCommand = (recipe: Recipe, config: Config): string[] => {
   const python = getPythonPath(recipe) || config.mlx_python || "python3";
   const command = [python, "-m", "mlx_lm.server"];
   command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
-  return appendExtraArguments(command, recipe.extra_args);
+  return appendExtraArguments(command, stripForeignFlagKeys("mlx", recipe.extra_args));
 };
 export const buildBackendCommand = (recipe: Recipe, config: Config): string[] => {
   const launchCommand = getLaunchCommandOverride(recipe);
@@ -370,7 +371,7 @@ export const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] =
   if (!ctxOverride && recipe.max_model_len > 0) {
     command.push("--ctx-size", String(recipe.max_model_len));
   }
-  return appendLlamacppArguments(command, recipe.extra_args);
+  return appendLlamacppArguments(command, stripForeignFlagKeys("llamacpp", recipe.extra_args));
 };
 export const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
   const python = getPythonPath(recipe) || config.sglang_python || "python";
@@ -413,5 +414,5 @@ export const buildSglangCommand = (recipe: Recipe, config: Config): string[] => 
   if (reasoningParser) {
     command.push("--reasoning-parser", reasoningParser);
   }
-  return appendExtraArguments(command, recipe.extra_args);
+  return appendExtraArguments(command, stripForeignFlagKeys("sglang", recipe.extra_args));
 };

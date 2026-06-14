@@ -1,4 +1,5 @@
 import { LLAMACPP_OPTION_KEYS } from "./llamacpp-options";
+import { MLX_OPTION_KEYS } from "./mlx-options";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
 
 const RESERVED_EXTRA_ARGS = new Set<string>();
@@ -24,6 +25,10 @@ for (const field of EXTRA_ARG_FIELDS) {
 ["default-chat-template-kwargs", "default_chat_template_kwargs"].forEach(addReservedKeys);
 
 for (const key of LLAMACPP_OPTION_KEYS) {
+  addReservedKeys(key);
+}
+
+for (const key of MLX_OPTION_KEYS) {
   addReservedKeys(key);
 }
 

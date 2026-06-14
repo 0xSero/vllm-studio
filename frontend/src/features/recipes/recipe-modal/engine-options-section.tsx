@@ -1,10 +1,8 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import type { ReactNode } from "react";
 import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
-import { LLAMACPP_OPTIONS } from "@/features/recipes/llamacpp-options";
-
-type LlamacppTab = "model" | "resources" | "performance" | "features";
+import type { LlamacppOption } from "@/features/recipes/llamacpp-options";
 
 function coerceBooleanValue(value: unknown): boolean {
   if (typeof value === "boolean") return value;
@@ -17,27 +15,36 @@ function coerceBooleanValue(value: unknown): boolean {
   return false;
 }
 
-export function LlamacppOptionsSection({
-  tab,
+/**
+ * Renders an engine-native option grid (llama.cpp / MLX) from a declarative
+ * option list. Every value is stored verbatim in `extra_args`, so these are the
+ * exact flags the engine receives.
+ */
+export function EngineOptionsSection({
+  title,
+  icon,
+  options,
+  helpText,
   getValueForKey,
   setValueForKey,
 }: {
-  tab: LlamacppTab;
+  title: string;
+  icon: ReactNode;
+  options: LlamacppOption[];
+  helpText?: string;
   getValueForKey: (key: string) => unknown;
   setValueForKey: (key: string, value: unknown) => void;
 }) {
-  const options = LLAMACPP_OPTIONS.filter((option) => option.tab === tab);
-  if (options.length === 0) {
-    return null;
-  }
+  if (options.length === 0) return null;
 
   return (
-    <FormSection icon={<Settings className="h-4 w-4" />} title="llama.cpp Options">
+    <FormSection icon={icon} title={title}>
       <div className="grid grid-cols-2 gap-3">
         {options.map((option) => {
           const value = getValueForKey(option.key);
           const wide =
-            option.type === "text" && /prompt|template|grammar|control|model/.test(option.key);
+            option.type === "text" &&
+            /prompt|template|grammar|control|model|adapter/.test(option.key);
           const span = wide ? "col-span-2" : undefined;
 
           if (option.type === "boolean") {
@@ -48,13 +55,19 @@ export function LlamacppOptionsSection({
                 checked={coerceBooleanValue(value)}
                 onChange={(checked) => setValueForKey(option.key, checked ? true : undefined)}
                 label={option.label}
+                description={option.description}
               />
             );
           }
 
           if (option.type === "select") {
             return (
-              <FormField key={option.key} label={option.label} className={span}>
+              <FormField
+                key={option.key}
+                label={option.label}
+                description={option.description}
+                className={span}
+              >
                 <Select
                   value={value ? String(value) : ""}
                   onChange={(e) => setValueForKey(option.key, e.target.value || undefined)}
@@ -72,7 +85,12 @@ export function LlamacppOptionsSection({
 
           const inputType = option.type === "number" ? "number" : "text";
           return (
-            <FormField key={option.key} label={option.label} className={span}>
+            <FormField
+              key={option.key}
+              label={option.label}
+              description={option.description}
+              className={span}
+            >
               <Input
                 type={inputType}
                 value={value !== undefined && value !== null ? String(value) : ""}
@@ -92,10 +110,7 @@ export function LlamacppOptionsSection({
           );
         })}
       </div>
-      <p className="text-xs text-(--ui-muted)">
-        All llama.cpp flags are supported via Extra CLI Arguments. These fields cover the most-used
-        options.
-      </p>
+      {helpText ? <p className="text-xs text-(--ui-muted)">{helpText}</p> : null}
     </FormSection>
   );
 }
