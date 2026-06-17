@@ -9,6 +9,7 @@ import { modelIdFromPath } from "@/lib/huggingface";
 import type { Backend, ModelInfo, Recipe, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ENGINE_LABEL, getEngineCapabilities } from "@/features/recipes/engine-capabilities";
+import { engineNodeStyle } from "@/features/recipes/recipe-labels";
 import { generateCommand } from "@/features/recipes/recipe-command";
 import {
   filterExtraArgsForEditor,
@@ -222,14 +223,18 @@ export function RecipeModal({
     updateEnvVarEntries(next.length ? next : [{ key: "", value: "" }]);
   };
 
+  const engineStyle = engineNodeStyle(backend);
+
   return (
     <Drawer width={880}>
       <DrawerHeader
         title={recipe.id ? recipe.name || "Edit recipe" : "New recipe"}
         badge={
-          <StatusPill tone="info" variant="badge" className="shrink-0">
+          <span
+            className={`inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[length:var(--fs-2xs)] font-medium ${engineStyle.bg} ${engineStyle.fg}`}
+          >
             {ENGINE_LABEL[backend]}
-          </StatusPill>
+          </span>
         }
         onClose={onClose}
       />

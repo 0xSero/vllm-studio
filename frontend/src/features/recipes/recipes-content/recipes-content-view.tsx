@@ -140,14 +140,24 @@ export function RecipesContentView(props: Props) {
                         key={section.id}
                         type="button"
                         onClick={() => setTab(section.id)}
-                        className={`group grid h-7 grid-cols-[18px_1fr] items-center gap-2 rounded-md px-2 text-left text-[length:var(--fs-md)] transition-colors lg:w-full ${
+                        className={`group relative grid h-7 grid-cols-[18px_1fr] items-center gap-2 rounded-md px-2 text-left text-[length:var(--fs-md)] transition-colors lg:w-full ${
                           active
-                            ? "bg-(--surface) text-(--fg)"
-                            : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                            ? "bg-(--color-surface) font-medium text-(--fg)"
+                            : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--fg)"
                         }`}
                         title={section.description}
                       >
-                        <span className="flex h-4 w-4 items-center justify-center opacity-80">
+                        {active ? (
+                          <span
+                            aria-hidden
+                            className="absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-(--color-sky-400)"
+                          />
+                        ) : null}
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center ${
+                            active ? "text-(--color-sky-400) opacity-100" : "opacity-70"
+                          }`}
+                        >
                           {section.icon}
                         </span>
                         <span className="truncate">{section.label}</span>
