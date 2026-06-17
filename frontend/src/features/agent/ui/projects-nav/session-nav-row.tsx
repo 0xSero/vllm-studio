@@ -9,7 +9,7 @@ import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
 import type { SessionPref } from "@/features/agent/messages/prefs";
 
 const SESSION_MENU_CLASS =
-  "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-[#3a3a3a] bg-[#202020] p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.85)]";
+  "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-(--color-card-border) bg-(--color-popover) p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.45)]";
 
 function hrefWithOpenNonce(href: string): string {
   const separator = href.includes("?") ? "&" : "?";
@@ -411,7 +411,7 @@ function SessionMenuItem({ onClick, children }: { onClick: () => void; children:
     <button
       type="button"
       onClick={onClick}
-      className="block w-full rounded-sm px-2 py-1 text-left text-xs text-(--fg) hover:bg-[#242424]"
+      className="block w-full rounded-sm px-2 py-1 text-left text-xs text-(--fg) hover:bg-(--color-menu-hover)"
     >
       {children}
     </button>

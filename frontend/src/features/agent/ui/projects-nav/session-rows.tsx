@@ -114,7 +114,7 @@ export function ProjectRow({
         ) : null}
       </div>
       {missingErrorVisible && !project.exists ? (
-        <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-md)] text-red-400">
+        <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-md)] text-(--err)">
           <span>Folder not found at {project.path}</span>
           <button
             type="button"
