@@ -4,8 +4,6 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
-import { MetricCards } from "./metric-cards";
-import { UtilizationHeatmap } from "./utilization-heatmap";
 import { createApiClient } from "@/lib/api/create-api-client";
 import {
   BACKEND_URL_CHANGED_EVENT,
@@ -61,10 +59,6 @@ export function ControlPanel(props: DashboardLayoutProps) {
         onNewRecipe={props.onNewRecipe}
         onViewAll={props.onViewAll}
       />
-      <div className="space-y-3 px-2 pt-4">
-        <MetricCards metrics={metrics} gpus={gpus} />
-        <UtilizationHeatmap />
-      </div>
       <GpuSection metrics={metrics} gpus={gpus} currentProcess={currentProcess} />
       <ActivityStrip {...props} />
     </div>
