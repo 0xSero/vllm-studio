@@ -215,36 +215,58 @@ export function useExplore() {
   }, [models, recByKey, search, hardwareProfile]);
 
   const sortedGroups = useMemo(() => {
+    const isSearching = search.trim().length > 0;
     return [...groupedModels].sort((a, b) => {
+      // Spotlight recommendations always float to the top in both modes.
       const aSpot = spotlightRecKeys.has(a.key);
       const bSpot = spotlightRecKeys.has(b.key);
       if (aSpot && !bSpot) return -1;
       if (!aSpot && bSpot) return 1;
 
+      if (isSearching) {
+        // SEARCH MODE: HF already ranked these by relevance (it matched the
+        // search term server-side and returned them in downloads order within
+        // that match set). Preserve HF's order — only break ties by downloads
+        // then recency. The old code discarded HF's relevance ranking and
+        // re-sorted by raw likes, which buried exact matches under popular
+        // unrelated models.
+        if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
+        const ta = a.lastModifiedMs;
+        const tb = b.lastModifiedMs;
+        if (tb !== ta) return tb - ta;
+        return 0;
+      }
+
+      // BROWSE MODE (no search): engagement + freshness matter since there's no
+      // query to prioritize. Likes are a stronger quality signal than downloads
+      // for browsing, so they lead.
       if (b.maxLikes !== a.maxLikes) return b.maxLikes - a.maxLikes;
       if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
       const ta = a.lastModifiedMs;
       const tb = b.lastModifiedMs;
       if (tb !== ta) return tb - ta;
 
+      // Final tie-break: prefer models that fit the VRAM pool.
       if (poolGb > 0) {
         const ea = a.needGb;
         const eb = b.needGb;
         const fitA = ea != null && ea <= poolGb;
         const fitB = eb != null && eb <= poolGb;
         if (fitA !== fitB) return fitA ? -1 : 1;
-        if (ea != null && eb != null) {
-          if (fitA) return ea - eb;
-          return ea - poolGb - (eb - poolGb);
-        }
       }
       return 0;
     });
-  }, [groupedModels, spotlightRecKeys, poolGb]);
+  }, [groupedModels, spotlightRecKeys, poolGb, search]);
 
+  // VRAM-tier interleaving only makes sense when browsing — when the user has
+  // searched for something specific, scrambling the relevance order to mix
+  // footprint sizes would bury the match they typed.
   const mixedGroups = useMemo(
-    () => interleaveExploreGroupsByVramTier(sortedGroups, poolGb),
-    [sortedGroups, poolGb],
+    () =>
+      search.trim().length > 0
+        ? sortedGroups
+        : interleaveExploreGroupsByVramTier(sortedGroups, poolGb),
+    [sortedGroups, poolGb, search],
   );
 
   const visibleGroups = useMemo(() => {

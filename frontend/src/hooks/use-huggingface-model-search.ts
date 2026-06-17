@@ -46,9 +46,11 @@ export function useHuggingFaceModelSearch(
           setModels(visibleData);
           setPage(0);
         }
-        setHasMore(
-          data.length === PAGE_SIZE && (!isBrowsing || visibleData.length === data.length),
-        );
+        // hasMore: HF returned a full page, so there may be more. In browse mode
+        // the recency filter may remove every result on a given page — that
+        // doesn't mean there are no more recent models on later pages, so we
+        // only gate on the raw page size, not the filtered count.
+        setHasMore(data.length === PAGE_SIZE);
       } catch (e) {
         setError((e as Error).message);
       } finally {
