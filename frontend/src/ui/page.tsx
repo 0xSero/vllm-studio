@@ -79,17 +79,28 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 rounded-md px-2.5 text-left text-[length:var(--fs-md)] transition-colors sm:max-w-none lg:w-full",
+                "group relative grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 rounded-md px-2.5 text-left text-[length:var(--fs-md)] transition-colors sm:max-w-none lg:w-full",
                 active
-                  ? "bg-(--ui-hover) text-(--ui-fg)"
-                  : "text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg)",
+                  ? "bg-(--color-surface) text-(--ui-fg)"
+                  : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--ui-fg)",
               )}
               title={item.description}
             >
-              <span className="flex h-4 w-4 items-center justify-center opacity-80">
+              {active ? (
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-(--color-sky-400)"
+                />
+              ) : null}
+              <span
+                className={cx(
+                  "flex h-4 w-4 items-center justify-center",
+                  active ? "text-(--color-sky-400) opacity-100" : "opacity-70",
+                )}
+              >
                 {item.icon}
               </span>
-              <span className="truncate">{item.label}</span>
+              <span className={cx("truncate", active ? "font-medium" : "")}>{item.label}</span>
             </button>
           );
         })}

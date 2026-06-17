@@ -42,10 +42,13 @@
   "dependencies": {
     "@earendil-works/pi-ai": "0.78.1",
     "@earendil-works/pi-coding-agent": "0.78.1",
+    "@effect/platform": "^0.96.1",
+    "@effect/schema": "^0.75.5",
     "@lydell/node-pty": "1.2.0-beta.12",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-web-links": "0.13.0-beta.220",
     "@xterm/xterm": "6.1.0-beta.285",
+    "effect": "^3.21.3",
     "electron-updater": "6.8.3",
     "highlight.js": "11.11.1",
     "lucide-react": "0.561.0",

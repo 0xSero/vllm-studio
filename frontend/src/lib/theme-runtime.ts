@@ -11,7 +11,7 @@ import {
 } from "@/lib/themes";
 
 const STORE_KEY = "vllm-studio-state";
-const DEFAULT_THEME_ID: ThemeId = "omlx-dark";
+const DEFAULT_THEME_ID: ThemeId = "zai-dark";
 
 const THEME_TOKENS_BY_ID = Object.fromEntries(
   Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [id, theme.tokens]),

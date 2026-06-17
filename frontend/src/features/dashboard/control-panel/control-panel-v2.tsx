@@ -4,6 +4,8 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
+import { MetricCards } from "./metric-cards";
+import { UtilizationHeatmap } from "./utilization-heatmap";
 import { createApiClient } from "@/lib/api/create-api-client";
 import {
   BACKEND_URL_CHANGED_EVENT,
@@ -59,6 +61,10 @@ export function ControlPanel(props: DashboardLayoutProps) {
         onNewRecipe={props.onNewRecipe}
         onViewAll={props.onViewAll}
       />
+      <div className="space-y-3 px-2 pt-4">
+        <MetricCards metrics={metrics} gpus={gpus} />
+        <UtilizationHeatmap />
+      </div>
       <GpuSection metrics={metrics} gpus={gpus} currentProcess={currentProcess} />
       <ActivityStrip {...props} />
     </div>
@@ -210,9 +216,16 @@ function ControllerTab({
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
       <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
-      <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">{state}</span>
-      <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">{controller.gpus.length}× gpu</span>
-      <span className="max-w-[14rem] truncate text-[length:var(--fs-xs)] text-(--dim)" title={model}>
+      <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
+        {state}
+      </span>
+      <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">
+        {controller.gpus.length}× gpu
+      </span>
+      <span
+        className="max-w-[14rem] truncate text-[length:var(--fs-xs)] text-(--dim)"
+        title={model}
+      >
         {controller.online ? model : controller.error || "unreachable"}
       </span>
     </button>

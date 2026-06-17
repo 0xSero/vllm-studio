@@ -19,8 +19,8 @@ import { ColorField, ListGroup, ListRow, SegmentedControl, type SegmentedItem, S
 /* ------------------------------------------------------------------ */
 
 const CUSTOM_THEME_TOKEN_KEY = "vllm-studio.customThemeTokens";
-const LIGHT_THEME_ID = "omlx-light";
-const DARK_THEME_ID = "omlx-dark";
+const LIGHT_THEME_ID = "zai-light";
+const DARK_THEME_ID = "zai-dark";
 
 type ThemeMode = "light" | "dark" | "system";
 

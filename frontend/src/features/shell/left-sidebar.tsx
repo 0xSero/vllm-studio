@@ -252,19 +252,19 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mb-1 flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)/90"
+                  className="mb-1 flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-(--color-foreground-subtle) transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)"
                   title="Search sessions (⌘K)"
                 >
                   <SearchIcon className="h-4 w-4 shrink-0 opacity-60" strokeWidth={1.5} />
                   <span className="flex-1 truncate text-left text-[length:var(--fs-lg)] font-normal">
                     Search
                   </span>
-                  <kbd className="rounded-md border border-(--border)/40 bg-transparent px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim)/50">
+                  <kbd className="rounded-md border border-(--border) bg-(--color-tag) px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--color-foreground-subtle)">
                     ⌘K
                   </kbd>
                 </button>
 
-                <div className="mb-1 mt-4 px-2.5 text-[length:var(--fs-sm)] font-medium text-(--dim)/65">
+                <div className="mb-1 mt-4 px-2.5 text-[length:var(--fs-sm)] font-medium text-(--color-foreground-subtlest)">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -286,15 +286,21 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Settings"
                   className={`group relative flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${
                     isRouteActive(pathname, "/settings")
-                      ? "bg-(--fg)/8 font-medium text-(--fg)"
-                      : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)/90"
+                      ? "bg-(--color-surface) font-medium text-(--fg)"
+                      : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--fg)"
                   }`}
                 >
+                  {isRouteActive(pathname, "/settings") ? (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-(--color-sky-400)"
+                    />
+                  ) : null}
                   <Settings
                     className={`h-4 w-4 shrink-0 ${
-                      isRouteActive(pathname, "/settings") ? "opacity-90" : "opacity-60"
+                      isRouteActive(pathname, "/settings") ? "text-(--color-sky-400)" : "opacity-60"
                     }`}
-                    strokeWidth={1.5}
+                    strokeWidth={1.75}
                   />
                   <span className="whitespace-nowrap text-[length:var(--fs-lg)] font-normal">
                     Settings
@@ -453,13 +459,20 @@ function NavItemDesktop({
       title={label}
       className={`group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 transition-colors shrink-0 ${
         active
-          ? "bg-(--fg)/8 font-medium text-(--fg)"
-          : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)/90"
+          ? "bg-(--color-surface) font-medium text-(--fg)"
+          : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--fg)"
       }`}
     >
+      {/* ZCode idiom: sky-blue left-edge bar marks the active route. */}
+      {active ? (
+        <span
+          aria-hidden
+          className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-(--color-sky-400)"
+        />
+      ) : null}
       <Icon
-        className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-60"}`}
-        strokeWidth={1.5}
+        className={`h-4 w-4 shrink-0 ${active ? "text-(--color-sky-400)" : "opacity-60"}`}
+        strokeWidth={1.75}
       />
       <span
         className={`text-[length:var(--fs-lg)] whitespace-nowrap transition-opacity duration-100 ${

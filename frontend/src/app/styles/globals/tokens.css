@@ -1,56 +1,522 @@
-/* Theme system
+/* Theme system — ZCode/ZAI design language
 
    Single source of truth for the visual language. Every component reads from
    these CSS variables; no hardcoded colors, radii, or row heights live in
    component files.
 
-   Design philosophy: quiet, grayscale-first, low-saturation. Accents are
-   pulled from the foreground ramp itself so the UI never screams. */
+   Ported from the ZCode desktop app's `.theme-zai-light` / `.theme-zai-dark`
+   systems: a quiet neutral-grayscale canvas with a single sky-blue brand
+   accent, plus rich domain tokens (terminal palette, usage heatmap/chart,
+   git/diff, and a node taxonomy used to color-code engines/models/sessions
+   across the app).
+
+   The `--ui-*` adapter layer and the shadcn/Radix compatibility aliases are
+   preserved and repointed to the new tokens, so existing components re-skin
+   without class-name changes. */
 :root {
-  /* Core surfaces — light mode. Values mirror the Codex desktop light theme:
-     pure-white editor canvas, near-white rail, gray-50/100 surface steps. */
-  --bg: #ffffff;
-  --fg: #0d0d0d;
-  --dim: #5d5d5d;
-  --surface: #f9f9f9;
-  --surface-2: #ededed;
-  --surface-3: #e3e3e3;
-  --rail: #fcfcfc;
-  --agent-bg: var(--bg);
-  --sidebar-bg: var(--rail);
+  /* Master knobs — the values the Appearance editor controls. Type / radius /
+     weight all derive from these via calc(), so a handful of values re-theme
+     the whole app uniformly. Defaults reproduce ZCode's look. */
+  --ui-scale: 1; /* master text-size multiplier — scales the entire type ramp */
+  --leading: 1.5; /* base line-height */
+  --leading-tight: 1.25;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --radius-base: 8px; /* master corner radius — the radius ramp scales from it */
+  --border-width: 1px;
+  --space-base: 4px; /* base spacing unit */
 
-  /* Codex separates panes with ~8% foreground hairlines, 12% for heavy rules */
-  --border: rgba(0, 0, 0, 0.08);
-  --separator: rgba(0, 0, 0, 0.12);
+  /* ──────────────────────────────────────────────────────────────────────
+     Tailwind primitive palette — mirrors the ZCode oklch color stops so
+     @theme color utilities (bg-sky-500, text-teal-300, …) resolve to the same
+     values ZCode ships. Components may use these directly for charts, tags,
+     and the node taxonomy.
+     ────────────────────────────────────────────────────────────────────── */
+  --color-black: #000;
+  --color-white: #fff;
 
-  --hover: rgba(0, 0, 0, 0.04);
-  --active: rgba(0, 0, 0, 0.07);
-  --composer: var(--bg);
-  --composer-footer: var(--bg);
+  --color-neutral-50: oklch(98.5% 0 0);
+  --color-neutral-100: oklch(97% 0 0);
+  --color-neutral-200: oklch(92.2% 0 0);
+  --color-neutral-300: oklch(87% 0 0);
+  --color-neutral-400: oklch(70.7% 0 0);
+  --color-neutral-500: oklch(55.6% 0 0);
+  --color-neutral-600: oklch(44.6% 0 0);
+  --color-neutral-700: oklch(37.1% 0 0);
+  --color-neutral-800: oklch(26.9% 0 0);
+  --color-neutral-900: oklch(20.5% 0 0);
+  --color-neutral-950: oklch(14.5% 0 0);
 
-  /* Accents — grayscale ramp plus the single sanctioned chroma: Codex blue.
-     Everything else stays monochrome so the one color reads as meaning. */
-  --accent: #1a1a1a;
-  --hl1: #525252;
-  --hl2: #404040;
-  --hl3: #616161;
-  --err: #e02e2a;
-  --ok: #00a240;
-  --warn: #e25507;
-  /* Reference accent — links, file/URL chips, focus, live status. */
-  --link: #0169cc;
+  --color-sky-50: oklch(97.7% 0.013 236.62);
+  --color-sky-100: oklch(95.1% 0.026 236.824);
+  --color-sky-200: oklch(90.1% 0.058 230.902);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-sky-600: oklch(58.8% 0.158 241.966);
+  --color-sky-700: oklch(50% 0.134 242.749);
+  --color-sky-900: oklch(39.1% 0.09 240.876);
+  --color-sky-950: oklch(29.3% 0.066 243.157);
 
-  /* Density / dimensions */
+  --color-teal-300: oklch(85.5% 0.138 181.071);
+  --color-teal-400: oklch(77.7% 0.152 181.912);
+  --color-teal-600: oklch(60% 0.118 184.704);
+
+  --color-cyan-400: oklch(78.9% 0.154 211.53);
+  --color-cyan-600: oklch(60.9% 0.126 221.723);
+
+  --color-green-400: oklch(79.2% 0.209 151.711);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-green-600: oklch(62.7% 0.194 149.214);
+
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+
+  --color-yellow-500: oklch(79.5% 0.184 86.047);
+  --color-yellow-600: oklch(68.1% 0.162 75.834);
+
+  --color-orange-400: oklch(75% 0.183 55.934);
+  --color-orange-500: oklch(70.5% 0.213 47.604);
+
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(57.7% 0.245 27.325);
+
+  --color-rose-400: oklch(71.2% 0.194 13.428);
+  --color-rose-500: oklch(64.5% 0.246 16.439);
+
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-blue-600: oklch(54.6% 0.245 262.881);
+
+  --color-indigo-400: oklch(67.3% 0.182 276.935);
+  --color-indigo-500: oklch(58.5% 0.233 277.117);
+
+  --color-violet-300: oklch(81.1% 0.111 293.571);
+  --color-violet-400: oklch(70.2% 0.183 293.541);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+
+  --color-fuchsia-500: oklch(66.7% 0.295 322.15);
+  --color-fuchsia-600: oklch(59.1% 0.293 322.896);
+
+  --color-slate-300: oklch(86.9% 0.022 252.894);
+  --color-slate-500: oklch(55.4% 0.046 257.417);
+
+  /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
+     attribute both select the ZCode dark system; `.theme-zai-*` class hooks are
+     also wired for parity with the source app. */
+  color-scheme: dark;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ZCode LIGHT — `.theme-zai-light` / `[data-theme="zai-light"]`
+   Neutral canvas, near-white surfaces, black brand, sky-blue data accents.
+   ────────────────────────────────────────────────────────────────────────── */
+.theme-zai-light,
+:root[data-theme="zai-light"] {
+  color-scheme: light;
+
+  --animated-gradient-text-strong: #0d0d0d;
+  --animated-gradient-text-soft: #0d0d0d38;
+
+  --color-background: #f8f8f8;
+  --color-background-win-alt: #ececee;
+  --color-background-alt: color-mix(in oklab, var(--color-background) 70%, transparent);
+
+  --color-brand: #000;
+  --color-accent: #ebf4ff;
+  --color-find-highlight: #fff4eb;
+  --color-find-highlight-active: #ffb26b;
+
+  --color-border: #0d0d0d1a;
+  --color-border-hover: #0d0d0d26;
+  --color-hover: #0d0d0d0d;
+  --color-selected: #0d0d0d0d;
+
+  --color-header: #fff;
+  --color-panel: #fff;
+  --color-sidebar: #f0f0f0;
+  --color-surface: #0d0d0d08;
+  --color-surface-hover: #0d0d0d0d;
+
+  --color-card: #fff;
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+
+  --color-popover: #fff;
+  --color-popover-header: #f8f8f8;
+  --color-popover-border: var(--color-border);
+
+  --color-input: #fff;
+  --color-input-focused: var(--color-input);
+  --color-input-border: var(--color-border);
+  --color-input-border-hover: var(--color-border-hover);
+  --color-input-border-focused: var(--color-border-hover);
+
+  /* Terminal — light variant */
+  --color-terminal-bg: var(--color-background);
+  --color-terminal-fg: var(--color-foreground);
+  --color-terminal-cursor: #0d0d0d;
+  --color-terminal-cursor-accent: var(--color-background);
+  --color-terminal-selection: #0b7fff38;
+  --color-terminal-selection-inactive: #0d0d0d1a;
+  --color-terminal-black: #5c5c5c;
+  --color-terminal-red: #e03131;
+  --color-terminal-green: #1e8a3e;
+  --color-terminal-yellow: #e07b00;
+  --color-terminal-blue: #0b7fff;
+  --color-terminal-magenta: #9e77ed;
+  --color-terminal-cyan: #0aa7a7;
+  --color-terminal-white: #adadad;
+  --color-terminal-bright-black: #888;
+  --color-terminal-bright-red: #e03131;
+  --color-terminal-bright-green: #1e8a3e;
+  --color-terminal-bright-yellow: #e07b00;
+  --color-terminal-bright-blue: #06d;
+  --color-terminal-bright-magenta: #9e77ed;
+  --color-terminal-bright-cyan: #0aa7a7;
+  --color-terminal-bright-white: #0d0d0d;
+
+  /* Usage charts — light sky/teal/violet/red/amber/cyan */
+  --color-usage-chart-1: #0b7fff;
+  --color-usage-chart-2: #1e8a3e;
+  --color-usage-chart-3: #9e77ed;
+  --color-usage-chart-4: #e03131;
+  --color-usage-chart-5: #e07b00;
+  --color-usage-chart-6: #0aa7a7;
+
+  /* Context breakdown — sky ramp, deep→pale */
+  --color-context-breakdown-1: #0b7fff;
+  --color-context-breakdown-2: #338fff;
+  --color-context-breakdown-3: #5ca7ff;
+  --color-context-breakdown-4: #85bbff;
+  --color-context-breakdown-5: #acd0ff;
+  --color-context-breakdown-6: #c8ddff;
+  --color-context-breakdown-7: #e0ecff;
+
+  /* Usage heatmap — 5-step sky ramp, 0%→82% saturation over the surface */
+  --color-usage-heatmap-0: color-mix(in oklab, #0b7fff 0%, var(--color-surface));
+  --color-usage-heatmap-1: color-mix(in oklab, #0b7fff 18%, var(--color-surface));
+  --color-usage-heatmap-2: color-mix(in oklab, #0b7fff 36%, var(--color-surface));
+  --color-usage-heatmap-3: color-mix(in oklab, #0b7fff 58%, var(--color-surface));
+  --color-usage-heatmap-4: color-mix(in oklab, #06d 82%, var(--color-surface));
+
+  --color-tab: #f0f0f0;
+  --color-tab-active: #fff;
+  --color-tab-border: var(--color-border);
+
+  --color-menu: #fff;
+  --color-menu-hover: #f0f0f0;
+
+  --color-primary: #000;
+  --color-primary-foreground: #fff;
+  --color-secondary: #e6e6e6;
+
+  --color-foreground: var(--color-neutral-800);
+  --color-foreground-subtle: color-mix(in oklab, var(--color-neutral-800) 60%, transparent);
+  --color-foreground-subtlest: color-mix(in oklab, var(--color-neutral-800) 40%, transparent);
+  --color-foreground-inverse: #fff;
+
+  --color-success: #1e8a3e;
+  --color-success-foreground: #fff;
+  --color-destructive: #e03131;
+  --color-destructive-foreground: #fff;
+  --color-warning: #e07b00;
+  --color-warning-foreground: #fff;
+
+  --color-diff-added: #1e8a3e;
+  --color-diff-added-foreground: #fff;
+  --color-diff-removed: #e03131;
+  --color-diff-removed-foreground: #fff;
+
+  --color-git-none: var(--color-foreground);
+  --color-git-modified: #e07b00;
+  --color-git-added: #1e8a3e;
+  --color-git-deleted: #e03131;
+  --color-git-renamed: #0b7fff;
+  --color-git-untracked: #1e8a3e;
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-git-descendant: #e07b00;
+
+  --color-toast: #fff;
+  --color-tooltip: #f0f0f0;
+  --color-tooltip-foreground: #0d0d0d;
+  --color-tooltip-tag: #e6e6e6;
+  --color-tooltip-tag-foreground: #5c5c5c;
+  --color-tag: #e6e6e6;
+
+  /* Node taxonomy — color-coding for engines/models/sessions/skills/agents */
+  --color-file-node: #1a70b81a;
+  --color-file-node-hover: #1a70b829;
+  --color-file-node-foreground: #1a70b8;
+  --color-skill-node: #7453b01a;
+  --color-skill-node-hover: #7453b029;
+  --color-skill-node-foreground: #7453b0;
+  --color-command-node: #5662701a;
+  --color-command-node-hover: #56627029;
+  --color-command-node-foreground: #566270;
+  --color-subagent-node: #6f7a2f1a;
+  --color-subagent-node-hover: #6f7a2f29;
+  --color-subagent-node-foreground: #6f7a2f;
+  --color-session-node: #14807a1a;
+  --color-session-node-hover: #14807a29;
+  --color-session-node-foreground: #14807a;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ZCode DARK — `.theme-zai-dark` / `.dark` / `[data-theme="zai-dark"]`
+   Rich neutral canvas (#161616), layered surfaces, white brand, sky-blue data.
+   This is the live default (set on <html data-theme="zai-dark">).
+   ────────────────────────────────────────────────────────────────────────── */
+.theme-zai-dark,
+.dark,
+:root[data-theme="zai-dark"],
+:root[data-theme="omlx-dark"] {
+  color-scheme: dark;
+
+  --animated-gradient-text-strong: #fff;
+  --animated-gradient-text-soft: #ffffff38;
+
+  --color-background: #161616;
+  --color-background-win-alt: #2b2b2b;
+  --color-background-alt: color-mix(in oklab, var(--color-background-win-alt) 60%, transparent);
+
+  --color-brand: #fff;
+  --color-accent: #001d3d;
+  --color-find-highlight: #542500;
+  --color-find-highlight-active: #ff8a30;
+
+  --color-border: #ffffff1a;
+  --color-border-hover: #ffffff26;
+  --color-hover: #ffffff0d;
+  --color-selected: #ffffff1a;
+
+  --color-header: #202020;
+  --color-panel: #202020;
+  --color-sidebar: #161616;
+  --color-surface: #ffffff0d;
+  --color-surface-hover: #ffffff1a;
+
+  --color-card: #2b2b2b;
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+
+  --color-popover: #2b2b2b;
+  --color-popover-header: #202020;
+  --color-popover-border: var(--color-border);
+
+  --color-input: #2b2b2b;
+  --color-input-focused: var(--color-input);
+  --color-input-border: var(--color-border);
+  --color-input-border-hover: var(--color-border-hover);
+  --color-input-border-focused: var(--color-border-hover);
+
+  /* Terminal — dark variant (ZCode's xterm theme) */
+  --color-terminal-bg: var(--color-background);
+  --color-terminal-fg: var(--color-foreground);
+  --color-terminal-cursor: #f8f8f8;
+  --color-terminal-cursor-accent: #161616;
+  --color-terminal-selection: #4099ff47;
+  --color-terminal-selection-inactive: #ffffff1a;
+  --color-terminal-black: #363636;
+  --color-terminal-red: #ff5c5c;
+  --color-terminal-green: #46bf72;
+  --color-terminal-yellow: #ff8a30;
+  --color-terminal-blue: #4099ff;
+  --color-terminal-magenta: #7b5ce5;
+  --color-terminal-cyan: #42c8c8;
+  --color-terminal-white: #adadad;
+  --color-terminal-bright-black: #747474;
+  --color-terminal-bright-red: #f99;
+  --color-terminal-bright-green: #87d9a4;
+  --color-terminal-bright-yellow: #ffb26b;
+  --color-terminal-bright-blue: #80beff;
+  --color-terminal-bright-magenta: #a888f2;
+  --color-terminal-bright-cyan: #8ee5e5;
+  --color-terminal-bright-white: #f8f8f8;
+
+  /* Usage charts */
+  --color-usage-chart-1: #4099ff;
+  --color-usage-chart-2: #46bf72;
+  --color-usage-chart-3: #7b5ce5;
+  --color-usage-chart-4: #ff5c5c;
+  --color-usage-chart-5: #ff8a30;
+  --color-usage-chart-6: #42c8c8;
+
+  /* Context breakdown — sky ramp */
+  --color-context-breakdown-1: #4099ff;
+  --color-context-breakdown-2: #66adff;
+  --color-context-breakdown-3: #80beff;
+  --color-context-breakdown-4: #9dceff;
+  --color-context-breakdown-5: #b9ddff;
+  --color-context-breakdown-6: #d0e8ff;
+  --color-context-breakdown-7: #e4f1ff;
+
+  /* Usage heatmap — 5-step sky ramp over the dark surface */
+  --color-usage-heatmap-0: color-mix(in oklab, #4099ff 0%, var(--color-surface));
+  --color-usage-heatmap-1: color-mix(in oklab, #4099ff 24%, var(--color-surface));
+  --color-usage-heatmap-2: color-mix(in oklab, #4099ff 42%, var(--color-surface));
+  --color-usage-heatmap-3: color-mix(in oklab, #4099ff 62%, var(--color-surface));
+  --color-usage-heatmap-4: color-mix(in oklab, #80beff 78%, var(--color-surface));
+
+  --color-tab: #202020;
+  --color-tab-active: #161616;
+  --color-tab-border: var(--color-border);
+
+  --color-menu: #2b2b2b;
+  --color-menu-hover: #363636;
+
+  --color-primary: #fff;
+  --color-primary-foreground: #000;
+  --color-secondary: #363636;
+
+  --color-foreground: var(--color-neutral-300);
+  --color-foreground-subtle: color-mix(in oklab, var(--color-neutral-300) 60%, transparent);
+  --color-foreground-subtlest: color-mix(in oklab, var(--color-neutral-300) 30%, transparent);
+  --color-foreground-inverse: #000;
+
+  --color-success: #46bf72;
+  --color-success-foreground: #000;
+  --color-destructive: #ff5c5c;
+  --color-destructive-foreground: #000;
+  --color-warning: #ff8a30;
+  --color-warning-foreground: #000;
+
+  --color-diff-added: #46bf72;
+  --color-diff-added-foreground: #000;
+  --color-diff-removed: #ff5c5c;
+  --color-diff-removed-foreground: #000;
+
+  --color-git-none: var(--color-foreground);
+  --color-git-modified: #ff8a30;
+  --color-git-added: #46bf72;
+  --color-git-deleted: #ff5c5c;
+  --color-git-renamed: #4099ff;
+  --color-git-untracked: #46bf72;
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-git-descendant: #ff8a30;
+
+  --color-toast: #2b2b2b;
+  --color-tooltip: #2b2b2b;
+  --color-tooltip-foreground: #f8f8f8;
+  --color-tooltip-tag: #363636;
+  --color-tooltip-tag-foreground: #adadad;
+  --color-tag: #363636;
+
+  /* Node taxonomy */
+  --color-file-node: #70aee029;
+  --color-file-node-hover: #70aee038;
+  --color-file-node-foreground: #8fc5ef;
+  --color-skill-node: #a689da29;
+  --color-skill-node-hover: #a689da38;
+  --color-skill-node-foreground: #bda5e6;
+  --color-command-node: #9aa6b424;
+  --color-command-node-hover: #9aa6b433;
+  --color-command-node-foreground: #b5c0cc;
+  --color-subagent-node: #b7bd7529;
+  --color-subagent-node-hover: #b7bd7538;
+  --color-subagent-node-foreground: #c8cd90;
+  --color-session-node: #68c4bc29;
+  --color-session-node-hover: #68c4bc38;
+  --color-session-node-foreground: #93d8d2;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Legacy vllm-studio token names — repointed onto the ZCode system so every
+   existing component re-skins without class-name changes. `--bg/--fg/--dim/
+   --surface, --rail, --border and friends all resolve to ZCode values.
+   ────────────────────────────────────────────────────────────────────────── */
+:root,
+.theme-zai-dark,
+.dark,
+:root[data-theme="zai-dark"],
+:root[data-theme="omlx-dark"] {
+  --bg: var(--color-background);
+  --fg: var(--color-foreground);
+  --dim: var(--color-foreground-subtle);
+  --surface: var(--color-card);
+  --surface-2: var(--color-secondary);
+  --surface-3: var(--color-input);
+  --rail: var(--color-sidebar);
+  --agent-bg: var(--color-background);
+  --sidebar-bg: var(--color-sidebar);
+
+  --border: var(--color-border);
+  --separator: var(--color-border);
+  --hover: var(--color-hover);
+  --active: var(--color-selected);
+  --composer: var(--color-card);
+  --composer-footer: var(--color-card);
+
+  /* Accents — grayscale brand + the sanctioned chroma: sky-blue link/brand */
+  --accent: var(--color-brand);
+  --hl1: var(--color-foreground-subtle);
+  --hl2: var(--color-foreground-subtlest);
+  --hl3: var(--color-neutral-500);
+  --err: var(--color-destructive);
+  --ok: var(--color-success);
+  --warn: var(--color-warning);
+  /* Sky blue — links, file/URL chips, focus, live status */
+  --link: var(--color-sky-500);
+}
+
+.theme-zai-light,
+:root[data-theme="zai-light"] {
+  --bg: var(--color-background);
+  --fg: var(--color-foreground);
+  --dim: var(--color-foreground-subtle);
+  --surface: var(--color-card);
+  --surface-2: var(--color-secondary);
+  --surface-3: var(--color-input);
+  --rail: var(--color-sidebar);
+  --agent-bg: var(--color-background);
+  --sidebar-bg: var(--color-sidebar);
+
+  --border: var(--color-border);
+  --separator: var(--color-border);
+  --hover: var(--color-hover);
+  --active: var(--color-selected);
+  --composer: var(--color-card);
+  --composer-footer: var(--color-card);
+
+  --accent: var(--color-brand);
+  --hl1: var(--color-foreground-subtle);
+  --hl2: var(--color-foreground-subtlest);
+  --hl3: var(--color-neutral-500);
+  --err: var(--color-destructive);
+  --ok: var(--color-success);
+  --warn: var(--color-warning);
+  --link: var(--color-sky-500);
+
+  --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
+}
+
+.theme-zai-dark,
+.dark,
+:root[data-theme="zai-dark"],
+:root[data-theme="omlx-dark"] {
+  --composer-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --composer-w: clamp(25vw, 48rem, 50vw);
+    --thread-w: 922px;
+  }
+}
+
+:root {
+  /* Density / dimensions (ZCode geometry) */
   --sidebar-w: 250px;
   --sidebar-w-collapsed: 48px;
   --row-h: 28px;
   --row-h-sm: 24px;
   --row-radius: var(--rad-md);
-  /* Codex thread geometry: reading column is 57.6rem (922px), right-aligned.
-     The composer is its own narrower, centered measure (48rem) so the box
-     does not dominate the pane; it wears a ~24px squircle-ish radius.
-     Viewport bounds keep the box from stretching past half the screen on
-     ultrawide monitors and from collapsing below a quarter on narrow panes. */
+  /* Composer / thread geometry preserved from vllm-studio. */
   --composer-w: clamp(25vw, 48rem, 50vw);
   --thread-w: 922px;
   --composer-radius: var(--rad-3xl);
@@ -64,24 +530,7 @@
   --app-height: 100vh;
   --app-font-size: 16px;
 
-  /* ──────────────────────────────────────────────────────────────────────
-     Canonical scale — the master knobs the Appearance editor controls.
-     Type / radius / weight all derive from these via calc(), so a handful of
-     values re-theme the whole app uniformly. Defaults reproduce today's look
-     (scale 1, radius 8px, …); the editor overrides them at runtime.
-     ────────────────────────────────────────────────────────────────────── */
-  --ui-scale: 1; /* master text-size multiplier — scales the entire type ramp */
-  --leading: 1.5; /* base line-height */
-  --leading-tight: 1.25;
-  --weight-normal: 450;
-  --weight-medium: 500;
-  --weight-strong: 600;
-  --radius-base: 8px; /* master corner radius — the radius ramp scales from it */
-  --border-width: 1px;
-  --space-base: 4px; /* base spacing unit */
-
-  /* Type ramp — fixed steps × --ui-scale. Arbitrary text-[Npx] literals snap to
-     the nearest step; @theme maps Tailwind text-* to the same scale. */
+  /* Type ramp — fixed steps × --ui-scale. */
   --fs-2xs: calc(9px * var(--ui-scale));
   --fs-xs: calc(10px * var(--ui-scale));
   --fs-sm: calc(11px * var(--ui-scale));
@@ -94,22 +543,20 @@
   --fs-4xl: calc(24px * var(--ui-scale));
   --fs-display: calc(34px * var(--ui-scale));
 
-  /* Radius ramp — proportional to --radius-base. Steps track Codex's scale
-     (md 10, lg 12.5, xl 15, 2xl 20, 3xl 25 at base 8). */
+  /* Radius ramp — proportional to --radius-base (ZCode: md 6, lg 8, xl 12, 2xl 16, 3xl 24). */
   --rad-2xs: calc(var(--radius-base) * 0.25);
   --rad-xs: calc(var(--radius-base) * 0.5);
   --rad-sm: calc(var(--radius-base) * 0.75);
-  --rad-md: var(--radius-base);
-  --rad-lg: calc(var(--radius-base) * 1.3);
-  --rad-xl: calc(var(--radius-base) * 1.75);
-  --rad-2xl: calc(var(--radius-base) * 2.5);
+  --rad-md: calc(var(--radius-base) * 0.75);
+  --rad-lg: var(--radius-base);
+  --rad-xl: calc(var(--radius-base) * 1.5);
+  --rad-2xl: calc(var(--radius-base) * 2);
   --rad-3xl: calc(var(--radius-base) * 3);
   --rad-full: 9999px;
 
-  /* UI adapter tokens
-     Shared components under src/ui read through this layer. If we adopt
-     shadcn, Radix, or another library later, the library theme can be wired
-     here without forcing every page to change class names. */
+  /* UI adapter tokens — shared components under src/ui read through this
+     layer. Repointed onto ZCode so a future library swap needs no per-page
+     class changes. */
   --ui-bg: var(--bg);
   --ui-fg: var(--fg);
   --ui-muted: var(--dim);
@@ -121,79 +568,34 @@
   --ui-hover: var(--hover);
   --ui-active: var(--active);
   --ui-accent: var(--accent);
-  --ui-info: var(--hl1);
-  --ui-success: var(--hl2);
-  --ui-warning: var(--hl3);
-  --ui-danger: var(--err);
+  --ui-info: var(--color-sky-500);
+  --ui-success: var(--color-success);
+  --ui-warning: var(--color-warning);
+  --ui-danger: var(--color-destructive);
   --ui-radius: var(--row-radius);
   --ui-radius-sm: var(--rad-sm);
   --ui-radius-lg: var(--rad-lg);
   --ui-control-h: 28px;
 
-  /* Compatibility names used by common React UI libraries. */
+  /* Compatibility names used by common React UI libraries (shadcn/Radix). */
   --background: var(--ui-bg);
   --foreground: var(--ui-fg);
   --card: var(--ui-surface);
   --card-foreground: var(--ui-fg);
-  --popover: var(--ui-surface);
+  --popover: var(--color-popover);
   --popover-foreground: var(--ui-fg);
   --primary: var(--ui-accent);
-  --primary-foreground: var(--ui-bg);
+  --primary-foreground: var(--color-primary-foreground);
   --secondary: var(--ui-surface-2);
   --secondary-foreground: var(--ui-fg);
   --muted: var(--ui-surface);
   --muted-foreground: var(--ui-muted);
   --accent-foreground: var(--ui-bg);
   --destructive: var(--ui-danger);
-  --destructive-foreground: var(--ui-bg);
+  --destructive-foreground: var(--color-destructive-foreground);
   --input: var(--ui-separator);
-  --ring: color-mix(in srgb, var(--ui-accent) 40%, transparent);
+  --ring: color-mix(in srgb, var(--color-sky-500) 40%, transparent);
   --radius: var(--ui-radius);
-}
-
-@media (min-width: 1024px) {
-  :root {
-    --composer-w: clamp(25vw, 48rem, 50vw);
-    --thread-w: 922px;
-  }
-}
-
-:root[data-theme="omlx-dark"],
-.dark {
-  /* Codex dark, exact: editor canvas #111111, sidebar #131313 — surfaces sit
-     only two luminance steps apart so panes divide by contrast, not lines.
-     Gray ladder: #0d0d0d #111111 #131313 #181818 #212121 #282828 #303030
-                  #414141 #4f4f4f #5d5d5d #8f8f8f #afafaf */
-  --bg: #111111;
-  --fg: #fcfcfc;
-  --dim: #8f8f8f;
-  --surface: #181818;
-  --surface-2: #212121;
-  --surface-3: #282828;
-  --rail: #131313;
-  --agent-bg: var(--bg);
-  --sidebar-bg: var(--rail);
-
-  --border: rgba(255, 255, 255, 0.08);
-  --separator: rgba(255, 255, 255, 0.12);
-
-  --hover: rgba(255, 255, 255, 0.05);
-  --active: rgba(255, 255, 255, 0.08);
-  --composer: var(--surface);
-  --composer-footer: var(--surface);
-
-  /* Accents — grayscale only, no colored noise */
-  --accent: #d6d6d6;
-  --hl1: #5d5d5d;
-  --hl2: #414141;
-  --hl3: #303030;
-  --err: #ff6764;
-  --ok: #40c977;
-  --warn: #ff8549;
-  /* Codex blue, one step up the ramp for dark-canvas legibility. */
-  --link: #339cff;
-
-  --composer-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
 }
 
 @supports (height: 100dvh) {
@@ -209,8 +611,7 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Type scale: Tailwind text-* read the themed ramp. Values equal Tailwind's
-     own defaults × --ui-scale, so semantic sizes don't shift until the knob moves. */
+  /* Type scale: Tailwind text-* read the themed ramp. */
   --text-2xs: calc(10px * var(--ui-scale));
   --text-xs: calc(12px * var(--ui-scale));
   --text-sm: calc(14px * var(--ui-scale));
@@ -238,4 +639,33 @@
 .dark hr,
 hr {
   border-color: var(--separator);
+}
+
+/* Animated gradient text — ZCode hero/startup treatment. */
+@keyframes zai-gradient-pan {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.zai-gradient-text {
+  background-image: linear-gradient(
+    110deg,
+    var(--animated-gradient-text-strong) 0%,
+    var(--color-sky-400) 30%,
+    var(--animated-gradient-text-soft) 55%,
+    var(--color-sky-300) 80%,
+    var(--animated-gradient-text-strong) 100%
+  );
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: zai-gradient-pan 6s ease infinite;
 }

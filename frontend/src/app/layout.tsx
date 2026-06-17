@@ -75,7 +75,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="omlx-dark" suppressHydrationWarning>
+    <html lang="en" data-theme="zai-dark" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" href="/mocks/logo-1.svg" type="image/svg+xml" />
