@@ -33,8 +33,6 @@ export function ModelLogo({
       title={title}
     >
       {!failed ? (
-        // Hugging Face serves org/user avatars at /{owner}.png. We fall back to
-        // a stable icon when the owner has no avatar or the repo id is unusual.
         <img
           src={hfAvatarUrl(modelId, author)}
           alt=""
