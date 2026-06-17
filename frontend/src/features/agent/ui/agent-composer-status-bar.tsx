@@ -95,8 +95,8 @@ function GitSummaryState({ gitSummary }: { gitSummary?: GitSummary | null }) {
 
   return (
     <span className="inline-flex shrink-0 items-center gap-1">
-      <span className="text-emerald-400">+{gitSummary.additions}</span>
-      <span className="text-red-400">-{gitSummary.deletions}</span>
+      <span className="text-(--ok)">+{gitSummary.additions}</span>
+      <span className="text-(--err)">-{gitSummary.deletions}</span>
       {gitSummary.statusCount > 0 ? (
         <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
       ) : null}

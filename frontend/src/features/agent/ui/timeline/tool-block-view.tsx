@@ -11,6 +11,7 @@ import {
   fileBasename,
   humanizeToolName,
   toolArg,
+  toolKindNodeColor,
   toolVerb,
 } from "@/features/agent/ui/timeline/tool-metadata";
 
@@ -112,12 +113,13 @@ function ToolSummary({
 }) {
   const meta = toolMeta(block, filePath);
   const running = block.status === "running";
+  const idleColor = toolKindNodeColor(classifyTool(block));
   return (
     <details className="group min-w-0" open={open}>
       <summary className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden">
         <span
           className={`shrink-0 text-[13px] font-medium leading-5 ${
-            running ? "codex-shimmer-text" : "text-(--fg)/55"
+            running ? "codex-shimmer-text" : idleColor
           }`}
         >
           {meta.verb}

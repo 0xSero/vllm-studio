@@ -244,7 +244,7 @@ function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
               className="flex min-w-0 items-center gap-2 py-0.5 text-[length:var(--fs-sm)]"
               title={skill.path}
             >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/75" />
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok)/75" />
               <span className="min-w-0 flex-1 truncate font-mono text-(--fg)">{skill.name}</span>
               <span className="shrink-0 truncate text-[length:var(--fs-xs)] text-(--dim)">
                 {skill.source ?? "skill"}

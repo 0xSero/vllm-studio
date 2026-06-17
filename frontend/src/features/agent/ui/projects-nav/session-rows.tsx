@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { patchSessionPref, type SessionPref, type SessionPrefs } from "@/features/agent/messages/prefs";
+import {
+  patchSessionPref,
+  type SessionPref,
+  type SessionPrefs,
+} from "@/features/agent/messages/prefs";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
@@ -79,7 +83,7 @@ export function ProjectRow({
           </span>
           {!project.exists ? (
             <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)"
               title={project.path}
               aria-label={`Folder not found at ${project.path}`}
             />

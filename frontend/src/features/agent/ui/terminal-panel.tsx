@@ -18,7 +18,7 @@ export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey:
   useTerminalPanelEffects({ containerRef, cwd, ownerKey, stateRef });
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-[#070707]">
+    <section className="flex min-h-0 flex-1 flex-col bg-(--color-terminal-bg)">
       <div
         ref={containerRef}
         tabIndex={0}
@@ -27,7 +27,7 @@ export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey:
           if ((event.target as HTMLElement)?.tagName === "A") return;
           stateRef.current.term?.focus();
         }}
-        className="min-h-0 flex-1 overflow-hidden p-2 [--xterm-color-background:#070707]"
+        className="min-h-0 flex-1 overflow-hidden p-2 [--xterm-color-background:var(--color-terminal-bg)]"
       />
     </section>
   );
@@ -112,10 +112,13 @@ function useTerminalPanelEffects({
         import("@xterm/addon-web-links").catch(() => null),
       ]);
       if (refs.disposed) return;
-      // xterm renders to canvas and cannot resolve `var(--font-geist-mono)` itself,
-      // so read the resolved value off the container first and fall back gracefully.
-      const resolvedGeistMono =
-        getComputedStyle(element).getPropertyValue("--font-geist-mono").trim() || "";
+      // xterm renders to canvas and cannot resolve CSS vars itself, so read the
+      // resolved values off the container first and fall back gracefully. The
+      // theme reads the ZCode `--color-terminal-*` palette so the terminal
+      // matches the rest of the app and re-themes with it.
+      const styles = getComputedStyle(element);
+      const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
+      const resolvedGeistMono = cssVar("--font-geist-mono") || "";
       const fontFamily =
         (resolvedGeistMono ? `${resolvedGeistMono}, ` : "") +
         '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
@@ -132,19 +135,27 @@ function useTerminalPanelEffects({
         // leading leaves gaps and breaks their layout, so keep lineHeight at 1.
         lineHeight: 1.0,
         theme: {
-          background: "#070707",
-          foreground: "#f2f2f2",
-          cursor: "#f2f2f2",
-          selectionBackground: "#3a3a3a",
-          black: "#0a0a0a",
-          blue: "#74a7ff",
-          brightBlue: "#9fc2ff",
-          cyan: "#69d2e7",
-          green: "#7ee787",
-          magenta: "#d2a8ff",
-          red: "#ff7b72",
-          white: "#f0f0f0",
-          yellow: "#f2cc60",
+          background: cssVar("--color-terminal-bg") || "#161616",
+          foreground: cssVar("--color-terminal-fg") || "#d4d4d4",
+          cursor: cssVar("--color-terminal-cursor") || "#f8f8f8",
+          cursorAccent: cssVar("--color-terminal-cursor-accent") || "#161616",
+          selectionBackground: cssVar("--color-terminal-selection") || "#4099ff47",
+          black: cssVar("--color-terminal-black") || "#363636",
+          red: cssVar("--color-terminal-red") || "#ff5c5c",
+          green: cssVar("--color-terminal-green") || "#46bf72",
+          yellow: cssVar("--color-terminal-yellow") || "#ff8a30",
+          blue: cssVar("--color-terminal-blue") || "#4099ff",
+          magenta: cssVar("--color-terminal-magenta") || "#7b5ce5",
+          cyan: cssVar("--color-terminal-cyan") || "#42c8c8",
+          white: cssVar("--color-terminal-white") || "#adadad",
+          brightBlack: cssVar("--color-terminal-bright-black") || "#747474",
+          brightRed: cssVar("--color-terminal-bright-red") || "#f99",
+          brightGreen: cssVar("--color-terminal-bright-green") || "#87d9a4",
+          brightYellow: cssVar("--color-terminal-bright-yellow") || "#ffb26b",
+          brightBlue: cssVar("--color-terminal-bright-blue") || "#80beff",
+          brightMagenta: cssVar("--color-terminal-bright-magenta") || "#a888f2",
+          brightCyan: cssVar("--color-terminal-bright-cyan") || "#8ee5e5",
+          brightWhite: cssVar("--color-terminal-bright-white") || "#f8f8f8",
         },
       });
       const fit = new FitAddon();
