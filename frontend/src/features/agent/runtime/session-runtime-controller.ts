@@ -9,7 +9,12 @@
 // with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentEndEvent } from "@/features/agent/pi-runtime-state";
-import { drainQueueAfterAgentEnd, newId, nowLabel, piSessionIdFromEvent } from "@/features/agent/messages";
+import {
+  drainQueueAfterAgentEnd,
+  newId,
+  nowLabel,
+  piSessionIdFromEvent,
+} from "@/features/agent/messages";
 import {
   listRuntimeSessions,
   loadRuntimeStatus,
@@ -20,7 +25,10 @@ import {
   type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
-import { reduceSessionEvent, type SessionStreamContext } from "@/features/agent/runtime/pi-event-applier";
+import {
+  reduceSessionEvent,
+  type SessionStreamContext,
+} from "@/features/agent/runtime/pi-event-applier";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
@@ -29,7 +37,7 @@ import {
   shouldSubscribeRuntimeEvents,
   type RuntimeCursor,
 } from "@/features/agent/runtime/runtime-cursor";
-import { createTextDeltaCoalescer } from "@/features/agent/runtime/text-delta-coalescer";
+import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
@@ -172,10 +180,10 @@ export function createSessionRuntimeController(
     );
   };
 
-  const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: applyEvent,
-    scheduleFrame: deps.scheduleFrame,
-  });
+  // Text-delta coalescer is now an Effect program (effect-coalescer.ts): a
+  // per-session pending snapshot drained on the animation-frame clock. The
+  // imperative facade is unchanged so the controller's contract holds.
+  const coalescer = createEffectTextDeltaCoalescer({ applyPiEvent: applyEvent });
 
   const enqueueEvent = (
     sessionId: SessionId,
@@ -217,7 +225,9 @@ export function createSessionRuntimeController(
       [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")?.id;
     if (existing) {
       commit(sessionId, (session) =>
-        session.activeAssistantId === existing ? session : { ...session, activeAssistantId: existing },
+        session.activeAssistantId === existing
+          ? session
+          : { ...session, activeAssistantId: existing },
       );
       return existing;
     }

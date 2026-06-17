@@ -1,0 +1,228 @@
+// Effect-TS text-delta coalescer.
+//
+// Replaces the hand-rolled rAF-batched Map in text-delta-coalescer.ts with an
+// Effect program for the frame-scheduling path. The per-session pending state
+// is a plain mutable container (the enqueue path is synchronous and needs
+// immediate read/write — wrapping it in Ref<Effect> would just add ceremony for
+// no gain), while the animation-frame flush runs as a forked Effect fiber.
+//
+// Merge semantics are identical to the legacy module: same-kind text deltas
+// concatenate so no incremental token is dropped; a kind switch or a non-delta
+// `message_update` flushes first to preserve ordering.
+
+import { Effect, Fiber } from "effect";
+import type { SessionId } from "@/features/agent/runtime/types";
+import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
+
+type ApplyPiEvent = (
+  sessionId: SessionId,
+  assistantId: string,
+  event: Record<string, unknown>,
+  seq?: number,
+) => void;
+
+export type TextDeltaCoalescer = {
+  enqueuePiEvent: (
+    sessionId: SessionId,
+    assistantId: string,
+    event: Record<string, unknown>,
+    options?: { flushNow?: boolean; seq?: number },
+  ) => boolean;
+  flushNow: (sessionId: SessionId) => void;
+  flushAll: () => void;
+  /** Drop a session's pending merge without applying it (cursor epoch reset). */
+  discard: (sessionId: SessionId) => void;
+};
+
+type TextDeltaSnapshot = { kind: "text" | "thinking"; delta: string };
+
+type PendingSnapshot = {
+  assistantId: string;
+  event: Record<string, unknown>;
+  seq: number | undefined;
+};
+
+type SessionSlot = {
+  pending: PendingSnapshot | null;
+  // Non-null while a frame-driven flush is in flight, so we don't stack flushes.
+  flushFiber: Fiber.RuntimeFiber<void, unknown> | null;
+};
+
+/**
+ * Build a coalescer. `applyPiEvent` is the commit callback the controller wires
+ * to the React dispatch — every flush ultimately calls it.
+ */
+export function createEffectTextDeltaCoalescer({
+  applyPiEvent,
+}: {
+  applyPiEvent: ApplyPiEvent;
+}): TextDeltaCoalescer {
+  const slots = new Map<SessionId, SessionSlot>();
+
+  const getSlot = (sessionId: SessionId): SessionSlot => {
+    const existing = slots.get(sessionId);
+    if (existing) return existing;
+    const slot: SessionSlot = { pending: null, flushFiber: null };
+    slots.set(sessionId, slot);
+    return slot;
+  };
+
+  const applyPending = (sessionId: SessionId, snapshot: PendingSnapshot): void => {
+    applyPiEvent(sessionId, snapshot.assistantId, snapshot.event, snapshot.seq);
+  };
+
+  const cancelFlush = (slot: SessionSlot): void => {
+    if (slot.flushFiber) {
+      void Promise.resolve(Fiber.interrupt(slot.flushFiber as never));
+      slot.flushFiber = null;
+    }
+  };
+
+  const flushNow = (sessionId: SessionId): void => {
+    const slot = slots.get(sessionId);
+    if (!slot || !slot.pending) return;
+    cancelFlush(slot);
+    const current = slot.pending;
+    slot.pending = null;
+    applyPending(sessionId, current);
+  };
+
+  const scheduleFlush = (sessionId: SessionId): void => {
+    const slot = getSlot(sessionId);
+    if (slot.flushFiber) return; // a flush is already scheduled for this frame
+    const program = Effect.gen(function* () {
+      // Yield to the browser frame clock (rAF under DOM, setTimeout fallback),
+      // then apply whatever has accumulated for this session.
+      yield* waitForAnimationFrame;
+      const slotNow = slots.get(sessionId);
+      if (!slotNow) return;
+      slotNow.flushFiber = null;
+      const current = slotNow.pending;
+      slotNow.pending = null;
+      if (current) applyPending(sessionId, current);
+    });
+    const fiber = Effect.runFork(program);
+    slot.flushFiber = fiber as never;
+  };
+
+  const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (
+    sessionId,
+    assistantId,
+    event,
+    options = {},
+  ) => {
+    if (event.type !== "message_update") return false;
+    const slot = getSlot(sessionId);
+    if (slot.pending && slot.pending.assistantId !== assistantId) flushNow(sessionId);
+    const normalizedEvent = normalizeDeltaEvent(event);
+    const incomingDelta = textDeltaFromPiEvent(normalizedEvent);
+    const current = slot.pending;
+    const existingDelta = current ? textDeltaFromPiEvent(current.event) : null;
+    const canMerge =
+      Boolean(current) &&
+      existingDelta !== null &&
+      incomingDelta !== null &&
+      existingDelta.kind === incomingDelta.kind;
+    if (current && !canMerge) flushNow(sessionId);
+    const carried = slot.pending;
+    const nextEvent =
+      canMerge && existingDelta && incomingDelta
+        ? mergeTextDeltaEvent(normalizedEvent, existingDelta.delta + incomingDelta.delta)
+        : normalizedEvent;
+    slot.pending = {
+      assistantId,
+      event: nextEvent,
+      seq: options.seq ?? carried?.seq,
+    };
+    traceAgentReasoning("coalescer.snapshot", {
+      sessionId,
+      assistantId,
+      type: normalizedEvent.type,
+    });
+    if (options.flushNow) {
+      flushNow(sessionId);
+    } else {
+      scheduleFlush(sessionId);
+    }
+    return true;
+  };
+
+  const flushAll = (): void => {
+    for (const sessionId of Array.from(slots.keys())) flushNow(sessionId);
+  };
+
+  const discard = (sessionId: SessionId): void => {
+    const slot = slots.get(sessionId);
+    if (!slot) return;
+    cancelFlush(slot);
+    slot.pending = null;
+  };
+
+  return { enqueuePiEvent, flushNow, flushAll, discard };
+}
+
+// A single-frame wait. Uses requestAnimationFrame on the DOM; falls back to a
+// zero-delay timeout otherwise (matches the legacy defaultScheduleFrame).
+const waitForAnimationFrame: Effect.Effect<void> = Effect.async<void>((resume) => {
+  let cancelled = false;
+  let handle: number | ReturnType<typeof setTimeout>;
+  const finish = () => {
+    if (cancelled) return;
+    resume(Effect.void);
+  };
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    handle = window.requestAnimationFrame(finish);
+    return Effect.sync(() => {
+      cancelled = true;
+      if (typeof handle === "number") window.cancelAnimationFrame(handle);
+    });
+  }
+  handle = setTimeout(finish, 0);
+  return Effect.sync(() => {
+    cancelled = true;
+    clearTimeout(handle);
+  });
+});
+
+// Re-exported helpers shared with the legacy module's callers. Pure functions,
+// kept here so the controller can swap modules without import churn.
+export function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaSnapshot | null {
+  if (event.type !== "message_update") return null;
+  const assistantMessageEvent = asRecord(event.assistantMessageEvent);
+  const delta = assistantMessageEvent?.delta;
+  if (typeof delta !== "string" || !delta) return null;
+  const type = assistantMessageEvent.type;
+  if (type === "text_delta") return { kind: "text", delta };
+  if (type === "thinking_delta" || type === "reasoning_delta" || type === "reasoning_text_delta") {
+    return { kind: "thinking", delta };
+  }
+  return null;
+}
+
+function mergeTextDeltaEvent(
+  event: Record<string, unknown>,
+  combinedDelta: string,
+): Record<string, unknown> {
+  const assistantMessageEvent = asRecord(event.assistantMessageEvent) ?? {};
+  return {
+    ...event,
+    assistantMessageEvent: { ...assistantMessageEvent, delta: combinedDelta },
+  };
+}
+
+function normalizeDeltaEvent(event: Record<string, unknown>): Record<string, unknown> {
+  const delta = textDeltaFromPiEvent(event);
+  if (!delta || delta.kind !== "thinking") return event;
+  const assistantMessageEvent = asRecord(event.assistantMessageEvent);
+  if (!assistantMessageEvent || assistantMessageEvent.type === "thinking_delta") return event;
+  return {
+    ...event,
+    assistantMessageEvent: { ...assistantMessageEvent, type: "thinking_delta" },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}

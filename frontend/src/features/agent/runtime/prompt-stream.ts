@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import {
   type ChatMessageAttachment,
   newId,
@@ -140,8 +141,15 @@ async function startPromptCommand(
   context: PromptTurnContext,
   args: SubmitArgs,
 ): Promise<void> {
-  try {
-    const result = await api.submitTurnCommand(promptTurnRequest(deps, context, args));
+  // The turn-accept flow is an Effect program: submit the command, and on any
+  // failure probe the runtime status to see if the turn actually took (the
+  // POST can fail while the runtime still starts the turn). Errors are written
+  // into the session — this function never throws.
+  const program = Effect.gen(function* () {
+    const result = yield* Effect.tryPromise({
+      try: () => api.submitTurnCommand(promptTurnRequest(deps, context, args)),
+      catch: (error) => ({ _tag: "SubmitFailed" as const, error }),
+    });
     deps.updateSession(context.sessionId, (session) => ({
       ...session,
       piSessionId: result.piSessionId || session.piSessionId,
@@ -151,29 +159,37 @@ async function startPromptCommand(
     }));
     sessionRuntimeController().noteTurnAccepted(context.sessionId);
     if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
-  } catch (error) {
-    const currentPiSessionId = latestPiSessionId(deps, context, null);
-    const status = await api.loadRuntimeStatus(context.runtime, currentPiSessionId);
-    if (runtimeIsActiveForPiSession(status, currentPiSessionId)) {
-      deps.updateSession(context.sessionId, (session) => ({
-        ...session,
-        piSessionId: status?.piSessionId || session.piSessionId,
-        contextUsage: api.runtimeContextUsage(status, session.contextUsage),
-        status: "running",
-        activeAssistantId: session.activeAssistantId ?? context.assistantId,
-      }));
-      sessionRuntimeController().noteTurnAccepted(context.sessionId);
-      if (status?.piSessionId) deps.onPiSessionIdChange?.(status.piSessionId);
-      return;
-    }
-    const message = error instanceof Error ? error.message : "Agent request failed";
-    deps.updateSession(context.sessionId, (session) => ({
-      ...session,
-      error: message,
-      status: "idle",
-      activeAssistantId: undefined,
-    }));
-  }
+  }).pipe(
+    Effect.catchAll(({ error }) =>
+      Effect.gen(function* () {
+        const currentPiSessionId = latestPiSessionId(deps, context, null);
+        const status = yield* Effect.tryPromise({
+          try: () => api.loadRuntimeStatus(context.runtime, currentPiSessionId),
+          catch: () => null,
+        });
+        if (runtimeIsActiveForPiSession(status, currentPiSessionId)) {
+          deps.updateSession(context.sessionId, (session) => ({
+            ...session,
+            piSessionId: status?.piSessionId || session.piSessionId,
+            contextUsage: api.runtimeContextUsage(status, session.contextUsage),
+            status: "running",
+            activeAssistantId: session.activeAssistantId ?? context.assistantId,
+          }));
+          sessionRuntimeController().noteTurnAccepted(context.sessionId);
+          if (status?.piSessionId) deps.onPiSessionIdChange?.(status?.piSessionId);
+          return;
+        }
+        const message = error instanceof Error ? error.message : "Agent request failed";
+        deps.updateSession(context.sessionId, (session) => ({
+          ...session,
+          error: message,
+          status: "idle",
+          activeAssistantId: undefined,
+        }));
+      }),
+    ),
+  );
+  await Effect.runPromise(program);
 }
 
 function promptTurnRequest(

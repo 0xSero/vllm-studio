@@ -2,6 +2,7 @@
 // component coupling — engine code calls into these and reacts to the results.
 
 import { safeJson } from "@/features/agent/safe-json";
+import { decodeRuntimeEventPayload } from "@/features/agent/runtime/runtime-schema";
 import {
   parseAgentTurnCommandResult,
   type AgentTurnCommandResult,
@@ -198,13 +199,19 @@ export function subscribeRuntimeEvents(
   if (piSessionId) params.set("piSessionId", piSessionId);
   const source = new EventSource(`/api/agent/runtime/events?${params.toString()}`);
   source.onmessage = (event) => {
-    let payload: RuntimeEventPayload;
+    // Validate the SSE frame at the boundary via the Effect schema. Malformed
+    // or unrecognized payloads are dropped silently (matching the legacy
+    // JSON.parse-cast behavior, but now without untrusted data reaching the
+    // reducer).
+    let parsed: unknown;
     try {
-      payload = JSON.parse(event.data) as RuntimeEventPayload;
+      parsed = JSON.parse(event.data);
     } catch {
       return;
     }
-    handlers.onPayload(payload);
+    const payload = decodeRuntimeEventPayload(parsed);
+    if (!payload) return;
+    handlers.onPayload(payload as unknown as RuntimeEventPayload);
   };
   source.onerror = handlers.onError;
   return {
