@@ -24,8 +24,14 @@ export function ExploreTab() {
     loading,
     error,
     search,
+    task,
+    library,
+    sort,
     hasMore,
     setSearch,
+    setTask,
+    setLibrary,
+    setSort,
     loadMore,
     refresh,
   } = useExplore();
@@ -139,6 +145,12 @@ export function ExploreTab() {
         error={error}
         search={search}
         setSearch={setSearch}
+        task={task}
+        setTask={setTask}
+        library={library}
+        setLibrary={setLibrary}
+        sort={sort}
+        setSort={setSort}
         setPoolOverrideGb={setPoolOverrideGb}
         refresh={refresh}
       />

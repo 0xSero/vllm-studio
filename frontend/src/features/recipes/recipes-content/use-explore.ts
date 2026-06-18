@@ -70,14 +70,23 @@ export function derivativeScore(model: HuggingFaceModel, search: string): number
 export function useExplore() {
   const [gpus, setGpus] = useState<GPU[]>([]);
   const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
-  const [poolOverrideGb, setPoolOverrideGbState] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [task, setTask] = useState("text-generation");
+  const [library, setLibrary] = useState("");
+  const [sort, setSort] = useState("");
+  const [poolOverrideGb, setPoolOverrideGbState] = useState<number | null>(null);
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
 
-  const configureExploreParams = useCallback((params: URLSearchParams, isBrowsing: boolean) => {
-    params.set("filter", "text-generation");
-    params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : "downloads");
-  }, []);
+  const configureExploreParams = useCallback(
+    (params: URLSearchParams, isBrowsing: boolean) => {
+      // HF `filter` is repeatable (AND logic). task defaults to text-generation
+      // so the browse list stays relevant; clearing it shows all task types.
+      if (task) params.append("filter", task);
+      if (library) params.append("filter", library);
+      params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : sort || "downloads");
+    },
+    [task, library, sort],
+  );
 
   const { models, loading, error, hasMore, loadMore, fetchModels } = useHuggingFaceModelSearch(
     search,
@@ -291,9 +300,15 @@ export function useExplore() {
     loading,
     error,
     search,
+    task,
+    library,
+    sort,
     hasMore,
     recommendations,
     setSearch,
+    setTask,
+    setLibrary,
+    setSort,
     loadMore,
     refresh,
   };

@@ -6,15 +6,24 @@ export const dynamic = "force-dynamic";
 
 const HF_MODELS = "https://huggingface.co/api/models";
 const TIMEOUT_MS = 12_000;
+
+// HF /api/models supports these query params. `filter` and `tags` are
+// repeatable (AND logic); the route forwards all of them. `pipeline_tag` and
+// `config` are forwarded so callers can filter by task / fetch architecture
+// metadata. `full=true` returns `siblings` (file list with sizes) used for
+// accurate VRAM sizing. (`direction` is intentionally omitted — HF rejects it.)
 const ALLOWED_PARAMS = new Set([
   "author",
+  "config",
   "filter",
   "full",
   "library",
   "limit",
   "offset",
+  "pipeline_tag",
   "search",
   "sort",
+  "tags",
 ]);
 
 export async function GET(request: NextRequest) {
@@ -29,9 +38,7 @@ export async function GET(request: NextRequest) {
   try {
     const response = await fetchWithTimeout(
       target.toString(),
-      {
-        headers: { accept: "application/json" },
-      },
+      { headers: { accept: "application/json" } },
       TIMEOUT_MS,
     );
     const text = await response.text();
@@ -53,6 +60,21 @@ export async function GET(request: NextRequest) {
 function normalizeModel(model: unknown): Record<string, unknown> {
   const record = model && typeof model === "object" ? (model as Record<string, unknown>) : {};
   const modelId = String(record.modelId ?? record.id ?? "");
+  // Compute total weight-file size from siblings when present (full=true).
+  // Used for accurate VRAM sizing instead of the name-regex estimate.
+  const siblings = Array.isArray(record.siblings) ? record.siblings : [];
+  const weightBytes = siblings.reduce((sum: number, file) => {
+    if (file && typeof file === "object") {
+      const f = file as Record<string, unknown>;
+      const rfilename = String(f.rfilename ?? "");
+      if (
+        /\.(safetensors|bin|pt|gguf|ggml|ot|model|npz|msgpack)(\.index\.json)?$/.test(rfilename)
+      ) {
+        return sum + Number(f.size ?? 0);
+      }
+    }
+    return sum;
+  }, 0);
   return {
     ...record,
     _id: String(record._id ?? modelId),
@@ -61,5 +83,6 @@ function normalizeModel(model: unknown): Record<string, unknown> {
     likes: Number(record.likes ?? 0),
     tags: Array.isArray(record.tags) ? record.tags : [],
     private: Boolean(record.private),
+    weightBytes: weightBytes || undefined,
   };
 }

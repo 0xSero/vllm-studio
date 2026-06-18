@@ -16,7 +16,9 @@ export function sumGpuMemoryPoolGb(gpus: GPU[]): number {
   return Number.isFinite(rounded) ? rounded : 0;
 }
 
-const DEFAULT_RECENT_MS = 120 * 24 * 60 * 60 * 1000;
+// Reconciled with RECENT_HF_MODEL_MONTHS in lib/huggingface.ts (6 months) —
+// previously this was 120 days, which disagreed with the browse-mode filter.
+const DEFAULT_RECENT_MS = 6 * 30 * 24 * 60 * 60 * 1000;
 
 /** Prefer repo `createdAt`; fall back to `lastModified` for “recent on Hugging Face”. */
 export function modelCreatedMs(model: HuggingFaceModel): number {

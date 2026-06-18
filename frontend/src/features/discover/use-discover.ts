@@ -23,8 +23,12 @@ export function useDiscover() {
 
   const configureDiscoverParams = useCallback(
     (params: URLSearchParams, isBrowsing: boolean) => {
-      if (task) params.set("filter", task);
-      if (library) params.set("filter", library);
+      // HF's `filter` param is repeatable (AND logic). Setting it twice with
+      // params.set() would overwrite — the old code silently dropped the task
+      // filter when a library was also selected. Use append for each so both
+      // constraints apply.
+      if (task) params.append("filter", task);
+      if (library) params.append("filter", library);
       const nextSort = isBrowsing ? RECENT_HF_MODEL_SORT : sort;
       if (nextSort) params.set("sort", nextSort);
     },

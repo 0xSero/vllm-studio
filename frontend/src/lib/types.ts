@@ -122,4 +122,7 @@ export interface HuggingFaceModel {
   createdAt?: string;
   author?: string;
   private: boolean;
+  /** Total weight-file size in bytes (from HF siblings with full=true).
+   * Present when the API route enriches results; used for accurate VRAM sizing. */
+  weightBytes?: number;
 }

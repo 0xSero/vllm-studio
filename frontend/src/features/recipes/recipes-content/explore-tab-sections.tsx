@@ -24,6 +24,35 @@ const FALLBACK_MODELS = [
   ],
 ] as const;
 
+export const EXPLORE_TASKS = [
+  { value: "", label: "All tasks" },
+  { value: "text-generation", label: "Text generation" },
+  { value: "text2text-generation", label: "Text-to-text" },
+  { value: "conversational", label: "Conversational" },
+  { value: "fill-mask", label: "Fill-mask" },
+  { value: "question-answering", label: "Q&A" },
+  { value: "summarization", label: "Summarization" },
+] as const;
+
+export const EXPLORE_LIBRARIES = [
+  { value: "", label: "All libraries" },
+  { value: "transformers", label: "Transformers" },
+  { value: "pytorch", label: "PyTorch" },
+  { value: "safetensors", label: "Safetensors" },
+  { value: "gguf", label: "GGUF" },
+  { value: "exl2", label: "EXL2" },
+  { value: "awq", label: "AWQ" },
+  { value: "gptq", label: "GPTQ" },
+] as const;
+
+export const EXPLORE_SORTS = [
+  { value: "", label: "Relevance" },
+  { value: "trendingScore", label: "Trending" },
+  { value: "downloads", label: "Most downloaded" },
+  { value: "likes", label: "Most liked" },
+  { value: "createdAt", label: "Newest" },
+] as const;
+
 export function ExploreControls({
   groupsCount,
   maxVramGb,
@@ -34,6 +63,12 @@ export function ExploreControls({
   error,
   search,
   setSearch,
+  task,
+  setTask,
+  library,
+  setLibrary,
+  sort,
+  setSort,
   setPoolOverrideGb,
   refresh,
 }: {
@@ -46,13 +81,19 @@ export function ExploreControls({
   error: string | null;
   search: string;
   setSearch: (value: string) => void;
+  task: string;
+  setTask: (value: string) => void;
+  library: string;
+  setLibrary: (value: string) => void;
+  sort: string;
+  setSort: (value: string) => void;
   setPoolOverrideGb: (value: number | null) => void;
   refresh: () => void;
 }) {
   return (
     <ModelSection
       title="Explore controls"
-      description="Search Hugging Face, tune pooled VRAM, and refresh without changing the page structure."
+      description="Search Hugging Face, filter by task/library, tune pooled VRAM."
       actions={
         <ModelStatus tone={loading ? "info" : error ? "warning" : "good"}>
           {loading ? "syncing" : error ? "fallback" : "ready"}
@@ -66,6 +107,14 @@ export function ExploreControls({
         refresh={refresh}
         loading={loading}
       />
+      <ExploreFilterRow
+        task={task}
+        setTask={setTask}
+        library={library}
+        setLibrary={setLibrary}
+        sort={sort}
+        setSort={setSort}
+      />
       <ExploreVramPoolRow
         maxVramGb={maxVramGb}
         detectedPoolGb={detectedPoolGb}
@@ -74,6 +123,64 @@ export function ExploreControls({
       />
       <ExploreHardwareHintRow hardwareProfile={hardwareProfile} poolOverrideGb={poolOverrideGb} />
     </ModelSection>
+  );
+}
+
+function ExploreFilterRow({
+  task,
+  setTask,
+  library,
+  setLibrary,
+  sort,
+  setSort,
+}: {
+  task: string;
+  setTask: (value: string) => void;
+  library: string;
+  setLibrary: (value: string) => void;
+  sort: string;
+  setSort: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1">
+      <FilterSelect label="Task" value={task} options={EXPLORE_TASKS} onChange={setTask} />
+      <FilterSelect
+        label="Library"
+        value={library}
+        options={EXPLORE_LIBRARIES}
+        onChange={setLibrary}
+      />
+      <FilterSelect label="Sort" value={sort} options={EXPLORE_SORTS} onChange={setSort} />
+    </div>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5">
+      <span className="text-[length:var(--fs-xs)] text-(--color-foreground-subtle)">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 rounded-md border border-(--ui-border) bg-(--ui-surface) px-2 text-[length:var(--fs-sm)] text-(--fg) focus:outline-none focus:ring-1 focus:ring-(--ui-info)"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -54,6 +54,13 @@ export function parseParamsBillions(modelId: string): number | null {
 
 /** Rough weight footprint (GB) from name + quantization tags — for sorting and UI hints only. */
 export function estimateRoughWeightsGb(model: HuggingFaceModel): number | null {
+  // HF's list endpoint returns siblings (file names) but NOT file sizes, so we
+  // can't compute real VRAM from the API — the name+tag heuristic remains the
+  // best available signal for a 50-model page. If weightBytes is enriched by a
+  // future data source, use it (exact > estimate).
+  if (typeof model.weightBytes === "number" && model.weightBytes > 0) {
+    return (model.weightBytes / 1e9) * 1.1;
+  }
   const billions = parseParamsBillions(model.modelId);
   if (billions == null) return null;
   const params = billions * 1e9;
