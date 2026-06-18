@@ -116,3 +116,4 @@ export {
   ModelInput,
 } from "./model-page";
 export type { ModelStatusTone } from "./model-page";
+export { CopyablePathChip } from "./copyable-path-chip";

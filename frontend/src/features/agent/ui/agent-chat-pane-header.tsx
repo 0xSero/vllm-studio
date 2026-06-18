@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
-import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
+import { useClickOutside } from "@/hooks/use-click-outside";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 

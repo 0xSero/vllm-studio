@@ -215,3 +215,9 @@ export async function fetchHuggingFaceModels(params: URLSearchParams): Promise<H
     directError.error || directError.detail || proxyError.detail || "Failed to fetch models",
   );
 }
+
+/** Extract the provider (org/user) from a HF model id, defaulting to "HuggingFace". */
+export function extractProvider(modelId: string): string {
+  const parts = modelId.split("/");
+  return parts.length >= 2 ? parts[0] : "HuggingFace";
+}

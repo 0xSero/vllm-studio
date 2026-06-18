@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
-import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
+import { useClickOutside } from "@/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
 import type { SessionPref } from "@/features/agent/messages/prefs";
 

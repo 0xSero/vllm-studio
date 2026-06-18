@@ -12,7 +12,8 @@ import {
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatBytes, formatNumber } from "@/lib/formatters";
 import { ModelButton, ModelLogo, ModelRow, ModelStatus, type ModelStatusTone } from "@/ui";
-import { extractProvider, extractQuantizations } from "@/features/discover/utils";
+import { extractProvider } from "@/lib/huggingface";
+import { extractQuantizations } from "@/features/discover/utils";
 import type { ModelFit } from "./hardware-profile";
 
 function ExploreVramCell({
