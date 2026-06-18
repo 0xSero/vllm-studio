@@ -26,7 +26,6 @@ sitegeist Chrome extension**. It replaces the discontinued parchi relay. Goal: c
 | `SITEGEIST_RELAY_URL` | `http://127.0.0.1:7717` | base URL (agent POSTs `/rpc`; ext dials `/ws`) |
 | `SITEGEIST_RELAY_TOKEN` | _(empty)_ | optional bearer; agent sends `Authorization: Bearer`, ext sends `?token=` |
 | `SITEGEIST_RELAY_SESSION_ID` | _(generated)_ | logical session; header `X-Sitegeist-Session` |
-| `SITEGEIST_RELAY_TASK_ID` / `_TASK_TITLE` | _(empty)_ | surfaced to the extension UI |
 | `SITEGEIST_RELAY_TOOL_TIMEOUT_MS` | `120000` | per-call timeout |
 | `SITEGEIST_RELAY_PORT` | `7717` | relay listen port |
 

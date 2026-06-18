@@ -19,6 +19,9 @@ Goal: Learn from `~/ZCodeProject`, optimize vllm-studio frontend. Effect, compos
 `typecheck` · `typecheck:desktop` · `lint` · `check:cycles` · `check:ui-structure` · unit `test` · Next `build` — all PASS.
 e2e: the **chat/UI** suites pass (agent-session-runtime-regressions 58/58, settings-api-persistence + agent-browser-tools 7/7).
 
+### Adversarial diff review (final pass)
+Reviewed the full branch diff for correctness + behavior-preservation across all 5 areas — **no bugs at/above confidence threshold**. Adjacency guarantee for table merge holds; activity-group ordering/ids stable; parchi rip-out + protocol conformance complete; picker has no dangling refs/a11y issues; services refactor preserves file formats, masking, and route shapes. One spec/code nit fixed: trimmed `SITEGEIST_RELAY_TASK_ID`/`_TASK_TITLE` from the protocol doc (no task-title field on RuntimeStartOptions; client injects URL/TOKEN/SESSION_ID only) so the spec matches the client exactly.
+
 ### ⚠️ Pre-existing, NOT from this loop
 - **9 failures in `tests/frontend/e2e/session-runtime-controller.test.ts`** (poll/reconnect/coalesce/timer). Root cause: the user's **incomplete Effect coalescer/timer WIP** — `text-delta-coalescer.ts` was untracked at branch start, so at clean baseline `99396e92` the suite can't even load (`Cannot find module …/text-delta-coalescer`). Committing the carried WIP (commit D) just made the failing assertions visible. Confirmed identical 159/9 split with the service refactor stashed → zero new failures from my work. **This is your separate unfinished workstream to resolve.**
 - **dev-Electron visual QA NOT done** — a live multi-tool chat session (tables, activity-collapse) can't be reproduced headless without popping windows on your machine while you sleep. Production build + tests verify compile + logic; please eyeball #1/#3/#5 in a dev Electron run when awake.
