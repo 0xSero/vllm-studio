@@ -2,7 +2,6 @@
 // component coupling — engine code calls into these and reacts to the results.
 
 import { safeJson } from "@/features/agent/safe-json";
-import { decodeRuntimeEventPayload } from "@/features/agent/runtime/runtime-schema";
 import {
   parseAgentTurnCommandResult,
   type AgentTurnCommandResult,
@@ -16,7 +15,10 @@ import type {
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
 
-import type { RuntimeContextUsage } from "@/features/agent/runtime/runtime-schema";
+import {
+  decodeRuntimeEventPayload,
+  type RuntimeContextUsage,
+} from "@/features/agent/runtime/runtime-schema";
 export type { RuntimeContextUsage };
 export type RuntimeStatus = {
   active?: boolean;

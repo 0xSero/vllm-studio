@@ -1,5 +1,6 @@
 "use client";
 
+import { Effect, Fiber } from "effect";
 import {
   CONTROLLER_STREAM_EVENT_TYPES as CONTROLLER_EVENT_TYPES,
   getBrowserEventChannelForControllerEvent,
@@ -48,20 +49,18 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
         eventSourceRef.current.close();
       }
       let disposed = false;
-      let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-      let failureStreak = 0;
+      let reconnectFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
 
       const open = () => {
         if (disposed) return;
         const es = new EventSource(sseUrl);
         eventSourceRef.current = es;
-        let deliveredEvent = false;
+        let failureStreak = 0;
 
         const onDelivered = (event: MessageEvent) => {
           // A delivered event proves this backend's /events actually streams, so
           // reset the backoff — a genuine mid-stream drop should reconnect fast.
           failureStreak = 0;
-          deliveredEvent = true;
           handleMessage(event);
         };
 
@@ -76,12 +75,17 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
           // The browser's native EventSource reconnects immediately. On a backend
           // whose /events never streams (e.g. CDN-buffered SSE behind Cloudflare),
           // that pins a long hung request every few seconds for nothing. Take over
-          // reconnection with capped exponential backoff; the realtime-status
-          // store's polling fallback keeps data fresh meanwhile. Connections that
-          // delivered at least one event don't count toward the streak.
-          if (!deliveredEvent) failureStreak = Math.min(failureStreak + 1, 6);
+          // reconnection with capped exponential backoff via Effect.sleep on a
+          // tracked fiber; the realtime-status store's polling fallback keeps data
+          // fresh meanwhile.
+          failureStreak = Math.min(failureStreak + 1, 6);
           const delay = Math.min(60_000, 3_000 * 2 ** failureStreak);
-          reconnectTimer = setTimeout(open, delay);
+          const program = Effect.gen(function* () {
+            yield* Effect.sleep(delay);
+            open();
+          });
+          if (reconnectFiber) void Promise.resolve(Fiber.interrupt(reconnectFiber as never));
+          reconnectFiber = Effect.runFork(program) as never;
         };
       };
 
@@ -89,7 +93,7 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
 
       return () => {
         disposed = true;
-        if (reconnectTimer) clearTimeout(reconnectTimer);
+        if (reconnectFiber) void Promise.resolve(Fiber.interrupt(reconnectFiber as never));
         eventSourceRef.current?.close();
       };
     },
