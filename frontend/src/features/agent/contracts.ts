@@ -174,7 +174,7 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   if (!piSessionId.ok) return piSessionId;
   const browserSessionId = stringField(body, "browserSessionId");
   if (!browserSessionId.ok) return browserSessionId;
-  const browserBackend = body.browserBackend === "embedded" ? "embedded" : "parchi";
+  const browserBackend = body.browserBackend === "sitegeist" ? "sitegeist" : "embedded";
   const mode = body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const streamingBehavior =
     body.streamingBehavior === "steer" || body.streamingBehavior === "followUp"

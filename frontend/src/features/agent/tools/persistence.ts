@@ -187,7 +187,9 @@ export function writeBrowserEnabled(enabled: boolean): void {
 }
 
 function parseBrowserBackend(value: string | null): BrowserBackend {
-  return value === "embedded" || value === "parchi" ? value : DEFAULT_BROWSER_BACKEND;
+  // A previously-stored "parchi" (now removed) falls back to the default so
+  // existing installs don't break on reload.
+  return value === "embedded" || value === "sitegeist" ? value : DEFAULT_BROWSER_BACKEND;
 }
 
 export function writeBrowserBackend(backend: BrowserBackend): void {

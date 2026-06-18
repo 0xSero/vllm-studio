@@ -83,7 +83,7 @@ const ToolsContext = createContext<ToolsContextValue | null>(null);
 
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
-    return { enabled: false, backend: "parchi", url: "", input: "" };
+    return { enabled: false, backend: "embedded", url: "", input: "" };
   }
   migrateToolStorage();
   return loadBrowserState();
@@ -151,7 +151,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 
   const toggleBrowserBackend = useCallback(() => {
     setBrowser((current) => {
-      const backend = current.backend === "parchi" ? "embedded" : "parchi";
+      const backend = current.backend === "sitegeist" ? "embedded" : "sitegeist";
       writeBrowserBackend(backend);
       return { ...current, backend };
     });

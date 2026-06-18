@@ -27,7 +27,7 @@ export type RuntimePromptTemplateRef = {
 export type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "parchi";
+  browserBackend?: "embedded" | "sitegeist";
   canvasEnabled?: boolean;
   plugins?: RuntimePluginRef[];
   skills?: RuntimeSkillRef[];
@@ -131,10 +131,10 @@ export function resolveBrowserExtensionPath(): string | null {
   );
 }
 
-export function resolveParchiBrowserExtensionPath(): string | null {
+export function resolveSitegeistBrowserExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
-    "parchi-browser.ts",
-    process.env.VLLM_STUDIO_PARCHI_BROWSER_EXTENSION_PATH,
+    "sitegeist-browser.ts",
+    process.env.VLLM_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH,
   );
 }
 
@@ -183,10 +183,10 @@ export function resolveBrowserSkillPath(): string | null {
   return resolveBundledSkillPath("browser", process.env.VLLM_STUDIO_BROWSER_SKILL_PATH);
 }
 
-export function resolveParchiBrowserSkillPath(): string | null {
+export function resolveSitegeistBrowserSkillPath(): string | null {
   return resolveBundledSkillPath(
-    "parchi-browser",
-    process.env.VLLM_STUDIO_PARCHI_BROWSER_SKILL_PATH,
+    "sitegeist-browser",
+    process.env.VLLM_STUDIO_SITEGEIST_BROWSER_SKILL_PATH,
   );
 }
 
@@ -271,19 +271,19 @@ function shouldLoadBrowserTool(options: RuntimeStartOptions): boolean {
   return options.browserToolEnabled === true;
 }
 
-function browserBackend(options: RuntimeStartOptions): "embedded" | "parchi" {
+function browserBackend(options: RuntimeStartOptions): "embedded" | "sitegeist" {
   const backend = options.browserBackend ?? process.env.VLLM_STUDIO_BROWSER_BACKEND;
-  if (backend === "parchi") return "parchi";
+  if (backend === "sitegeist") return "sitegeist";
   return "embedded";
 }
 
-function browserExtensionPathFor(backend: "embedded" | "parchi"): string | null {
-  if (backend === "parchi") return resolveParchiBrowserExtensionPath();
+function browserExtensionPathFor(backend: "embedded" | "sitegeist"): string | null {
+  if (backend === "sitegeist") return resolveSitegeistBrowserExtensionPath();
   return resolveBrowserExtensionPath();
 }
 
-function browserSkillPathFor(backend: "embedded" | "parchi"): string | null {
-  if (backend === "parchi") return resolveParchiBrowserSkillPath();
+function browserSkillPathFor(backend: "embedded" | "sitegeist"): string | null {
+  if (backend === "sitegeist") return resolveSitegeistBrowserSkillPath();
   return resolveBrowserSkillPath();
 }
 
@@ -322,26 +322,20 @@ function runtimeEnvInjections(
   env: NodeJS.ProcessEnv,
 ): Record<string, string> {
   const frontendBase = env.VLLM_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
-  const parchiRelay = readParchiRelayEnv(env);
+  const relay = readSitegeistRelayEnv(env);
   return {
     VLLM_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     VLLM_STUDIO_FRONTEND_BASE: frontendBase,
     VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
-    PARCHI_RELAY_URL:
-      env.PARCHI_RELAY_RPC ??
-      env.PARCHI_RELAY_URL ??
-      parchiRelay.PARCHI_RELAY_RPC ??
-      parchiRelay.PARCHI_RELAY_URL ??
-      "",
-    PARCHI_RELAY_TOKEN: env.PARCHI_RELAY_TOKEN ?? parchiRelay.PARCHI_RELAY_TOKEN ?? "",
-    PARCHI_RELAY_ORIGIN: env.PARCHI_RELAY_ORIGIN ?? frontendBase,
-    PARCHI_RELAY_SESSION_ID: options.browserSessionId ?? "",
+    SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
+    SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
+    SITEGEIST_RELAY_SESSION_ID: options.browserSessionId ?? "",
   };
 }
 
-function readParchiRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+function readSitegeistRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const filePath = expandHome(
-    env.VLLM_STUDIO_PARCHI_RELAY_ENV_PATH ?? "~/.config/parchi-relay/env",
+    env.VLLM_STUDIO_SITEGEIST_RELAY_ENV_PATH ?? "~/.config/sitegeist-relay/env",
   );
   if (!existsSync(filePath)) return {};
   try {
@@ -359,7 +353,7 @@ function readParchiRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
             .slice(index + 1)
             .trim()
             .replace(/^['"]|['"]$/g, "");
-          return key.startsWith("PARCHI_RELAY_") ? [[key, value]] : [];
+          return key.startsWith("SITEGEIST_RELAY_") ? [[key, value]] : [];
         }),
     );
   } catch {

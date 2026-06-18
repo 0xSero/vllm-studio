@@ -80,7 +80,7 @@ function browserToolLabel(block: ToolBlock): string {
   const normalized = block.name
     .toLowerCase()
     .replace(/^browser_/, "")
-    .replace(/^parchi_/, "");
+    .replace(/^sitegeist_/, "");
   if (normalized.includes("navigate")) return running ? "Navigating" : "Navigated";
   if (normalized.includes("get_text")) return running ? "Reading page" : "Read page";
   if (normalized.includes("get_html")) return running ? "Reading page" : "Read page";

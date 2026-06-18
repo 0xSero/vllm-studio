@@ -155,6 +155,26 @@ export function EyeOffIcon(props: IconProps) {
   );
 }
 
+export function SitegeistIcon(props: IconProps) {
+  // "site" + "zeitgeist" → an eye watching a page. The almond eye outline holds
+  // a solid iris, echoing the sitegeist orb mark. Single-color, no strokes.
+  return (
+    <Svg {...props}>
+      <path d="M8 2.5c3.4 0 6.2 2.2 7.5 5.5C14.2 11.3 11.4 13.5 8 13.5S1.8 11.3.5 8C1.8 4.7 4.6 2.5 8 2.5zm0 1.8a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4zm0 1.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8z" />
+    </Svg>
+  );
+}
+
+export function PanelIcon(props: IconProps) {
+  // A bordered panel split into a sidebar + content area — the embedded browser
+  // panel. Solid frame, hollow content well.
+  return (
+    <Svg {...props}>
+      <path d="M2 2.5h12v11H2v-11zm1.5 1.5v8H6v-8H3.5zm4 0v8H12.5v-8H7.5z" />
+    </Svg>
+  );
+}
+
 export function MoreIcon(props: IconProps) {
   return (
     <Svg {...props}>

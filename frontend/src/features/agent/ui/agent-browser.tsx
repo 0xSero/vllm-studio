@@ -105,7 +105,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
   const [localSites, setLocalSites] = useState<LocalhostSite[]>([]);
   const [localSitesLoading, setLocalSitesLoading] = useState(false);
   const [localSitesError, setLocalSitesError] = useState<string | null>(null);
-  const [contextOpen, setContextOpen] = useState(false);
   const showStartPage = !hasOpenedUrl && url === DEFAULT_BROWSER_URL;
   const addressValue = showStartPage && inputValue === DEFAULT_BROWSER_URL ? "" : inputValue;
 
@@ -294,17 +293,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
         </button>
       </form>
 
-      {!showStartPage ? (
-        <BrowserContextStrip
-          url={url}
-          readingMode={readingMode}
-          page={readable}
-          loading={readingLoading}
-          open={contextOpen}
-          onToggle={() => setContextOpen((value) => !value)}
-        />
-      ) : null}
-
       <div className="min-h-0 flex-1 bg-(--bg)">
         {showStartPage ? (
           <LocalhostStartPage
@@ -359,85 +347,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     </section>
   );
 });
-
-function BrowserContextStrip({
-  url,
-  readingMode,
-  page,
-  loading,
-  open,
-  onToggle,
-}: {
-  url: string;
-  readingMode: boolean;
-  page: ReadablePage | null;
-  loading: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const host = browserHost(url);
-  const readerChars = page ? (page.markdown ?? page.text).length : 0;
-  return (
-    <div className="shrink-0 border-b border-(--border) bg-(--surface)/45 px-3 py-2 text-[length:var(--fs-xs)] text-(--dim)">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 text-left"
-        aria-expanded={open}
-      >
-        <span className="min-w-0">
-          <span className="font-medium text-(--fg)">Model context</span>
-          <span className="ml-2 truncate font-mono">{host}</span>
-        </span>
-        <span className="shrink-0 text-(--dim)">{open ? "Hide" : "Show"}</span>
-      </button>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <ContextPill>browser tools active</ContextPill>
-        <ContextPill>{readingMode ? "reader" : "live"}</ContextPill>
-        <ContextPill>
-          {readingMode
-            ? loading
-              ? "reading..."
-              : `${readerChars.toLocaleString()} chars`
-            : "DOM + screenshot on demand"}
-        </ContextPill>
-      </div>
-      {open ? (
-        <dl className="mt-2 grid gap-1.5 font-mono text-[length:var(--fs-xs)]">
-          <ContextRow label="url" value={url} />
-          <ContextRow
-            label="title"
-            value={page?.title || (readingMode && loading ? "loading" : "")}
-          />
-          <ContextRow
-            label="type"
-            value={page?.contentType || (readingMode ? "unknown" : "live browser")}
-          />
-        </dl>
-      ) : null}
-    </div>
-  );
-}
-
-function ContextPill({ children }: { children: string }) {
-  return (
-    <span className="rounded border border-(--border) bg-(--bg)/70 px-1.5 py-0.5 text-(--dim)">
-      {children}
-    </span>
-  );
-}
-
-function ContextRow({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2">
-      <dt className="text-(--dim)">{label}</dt>
-      <dd className="truncate text-(--fg)/80" title={value}>
-        {value}
-      </dd>
-    </div>
-  );
-}
 
 function LocalhostStartPage({
   sites,
@@ -637,14 +546,6 @@ function resolveBrowserHref(href: string, baseUrl: string): string {
     return new URL(href, baseUrl).toString();
   } catch {
     return href;
-  }
-}
-
-function browserHost(url: string): string {
-  try {
-    return new URL(url).host || url;
-  } catch {
-    return url;
   }
 }
 

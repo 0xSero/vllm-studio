@@ -23,7 +23,7 @@ export type ComputerTab =
   | "diff"
   | "terminal";
 
-export type BrowserBackend = "embedded" | "parchi";
+export type BrowserBackend = "embedded" | "sitegeist";
 
 export type BrowserState = {
   enabled: boolean;
