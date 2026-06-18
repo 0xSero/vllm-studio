@@ -8,6 +8,7 @@
 // to controller events for status.
 
 import { useSyncExternalStore } from "react";
+import { Effect, Fiber, Schedule } from "effect";
 import type {
   GPU,
   LaunchProgressData,
@@ -69,7 +70,7 @@ const initialSnapshot: RealtimeStatusSnapshot = {
 let snapshot: RealtimeStatusSnapshot = initialSnapshot;
 const listeners = new Set<() => void>();
 let started = false;
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
 let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
 let pollFailureStreak = 0;
 let pollBackoffUntil = 0;
@@ -383,14 +384,17 @@ function start() {
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
   window.addEventListener(BACKEND_URL_CHANGED_EVENT, resetForControllerSwitch);
 
-  // Initial fetch + polling fallback in case SSE is blocked.
+  // Initial fetch + polling fallback in case SSE is blocked. Runs as an Effect
+  // fiber on a fixed schedule — the poll body checks the SSE freshness window
+  // and backoff gate before firing, same logic as the old setInterval.
   void fetchStatusNow();
-  pollInterval = setInterval(() => {
+  const pollProgram = Effect.sync(() => {
     const now = Date.now();
     if (now - snapshot.lastEventAt < 10_000) return;
     if (now < pollBackoffUntil) return;
     void fetchStatusNow();
-  }, POLL_BASE_INTERVAL_MS);
+  }).pipe(Effect.repeat(Schedule.spaced(POLL_BASE_INTERVAL_MS)));
+  pollFiber = Effect.runFork(pollProgram) as never;
 
   const onVisibility = () => {
     if (document.visibilityState === "visible") {

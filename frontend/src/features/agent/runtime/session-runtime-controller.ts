@@ -38,6 +38,7 @@ import {
   type RuntimeCursor,
 } from "@/features/agent/runtime/runtime-cursor";
 import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
+import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
@@ -146,7 +147,7 @@ export function createSessionRuntimeController(
   const cursors = new Map<SessionId, RuntimeCursor>();
   const streamContext: SessionStreamContext = { liveAssistantIds: new Map() };
   const attachments = new Map<SessionId, Attachment>();
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
   let pollEpoch = 0;
   const turnAcceptedAt = new Map<SessionId, number>();
 
@@ -369,8 +370,8 @@ export function createSessionRuntimeController(
   };
 
   const stopPoll = () => {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
+    if (pollFiber) void Promise.resolve(Fiber.interrupt(pollFiber as never));
+    pollFiber = null;
     // Invalidate any in-flight fetch: a stale snapshot from the previous
     // session registry must not apply after a fresher immediate reconcile.
     pollEpoch += 1;
@@ -400,10 +401,13 @@ export function createSessionRuntimeController(
       if (closed || reconnecting) return;
       reconnecting = true;
       sub?.close();
-      setTimeout(() => {
-        reconnecting = false;
-        if (!closed) connect();
-      }, reconnectDelayMs);
+      const reconnectFiber = Effect.runFork(
+        Effect.gen(function* () {
+          yield* Effect.sleep(reconnectDelayMs);
+          reconnecting = false;
+          if (!closed) connect();
+        }),
+      ) as never;
     };
 
     const reconcileLiveness = async () => {
@@ -463,16 +467,18 @@ export function createSessionRuntimeController(
 
     connect();
 
-    const watchdog = setInterval(() => {
-      if (closed || Date.now() - lastPayloadAt < idleReconnectMs) return;
-      void reconcileLiveness();
-    }, idleReconnectMs);
+    const watchdogFiber = Effect.runFork(
+      Effect.sync(() => {
+        if (closed || Date.now() - lastPayloadAt < idleReconnectMs) return;
+        void reconcileLiveness();
+      }).pipe(Effect.repeat(Schedule.spaced(idleReconnectMs))),
+    ) as never;
 
     return {
       key: resumeConnectionKey(runtime, piSessionId),
       close: () => {
         closed = true;
-        clearInterval(watchdog);
+        void Promise.resolve(Fiber.interrupt(watchdogFiber as never));
         coalescer.flushNow(sessionId);
         sub?.close();
       },
@@ -532,7 +538,9 @@ export function createSessionRuntimeController(
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;
       void pollOnce();
-      pollTimer = setInterval(() => void pollOnce(), pollIntervalMs);
+      pollFiber = Effect.runFork(
+        Effect.sync(() => void pollOnce()).pipe(Effect.repeat(Schedule.spaced(pollIntervalMs))),
+      ) as never;
     },
     closeAll: () => {
       stopPoll();
