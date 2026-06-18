@@ -91,12 +91,7 @@ export type SessionTab = {
   startedAt?: string;
   input: string;
   tokenStats?: TokenStats;
-  contextUsage?: {
-    tokens: number | null;
-    contextWindow: number;
-    percent: number | null;
-    shouldCompact: boolean;
-  } | null;
+  contextUsage?: import("@/features/agent/runtime/runtime-schema").RuntimeContextUsage | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
   plugins?: ComposerPluginRef[];

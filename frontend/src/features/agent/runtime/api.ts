@@ -16,13 +16,8 @@ import type {
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
 
-export type RuntimeContextUsage = {
-  tokens: number | null;
-  contextWindow: number;
-  percent: number | null;
-  shouldCompact: boolean;
-};
-
+import type { RuntimeContextUsage } from "@/features/agent/runtime/runtime-schema";
+export type { RuntimeContextUsage };
 export type RuntimeStatus = {
   active?: boolean;
   running?: boolean;

@@ -65,3 +65,6 @@ export function decodeRuntimeEventPayload(raw: unknown): DecodedRuntimeEventPayl
   })(raw);
   return decoded._tag === "Right" ? decoded.right : null;
 }
+
+/** Canonical RuntimeContextUsage — derived from the schema (single source). */
+export type RuntimeContextUsage = Schema.Schema.Type<typeof RuntimeContextUsageSchema>;
