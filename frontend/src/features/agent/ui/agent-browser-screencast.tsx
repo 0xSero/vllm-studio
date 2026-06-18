@@ -1,5 +1,7 @@
 "use client";
 
+import { effectTimeout } from "@/lib/effect-timers";
+
 /**
  * Live surface for the agent browser pane: renders the server-side headless
  * Chromium (features/agent/browser-host) as a CDP screencast and forwards
@@ -79,7 +81,7 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
   // surfaces 503 once as unavailable ────────────────────────────────────
   const subscribeStream = useCallback((_notify: () => void) => {
     let disposed = false;
-    let timer: number | null = null;
+    let timer: ReturnType<typeof effectTimeout> | null = null;
 
     const tick = async () => {
       if (disposed) return;
@@ -104,13 +106,13 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
       } catch {
         // transient — keep polling
       }
-      if (!disposed) timer = window.setTimeout(() => void tick(), POLL_INTERVAL_MS);
+      if (!disposed) timer = effectTimeout(() => void tick(), POLL_INTERVAL_MS);
     };
 
     void tick();
     return () => {
       disposed = true;
-      if (timer !== null) window.clearTimeout(timer);
+      if (timer) timer.cancel();
     };
   }, []);
 
@@ -147,7 +149,7 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
   const subscribeViewport = useCallback(
     (_notify: () => void) => {
       if (!container) return () => {};
-      let timer: number | null = null;
+      let timer: ReturnType<typeof effectTimeout> | null = null;
       const sync = () => {
         const rect = container.getBoundingClientRect();
         const width = Math.round(
@@ -161,13 +163,13 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
         postBrowser("viewport", { width, height });
       };
       const observer = new ResizeObserver(() => {
-        if (timer !== null) window.clearTimeout(timer);
-        timer = window.setTimeout(sync, 250);
+        if (timer) timer.cancel();
+        timer = effectTimeout(sync, 250);
       });
       observer.observe(container);
       sync();
       return () => {
-        if (timer !== null) window.clearTimeout(timer);
+        if (timer) timer.cancel();
         observer.disconnect();
       };
     },

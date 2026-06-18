@@ -1,5 +1,7 @@
 "use client";
 
+import { effectInterval } from "@/lib/effect-timers";
+
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api/client";
 import type { ModelDownload } from "@/lib/types";
@@ -35,8 +37,8 @@ export function useDownloads(pollIntervalMs = 2500) {
     (_notify: () => void) => {
       void refresh();
       if (pollIntervalMs <= 0) return () => {};
-      const interval = setInterval(refresh, pollIntervalMs);
-      return () => clearInterval(interval);
+      const timer = effectInterval(refresh, pollIntervalMs);
+      return () => timer.cancel();
     },
     [pollIntervalMs, refresh],
   );

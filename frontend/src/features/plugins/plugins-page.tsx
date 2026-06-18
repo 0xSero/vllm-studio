@@ -1,5 +1,7 @@
 "use client";
 
+import { effectTimeout } from "@/lib/effect-timers";
+
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Globe, Plug, ShieldCheck, type LucideIcon } from "lucide-react";
 import { SettingsLayout, SettingsNotice, type SettingsSectionDef } from "@/ui/settings";
@@ -134,8 +136,8 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
 
   const subscribeRegistry = useCallback(
     (_notify: () => void) => {
-      const timeout = setTimeout(() => void loadRegistry(), 250);
-      return () => clearTimeout(timeout);
+      const timer = effectTimeout(() => void loadRegistry(), 250);
+      return () => timer.cancel();
     },
     [loadRegistry],
   );

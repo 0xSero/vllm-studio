@@ -1,5 +1,7 @@
 "use client";
 
+import { effectInterval, effectTimeout } from "@/lib/effect-timers";
+
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowUpCircle, Check, Loader2, XCircle } from "lucide-react";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
@@ -75,8 +77,8 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
   const subscribeRuntimeJobs = useCallback(
     (_notify: () => void) => {
       void Promise.resolve().then(refreshRuntimeJobs);
-      const timer = setInterval(() => void refreshRuntimeJobs(), 2500);
-      return () => clearInterval(timer);
+      const jobTimer = effectInterval(() => void refreshRuntimeJobs(), 2500);
+      return () => jobTimer.cancel();
     },
     [refreshRuntimeJobs],
   );
@@ -266,10 +268,10 @@ function BackendRow({
     try {
       await onUpgrade();
       setState({ status: "success", message: "Upgrade complete" });
-      setTimeout(() => setState({ status: "idle" }), 4000);
+      effectTimeout(() => setState({ status: "idle" }), 4000);
     } catch (err) {
       setState({ status: "error", message: err instanceof Error ? err.message : "Upgrade failed" });
-      setTimeout(() => setState({ status: "idle" }), 6000);
+      effectTimeout(() => setState({ status: "idle" }), 6000);
     }
   }, [onUpgrade]);
 

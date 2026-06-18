@@ -1,5 +1,7 @@
 "use client";
 
+import { Effect } from "effect";
+
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api/client";
@@ -12,10 +14,7 @@ import type {
   StudioSettings,
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
-import {
-  describeFailedEngineJob,
-  isTerminalEngineJob,
-} from "@/features/settings/runtime-targets";
+import { describeFailedEngineJob, isTerminalEngineJob } from "@/features/settings/runtime-targets";
 import { buildStarterRecipe } from "./setup-helpers";
 
 type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
@@ -194,7 +193,7 @@ export function useSetup() {
         elapsedMs < RUNTIME_JOB_FAST_POLL_WINDOW_MS
           ? RUNTIME_JOB_FAST_POLL_MS
           : RUNTIME_JOB_SLOW_POLL_MS;
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      await Effect.runPromise(Effect.sleep(intervalMs));
       const next = await fetchRuntimeJob(jobId);
       job = next;
       setRuntimeJobs((current) => [
@@ -422,9 +421,7 @@ async function fetchRuntimeJob(jobId: string): Promise<EngineJob> {
     if (isMissingRuntimeJobError(err)) {
       // Runtime jobs live in controller memory, so a 404 mid-poll means the
       // controller restarted and the install died with it.
-      throw new Error(
-        "The controller restarted and lost this install job. Re-run the install.",
-      );
+      throw new Error("The controller restarted and lost this install job. Re-run the install.");
     }
     throw err;
   }
@@ -435,12 +432,12 @@ function isMissingRuntimeJobError(err: unknown): boolean {
 }
 
 function withSetupTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 8_000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
-    }),
-  ]);
+  return Effect.runPromise(
+    Effect.tryPromise(() => promise).pipe(
+      Effect.timeout(timeoutMs),
+      Effect.catchAll(() => Effect.fail(new Error(` timed out`))),
+    ),
+  );
 }
 
 function formatLoadWarning(warnings: string[]): string | null {

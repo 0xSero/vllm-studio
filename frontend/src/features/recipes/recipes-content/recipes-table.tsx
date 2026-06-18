@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelButton, ModelRow, ModelSection, ModelStatus, ModelValue } from "@/ui";
-import { AttachLocalAgentsDialog } from "@/features/settings/attach-local-agents-dialog";
+import { AttachLocalAgentsDialog } from "@/ui/attach-local-agents-dialog";
 import { RecipeRow } from "./recipe-row";
 
 type Props = {

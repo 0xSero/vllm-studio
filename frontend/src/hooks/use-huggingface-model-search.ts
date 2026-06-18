@@ -1,5 +1,7 @@
 "use client";
 
+import { effectTimeout } from "@/lib/effect-timers";
+
 import { useCallback, useState, useSyncExternalStore } from "react";
 import type { HuggingFaceModel } from "@/lib/types";
 import { fetchHuggingFaceModels, isRecentHuggingFaceModel } from "@/lib/huggingface";
@@ -63,10 +65,8 @@ export function useHuggingFaceModelSearch(
   const subscribeModelSearch = useCallback(
     (_notify: () => void) => {
       setPage(0);
-      const debounce = setTimeout(() => {
-        void fetchModels(false, 0);
-      }, 300);
-      return () => clearTimeout(debounce);
+      const timer = effectTimeout(() => void fetchModels(false, 0), 300);
+      return () => timer.cancel();
     },
     [fetchModels],
   );

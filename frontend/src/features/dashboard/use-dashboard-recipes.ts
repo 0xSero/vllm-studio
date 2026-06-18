@@ -1,6 +1,7 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
+import { effectInterval } from "@/lib/effect-timers";
 
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
@@ -136,12 +137,10 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
         await refreshLogs(currentRecipe);
       };
       void poll();
-      const interval = window.setInterval(() => {
-        void poll();
-      }, 4000);
+      const timer = effectInterval(() => void poll(), 4000);
       return () => {
         cancelled = true;
-        window.clearInterval(interval);
+        timer.cancel();
       };
     },
     [currentProcess, currentRecipe, refreshLogs],
