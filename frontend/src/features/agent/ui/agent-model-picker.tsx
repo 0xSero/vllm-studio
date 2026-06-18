@@ -10,11 +10,10 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { Search } from "lucide-react";
+import { Brain, Search } from "lucide-react";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import { loadSavedControllers } from "@/lib/api/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";
-import { ChevronDownIcon } from "@/ui/icons";
 import { cx } from "@/ui/utils";
 
 type AgentModelPickerProps = {
@@ -138,11 +137,22 @@ export function AgentModelPicker({
           }
         }}
         disabled={disabled}
-        className="inline-flex !h-auto !min-h-0 !min-w-0 max-w-[180px] items-center gap-1 rounded-sm bg-transparent px-1 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg) disabled:opacity-60"
+        className={cx(
+          "group/model inline-flex !h-auto !min-h-0 !min-w-0 items-center gap-1 rounded-sm bg-transparent px-1 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:text-(--fg) disabled:opacity-60",
+          open && "text-(--fg)",
+        )}
         title={active?.name || triggerLabel}
+        aria-label={`Model: ${active?.name || triggerLabel}`}
       >
-        <span className="min-w-0 max-w-[152px] truncate">{triggerLabel}</span>
-        <ChevronDownIcon className="h-2.5 w-2.5 shrink-0" />
+        <Brain className="h-3.5 w-3.5 shrink-0" />
+        <span
+          className={cx(
+            "inline-block max-w-0 overflow-hidden whitespace-nowrap align-middle opacity-0 transition-all duration-200 group-hover/model:max-w-[160px] group-hover/model:opacity-100",
+            open && "max-w-[160px] opacity-100",
+          )}
+        >
+          {triggerLabel}
+        </span>
       </button>
       {open ? (
         <div

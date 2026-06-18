@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { formatTokenCount } from "@/features/agent/messages";
 import type { GitSummary } from "@/features/agent/projects/types";
 import { GitBranchIcon } from "@/ui/icons";
@@ -10,7 +9,6 @@ export function AgentComposerStatusBar({
   gitBranch,
   gitSummary,
   onInitGit,
-  modelSelector,
   currentContextTokens,
   contextWindow,
   onOpenStatus,
@@ -19,7 +17,6 @@ export function AgentComposerStatusBar({
   gitBranch?: string | null;
   gitSummary?: GitSummary | null;
   onInitGit?: () => void;
-  modelSelector?: ReactNode;
   currentContextTokens: number;
   contextWindow: number;
   onOpenStatus: () => void;
@@ -39,7 +36,6 @@ export function AgentComposerStatusBar({
         <GitBranchState gitBranch={gitBranch} gitSummary={gitSummary} onInitGit={onInitGit} />
         <GitSummaryState gitSummary={gitSummary} />
       </div>
-      {modelSelector}
       <ContextReadout
         current={currentContextTokens}
         contextWindow={contextWindow}

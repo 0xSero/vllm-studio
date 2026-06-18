@@ -470,14 +470,6 @@
   width: min(100%, var(--composer-w));
 }
 
-.agent-model-slot {
-  max-width: clamp(7rem, 34cqw, 150px);
-}
-
-.agent-model-slot > * {
-  max-width: 100%;
-}
-
 .agent-composer-project {
   max-width: min(42%, 18rem);
 }
@@ -497,10 +489,6 @@
 @container (max-width: 560px) {
   .agent-composer-actions-row {
     flex-wrap: wrap;
-  }
-
-  .agent-model-slot {
-    max-width: min(13rem, 58cqw);
   }
 }
 

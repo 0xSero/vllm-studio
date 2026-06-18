@@ -3,7 +3,7 @@
 import type { ReactNode, RefObject } from "react";
 import { Code2, Loader2, Plus } from "lucide-react";
 import type { BrowserBackend } from "@/features/agent/tools/types";
-import { GlobeIcon, SendIcon, StopIcon } from "@/ui/icons";
+import { GlobeIcon, PanelIcon, SendIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 
 export function AgentComposerActions({
   fileInputRef,
@@ -42,8 +42,9 @@ export function AgentComposerActions({
 }) {
   const inputHasText = Boolean(input.trim());
   const starting = status === "starting";
-  const browserBackendLabel = browserBackend === "parchi" ? "Parchi relay" : "embedded panel";
-  const browserBackendTarget = browserBackend === "parchi" ? "embedded panel" : "Parchi relay";
+  const usingSitegeist = browserBackend === "sitegeist";
+  const browserBackendLabel = usingSitegeist ? "Sitegeist relay" : "embedded panel";
+  const browserBackendTarget = usingSitegeist ? "embedded panel" : "Sitegeist relay";
 
   return (
     <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
@@ -85,14 +86,14 @@ export function AgentComposerActions({
           type="button"
           onClick={onToggleBrowserBackend}
           aria-label={`Browser backend: ${browserBackendLabel}. Switch to ${browserBackendTarget}.`}
-          className="inline-flex !h-7 !min-h-7 shrink-0 items-center rounded-md px-1.5 font-mono text-[10px] uppercase tracking-normal text-(--dim) hover:bg-(--hover) hover:text-(--fg)/85"
-          title={
-            browserBackend === "parchi"
-              ? "Browser backend: Parchi relay. Click to use embedded panel."
-              : "Browser backend: embedded panel. Click to use Parchi relay."
-          }
+          className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${usingSitegeist ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
+          title={`Browser: ${browserBackendLabel}. Click to use ${browserBackendTarget}.`}
         >
-          {browserBackend === "parchi" ? "Parchi" : "Panel"}
+          {usingSitegeist ? (
+            <SitegeistIcon className="h-3.5 w-3.5" />
+          ) : (
+            <PanelIcon className="h-3.5 w-3.5" />
+          )}
         </button>
       ) : null}
       <button
@@ -109,10 +110,8 @@ export function AgentComposerActions({
       >
         <Code2 className="h-3.5 w-3.5" />
       </button>
-      {modelSelector ? (
-        <div className="agent-model-slot min-w-0 shrink">{modelSelector}</div>
-      ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {modelSelector}
         {running ? (
           <>
             {starting ? (
