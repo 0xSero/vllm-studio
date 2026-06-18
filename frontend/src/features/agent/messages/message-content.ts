@@ -81,7 +81,12 @@ export function blocksFromMessageContent(
   }
   if (!isRecordArray(content)) return errorBlock ? [errorBlock] : [];
   const firstToolCallIndex = content.findIndex((part) => part.type === "toolCall");
-  const blocks = content.flatMap((part) => blockFromContentPart(part));
+  const textBeforeToolIsThinking = options.stopReason === "toolUse" && firstToolCallIndex > -1;
+  const blocks = content.flatMap((part, index) =>
+    blockFromContentPart(part, {
+      textAsThinking: textBeforeToolIsThinking && index < firstToolCallIndex,
+    }),
+  );
   const ordered = firstToolCallIndex > -1 ? blocks : reasoningBeforeText(blocks);
   return errorBlock ? [...ordered, errorBlock] : ordered;
 }
@@ -205,12 +210,13 @@ export function blocksFromTurnSnapshots(calls: unknown[][]): AssistantBlock[] {
   calls.forEach((content, callOrdinal) => {
     if (!Array.isArray(content)) return;
     const parts = content.map(asRecordPart);
-    const blocks = mergeAdjacentTextLike(
-      parts.flatMap((part, index) => partToBlocks(part, callOrdinal, index)),
-    );
-    out.push(...blocks);
+    out.push(...parts.flatMap((part, index) => partToBlocks(part, callOrdinal, index)));
   });
-  return out;
+  // Merge across the whole turn, not just within a call: a markdown table (or
+  // any prose) that spans two LLM calls must coalesce into one text block so
+  // the GFM parser sees the full table instead of two raw fragments. Adjacent
+  // same-kind merging keeps a text→tool→text sequence split at tool boundaries.
+  return mergeAdjacentTextLike(out);
 }
 
 const asRecordPart = (value: unknown): PiContentPart =>

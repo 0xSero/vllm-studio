@@ -32,67 +32,75 @@ type ActivitySegment =
   | { kind: "tools"; id: string; blocks: ToolBlock[] };
 
 type RoutedBlock =
-  | { kind: "reasoning"; id: string; blocks: ThinkingBlock[] }
   | { kind: "activity-group"; id: string; segments: ActivitySegment[] }
   | { kind: "content"; block: TextBlock }
   | { kind: "event"; block: EventBlock };
 
-// Reasoning and tool runs are kept as SEPARATE top-level items (interleaved in
-// chronological order) rather than buried inside one collapsed activity group.
-// Each thinking block then renders as its own collapsible disclosure between
-// the tool calls. Ids come from underlying block ids so collapse state survives
-// snapshot rebuilds and ordering normalization during long streams.
+// Every run of thinking + tool blocks between two content/event blocks folds
+// into ONE activity-group whose segments stay in chronological order. The group
+// renders as a single Codex-style "Worked for…" disclosure — reasoning never
+// gets its own top-level row, so the chat alternates cleanly between answer text
+// and one collapsible work summary. Ids derive from the first underlying block
+// so collapse state survives snapshot rebuilds and ordering normalization.
 export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
   const routed: RoutedBlock[] = [];
-  let reasoningGroup: ThinkingBlock[] = [];
-  let toolGroup: ToolBlock[] = [];
+  let segments: ActivitySegment[] = [];
+  let reasoning: ThinkingBlock[] = [];
+  let tools: ToolBlock[] = [];
 
   const flushReasoning = () => {
-    if (reasoningGroup.length === 0) return;
-    routed.push({
+    if (reasoning.length === 0) return;
+    segments.push({
       kind: "reasoning",
-      id: `reasoning-${reasoningGroup[0]?.id ?? routed.length}`,
-      blocks: reasoningGroup,
+      id: `reasoning-seg-${reasoning[0]?.id ?? segments.length}`,
+      blocks: reasoning,
     });
-    reasoningGroup = [];
+    reasoning = [];
   };
-
   const flushTools = () => {
-    if (toolGroup.length === 0) return;
-    const id = toolGroup[0]?.id ?? routed.length;
+    if (tools.length === 0) return;
+    segments.push({
+      kind: "tools",
+      id: `tools-seg-${tools[0]?.id ?? segments.length}`,
+      blocks: tools,
+    });
+    tools = [];
+  };
+  const flushActivity = () => {
+    flushReasoning();
+    flushTools();
+    if (segments.length === 0) return;
     routed.push({
       kind: "activity-group",
-      id: `tools-${id}`,
-      segments: [{ kind: "tools", id: `tools-seg-${id}`, blocks: toolGroup }],
+      id: `activity-${segments[0]?.id ?? routed.length}`,
+      segments,
     });
-    toolGroup = [];
+    segments = [];
   };
 
   for (const block of blocks) {
     if (block.kind === "tool") {
       flushReasoning();
-      toolGroup.push(block);
+      tools.push(block);
       continue;
     }
     if (block.kind === "thinking") {
       flushTools();
-      reasoningGroup.push(block);
+      reasoning.push(block);
       continue;
     }
     if (block.kind === "text" && block.text.trim() === "") {
       // Empty text blocks shouldn't split a run — keep the surrounding activity together.
       continue;
     }
-    flushReasoning();
-    flushTools();
+    flushActivity();
     if (block.kind === "text") {
       routed.push({ kind: "content", block });
     } else {
       routed.push({ kind: "event", block });
     }
   }
-  flushReasoning();
-  flushTools();
+  flushActivity();
 
   return routed;
 }
@@ -174,9 +182,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
     [routedBlocks],
   );
   const showActions = !running && copyText.trim().length > 0 && lastContentIndex >= 0;
-  const hasActivity = routedBlocks.some(
-    (item) => item.kind === "activity-group" || item.kind === "reasoning",
-  );
+  const hasActivity = routedBlocks.some((item) => item.kind === "activity-group");
   // The work phase ends the moment the final response starts streaming.
   const working = live && lastContentIndex === -1;
 
@@ -190,16 +196,6 @@ const AssistantBlocks = memo(function AssistantBlocks({
       nodes.push(
         <WorkedForDivider key="turn-divider" working={working} hasActivity={hasActivity} />,
       );
-    }
-    if (item.kind === "reasoning") {
-      nodes.push(
-        <ReasoningGroup
-          key={item.id}
-          blocks={item.blocks}
-          live={live && index === routedBlocks.length - 1}
-        />,
-      );
-      return;
     }
     if (item.kind === "activity-group") {
       nodes.push(
@@ -524,23 +520,9 @@ function activityPreview(segments: ActivitySegment[]): string | null {
 }
 
 /* Each thinking block is its own collapsible disclosure, shown inline between
-   tool calls. While the model is actively streaming a thought it opens so the
-   reasoning is visible live, then collapses once the turn moves on — unless the
-   user has explicitly toggled it. */
-function ReasoningGroup({ blocks, live }: { blocks: ThinkingBlock[]; live: boolean }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      {blocks.map((block, index) => (
-        <ReasoningDisclosure
-          key={block.id}
-          block={block}
-          active={live && index === blocks.length - 1}
-        />
-      ))}
-    </div>
-  );
-}
-
+   tool calls inside the activity group. While the model is actively streaming a
+   thought it opens so the reasoning is visible live, then collapses once the
+   turn moves on — unless the user has explicitly toggled it. */
 function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: boolean }) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? active;

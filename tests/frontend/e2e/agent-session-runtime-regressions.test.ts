@@ -1924,9 +1924,13 @@ test("activity group ids stay stable as streaming blocks append", () => {
     throw new Error("expected activity groups");
   }
   assert.equal(firstActivity.id, secondActivity.id);
-  // Reasoning is surfaced as its own top-level collapsible item, not buried
-  // inside the tool activity group.
-  assert.equal(first[0]?.kind, "reasoning");
+  // Reasoning and tools between two content blocks fold into ONE activity-group
+  // (a single collapsible), reasoning as the first segment — not a separate
+  // top-level row.
+  assert.equal(first.length, 1);
+  assert.equal(first[0]?.kind, "activity-group");
+  assert.equal(firstActivity.segments[0]?.kind, "reasoning");
+  assert.equal(firstActivity.segments[1]?.kind, "tools");
 });
 
 test("skill mentions and selected skill context survive composer prompt construction", () => {
