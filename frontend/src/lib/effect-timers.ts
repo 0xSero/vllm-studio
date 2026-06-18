@@ -48,30 +48,3 @@ export function effectTimeout(fn: () => void, delayMs: number): EffectTimer {
     },
   };
 }
-
-/**
- * Debounce `fn` by `delayMs` — calls cancel any pending invocation. Replaces
- * the `clearTimeout(timer); timer = setTimeout(fn, delay)` pattern. Returns a
- * function that triggers the debounce and a cancel handle.
- */
-export function effectDebounce(delayMs: number): {
-  trigger: (fn: () => void) => void;
-  cancel: () => void;
-} {
-  let current: Fiber.RuntimeFiber<void, unknown> | null = null;
-  return {
-    trigger(fn: () => void) {
-      if (current) void Promise.resolve(Fiber.interrupt(current as never));
-      current = Effect.runFork(
-        Effect.gen(function* () {
-          yield* Effect.sleep(delayMs);
-          fn();
-        }),
-      ) as Fiber.RuntimeFiber<void, unknown>;
-    },
-    cancel() {
-      if (current) void Promise.resolve(Fiber.interrupt(current as never));
-      current = null;
-    },
-  };
-}

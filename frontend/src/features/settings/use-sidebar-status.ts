@@ -5,7 +5,7 @@ import {
   sidebarStatusFromSnapshot,
   useRealtimeStatusStore,
   type SidebarStatusSnapshot,
-} from "./realtime-status-store";
+} from "@/hooks/realtime-status-store";
 
 export type { SidebarStatusSnapshot };
 

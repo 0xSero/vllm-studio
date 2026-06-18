@@ -8,7 +8,7 @@ import {
 } from "@/ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
-import { useSidebarStatus } from "@/hooks/use-sidebar-status";
+import { useSidebarStatus } from "@/features/settings/use-sidebar-status";
 import { getSettingsViewSnapshot } from "./settings-view-snapshot";
 
 export function ArchivedChatsSettings() {

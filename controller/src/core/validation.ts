@@ -1,13 +1,13 @@
 import { badRequest } from "./errors";
 
-type JsonBodyCtx = { req: { json: () => Promise<unknown> } };
+type JsonBodyContext = { req: { json: () => Promise<unknown> } };
 
 /**
  * Parse a JSON request body, tolerating an empty/invalid body, and require a
  * plain object. The standard guard used by mutating routes; throws the same
  * `badRequest("Invalid payload")` the routes previously raised inline.
  */
-export const parseJsonObjectBody = async (ctx: JsonBodyCtx): Promise<Record<string, unknown>> => {
+export const parseJsonObjectBody = async (ctx: JsonBodyContext): Promise<Record<string, unknown>> => {
   const body = await ctx.req.json().catch(() => ({}));
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw badRequest("Invalid payload");
