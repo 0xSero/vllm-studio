@@ -23,7 +23,7 @@ export type MentionRow =
   | { kind: "promptTemplate"; row: ComposerPromptTemplateRef }
   | { kind: "file"; row: FileMentionRow };
 
-type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
+export type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
 
 export function AgentLoadedContextTabs({
   plugins,

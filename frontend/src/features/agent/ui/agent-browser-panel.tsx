@@ -33,6 +33,7 @@ import type { Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
 import { makeFreshTab, newRuntimeId } from "@/features/agent/messages/helpers";
 import type { AgentModel } from "@/features/agent/workspace/types";
+import type { GitSummary } from "@/features/agent/projects/types";
 import {
   terminalOwnerLabel,
   uniqueTerminalKeys,
@@ -58,13 +59,7 @@ type AgentBrowserPanelProps = {
   sessions: Session[];
   activeModelId: string;
   activeModel: AgentModel | null;
-  gitSummary?: {
-    isRepo: boolean;
-    branch?: string | null;
-    additions: number;
-    deletions: number;
-    statusCount: number;
-  } | null;
+  gitSummary?: GitSummary | null;
 };
 
 function createSideChatSession(

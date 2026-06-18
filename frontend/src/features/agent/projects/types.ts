@@ -14,7 +14,7 @@ export type Project = {
 
 export type GitSummary = {
   isRepo: boolean;
-  branch: string | null;
+  branch?: string | null;
   additions: number;
   deletions: number;
   statusCount: number;

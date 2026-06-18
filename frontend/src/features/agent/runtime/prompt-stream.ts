@@ -17,14 +17,13 @@ import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types
 import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
-import type { Session, SessionId } from "@/features/agent/runtime/types";
+import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
 
 type MutableRef<T> = { current: T };
-type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
 export type SubmitArgs = {
   text: string;

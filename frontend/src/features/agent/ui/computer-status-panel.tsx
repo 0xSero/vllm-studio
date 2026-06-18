@@ -8,14 +8,7 @@ import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
-
-type GitSummary = {
-  isRepo: boolean;
-  branch?: string | null;
-  additions: number;
-  deletions: number;
-  statusCount: number;
-} | null;
+import type { GitSummary } from "@/features/agent/projects/types";
 
 type StatusTotals = {
   read: number;
@@ -40,7 +33,7 @@ export function ComputerStatusPanel({
   activeModel: AgentModel | null;
   focusedSession: Session | null;
   sessions: Session[];
-  gitSummary?: GitSummary;
+  gitSummary?: GitSummary | null;
   onCompactSession?: () => Promise<void>;
 }) {
   const tools = useTools();
@@ -167,7 +160,7 @@ function sessionBottomRows(totals: StatusTotals): StatusRowData[] {
 function workspaceRows(
   activeProject: Project | null,
   session: Session | null,
-  gitSummary: GitSummary,
+  gitSummary: GitSummary | null,
   browserEnabled: boolean,
   browserUrl: string,
 ): StatusRowData[] {
@@ -257,7 +250,7 @@ function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
   );
 }
 
-function formatGitSummary(gitSummary: GitSummary): string {
+function formatGitSummary(gitSummary: GitSummary | null): string {
   if (!gitSummary?.isRepo) return "Not a repo";
   return `${gitSummary.branch ?? "detached"} · +${gitSummary.additions} -${gitSummary.deletions} · ${gitSummary.statusCount} files`;
 }

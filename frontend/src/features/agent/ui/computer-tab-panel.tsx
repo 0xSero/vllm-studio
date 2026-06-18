@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { FolderTree, GitBranch, Globe2, MessageSquarePlus, TerminalSquare } from "lucide-react";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
-import type { Project } from "@/features/agent/projects/types";
+import type { Project, GitSummary } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { AgentBrowser, type AgentBrowserHandle } from "@/features/agent/ui/agent-browser";
@@ -14,14 +14,6 @@ import { ComputerStatusPanel } from "@/features/agent/ui/computer-status-panel";
 import { FilesystemPanel } from "@/features/agent/ui/filesystem-panel";
 import { GitDiffPanel } from "@/features/agent/ui/git-diff-panel";
 
-type GitSummary = {
-  isRepo: boolean;
-  branch?: string | null;
-  additions: number;
-  deletions: number;
-  statusCount: number;
-} | null;
-
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
 
 type ComputerTabPanelProps = {
@@ -29,7 +21,7 @@ type ComputerTabPanelProps = {
   activeModelId: string;
   activeProject: Project | null;
   focusedSession: Session | null;
-  gitSummary?: GitSummary;
+  gitSummary?: GitSummary | null;
   isElectron: boolean;
   onCloseSideChat: () => void;
   onCompactSession?: () => Promise<void>;

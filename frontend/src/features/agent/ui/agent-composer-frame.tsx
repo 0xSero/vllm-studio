@@ -17,26 +17,19 @@ import type {
 } from "@/features/agent/composer-context";
 import type { QueuedMessage } from "@/features/agent/messages";
 import type { BrowserBackend } from "@/features/agent/tools/types";
+import type { GitSummary } from "@/features/agent/projects/types";
 import { AgentAttachmentTray, type AgentComposerAttachment } from "./agent-attachment-tray";
 import { AgentComposerActions } from "./agent-composer-actions";
 import {
   AgentLoadedContextTabs,
   AgentMentionPicker,
   type MentionRow,
+  type LoadedContextKind,
 } from "./agent-composer-context";
 import { AgentComposerStatusBar } from "./agent-composer-status-bar";
 import { AgentComposerTextArea } from "./agent-composer-textarea";
 import { AgentQueuePanel } from "./agent-queue-panel";
 import { cx } from "@/ui/utils";
-
-type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
-
-type GitSummary = {
-  isRepo: boolean;
-  additions: number;
-  deletions: number;
-  statusCount: number;
-};
 
 export type AgentComposerFrameProps = {
   attachments: AgentComposerAttachment[];

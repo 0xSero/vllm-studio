@@ -39,3 +39,9 @@ export type Session = {
 };
 
 export type SessionsMap = ReadonlyMap<AgentSessionId, Session>;
+
+/** Callback used by the runtime engine to commit a patch to a session. */
+export type UpdateSession = (
+  sessionId: AgentSessionId,
+  patch: (session: Session) => Session,
+) => void;

@@ -14,7 +14,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { Session, SessionId } from "@/features/agent/runtime/types";
+import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import {
@@ -28,8 +28,6 @@ import { sessionRuntimeController } from "@/features/agent/runtime/session-runti
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
-
-type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
 
 export type UseSessionEngineDeps = {
   /** Latest `tabs` snapshot — engine reads via a ref so it doesn't restart on every frame. */

@@ -9,34 +9,14 @@ import { safeJson } from "@/features/agent/safe-json";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 // Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
-// page doesn't import server-only modules into the client bundle.
-type AggregatedSession = {
-  id: string;
-  projectId: string;
-  projectName: string;
-  projectPath: string;
-  modelId: string | null;
-  firstUserMessage: string | null;
-  turnCount: number;
-  startedAt: string;
-  updatedAt: string;
-  filename: string;
-};
-
-type ActiveSession = {
-  projectId: string;
-  cwd: string;
-  paneId: string;
-  tabId: string;
-  piSessionId: string | null;
-  title: string;
-  status: string;
-  focused?: boolean;
-  updatedAt: string;
-};
+// Re-export shared session contracts for the local module surface.
+import type {
+  ActiveSession,
+  AggregatedSession,
+  SessionSortField,
+} from "@/features/agent/session-contracts";
 
 type StatusFilter = "all" | "running" | "idle";
-type SortField = "updatedAt" | "turnCount" | "projectName";
 
 function isRunning(status: string): boolean {
   return Boolean(status) && status !== "idle" && status !== "done";
@@ -59,7 +39,7 @@ export default function AgentSessionsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
-  const [sortField, setSortField] = useState<SortField>("updatedAt");
+  const [sortField, setSessionSortField] = useState<SessionSortField>("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const reload = useCallback(async () => {
@@ -143,11 +123,11 @@ export default function AgentSessionsPage() {
     return { total, visible, runningCount, projectsCount };
   }, [sessions, rows.length, activeSessions, projects]);
 
-  function toggleSort(field: SortField) {
+  function toggleSort(field: SessionSortField) {
     if (field === sortField) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
-      setSortField(field);
+      setSessionSortField(field);
       setSortDir("desc");
     }
   }
@@ -430,10 +410,10 @@ function SortHeader({
   align = "left",
 }: {
   label: string;
-  field: SortField;
-  sortField: SortField;
+  field: SessionSortField;
+  sortField: SessionSortField;
   sortDir: "asc" | "desc";
-  onClick: (field: SortField) => void;
+  onClick: (field: SessionSortField) => void;
   align?: "left" | "right";
 }) {
   const active = field === sortField;

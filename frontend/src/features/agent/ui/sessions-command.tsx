@@ -7,31 +7,7 @@ import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { safeJson } from "@/features/agent/safe-json";
 
-// Aggregated session row returned by /api/agent/sessions/all. Mirrored here
-// so the component is decoupled from the API module.
-type AggregatedSession = {
-  id: string;
-  projectId: string;
-  projectName: string;
-  projectPath: string;
-  modelId: string | null;
-  firstUserMessage: string | null;
-  turnCount: number;
-  startedAt: string;
-  updatedAt: string;
-};
-
-type ActiveSession = {
-  projectId: string;
-  cwd: string;
-  paneId: string;
-  tabId: string;
-  piSessionId: string | null;
-  title: string;
-  status: string;
-  focused?: boolean;
-  updatedAt: string;
-};
+import type { ActiveSession, AggregatedSession } from "@/features/agent/session-contracts";
 
 type Props = {
   open: boolean;

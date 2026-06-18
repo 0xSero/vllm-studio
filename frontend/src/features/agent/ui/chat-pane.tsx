@@ -18,7 +18,11 @@ import {
 } from "react";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
-import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-composer-context";
+import {
+  type FileMentionRow,
+  type LoadedContextKind,
+  type MentionRow,
+} from "@/features/agent/ui/agent-composer-context";
 import { browserContextPrompt } from "@/features/agent/browser/context";
 import {
   activateComposerPlugin,
@@ -59,6 +63,7 @@ import {
   type SessionSubmitGuard,
 } from "@/features/agent/runtime/selectors";
 import { useTools, type ToolsContextValue } from "@/features/agent/tools/context";
+import type { GitSummary } from "@/features/agent/projects/types";
 import type { BrowserBackend, ContextAttachRequest } from "@/features/agent/tools/types";
 import {
   attachmentDedupKey,
@@ -110,12 +115,7 @@ type Props = {
   projectName: string | null;
   modelSelector?: ReactNode;
   gitBranch?: string | null;
-  gitSummary?: {
-    isRepo: boolean;
-    additions: number;
-    deletions: number;
-    statusCount: number;
-  } | null;
+  gitSummary?: GitSummary | null;
   onInitGit?: () => void;
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
@@ -1154,8 +1154,6 @@ function useComposerAttachments({
     handleComposerDrop,
   };
 }
-
-type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
 
 function useComposerLoadedContext({
   activeTab,

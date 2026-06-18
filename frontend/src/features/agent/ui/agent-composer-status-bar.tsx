@@ -2,14 +2,8 @@
 
 import type { ReactNode } from "react";
 import { formatTokenCount } from "@/features/agent/messages";
+import type { GitSummary } from "@/features/agent/projects/types";
 import { GitBranchIcon } from "@/ui/icons";
-
-type GitSummary = {
-  isRepo: boolean;
-  additions: number;
-  deletions: number;
-  statusCount: number;
-};
 
 export function AgentComposerStatusBar({
   cwd,
