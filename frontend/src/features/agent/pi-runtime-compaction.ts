@@ -62,39 +62,57 @@ export function normalizeSdkMessageTimestampsForCompactionBoundary(session: unkn
   const branchTimestamps = branchMessageTimestamps(branch);
   let sawPostCompactionMessage = false;
   for (const message of messages) {
-    if (!message || typeof message !== "object") continue;
-    const record = message as { role?: unknown; timestamp?: unknown };
-    const signature = messageSignature(record);
-    const branchTimestamp = branchTimestamps.byObject.get(message);
-    const fallbackTimestamp =
-      branchTimestamp ?? consumeBranchMessageTimestamp(branchTimestamps.bySignature, signature);
-    if (
-      (record.timestamp === undefined || record.timestamp === null) &&
-      typeof fallbackTimestamp === "number"
-    ) {
-      record.timestamp = fallbackTimestamp;
-    }
-    if (typeof branchTimestamp === "number") {
-      consumeBranchMessageTimestamp(branchTimestamps.bySignature, signature, branchTimestamp);
-    }
-    if (typeof record.timestamp === "string") {
-      const parsed = Date.parse(record.timestamp);
-      if (Number.isFinite(parsed)) {
-        record.timestamp = parsed;
-      }
-    }
-    if (typeof record.timestamp === "number" && record.timestamp > compactionMs) {
-      sawPostCompactionMessage = true;
-    }
-    if (
-      !sawPostCompactionMessage &&
-      record.role === "assistant" &&
-      (record.timestamp === undefined || record.timestamp === null)
-    ) {
-      record.timestamp = compactionMs - 1;
-    }
+    sawPostCompactionMessage = normalizeOneMessageTimestamp(
+      message,
+      compactionMs,
+      branchTimestamps,
+      sawPostCompactionMessage,
+    );
   }
   return true;
+}
+
+/**
+ * Normalize a single message's timestamp against the compaction boundary.
+ * Returns the updated `sawPostCompactionMessage` flag.
+ */
+function normalizeOneMessageTimestamp(
+  message: unknown,
+  compactionMs: number,
+  branchTimestamps: ReturnType<typeof branchMessageTimestamps>,
+  sawPostCompactionMessage: boolean,
+): boolean {
+  if (!message || typeof message !== "object") return sawPostCompactionMessage;
+  const record = message as { role?: unknown; timestamp?: unknown };
+  const signature = messageSignature(record);
+  const branchTimestamp = branchTimestamps.byObject.get(message);
+  const fallbackTimestamp =
+    branchTimestamp ?? consumeBranchMessageTimestamp(branchTimestamps.bySignature, signature);
+  if (
+    (record.timestamp === undefined || record.timestamp === null) &&
+    typeof fallbackTimestamp === "number"
+  ) {
+    record.timestamp = fallbackTimestamp;
+  }
+  if (typeof branchTimestamp === "number") {
+    consumeBranchMessageTimestamp(branchTimestamps.bySignature, signature, branchTimestamp);
+  }
+  if (typeof record.timestamp === "string") {
+    const parsed = Date.parse(record.timestamp);
+    if (Number.isFinite(parsed)) record.timestamp = parsed;
+  }
+  let saw = sawPostCompactionMessage;
+  if (typeof record.timestamp === "number" && record.timestamp > compactionMs) {
+    saw = true;
+  }
+  if (
+    !saw &&
+    record.role === "assistant" &&
+    (record.timestamp === undefined || record.timestamp === null)
+  ) {
+    record.timestamp = compactionMs - 1;
+  }
+  return saw;
 }
 
 function sdkSessionMessages(session: SdkSessionLike | null | undefined): unknown[] | null {

@@ -85,6 +85,69 @@ type PtyBootOptions = {
 
 const getTerminalPanelSnapshot = (): number => 0;
 
+/** Resolve the Geist Mono font stack from the container's computed styles. */
+function resolveTerminalFont(cssVar: (name: string) => string): string {
+  const resolved = cssVar("--font-geist-mono") || "";
+  return (
+    (resolved ? `${resolved}, ` : "") +
+    '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace'
+  );
+}
+
+/** Build the xterm theme object from the ZCode `--color-terminal-*` palette. */
+function buildTerminalTheme(cssVar: (name: string) => string): Record<string, string> {
+  const v = (name: string, fallback: string) => cssVar(name) || fallback;
+  return {
+    background: v("--color-terminal-bg", "#161616"),
+    foreground: v("--color-terminal-fg", "#d4d4d4"),
+    cursor: v("--color-terminal-cursor", "#f8f8f8"),
+    cursorAccent: v("--color-terminal-cursor-accent", "#161616"),
+    selectionBackground: v("--color-terminal-selection", "#4099ff47"),
+    black: v("--color-terminal-black", "#363636"),
+    red: v("--color-terminal-red", "#ff5c5c"),
+    green: v("--color-terminal-green", "#46bf72"),
+    yellow: v("--color-terminal-yellow", "#ff8a30"),
+    blue: v("--color-terminal-blue", "#4099ff"),
+    magenta: v("--color-terminal-magenta", "#7b5ce5"),
+    cyan: v("--color-terminal-cyan", "#42c8c8"),
+    white: v("--color-terminal-white", "#adadad"),
+    brightBlack: v("--color-terminal-bright-black", "#747474"),
+    brightRed: v("--color-terminal-bright-red", "#f99"),
+    brightGreen: v("--color-terminal-bright-green", "#87d9a4"),
+    brightYellow: v("--color-terminal-bright-yellow", "#ffb26b"),
+    brightBlue: v("--color-terminal-bright-blue", "#80beff"),
+    brightMagenta: v("--color-terminal-bright-magenta", "#a888f2"),
+    brightCyan: v("--color-terminal-bright-cyan", "#8ee5e5"),
+    brightWhite: v("--color-terminal-bright-white", "#f8f8f8"),
+  };
+}
+
+type ITerminalLoadable = { loadAddon(addon: unknown): void };
+
+/** Load the optional web-links addon, routing clicks through the desktop opener. */
+function loadWebLinksAddon(
+  term: ITerminalLoadable,
+  webLinksModule: {
+    WebLinksAddon: new (handler: (e: MouseEvent, uri: string) => void) => unknown;
+  } | null,
+): void {
+  if (!webLinksModule) return;
+  try {
+    term.loadAddon(
+      new webLinksModule.WebLinksAddon((event, uri) => {
+        event.preventDefault();
+        const opener = (
+          window as unknown as { vllmStudioDesktop?: { openExternal?: (u: string) => void } }
+        ).vllmStudioDesktop?.openExternal;
+        if (opener) opener(uri);
+        else window.open(uri, "_blank", "noopener");
+      }),
+    );
+  } catch {
+    // optional addon — silently skip
+  }
+}
+
 function useTerminalPanelEffects({
   containerRef,
   cwd,
@@ -112,16 +175,9 @@ function useTerminalPanelEffects({
         import("@xterm/addon-web-links").catch(() => null),
       ]);
       if (refs.disposed) return;
-      // xterm renders to canvas and cannot resolve CSS vars itself, so read the
-      // resolved values off the container first and fall back gracefully. The
-      // theme reads the ZCode `--color-terminal-*` palette so the terminal
-      // matches the rest of the app and re-themes with it.
       const styles = getComputedStyle(element);
       const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
-      const resolvedGeistMono = cssVar("--font-geist-mono") || "";
-      const fontFamily =
-        (resolvedGeistMono ? `${resolvedGeistMono}, ` : "") +
-        '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+      const fontFamily = resolveTerminalFont(cssVar);
       const term = new Terminal({
         cursorBlink: true,
         convertEol: false,
@@ -131,51 +187,12 @@ function useTerminalPanelEffects({
         rightClickSelectsWord: true,
         fontFamily,
         fontSize: 12,
-        // TUIs draw box/block glyphs that must tile edge-to-edge; any extra
-        // leading leaves gaps and breaks their layout, so keep lineHeight at 1.
         lineHeight: 1.0,
-        theme: {
-          background: cssVar("--color-terminal-bg") || "#161616",
-          foreground: cssVar("--color-terminal-fg") || "#d4d4d4",
-          cursor: cssVar("--color-terminal-cursor") || "#f8f8f8",
-          cursorAccent: cssVar("--color-terminal-cursor-accent") || "#161616",
-          selectionBackground: cssVar("--color-terminal-selection") || "#4099ff47",
-          black: cssVar("--color-terminal-black") || "#363636",
-          red: cssVar("--color-terminal-red") || "#ff5c5c",
-          green: cssVar("--color-terminal-green") || "#46bf72",
-          yellow: cssVar("--color-terminal-yellow") || "#ff8a30",
-          blue: cssVar("--color-terminal-blue") || "#4099ff",
-          magenta: cssVar("--color-terminal-magenta") || "#7b5ce5",
-          cyan: cssVar("--color-terminal-cyan") || "#42c8c8",
-          white: cssVar("--color-terminal-white") || "#adadad",
-          brightBlack: cssVar("--color-terminal-bright-black") || "#747474",
-          brightRed: cssVar("--color-terminal-bright-red") || "#f99",
-          brightGreen: cssVar("--color-terminal-bright-green") || "#87d9a4",
-          brightYellow: cssVar("--color-terminal-bright-yellow") || "#ffb26b",
-          brightBlue: cssVar("--color-terminal-bright-blue") || "#80beff",
-          brightMagenta: cssVar("--color-terminal-bright-magenta") || "#a888f2",
-          brightCyan: cssVar("--color-terminal-bright-cyan") || "#8ee5e5",
-          brightWhite: cssVar("--color-terminal-bright-white") || "#f8f8f8",
-        },
+        theme: buildTerminalTheme(cssVar),
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
-      if (webLinksModule) {
-        try {
-          term.loadAddon(
-            new webLinksModule.WebLinksAddon((event, uri) => {
-              event.preventDefault();
-              const opener = (
-                window as unknown as { vllmStudioDesktop?: { openExternal?: (u: string) => void } }
-              ).vllmStudioDesktop?.openExternal;
-              if (opener) opener(uri);
-              else window.open(uri, "_blank", "noopener");
-            }),
-          );
-        } catch {
-          // optional
-        }
-      }
+      loadWebLinksAddon(term, webLinksModule);
       term.open(element);
       fit.fit();
       refs.term = term;
