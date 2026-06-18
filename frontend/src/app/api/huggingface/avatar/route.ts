@@ -10,9 +10,7 @@ const TIMEOUT_MS = 8_000;
 // In-process avatar cache. Avatars are stable (HF CDN URLs don't change for a
 // given owner), so we cache the resolved URL for CACHE_TTL and remember misses
 // for MISS_TTL so we don't hammer HF with two sequential API calls on every
-// page render for an owner that has no avatar. Without this, a 50-model page
-// fires 100 outbound HF requests per render — they rate-limit/time out and every
-// logo falls back to the placeholder.
+// page render for an owner that has no avatar.
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h — avatar URLs are stable
 const MISS_TTL_MS = 30 * 60 * 1000; // 30m — retry misses sooner in case HF was down
 const cache = new Map<string, { url: string | null; expires: number }>();
@@ -56,9 +54,30 @@ export async function GET(request: NextRequest) {
 
   const avatarUrl = await resolveAvatarUrl(owner);
   if (!avatarUrl) return NextResponse.json({ error: "Avatar not found." }, { status: 404 });
-  return NextResponse.redirect(avatarUrl, {
-    headers: {
-      "cache-control": "public, max-age=21600, stale-while-revalidate=86400",
-    },
-  });
+
+  // Proxy the image bytes rather than 307-redirecting. In the Electron desktop
+  // context, a cross-origin redirect to cdn-avatars.huggingface.co can be
+  // blocked by the renderer's network policy / CSP, so every avatar silently
+  // 404s and ModelLogo falls back to the placeholder. Proxying keeps the
+  // <img> request on the same origin ('self').
+  try {
+    const imgResponse = await fetchWithTimeout(
+      avatarUrl,
+      { headers: { accept: "image/*" } },
+      TIMEOUT_MS,
+    );
+    if (!imgResponse.ok)
+      return NextResponse.json({ error: "Avatar fetch failed." }, { status: 502 });
+    const contentType = imgResponse.headers.get("content-type") ?? "image/png";
+    const arrayBuffer = await imgResponse.arrayBuffer();
+    return new NextResponse(arrayBuffer, {
+      status: 200,
+      headers: {
+        "content-type": contentType,
+        "cache-control": "public, max-age=21600, stale-while-revalidate=86400",
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Avatar fetch failed." }, { status: 502 });
+  }
 }
