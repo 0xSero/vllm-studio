@@ -47,14 +47,21 @@ header/panel/border/hover/selected/tab/menu/input/tooltip/toast/tag`
 
 ### Migrated to Effect
 
-| Module                          | Before                                                    | After                                                         |
-| ------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------- |
-| `runtime-schema.ts`             | Raw JSON.parse cast                                       | `@effect/schema` validates SSE payloads at the boundary       |
-| `effect-coalescer.ts`           | Hand-rolled rAF-batched Map                               | Per-session Effect fiber on animation-frame clock             |
-| `prompt-stream.ts`              | try/catch + manual fallback probe                         | `Effect.gen` + `Effect.tryPromise` + `Effect.catchAll`        |
-| `use-controller-events.ts`      | `setTimeout` exponential backoff                          | `Effect.sleep` on a tracked interruptible `Fiber`             |
-| `realtime-status-store.ts`      | `setInterval` poll loop                                   | `Effect.repeat(Schedule.spaced)` fiber                        |
-| `session-runtime-controller.ts` | 3× `setInterval`/`setTimeout` (poll, watchdog, reconnect) | All three → Effect fibers on `Schedule.spaced`/`Effect.sleep` |
+| Module                          | Before                                                | After                                                      |
+| ------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| `runtime-schema.ts`             | Raw JSON.parse cast                                   | `@effect/schema` validates SSE payloads at the boundary    |
+| `effect-coalescer.ts`           | Hand-rolled rAF-batched Map                           | Per-session Effect fiber on animation-frame clock          |
+| `prompt-stream.ts`              | try/catch + manual fallback probe                     | `Effect.gen` + `Effect.tryPromise` + `Effect.catchAll`     |
+| `use-controller-events.ts`      | `setTimeout` exponential backoff                      | `Effect.sleep` on a tracked interruptible `Fiber`          |
+| `realtime-status-store.ts`      | `setInterval` poll loop                               | `Effect.repeat(Schedule.spaced)` fiber                     |
+| `session-runtime-controller.ts` | 3x setInterval/setTimeout (poll, watchdog, reconnect) | All three -> Effect fibers on Schedule.spaced/Effect.sleep |
+| `use-downloads.ts`              | setInterval poll                                      | effectInterval (via effect-timers.ts)                      |
+| `use-huggingface-model-search`  | setTimeout debounce                                   | effectTimeout                                              |
+| `use-dashboard-recipes.ts`      | setInterval log poll                                  | effectInterval                                             |
+| `engines-section.tsx`           | setInterval job poll + 2x setTimeout idle resets      | effectInterval + effectTimeout                             |
+| `plugins-page.tsx`              | setTimeout registry search debounce                   | effectTimeout                                              |
+| `agent-browser-screencast.tsx`  | Recursive window.setTimeout poll + viewport debounce  | effectTimeout                                              |
+| `use-setup.ts`                  | Promise+setTimeout sleep + race timeout               | Effect.sleep + Effect.timeout                              |
 
 The controller's imperative public API (`bind`/`reconcile`/
 `noteTurnAccepted`/`flush`/`pollNow`/`closeAll`) is unchanged — React's
