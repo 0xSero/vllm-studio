@@ -897,12 +897,18 @@ function useChatPaneSendFlow({
 
   const runtimeAcceptsControl = useCallback(
     async (tab: SessionTab, runtime: string) => {
+      // A steer/control only applies while THIS session has an in-flight turn.
+      // After a turn settles the pi SDK session stays loaded, so loadRuntimeStatus
+      // keeps reporting active=true — trusting that alone misroutes the NEXT
+      // prompt as a steer to an idle agent, which silently stalls (the message
+      // is added but no turn starts). Gate on the local turn state first.
+      if (tab.status !== "running" && tab.status !== "starting") return false;
       const status = await engine.loadRuntimeStatus(runtime, tab.piSessionId);
-      if (!status) return running;
+      if (!status) return true;
       if (!runtimeStatusLooksActive(status)) return false;
       return !status.piSessionId || !tab.piSessionId || status.piSessionId === tab.piSessionId;
     },
-    [engine, running],
+    [engine],
   );
 
   const sendMessage = useCallback(
