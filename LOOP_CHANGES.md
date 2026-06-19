@@ -90,6 +90,8 @@ Observed (unreported, not fixed): composer with a non-loaded model → raw "503 
 - `7e367c04` feat(chat): Retry button on the turn-error banner — resends the last user message, clears the error, starts a fresh turn (gated on model set + not running + something to resend). Verified: nemotron 503 → switch to glm-5.2 → Retry → resends and succeeds, error clears.
 - `5c1b7436` feat(chat): scroll-to-bottom pill when scrolled up — the timeline tracked stickToBottom but had no way back. Floating center pill ("New messages" while streaming, "Latest" otherwise); click smooth-scrolls + re-pins. Verified: scroll up → "Latest" appears → click → returns to bottom + hides.
 - `bc738122` feat(chat): copy button on user messages — assistant had Copy/Fork but user bubbles had none. Hover-revealed copy to the left of the bubble (reuses AssistantActionButton). Verified: click → "Copied" + clipboard holds the exact prompt text.
+- `1e5c2aff` feat(chat): export conversation as Markdown — "Export as Markdown" in the session header menu; pure `sessionToMarkdown()` serializer (title + You/Assistant turns, assistant answers from text blocks, reasoning/tool/system noise dropped) + slugified filename, downloaded via Blob. +4 unit tests. Verified: downloaded file has title + You/Assistant + table data, reasoning excluded, filename `make-a-markdown-table-of-5-programming-languages.md`.
+- **Also verified (no fix needed):** the user's #1 reported bug — markdown tables — renders correctly on REPLAY (reopen a settled session → table intact, not mangled); load-old-session loads full canonical history.
 
 ### Still owed
 - Deploy the **3** controller fixes (`scripts/deploy-remote.sh controller` — restarts model): `fd118a6c` newlines + `a798ebd0` tag leak + `dd0b19a1` 503-shape.
