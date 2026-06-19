@@ -48,6 +48,10 @@ export function AgentModelPicker({
     activeControllerKey ?? (active ? controllerGroupKey(active) : null) ?? groups[0]?.key ?? null;
   const disabled = loading || models.length === 0;
   const triggerLabel = modelTriggerLabel(active, selectedModel, loading, models.length);
+  // The selected model exists but isn't the one currently loaded — sending will
+  // 503 until it's launched. Warn on the trigger so the user notices BEFORE they
+  // send, and can switch to a running model from the dropdown.
+  const selectedModelNotRunning = !loading && Boolean(active && active.active === false);
 
   const { flatItems, filteredGroups } = useMemo(() => {
     return buildFilteredView(models, groups, query, currentKey);
@@ -126,34 +130,18 @@ export function AgentModelPicker({
       onPointerDown={stopToolbarEvent}
       onMouseDown={stopToolbarEvent}
     >
-      <button
-        type="button"
-        onPointerDown={stopToolbarEvent}
-        onMouseDown={stopToolbarEvent}
-        onClick={() => {
-          if (!disabled) {
-            if (open) setOpen(false);
-            else openDropdown();
-          }
-        }}
-        disabled={disabled}
-        className={cx(
-          "group/model inline-flex !h-auto !min-h-0 !min-w-0 items-center gap-1 rounded-sm bg-transparent px-1 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:text-(--fg) disabled:opacity-60",
-          open && "text-(--fg)",
-        )}
+      <ModelPickerTrigger
+        label={triggerLabel}
         title={active?.name || triggerLabel}
-        aria-label={`Model: ${active?.name || triggerLabel}`}
-      >
-        <Brain className="h-3.5 w-3.5 shrink-0" />
-        <span
-          className={cx(
-            "inline-block max-w-0 overflow-hidden whitespace-nowrap align-middle opacity-0 transition-all duration-200 group-hover/model:max-w-[160px] group-hover/model:opacity-100",
-            open && "max-w-[160px] opacity-100",
-          )}
-        >
-          {triggerLabel}
-        </span>
-      </button>
+        disabled={disabled}
+        open={open}
+        notRunning={selectedModelNotRunning}
+        onToggle={() => {
+          if (disabled) return;
+          if (open) setOpen(false);
+          else openDropdown();
+        }}
+      />
       {open ? (
         <div
           className="absolute bottom-full right-0 z-[80] mb-1 flex max-h-[420px] w-[340px] flex-col overflow-hidden rounded-md border border-(--border) bg-[#151515] shadow-[0_12px_36px_rgba(0,0,0,0.65)]"
@@ -236,6 +224,54 @@ export function AgentModelPicker({
   );
 }
 
+function ModelPickerTrigger({
+  label,
+  title,
+  disabled,
+  open,
+  notRunning,
+  onToggle,
+}: {
+  label: string;
+  title: string;
+  disabled: boolean;
+  open: boolean;
+  /** Selected model isn't the one loaded — sending will 503 until it launches. */
+  notRunning: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onPointerDown={stopToolbarEvent}
+      onMouseDown={stopToolbarEvent}
+      onClick={onToggle}
+      disabled={disabled}
+      className={cx(
+        "group/model inline-flex !h-auto !min-h-0 !min-w-0 items-center gap-1 rounded-sm bg-transparent px-1 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:text-(--fg) disabled:opacity-60",
+        open && "text-(--fg)",
+      )}
+      title={notRunning ? `${title} is not running — launch it or pick a running model` : title}
+      aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
+    >
+      <span className="relative shrink-0">
+        <Brain className={cx("h-3.5 w-3.5 shrink-0", notRunning && "text-(--warn)")} />
+        {notRunning ? (
+          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--warn) ring-1 ring-(--bg)" />
+        ) : null}
+      </span>
+      <span
+        className={cx(
+          "inline-block max-w-0 overflow-hidden whitespace-nowrap align-middle opacity-0 transition-all duration-200 group-hover/model:max-w-[160px] group-hover/model:opacity-100",
+          open && "max-w-[160px] opacity-100",
+        )}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function ModelOption({
   model,
   selected,
@@ -286,6 +322,15 @@ function ModelOption({
               title="Vision capable"
             >
               V
+            </span>
+          ) : null}
+          {model.active ? (
+            <span
+              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-(--ok)/15 px-1 text-[length:var(--fs-2xs)] text-(--ok)"
+              title="Currently running — ready to use without launching"
+            >
+              <span className="h-1 w-1 rounded-full bg-(--ok)" />
+              running
             </span>
           ) : null}
         </span>
