@@ -1,0 +1,93 @@
+# vLLM Studio — Full UX Test Checklist
+
+_Living checklist for the chat-session QA loop. Tested against the rebuilt Electron app (QA profile, CDP 9333) on the live `glm-5.2` backend. Status: ⬜ untested · ✅ pass · ❌ fail (issue) · 🔧 fixed · ⏭️ blocked._
+
+Legend for "layer": which subsystem the flow exercises (Parse = content pipeline, Trans = transport/SSE, Sess = session lifecycle, UI = rendering).
+
+---
+
+## A. Session lifecycle
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| A1 | New chat | Click "New chat" | Empty composer, fresh session id, title "New session" | Sess | ⬜ |
+| A2 | First message creates session | Type + send | User bubble + assistant bubble appear; title derives from prompt | Sess | ⬜ |
+| A3 | Switch chat A→B | Click another session in sidebar | B's transcript loads, A's preserved, no bleed | Sess | ⬜ |
+| A4 | Switch back B→A | Click A again | A's full transcript intact (incl. tables/reasoning) | Sess/Parse | ⬜ |
+| A5 | Switch to a still-streaming chat | Start turn in A, switch to B, switch back to A | A still streaming or settled correctly, no dup/loss | Trans/Parse | ⬜ |
+| A6 | Rename session | Session options → rename | Title updates in sidebar + tab | Sess | ⬜ |
+| A7 | Pin / unpin session | Toggle pin | Stays pinned across reloads | Sess | ⬜ |
+| A8 | Delete session | Delete | Removed from sidebar; active switches to another | Sess | ⬜ |
+| A9 | Reopen after delete-all | Delete all, new chat | Clean empty starter state | Sess | ⬜ |
+
+## B. Messaging & streaming
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| B1 | Send single message | Type + Send | Streams token-by-token, settles to idle | Trans/Parse | ⬜ |
+| B2 | **Reasoning visible while streaming** | Send a reasoning prompt | "Thinking" expands and shows reasoning text LIVE, collapses to "Thought · Worked for Xs" when done | UI/Parse | 🔧 (fix applied, retest) |
+| B3 | Markdown table renders | Ask for a table | GFM table with rows/cols, not collapsed | Parse/UI | ✅ (confirmed live) |
+| B4 | Code block renders | Ask for code | Fenced block, syntax highlight, copy button | UI | ⬜ |
+| B5 | Send 2 messages in a row | Send, wait, send again | Two turns, correct order, second targets a new bubble | Sess/Parse | ⬜ |
+| B6 | Steer mid-stream (follow-up) | Send, then send again WHILE streaming | Second message queues/steers; tokens land in the right bubble | Sess/Parse | ⬜ |
+| B7 | Stop generation | Click Stop mid-stream | Stream halts, status idle, partial content kept | Trans/Sess | ⬜ |
+| B8 | Long multi-paragraph answer | Ask for long prose | Paragraph/blank-line boundaries preserved | Parse | ⬜ |
+| B9 | Tool-using turn | Prompt that triggers a tool | Activity group shows tool call + result; collapses after | Parse/UI | ⬜ |
+| B10 | Reasoning + tool interleave | Reasoning then tool then text | Reasoning under activity, answer as content, order correct | Parse | ⬜ |
+| B11 | Empty / whitespace answer | Edge prompt | No phantom blank bubble | Parse | ⬜ |
+
+## C. Transport / reload / reconnect
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| C1 | Reload after a settled turn | Finish a turn, reload | Full transcript rehydrates (tables/reasoning intact) | Trans/Parse | ⬜ |
+| C2 | **Reload mid-stream (reattach)** | Reload WHILE streaming | Turn reattaches and continues/settles; no empty session | Trans/Parse | ❌ (empty session — standalone SSE buffering, Phase 3b) |
+| C3 | Backend blip | Kill/restart controller mid-turn | Session reconnects or idles with visible error, no infinite spin | Trans | ⬜ |
+| C4 | `/events` system stream | Watch Status page over time | GPU/log stream keeps flowing, no `Controller already closed` | Trans | ❌ (proxy double-close error) |
+| C5 | Navigate away & back during stream | Status → back to chat mid-stream | Stream still live or settled, cursor correct | Trans/Sess | ⬜ |
+
+## D. Navigation & panes
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| D1 | Sidebar collapse/expand | Toggle | Smooth, state persists | UI | ⬜ |
+| D2 | Status / Usage / Models / Plugins / Server | Click each nav | Each page loads, no error | UI | ⬜ |
+| D3 | Back / forward | Navigate, use arrows | History works | UI | ⬜ |
+| D4 | Split pane / second tab | Open split | Two sessions side by side, independent streams | Sess/Trans | ⬜ |
+| D5 | Search ⌘K | Open search | Finds sessions | UI | ⬜ |
+
+## E. Model picker & composer
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| E1 | Model picker (brain icon) | Open picker before send | Lists models, selectable | UI | ⬜ |
+| E2 | Switch model mid-session | Change model | New turns use new model | Sess | ⬜ |
+| E3 | Attach file | Attach button | File chip; included in prompt | UI | ⬜ |
+| E4 | Browser tools toggle | Toggle | Browser pane available | UI | ⬜ |
+| E5 | Canvas context | Toggle | Canvas pane available | UI | ⬜ |
+| E6 | @-mention files/plugins | Type @ | Mention menu appears | UI | ⬜ |
+
+## F. Side panels & tools
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| F1 | In-app browser | Open a URL/file ref | Renders in side browser | UI | ⬜ |
+| F2 | Filesystem panel | Open files | Tree + file viewer | UI | ⬜ |
+| F3 | Git diff panel | git button | Diff view | UI | ⬜ |
+| F4 | Terminal | Open terminal | PTY attaches | UI | ⬜ |
+| F5 | Canvas | Canvas tab | Notes render | UI | ⬜ |
+
+## G. Projects & settings
+
+| # | Flow | Steps | Expected | Layer | Status |
+|---|------|-------|----------|-------|--------|
+| G1 | Add folder/project | Add folder | Project appears | Sess | ⬜ |
+| G2 | Settings page | Open Settings | Loads, edits persist | UI | ⬜ |
+
+---
+
+## Issues found (running log)
+
+1. **B2 reasoning hidden while streaming** — outer `ActivityDisclosure` (`session-pane-block-router.tsx`) defaulted collapsed (`expanded=false`), hiding the inner reasoning that already auto-opens while active. **Fix applied:** `expanded = userExpanded ?? live` so it auto-expands while streaming and collapses when settled. _Retest after rebuild._
+2. **C2 reload mid-stream → empty session** — standalone embedded server buffers the locally-built `/api/agent/runtime/events` SSE; reattach gets nothing. **Phase 3b** (snapshot+cursor JSON-GET resume).
+3. **C4 `/events` proxy `Controller is already closed`** — `/api/proxy/[...path]` stream controller closed twice. Real bug, scoped for a fix.

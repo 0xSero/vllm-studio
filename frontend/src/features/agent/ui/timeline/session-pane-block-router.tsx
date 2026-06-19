@@ -417,7 +417,11 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   live: boolean;
 }) {
   const items = useMemo(() => buildActivityItems(segments), [segments]);
-  const [expanded, setExpanded] = useState(false);
+  // Auto-expand while the turn is streaming so reasoning (and live tool activity)
+  // is visible as it happens; once the turn settles it collapses to the
+  // "Worked for…" summary. A manual toggle sticks for the rest of the turn.
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+  const expanded = userExpanded ?? live;
   const working =
     live &&
     segments.some(
@@ -433,7 +437,7 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
         className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
-          setExpanded((value) => !value);
+          setUserExpanded(!expanded);
         }}
       >
         <span
