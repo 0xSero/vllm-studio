@@ -26,11 +26,18 @@ export function pruneSessions(
 ): SessionsMap {
   let changed = false;
   const next = new Map(sessions);
-  for (const id of next.keys()) {
-    if (!referencedIds.has(id)) {
-      next.delete(id);
-      changed = true;
-    }
+  for (const [id, session] of next) {
+    if (referencedIds.has(id)) continue;
+    // A session still mid-turn must survive losing its pane. Navigating to
+    // another chat replaces the pane's session; without this guard the previous
+    // turn was destroyed — it kept streaming server-side but vanished from the
+    // UI (no spinner, no notification, unreachable). Keeping it alive lets the
+    // controller stay subscribed and lets the sidebar surface it as a
+    // background session. It is pruned on a later pass once it settles (status
+    // leaves running/starting).
+    if (session.status === "running" || session.status === "starting") continue;
+    next.delete(id);
+    changed = true;
   }
   return changed ? next : sessions;
 }

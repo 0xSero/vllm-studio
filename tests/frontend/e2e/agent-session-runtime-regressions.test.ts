@@ -34,10 +34,11 @@ import {
   createTextDeltaCoalescer,
   textDeltaFromPiEvent,
 } from "@/features/agent/runtime/text-delta-coalescer";
-import { isEmptyStarterSession } from "@/features/agent/runtime/store";
+import { isEmptyStarterSession, pruneSessions } from "@/features/agent/runtime/store";
 import {
   beginSessionSubmit,
   endSessionSubmit,
+  referencedSessionIds,
 } from "@/features/agent/runtime/selectors";
 import {
   acceptRuntimeSeq,
@@ -173,7 +174,11 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
   const pane = next.panesById.get("p-main");
   assert.equal(pane?.sessionId, "s-fresh");
   assert.equal(next.sessions.get("s-fresh")?.runtimeSessionId, "rt-fresh");
-  assert.equal(next.sessions.has("s-old"), false);
+  // The previous chat was mid-turn (status: running). Starting a new chat must
+  // NOT destroy it — it keeps streaming in the background and stays reachable
+  // from the sidebar. (It is pruned later, once it settles.)
+  assert.equal(next.sessions.has("s-old"), true);
+  assert.equal(next.sessions.get("s-old")?.status, "running");
   const active = next.sessions.get("s-fresh");
   assert.equal(active?.title, "New session");
   assert.equal(active?.piSessionId, null);
@@ -282,6 +287,43 @@ test("explicit new-session navigation blocks persisted active-session hydration"
   assert.equal(active?.piSessionId, null);
   assert.notEqual(active?.id, "tab-old");
   assert.equal(next.hydrated, true);
+});
+
+test("pruning keeps still-working sessions that lost their pane but drops settled ones", () => {
+  const running = makeSession("s-running", { status: "running" });
+  const starting = makeSession("s-starting", { status: "starting" });
+  const settled = makeSession("s-settled", { status: "done" });
+  const inPane = makeSession("s-inpane", { status: "idle" });
+  const sessions = new Map([
+    [running.id, running],
+    [starting.id, starting],
+    [settled.id, settled],
+    [inPane.id, inPane],
+  ]);
+
+  // Only the pane session is referenced — the others were navigated away from.
+  const pruned = pruneSessions(sessions, new Set([inPane.id]));
+
+  assert.equal(pruned.has("s-inpane"), true);
+  // Background turns survive the prune so they keep streaming and stay
+  // re-openable from the sidebar.
+  assert.equal(pruned.has("s-running"), true);
+  assert.equal(pruned.has("s-starting"), true);
+  // A settled orphan is still collected.
+  assert.equal(pruned.has("s-settled"), false);
+
+  // Once a kept background session settles, a later pass removes it.
+  const afterSettle = pruneSessions(
+    new Map([...pruned, ["s-running", { ...running, status: "done" as const }]]),
+    new Set([inPane.id]),
+  );
+  assert.equal(afterSettle.has("s-running"), false);
+  assert.equal(afterSettle.has("s-starting"), true);
+});
+
+test("referenced session ids reflect only sessions mounted in panes", () => {
+  const state = makeState(makeSession("s-main"));
+  assert.deepEqual([...referencedSessionIds(state)], ["s-main"]);
 });
 
 test("empty starter detection rejects cleared live sessions", () => {

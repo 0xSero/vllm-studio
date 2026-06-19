@@ -5,7 +5,12 @@ import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
-import type { AgentModel, PaneId, WorkspaceAction, WorkspaceState } from "@/features/agent/workspace/types";
+import type {
+  AgentModel,
+  PaneId,
+  WorkspaceAction,
+  WorkspaceState,
+} from "@/features/agent/workspace/types";
 import {
   loadPersistedActiveAgentSessions,
   sessionMetaForPersistence,
@@ -196,36 +201,59 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
   }
 }
 
+function activeSessionSnapshot(
+  state: WorkspaceState,
+  tab: Session,
+  selectionFor: (id: SessionId) => ToolSelection,
+  paneId: string,
+  focused: boolean,
+): ActiveAgentSessionSnapshot {
+  const selection = selectionFor(tab.id);
+  const usedSkills = usedSkillsForSession(tab);
+  return {
+    projectId: tab.projectId ?? "",
+    cwd: tab.cwd ?? "",
+    paneId,
+    tabId: tab.id,
+    runtimeSessionId: tab.runtimeSessionId,
+    piSessionId: tab.piSessionId,
+    modelId: tab.modelId ?? state.selectedModel,
+    title: cleanSessionTitle(tab.title) || (paneId ? "Current session" : "Background session"),
+    status: tab.status,
+    focused,
+    startedAt: tab.startedAt,
+    updatedAt: tab.startedAt || new Date().toISOString(),
+    plugins: selection.plugins.length > 0 ? selection.plugins : undefined,
+    skills: selection.skills.length > 0 ? selection.skills : undefined,
+    usedSkills: usedSkills.length > 0 ? usedSkills : undefined,
+  };
+}
+
 function computeActiveSessionBroadcast(
   state: WorkspaceState,
   selectionFor: (id: SessionId) => ToolSelection,
 ): ActiveAgentSessionSnapshot[] | null {
   if (!state.hydrated) return null;
   const out: ActiveAgentSessionSnapshot[] = [];
+  const inPane = new Set<SessionId>();
   for (const [paneId, pane] of state.panesById.entries()) {
     const tab = state.sessions.get(pane.sessionId);
     if (!tab) continue;
+    inPane.add(tab.id);
     if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
       continue;
-    const selection = selectionFor(tab.id);
-    const usedSkills = usedSkillsForSession(tab);
-    out.push({
-      projectId: tab.projectId ?? "",
-      cwd: tab.cwd ?? "",
-      paneId,
-      tabId: tab.id,
-      runtimeSessionId: tab.runtimeSessionId,
-      piSessionId: tab.piSessionId,
-      modelId: tab.modelId ?? state.selectedModel,
-      title: cleanSessionTitle(tab.title) || "Current session",
-      status: tab.status,
-      focused: paneId === state.focusedPaneId,
-      startedAt: tab.startedAt,
-      updatedAt: tab.startedAt || new Date().toISOString(),
-      plugins: selection.plugins.length > 0 ? selection.plugins : undefined,
-      skills: selection.skills.length > 0 ? selection.skills : undefined,
-      usedSkills: usedSkills.length > 0 ? usedSkills : undefined,
-    });
+    out.push(
+      activeSessionSnapshot(state, tab, selectionFor, paneId, paneId === state.focusedPaneId),
+    );
+  }
+  // Sessions still working after the user navigated away keep no pane, but
+  // pruneSessions keeps them alive in the store. Surface them so a turn started
+  // in another chat stays visible (and re-openable) in the sidebar instead of
+  // running invisibly in the background.
+  for (const tab of state.sessions.values()) {
+    if (inPane.has(tab.id)) continue;
+    if (tab.status !== "running" && tab.status !== "starting") continue;
+    out.push(activeSessionSnapshot(state, tab, selectionFor, "", false));
   }
   return out;
 }
