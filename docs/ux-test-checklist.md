@@ -154,6 +154,13 @@ User screenshot: a "Thought" reasoning bubble showing a lone `</arg_value>` — 
 ## ⚠️ Pending controller deploys (2 fixes)
 Both `fd118a6c` (newline collapse) and `a798ebd0` (tool-call fragment leak) are **controller** changes — they only reach the live app after `scripts/deploy-remote.sh controller` (which restarts the running model). Not auto-deployed (outward-facing + kills the model).
 
+### Iteration 11 (new-session-visibility — full root cause + ready fix spec)
+**Root cause (fully traced):** switching away from a single-pane running session **destroys its tab**. Chain: `setPaneSession`→`pruneOrphanSessions` (pane-controller.ts:63) → `pruneSessions` (runtime/store.ts:23) deletes every session id not in `referencedSessionIds` (selectors.ts — **pane sessions only**). And `computeActiveSessionBroadcast` (workspace/effects.ts:199) only iterates `panesById`. So a backgrounded running session is pruned + never broadcast → vanishes everywhere.
+**Ready fix spec (2 contained, unit-testable changes — NOT landed: needs model online to verify lifecycle interactions):**
+1. `pruneSessions`: keep a session whose `status` is `running`/`starting` even if unreferenced (`if (!referencedIds.has(id) && !isRunning(session))`). Bounded: once it settles to idle/done, the next prune removes it (reverts to current behavior).
+2. `computeActiveSessionBroadcast`: after the pane loop, also push running sessions from `state.sessions` not already included, with `paneId:""`, `focused:false`.
+**Handoff:** running+open → active row; running+backgrounded → orphan active row (spinner, via this fix); finished+backgrounded → pruned → history row (unseen dot, via the iteration-6 poll feature already shipped). **Risks to verify live:** does closing a running tab now leak it? prune timing after finish vs history persistence; merge/focus interaction with `paneId:""` orphans. **Defer until model online** — exactly the Phase-4 session-identity area the audit flagged as riskiest.
+
 ## Remaining big items (need user steer / faithful env)
 1. **Side-chat streaming** — integrate side-chat session into runtime reconcile (CORE controller change; high risk, deferred).
 2. **Phase 3b transport** — cursor+snapshot JSON-GET resume so reload-mid-stream reattaches in the standalone build (CORE transport; high risk).
