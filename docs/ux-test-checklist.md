@@ -164,3 +164,14 @@ Both `fd118a6c` (newline collapse) and `a798ebd0` (tool-call fragment leak) are 
 ## Remaining big items (need user steer / faithful env)
 1. **Side-chat streaming** — integrate side-chat session into runtime reconcile (CORE controller change; high risk, deferred).
 2. **Phase 3b transport** — cursor+snapshot JSON-GET resume so reload-mid-stream reattaches in the standalone build (CORE transport; high risk).
+
+### Iteration 12 (model BACK ONLINE `glm-5.2` — landed + live-verified the iter-11 fix, swept reported flows)
+Model `glm-5.2` is serving again, so the iteration-11 fix was implemented and verified end-to-end (QA Electron rebuild, CDP 9333).
+- 🔧✅ **New-session-visibility** (commit `312a411b`): both contained changes landed (`pruneSessions` keeps running/starting orphans; `computeActiveSessionBroadcast` pushes them as `paneId:""` background entries). +prune/broadcast unit tests; 177/177 e2e green. **Live:** start a turn → switch to New chat → the backgrounded session shows a **running spinner** in the expanded sidebar. No tab leak observed on close; settled orphan pruned on next pass.
+- 🔧✅ **Collapsed-Chats "blue circle"** (commit `6e6fac5f`): accent dot on the collapsed **Chats** header when a background chat has unseen activity (`unseen` flag, so the chat you're watching never trips it). **Live:** focused on running chat → no dot; navigate away mid-stream → "Chats •" appears (screenshot). This is the user's "no blue-circle notification" fix.
+- ✅ **Reasoning visible while streaming** (`86c0c089`): glm-5.2 streams a "Thought" block (auto-expanded), collapses to "Thought / Worked for Ns" on settle; markdown answer renders clean (lists/bold/structure). LaTeX `$$…$$` renders raw (no KaTeX — enhancement, unreported).
+- ✅ **B-series: two messages in a row** (`a75768b1`): send → settle (FIRST-OK) → follow-up runs and settles (SECOND-OK). No stall.
+- ✅ **Switch chats keeps your place** (`5acf5871`): opening the chat at sidebar position 5 kept it at position 5; 22 chats, order fully preserved, no dupes/loss.
+- ✅ **Abort-not-error** (`df6af425`): Stop mid-stream settles clean — no error text, no error-styled block, partial content kept.
+- ❌ **Side-chat via navbar** (open right panel → "Show tools" + → "Side chat" → send): **LIVE-REPRODUCED — spins at running 20s+, NEVER replies, no error.** Root cause confirmed: side-chat session in local `useState`, never in the workspace store, so the single-binding `sessionRuntimeController` never subscribes (it explicitly forbids other subscribers). **DEFERRED — core/high-risk to the critical streaming path + a product decision ("is a side chat a first-class session?"); needs user sign-off.** Two fix options documented in memory `project-chat-session-pipeline-audit`.
+- ⚠️ **Note (unreported):** composer set to a non-loaded model (e.g. `nemotron-3-ultra`, `active:false`) → raw `503 status code (no body)`. A "model not running" message would be friendlier.
