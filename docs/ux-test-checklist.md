@@ -144,6 +144,9 @@ User: "we are missing new lines i saw it make a list but all without newlines."
 User screenshot: a "Thought" reasoning bubble showing a lone `</arg_value>` — a tool-call XML fragment leaking.
 **Fixed (committed `a798ebd0`; needs controller deploy):** `stripToolCallsFromContent` (controller/tool-call-parser.ts) only removed COMPLETE `<tool_call>…</tool_call>` blocks, so a tool call in the `<parameter>/<arg_value>` dialect or split across stream deltas left a stray fragment that leaked into the answer/reasoning. Added two passes: drop a dangling `<tool_call>` (open-to-end) + strip orphan tool-call structural tags (tool_call/arguments/arg_value/arg_key/invoke/function/parameter). +1 regression test (lone tag, partial call, prose untouched). 52/52 controller tests green.
 
+### Iteration 9 (nav/UI sweep — no bugs)
+**Verified pass, no issues:** D2 nav (Status/Usage/Models/Plugins/Server all load; the Server "error" is just the controller LOGS showing a backend vLLM/triton launch error — not a UI crash) · D1 sidebar collapse/expand · D5 Search ⌘K (opens correctly). Note: controller/model went **OFFLINE** mid-session (`rtx-6000-pod OFFLINE`), so agent-chat flows (B*, tool turns) can't be re-tested until a model is relaunched (`POST /launch/:recipeId`).
+
 ## ⚠️ Pending controller deploys (2 fixes)
 Both `fd118a6c` (newline collapse) and `a798ebd0` (tool-call fragment leak) are **controller** changes — they only reach the live app after `scripts/deploy-remote.sh controller` (which restarts the running model). Not auto-deployed (outward-facing + kills the model).
 
