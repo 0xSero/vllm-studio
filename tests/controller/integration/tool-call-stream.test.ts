@@ -149,6 +149,22 @@ describe("createToolCallStream content fidelity", () => {
     expect(await streamContent(tokens)).toBe(tokens.join(""));
   });
 
+  // Regression: two CONSECUTIVE identical newline deltas while the accumulated
+  // text is itself just that newline. The cumulative check used `>=`, so the
+  // second "\n" (equal length, startsWith) was misread as a cumulative snapshot,
+  // sliced to "" AND flipped the stream into snapshot mode — collapsing the rest
+  // of the answer (a list rendered all on one line). Common when a model opens
+  // its reply with a blank line before a list.
+  test("preserves a blank line + list when the message opens with two newlines", async () => {
+    const tokens = ["\n", "\n", "- alpha", "\n", "- beta", "\n", "- gamma"];
+    expect(await streamContent(tokens)).toBe(tokens.join(""));
+  });
+
+  test("repeated whitespace-only deltas are never dropped or sliced", async () => {
+    expect(await streamContent([" ", " ", " ", "x"])).toBe("   x");
+    expect(await streamContent(["\n", "\n", "\n", "x"])).toBe("\n\n\nx");
+  });
+
   // A backend that restarts an incremental token stream from the top must still
   // be de-duplicated (replay begins with real content, never whitespace).
   test("deduplicates an incremental stream that restarts from the beginning", async () => {

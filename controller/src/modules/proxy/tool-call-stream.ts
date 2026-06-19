@@ -76,9 +76,16 @@ export const createToolCallStream = (
       history.set(key, { text: previous.text + merged, snapshot: false });
       return merged;
     }
+    // A cumulative snapshot is STRICTLY longer than what we've accumulated (it
+    // adds new tokens). Using `>=` here misfired when a delta merely EQUALS the
+    // accumulated text — e.g. a second "\n" right after a first "\n" (a blank
+    // line / paragraph break, or the gap before a list). That equal "\n" was
+    // treated as a cumulative snapshot, sliced to "" (dropped), AND flipped the
+    // stream into snapshot mode, mangling everything after it — collapsing
+    // newlines so a list rendered all on one line. Require strictly longer.
     const isCumulative =
       previous.text.length > 0 &&
-      text.length >= previous.text.length &&
+      text.length > previous.text.length &&
       text.startsWith(previous.text);
     const shouldSlice = forceSnapshot || previous.snapshot || isCumulative;
 
@@ -87,11 +94,17 @@ export const createToolCallStream = (
       return isCumulative ? text.slice(previous.text.length) : text;
     }
 
-    // A shorter delta that matches the start of the accumulated text *might* be
-    // an upstream stream replaying from the top. Speculatively suppress it, but
-    // the divergence branch above resurrects it if the replay never pans out, so
-    // genuine repeated content (incl. whitespace-only deltas) is never lost.
-    if (previous.text.length > text.length && previous.text.startsWith(text)) {
+    // A shorter NON-WHITESPACE delta that matches the start of the accumulated
+    // text *might* be an upstream replaying from the top; speculatively suppress
+    // it (the divergence branch above resurrects it if the replay never pans
+    // out). A whitespace-only delta (a standalone "\n" between list rows or
+    // paragraphs) is never a replay restart — suppressing it would drop the
+    // newline — so always append it verbatim.
+    if (
+      text.trim() !== "" &&
+      previous.text.length > text.length &&
+      previous.text.startsWith(text)
+    ) {
       replayCursors.set(key, text.length);
       return "";
     }
