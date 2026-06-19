@@ -56,3 +56,34 @@ Reviewed the full branch diff for correctness + behavior-preservation across all
 ## LOC tracking
 
 (baseline + deltas recorded as changes land)
+
+---
+
+## Continuation — chat-session pipeline audit + session/sidebar fixes (2026-06-19)
+
+Re-fired `/loop` to map every chat UX flow, then fix the "session/connectivity
+logic is really bad" + "no notifications / switching struggles" reports. Full
+audit + per-fix detail in memory `project-chat-session-pipeline-audit`.
+
+### Content pipeline (table mangling / dropped whitespace — root cause: 3 layers each GUESS cumulative-vs-incremental)
+- `99c2c068` fix(replay): append incremental deltas verbatim (table-mangling on reload/replay).
+- `20116542` refactor(replay): streaming `message_update` rebuilds from full snapshot (reattach === settled).
+- `fd118a6c` fix(controller): newline-collapse — `normalizeTextDelta` `>=`→`>` + trim guard. **NEEDS CONTROLLER DEPLOY.**
+- `a798ebd0` fix(controller): strip orphan tool-call tags (lone `</arg_value>` leaking into reasoning). **NEEDS CONTROLLER DEPLOY.**
+
+### Session lifecycle + sidebar (this turn — LIVE-VERIFIED on glm-5.2)
+- `312a411b` fix(workspace): keep running/starting sessions alive after navigating away (was destroyed → invisible background turn). Additive; +prune/broadcast tests.
+- `6e6fac5f` feat(sidebar): accent dot ("blue circle") on the collapsed **Chats** header when a background chat has unseen activity. The notification the user asked for.
+- `aca5b07f`/`bce0d11b`/`a2329010` background-notification store (spinner + unseen dot on history rows from controller poll).
+- `5acf5871` fix(sidebar): one stable-sorted list — opening a chat no longer reshuffles the sidebar.
+- `a75768b1` fix(composer): follow-up prompt in a settled session no longer stalls (gate steer on local status).
+- `df6af425` fix: aborted turn settles clean (not an error) + standalone provider tracing (`outputFileTracingIncludes`).
+- `86c0c089` fix: reasoning auto-expands while streaming, collapses to "Thought" on settle.
+
+### Live QA (QA Electron rebuild, glm-5.2)
+Verified end-to-end: backgrounded running session shows a sidebar spinner; collapsed-Chats "blue circle" appears on navigate-away (absent while focused); reasoning streams visibly then collapses; markdown answer renders clean.
+Observed (unreported, not fixed): composer with a non-loaded model → raw "503 status code (no body)" (nicer message would help); LaTeX `$$…$$` renders raw (no KaTeX).
+
+### Still owed
+- Deploy the 2 controller fixes (`scripts/deploy-remote.sh controller` — restarts model): `fd118a6c` newlines + `a798ebd0` tag leak.
+- Deferred high-risk: side-chat-via-navbar streaming (local-useState session never enters workspace store → controller never subscribes); reload-mid-stream resume (Next standalone buffers local SSE).
