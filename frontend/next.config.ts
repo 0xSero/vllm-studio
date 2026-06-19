@@ -28,6 +28,18 @@ const nextConfig: NextConfig = {
     "jiti",
     "ws",
   ],
+  // pi-ai's register-builtins.js pulls each provider (openai-completions, etc.)
+  // in dynamically, which Next's standalone tracer follows inconsistently — so a
+  // build can silently omit e.g. openai-completions.js and the agent then throws
+  // "Cannot find module …/providers/openai-completions.js" at runtime. Force the
+  // whole pi-ai dist (top-level AND the copy nested under pi-coding-agent) into
+  // the standalone output so the provider set is always complete.
+  outputFileTracingIncludes: {
+    "/api/**": [
+      "./node_modules/@earendil-works/pi-ai/dist/**/*.js",
+      "./node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/**/*.js",
+    ],
+  },
   turbopack: {
     root: path.join(__dirname, ".."),
     resolveAlias: {

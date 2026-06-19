@@ -1983,6 +1983,42 @@ test("settled assistant error messages hydrate visible error blocks", () => {
   assert.equal(assistant?.blocks?.[0]?.text, "provider overloaded");
 });
 
+test("aborted turns settle cleanly without an error block or session error", () => {
+  const harness = makePiEventApplierHarness(
+    makeSession("s-main", {
+      messages: [
+        { id: "u1", role: "user", text: "write an essay" },
+        { id: "a-main", role: "assistant", text: "", blocks: [] },
+      ],
+      activeAssistantId: "a-main",
+    }),
+  );
+
+  // User pressed Stop mid-answer: the call ends with stopReason "aborted" and
+  // whatever partial content had streamed. This is a deliberate stop, NOT a
+  // failure — no error block, no session error, partial content preserved.
+  harness.apply("s-main", "a-main", {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      stopReason: "aborted",
+      content: [{ type: "text", text: "Partial answer so far" }],
+    },
+  });
+
+  const assistant = harness.session().messages.find((message) => message.id === "a-main");
+  assert.equal(harness.session().error ?? "", "");
+  assert.equal(
+    (assistant?.blocks ?? []).some((block) => block.kind === "event"),
+    false,
+    "aborted turn must not append an error/event block",
+  );
+  assert.equal(
+    (assistant?.blocks ?? []).find((block) => block.kind === "text")?.text,
+    "Partial answer so far",
+  );
+});
+
 test("activity group ids stay stable as streaming blocks append", () => {
   const first = groupAssistantBlocks([
     { kind: "thinking", id: "0:0:thinking", text: "Thinking" },

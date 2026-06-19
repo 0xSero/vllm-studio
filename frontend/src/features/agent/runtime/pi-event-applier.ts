@@ -125,17 +125,24 @@ function reduceAssistantSnapshotEvent(
   const content = assistantSnapshotContent(event, message);
 
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
-  const callFailed = type === "message_end" && (stopReason === "error" || stopReason === "aborted");
-  const failureText = callFailed ? assistantFailureText(message, stopReason) : "";
+  // An aborted turn is a deliberate stop (user pressed Stop, navigated away) —
+  // NOT an error. It must settle cleanly: keep whatever streamed, settle tool
+  // badges, and never surface an error block or session error. Only a genuine
+  // "error" stopReason is a failure.
+  const callErrored = type === "message_end" && stopReason === "error";
+  const callAborted = type === "message_end" && stopReason === "aborted";
+  const failureText = callErrored ? assistantFailureText(message, stopReason) : "";
 
   let next = patchAssistantMessage(session, targetId, (current) => {
     const streamCalls = nextStreamCalls(current.streamCalls, type, content);
     const existingBlocks = current.blocks ?? [];
     let blocks = mergeExistingToolState(existingBlocks, blocksFromTurnSnapshots(streamCalls));
     blocks = applyLegacyToolCallDeltaIfSnapshotMissedIt(blocks, existingBlocks, event, content);
-    // An LLM call that errored/aborted will never execute the tools it declared
-    // — settle them now instead of leaving a perpetual "running" badge.
-    if (callFailed) blocks = finalizeRunningToolBlocks(blocks, "error");
+    // A call that ended (errored or aborted) won't execute its declared tools —
+    // settle them so they don't show a perpetual "running" badge. An error marks
+    // them errored; an abort just settles them done.
+    if (callErrored) blocks = finalizeRunningToolBlocks(blocks, "error");
+    else if (callAborted) blocks = finalizeRunningToolBlocks(blocks, "done");
     if (failureText) blocks = appendFailureBlock(blocks, failureText);
     return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
   });
@@ -327,11 +334,13 @@ function assistantFailureText(
   message: Record<string, unknown>,
   stopReason: string | undefined,
 ): string {
-  if (stopReason !== "error" && stopReason !== "aborted") return "";
-  const raw = [message.errorMessage, message.error, message.stopReason]
+  // Only a genuine error is a failure. "aborted" (Stop pressed / navigated away)
+  // is a clean stop and must produce no error text.
+  if (stopReason !== "error") return "";
+  const raw = [message.errorMessage, message.error]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0)
     ?.trim();
-  if (!raw) return stopReason === "aborted" ? "Assistant turn aborted." : "Assistant turn failed.";
+  if (!raw) return "Assistant turn failed.";
   return raw;
 }
 
