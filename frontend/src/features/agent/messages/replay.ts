@@ -10,7 +10,11 @@ import {
   sessionTitleFromPrompt,
   visibleUserTextFromPi,
 } from "@/features/agent/messages/helpers";
-import { blocksFromMessageContent, messageTextFromBlocks } from "@/features/agent/messages/message-content";
+import {
+  blocksFromMessageContent,
+  mergeExistingToolState,
+  messageTextFromBlocks,
+} from "@/features/agent/messages/message-content";
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages/types";
 
 type ReplayPiMessage = {
@@ -165,6 +169,54 @@ const applyReplayMessage = (state: ReplayState, event: Record<string, unknown>):
   );
 };
 
+// A streaming `message_update` carries the FULL accumulated content of the
+// current LLM call (event.message.content) — not a token delta. When replay
+// reattaches to a still-streaming turn, rebuild the bubble from that snapshot
+// the same lossless way the settled `message` path does, instead of replaying
+// token deltas through appendDelta. This makes a reattached answer (e.g. a
+// markdown table mid-stream) byte-identical to its settled form. Tool blocks
+// already added from tool_execution events are preserved by id.
+const assistantSnapshotUpdateContent = (
+  event: Record<string, unknown>,
+): string | Array<Record<string, unknown>> | null => {
+  if (event.type !== "message_update") return null;
+  const message = event.message;
+  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
+  const { role, content } = message as { role?: string; content?: unknown };
+  if (role !== "assistant") return null;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content as Array<Record<string, unknown>>;
+  return null;
+};
+
+const applyAssistantSnapshotUpdate = (
+  state: ReplayState,
+  event: Record<string, unknown>,
+): boolean => {
+  const content = assistantSnapshotUpdateContent(event);
+  if (content === null) return false;
+  const message = event.message as ReplayPiMessage;
+  const assistantId = ensureAssistantMessage(state);
+  patchMessage(state, assistantId, (current) => {
+    const existing = current.blocks ?? [];
+    const rebuilt = mergeExistingToolState(
+      existing,
+      blocksFromMessageContent(content, { stopReason: message.stopReason }),
+    );
+    // Keep any tool block that the snapshot does not (yet) list, so a tool
+    // result that arrived before the next content snapshot is never dropped.
+    const rebuiltToolIds = new Set(
+      rebuilt.filter((block) => block.kind === "tool").map((block) => block.id),
+    );
+    const missingTools = existing.filter(
+      (block) => block.kind === "tool" && !rebuiltToolIds.has(block.id),
+    );
+    const blocks = missingTools.length ? [...rebuilt, ...missingTools] : rebuilt;
+    return { ...current, blocks, text: messageTextFromBlocks(blocks) };
+  });
+  return true;
+};
+
 const applyAssistantPiEvent = (state: ReplayState, event: Record<string, unknown>): void => {
   if (!assistantPiEventAffectsBlocks(event)) return;
   const assistantId = ensureAssistantMessage(state);
@@ -208,6 +260,7 @@ export function replaySessionEvents(events: Record<string, unknown>[]): {
   for (const event of events) {
     applySessionStart(state, event);
     if (applyReplayMessage(state, event)) continue;
+    if (applyAssistantSnapshotUpdate(state, event)) continue;
     applyAssistantPiEvent(state, event);
   }
 

@@ -993,6 +993,38 @@ test("replaySessionEvents reattaching a streaming table preserves every pipe and
   assert.equal(textBlock?.text, table);
 });
 
+test("replay rebuilds a streaming table from message snapshots, matching its settled form", () => {
+  // The realistic pi shape: every message_update carries the FULL accumulated
+  // assistant message in event.message.content. Replay must rebuild the bubble
+  // from that snapshot (lossless) and produce the SAME result as the settled
+  // `message` event — proving the reattach path and the settled path converge.
+  const table = "| A | B |\n| --- | --- |\n| 1 | 2 |\n";
+  const growing = [
+    "| A | B |\n",
+    "| A | B |\n| --- | --- |\n",
+    "| A | B |\n| --- | --- |\n| 1 | 2 |\n",
+  ];
+  const streamingEvents = growing.map((accumulated) => ({
+    type: "message_update" as const,
+    assistantMessageEvent: { type: "text_delta", delta: "…" },
+    message: { role: "assistant", content: [{ type: "text", text: accumulated }] },
+  }));
+
+  const reattached = replaySessionEvents(streamingEvents);
+  const reattachedText = reattached.messages
+    .find((message) => message.role === "assistant")
+    ?.blocks?.find((block) => block.kind === "text")?.text;
+  assert.equal(reattachedText, table, "reattached streaming table must be lossless");
+
+  const settled = replaySessionEvents([
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: table }] } },
+  ]);
+  const settledText = settled.messages
+    .find((message) => message.role === "assistant")
+    ?.blocks?.find((block) => block.kind === "text")?.text;
+  assert.equal(reattachedText, settledText, "reattach path must equal the settled path");
+});
+
 test("text delta coalescer preserves alternating text and reasoning order", () => {
   const applied: Record<string, unknown>[] = [];
   const coalescer = createTextDeltaCoalescer({

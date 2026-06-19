@@ -223,3 +223,56 @@ const asRecordPart = (value: unknown): PiContentPart =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as PiContentPart)
     : { type: "text", text: "" };
+
+// ---------------------------------------------------------------------------
+// Tool-state preservation across a snapshot rebuild
+//
+// Rebuilding a bubble's blocks from a fresh content snapshot recreates each
+// tool block in its "running" shape. Tool *results* (status done/error,
+// resultText) and the most complete argument text arrive on separate events, so
+// they must be carried over from the previous blocks by stable tool id. Shared
+// by the live snapshot reducer, the final-message reconcile, and replay.
+// ---------------------------------------------------------------------------
+
+export function usefulToolArgsText(value: string | undefined): string {
+  const text = value ?? "";
+  return text.trim() === "{}" ? "" : text;
+}
+
+function mergedToolArgsText(
+  existingArgsText: string | undefined,
+  incomingArgsText: string | undefined,
+): string | undefined {
+  const existing = usefulToolArgsText(existingArgsText);
+  const incoming = usefulToolArgsText(incomingArgsText);
+  if (!existing) return incoming || undefined;
+  if (!incoming) return existing;
+  if (incoming.startsWith(existing) || incoming.length >= existing.length) return incoming;
+  if (existing.startsWith(incoming)) return existing;
+  return incoming;
+}
+
+export function mergeExistingToolState(
+  existingBlocks: AssistantBlock[],
+  incomingBlocks: AssistantBlock[],
+): AssistantBlock[] {
+  const existingTools = new Map(
+    existingBlocks
+      .filter((block) => block.kind === "tool")
+      .map((block) => [block.id, block] as const),
+  );
+  return incomingBlocks.map((block) => {
+    if (block.kind !== "tool") return block;
+    const existing = existingTools.get(block.id);
+    if (!existing || existing.kind !== "tool") return block;
+    const argsText = mergedToolArgsText(existing.argsText, block.argsText);
+    return {
+      ...block,
+      args: block.args ?? existing.args,
+      argsText,
+      resultText: existing.resultText ?? block.resultText,
+      status: existing.status,
+      text: argsText || block.text || existing.text,
+    };
+  });
+}

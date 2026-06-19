@@ -5,8 +5,10 @@ import {
   blocksFromMessageContent,
   blocksFromTurnSnapshots,
   finalizeRunningToolBlocks,
+  mergeExistingToolState,
   messageTextFromBlocks,
   toolCallSnapshotFromUpdate,
+  usefulToolArgsText,
   type AssistantBlock,
   type ChatMessage,
   messageText,
@@ -406,49 +408,6 @@ function joinedBlockText(blocks: AssistantBlock[], kind: "text" | "thinking"): s
 function isMeaningfulAssistantText(text: string): boolean {
   const trimmed = text.trim();
   return Boolean(trimmed && !/^(?:\.{3}|…)+$/.test(trimmed));
-}
-
-function usefulToolArgsText(value: string | undefined): string {
-  const text = value ?? "";
-  return text.trim() === "{}" ? "" : text;
-}
-
-function mergedToolArgsText(
-  existingArgsText: string | undefined,
-  incomingArgsText: string | undefined,
-): string | undefined {
-  const existing = usefulToolArgsText(existingArgsText);
-  const incoming = usefulToolArgsText(incomingArgsText);
-  if (!existing) return incoming || undefined;
-  if (!incoming) return existing;
-  if (incoming.startsWith(existing) || incoming.length >= existing.length) return incoming;
-  if (existing.startsWith(incoming)) return existing;
-  return incoming;
-}
-
-function mergeExistingToolState(
-  existingBlocks: AssistantBlock[],
-  incomingBlocks: AssistantBlock[],
-): AssistantBlock[] {
-  const existingTools = new Map(
-    existingBlocks
-      .filter((block) => block.kind === "tool")
-      .map((block) => [block.id, block] as const),
-  );
-  return incomingBlocks.map((block) => {
-    if (block.kind !== "tool") return block;
-    const existing = existingTools.get(block.id);
-    if (!existing) return block;
-    const argsText = mergedToolArgsText(existing.argsText, block.argsText);
-    return {
-      ...block,
-      args: block.args ?? existing.args,
-      argsText,
-      resultText: existing.resultText ?? block.resultText,
-      status: existing.status,
-      text: argsText || block.text || existing.text,
-    };
-  });
 }
 
 function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): boolean {
