@@ -90,4 +90,16 @@ Legend for "layer": which subsystem the flow exercises (Parse = content pipeline
 
 1. **B2 reasoning hidden while streaming** — outer `ActivityDisclosure` (`session-pane-block-router.tsx`) defaulted collapsed (`expanded=false`), hiding the inner reasoning that already auto-opens while active. **Fix applied:** `expanded = userExpanded ?? live` so it auto-expands while streaming and collapses when settled. _Retest after rebuild._
 2. **C2 reload mid-stream → empty session** — standalone embedded server buffers the locally-built `/api/agent/runtime/events` SSE; reattach gets nothing. **Phase 3b** (snapshot+cursor JSON-GET resume).
-3. **C4 `/events` proxy `Controller is already closed`** — `/api/proxy/[...path]` stream controller closed twice. Real bug, scoped for a fix.
+3. **C4 `/events` proxy `Controller is already closed`** — `/api/proxy/[...path]` stream controller closed twice. **🔧 Fixed** (idempotent `safeClose` + `finished` flag; client disconnect is now a no-op, not a logged error). Uncommitted in working tree (file also carries the pre-existing `settings-service` import refactor — commit together).
+
+---
+
+## Iteration log
+
+### Iteration 1 (live, rebuilt Electron, glm-5.2)
+**Verified pass:** A1 New chat (fresh empty session) · B2 **Reasoning visible while streaming** 🔧✅ (committed `86c0c089`; "Thinking" block auto-expands and streams full internal reasoning live, collapses to "Worked for Xs" on settle) · B3 Table renders live ✅ · sessions list in sidebar (under collapsed "Chats" section) · 7-day history persists.
+**Fixed this iteration:** B2 reasoning-while-streaming (committed) · C4 proxy double-close (working tree).
+**Notes / minor:** the sidebar "Chats" section defaults **collapsed** — recent chats are hidden until you expand it (possible UX nit: surface recent chats by default). Test-harness: re-snapshot before each click (refs go stale after navigation).
+**Environment caveat:** the isolated QA profile (`~/Library/Application Support/vLLM Studio QA`) was seeded with backend config but **not `chats.db`**, so reload/persistence flows (C1, C2) can't be tested faithfully yet — next iteration seeds `chats.db` (additive copy) for a true environment.
+
+**Next iteration queue:** faithful env (seed chats.db) → A3/A4 switch chats + load-old-session table render (replay path) → B5 send-2-in-a-row → B6 steer mid-stream → B7 stop → C1 reload-settled → C2/Phase 3b reload-mid-stream reattach (standalone SSE transport) → D/E/F navigation, model picker, panels.
