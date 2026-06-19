@@ -147,6 +147,10 @@ User screenshot: a "Thought" reasoning bubble showing a lone `</arg_value>` — 
 ### Iteration 9 (nav/UI sweep — no bugs)
 **Verified pass, no issues:** D2 nav (Status/Usage/Models/Plugins/Server all load; the Server "error" is just the controller LOGS showing a backend vLLM/triton launch error — not a UI crash) · D1 sidebar collapse/expand · D5 Search ⌘K (opens correctly). Note: controller/model went **OFFLINE** mid-session (`rtx-6000-pod OFFLINE`), so agent-chat flows (B*, tool turns) can't be re-tested until a model is relaunched (`POST /launch/:recipeId`).
 
+### Iteration 10 (UI panels sweep — no bugs)
+**Verified pass, no crashes:** F2 Filesystem panel (lists files), F5 Canvas panel (renders), Browser panel (no crash; URL-bar internals inconclusive via automation). Git-diff (Review) + Terminal not reached (in the launcher card view; harness ref instability). No React error boundaries anywhere.
+**Assessment:** the autonomous UI/nav sweep is thorough and clean — no contained bugs remain that I can find without the model online. High-value chat-flow testing (steer mid-stream, tool turns, reload-mid-stream) is blocked until a model is relaunched. The substantive remaining work is the deferred architectural items (side-chat streaming, Phase 3b transport, new-session sidebar visibility) which need a faithful env / user steer.
+
 ## ⚠️ Pending controller deploys (2 fixes)
 Both `fd118a6c` (newline collapse) and `a798ebd0` (tool-call fragment leak) are **controller** changes — they only reach the live app after `scripts/deploy-remote.sh controller` (which restarts the running model). Not auto-deployed (outward-facing + kills the model).
 
