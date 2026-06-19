@@ -114,7 +114,12 @@ Other adoptable patterns:
 Delete the prefix-drop heuristic; append incremental deltas verbatim; lock in with replay table-integrity tests. _(Section 2.)_
 
 ### Phase 2 — One content source of truth: typed append/replace
-**Goal:** collapse the three text-construction paths into ONE reducer that switches on an explicit event vocabulary and addresses content by stable part id — never inferring cumulative-vs-incremental from string shape.
+
+#### Phase 2a — Converge replay onto the lossless snapshot path ✅ DONE
+Replay's streaming `message_update` now rebuilds from the full `event.message.content` snapshot via `blocksFromMessageContent` + `mergeExistingToolState` (the same builder the settled `message` path uses), instead of the token-delta `appendDelta` path. A reattached mid-stream answer is now byte-identical to its settled form, proven by a convergence test (`replay(streaming snapshots) === replay(settled)`). The shared `mergeExistingToolState` was relocated into the pure `messages/` layer so replay can reuse it without crossing the `runtime ← messages` import boundary. Live behavior unchanged (behavior-preserving extraction; full live suite green). `appendDelta` is now reached only for the no-snapshot edge and tool deltas.
+
+#### Phase 2b — Typed append/replace vocabulary (remaining)
+**Goal:** collapse the remaining guessing into ONE reducer that switches on an explicit event vocabulary and addresses content by stable part id — never inferring cumulative-vs-incremental from string shape. **Blocked on open question #1** (whether any vLLM/SGLang fork sends cumulative snapshots → per-recipe capability flag) and warrants live QA before landing.
 
 - `controller/src/modules/proxy/tool-call-stream.ts` — classify **once** at ingest: OpenAI `delta.content` is always append; a full-message refresh is replace. Emit a small typed vocabulary downstream (`{kind:'part_delta', partId, field, text}` vs `{kind:'part_set', partId, part}`). Delete the `replayCursor` speculative-suppress branch (lines 60-77, 94-97).
 - `frontend/src/features/agent/runtime/pi-event-applier.ts` — dispatch on the typed vocabulary; append onto the part addressed by `(messageId, partId, field)`, replace whole part on `part_set`. Remove `assistantSnapshotContent`'s `JSON.stringify`-byte-length pick (159-167) and `applyLegacyToolCallDeltaIfSnapshotMissedIt` (213).
