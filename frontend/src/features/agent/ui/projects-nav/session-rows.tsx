@@ -209,33 +209,80 @@ export function ProjectSessions({
     return recentSessions;
   }, [sessions, activePiSessionIds, excludedIds, prefs]);
 
+  // Original start time per session id, from the server history list (stable —
+  // it does not change when a session is opened). Used to anchor an open
+  // session to its real position even if its live snapshot's startedAt was
+  // reset on open.
+  const historyStartByPiId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const session of sessions ?? []) {
+      const at = Date.parse(session.startedAt) || 0;
+      if (at) map.set(session.id, at);
+    }
+    return map;
+  }, [sessions]);
+
+  // ONE list ordered by stable start time. Open sessions are NOT promoted to a
+  // separate top block — that made opening a chat reshuffle the sidebar and lose
+  // the user's place. Each session keeps its position whether or not it's open;
+  // the open one just renders as a live ActiveSessionRow in situ.
+  const orderedRows = useMemo<NavRow[]>(() => {
+    const rows: NavRow[] = [];
+    for (const session of visibleActiveSessions) {
+      const historyStart = session.piSessionId
+        ? historyStartByPiId.get(session.piSessionId)
+        : undefined;
+      rows.push({
+        kind: "active",
+        key: `${session.paneId}:${session.tabId}`,
+        sortAt: historyStart ?? (Date.parse(session.startedAt ?? session.updatedAt) || 0),
+        active: session,
+      });
+    }
+    for (const session of recent) {
+      rows.push({
+        kind: "recent",
+        key: session.id,
+        sortAt: Date.parse(session.startedAt) || 0,
+        recent: session,
+      });
+    }
+    rows.sort((a, b) => b.sortAt - a.sortAt);
+    return rows;
+  }, [visibleActiveSessions, recent, historyStartByPiId]);
+
   return (
     <div className="flex flex-col">
-      {visibleActiveSessions.map((session) => (
-        <ActiveSessionRow
-          key={`${session.paneId}:${session.tabId}`}
-          project={project}
-          session={session}
-          pref={activeSessionPref(session, prefs)}
-        />
-      ))}
       {loading && !sessions ? (
         <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">Loading...</div>
-      ) : recent.length === 0 && visibleActiveSessions.length === 0 ? (
+      ) : orderedRows.length === 0 ? (
         <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
       ) : (
-        recent.map((session) => (
-          <SessionRow
-            key={session.id}
-            project={project}
-            session={session}
-            pref={prefs[session.id] ?? {}}
-          />
-        ))
+        orderedRows.map((row) =>
+          row.kind === "active" ? (
+            <ActiveSessionRow
+              key={row.key}
+              project={project}
+              session={row.active}
+              pref={activeSessionPref(row.active, prefs)}
+            />
+          ) : (
+            <SessionRow
+              key={row.key}
+              project={project}
+              session={row.recent}
+              pref={prefs[row.recent.id] ?? {}}
+            />
+          ),
+        )
       )}
     </div>
   );
 }
+
+type NavRow =
+  | { kind: "active"; key: string; sortAt: number; active: ActiveAgentSession }
+  | { kind: "recent"; key: string; sortAt: number; recent: SessionSummary };
 
 export function ActiveSessionRow({
   project,
