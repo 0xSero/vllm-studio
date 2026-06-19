@@ -147,7 +147,7 @@ export function createSessionRuntimeController(
   const cursors = new Map<SessionId, RuntimeCursor>();
   const streamContext: SessionStreamContext = { liveAssistantIds: new Map() };
   const attachments = new Map<SessionId, Attachment>();
-  let pollFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollEpoch = 0;
   const turnAcceptedAt = new Map<SessionId, number>();
 
@@ -184,7 +184,10 @@ export function createSessionRuntimeController(
   // Text-delta coalescer is now an Effect program (effect-coalescer.ts): a
   // per-session pending snapshot drained on the animation-frame clock. The
   // imperative facade is unchanged so the controller's contract holds.
-  const coalescer = createEffectTextDeltaCoalescer({ applyPiEvent: applyEvent });
+  const coalescer = createEffectTextDeltaCoalescer({
+    applyPiEvent: applyEvent,
+    scheduleFrame: deps.scheduleFrame,
+  });
 
   const enqueueEvent = (
     sessionId: SessionId,
@@ -370,8 +373,10 @@ export function createSessionRuntimeController(
   };
 
   const stopPoll = () => {
-    if (pollFiber) void Promise.resolve(Fiber.interrupt(pollFiber as never));
-    pollFiber = null;
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
     // Invalidate any in-flight fetch: a stale snapshot from the previous
     // session registry must not apply after a fresher immediate reconcile.
     pollEpoch += 1;
@@ -395,19 +400,20 @@ export function createSessionRuntimeController(
     let closed = false;
     let reconnecting = false;
     let sub: RuntimeEventSubscription | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let lastPayloadAt = Date.now();
 
     const reconnect = () => {
       if (closed || reconnecting) return;
       reconnecting = true;
       sub?.close();
-      const reconnectFiber = Effect.runFork(
-        Effect.gen(function* () {
-          yield* Effect.sleep(reconnectDelayMs);
-          reconnecting = false;
-          if (!closed) connect();
-        }),
-      ) as never;
+      // Capped fixed-delay reconnect on a real timer so it is interruptible on
+      // close and deterministically drivable under test clocks.
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        reconnecting = false;
+        if (!closed) connect();
+      }, reconnectDelayMs);
     };
 
     const reconcileLiveness = async () => {
@@ -478,6 +484,7 @@ export function createSessionRuntimeController(
       key: resumeConnectionKey(runtime, piSessionId),
       close: () => {
         closed = true;
+        if (reconnectTimer !== null) clearTimeout(reconnectTimer);
         void Promise.resolve(Fiber.interrupt(watchdogFiber as never));
         coalescer.flushNow(sessionId);
         sub?.close();
@@ -537,10 +544,12 @@ export function createSessionRuntimeController(
     pollNow: () => {
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;
+      // One immediate reconcile, then a steady interval. setInterval (unlike
+      // Effect.repeat) does not fire an extra immediate iteration, so pollNow
+      // produces exactly one fetch up front, and the timer is drivable under a
+      // test clock.
       void pollOnce();
-      pollFiber = Effect.runFork(
-        Effect.sync(() => void pollOnce()).pipe(Effect.repeat(Schedule.spaced(pollIntervalMs))),
-      ) as never;
+      pollTimer = setInterval(() => void pollOnce(), pollIntervalMs);
     },
     closeAll: () => {
       stopPoll();

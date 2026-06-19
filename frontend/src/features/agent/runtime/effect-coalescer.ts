@@ -42,27 +42,37 @@ type PendingSnapshot = {
   seq: number | undefined;
 };
 
+/** A cancellable frame handle — the injected `scheduleFrame` or the Effect rAF. */
+type FlushHandle = { cancel: () => void };
+
+type ScheduleFrame = (callback: () => void) => FlushHandle;
+
 type SessionSlot = {
   pending: PendingSnapshot | null;
   // Non-null while a frame-driven flush is in flight, so we don't stack flushes.
-  flushFiber: Fiber.RuntimeFiber<void, unknown> | null;
+  flushHandle: FlushHandle | null;
 };
 
 /**
  * Build a coalescer. `applyPiEvent` is the commit callback the controller wires
- * to the React dispatch — every flush ultimately calls it.
+ * to the React dispatch — every flush ultimately calls it. `scheduleFrame` is an
+ * optional frame-clock seam: production leaves it undefined and the flush runs
+ * on the rAF Effect below; tests inject a controllable clock so the merge can be
+ * driven deterministically.
  */
 export function createEffectTextDeltaCoalescer({
   applyPiEvent,
+  scheduleFrame,
 }: {
   applyPiEvent: ApplyPiEvent;
+  scheduleFrame?: ScheduleFrame;
 }): TextDeltaCoalescer {
   const slots = new Map<SessionId, SessionSlot>();
 
   const getSlot = (sessionId: SessionId): SessionSlot => {
     const existing = slots.get(sessionId);
     if (existing) return existing;
-    const slot: SessionSlot = { pending: null, flushFiber: null };
+    const slot: SessionSlot = { pending: null, flushHandle: null };
     slots.set(sessionId, slot);
     return slot;
   };
@@ -72,11 +82,24 @@ export function createEffectTextDeltaCoalescer({
   };
 
   const cancelFlush = (slot: SessionSlot): void => {
-    if (slot.flushFiber) {
-      void Promise.resolve(Fiber.interrupt(slot.flushFiber as never));
-      slot.flushFiber = null;
+    if (slot.flushHandle) {
+      slot.flushHandle.cancel();
+      slot.flushHandle = null;
     }
   };
+
+  // The rAF-Effect frame clock, wrapped as a cancellable handle. Used only when
+  // no `scheduleFrame` seam is injected (i.e. in the browser).
+  const effectFrame: ScheduleFrame = (callback) => {
+    const fiber = Effect.runFork(
+      Effect.gen(function* () {
+        yield* waitForAnimationFrame;
+        callback();
+      }),
+    );
+    return { cancel: () => void Promise.resolve(Fiber.interrupt(fiber as never)) };
+  };
+  const frameClock = scheduleFrame ?? effectFrame;
 
   const flushNow = (sessionId: SessionId): void => {
     const slot = slots.get(sessionId);
@@ -89,20 +112,18 @@ export function createEffectTextDeltaCoalescer({
 
   const scheduleFlush = (sessionId: SessionId): void => {
     const slot = getSlot(sessionId);
-    if (slot.flushFiber) return; // a flush is already scheduled for this frame
-    const program = Effect.gen(function* () {
-      // Yield to the browser frame clock (rAF under DOM, setTimeout fallback),
-      // then apply whatever has accumulated for this session.
-      yield* waitForAnimationFrame;
+    if (slot.flushHandle) return; // a flush is already scheduled for this frame
+    // Yield to the frame clock, then apply whatever accumulated for this session.
+    // A handle that was cancelled (discard/flushNow) but whose callback still
+    // fires is harmless: `pending` is already null, so it applies nothing.
+    slot.flushHandle = frameClock(() => {
       const slotNow = slots.get(sessionId);
       if (!slotNow) return;
-      slotNow.flushFiber = null;
+      slotNow.flushHandle = null;
       const current = slotNow.pending;
       slotNow.pending = null;
       if (current) applyPending(sessionId, current);
     });
-    const fiber = Effect.runFork(program);
-    slot.flushFiber = fiber as never;
   };
 
   const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (
