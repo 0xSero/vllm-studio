@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { safeJson } from "@/features/agent/safe-json";
+import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
   patchSessionPref,
@@ -25,6 +26,20 @@ import {
 } from "./helpers";
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
+
+/**
+ * The set of session ids the runtime currently reports as actively working —
+ * including sessions running in the BACKGROUND (not open in any pane). Lets the
+ * sidebar show a working indicator on history rows so a turn started in another
+ * chat isn't invisible after you switch away.
+ */
+function useActiveRuntimeIds(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    (notify) => sessionRuntimeController().subscribeActiveRuntimeIds(notify),
+    () => sessionRuntimeController().getActiveRuntimeIds(),
+    () => sessionRuntimeController().getActiveRuntimeIds(),
+  );
+}
 
 export function ProjectRow({
   project,
@@ -151,6 +166,7 @@ export function ProjectSessions({
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const activeRuntimeIds = useActiveRuntimeIds();
   const projectActiveSessions = useMemo(
     () => activeSessions.filter((session) => session.projectId === project.id),
     [activeSessions, project.id],
@@ -272,6 +288,7 @@ export function ProjectSessions({
               project={project}
               session={row.recent}
               pref={prefs[row.recent.id] ?? {}}
+              isRunning={activeRuntimeIds.has(row.recent.id)}
             />
           ),
         )
@@ -334,10 +351,12 @@ export function SessionRow({
   project,
   session,
   pref,
+  isRunning = false,
 }: {
   project: ProjectEntry;
   session: SessionSummary;
   pref: SessionPref;
+  isRunning?: boolean;
 }) {
   const label =
     cleanSessionTitle(pref.title) ||
@@ -350,6 +369,7 @@ export function SessionRow({
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
       age={relativeAge(session.startedAt)}
+      isRunning={isRunning}
       rowClass="group relative flex h-6 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--hover) hover:text-(--fg)/95"
       renameRowClass="flex h-6 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}

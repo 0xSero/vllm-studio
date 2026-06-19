@@ -95,6 +95,14 @@ export type SessionRuntimeController = {
   /** Apply any coalesced-but-unflushed deltas for a session right now. */
   flush(sessionId: SessionId): void;
   /**
+   * Subscribe to changes in the set of session ids (runtime + pi) the runtime
+   * reports as actively working. Drives the sidebar's background-activity
+   * indicator. Returns an unsubscribe fn.
+   */
+  subscribeActiveRuntimeIds(listener: () => void): () => void;
+  /** Current set of actively-working session ids (stable identity until change). */
+  getActiveRuntimeIds(): ReadonlySet<string>;
+  /**
    * Reconcile every session against the runtime list right now, then restart
    * the steady poll. Called by the React binding when poll-relevant session
    * identity (membership / runtime id / pi id / status) changes.
@@ -150,6 +158,27 @@ export function createSessionRuntimeController(
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollEpoch = 0;
   const turnAcceptedAt = new Map<SessionId, number>();
+
+  // The set of session ids (runtime AND pi ids) the runtime reports as actively
+  // working, refreshed every poll. The sidebar subscribes so a session running
+  // in the BACKGROUND (not open in any pane) still shows a working indicator —
+  // the poll sees server-side runtimes regardless of pane membership. A new Set
+  // identity is produced only on change, so useSyncExternalStore stays stable.
+  let activeRuntimeIds: ReadonlySet<string> = new Set();
+  const activeRuntimeListeners = new Set<() => void>();
+  const setsEqual = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+    a.size === b.size && [...a].every((id) => b.has(id));
+  const updateActiveRuntimeIds = (entries: RuntimeSessionSummary[]): void => {
+    const next = new Set<string>();
+    for (const entry of entries) {
+      if (entry.status.active !== true) continue;
+      if (entry.sessionId) next.add(entry.sessionId);
+      if (entry.status.piSessionId) next.add(entry.status.piSessionId);
+    }
+    if (setsEqual(activeRuntimeIds, next)) return;
+    activeRuntimeIds = next;
+    activeRuntimeListeners.forEach((listener) => listener());
+  };
 
   const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
     binding?.commit(sessionId, patch);
@@ -387,6 +416,7 @@ export function createSessionRuntimeController(
     const fetchStartedAt = Date.now();
     const entries = await api.listRuntimeSessions();
     if (epoch !== pollEpoch || !binding) return;
+    updateActiveRuntimeIds(entries);
     applyRuntimeList(entries, fetchStartedAt);
   };
 
@@ -541,6 +571,11 @@ export function createSessionRuntimeController(
       }
     },
     flush: (sessionId) => coalescer.flushNow(sessionId),
+    subscribeActiveRuntimeIds: (listener) => {
+      activeRuntimeListeners.add(listener);
+      return () => activeRuntimeListeners.delete(listener);
+    },
+    getActiveRuntimeIds: () => activeRuntimeIds,
     pollNow: () => {
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;
