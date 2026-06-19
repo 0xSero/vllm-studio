@@ -32,6 +32,8 @@ type SessionNavRowProps = {
   onDragStart: (event: DragEvent) => void;
   onContextMenu?: boolean;
   isRunning?: boolean;
+  /** Show the "unseen activity" dot — the session updated while not focused. */
+  unseen?: boolean;
   canDoubleClickRename?: boolean;
   showClearAction?: boolean;
   menuIconClass?: string;
@@ -55,6 +57,7 @@ export function SessionNavRow({
   onDragStart,
   onContextMenu = false,
   isRunning = false,
+  unseen = false,
   canDoubleClickRename = false,
   showClearAction = false,
   menuIconClass = "h-3 w-3",
@@ -114,6 +117,7 @@ export function SessionNavRow({
         canDoubleClickRename={canDoubleClickRename}
         href={href}
         isRunning={isRunning}
+        unseen={unseen}
         label={label}
         onDragStart={onDragStart}
         onOpen={onOpen}
@@ -197,6 +201,7 @@ function SessionOpenTarget({
   canDoubleClickRename,
   href,
   isRunning,
+  unseen,
   label,
   onDragStart,
   onOpen,
@@ -207,6 +212,7 @@ function SessionOpenTarget({
   canDoubleClickRename: boolean;
   href?: string;
   isRunning: boolean;
+  unseen: boolean;
   label: string;
   onDragStart: (event: DragEvent) => void;
   onOpen?: () => void;
@@ -222,7 +228,9 @@ function SessionOpenTarget({
         },
       }
     : {};
-  const content = <SessionRowContent age={age} isRunning={isRunning} label={label} />;
+  const content = (
+    <SessionRowContent age={age} isRunning={isRunning} unseen={unseen} label={label} />
+  );
 
   if (href) {
     return (
@@ -266,16 +274,24 @@ function SessionOpenTarget({
 function SessionRowContent({
   age,
   isRunning,
+  unseen,
   label,
 }: {
   age: string;
   isRunning: boolean;
+  unseen: boolean;
   label: string;
 }) {
   return (
     <>
       {isRunning ? (
         <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--accent)" aria-hidden />
+      ) : unseen ? (
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent)"
+          aria-label="Unseen activity"
+          title="Unseen activity"
+        />
       ) : null}
       <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
         {label}

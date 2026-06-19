@@ -275,6 +275,7 @@ export function ActiveSessionRow({
       onRememberTitle={() => rememberAgentSessionNavTitle(session.piSessionId, label)}
       onDragStart={(event) => setAgentSessionDragData(event, session)}
       isRunning={session.status !== "idle" && session.status !== "done"}
+      unseen={session.unseen === true && !isFocused}
       canDoubleClickRename
       menuIconClass="h-3.5 w-3.5"
       renameInputClass="text-[length:var(--fs-xs)]"
