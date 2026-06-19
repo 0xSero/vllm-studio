@@ -103,3 +103,12 @@ Legend for "layer": which subsystem the flow exercises (Parse = content pipeline
 **Environment caveat:** the isolated QA profile (`~/Library/Application Support/vLLM Studio QA`) was seeded with backend config but **not `chats.db`**, so reload/persistence flows (C1, C2) can't be tested faithfully yet — next iteration seeds `chats.db` (additive copy) for a true environment.
 
 **Next iteration queue:** faithful env (seed chats.db) → A3/A4 switch chats + load-old-session table render (replay path) → B5 send-2-in-a-row → B6 steer mid-stream → B7 stop → C1 reload-settled → C2/Phase 3b reload-mid-stream reattach (standalone SSE transport) → D/E/F navigation, model picker, panels.
+
+### Iteration 2 (sidebar bugs — user-reported)
+User report: switching sessions struggles · no blue-circle notifications · leave/rejoin unreliable · follow-up prompts bug out.
+**Fixed + verified:**
+- **B5 follow-up after settle 🔧✅** (committed `a75768b1`): a 2nd message used to stall (added but no turn started). Root cause — `runtimeAcceptsControl` (chat-pane) routed it as a *steer* because the runtime still reports `active=true` after a turn settles (SDK session stays loaded), steering an idle agent → dropped. Fix: gate steer on the LOCAL turn being in-flight (`tab.status` running/starting). Verified live: msg1→settle→msg2 now answers.
+**Foundation committed (needs more):**
+- **Blue-circle unseen dot** (committed `aca5b07f`): `unseen` flag on active-session snapshot + sidebar dot. Correct, but doesn't fire in the common single-pane flow (see root cause below).
+**Root cause of the remaining sidebar bugs (verified live):** navigating to another chat **replaces the single pane and drops the previous running session from the active set** — it shows **no spinner, no dot, and isn't listed** while it keeps running server-side. This is the through-line for "no notifications," "switching struggles," and "leave/rejoin unreliable." A background turn becomes invisible and must reattach on return (which is also broken in standalone — Phase 3b).
+**Next (core fix):** surface running / just-finished sessions on sidebar rows from the runtime-list poll (`listRuntimeSessions`) — a session running server-side gets a spinner, a just-finished one gets the unseen dot — independent of whether it's open in a pane. Then verify switch-away → indicator → switch-back → content (with faithful env + Phase 3b reattach).
