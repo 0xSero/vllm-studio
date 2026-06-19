@@ -35,16 +35,24 @@ function appendToTextLikeBlock(
 ): AssistantBlock[] {
   const block = blocks[index];
   if (!block || (block.kind !== "text" && block.kind !== "thinking")) return blocks;
-  // Only dedup genuine replay restarts, which always re-send real content from
-  // the top. A whitespace-only delta (e.g. a standalone "\n" between table rows
-  // or paragraphs) is never a replayed prefix, but `startsWith` would treat it
-  // as one whenever the accumulated text begins with a newline — silently
-  // dropping every blank line and collapsing the answer onto one line.
-  if (delta.trim() !== "" && block.text.startsWith(delta)) return blocks;
-  const append = delta.startsWith(block.text) ? delta.slice(block.text.length) : delta;
-  if (!append) return blocks;
+  if (!delta) return blocks;
+  // pi emits text/thinking deltas as pure INCREMENTAL tokens (verified against
+  // pi-agent-core's agent loop: every text_delta carries only the new token).
+  // The three callers — the live fall-through, the replay reducer, and the tool
+  // bridge — all forward those incremental deltas, so the correct, lossless rule
+  // is to append verbatim.
+  //
+  // We deliberately do NOT try to detect a "cumulative snapshot" or "replay
+  // restart" by string-prefix matching. That guess is mathematically ambiguous
+  // for short/repeated/whitespace tokens: a row-leading "| " or a "| --- |"
+  // separator is a prefix of the already-accumulated table, so the old
+  // `block.text.startsWith(delta)` dedup silently dropped real cell separators
+  // and collapsed markdown tables onto one line (and `delta.startsWith(block.text)`
+  // mis-sliced short deltas). Snapshot/replace semantics are owned upstream — by
+  // reduceAssistantSnapshotEvent on the live path and by the settled message_end
+  // that overwrites the block — never inferred here per delta.
   const next = blocks.slice();
-  next[index] = { ...block, text: block.text + append };
+  next[index] = { ...block, text: block.text + delta };
   return next;
 }
 

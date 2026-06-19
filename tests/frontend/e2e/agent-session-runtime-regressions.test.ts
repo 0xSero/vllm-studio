@@ -924,6 +924,75 @@ test("explicit reasoning deltas render under reasoning", () => {
   });
 });
 
+test("incremental text deltas keep markdown table separators (no prefix-drop)", () => {
+  // Reproduces the table-mangling bug: when the model streams a markdown table
+  // as per-token deltas, row-leading "| " and repeated "| --- |" pieces are
+  // prefixes of the already-accumulated text. The old prefix-drop heuristic in
+  // appendToTextLikeBlock silently swallowed them, collapsing the table so
+  // remark-gfm no longer parsed it. Every delta must now survive verbatim.
+  const table = "| Name | Age |\n| --- | --- |\n| Al | 30 |\n";
+  const deltas = [
+    "| Name ",
+    "| Age ",
+    "|\n",
+    "| ", // prefix of accumulated "| Name ..." — old code dropped this
+    "--- ",
+    "| ",
+    "--- ",
+    "|\n",
+    "| Al ",
+    "| 30 ",
+    "|\n",
+  ];
+  assert.equal(deltas.join(""), table, "test deltas must reconstruct the table");
+
+  let blocks = applyAssistantPiEventToBlocks([], {
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", delta: deltas[0] },
+  });
+  for (const delta of deltas.slice(1)) {
+    blocks = applyAssistantPiEventToBlocks(blocks ?? [], {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta },
+    });
+  }
+  assert.equal(blocks?.[0]?.kind, "text");
+  assert.equal(blocks?.[0]?.text, table);
+});
+
+test("incremental text deltas never drop a repeated leading word (no mid-line loss)", () => {
+  // "Total" recurs as the first token of a later line while still a prefix of
+  // the whole accumulated block; the old dedup dropped it, turning
+  // "Total sales\nTotal = 9" into "Total sales\n = 9".
+  const deltas = ["Total", " sales\n", "Total", " = 9"];
+  let blocks: ReturnType<typeof applyAssistantPiEventToBlocks> = [];
+  for (const delta of deltas) {
+    blocks = applyAssistantPiEventToBlocks(blocks ?? [], {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta },
+    });
+  }
+  assert.equal(blocks?.[0]?.text, "Total sales\nTotal = 9");
+});
+
+test("replaySessionEvents reattaching a streaming table preserves every pipe and newline", () => {
+  // Replay (reload/navigate onto a still-streaming turn) routes runtime-log
+  // message_update events through appendDelta, the only path that reaches the
+  // formerly-buggy code. The reattached table must be byte-identical.
+  const table = "| A | B |\n| --- | --- |\n| 1 | 2 |\n";
+  const deltas = ["| A ", "| B ", "|\n", "| ", "--- ", "| ", "--- ", "|\n", "| 1 ", "| 2 ", "|\n"];
+  assert.equal(deltas.join(""), table);
+  const events = deltas.map((delta) => ({
+    type: "message_update" as const,
+    assistantMessageEvent: { type: "text_delta", delta },
+  }));
+
+  const { messages } = replaySessionEvents(events);
+  const assistant = messages.find((message) => message.role === "assistant");
+  const textBlock = assistant?.blocks?.find((block) => block.kind === "text");
+  assert.equal(textBlock?.text, table);
+});
+
 test("text delta coalescer preserves alternating text and reasoning order", () => {
   const applied: Record<string, unknown>[] = [];
   const coalescer = createTextDeltaCoalescer({
