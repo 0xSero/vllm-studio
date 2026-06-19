@@ -89,6 +89,7 @@ Observed (unreported, not fixed): composer with a non-loaded model → raw "503 
 - `3e54ee1f` feat(model-picker): green "running" badge on the loaded model + amber warning on the trigger when the SELECTED model isn't running (uses `model.active` from `/v1/models`, which the picker never surfaced). Verified: glm-5.2 badged "running"; selecting nemotron shows "(not running)" + warn dot.
 - `7e367c04` feat(chat): Retry button on the turn-error banner — resends the last user message, clears the error, starts a fresh turn (gated on model set + not running + something to resend). Verified: nemotron 503 → switch to glm-5.2 → Retry → resends and succeeds, error clears.
 - `5c1b7436` feat(chat): scroll-to-bottom pill when scrolled up — the timeline tracked stickToBottom but had no way back. Floating center pill ("New messages" while streaming, "Latest" otherwise); click smooth-scrolls + re-pins. Verified: scroll up → "Latest" appears → click → returns to bottom + hides.
+- `bc738122` feat(chat): copy button on user messages — assistant had Copy/Fork but user bubbles had none. Hover-revealed copy to the left of the bubble (reuses AssistantActionButton). Verified: click → "Copied" + clipboard holds the exact prompt text.
 
 ### Still owed
 - Deploy the **3** controller fixes (`scripts/deploy-remote.sh controller` — restarts model): `fd118a6c` newlines + `a798ebd0` tag leak + `dd0b19a1` 503-shape.
