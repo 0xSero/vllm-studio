@@ -140,6 +140,13 @@ User report: "request aborted shouldn't be an error — it's throwing an error w
 User: "we are missing new lines i saw it make a list but all without newlines."
 **Fixed (committed `fd118a6c`; needs controller deploy to go live):** the **controller**'s `normalizeTextDelta` cumulative-snapshot check used `text.length >= previous.text.length && startsWith` — a delta that EQUALS the accumulated text (a second `"\n"` after a first `"\n"`, i.e. a model opening with a blank line before a list) was misread as a cumulative snapshot, dropped, AND flipped the stream into snapshot mode, mangling the rest → list on one line. Fix: strict `>` for cumulative + `text.trim() !== ""` guard on the replay-suppress. Model-dependent (glm-5.2 didn't show it; others do). +2 regression tests; 51/51 controller tests green. **The frontend was already lossless here** (appendDelta verbatim + snapshot path); this was the last of the 3 "guessing" layers from the audit. **DEPLOY: `scripts/deploy-remote.sh controller` (restarts the model).**
 
+### Iteration 8 (stray `</arg_value>` in reasoning — user screenshot)
+User screenshot: a "Thought" reasoning bubble showing a lone `</arg_value>` — a tool-call XML fragment leaking.
+**Fixed (committed `a798ebd0`; needs controller deploy):** `stripToolCallsFromContent` (controller/tool-call-parser.ts) only removed COMPLETE `<tool_call>…</tool_call>` blocks, so a tool call in the `<parameter>/<arg_value>` dialect or split across stream deltas left a stray fragment that leaked into the answer/reasoning. Added two passes: drop a dangling `<tool_call>` (open-to-end) + strip orphan tool-call structural tags (tool_call/arguments/arg_value/arg_key/invoke/function/parameter). +1 regression test (lone tag, partial call, prose untouched). 52/52 controller tests green.
+
+## ⚠️ Pending controller deploys (2 fixes)
+Both `fd118a6c` (newline collapse) and `a798ebd0` (tool-call fragment leak) are **controller** changes — they only reach the live app after `scripts/deploy-remote.sh controller` (which restarts the running model). Not auto-deployed (outward-facing + kills the model).
+
 ## Remaining big items (need user steer / faithful env)
 1. **Side-chat streaming** — integrate side-chat session into runtime reconcile (CORE controller change; high risk, deferred).
 2. **Phase 3b transport** — cursor+snapshot JSON-GET resume so reload-mid-stream reattaches in the standalone build (CORE transport; high risk).
