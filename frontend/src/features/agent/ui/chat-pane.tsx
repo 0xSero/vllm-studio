@@ -77,7 +77,7 @@ import {
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
 import { Timeline } from "@/features/agent/ui/timeline/timeline";
-import { CloseIcon } from "@/ui/icons";
+import { CloseIcon, ReloadIcon } from "@/ui/icons";
 export type {
   AssistantBlock,
   ChatMessage,
@@ -101,6 +101,13 @@ function visibleSessionError(error?: string): string {
   return FINALIZATION_RETRY_ERROR_RE.test(value) || BENIGN_TRANSPORT_ERROR_RE.test(value)
     ? ""
     : value;
+}
+
+/** A failed turn can be retried when a model is set, nothing is running, and
+ * there's a prior user message (or restored draft) to resend. */
+function canRetrySession(tab: SessionTab | null, hasModel: boolean, running: boolean): boolean {
+  if (!tab || !hasModel || running) return false;
+  return tab.messages.some((message) => message.role === "user") || Boolean(tab.input.trim());
 }
 
 type Props = {
@@ -291,7 +298,7 @@ export function ChatPane({
     updateSession,
     selectionFor: tools.selectionFor,
   });
-  const { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn } =
+  const { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn, retryLast } =
     useChatPaneSendFlow({
       activeTab,
       attachments,
@@ -342,6 +349,7 @@ export function ChatPane({
     running: Boolean(running),
   });
   const visibleError = visibleSessionError(activeTab?.error);
+  const canRetry = canRetrySession(activeTab, Boolean(modelId), Boolean(running));
   const dismissVisibleError = useCallback(() => {
     if (!activeTab) return;
     updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
@@ -372,6 +380,18 @@ export function ChatPane({
           role="alert"
         >
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{visibleError}</span>
+          {canRetry ? (
+            <button
+              type="button"
+              onClick={() => void retryLast()}
+              className="-my-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-(--err)/30 px-1.5 py-0.5 text-(--err)/90 hover:bg-(--err)/10 hover:text-(--err)"
+              aria-label="Retry"
+              title="Resend the last message"
+            >
+              <ReloadIcon className="h-3 w-3 pointer-events-none" />
+              Retry
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={dismissVisibleError}
@@ -1053,7 +1073,26 @@ function useChatPaneSendFlow({
     await engine.abortTurn(activeTab.id);
   }, [activeTab, engine]);
 
-  return { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn };
+  // Re-run the last user turn after a failure (a 503, a network blip). On a
+  // *send* failure the text is restored to the composer, but a turn that errors
+  // mid-stream leaves the prompt only in the transcript with an empty composer —
+  // so retry resends the last user message directly.
+  const retryLast = useCallback(async () => {
+    if (!activeTab || !modelId) return;
+    const lastUserText = [...activeTab.messages].reverse().find((m) => m.role === "user")?.text;
+    const text = (lastUserText ?? activeTab.input).trim();
+    if (!text) return;
+    if (!beginSessionSubmit(composerSubmitInFlightRef.current, activeTab.id)) return;
+    updateTab(activeTab.id, (t) => ({ ...t, error: "", input: "" }));
+    setMention(null);
+    try {
+      await submitPrompt(text, activeTab.id);
+    } finally {
+      endSessionSubmit(composerSubmitInFlightRef.current, activeTab.id);
+    }
+  }, [activeTab, modelId, setMention, submitPrompt, updateTab]);
+
+  return { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn, retryLast };
 }
 
 type UseComposerAttachmentsOptions = {
