@@ -78,6 +78,10 @@ import {
 } from "@/features/agent/ui/chat-attachments";
 import { Timeline } from "@/features/agent/ui/timeline/timeline";
 import { CloseIcon, ReloadIcon } from "@/ui/icons";
+import {
+  exportFilenameFromTitle,
+  sessionToMarkdown,
+} from "@/features/agent/messages/export-markdown";
 export type {
   AssistantBlock,
   ChatMessage,
@@ -95,6 +99,19 @@ export { visibleQueuedMessages };
 const FINALIZATION_RETRY_ERROR_RE =
   /Model did not produce a valid final response\.?\s+Retrying finalization/i;
 const BENIGN_TRANSPORT_ERROR_RE = /^(?:terminated|abort(?:ed)?|network error|load failed)$/i;
+
+function downloadTextFile(filename: string, content: string): void {
+  if (typeof document === "undefined") return;
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 function visibleSessionError(error?: string): string {
   const value = error?.trim() ?? "";
@@ -354,6 +371,14 @@ export function ChatPane({
     if (!activeTab) return;
     updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
   }, [activeTab, updateTab]);
+  const exportSession = useCallback(() => {
+    if (!activeTab) return;
+    const markdown = sessionToMarkdown(activeTab.messages, displayedSessionTitle);
+    downloadTextFile(exportFilenameFromTitle(displayedSessionTitle), markdown);
+  }, [activeTab, displayedSessionTitle]);
+  const canExport = Boolean(
+    activeTab?.messages.some((message) => message.role !== "system" && message.text.trim()),
+  );
   return (
     <section
       onMouseDownCapture={onFocus}
@@ -367,9 +392,11 @@ export function ChatPane({
           rightPanelOpen={rightPanelOpen}
           canFork={Boolean(onForkSession)}
           canClose={Boolean(onClose)}
+          canExport={canExport}
           onTogglePinned={togglePinnedSession}
           onRename={renameActiveSession}
           onFork={onForkSession}
+          onExport={exportSession}
           onClose={onClose}
           onToggleRightPanel={onToggleRightPanel}
         />

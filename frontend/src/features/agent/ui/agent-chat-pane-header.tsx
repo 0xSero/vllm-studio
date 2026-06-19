@@ -17,9 +17,11 @@ export function AgentChatPaneHeader({
   rightPanelOpen,
   canFork,
   canClose,
+  canExport = false,
   onTogglePinned,
   onRename,
   onFork,
+  onExport,
   onClose,
   onToggleRightPanel,
 }: {
@@ -28,9 +30,11 @@ export function AgentChatPaneHeader({
   rightPanelOpen: boolean;
   canFork: boolean;
   canClose: boolean;
+  canExport?: boolean;
   onTogglePinned: () => void;
   onRename: (title: string) => void;
   onFork?: () => void;
+  onExport?: () => void;
   onClose?: () => void;
   onToggleRightPanel: () => void;
 }) {
@@ -120,6 +124,15 @@ export function AgentChatPaneHeader({
               }}
             >
               Fork
+            </HeaderMenuItem>
+            <HeaderMenuItem
+              disabled={!canExport || !onExport}
+              onClick={() => {
+                onExport?.();
+                setOpen(false);
+              }}
+            >
+              Export as Markdown
             </HeaderMenuItem>
           </div>
         ) : null}
