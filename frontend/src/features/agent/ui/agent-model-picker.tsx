@@ -69,34 +69,31 @@ export function AgentModelPicker({
     setHighlightedIndex(0);
   }, []);
 
+  const moveHighlight = useCallback(
+    (direction: 1 | -1) => {
+      setHighlightedIndex((idx) => {
+        const next = findNextModelIndex(flatItems, idx, direction);
+        if (next != null) {
+          setTimeout(() => {
+            listRef.current
+              ?.querySelector(`[data-idx="${next}"]`)
+              ?.scrollIntoView({ block: "nearest" });
+          }, 0);
+        }
+        return next ?? idx;
+      });
+    },
+    [flatItems],
+  );
+
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setHighlightedIndex((idx) => {
-          const next = findNextModelIndex(flatItems, idx, 1);
-          if (next != null) {
-            setTimeout(() => {
-              listRef.current
-                ?.querySelector(`[data-idx="${next}"]`)
-                ?.scrollIntoView({ block: "nearest" });
-            }, 0);
-          }
-          return next ?? idx;
-        });
+        moveHighlight(1);
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setHighlightedIndex((idx) => {
-          const next = findNextModelIndex(flatItems, idx, -1);
-          if (next != null) {
-            setTimeout(() => {
-              listRef.current
-                ?.querySelector(`[data-idx="${next}"]`)
-                ?.scrollIntoView({ block: "nearest" });
-            }, 0);
-          }
-          return next ?? idx;
-        });
+        moveHighlight(-1);
       } else if (event.key === "Enter") {
         const item = flatItems[highlightedIndex];
         if (item?.type === "model") {
@@ -116,7 +113,7 @@ export function AgentModelPicker({
         }
       }
     },
-    [flatItems, highlightedIndex, onSelect, query, filteredGroups, currentKey],
+    [flatItems, highlightedIndex, moveHighlight, onSelect, query, filteredGroups, currentKey],
   );
 
   return (
