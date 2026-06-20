@@ -117,6 +117,9 @@ Goal: tighten the repo toward pi-grade cleanliness. **Finding: it's already clea
 - **Redirect:** real safe cuts live in the UI layer (`features/agent/ui` 11.3k LOC) via repeated-pattern dedup, NOT the runtime. Next passes target there.
 - `5054cd5b` refactor(model-picker): collapsed the ArrowDown/ArrowUp key handlers (identical but for direction) into one `moveHighlight(direction)`. e2e 192/192.
 - **Diminishing returns flag:** the UI layer is only 0.15% token-duplicated — there is no "few k lines" of copy-paste fat. Per-pass dedup nets ~10–15 LOC. The remaining BIG levers are (a) the user's coalescer migration landing (deletes one ~200-LOC file), (b) structural extraction of a shared shell from the 5 panel components (filesystem/git-diff/terminal/computer-status/agent-browser-panel ≈ 2.35k LOC) — bigger but riskier. Codebase is fundamentally lean; "clean like pi" is largely already true.
+- **Panel-shell lever evaluated → NOT a safe win.** The 5 panels deliberately differ (header heights h-7/h-8/h-9, each owns its own data/fetch, only a shared hairline-border idiom — no shared logic/state). A generic `Panel` shell would be prop-heavy and risk visual regressions across all 5 (the dense-hairline aesthetic the user wants preserved). Skipped.
+- `755965b7` refactor(sessions): extracted the identical `activeByPiId` memo (Map<piSessionId, ActiveSession>) from sessions-page + sessions-command into a pure `indexActiveByPiId()` in session-contracts. +4 unit tests. e2e 196/196.
+- **Scope check:** deep-examined only `features/agent/{ui,runtime}` so far. NEXT pass sweeps the other big feature areas (`settings` 3.4k, `recipes/recipes-content` 2.9k, `dashboard` 1.7k) for the same dedup patterns before declaring the repo clean repo-wide.
 
 ### Still owed
 - (controller fixes deployed — see above)
