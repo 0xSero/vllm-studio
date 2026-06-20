@@ -189,6 +189,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
           key={item.id}
           segments={item.segments}
           live={live && index === routedBlocks.length - 1}
+          turnLive={live}
         />,
       );
       return;
@@ -398,9 +399,13 @@ function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] {
 const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments,
   live,
+  turnLive,
 }: {
   segments: ActivitySegment[];
+  // `live`: this group is the *actively* streaming block (drives the "Working"
+  // shimmer + live preview). `turnLive`: the whole turn is still streaming.
   live: boolean;
+  turnLive: boolean;
 }) {
   // Global "show reasoning" preference: when off, drop reasoning segments so the
   // group shows tools only (and disappears entirely for thinking-only turns).
@@ -410,11 +415,15 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
     [segments, showReasoning],
   );
   const items = useMemo(() => buildActivityItems(visibleSegments), [visibleSegments]);
-  // Auto-expand while the turn is streaming so reasoning (and live tool activity)
-  // is visible as it happens; once the turn settles it collapses to the
-  // "Worked for…" summary. A manual toggle sticks for the rest of the turn.
+  // Stay expanded for the WHOLE live turn — not just while this group is the
+  // trailing block. Collapsing the moment the answer starts streaming would
+  // shrink on-screen content while the viewport is bottom-pinned (the scroller
+  // runs `overflow-anchor: none`), yanking the view upward — the visible
+  // "shake/jump". Holding the expansion until the turn fully settles lets the
+  // reasoning scroll above the viewport first, so the eventual collapse to the
+  // "Worked for…" summary is off-screen and invisible. A manual toggle still wins.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-  const expanded = userExpanded ?? live;
+  const expanded = userExpanded ?? turnLive;
   const working =
     live &&
     visibleSegments.some(
