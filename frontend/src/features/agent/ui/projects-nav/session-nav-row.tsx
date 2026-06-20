@@ -16,6 +16,27 @@ function hrefWithOpenNonce(href: string): string {
   return `${href}${separator}open=${Date.now().toString(36)}`;
 }
 
+/**
+ * Open a session by href. Next 16's App Router silently no-ops a `router.push`
+ * to the same `/agent` route when only the `session`/`open` searchParams change
+ * — so clicking a session in the sidebar did nothing (the conversation never
+ * loaded, and a running session looked like it reset). We try the soft push
+ * first (instant where it works), then verify the URL actually moved to the
+ * target session and fall back to a real navigation if it didn't. The hard nav
+ * reliably loads the session — and reattaches a live in-flight turn via the
+ * reload path.
+ */
+function navigateToSessionHref(router: { push: (href: string) => void }, href: string): void {
+  router.push(href);
+  if (typeof window === "undefined") return;
+  const want = new URLSearchParams(href.split("?")[1] ?? "").get("session");
+  if (!want) return;
+  window.setTimeout(() => {
+    const have = new URLSearchParams(window.location.search).get("session");
+    if (have !== want) window.location.assign(href);
+  }, 70);
+}
+
 type SessionNavRowProps = {
   pref: SessionPref;
   label: string;
@@ -242,7 +263,7 @@ function SessionOpenTarget({
           onRememberTitle?.();
           if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
-          router.push(hrefWithOpenNonce(href));
+          navigateToSessionHref(router, hrefWithOpenNonce(href));
         }}
         onDragStart={onDragStart}
         className="flex min-w-0 flex-1 items-center gap-1"
