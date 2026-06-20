@@ -751,6 +751,20 @@ function useChatPaneSessionTitle({
   const handlePiSessionIdChange = useCallback(
     (piSessionId: string) => {
       if (paneId && activeTabId) copySessionPref(`tab:${paneId}:${activeTabId}`, piSessionId);
+      // Once a fresh chat earns its persistent id, swap the throwaway `?new=`
+      // nonce in the address bar for `?session=<piSessionId>` so a reload
+      // reattaches to (or at least reopens) this conversation instead of
+      // restarting a blank chat and losing the in-flight turn from view. Use
+      // replaceState — it's invisible to Next's `useSearchParams`, so the
+      // running turn's nav effect never re-fires. Side-chat pane excluded.
+      if (typeof window !== "undefined" && paneId !== "computer-side-chat" && piSessionId) {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("new") !== null && params.get("session") !== piSessionId) {
+          params.delete("new");
+          params.set("session", piSessionId);
+          window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+        }
+      }
       onPiSessionIdChange?.(piSessionId);
     },
     [activeTabId, onPiSessionIdChange, paneId],
