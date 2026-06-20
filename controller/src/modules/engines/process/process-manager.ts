@@ -341,34 +341,30 @@ export const createProcessManager = (
         });
       }
 
+      // Keep a rolling tail of the process output. Launch logs stream live to
+      // subscribers of `logs:<recipeId>`, but a fast-failing launch (e.g. an
+      // argparse "invalid choice" error) exits before the UI subscribes to that
+      // channel, so the live stream drops them — only the log file keeps them.
+      // We replay this tail in the failure result so the UI shows WHY a launch
+      // died instead of a bare "Process exited early".
+      const recentOutput: string[] = [];
+      const captureLine = (line: string): void => {
+        recentOutput.push(line);
+        if (recentOutput.length > 60) recentOutput.shift();
+        if (logStream) {
+          logStream.write(line + "\n");
+        }
+        if (eventManager) {
+          eventManager.publishLogLine(updatedRecipe.id, line).catch(() => {});
+        }
+      };
+
       if (child.stdout) {
-        const rl = createInterface({
-          input: child.stdout,
-          crlfDelay: Infinity,
-        });
-        rl.on("line", (line) => {
-          if (logStream) {
-            logStream.write(line + "\n");
-          }
-          if (eventManager) {
-            eventManager.publishLogLine(updatedRecipe.id, line).catch(() => {});
-          }
-        });
+        createInterface({ input: child.stdout, crlfDelay: Infinity }).on("line", captureLine);
       }
 
       if (child.stderr) {
-        const rl = createInterface({
-          input: child.stderr,
-          crlfDelay: Infinity,
-        });
-        rl.on("line", (line) => {
-          if (logStream) {
-            logStream.write(line + "\n");
-          }
-          if (eventManager) {
-            eventManager.publishLogLine(updatedRecipe.id, line).catch(() => {});
-          }
-        });
+        createInterface({ input: child.stderr, crlfDelay: Infinity }).on("line", captureLine);
       }
 
       child.on("exit", () => {
@@ -395,10 +391,25 @@ export const createProcessManager = (
         if (logStream) {
           logStream.end();
         }
+        // Surface the tail of the process output so the failure is diagnosable
+        // from the UI (e.g. an invalid CLI flag, a missing kernel/import) rather
+        // than a bare "exited early".
+        const tail = recentOutput
+          .slice(-20)
+          .filter((line) => line.trim().length > 0)
+          .join("\n");
+        const message = tail
+          ? `Process exited early (code ${child.exitCode}):\n${tail}`
+          : `Process exited early (code ${child.exitCode})`;
+        if (eventManager) {
+          void eventManager
+            .publishLaunchProgress(updatedRecipe.id, "error", message)
+            .catch(() => {});
+        }
         return {
           success: false,
           pid: null,
-          message: "Process exited early",
+          message,
           log_file: logFile,
         };
       }
