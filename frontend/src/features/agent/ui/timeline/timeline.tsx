@@ -90,11 +90,16 @@ export function Timeline({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={setScroller}
         data-timeline-scroller
-        className="agent-chat-scroller min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
+        // `min-w-0` is load-bearing: without it this flex child keeps its
+        // `min-width: auto` and a single wide code block (long unwrapped lines)
+        // forces the whole column past the window width — the chat ends up
+        // blank with content shoved off the right. min-w-0 lets the scroller
+        // shrink so the inner `<pre overflow-auto>` clips instead.
+        className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:none] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
       >
         <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
           {visibleMessages.map((message, index) => {
