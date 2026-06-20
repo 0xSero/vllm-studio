@@ -17,6 +17,15 @@ import {
   splitEnvironmentList,
 } from "./runtime-target-probes";
 import { resolveVllmPythonPath } from "./vllm-python-path";
+import { getEngineSpec } from "../engine-spec";
+import type { BinaryProbeResult } from "../engine-spec";
+
+const ENGINE_LABEL_FOR_BACKEND: Record<string, string> = {
+  vllm: "vLLM",
+  sglang: "SGLang",
+  llamacpp: "llama.cpp",
+  mlx: "MLX",
+};
 
 const TARGET_CACHE_TTL_MS = 300_000;
 let targetsCache: {
@@ -182,12 +191,13 @@ const collectPythonTargets = async (
     );
   }
 
+  const enginePythonPath = getEngineSpec(backend).resolvePythonPath?.() ?? null;
   const projectManaged =
     backend === "vllm"
-      ? unique([resolveVllmPythonPath(), ...collectVenvPythonFiles(config)])
+      ? unique([enginePythonPath, ...collectVenvPythonFiles(config)])
       : unique([
           backend === "sglang" ? config.sglang_python : config.mlx_python,
-          resolveVllmPythonPath(),
+          enginePythonPath,
           ...collectVenvPythonFiles(config),
         ]);
   for (const { candidate, probe } of await probePythonCandidates(backend, projectManaged)) {
@@ -229,11 +239,13 @@ const collectPythonTargets = async (
     );
   }
 
-  if (backend === "vllm") {
+  // Probe CLI binary (vllm, sglang) using the engine spec's probeBinary.
+  const spec = getEngineSpec(backend);
+  if (spec.cliBinary && spec.probeBinary) {
     const binary =
-      process.env["VLLM_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1" ? null : resolveBinary("vllm");
+      process.env["VLLM_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1" ? null : resolveBinary(spec.cliBinary);
     if (binary) {
-      const probe = await probeVllmBinaryRuntime(binary);
+      const probe: BinaryProbeResult = await spec.probeBinary(binary);
       addTarget(
         targets,
         makeRuntimeTarget({
@@ -241,10 +253,10 @@ const collectPythonTargets = async (
           kind: "system",
           source: "discovered",
           key: binary,
-          label: "vLLM system binary",
+          label: `${ENGINE_LABEL_FOR_BACKEND[backend]} system binary`,
           installed: probe.installed,
           version: probe.version,
-          pythonPath: probe.pythonPath,
+          pythonPath: probe.pythonPath ?? null,
           binaryPath: probe.binaryPath,
           healthMessage: probe.message,
         })

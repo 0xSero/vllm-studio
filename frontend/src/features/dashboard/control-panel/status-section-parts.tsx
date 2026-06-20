@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Info, Moon, Square, Sun } from "lucide-react";
+import { Info, Moon, Square, Sun } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/ui/model-stop-confirm";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";

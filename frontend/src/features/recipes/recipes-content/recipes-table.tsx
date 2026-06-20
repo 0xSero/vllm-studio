@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelButton, ModelRow, ModelSection, ModelStatus, ModelValue } from "@/ui";
 import { AttachLocalAgentsDialog } from "@/features/settings/attach-local-agents-dialog";

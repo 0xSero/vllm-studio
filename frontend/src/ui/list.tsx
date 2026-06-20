@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/ui/icon-registry";
 import { cx } from "./utils";
 
 export function ListGroup({

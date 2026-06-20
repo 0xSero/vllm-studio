@@ -9,7 +9,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { Code, Monitor, Minus, MessageSquarePlus, PanelLeftOpen, Plus } from "lucide-react";
+import { Code, Monitor, Minus, MessageSquarePlus, PanelLeftOpen, Plus } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import { useTools } from "@/features/agent/tools/context";
 import type { FileOpenRequest } from "@/features/agent/tools/types";

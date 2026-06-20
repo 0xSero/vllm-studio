@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync, type AsyncCommandResult } from "../../../core/command";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "../../shared/system-types";
+import { getEngineSpec } from "../engine-spec";
 import { upgradeVllmRuntime } from "./vllm-runtime";
 import {
   runPlatformUpgrade,
@@ -124,13 +125,7 @@ export const managedPackageSpec = (
   backend: ManagedPythonBackend,
   version?: string | null
 ): string => {
-  if (backend === "mlx") return "mlx-lm";
-  const packageName = backend === "vllm" ? "vllm" : "sglang";
-  const normalized = version?.trim();
-  if (!normalized) return packageName;
-  return normalized.includes("==") || normalized.endsWith(".whl")
-    ? normalized
-    : `${packageName}==${normalized}`;
+  return getEngineSpec(backend).managedPackageSpec(version);
 };
 
 const runManagedPythonInstall = async (

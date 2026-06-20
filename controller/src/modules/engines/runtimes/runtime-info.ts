@@ -18,6 +18,7 @@ import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info
 import { resolveNvidiaSmiBinary } from "../../system/platform/smi-tools";
 import { getTorchBuildInfo } from "../../system/platform/torch-info";
 import { resolveVllmPythonPath } from "./vllm-python-path";
+import { getEngineSpec } from "../engine-spec";
 import {
   isUpgradeCommandConfigured,
   CUDA_UPGRADE_ENV,
@@ -57,12 +58,12 @@ const computeSystemRuntimeInfo = async (
   const types = Array.from(
     new Set(gpus.map((gpu) => gpu.name).filter((name) => name && name !== "Unknown"))
   );
-  const [vllmInfo, sglangInfo] = await Promise.all([
+  const [vllmInfo, sglangInfo, llamaInfo, mlxInfo] = await Promise.all([
     getVllmRuntimeInfo(),
-    Promise.resolve(getSglangRuntimeInfo(config, runningProcess)),
+    getEngineSpec("sglang").getRuntimeInfo!(config, runningProcess),
+    getEngineSpec("llamacpp").getRuntimeInfo!(config, runningProcess),
+    getEngineSpec("mlx").getRuntimeInfo!(config, runningProcess),
   ]);
-  const llamaInfo = getLlamacppRuntimeInfo(config);
-  const mlxInfo = getMlxRuntimeInfo(config, runningProcess);
   const pythonForTorch = config.sglang_python || vllmInfo.python_path || "python3";
   const torch = getTorchBuildInfo(pythonForTorch);
   const forcedSmiTool = process.env["VLLM_STUDIO_GPU_SMI_TOOL"];

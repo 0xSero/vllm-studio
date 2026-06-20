@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/ui/icon-registry";
 import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
@@ -10,32 +10,6 @@ import type { SessionPref } from "@/features/agent/messages/prefs";
 
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-(--color-card-border) bg-(--color-popover) p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.45)]";
-
-function hrefWithOpenNonce(href: string): string {
-  const separator = href.includes("?") ? "&" : "?";
-  return `${href}${separator}open=${Date.now().toString(36)}`;
-}
-
-/**
- * Open a session by href. Next 16's App Router silently no-ops a `router.push`
- * to the same `/agent` route when only the `session`/`open` searchParams change
- * — so clicking a session in the sidebar did nothing (the conversation never
- * loaded, and a running session looked like it reset). We try the soft push
- * first (instant where it works), then verify the URL actually moved to the
- * target session and fall back to a real navigation if it didn't. The hard nav
- * reliably loads the session — and reattaches a live in-flight turn via the
- * reload path.
- */
-function navigateToSessionHref(router: { push: (href: string) => void }, href: string): void {
-  router.push(href);
-  if (typeof window === "undefined") return;
-  const want = new URLSearchParams(href.split("?")[1] ?? "").get("session");
-  if (!want) return;
-  window.setTimeout(() => {
-    const have = new URLSearchParams(window.location.search).get("session");
-    if (have !== want) window.location.assign(href);
-  }, 70);
-}
 
 type SessionNavRowProps = {
   pref: SessionPref;

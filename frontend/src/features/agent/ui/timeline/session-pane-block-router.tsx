@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { ChevronRight, Copy, GitFork } from "lucide-react";
+import { ChevronRight, Copy, GitFork } from "@/ui/icon-registry";
 import type {
   AssistantBlock,
   ChatMessage,

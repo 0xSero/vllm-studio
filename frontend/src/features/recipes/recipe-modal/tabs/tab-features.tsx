@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, MessageSquare, Settings, Wrench } from "lucide-react";
+import { Brain, MessageSquare, Settings, Wrench } from "@/ui/icon-registry";
 import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import {

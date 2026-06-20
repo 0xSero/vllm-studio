@@ -5,6 +5,8 @@
 // runtime ref). There is no filesystem scavenging of bundled desktop-control or
 // browser-control experiments here.
 
+import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { listStoredServers, serverConfigPath } from "@/features/agent/mcp/store";
 import type { McpServerDef } from "@/features/agent/mcp/types";
 
@@ -20,6 +22,7 @@ export type PluginRow = {
   path: string;
   installed: boolean;
   enabled: boolean;
+  ready: boolean;
   description?: string;
   shortDescription?: string;
   source?: string;
@@ -30,7 +33,28 @@ export type PluginRow = {
   mcpConfigPath?: string;
 };
 
+/** Check whether a command binary is available on the system PATH. */
+function isCommandAvailable(command: string): boolean {
+  try {
+    // `command -v` works on both macOS and Linux
+    execFileSync("command", ["-v", command], { stdio: "ignore", shell: true, timeout: 3_000 });
+    return true;
+  } catch {
+    // Try direct path check for absolute/relative paths
+    if (command.includes("/") || command.includes("\\") || command.includes(".")) {
+      try {
+        return existsSync(command);
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
 function storedRow(def: McpServerDef, source: string, enabled: boolean): PluginRow {
+  const configReady = existsSync(serverConfigPath(def.id));
+  const commandReady = isCommandAvailable(def.command);
   return {
     id: def.id,
     name: def.name,
@@ -38,6 +62,7 @@ function storedRow(def: McpServerDef, source: string, enabled: boolean): PluginR
     path: def.cwd ?? "",
     installed: true,
     enabled,
+    ready: enabled && configReady && commandReady,
     ...(def.description ? { description: def.description } : {}),
     ...(def.shortDescription ? { shortDescription: def.shortDescription } : {}),
     source,

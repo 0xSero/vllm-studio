@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Cpu } from "lucide-react";
+import { ChevronRight, Cpu } from "@/ui/icon-registry";
 import { Button, Card, Checkbox, FactGrid, SettingsGroup, SettingsNotice } from "@/ui";
 import {
   MANAGED_RUNTIME_BACKENDS,

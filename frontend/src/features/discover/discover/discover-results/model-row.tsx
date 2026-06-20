@@ -13,7 +13,7 @@ import {
   Heart,
   Pause,
   Play,
-} from "lucide-react";
+} from "@/ui/icon-registry";
 import { Button, ModelLogo, StatusPill, TCell, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatNumber } from "@/lib/formatters";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Download, ExternalLink, Heart, RefreshCw, Sparkles } from "lucide-react";
+import { Download, ExternalLink, Heart, RefreshCw, Sparkles } from "@/ui/icon-registry";
 import type { HuggingFaceModel } from "@/lib/types";
 import {
   engagementTier,

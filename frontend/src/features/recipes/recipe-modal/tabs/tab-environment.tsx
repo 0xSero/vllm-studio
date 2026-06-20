@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, Plus, Terminal, Trash2, Variable } from "lucide-react";
+import { Code, Plus, Terminal, Trash2, Variable } from "@/ui/icon-registry";
 import { Button, Card, FormSection, Input, Textarea } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import type { EngineCapabilities } from "@/features/recipes/engine-capabilities";

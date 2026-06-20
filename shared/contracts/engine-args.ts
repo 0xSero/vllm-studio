@@ -89,10 +89,42 @@ export const VLLM_ONLY_FLAG_KEYS: readonly string[] = [
 /**
  * vLLM flags that SGLang also accepts under the same name. These are kept when
  * scoping arguments for SGLang so legitimate overrides are not dropped.
+ * Updated to reflect SGLang's actual server argument surface (2025+).
  */
 const SGLANG_COMPATIBLE_VLLM_KEYS: ReadonlySet<string> = new Set([
   "disable-cuda-graph",
   "disable-custom-all-reduce",
+  "enable-prefix-caching",
+  "enable-chunked-prefill",
+  "chunked-prefill-size",
+  "max-num-batched-tokens",
+  "scheduling-policy",
+  "enable-priority-scheduling",
+  "schedule-conservativeness",
+  "page-size",
+  "data-parallel-size",
+  "enable-torch-compile",
+  "enable-p2p-check",
+  "enable-deterministic-inference",
+  "random-seed",
+  "load-format",
+  "revision",
+  "tokenizer-mode",
+  "tokenizer-backend",
+  "device",
+  "stream-interval",
+  "watchdog-timeout",
+  "enable-cache-report",
+  "chat-template",
+  "hf-chat-template-name",
+  "api-key",
+  "download-dir",
+  "base-gpu-id",
+  "gpu-id-step",
+  "sleep-on-idle",
+  "skip-server-warmup",
+  "log-level",
+  "log-requests",
 ]);
 
 const VLLM_ONLY_FLAG_KEY_SET: ReadonlySet<string> = new Set(

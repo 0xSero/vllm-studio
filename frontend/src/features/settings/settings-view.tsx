@@ -9,7 +9,7 @@ import {
   type LucideIcon,
   Paintbrush,
   ServerCog,
-} from "lucide-react";
+} from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "@/ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";

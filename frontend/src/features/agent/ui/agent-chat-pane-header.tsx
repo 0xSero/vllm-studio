@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { PanelRightClose, PanelRightOpen } from "@/ui/icon-registry";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";

@@ -1,4 +1,4 @@
-import { Clock, Download, Heart, Search, TrendingUp } from "lucide-react";
+import { Clock, Download, Heart, Search, TrendingUp } from "@/ui/icon-registry";
 import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 
 export const TASKS = [

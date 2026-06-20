@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { discoverMcpServers } from "@/features/agent/mcp";
+import { discoverMcpServers } from "@/features/agent/mcp/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

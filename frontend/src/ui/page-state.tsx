@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity } from "lucide-react";
+import { Activity } from "@/ui/icon-registry";
 import { Button } from "./button";
 
 interface PageStateProps {

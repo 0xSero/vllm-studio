@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight } from "@/ui/icon-registry";
 import { setupSteps } from "./utils";
 
 export function SetupStepper({ step }: { step: number }) {

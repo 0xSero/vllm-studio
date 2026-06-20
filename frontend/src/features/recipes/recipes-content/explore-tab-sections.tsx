@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, RefreshCw, Search } from "@/ui/icon-registry";
 import { ModelButton, ModelSection, ModelInput, ModelRow, ModelValue, ModelStatus } from "@/ui";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";

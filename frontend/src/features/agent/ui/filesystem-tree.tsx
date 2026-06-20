@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
+import { ChevronDown, ChevronRight, File, Folder } from "@/ui/icon-registry";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 
 function formatEntrySize(size: number): string {

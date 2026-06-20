@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
-import { Code2, Loader2, Plus } from "lucide-react";
+import { Code2, Loader2, Plus } from "@/ui/icon-registry";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, PanelIcon, SendIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 

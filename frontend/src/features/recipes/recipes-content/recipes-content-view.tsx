@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Compass, Download, HardDrive } from "lucide-react";
+import { Compass, Download, HardDrive } from "@/ui/icon-registry";
 import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { SettingsLayout } from "@/ui/settings";
@@ -140,15 +140,23 @@ export function RecipesContentView(props: Props) {
       </SettingsLayout>
 
       {modalOpen && modalRecipe ? (
-        <RecipeModal
-          recipe={modalRecipe}
-          onClose={onCloseRecipeModal}
-          onSave={onSaveRecipe}
-          onChange={setModalRecipe}
-          saving={saving}
-          availableModels={availableModels}
-          recipes={recipes}
-        />
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            aria-label="Close recipe editor"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={onCloseRecipeModal}
+          />
+          <RecipeModal
+            recipe={modalRecipe}
+            onClose={onCloseRecipeModal}
+            onSave={onSaveRecipe}
+            onChange={setModalRecipe}
+            saving={saving}
+            availableModels={availableModels}
+            recipes={recipes}
+          />
+        </div>
       ) : null}
 
       {deleteConfirm ? (

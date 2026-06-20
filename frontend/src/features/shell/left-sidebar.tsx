@@ -25,7 +25,7 @@ import {
   PanelLeftOpen,
   Square,
   X,
-} from "lucide-react";
+} from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { ProjectsNavSection } from "@/features/agent/ui/projects-nav-section";

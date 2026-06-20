@@ -1,0 +1,315 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import type { Config } from "../../../config/env";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
+import type { ProcessInfo, Recipe } from "../../models/types";
+import type { RuntimeBackendInfo } from "../../shared/system-types";
+import {
+  getDefaultReasoningParser,
+  getDefaultToolCallParser,
+} from "../process/model-runtime-defaults";
+import { appendExtraArguments, getExtraArgument, getPythonPath } from "../process/backend-builder";
+import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
+import {
+  extractFlag,
+  hasCliServeInvocation,
+  hasModuleInvocation,
+  positionalAfterServe,
+} from "../arg-utils";
+import type {
+  BinaryProbeResult,
+  ConfigHelpResult,
+  EngineSpec,
+} from "../engine-spec";
+
+const SGLANG_IMPORT_PROBE =
+  "import json, sys\ntry:\n import sglang\n print(json.dumps({'version': getattr(sglang, '__version__', None), 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
+
+/**
+ * Resolve the SGLang CLI binary from a Python path's venv.
+ * SGLang's pip package installs a `sglang` console script alongside `python`.
+ */
+const resolveSglangCliBinary = (pythonPath: string | null): string | null => {
+  if (!pythonPath) return null;
+  const sglangBin = join(dirname(pythonPath), "sglang");
+  return existsSync(sglangBin) ? sglangBin : null;
+};
+
+/**
+ * Build the SGLang serve command. Prefers the `sglang serve` CLI (modern
+ * interface, same as exo-spark) when the console script is available, falling
+ * back to `python -m sglang.launch_server` (legacy module invocation).
+ */
+const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
+  const python = getPythonPath(recipe) || config.sglang_python || "python";
+  const cliBinary = resolveSglangCliBinary(getPythonPath(recipe) ?? null) ?? resolveSglangCliBinary(config.sglang_python ?? null);
+
+  let command: string[];
+  let usesServeCli = false;
+
+  if (cliBinary && existsSync(cliBinary)) {
+    command = [cliBinary, "serve"];
+    usesServeCli = true;
+  } else {
+    command = [python, "-m", "sglang.launch_server"];
+  }
+
+  command.push("--model-path", recipe.model_path);
+  command.push("--host", recipe.host, "--port", String(recipe.port));
+
+  if (recipe.served_model_name) {
+    command.push("--served-model-name", recipe.served_model_name);
+  }
+  if (recipe.tensor_parallel_size > 1) {
+    command.push("--tensor-parallel-size", String(recipe.tensor_parallel_size));
+  }
+  if (recipe.pipeline_parallel_size > 1) {
+    command.push("--pipeline-parallel-size", String(recipe.pipeline_parallel_size));
+  }
+  command.push("--context-length", String(recipe.max_model_len));
+  command.push("--mem-fraction-static", String(recipe.gpu_memory_utilization));
+  if (recipe.max_num_seqs > 0) {
+    command.push("--max-running-requests", String(recipe.max_num_seqs));
+  }
+  if (recipe.trust_remote_code) {
+    command.push("--trust-remote-code");
+  }
+  if (recipe.quantization) {
+    command.push("--quantization", recipe.quantization);
+  }
+  if (recipe.dtype) {
+    command.push("--dtype", recipe.dtype);
+  }
+  if (recipe.kv_cache_dtype && recipe.kv_cache_dtype !== "auto") {
+    command.push("--kv-cache-dtype", recipe.kv_cache_dtype);
+  }
+  if (getExtraArgument(recipe.extra_args, "enable-metrics") === undefined) {
+    command.push("--enable-metrics");
+  }
+
+  const toolCallParser =
+    recipe.tool_call_parser !== null ? recipe.tool_call_parser : getDefaultToolCallParser(recipe);
+  if (toolCallParser) {
+    command.push("--tool-call-parser", toolCallParser);
+  }
+  const reasoningParser =
+    recipe.reasoning_parser !== null ? recipe.reasoning_parser : getDefaultReasoningParser(recipe);
+  if (reasoningParser) {
+    command.push("--reasoning-parser", reasoningParser);
+  }
+
+  return appendExtraArguments(command, stripForeignFlagKeys("sglang", recipe.extra_args));
+};
+
+/**
+ * Install `sglang[all]` (not bare `sglang`) so the server runtime, tokenizer,
+ * and all backends are pulled in. This mirrors exo-spark's install approach.
+ */
+const managedPackageSpec = (version?: string | null): string => {
+  const normalized = version?.trim();
+  if (!normalized) return "sglang[all]";
+  return normalized.includes("==") || normalized.endsWith(".whl")
+    ? normalized
+    : `sglang[all]==${normalized}`;
+};
+
+const detectInvocation = (args: string[]): boolean => {
+  if (hasModuleInvocation(args, "sglang.launch_server")) return true;
+  if (hasCliServeInvocation(args, "sglang")) return true;
+  return false;
+};
+
+const extractModelPath = (args: string[]): string | null => {
+  const flagModelPath = extractFlag(args, "--model-path");
+  if (flagModelPath) return flagModelPath;
+  const flagModel = extractFlag(args, "--model");
+  if (flagModel) return flagModel;
+  // sglang serve CLI may use positional model path
+  return positionalAfterServe(args);
+};
+
+const extractServedModelName = (args: string[]): string | null => {
+  return extractFlag(args, "--served-model-name") ?? null;
+};
+
+/**
+ * Probe the `sglang` CLI binary for version info.
+ * Mirrors probeVllmBinaryRuntime but for SGLang.
+ */
+const probeBinary = async (binary: string): Promise<BinaryProbeResult> => {
+  const version = await runCommandAsync(binary, ["--version"], { timeoutMs: 5_000 });
+  if (version.status === 0) {
+    // SGLang --version output format: "sglang, version X.Y.Z"
+    const match = version.stdout.match(/(\d+(?:\.\d+){1,3}[A-Za-z0-9.+-]*)/);
+    return {
+      installed: true,
+      version: match?.[1] ?? (version.stdout.trim() || null),
+      binaryPath: binary,
+    };
+  }
+  // Fall back to --help check
+  const help = await runCommandAsync(binary, ["--help"], { timeoutMs: 5_000 });
+  if (help.status === 0) {
+    return {
+      installed: true,
+      version: null,
+      binaryPath: binary,
+    };
+  }
+  return {
+    installed: false,
+    version: null,
+    binaryPath: binary,
+    message: version.stderr || "sglang binary is not runnable",
+  };
+};
+
+/**
+ * SGLang-specific Python path resolver. Looks for the managed sglang-latest
+ * venv, explicit env overrides, and the system sglang binary's shebang.
+ */
+const resolvePythonPath = (): string | null => {
+  const explicit = process.env["VLLM_STUDIO_SGLANG_PYTHON"]?.trim();
+  if (explicit && existsSync(explicit)) return explicit;
+
+  const managedCandidates = [
+    join(process.cwd(), "runtime", "venvs", "sglang-latest", "bin", "python"),
+    "/opt/venvs/active/sglang-latest/bin/python",
+    "/opt/venvs/sglang-latest/bin/python",
+  ];
+  for (const candidate of managedCandidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  // Check if the system `sglang` binary exists and resolve Python from its shebang
+  const sglangBin = resolveBinary("sglang");
+  if (sglangBin) {
+    const pythonFromShebang = resolvePythonFromShebang(sglangBin);
+    if (pythonFromShebang) return pythonFromShebang;
+  }
+
+  return null;
+};
+
+const resolvePythonFromShebang = (scriptPath: string): string | null => {
+  if (!existsSync(scriptPath)) return null;
+  try {
+    const firstLine = readFileSync(scriptPath, "utf8").split("\n")[0]?.trim() ?? "";
+    if (!firstLine.startsWith("#!")) return null;
+    const parts = firstLine.slice(2).trim().split(/\s+/);
+    const executable = parts[0];
+    const envPython = executable?.endsWith("/env")
+      ? parts.find((part) => part.startsWith("python"))
+      : null;
+    const python = envPython ?? executable;
+    if (!python || !python.includes("python")) return null;
+    return existsSync(python) ? python : (resolveBinary(python) ?? null);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Async SGLang runtime info. Replaces the sync getSglangRuntimeInfo in
+ * runtime-info.ts, which blocked the event loop with spawnSync calls.
+ */
+const getRuntimeInfoAsync = async (
+  config: Config,
+  runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
+): Promise<RuntimeBackendInfo> => {
+  const candidates: string[] = [];
+
+  // Collect Python candidates from running process, config, and resolver
+  if (runningProcess && runningProcess.backend === "sglang") {
+    const psResult = await runCommandAsync("ps", ["-p", String(runningProcess.pid), "-o", "args="], { timeoutMs: 3_000 });
+    if (psResult.status === 0 && psResult.stdout) {
+      const args = psResult.stdout.trim().split(/\s+/);
+      const first = args[0];
+      if (first && /^python\d*$/.test(first.split("/").pop() ?? "")) {
+        if (existsSync(first)) candidates.push(first);
+      }
+      const moduleIndex = args.findIndex((a) => a === "sglang.launch_server");
+      if (moduleIndex >= 2 && args[moduleIndex - 1] === "-m") {
+        const py = args[moduleIndex - 2];
+        if (py && existsSync(py)) candidates.push(py);
+      }
+    }
+  }
+
+  if (config.sglang_python) candidates.push(config.sglang_python);
+  const resolved = resolvePythonPath();
+  if (resolved) candidates.push(resolved);
+  candidates.push("python3", "python");
+
+  const unique = candidates.filter((c, i, a) => a.indexOf(c) === i);
+
+  for (const python of unique) {
+    const check = await runCommandAsync(python, ["--version"], { timeoutMs: 2_000 });
+    if (check.status !== 0) continue;
+    const result = await runCommandAsync(python, ["-c", SGLANG_IMPORT_PROBE], { timeoutMs: 5_000 });
+    if (result.status !== 0) continue;
+    try {
+      const parsed = JSON.parse(result.stdout) as { version?: string | null; python?: string | null };
+      if (parsed.version) {
+        return {
+          installed: true,
+          version: parsed.version,
+          python_path: parsed.python ?? python,
+          upgrade_command_available: true,
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // If no candidate had sglang installed, return the first available Python.
+  let fallback: string | null = null;
+  for (const candidate of unique) {
+    const check = await runCommandAsync(candidate, ["--version"], { timeoutMs: 2_000 });
+    if (check.status === 0) {
+      fallback = candidate;
+      break;
+    }
+  }
+
+  return {
+    installed: false,
+    version: null,
+    python_path: fallback ?? config.sglang_python ?? null,
+    upgrade_command_available: Boolean(fallback),
+  };
+};
+
+const getConfigHelp = async (_config: Config): Promise<ConfigHelpResult> => {
+  // Try `sglang serve --help` first, fall back to `python -m sglang.launch_server --help`
+  const sglangBin = resolveBinary("sglang");
+  if (sglangBin) {
+    const result = await runCommandAsync(sglangBin, ["serve", "--help"], { timeoutMs: 15_000 });
+    if (result.status === 0) {
+      return { config: result.stdout || null, error: null };
+    }
+  }
+
+  const python = resolvePythonPath() ?? "python3";
+  const result = await runCommandAsync(python, ["-m", "sglang.launch_server", "--help"], { timeoutMs: 15_000 });
+  if (result.status !== 0) {
+    return { config: result.stdout || null, error: result.stderr || "Failed to fetch SGLang config" };
+  }
+  return { config: result.stdout || null, error: null };
+};
+
+export const sglangSpec: EngineSpec = {
+  id: "sglang",
+  healthPath: "/health",
+  cliBinary: "sglang",
+  buildCommand: buildSglangCommand,
+  managedPackageSpec,
+  detectInvocation,
+  extractModelPath,
+  extractServedModelName,
+  probeBinary,
+  resolvePythonPath,
+  getRuntimeInfo: getRuntimeInfoAsync,
+  getConfigHelp,
+};

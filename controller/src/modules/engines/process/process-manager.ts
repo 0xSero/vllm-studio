@@ -24,6 +24,7 @@ import {
   pidExists,
   buildProcessTree,
 } from "./process-utilities";
+import { getEngineSpec } from "../engine-spec";
 
 export interface ProcessManager {
   findInferenceProcess: (port: number) => Promise<ProcessInfo | null>;
@@ -57,33 +58,8 @@ export const createProcessManager = (
       } else if (!flagPort && !(backend === "vllm" && port === 8000)) {
         continue;
       }
-      let modelPath = extractFlag(proc.args, "--model") || extractFlag(proc.args, "--model-path");
-      if (!modelPath && backend === "llamacpp") {
-        modelPath = extractFlag(proc.args, "-m");
-      }
-      if (!modelPath && backend === "sglang") {
-        const launchServerIndex = proc.args.findIndex(
-          (argument) => argument === "sglang.launch_server"
-        );
-        const candidate = launchServerIndex >= 0 ? proc.args[launchServerIndex + 1] : undefined;
-        if (candidate && !candidate.startsWith("-")) {
-          modelPath = candidate;
-        }
-      }
-      const servedModelName =
-        extractFlag(proc.args, "--served-model-name") ||
-        extractFlag(proc.args, "--alias") ||
-        extractFlag(proc.args, "-a");
-
-      if (!modelPath) {
-        const serveIndex = proc.args.indexOf("serve");
-        if (serveIndex >= 0 && serveIndex + 1 < proc.args.length) {
-          const candidate = proc.args[serveIndex + 1];
-          if (candidate && !candidate.startsWith("-")) {
-            modelPath = candidate;
-          }
-        }
-      }
+      let modelPath = getEngineSpec(backend).extractModelPath(proc.args);
+      const servedModelName = getEngineSpec(backend).extractServedModelName(proc.args);
 
       return {
         pid: proc.pid,

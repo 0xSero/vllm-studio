@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Rocket } from "lucide-react";
+import { Loader2, Rocket } from "@/ui/icon-registry";
 import { Alert, Button, Card, FactGrid } from "@/ui";
 
 export function StepLaunch({

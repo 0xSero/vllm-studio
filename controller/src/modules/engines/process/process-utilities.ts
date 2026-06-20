@@ -1,68 +1,19 @@
 import { spawnSync } from "node:child_process";
 import type { Recipe } from "../../models/types";
 import type { Backend } from "../../shared/recipe-types";
+import { detectEngineFromArgs } from "../engine-spec";
+import { extractFlag as extractFlagUtil } from "../arg-utils";
+
+export { extractFlagUtil as extractFlag };
 
 const splitCommand = (command: string): string[] => {
   const matches = command.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
   return matches.map((token) => token.replace(/^"|"$/g, ""));
 };
 
-export const extractFlag = (args: string[], flag: string): string | undefined => {
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === flag && index + 1 < args.length) {
-      return args[index + 1];
-    }
-  }
-  return undefined;
-};
-
-const executableName = (value: string | undefined): string => {
-  if (!value) return "";
-  return value.split(/[\\/]/).filter(Boolean).at(-1)?.toLowerCase() ?? value.toLowerCase();
-};
-
-const hasModuleInvocation = (args: string[], moduleName: string): boolean => {
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "-m" && args[index + 1] === moduleName) {
-      return true;
-    }
-    if (args[index] === moduleName) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const hasVllmServeInvocation = (args: string[]): boolean => {
-  const executableIndex = args.findIndex((argument) => executableName(argument) === "vllm");
-  return executableIndex >= 0 && args[executableIndex + 1] === "serve";
-};
-
 export const detectBackend = (args: string[]): Backend | null => {
-  if (args.length === 0) {
-    return null;
-  }
-  if (hasModuleInvocation(args, "vllm.entrypoints.openai.api_server")) {
-    return "vllm";
-  }
-  if (hasVllmServeInvocation(args)) {
-    return "vllm";
-  }
-  if (hasModuleInvocation(args, "sglang.launch_server")) {
-    return "sglang";
-  }
-  const joined = args.join(" ");
-  if (joined.includes("mlx_lm.server") || joined.includes("mlx-lm")) {
-    return "mlx";
-  }
-  if (
-    joined.includes("llama-server") ||
-    joined.includes("llama.cpp") ||
-    (args[0]?.includes("llama") && joined.includes("-m "))
-  ) {
-    return "llamacpp";
-  }
-  return null;
+  if (args.length === 0) return null;
+  return detectEngineFromArgs(args);
 };
 
 export const listProcesses = (): Array<{ pid: number; args: string[] }> => {

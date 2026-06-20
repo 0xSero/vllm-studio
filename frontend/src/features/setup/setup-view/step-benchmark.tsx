@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, LayoutDashboard, Loader2, MessageCircle } from "lucide-react";
+import { Activity, LayoutDashboard, Loader2, MessageCircle } from "@/ui/icon-registry";
 import { Alert, Button, Card, FactGrid } from "@/ui";
 
 interface SetupBenchmarkResult {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search } from "@/ui/icon-registry";
 import { EmptySafeNotice } from "@/ui/list";
 import { SettingsGroup, SettingsInput, SettingsRow } from "@/ui/settings";
 import { StatusPill } from "@/ui/status";

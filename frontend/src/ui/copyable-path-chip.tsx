@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
-import { Copy, FileText } from "lucide-react";
+import { Copy, FileText } from "@/ui/icon-registry";
 
 /**
  * A file-path reference chip: an "open" affordance plus a copy-to-clipboard

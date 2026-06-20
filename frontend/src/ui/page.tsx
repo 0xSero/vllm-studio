@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/ui/icon-registry";
 import { cx } from "./utils";
 
 export type SectionNavItem<Id extends string = string> = {

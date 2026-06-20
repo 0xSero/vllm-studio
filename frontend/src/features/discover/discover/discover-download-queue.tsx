@@ -1,4 +1,4 @@
-import { Pause, Play, XCircle } from "lucide-react";
+import { Pause, Play, XCircle } from "@/ui/icon-registry";
 import { Button, Card } from "@/ui";
 import type { ModelDownload } from "@/lib/types";
 

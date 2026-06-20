@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink } from "@/ui/icon-registry";
 import { highlightFenced } from "@/features/agent/highlight-cache";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useTools } from "@/features/agent/tools/context";

@@ -183,7 +183,7 @@ test("desktop browser reader fetch renders public markdown and rejects private u
 });
 
 test("curated local MCP servers require explicit target args", async () => {
-  const { handleMcpAction } = await import("@/features/agent/mcp/api");
+  const { handleMcpAction } = await import("@/features/agent/mcp/service");
   const missing = handleMcpAction({
     action: "add_from_catalogue",
     catalogueId: "catalogue:filesystem",

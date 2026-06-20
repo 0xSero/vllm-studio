@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, RotateCcw, Terminal } from "lucide-react";
+import { Code, RotateCcw, Terminal } from "@/ui/icon-registry";
 import { Button, FormSection } from "@/ui";
 
 export function RecipeModalTabCommand({

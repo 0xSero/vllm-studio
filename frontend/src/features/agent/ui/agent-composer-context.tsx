@@ -1,6 +1,6 @@
 "use client";
 
-import { AtSign, FileText, Slash, Sparkles } from "lucide-react";
+import { AtSign, FileText, Slash, Sparkles } from "@/ui/icon-registry";
 import type {
   ComposerMention,
   ComposerPluginRef,

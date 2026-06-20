@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpCircle, DownloadCloud, Loader2 } from "lucide-react";
+import { ArrowUpCircle, DownloadCloud, Loader2 } from "@/ui/icon-registry";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "@/lib/types";
 import {
   RowDetailLine,

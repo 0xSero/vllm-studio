@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
-import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "lucide-react";
+import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import {
   FONT_FAMILY_OPTIONS,

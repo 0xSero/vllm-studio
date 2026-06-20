@@ -12,6 +12,7 @@ import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 import { getLlamacppConfigHelp } from "./runtimes/llamacpp-runtime";
 import { getCudaInfo, getMlxRuntimeInfo } from "./runtimes/runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
+import { getEngineSpec } from "./engine-spec";
 import {
   getDefaultRuntimeTarget,
   getRuntimeTarget,
@@ -372,6 +373,13 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
 
   app.get("/runtime/llamacpp/config", async (ctx) => {
     const config = await getLlamacppConfigHelp(context.config);
+    return ctx.json(config);
+  });
+
+  app.get("/runtime/sglang/config", async (ctx) => {
+    const spec = getEngineSpec("sglang");
+    if (!spec.getConfigHelp) throw notFound("SGLang config help not available");
+    const config = await spec.getConfigHelp(context.config);
     return ctx.json(config);
   });
 

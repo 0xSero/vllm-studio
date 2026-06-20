@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { getApiSettings, type ApiSettings } from "@/lib/api/api-settings";
+import { getApiSettings, type ApiSettings } from "@/lib/services/settings-service";
 import { resolveDataDir } from "@/lib/data-dir";
 import {
   normalizeOpenAIModels,

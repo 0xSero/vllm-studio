@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, HardDrive, Pause, Play, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, HardDrive, Pause, Play, XCircle } from "@/ui/icon-registry";
 import { Button, Card } from "@/ui";
 import type { ModelDownload } from "@/lib/types";
 import { formatBytes, progressPercent } from "./utils";

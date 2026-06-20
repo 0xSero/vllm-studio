@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { ExternalLink, Plus, ShieldCheck } from "lucide-react";
+import { ExternalLink, Plus, ShieldCheck } from "@/ui/icon-registry";
 import {
   Button,
   EmptySafeNotice,

@@ -5,6 +5,7 @@ import type { Config } from "../../../config/env";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
+import { getEngineSpec } from "../engine-spec";
 import {
   getDefaultReasoningParser,
   getDefaultToolCallParser,
@@ -52,7 +53,7 @@ export const getPythonPath = (recipe: Recipe): string | undefined => {
   }
   return undefined;
 };
-const getVllmPythonPath = (recipe: Recipe): string | undefined => {
+export const getVllmPythonPath = (recipe: Recipe): string | undefined => {
   return resolveVllmRecipePythonPath(recipe.python_path) ?? undefined;
 };
 export const appendExtraArguments = (
@@ -280,18 +281,9 @@ export const buildBackendCommand = (recipe: Recipe, config: Config): string[] =>
   if (launchCommand) {
     return launchCommand;
   }
-  if (recipe.backend === "sglang") {
-    return buildSglangCommand(recipe, config);
-  }
-  if (recipe.backend === "llamacpp") {
-    return buildLlamacppCommand(recipe, config);
-  }
-  if (recipe.backend === "mlx") {
-    return buildMlxCommand(recipe, config);
-  }
-  return buildVllmCommand(recipe);
+  return getEngineSpec(recipe.backend).buildCommand(recipe, config);
 };
-const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
+export const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
   const override = getExtraArgument(recipe.extra_args, "llama_bin") ?? config.llama_bin;
   if (typeof override === "string" && override.trim()) {
     rejectPathTraversal(override, "llama_bin");
@@ -306,7 +298,7 @@ const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
   }
   return resolveBinary("llama-server") ?? "llama-server";
 };
-const appendLlamacppArguments = (
+export const appendLlamacppArguments = (
   command: string[],
   extraArguments: Record<string, unknown>
 ): string[] => {

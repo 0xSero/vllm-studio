@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "@/ui/icon-registry";
 import { Alert, AppPage, Button, Card } from "@/ui";
 import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
 import type {

@@ -7,8 +7,9 @@ export function serverDescription(server: McpServer): string {
 }
 
 export function serverLocation(server: McpServer): string {
+  const state = !server.enabled ? "disabled" : server.ready ? "connected" : "not ready";
   const tags = server.tags?.length ? ` · ${server.tags.join(", ")}` : "";
-  return `${server.enabled ? "enabled" : "disabled"} · @${server.name}${tags}`;
+  return `${state} · @${server.name}${tags}`;
 }
 
 export function parseArgsText(text: string): string[] {

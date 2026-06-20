@@ -3,7 +3,7 @@
 import { effectTimeout } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { Globe, Plug, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Globe, Plug, ShieldCheck, type LucideIcon } from "@/ui/icon-registry";
 import { SettingsLayout, SettingsNotice, type SettingsSectionDef } from "@/ui/settings";
 import { CuratedQuickAddPanel } from "./plugins-curated-quick-add";
 import { InstalledMcpServersPanel } from "./plugins-installed-servers";

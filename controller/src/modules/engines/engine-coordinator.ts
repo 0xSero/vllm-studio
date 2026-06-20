@@ -7,6 +7,7 @@ import type { RecipeStore } from "../models/recipes/recipe-store"; import { LIFE
 import type { EngineService, DownloadRequest, HfModel, SetActiveRecipeResult, SetActiveRecipeOptions } from "./engine-service"; import type { ModelDownload } from "../shared/recipe-types";
  import type { DownloadManager } from "./downloads/download-manager";
 import { fetchHuggingFaceModelInfo } from "./downloads/huggingface-api";
+import { getEngineSpec } from "./engine-spec";
 interface CoordinatorDeps { config: Config;
   logger: Logger; eventManager: EventManager;
   processManager: ProcessManager; recipeStore: RecipeStore;
@@ -100,7 +101,7 @@ export class EngineCoordinator implements EngineService {
           const snippet = index >= 0 ? lines.slice(Math.max(0, index - 1), index + 3).join("\n") : pattern; return { ready: false, message: `Fatal error: ${snippet.slice(0, 300)}` };
         } }
  try {
-        const { fetchLocal } = await import("../../http/local-fetch"); const response = await fetchLocal(this.deps.config.inference_port, "/health", {
+        const { fetchLocal } = await import("../../http/local-fetch"); const healthPath = getEngineSpec(options.recipe.backend).healthPath; const response = await fetchLocal(this.deps.config.inference_port, healthPath, {
           host: this.deps.config.inference_host,
           timeoutMs: 5000, });
         if (response.status === 200) { return { ready: true };

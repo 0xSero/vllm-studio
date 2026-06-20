@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchOfficialCompatibleRegistry } from "@/features/agent/mcp/official-registry";
-import {
-  addRegistrySource,
-  listRegistrySources,
-  removeRegistrySource,
-  setRegistrySourceEnabled,
-} from "@/features/agent/mcp/registry-sources";
+import { handleRegistryAction, listRegistrySources } from "@/features/agent/mcp/registry-sources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,46 +48,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body.action !== "string") {
-    return NextResponse.json({ error: "Expected { action }." }, { status: 400 });
-  }
-
-  try {
-    switch (body.action) {
-      case "add_registry": {
-        const name = typeof body.name === "string" ? body.name : "";
-        const url = typeof body.url === "string" ? body.url : "";
-        if (!url.trim()) {
-          return NextResponse.json({ error: "Registry URL is required." }, { status: 400 });
-        }
-        addRegistrySource({ name, url });
-        return NextResponse.json({ registries: listRegistrySources(), entries: [] });
-      }
-      case "set_registry_enabled": {
-        const id = typeof body.id === "string" ? body.id : "";
-        if (!id || typeof body.enabled !== "boolean") {
-          return NextResponse.json(
-            { error: "set_registry_enabled requires { id, enabled }." },
-            { status: 400 },
-          );
-        }
-        setRegistrySourceEnabled(id, body.enabled);
-        return NextResponse.json({ registries: listRegistrySources(), entries: [] });
-      }
-      case "remove_registry": {
-        const id = typeof body.id === "string" ? body.id : "";
-        if (!id) {
-          return NextResponse.json({ error: "remove_registry requires { id }." }, { status: 400 });
-        }
-        removeRegistrySource(id);
-        return NextResponse.json({ registries: listRegistrySources(), entries: [] });
-      }
-      default:
-        return NextResponse.json({ error: `Unknown action: ${body.action}` }, { status: 400 });
-    }
-  } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: 400 });
-  }
+  const result = handleRegistryAction(body);
+  return NextResponse.json(result.payload, { status: result.status });
 }
 
 function errorMessage(error: unknown): string {

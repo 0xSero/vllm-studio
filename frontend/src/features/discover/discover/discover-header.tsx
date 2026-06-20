@@ -1,4 +1,4 @@
-import { Filter } from "lucide-react";
+import { Filter } from "@/ui/icon-registry";
 import { RefreshButton } from "@/ui";
 
 export function DiscoverHeader({

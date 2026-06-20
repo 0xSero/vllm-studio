@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes } from "lucide-react";
+import { Boxes } from "@/ui/icon-registry";
 import { hfAvatarUrl } from "@/lib/huggingface";
 import { cx } from "./utils";
 

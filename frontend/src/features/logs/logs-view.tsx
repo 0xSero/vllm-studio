@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Download, Menu, RefreshCw } from "lucide-react";
+import { ChevronRight, Download, Menu, RefreshCw } from "@/ui/icon-registry";
 import { Button, Checkbox, SearchInput } from "@/ui";
 import type { LogSession } from "@/lib/types";
 import { LogsSessionsSidebar } from "./logs-sessions-sidebar";

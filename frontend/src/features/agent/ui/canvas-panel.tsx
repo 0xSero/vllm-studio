@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Code2 } from "lucide-react";
+import { Code2 } from "@/ui/icon-registry";
 
 import { useTools } from "@/features/agent/tools/context";
 import { RenderedPreview, detectPreviewKind } from "@/features/agent/ui/filesystem-preview";

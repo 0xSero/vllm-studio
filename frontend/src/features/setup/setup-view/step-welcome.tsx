@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Loader2, Rocket } from "lucide-react";
+import { ChevronRight, Loader2, Rocket } from "@/ui/icon-registry";
 import { Button, Card, Input, StatusPill } from "@/ui";
 import type { StudioDiagnostics, StudioSettings } from "@/lib/types";
 

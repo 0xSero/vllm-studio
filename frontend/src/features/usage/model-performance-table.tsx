@@ -2,7 +2,7 @@
 
 import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";
 import { Fragment, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "@/ui/icon-registry";
 import { Table, TBody, TCell, THead, TH, TRow } from "@/ui";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
 import { getModelColor } from "@/features/usage/colors";
@@ -295,7 +295,9 @@ function ExpandedCell({ label, value }: { label: string; value: string }) {
       <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>
-      <dd className="mt-1 font-mono text-[length:var(--fs-base)] leading-none tabular-nums text-(--fg)">{value}</dd>
+      <dd className="mt-1 font-mono text-[length:var(--fs-base)] leading-none tabular-nums text-(--fg)">
+        {value}
+      </dd>
     </div>
   );
 }

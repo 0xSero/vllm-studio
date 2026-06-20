@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings, saveApiSettings, maskApiKey, ApiSettings } from "@/lib/api/api-settings";
+import {
+  applySettingsUpdate,
+  getApiSettings,
+  InvalidSettingsError,
+  maskedSettingsView,
+  type ApiSettings,
+} from "@/lib/services/settings-service";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const settings = await getApiSettings();
-    // Return settings with masked API key for display
-    return NextResponse.json({
-      backendUrl: settings.backendUrl,
-      apiKey: maskApiKey(settings.apiKey),
-      hasApiKey: Boolean(settings.apiKey),
-      voiceUrl: settings.voiceUrl,
-      voiceModel: settings.voiceModel,
-    });
+    return NextResponse.json(maskedSettingsView(await getApiSettings()));
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to load settings", details: String(error) },
@@ -27,52 +25,16 @@ export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
   try {
-    const body = await request.json();
-    const { backendUrl, apiKey, voiceUrl, voiceModel } = body as Partial<ApiSettings>;
-
-    // Validate URL
-    if (backendUrl && !isValidUrl(backendUrl)) {
-      return NextResponse.json({ error: "Invalid backend URL format" }, { status: 400 });
-    }
-
-    if (voiceUrl && !isValidUrl(voiceUrl)) {
-      return NextResponse.json({ error: "Invalid voice URL format" }, { status: 400 });
-    }
-
-    // Get current settings to preserve unchanged values
-    const current = await getApiSettings();
-
-    const newSettings: ApiSettings = {
-      backendUrl: backendUrl || current.backendUrl,
-      // Only update API key if explicitly provided (not masked value)
-      apiKey: apiKey && !apiKey.includes("••••") ? apiKey : current.apiKey,
-      voiceUrl: voiceUrl || current.voiceUrl,
-      voiceModel: voiceModel || current.voiceModel,
-    };
-
-    await saveApiSettings(newSettings);
-
-    return NextResponse.json({
-      success: true,
-      backendUrl: newSettings.backendUrl,
-      apiKey: maskApiKey(newSettings.apiKey),
-      hasApiKey: Boolean(newSettings.apiKey),
-      voiceUrl: newSettings.voiceUrl,
-      voiceModel: newSettings.voiceModel,
-    });
+    const update = (await request.json()) as Partial<ApiSettings>;
+    const saved = await applySettingsUpdate(update);
+    return NextResponse.json({ success: true, ...maskedSettingsView(saved) });
   } catch (error) {
+    if (error instanceof InvalidSettingsError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json(
       { error: "Failed to save settings", details: String(error) },
       { status: 500 },
     );
-  }
-}
-
-function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Network, Server } from "lucide-react";
+import { Info, Network, Server } from "@/ui/icon-registry";
 import { FormField, FormSection, Input, ModelLogo, Select } from "@/ui";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { ModelInfo } from "@/lib/types";

@@ -32,10 +32,7 @@ const DEFAULT_API_SETTINGS: ApiConnectionSettings = {
   voiceModel: "whisper-large-v3-turbo",
 };
 
-const mergeApiSettings = (
-  server?: Partial<ApiConnectionSettings>,
-  current?: ApiConnectionSettings,
-): ApiConnectionSettings => {
+const mergeApiSettings = (server?: Partial<ApiConnectionSettings>): ApiConnectionSettings => {
   const localBackendUrl = getStoredBackendUrl();
   const localApiKey = getApiKey();
 
@@ -68,7 +65,7 @@ export function useSettings() {
       const res = await fetch("/api/settings");
       if (res.ok) {
         const settings = (await res.json()) as Partial<ApiConnectionSettings>;
-        setApiSettings((previous) => mergeApiSettings(settings, previous));
+        setApiSettings(mergeApiSettings(settings));
         return;
       }
     } catch (e) {
@@ -76,7 +73,7 @@ export function useSettings() {
     } finally {
       setApiSettingsLoading(false);
     }
-    setApiSettings((previous) => mergeApiSettings(undefined, previous));
+    setApiSettings(mergeApiSettings(undefined));
   }, []);
 
   const persistLocalApiSettings = useCallback(() => {
@@ -187,7 +184,7 @@ export function useSettings() {
       });
       if (res.ok) {
         const updated = (await res.json()) as Partial<ApiConnectionSettings>;
-        setApiSettings((previous) => mergeApiSettings(updated, previous));
+        setApiSettings(mergeApiSettings(updated));
         savedRemotely = true;
       } else {
         const err = await res.json().catch(() => ({}));

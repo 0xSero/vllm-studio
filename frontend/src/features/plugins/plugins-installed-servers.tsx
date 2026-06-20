@@ -1,6 +1,6 @@
 "use client";
 
-import { Tags, Trash2 } from "lucide-react";
+import { Check, CircleAlert, Plug, PlugZap, Tags, Trash2, X } from "@/ui/icon-registry";
 import { EmptySafeNotice } from "@/ui/list";
 import {
   SettingsButton,
@@ -32,6 +32,10 @@ export function InstalledMcpServersPanel({
   onTagDraftChange: (server: McpServer, value: string) => void;
   onSaveTags: (server: McpServer) => void;
 }) {
+  const disabledCount = servers.length - enabledCount;
+  const readyCount = servers.filter((s) => s.ready).length;
+  const notReadyCount = enabledCount - readyCount;
+
   const rows: SettingsFactRow[] = servers.map((server) => ({
     key: server.id,
     variant: "resource",
@@ -80,9 +84,26 @@ export function InstalledMcpServersPanel({
       title="Installed MCP servers"
       description="Servers exposed to agent turns when selected in the composer. Tags become local labels for routing and audits."
       actions={
-        <StatusPill tone={enabledCount ? "good" : "default"} variant="badge">
-          {servers.length} installed
-        </StatusPill>
+        <div className="flex items-center gap-2">
+          {readyCount > 0 ? (
+            <StatusPill tone="good" variant="badge">
+              <PlugZap className="mr-1 h-3 w-3" />
+              {readyCount} connected
+            </StatusPill>
+          ) : null}
+          {notReadyCount > 0 ? (
+            <StatusPill tone="warning" variant="badge">
+              <CircleAlert className="mr-1 h-3 w-3" />
+              {notReadyCount} not ready
+            </StatusPill>
+          ) : null}
+          {disabledCount > 0 ? (
+            <StatusPill tone="default" variant="badge">
+              <Plug className="mr-1 h-3 w-3" />
+              {disabledCount} disabled
+            </StatusPill>
+          ) : null}
+        </div>
       }
     >
       {servers.length ? (
@@ -95,7 +116,36 @@ export function InstalledMcpServersPanel({
 }
 
 function serverStatus(server: McpServer): NonNullable<SettingsFactRow["status"]> {
-  if (!server.enabled) return { label: "disabled" };
-  if (server.source === "marketplace") return { label: "marketplace", tone: "info" };
-  return { label: "manual", tone: "info" };
+  if (!server.enabled) {
+    return {
+      label: (
+        <span className="flex items-center gap-1">
+          <X className="h-3 w-3" />
+          disabled
+        </span>
+      ),
+      tone: "default",
+    };
+  }
+  const sourceLabel = server.source === "marketplace" ? "marketplace" : "manual";
+  if (server.ready) {
+    return {
+      label: (
+        <span className="flex items-center gap-1">
+          <Check className="h-3 w-3" />
+          connected · {sourceLabel}
+        </span>
+      ),
+      tone: "good",
+    };
+  }
+  return {
+    label: (
+      <span className="flex items-center gap-1">
+        <CircleAlert className="h-3 w-3" />
+        not ready · {sourceLabel}
+      </span>
+    ),
+    tone: "warning",
+  };
 }

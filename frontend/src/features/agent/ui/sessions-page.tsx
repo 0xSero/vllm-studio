@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "@/ui/icon-registry";
 import { Table, THead, TBody, TRow, TH, TCell } from "@/ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { safeJson } from "@/features/agent/safe-json";

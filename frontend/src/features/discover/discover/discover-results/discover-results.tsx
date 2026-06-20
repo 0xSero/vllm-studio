@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/ui/icon-registry";
 import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { originalModelKey } from "@/lib/huggingface";

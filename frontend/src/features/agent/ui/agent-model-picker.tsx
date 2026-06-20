@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { Brain, Search } from "lucide-react";
+import { Brain, Search } from "@/ui/icon-registry";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import { loadSavedControllers } from "@/lib/api/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";

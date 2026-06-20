@@ -94,6 +94,47 @@ export function removeRegistrySource(id: string): boolean {
   return true;
 }
 
+type RegistryActionResult = { status: number; payload: Record<string, unknown> };
+
+const registryListPayload = () => ({ registries: listRegistrySources(), entries: [] });
+const registryError = (error: string, status = 400): RegistryActionResult => ({
+  status,
+  payload: { error },
+});
+
+/** Dispatch a registry-source mutation. Mirrors `handleMcpAction`. */
+export function handleRegistryAction(body: Record<string, unknown> | null): RegistryActionResult {
+  if (!body || typeof body.action !== "string") return registryError("Expected { action }.");
+  try {
+    switch (body.action) {
+      case "add_registry": {
+        const url = typeof body.url === "string" ? body.url : "";
+        if (!url.trim()) return registryError("Registry URL is required.");
+        addRegistrySource({ name: typeof body.name === "string" ? body.name : "", url });
+        return { status: 200, payload: registryListPayload() };
+      }
+      case "set_registry_enabled": {
+        const id = typeof body.id === "string" ? body.id : "";
+        if (!id || typeof body.enabled !== "boolean") {
+          return registryError("set_registry_enabled requires { id, enabled }.");
+        }
+        setRegistrySourceEnabled(id, body.enabled);
+        return { status: 200, payload: registryListPayload() };
+      }
+      case "remove_registry": {
+        const id = typeof body.id === "string" ? body.id : "";
+        if (!id) return registryError("remove_registry requires { id }.");
+        removeRegistrySource(id);
+        return { status: 200, payload: registryListPayload() };
+      }
+      default:
+        return registryError(`Unknown action: ${body.action}`);
+    }
+  } catch (error) {
+    return registryError(error instanceof Error ? error.message : String(error));
+  }
+}
+
 function normalizeStoredSource(value: unknown): McpRegistrySource[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   const record = value as Record<string, unknown>;

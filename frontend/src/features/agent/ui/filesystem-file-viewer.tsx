@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { MessageSquarePlus, Minus } from "lucide-react";
+import { MessageSquarePlus, Minus } from "@/ui/icon-registry";
 import { highlightFenced } from "@/features/agent/highlight-cache";
 import type { FileComment } from "@/features/agent/filesystem-types";
 

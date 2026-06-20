@@ -52,21 +52,37 @@ export function parseParamsBillions(modelId: string): number | null {
   return null;
 }
 
-/** Rough weight footprint (GB) from name + quantization tags — for sorting and UI hints only. */
+/** Rough runtime VRAM footprint (GB) from name + quantization tags — for sorting, UI hints, and fit tests.
+ *
+ * This is NOT just static weight bytes: a 1.25x overhead is applied so the
+ * displayed footprint and the fit comparison reflect actual run VRAM
+ * (weights + KV cache + activations + framework/CUDA context). Without this
+ * factor, models whose weights exactly fill the pool were reported as "fits"
+ * but OOM at runtime because there is no headroom for KV cache.
+ *
+ * Note on MoE: `parseParamsBillions` reads total params from the repo name, so
+ * MoE models (e.g. DeepSeek-R1 671B) are overestimated on this path. Known
+ * limitation; curated recommendations in `STUDIO_MODEL_RECOMMENDATIONS` bypass
+ * this estimate and use hand-tuned `min_vram_gb` instead.
+ */
 export function estimateRoughWeightsGb(model: HuggingFaceModel): number | null {
   // HF's list endpoint returns siblings (file names) but NOT file sizes, so we
   // can't compute real VRAM from the API — the name+tag heuristic remains the
   // best available signal for a 50-model page. If weightBytes is enriched by a
   // future data source, use it (exact > estimate).
+  let weightsGb: number | null = null;
   if (typeof model.weightBytes === "number" && model.weightBytes > 0) {
-    return (model.weightBytes / 1e9) * 1.1;
+    weightsGb = model.weightBytes / 1e9;
+  } else {
+    const billions = parseParamsBillions(model.modelId);
+    if (billions == null) return null;
+    const params = billions * 1e9;
+    const quant = quantFromTags(model.tags);
+    const mb = estimateModelSizeMb(params, quant);
+    weightsGb = mb / 1024;
   }
-  const billions = parseParamsBillions(model.modelId);
-  if (billions == null) return null;
-  const params = billions * 1e9;
-  const quant = quantFromTags(model.tags);
-  const mb = estimateModelSizeMb(params, quant);
-  return mb / 1024;
+  // Runtime overhead: KV cache, activations, framework/CUDA context.
+  return weightsGb * 1.25;
 }
 
 export function recommendedNeedGb(rec: ModelRecommendation): number | null {

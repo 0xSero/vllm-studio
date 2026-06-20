@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Layers, Settings } from "lucide-react";
+import { Boxes, Layers, Settings } from "@/ui/icon-registry";
 import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import {

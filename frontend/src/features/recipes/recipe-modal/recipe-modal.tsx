@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { RefreshCw, Save } from "lucide-react";
+import { RefreshCw, Save } from "@/ui/icon-registry";
 import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem } from "@/ui";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import api from "@/lib/api/client";

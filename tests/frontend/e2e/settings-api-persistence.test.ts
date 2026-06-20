@@ -15,7 +15,7 @@ process.env.VLLM_STUDIO_DATA_DIR = dataDir;
 writeFileSync(path.join(dataDir, "api-settings.json"), "{}", "utf-8");
 
 async function loadApiSettings() {
-  return import("@/lib/api/api-settings");
+  return import("@/lib/services/settings-service");
 }
 
 async function loadVoiceTarget() {

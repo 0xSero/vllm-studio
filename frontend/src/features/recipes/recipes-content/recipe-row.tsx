@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, type MouseEvent } from "react";
-import { MoreVertical, Play, Square } from "lucide-react";
+import { MoreVertical, Play, Square } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
 import {
   ModelButton,
@@ -82,6 +82,8 @@ export const RecipeRow = memo(function RecipeRow({
   const engine = formatBackendLabel(recipe.backend);
   const engineStyle = engineNodeStyle(recipe.backend);
   const launchTitle = launchDisabledReason ?? "Launch recipe";
+  const parallelism = `tp/pp ${tp}/${pp}`;
+  const quant = recipe.quantization?.trim();
 
   return (
     <ModelRow
@@ -95,7 +97,12 @@ export const RecipeRow = memo(function RecipeRow({
           >
             {engine}
           </span>
-          <ModelValue mono>{`${recipe.model_path} · tp/pp ${tp}/${pp}`}</ModelValue>
+          <ModelValue mono>{parallelism}</ModelValue>
+          {quant ? (
+            <span className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)">
+              {quant}
+            </span>
+          ) : null}
         </div>
       }
       status={<ModelStatus tone={statusTone(status)}>{status}</ModelStatus>}

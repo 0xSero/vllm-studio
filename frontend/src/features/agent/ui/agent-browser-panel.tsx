@@ -12,7 +12,7 @@ import {
   Plus,
   TerminalSquare,
   type LucideIcon,
-} from "lucide-react";
+} from "@/ui/icon-registry";
 import { CloseIcon } from "@/ui/icons";
 import {
   clearPersistentTerminalOwners,

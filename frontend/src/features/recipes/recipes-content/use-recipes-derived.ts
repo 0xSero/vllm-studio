@@ -44,7 +44,9 @@ export function useRecipesDerived({
     return recipes.filter((recipe) => {
       return (
         recipe.name.toLowerCase().includes(filterLower) ||
-        recipe.model_path.toLowerCase().includes(filterLower)
+        recipe.model_path.toLowerCase().includes(filterLower) ||
+        (recipe.served_model_name?.toLowerCase().includes(filterLower) ?? false) ||
+        recipe.backend.toLowerCase().includes(filterLower)
       );
     });
   }, [filterLower, recipes]);

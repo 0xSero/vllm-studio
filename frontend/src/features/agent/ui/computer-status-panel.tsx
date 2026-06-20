@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { Code2, Loader2 } from "lucide-react";
+import { Code2, Loader2 } from "@/ui/icon-registry";
 import { formatTokenCount } from "@/features/agent/messages";
 import { useTools } from "@/features/agent/tools/context";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";

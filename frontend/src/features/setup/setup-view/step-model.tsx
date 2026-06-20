@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, DownloadCloud } from "lucide-react";
+import { ChevronLeft, DownloadCloud } from "@/ui/icon-registry";
 import { Button, Card, Input } from "@/ui";
 import type { ModelRecommendation } from "@/lib/types";
 

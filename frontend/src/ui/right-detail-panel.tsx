@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { X } from "@/ui/icon-registry";
 import { Button } from "./button";
 import { cx } from "./utils";
 
