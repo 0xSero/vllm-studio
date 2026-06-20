@@ -17,6 +17,7 @@ import type {
   ThinkingBlock,
   ToolBlock,
 } from "@/features/agent/messages";
+import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
@@ -401,7 +402,14 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments: ActivitySegment[];
   live: boolean;
 }) {
-  const items = useMemo(() => buildActivityItems(segments), [segments]);
+  // Global "show reasoning" preference: when off, drop reasoning segments so the
+  // group shows tools only (and disappears entirely for thinking-only turns).
+  const showReasoning = useReasoningVisible();
+  const visibleSegments = useMemo(
+    () => (showReasoning ? segments : segments.filter((segment) => segment.kind !== "reasoning")),
+    [segments, showReasoning],
+  );
+  const items = useMemo(() => buildActivityItems(visibleSegments), [visibleSegments]);
   // Auto-expand while the turn is streaming so reasoning (and live tool activity)
   // is visible as it happens; once the turn settles it collapses to the
   // "Worked for…" summary. A manual toggle sticks for the rest of the turn.
@@ -409,12 +417,16 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   const expanded = userExpanded ?? live;
   const working =
     live &&
-    segments.some(
+    visibleSegments.some(
       (segment) =>
         segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
     );
-  const summary = useMemo(() => summarizeActivity(segments), [segments]);
-  const preview = live ? activityPreview(segments) : null;
+  const summary = useMemo(() => summarizeActivity(visibleSegments), [visibleSegments]);
+  const preview = live ? activityPreview(visibleSegments) : null;
+
+  // Reasoning hidden + nothing else to show → render nothing. The turn's
+  // "Working for…"/"Worked for…" divider still signals that the model worked.
+  if (items.length === 0) return null;
 
   return (
     <details className="group min-w-0" open={expanded}>

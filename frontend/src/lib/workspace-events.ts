@@ -8,6 +8,13 @@ export const ADD_PROJECT_EVENT = "vllm-studio.agent.addProject";
 export const SESSION_PREFS_CHANGED_EVENT = "vllm-studio.agent.sessionPrefs.changed";
 
 /**
+ * Fired when the global "show model reasoning" preference toggles. The timeline
+ * subscribes (via `useReasoningVisible`) so every open pane re-renders to show
+ * or hide the "Thinking"/"Thought" disclosures immediately.
+ */
+export const REASONING_VISIBILITY_CHANGED_EVENT = "vllm-studio.agent.reasoningVisibility.changed";
+
+/**
  * Fired once by `ProjectsProvider` when its first project load completes (or
  * fails). The workspace listens for this to hydrate persisted active-session
  * snapshots — we wait until we know which projects are still installed so we

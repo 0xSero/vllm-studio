@@ -3,6 +3,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
+import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
+import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 
@@ -43,6 +45,7 @@ export function AgentChatPaneHeader({
   const [draftTitle, setDraftTitle] = useState(title);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
+  const reasoningVisible = useReasoningVisible();
   // When the left sidebar is collapsed, the fixed "expand sidebar" button sits
   // over the top-left corner. Pad the header so the title never renders under it.
   const sidebarCollapsed = useAppStore((s) => !s.desktopSidebarPinnedOpen);
@@ -133,6 +136,14 @@ export function AgentChatPaneHeader({
               }}
             >
               Export as Markdown
+            </HeaderMenuItem>
+            <HeaderMenuItem
+              onClick={() => {
+                setReasoningVisible(!reasoningVisible);
+                setOpen(false);
+              }}
+            >
+              {reasoningVisible ? "Hide reasoning" : "Show reasoning"}
             </HeaderMenuItem>
           </div>
         ) : null}
