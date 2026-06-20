@@ -7,7 +7,11 @@ import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { safeJson } from "@/features/agent/safe-json";
 
-import type { ActiveSession, AggregatedSession } from "@/features/agent/session-contracts";
+import {
+  type ActiveSession,
+  type AggregatedSession,
+  indexActiveByPiId,
+} from "@/features/agent/session-contracts";
 
 type Props = {
   open: boolean;
@@ -140,13 +144,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
 
   // Index active sessions by piSessionId so we can mark stored sessions that
   // are currently running in a pane.
-  const activeByPiId = useMemo(() => {
-    const map = new Map<string, ActiveSession>();
-    for (const session of activeSessions) {
-      if (session.piSessionId) map.set(session.piSessionId, session);
-    }
-    return map;
-  }, [activeSessions]);
+  const activeByPiId = useMemo(() => indexActiveByPiId(activeSessions), [activeSessions]);
 
   // Active sessions that aren't yet persisted to disk (no piSessionId yet, or
   // running tabs we want to surface ahead of stored history).

@@ -29,3 +29,18 @@ export type ActiveSession = {
 
 /** Sort fields for the sessions table (distinct from the usage-table SortField). */
 export type SessionSortField = "updatedAt" | "turnCount" | "projectName";
+
+/**
+ * Index active (in-pane) sessions by their pi session id, so a stored session
+ * can be matched to one currently running in a pane. Sessions without a
+ * piSessionId yet are skipped.
+ */
+export function indexActiveByPiId(
+  activeSessions: readonly ActiveSession[],
+): Map<string, ActiveSession> {
+  const map = new Map<string, ActiveSession>();
+  for (const session of activeSessions) {
+    if (session.piSessionId) map.set(session.piSessionId, session);
+  }
+  return map;
+}

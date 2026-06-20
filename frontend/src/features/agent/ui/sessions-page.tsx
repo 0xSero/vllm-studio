@@ -10,10 +10,11 @@ import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 // Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
 // Re-export shared session contracts for the local module surface.
-import type {
-  ActiveSession,
-  AggregatedSession,
-  SessionSortField,
+import {
+  type ActiveSession,
+  type AggregatedSession,
+  type SessionSortField,
+  indexActiveByPiId,
 } from "@/features/agent/session-contracts";
 
 type StatusFilter = "all" | "running" | "idle";
@@ -75,13 +76,7 @@ export default function AgentSessionsPage() {
   useSyncExternalStore(subscribeSessionRows, getAgentSessionsSnapshot, getAgentSessionsSnapshot);
   useSyncExternalStore(subscribeActiveSessions, getAgentSessionsSnapshot, getAgentSessionsSnapshot);
 
-  const activeByPiId = useMemo(() => {
-    const map = new Map<string, ActiveSession>();
-    for (const session of activeSessions) {
-      if (session.piSessionId) map.set(session.piSessionId, session);
-    }
-    return map;
-  }, [activeSessions]);
+  const activeByPiId = useMemo(() => indexActiveByPiId(activeSessions), [activeSessions]);
 
   const projects = useMemo(() => {
     const seen = new Map<string, string>();
