@@ -7,6 +7,7 @@ import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } fro
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
 import type { SessionPref } from "@/features/agent/messages/prefs";
+import { hrefWithOpenNonce, navigateToSessionHref } from "./helpers";
 
 const SESSION_MENU_CLASS =
   "absolute right-0 top-5 isolate z-[999] min-w-[150px] rounded-md border border-(--color-card-border) bg-(--color-popover) p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.45)]";
