@@ -105,6 +105,11 @@ Observed (unreported, not fixed): composer with a non-loaded model → raw "503 
 ### ✅ Controller DEPLOYED 2026-06-19 (pop-os Tailscale re-auth'd)
 `./scripts/deploy-remote.sh controller` shipped all 4 fixes: `fd118a6c` newlines, `a798ebd0` tag-leak, `dd0b19a1` 503-shape, `8d3d7951` launch-stderr. **glm-5.2 survived the restart** (controller restart only kills the :8080 bun process, not the :8000 vLLM). Verified live: non-loaded model → OpenAI-shaped 503 with a real message; glm-5.2 → 200.
 
+### Refactor-cleanup pass (2026-06-20)
+Goal: tighten the repo toward pi-grade cleanliness. **Finding: it's already clean** — `knip` reports zero dead code (only the user's in-flight `text-delta-coalescer.ts` WIP), `jscpd` reports 0.12% duplication (5 clones / 92 lines), and the 5 clones are either intentional declarative config (engine-capabilities), CSS tokens, or the user's coalescer WIP. There is no "few k lines" of fat to cut without inventing churn, so this pass converts findings into regression coverage instead.
+- `fac2fb9a` fix(projects-nav): **latent missing import found + fixed.** `session-nav-row.tsx` called `navigateToSessionHref`/`hrefWithOpenNonce` (extracted to `./helpers` earlier) without importing them — the import was lost in a partial commit (same shape as `a9526694`). Added the import; full tree typechecks. +`navigate-to-session.test.ts` (6 cases) pinning the `b59040c3` soft-push→verify→hard-nav fallback + `hrefWithOpenNonce` query handling. Gate green; e2e 192/192.
+- ⚠️ Working tree carries the user's two in-flight refactors (frontend service-refactor *completion*: `mcp/api.ts`/`api-settings.ts` deletions + consumer repointing; controller engine-spec extraction `arg-utils.ts`/`engine-spec.ts`/`specs/*` written 03:33–04:05). NOT committed by this pass — every commit is staged surgically by path.
+
 ### Still owed
 - (controller fixes deployed — see above)
 - Deferred high-risk: side-chat-via-navbar streaming (local-useState session never enters workspace store → controller never subscribes — needs a product decision); reload-mid-stream resume (Next standalone buffers local SSE).
