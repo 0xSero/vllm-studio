@@ -7,8 +7,8 @@ import type { ChatMessage, QueuedMessage, TokenStats } from "@/features/agent/me
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { RuntimeContextUsage } from "@/features/agent/runtime/api";
 
-export type AgentSessionId = string;
-export type { AgentSessionId as SessionId };
+// The session identity string — the same value a pane stores as `sessionId`.
+export type SessionId = string;
 
 export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done" | string;
 
@@ -18,7 +18,7 @@ export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done"
  * subsystem (`useTools().selectionFor(id)`) keyed by the session id below.
  */
 export type Session = {
-  id: AgentSessionId;
+  id: SessionId;
   runtimeSessionId: string;
   piSessionId: string | null;
   projectId?: string;
@@ -38,10 +38,7 @@ export type Session = {
   queue?: QueuedMessage[];
 };
 
-export type SessionsMap = ReadonlyMap<AgentSessionId, Session>;
+export type SessionsMap = ReadonlyMap<SessionId, Session>;
 
 /** Callback used by the runtime engine to commit a patch to a session. */
-export type UpdateSession = (
-  sessionId: AgentSessionId,
-  patch: (session: Session) => Session,
-) => void;
+export type UpdateSession = (sessionId: SessionId, patch: (session: Session) => Session) => void;
