@@ -93,6 +93,10 @@ Observed (unreported, not fixed): composer with a non-loaded model → raw "503 
 - `1e5c2aff` feat(chat): export conversation as Markdown — "Export as Markdown" in the session header menu; pure `sessionToMarkdown()` serializer (title + You/Assistant turns, assistant answers from text blocks, reasoning/tool/system noise dropped) + slugified filename, downloaded via Blob. +4 unit tests. Verified: downloaded file has title + You/Assistant + table data, reasoning excluded, filename `make-a-markdown-table-of-5-programming-languages.md`.
 - **Also verified (no fix needed):** the user's #1 reported bug — markdown tables — renders correctly on REPLAY (reopen a settled session → table intact, not mangled); load-old-session loads full canonical history.
 
+### Perf/size pass + real bug found (2026-06-19)
+- **Profile** ([docs/frontend-perf-size.md](docs/frontend-perf-size.md)): bundle already well-optimized (xterm lazy, highlight.js core+12-langs); Effect-TS (~244K) is the only big eager lever — removable only by de-Effect-ifying the runtime (poor risk/reward for a local desktop app; not done). Route switches 6–17ms; zero app-origin console errors.
+- `d099750e` + `13e5f4b5` fix(workspace): **"No models" stuck-empty picker** — REAL bug found live (API returned 57 models while the picker showed "No models"; required a manual reload). Models loaded once on hydrate with no retry, so a startup proxy/controller race (`[PROXY ERROR] /status fetch failed`) stranded the picker empty → can't pick a model → can't chat. Fix: bounded startup retry (0.9s/2.5s/6s, gated on empty + not-loading) + focus/online recovery. **Verified live: fresh open "No models"→auto-heals to glm-5.2 by ~8s with no user action.**
+
 ### Still owed
 - Deploy the **3** controller fixes (`scripts/deploy-remote.sh controller` — restarts model): `fd118a6c` newlines + `a798ebd0` tag leak + `dd0b19a1` 503-shape.
 - Deferred high-risk: side-chat-via-navbar streaming (local-useState session never enters workspace store → controller never subscribes — needs a product decision); reload-mid-stream resume (Next standalone buffers local SSE).
