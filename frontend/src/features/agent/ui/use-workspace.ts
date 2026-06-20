@@ -291,10 +291,17 @@ export function useWorkspace(): UseWorkspaceResult {
       const recoverIfEmpty = () => {
         if (stateRef.current.models.length === 0 && !stateRef.current.modelsLoading) reload();
       };
+      // The initial hydrate load can lose the startup race with the embedded
+      // proxy / controller coming up (a transient "fetch failed"), leaving the
+      // list empty with no focus event to recover it (the window is already
+      // focused on first paint). Retry a few times, backing off, until the list
+      // populates — then the timers no-op.
+      const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
       window.addEventListener("storage", onStorage);
       window.addEventListener("focus", recoverIfEmpty);
       window.addEventListener("online", recoverIfEmpty);
       return () => {
+        for (const t of retryTimers) window.clearTimeout(t);
         window.removeEventListener("storage", onStorage);
         window.removeEventListener("focus", recoverIfEmpty);
         window.removeEventListener("online", recoverIfEmpty);
