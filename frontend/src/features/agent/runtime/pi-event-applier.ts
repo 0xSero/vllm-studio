@@ -377,8 +377,39 @@ function reconcileFinalAssistantMessage(
   if (!assistantHasGeneratedBlocks(existingBlocks)) {
     return { ...current, text, blocks: incomingBlocks };
   }
-  if (!finalMessageCoversExistingBlocks(existingBlocks, incomingBlocks)) return current;
-  return { ...current, text, blocks: mergeExistingToolState(existingBlocks, incomingBlocks) };
+  if (finalMessageCoversExistingBlocks(existingBlocks, incomingBlocks)) {
+    return { ...current, text, blocks: mergeExistingToolState(existingBlocks, incomingBlocks) };
+  }
+  // A tool-free settled message that does NOT "cover" the bubble is the model's
+  // closing summary arriving as its own LLM call after a tool-heavy turn (some
+  // backends emit it as a bare `message`, not a streamed snapshot). Replacing
+  // the bubble would drop the accumulated tool blocks; rejecting it — as this
+  // used to — drops the summary, so the turn renders a trailing tool call and
+  // no final words. Append the unseen text/thinking instead, tools untouched.
+  if (incomingBlocks.some((block) => block.kind === "tool")) return current;
+  const appended = appendUnseenTextBlocks(existingBlocks, incomingBlocks);
+  return appended === existingBlocks
+    ? current
+    : { ...current, blocks: appended, text: messageTextFromBlocks(appended) };
+}
+
+function appendUnseenTextBlocks(
+  existingBlocks: AssistantBlock[],
+  incomingBlocks: AssistantBlock[],
+): AssistantBlock[] {
+  const shown = existingBlocks
+    .filter((block) => block.kind === "text" || block.kind === "thinking")
+    .map((block) => block.text.trim())
+    .filter(Boolean);
+  const alreadyShown = (value: string) =>
+    shown.some((existing) => existing === value || existing.includes(value));
+  const additions = incomingBlocks.filter(
+    (block) =>
+      (block.kind === "text" || block.kind === "thinking") &&
+      isMeaningfulAssistantText(block.text) &&
+      !alreadyShown(block.text.trim()),
+  );
+  return additions.length ? [...existingBlocks, ...additions] : existingBlocks;
 }
 
 function finalMessageCoversExistingBlocks(

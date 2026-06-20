@@ -27,6 +27,11 @@ import {
 } from "@/features/agent/models";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
 import { runtimeStatusLooksActive, visibleUserTextFromPi } from "@/features/agent/messages/helpers";
+import {
+  reduceSessionEvent,
+  type SessionStreamContext,
+} from "@/features/agent/runtime/pi-event-applier";
+import type { Session } from "@/features/agent/runtime/types";
 import { blocksFromTurnSnapshots } from "@/features/agent/messages/message-content";
 import { replaySessionEvents } from "@/features/agent/messages/replay";
 import { drainQueueAfterAgentEnd } from "@/features/agent/messages/helpers";
@@ -2170,4 +2175,87 @@ test("visibleUserTextFromPi strips a leading browser_context block", () => {
     visibleUserTextFromPi("explain <browser_context> as a concept"),
     "explain <browser_context> as a concept",
   );
+});
+
+// Regression: a tool-heavy turn ends with the model's closing summary arriving
+// as its own tool-free settled `message`. The bubble already holds tool blocks,
+// so the old reconcile rejected the summary wholesale (to avoid clobbering the
+// tools) — the turn rendered a trailing tool call and NO final words. Confirmed
+// against a real session log (cerebras/kimi): the 435-char final message was
+// persisted but never shown. The summary must now be appended, tools intact.
+test("a tool-free final settled message appends its summary instead of being dropped", () => {
+  const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
+  let session: Session = {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "t",
+    messages: [
+      { id: "u1", role: "user", text: "build it", timestamp: "" },
+      { id: "a1", role: "assistant", text: "", blocks: [], timestamp: "" },
+    ],
+    status: "running",
+    error: "",
+    input: "",
+    activeAssistantId: "a1",
+  };
+  const ev = (event: Record<string, unknown>) => {
+    session = reduceSessionEvent(session, ctx, "a1", event);
+  };
+
+  // A tool call settles into the bubble, then its result.
+  ev({
+    type: "message",
+    message: {
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [
+        { type: "thinking", thinking: "editing" },
+        { type: "toolCall", id: "tc1", name: "edit_file", arguments: {} },
+      ],
+    },
+  });
+  ev({
+    type: "message",
+    message: { role: "toolResult", toolCallId: "tc1", toolName: "edit_file", content: [{ type: "text", text: "ok" }] },
+  });
+  // The closing summary arrives as its own tool-free settled message.
+  ev({
+    type: "message",
+    message: {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "thinking", thinking: "wrapping up" },
+        { type: "text", text: "All set — the canvas renders cleanly." },
+      ],
+    },
+  });
+
+  const bubble = session.messages.find((m) => m.id === "a1");
+  const blocks = bubble?.blocks ?? [];
+  assert.ok(
+    blocks.some((b) => b.kind === "tool" && b.id === "tc1"),
+    "tool block preserved",
+  );
+  assert.ok(
+    blocks.some((b) => b.kind === "text" && b.text.includes("canvas renders cleanly")),
+    "final summary text rendered",
+  );
+
+  // Idempotent: re-delivering the same settled message (reconnect/replay) does
+  // not duplicate the summary.
+  const before = bubble?.blocks?.length ?? 0;
+  ev({
+    type: "message",
+    message: {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "thinking", thinking: "wrapping up" },
+        { type: "text", text: "All set — the canvas renders cleanly." },
+      ],
+    },
+  });
+  assert.equal(session.messages.find((m) => m.id === "a1")?.blocks?.length ?? 0, before);
 });
