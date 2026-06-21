@@ -66,13 +66,16 @@ export function reduceSessionEvent(
   if (afterSnapshot) return afterSnapshot;
 
   // Turn finished: settle any still-"running" tool badges and drop the
-  // transient per-call snapshots.
+  // transient per-call snapshots. Also un-dim any steer bubble still marked
+  // pending — once the turn is over there is no further echo coming, so a
+  // delivered-or-not steer must read as normal rather than stuck dimmed.
   if (isAgentEndEvent(event)) {
-    return patchAssistantMessage(next, targetId, (msg) => ({
+    const settled = patchAssistantMessage(next, targetId, (msg) => ({
       ...msg,
       blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
       streamCalls: undefined,
     }));
+    return clearPendingUserMessages(settled);
   }
 
   const afterFinalMessage = reduceFinalAssistantMessageEvent(next, targetId, event);
@@ -289,6 +292,28 @@ function reduceUserMessageEvent(
   const text = visibleUserTextFromPi(messageText(msg.content));
   if (!text) return session;
   const queue = removeDeliveredQueuedMessage(session.queue ?? [], text);
+
+  // This echo is Pi showing a steer message to the model. If the UI already
+  // dropped it into the transcript optimistically (dimmed), clear `pending` so
+  // it brightens to normal, and open the assistant bubble for the steered reply
+  // — same as a freshly echoed mid-stream message, just without duplicating it.
+  const pending = findPendingUserMessage(session.messages, text);
+  if (pending) {
+    const nextAssistantId = newId("assistant");
+    ctx.liveAssistantIds.set(session.id, nextAssistantId);
+    return {
+      ...session,
+      queue,
+      activeAssistantId: nextAssistantId,
+      messages: [
+        ...session.messages.map((message) =>
+          message.id === pending.id ? { ...message, pending: false } : message,
+        ),
+        { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
+      ],
+    };
+  }
+
   if (hasMatchingLastUserMessage(session.messages, text)) {
     return { ...session, queue };
   }
@@ -305,6 +330,28 @@ function reduceUserMessageEvent(
       { id: newId("user"), role: "user", text, timestamp: nowLabel() },
       { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
     ],
+  };
+}
+
+// The optimistic steer bubble awaiting its runtime echo: a still-pending user
+// message whose text matches what Pi just delivered to the model.
+function findPendingUserMessage(messages: ChatMessage[], text: string): ChatMessage | undefined {
+  const target = text.trim();
+  return [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "user" && message.pending === true && message.text.trim() === target,
+    );
+}
+
+function clearPendingUserMessages(session: Session): Session {
+  if (!session.messages.some((message) => message.pending)) return session;
+  return {
+    ...session,
+    messages: session.messages.map((message) =>
+      message.pending ? { ...message, pending: false } : message,
+    ),
   };
 }
 

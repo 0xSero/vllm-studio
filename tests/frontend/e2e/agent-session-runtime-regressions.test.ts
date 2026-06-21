@@ -2259,3 +2259,69 @@ test("a tool-free final settled message appends its summary instead of being dro
   });
   assert.equal(session.messages.find((m) => m.id === "a1")?.blocks?.length ?? 0, before);
 });
+
+// Steer UX: the message is dropped into the transcript dimmed (pending) the
+// instant it's sent; when Pi echoes it (the model is now seeing it) the dim
+// clears and the steered reply opens its own bubble — without duplicating the
+// user message.
+test("a steer echo clears the optimistic pending bubble and opens the reply bubble", () => {
+  const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
+  let session: Session = {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "t",
+    messages: [
+      { id: "u1", role: "user", text: "do a thing", timestamp: "" },
+      { id: "a1", role: "assistant", text: "", blocks: [], timestamp: "" },
+      { id: "steer1", role: "user", text: "actually, do it differently", pending: true, timestamp: "" },
+    ],
+    status: "running",
+    error: "",
+    input: "",
+    activeAssistantId: "a1",
+  };
+
+  session = reduceSessionEvent(session, ctx, "a1", {
+    type: "message_start",
+    message: { role: "user", content: [{ type: "text", text: "actually, do it differently" }] },
+  });
+
+  assert.equal(
+    session.messages.find((m) => m.id === "steer1")?.pending,
+    false,
+    "pending dim cleared",
+  );
+  // No duplicate user bubble for the steered text.
+  assert.equal(
+    session.messages.filter((m) => m.role === "user" && m.text === "actually, do it differently")
+      .length,
+    1,
+  );
+  // A fresh assistant bubble opened for the reply and became the live target.
+  const lastAssistant = [...session.messages].reverse().find((m) => m.role === "assistant");
+  assert.ok(lastAssistant && lastAssistant.id !== "a1", "new reply bubble opened");
+  assert.equal(session.activeAssistantId, lastAssistant!.id);
+  assert.equal(ctx.liveAssistantIds.get("s-1"), lastAssistant!.id);
+});
+
+test("agent_end un-dims a steer that was never echoed", () => {
+  const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
+  let session: Session = {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "t",
+    messages: [
+      { id: "a1", role: "assistant", text: "", blocks: [], timestamp: "" },
+      { id: "steer1", role: "user", text: "late steer", pending: true, timestamp: "" },
+    ],
+    status: "running",
+    error: "",
+    input: "",
+    activeAssistantId: "a1",
+  };
+
+  session = reduceSessionEvent(session, ctx, "a1", { type: "agent_end" });
+  assert.equal(session.messages.find((m) => m.id === "steer1")?.pending, false);
+});

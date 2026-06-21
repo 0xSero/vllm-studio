@@ -46,6 +46,7 @@ import {
   EventBlock,
   isPlaceholderSessionTitle,
   newId,
+  nowLabel,
   QueuedMessage,
   runtimeStatusLooksActive,
   SessionTab,
@@ -931,6 +932,10 @@ function useChatPaneSendFlow({
       cwdHint?: string,
     ) => {
       const queuedId = newId("queue");
+      // A steer lands in the transcript immediately, dimmed, so the user sees it
+      // the moment they send it; the runtime echo clears `pending` once Pi shows
+      // it to the model. (Follow-ups keep their own queue-chip affordance.)
+      const pendingSteerId = mode === "steer" ? newId("user") : null;
       updateTab(tab.id, (t) => ({
         ...t,
         ...(cwdHint ? { cwd: t.cwd || cwdHint } : {}),
@@ -940,12 +945,24 @@ function useChatPaneSendFlow({
           mode === "follow_up"
             ? [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }]
             : t.queue,
+        messages: pendingSteerId
+          ? [
+              ...t.messages,
+              { id: pendingSteerId, role: "user", text, pending: true, timestamp: nowLabel() },
+            ]
+          : t.messages,
       }));
       resetComposerHeight();
       const result = await engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId);
       updateTab(tab.id, (t) => ({
         ...t,
         queue: result.ok ? t.queue : (t.queue ?? []).filter((item) => item.id !== queuedId),
+        // A rejected steer never reaches the model — drop its optimistic bubble
+        // and hand the text back to the composer.
+        messages:
+          !result.ok && pendingSteerId
+            ? t.messages.filter((message) => message.id !== pendingSteerId)
+            : t.messages,
         ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
       }));
     },

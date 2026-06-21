@@ -619,9 +619,13 @@ function UserMessage({ message }: { message: ChatMessage }) {
   // A quiet foreground-tinted block sized to its content, capped by the same
   // composer-width column and anchored to its right edge. A copy button reveals
   // on hover to the left of the bubble, mirroring the assistant's copy action.
+  // A steer message shows dimmed the instant it's sent and brightens once the
+  // runtime echoes it (the model is now seeing it). The transition makes that
+  // hand-off read as "delivered" rather than a sudden pop-in.
+  const pending = message.pending === true;
   return (
     <article className="group flex items-start justify-end gap-1">
-      {message.text.trim() ? (
+      {message.text.trim() && !pending ? (
         <div className="mt-1 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <AssistantActionButton
             label={copied ? "Copied" : "Copy message"}
@@ -631,7 +635,9 @@ function UserMessage({ message }: { message: ChatMessage }) {
           </AssistantActionButton>
         </div>
       ) : null}
-      <div className="min-w-0 max-w-full rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90">
+      <div
+        className={`min-w-0 max-w-full rounded-2xl bg-(--fg)/5 px-4 py-2.5 text-[length:var(--codex-chat-font-size)] leading-[1.625] text-(--fg)/90 transition-opacity duration-500 ${pending ? "opacity-45" : "opacity-100"}`}
+      >
         <div className="whitespace-pre-wrap break-words">{message.text}</div>
         {message.attachments?.length ? (
           <div className="mt-2 grid gap-2">
