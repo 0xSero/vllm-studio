@@ -80,12 +80,16 @@ export type SessionRuntimeController = {
    */
   reconcile(sessions: readonly Session[]): void;
   /**
-   * A `/turn` command was accepted: Pi's per-runtime event seq restarts, so
-   * reset the cursor to 0, drop any pending deltas from the previous epoch,
-   * and persist the reset. The deliberate backwards move — without it the
-   * gate silently drops the entire next turn.
+   * A `/turn` command was accepted. Pi's per-runtime event seq restarts ONLY
+   * when the runtime itself restarts (piSessionId adoption on the second turn,
+   * or a post-compaction/session swap) — `runtimeEventSeq` is the runtime's
+   * current seq from the accept response. Rewind the gate to 0 only when that
+   * seq sits below what we've already received (a genuine restart); otherwise
+   * keep the cursor where it is. Rewinding on every steady-state turn would make
+   * the next SSE reconnect re-apply the entire accumulated event log and
+   * duplicate every prior turn — the 502-retry-storm message explosion.
    */
-  noteTurnAccepted(sessionId: SessionId, assistantId?: string): void;
+  noteTurnAccepted(sessionId: SessionId, assistantId?: string, runtimeEventSeq?: number): void;
   /**
    * loadAndReplay hydrated the transcript from canonical + runtime logs up to
    * `committedSeq` (undefined when the runtime is idle): reattach from there
@@ -569,9 +573,18 @@ export function createSessionRuntimeController(
       stopPoll();
       binding = null;
     },
-    noteTurnAccepted: (sessionId, assistantId) => {
+    noteTurnAccepted: (sessionId, assistantId, runtimeEventSeq) => {
       turnAcceptedAt.set(sessionId, Date.now());
-      adoptCursor(sessionId, 0);
+      // Rewind the gate to 0 only on a genuine runtime restart — when the
+      // runtime's reported seq is now below what we've already received. On a
+      // steady-state turn the seq keeps climbing, so an unconditional rewind
+      // would make the next reconnect re-apply the whole accumulated log (the
+      // 502-retry-storm duplication). A missing seq falls back to the old
+      // always-rewind behavior to preserve the dropped-second-turn guarantee.
+      const received = (cursors.get(sessionId) ?? adoptExternalCursor(undefined)).receivedSeq ?? 0;
+      if (runtimeEventSeq === undefined || runtimeEventSeq < received) {
+        adoptCursor(sessionId, 0);
+      }
       // A new turn's authoritative bubble is its optimistic activeAssistantId;
       // discard any stale mid-stream redirect left over from a prior turn that
       // settled without an agent_end (e.g. idled by the runtime poll).

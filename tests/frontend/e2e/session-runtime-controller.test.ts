@@ -561,6 +561,33 @@ test("noteTurnAccepted resets the cursor, drops stale pending deltas, and persis
   harness.close();
 });
 
+test("a steady-state turn accept keeps the cursor so a storm reconnect can't re-apply the backlog", () => {
+  const harness = createControllerHarness({ lastEventSeq: 5 });
+
+  // The running turn streams an answer at seq 6.
+  harness.emit({ type: "pi", seq: 6, event: partialDeltaEvent("answer", "answer") });
+  harness.frames.runAll();
+  assert.equal(harness.session().lastEventSeq, 6);
+
+  // The next turn is accepted while the runtime's seq keeps CLIMBING (>= what we
+  // have received) — a continuation, not a restart. The cursor must NOT rewind.
+  harness.controller.noteTurnAccepted("s-1", undefined, 6);
+  assert.equal(harness.session().lastEventSeq, 6);
+
+  // A 502-storm reconnect replays the backlog: re-delivering the already-applied
+  // seq 6 must be dropped by the gate, not re-appended as a duplicate.
+  harness.order.length = 0;
+  harness.emit({ type: "pi", seq: 6, event: partialDeltaEvent("answer", "answer") });
+  harness.frames.runAll();
+  assert.deepEqual(harness.order, []);
+
+  // A genuine restart (runtime seq now BELOW what we received) still rewinds so
+  // the restarted turn's low seqs are accepted again.
+  harness.controller.noteTurnAccepted("s-1", undefined, 0);
+  assert.equal(harness.session().lastEventSeq, 0);
+  harness.close();
+});
+
 test("agent_end lands tool finalization, idle status, and cursor in one commit", () => {
   const harness = createControllerHarness();
   const commits: Session[] = [];
