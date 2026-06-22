@@ -1,4 +1,4 @@
-import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
+import { sanitizeBrowserPaneUrl } from "@/features/agent/sanitize-embedded-browser-url";
 
 const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
 
@@ -72,8 +72,13 @@ export async function runBrowserPanelCommand(
   const iframe = deps.browser?.iframe ?? null;
   if (!iframe && verb === "get-url") return { ok: true, data: { url: deps.currentUrl, title: "" } };
   if (!iframe && verb === "navigate") {
-    const url = sanitizePublicBrowserUrl(String(payload.url || ""));
-    if (!url) return { ok: false, error: "valid public http(s) url required" };
+    const url = sanitizeBrowserPaneUrl(String(payload.url || ""));
+    if (!url)
+      return {
+        ok: false,
+        error:
+          "valid http(s) url required (localhost dev servers allowed; other private hosts are not)",
+      };
     deps.setBrowserUrl(url, url);
     return { ok: true, data: { url, pending: true } };
   }
@@ -128,8 +133,13 @@ async function navigateWebview(
   payload: Record<string, unknown>,
   setBrowserUrl: BrowserCommandDeps["setBrowserUrl"],
 ): Promise<BrowserCommandResult> {
-  const url = sanitizePublicBrowserUrl(String(payload.url || ""));
-  if (!url) return { ok: false, error: "valid public http(s) url required" };
+  const url = sanitizeBrowserPaneUrl(String(payload.url || ""));
+  if (!url)
+    return {
+      ok: false,
+      error:
+        "valid http(s) url required (localhost dev servers allowed; other private hosts are not)",
+    };
   await withBrowserTimeout(webview.loadURL(url), "Browser navigation");
   setBrowserUrl(url, url);
   return { ok: true, data: { url } };
@@ -216,8 +226,13 @@ function runIframeCommand(
 ): BrowserCommandResult {
   switch (verb) {
     case "navigate": {
-      const url = sanitizePublicBrowserUrl(String(payload.url || ""));
-      if (!url) return { ok: false, error: "valid public http(s) url required" };
+      const url = sanitizeBrowserPaneUrl(String(payload.url || ""));
+      if (!url)
+        return {
+          ok: false,
+          error:
+            "valid http(s) url required (localhost dev servers allowed; other private hosts are not)",
+        };
       iframe.src = url;
       setBrowserUrl(url, url);
       return { ok: true, data: { url } };

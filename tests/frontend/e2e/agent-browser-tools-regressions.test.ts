@@ -49,6 +49,25 @@ test("browser navigate primes the URL while the browser surface is mounting", as
   assert.equal((result.data as { pending?: boolean }).pending, true);
 });
 
+test("browser navigate opens the agent's own localhost dev servers but not the LAN", async () => {
+  const navigate = (url: string) =>
+    runBrowserPanelCommand(
+      "navigate",
+      { url },
+      { browser: null, currentUrl: "", isElectron: true, setBrowserUrl: () => undefined },
+    );
+
+  // The pane exists to preview dev servers the agent just started — loopback
+  // must work, or "build the app and open it" is dead on arrival.
+  assert.equal((await navigate("http://localhost:8765/index.html")).ok, true);
+  assert.equal((await navigate("http://127.0.0.1:3005")).ok, true);
+
+  // Other private/LAN hosts stay blocked — the agent drives this browser; don't
+  // hand it the local network.
+  assert.equal((await navigate("http://192.168.1.50:8080")).ok, false);
+  assert.equal((await navigate("http://10.0.0.5")).ok, false);
+});
+
 test("free-text browser searches avoid Google webview refresh loops", () => {
   assert.equal(
     normalizeBrowserInput("latest vllm docs", "/workspace/project"),
