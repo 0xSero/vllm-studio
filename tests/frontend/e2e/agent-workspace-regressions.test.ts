@@ -19,6 +19,7 @@ import {
 import type { WorkspaceState } from "@/features/agent/workspace/types";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
 import { createSessionReplayQueue } from "@/features/agent/workspace/replay-queue";
+import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 import type { Session } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
 
@@ -687,4 +688,48 @@ test("a replay queued for a pane that never mounts stays inert", () => {
   // No handle ever registers: nothing fires, nothing retries, nothing throws.
   assert.deepEqual(harness.replays, []);
   assert.equal(harness.timers.length, 1);
+});
+
+// ----- crash-recovery transcript cache (settle-time write) -----
+
+test("a settled turn writes its transcript to the crash-recovery cache", () => {
+  const { deps, storage } = makeEffectDeps();
+  const running = makeSession("s-1", {
+    piSessionId: "pi-1",
+    status: "running",
+    messages: [{ id: "u1", role: "user", text: "plan the migration" }],
+  });
+  const settled = makeSession("s-1", {
+    piSessionId: "pi-1",
+    status: "idle",
+    title: "Migration",
+    messages: [
+      { id: "u1", role: "user", text: "plan the migration" },
+      { id: "a1", role: "assistant", text: "Here is the plan." },
+    ],
+  });
+  const prev: WorkspaceState = { ...makeState(running) };
+  const next: WorkspaceState = { ...makeState(settled) };
+
+  runWorkspaceEffect({ type: "patchSession", sessionId: "s-1", patch: {} }, prev, next, deps);
+
+  const restored = readTranscriptSnapshot("pi-1", storage);
+  assert.equal(restored?.length, 2);
+  assert.equal(restored?.[1].text, "Here is the plan.");
+});
+
+test("an in-flight (running) turn is not cached until it settles", () => {
+  const { deps, storage } = makeEffectDeps();
+  const idle = makeSession("s-1", { piSessionId: "pi-1", status: "idle", messages: [] });
+  const running = makeSession("s-1", {
+    piSessionId: "pi-1",
+    status: "running",
+    messages: [{ id: "u1", role: "user", text: "streaming…" }],
+  });
+  const prev: WorkspaceState = { ...makeState(idle) };
+  const next: WorkspaceState = { ...makeState(running) };
+
+  runWorkspaceEffect({ type: "patchSession", sessionId: "s-1", patch: {} }, prev, next, deps);
+
+  assert.equal(readTranscriptSnapshot("pi-1", storage), null);
 });

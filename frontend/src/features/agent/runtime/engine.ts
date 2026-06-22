@@ -24,6 +24,7 @@ import {
   type SubmitArgs,
 } from "@/features/agent/runtime/prompt-stream";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
@@ -189,17 +190,30 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
 
   const loadAndReplay = useCallback(
     async (piSessionId: string, sessionId: SessionId) => {
+      // Seed from the crash-recovery cache first so prior history shows
+      // instantly and survives a canonical replay that errors, comes back
+      // empty, or can't run at all (no cwd). Canonical content replaces it
+      // below when it loads.
+      const cachedMessages = readTranscriptSnapshot(piSessionId);
+      const seedCached = (session: Session) =>
+        session.messages.length === 0 && cachedMessages
+          ? { ...session, messages: cachedMessages }
+          : session;
       if (!cwd) {
-        // No cwd yet — we can't hydrate session history. Make sure the
-        // session isn't left in a permanent "loading" state (which blocks
-        // the composer's send button) just because the snapshot reducer
-        // optimistically tagged it as loading on hydration.
+        // No cwd yet — we can't hydrate canonical history, but we can still show
+        // the cached transcript. Make sure the session isn't left in a permanent
+        // "loading" state (which blocks the composer's send button) just because
+        // the snapshot reducer optimistically tagged it as loading on hydration.
         updateSession(sessionId, (session) =>
-          session.status === "loading" ? { ...session, status: "idle" } : session,
+          seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
         );
         return;
       }
-      updateSession(sessionId, (session) => ({ ...session, status: "loading", error: "" }));
+      updateSession(sessionId, (session) => ({
+        ...seedCached(session),
+        status: "loading",
+        error: "",
+      }));
       try {
         const { events } = await api.loadCanonicalSession(piSessionId, cwd);
         const runtimeId = resolveRuntimeSessionId(
@@ -226,7 +240,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         const replaySeq = replayCursorAfterRuntimeHydration(runtimeActive, runtimeStatus?.eventSeq);
         updateSession(sessionId, (session) => ({
           ...session,
-          messages,
+          // Canonical wins when it has content; an empty replay keeps whatever we
+          // seeded from the cache so a transiently-empty log can't blank history.
+          messages: messages.length > 0 ? messages : session.messages,
           piSessionId,
           cwd: session.cwd || cwd,
           modelId: session.modelId || replayModelId || runtimeStatus?.modelId || modelId,

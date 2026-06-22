@@ -18,6 +18,7 @@ import {
   type WorkspaceStorage,
 } from "@/features/agent/workspace/store";
 import { writeActiveSessions, writePaneState } from "@/features/agent/workspace/persistence";
+import { writeTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 import {
   ACTIVE_AGENT_SESSIONS_EVENT,
   PROJECTS_LOADED_EVENT,
@@ -380,6 +381,47 @@ function paneMetadataKey(
   });
 }
 
+function isSettledStatus(status: string): boolean {
+  return status === "idle" || status === "done";
+}
+
+// Cheap content fingerprint — enough to tell "this session's transcript moved"
+// without serializing every message on every dispatch.
+function transcriptSignature(session: Session): string {
+  const last = session.messages[session.messages.length - 1];
+  return [
+    session.piSessionId ?? "",
+    session.status,
+    session.messages.length,
+    last?.id ?? "",
+    last?.text.length ?? 0,
+    last?.blocks?.length ?? 0,
+  ].join("|");
+}
+
+// Persist the crash-recovery transcript fallback once a session settles with
+// new content. Gated on settle + signature change so it writes about once per
+// completed turn, never per streamed token. The canonical pi JSONL stays the
+// source of truth; this only backstops a failed/empty replay on restore.
+function persistSettledTranscripts(
+  prevState: WorkspaceState,
+  nextState: WorkspaceState,
+  deps: WorkspaceEffectDeps,
+): void {
+  for (const [id, session] of nextState.sessions) {
+    if (!session.piSessionId || session.messages.length === 0) continue;
+    if (!isSettledStatus(session.status)) continue;
+    const before = prevState.sessions.get(id);
+    if (before && transcriptSignature(before) === transcriptSignature(session)) continue;
+    writeTranscriptSnapshot(
+      session.piSessionId,
+      session.messages,
+      cleanSessionTitle(session.title),
+      deps.storage,
+    );
+  }
+}
+
 export function runWorkspaceEffect(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -399,6 +441,9 @@ export function runWorkspaceEffect(
   }
 
   broadcastActiveSessions(prevState, nextState, deps);
+  if (SESSIONS_CHANGED_ACTIONS.has(action.type)) {
+    persistSettledTranscripts(prevState, nextState, deps);
+  }
   if (
     SESSIONS_CHANGED_ACTIONS.has(action.type) &&
     storedSessionsKey(prevState) !== storedSessionsKey(nextState)
