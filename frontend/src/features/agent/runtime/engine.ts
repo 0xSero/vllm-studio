@@ -258,6 +258,26 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         // does not replay already-rendered content.
         sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
       } catch (err) {
+        // Canonical read failed. If the runtime is still alive, don't strand the
+        // session idle (which would drop the live stream — reconcile only
+        // subscribes for live statuses): keep the seeded history, mark it running,
+        // and reset the cursor so the reattached SSE replays the runtime backlog.
+        const runtimeId = resolveRuntimeSessionId(
+          tabsRef.current.find((tab) => tab.id === sessionId),
+          runtimeSessionId,
+        );
+        const runtimeStatus = await api.loadRuntimeStatus(runtimeId, piSessionId).catch(() => null);
+        if (runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId)) {
+          updateSession(sessionId, (session) => ({
+            ...session,
+            contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
+            status: "running",
+            activeAssistantId: undefined,
+            error: "",
+          }));
+          sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
+          return;
+        }
         updateSession(sessionId, (session) => ({
           ...session,
           error: err instanceof Error ? err.message : "Failed to load session",

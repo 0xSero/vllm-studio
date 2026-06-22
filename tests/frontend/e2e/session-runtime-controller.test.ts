@@ -844,3 +844,71 @@ test("agent_end clears the mid-stream redirect so the next turn targets its own 
   controller.closeAll();
   controller.unbind();
 });
+
+test("noteReplayHydrated drops the live-target pin so post-replay events hit the rebuilt bubble", () => {
+  let session: Session = {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "t",
+    messages: [
+      { id: "user-1", role: "user", text: "question", timestamp: "" },
+      { id: "assistant-A", role: "assistant", text: "", blocks: [], timestamp: "" },
+    ],
+    status: "running",
+    error: "",
+    input: "",
+    activeAssistantId: "assistant-A",
+  };
+  const handlers: { onPayload: (payload: RuntimeEventPayload) => void; onError: () => void }[] = [];
+  const controller = createSessionRuntimeController({
+    api: {
+      loadRuntimeStatus: async () => null,
+      subscribeRuntimeEvents: (_runtime, _after, _piSessionId, eventHandlers) => {
+        handlers.push(eventHandlers);
+        return { close: () => undefined };
+      },
+    },
+  });
+  controller.bind({
+    commit: (sessionId, patch) => {
+      if (sessionId === session.id) session = patch(session);
+    },
+    getSession: (sessionId) => (sessionId === session.id ? session : undefined),
+    getSessions: () => [session],
+  });
+  controller.reconcile([session]);
+  const emit = (payload: RuntimeEventPayload) => handlers.at(-1)?.onPayload(payload);
+  const assistantMessage = (text: string): Record<string, unknown> => ({
+    type: "message",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  });
+  const blockText = (id: string) =>
+    (session.messages.find((m) => m.id === id)?.blocks ?? []).map((b) => b.text).join("");
+
+  // A turn is accepted and pins its optimistic bubble.
+  controller.noteTurnAccepted("s-1", "assistant-A");
+  emit({ type: "pi", seq: 1, event: assistantMessage("partial answer") });
+  assert.equal(blockText("assistant-A"), "partial answer");
+
+  // The user navigates away and back mid-turn: loadAndReplay rebuilds the
+  // transcript with FRESH ids (assistant-A no longer exists) and calls
+  // noteReplayHydrated, which must drop the now-dead pin.
+  session = {
+    ...session,
+    messages: [
+      { id: "user-R", role: "user", text: "question", timestamp: "" },
+      { id: "assistant-R", role: "assistant", text: "partial answer", blocks: [], timestamp: "" },
+    ],
+    activeAssistantId: "assistant-R",
+  };
+  controller.noteReplayHydrated("s-1", 1);
+
+  // The live stream resumes. Content must land on the rebuilt bubble, not the
+  // discarded assistant-A id (which would be silently dropped).
+  emit({ type: "pi", seq: 2, event: assistantMessage("rest of the answer") });
+  assert.equal(blockText("assistant-R"), "rest of the answer");
+
+  controller.closeAll();
+  controller.unbind();
+});

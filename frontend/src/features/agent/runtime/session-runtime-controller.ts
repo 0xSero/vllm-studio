@@ -578,7 +578,15 @@ export function createSessionRuntimeController(
       if (assistantId) streamContext.liveAssistantIds.set(sessionId, assistantId);
       else streamContext.liveAssistantIds.delete(sessionId);
     },
-    noteReplayHydrated: (sessionId, committedSeq) => adoptCursor(sessionId, committedSeq),
+    noteReplayHydrated: (sessionId, committedSeq) => {
+      // Replay mints fresh ids for every message, so any in-flight live-target
+      // pin now points at a bubble that no longer exists. Drop it or post-replay
+      // events would land on a dead id (silently discarded) while the seq cursor
+      // still advances — the reopen-mid-turn content-drop. ensureAssistantId then
+      // falls back to the rebuilt transcript's own bubble.
+      streamContext.liveAssistantIds.delete(sessionId);
+      adoptCursor(sessionId, committedSeq);
+    },
     reconcile: (sessions) => {
       const desired = new Map<
         SessionId,
@@ -637,6 +645,9 @@ export function createSessionRuntimeController(
       for (const attachment of attachments.values()) attachment.close();
       attachments.clear();
       coalescer.flushAll();
+      // Workspace teardown: drop every live-target pin so a remount can't inherit
+      // a stale id from the previous mount.
+      streamContext.liveAssistantIds.clear();
     },
   };
 }
