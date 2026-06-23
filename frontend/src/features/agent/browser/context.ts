@@ -41,7 +41,12 @@ export function browserContextPrompt({
     vision
       ? "Screenshots are available on demand with browser_screenshot when visual layout matters."
       : "This model may not be vision-capable; prefer browser_get_text/browser_get_html over browser_screenshot.",
-    "Use browser_navigate only for intentional navigation, and describe browser actions/results visibly to the user.",
+    "Use browser_navigate only for intentional navigation.",
+    // Counter the narrate-and-stop failure mode: when the browser is open, models
+    // tend to emit a one-line plan ("Let me check X, then rebuild Y") with NO
+    // tool call and stop — the agent loop ends the turn and nothing happens until
+    // the user nudges "go on". Tell the model to ACT in the same turn instead.
+    "When you state a plan, carry it out in the SAME turn by calling the tools you described — do not end your turn after only saying what you will do. Keep going until the task is complete, narrating briefly as you act.",
     "</browser_context>",
   ].join("\n");
 }
