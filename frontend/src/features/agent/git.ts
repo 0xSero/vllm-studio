@@ -86,15 +86,21 @@ export async function loadGitState(cwd: string): Promise<GitState> {
     ]);
   const current = branch.trim() || null;
   const trackedStats = numstatStats(numstat);
-  const untrackedStats = await untrackedFileStats(cwd, untrackedRaw);
-  const additions = trackedStats.additions + untrackedStats.additions;
-  const deletions = trackedStats.deletions + untrackedStats.deletions;
+  const untracked = await untrackedFileDiffs(cwd, untrackedRaw);
+  const additions = trackedStats.additions + untracked.additions;
+  const deletions = trackedStats.deletions + untracked.deletions;
   return {
     isRepo: true,
     branch: current,
     status: statusLines(statusRaw),
     entries: statusEntries(statusRaw),
-    diff,
+    // `git diff HEAD` omits untracked (new) files, so a "build me a site"
+    // session that creates dozens of new files shows an empty diff while the
+    // counter says +N. Append synthesized new-file diffs so the panel reviews
+    // them like GitHub does.
+    diff: untracked.diff
+      ? `${diff}${diff.endsWith("\n") || !diff ? "" : "\n"}${untracked.diff}`
+      : diff,
     additions,
     deletions,
     refs: parseRefs(refsRaw, current),
@@ -177,25 +183,72 @@ export function numstatStats(numstat: string): { additions: number; deletions: n
   return { additions, deletions };
 }
 
-async function untrackedFileStats(
+// Per-file and total caps so a session that generates large bundles (e.g. an
+// 800KB data.js) can't blow up the diff payload; GitHub collapses huge files
+// too. Beyond the cap the file's content is truncated with a marker.
+const MAX_UNTRACKED_LINES_PER_FILE = 1000;
+const MAX_UNTRACKED_DIFF_BYTES = 1_500_000;
+
+/**
+ * Synthesize a unified-diff block for one untracked file so it renders as a
+ * GitHub-style "new file" (all additions). Binary files emit a marker instead
+ * of their bytes; long files are truncated to MAX_UNTRACKED_LINES_PER_FILE.
+ * `additions` is the file's true line count (matching git's working-tree count),
+ * not the possibly-truncated number of rendered `+` rows.
+ */
+export function buildUntrackedFileDiffBlock(
+  file: string,
+  contents: string,
+): { block: string; additions: number } {
+  const header = `diff --git a/${file} b/${file}\nnew file mode 100644`;
+  if (contents.includes("\0")) {
+    return { block: `${header}\nBinary files /dev/null and b/${file} differ\n`, additions: 0 };
+  }
+  const lines = contents.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const shown = lines.slice(0, MAX_UNTRACKED_LINES_PER_FILE);
+  const body = shown.map((line) => `+${line}`).join("\n");
+  const truncated =
+    lines.length > shown.length ? `\n+… (${lines.length - shown.length} more lines not shown)` : "";
+  const block = `${header}\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n${body}${truncated}\n`;
+  return { block, additions: lines.length };
+}
+
+async function untrackedFileDiffs(
   cwd: string,
   raw: string,
-): Promise<{ additions: number; deletions: number }> {
+): Promise<{ additions: number; deletions: number; diff: string }> {
   const files = raw.split("\0").filter(Boolean);
-  const additions = await files.reduce(async (pending, file) => {
-    const count = await pending;
+  let additions = 0;
+  let bytes = 0;
+  let omitted = 0;
+  const blocks: string[] = [];
+  for (const file of files) {
     const absolutePath = path.resolve(cwd, file);
     const relative = path.relative(cwd, absolutePath);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) return count;
-    try {
-      const contents = await readFile(absolutePath, "utf8");
-      if (!contents) return count;
-      return count + contents.split("\n").length - (contents.endsWith("\n") ? 1 : 0);
-    } catch {
-      return count;
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    if (bytes >= MAX_UNTRACKED_DIFF_BYTES) {
+      omitted += 1;
+      continue;
     }
-  }, Promise.resolve(0));
-  return { additions, deletions: 0 };
+    let contents: string;
+    try {
+      contents = await readFile(absolutePath, "utf8");
+    } catch {
+      continue;
+    }
+    const { block, additions: fileAdditions } = buildUntrackedFileDiffBlock(file, contents);
+    additions += fileAdditions;
+    bytes += block.length;
+    blocks.push(block);
+  }
+  if (omitted > 0) {
+    blocks.push(
+      `diff --git a/(${omitted} more untracked files) b/(${omitted} more untracked files)\n` +
+        `@@ -0,0 +1,1 @@\n+… ${omitted} more untracked file(s) not shown (diff size cap reached)\n`,
+    );
+  }
+  return { additions, deletions: 0, diff: blocks.join("") };
 }
 
 function pullRequestUrl(remoteUrl: string, branch: string | null): string | null {
