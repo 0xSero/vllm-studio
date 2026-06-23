@@ -2,6 +2,13 @@ appId: org.vllm.studio.desktop
 productName: vLLM Studio
 asar: true
 
+# Postflight guard: assert the packed app actually contains the embedded Next
+# standalone server before signing. electron-builder can silently skip the
+# extraResources copy of .next/standalone (logging "file source doesn't exist")
+# yet still exit 0 — afterPack runs before signing, so throwing aborts the build
+# instead of shipping a broken signed bundle. See the hook for details.
+afterPack: ./scripts/electron-builder-after-pack.mjs
+
 asarUnpack:
   - "node_modules/@lydell/**/*.node"
   - "node_modules/@lydell/**/spawn-helper"
