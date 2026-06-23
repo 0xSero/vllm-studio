@@ -330,7 +330,7 @@ function FileWritePreview({
           ) : null}
         </div>
         {isSvg && showPreview ? (
-          <div className="flex max-h-80 items-center justify-center overflow-auto bg-white p-4">
+          <div className="flex max-h-80 min-h-40 items-center justify-center overflow-auto bg-white p-4">
             <img
               src={`data:image/svg+xml;utf8,${encodeURIComponent(body)}`}
               alt={fileBasename(filePath) ?? "svg preview"}

@@ -294,7 +294,10 @@ function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachme
         <img
           src={attachment.previewUrl}
           alt={attachment.name}
-          className="max-h-72 w-full object-contain"
+          // Reserve vertical space so the async image decode doesn't grow from
+          // 0 → up to 288px and shove the whole transcript below it (the scroller
+          // runs overflow-anchor:none, so nothing absorbs that reflow).
+          className="max-h-72 min-h-40 w-full object-contain"
         />
         <figcaption className="truncate px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
           {attachment.name} · {size}
