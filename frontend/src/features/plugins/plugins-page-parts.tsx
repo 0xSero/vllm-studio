@@ -17,8 +17,8 @@ import {
 } from "@/ui";
 import { type CatalogueEntry } from "./plugins-types";
 import {
-  isManagedGoogleEntry,
-  isManagedGoogleEnvKey,
+  isManagedOAuthEntry,
+  isManagedOAuthEnvKey,
   missingRequiredEnv,
   parseArgsText,
 } from "./plugins-utils";
@@ -37,7 +37,7 @@ export function RegistryRow({
   onConfigure: () => void;
 }) {
   const source = registryLabel(entry);
-  const actionLabel = isManagedGoogleEntry(entry)
+  const actionLabel = isManagedOAuthEntry(entry)
     ? added
       ? "Reconnect"
       : "Connect"
@@ -131,8 +131,8 @@ export function ConfigureEntryPanel({
     ? `Add ${entry.displayName} MCP server`
     : `Add a local path argument before adding ${entry.displayName}`;
   const envKeys = Object.keys(env);
-  const visibleEnvKeys = envKeys.filter((key) => !isManagedGoogleEnvKey(key));
-  const managedGoogleEnvCount = envKeys.length - visibleEnvKeys.length;
+  const visibleEnvKeys = envKeys.filter((key) => !isManagedOAuthEnvKey(key));
+  const managedOAuthEnvCount = envKeys.length - visibleEnvKeys.length;
 
   return (
     <UiModal isOpen onClose={onCancel} maxWidth="max-w-2xl">
@@ -197,10 +197,10 @@ export function ConfigureEntryPanel({
         </SettingsGroup>
 
         <SettingsGroup title="Environment">
-          {managedGoogleEnvCount ? (
+          {managedOAuthEnvCount ? (
             <SettingsNotice tone="info" className="mb-3">
-              Google OAuth values are managed by vLLM Studio and injected at launch. Connect Google
-              above before using this server.
+              OAuth values are managed by vLLM Studio and injected at launch. Connect the account in
+              Connections above before using this server.
             </SettingsNotice>
           ) : null}
           {visibleEnvKeys.length ? (
@@ -222,7 +222,7 @@ export function ConfigureEntryPanel({
             ))
           ) : (
             <EmptySafeNotice>
-              {managedGoogleEnvCount
+              {managedOAuthEnvCount
                 ? "No manual environment variables are needed."
                 : "No environment variables declared by the registry row."}
             </EmptySafeNotice>

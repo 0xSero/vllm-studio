@@ -63,15 +63,15 @@ export function handleMcpAction(body: Record<string, unknown> | null) {
   }
 }
 
-export function installManagedGoogleCatalogueServer(catalogueId: string) {
+export function installManagedOAuthCatalogueServer(catalogueId: string) {
   const entry = findCatalogueEntry(catalogueId);
   if (!entry) return mcpBadRequest("Unknown catalogue entry.");
-  if (!entry.env || !Object.keys(entry.env).some((key) => key.startsWith("GOOGLE_"))) {
-    return mcpBadRequest("Catalogue entry is not a managed Google OAuth server.");
+  if (!entry.oauthProvider) {
+    return mcpBadRequest("Catalogue entry is not a managed OAuth server.");
   }
   upsertServer(
     {
-      id: `mcp:${entry.name}:managed-google`,
+      id: `mcp:${entry.name}:managed-${entry.oauthProvider}`,
       name: entry.name,
       displayName: entry.displayName,
       description: entry.description,

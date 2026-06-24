@@ -1,27 +1,20 @@
 // Injects freshly minted OAuth credentials into the materialized `.mcp.json` of
 // MCP servers that need them, right before a turn starts the runtime.
 //
-// Some Google MCP servers only read OAuth values from their env at spawn time,
-// so we rewrite those env values and return a fingerprint that changes whenever
-// the access token is refreshed. Including that fingerprint in the runtime start
-// options forces a runtime restart (and thus an MCP server respawn) once the
-// previous token has actually expired, while leaving the runtime untouched
-// within a token's validity window.
+// Some MCP servers only read OAuth values from their env at spawn time, so we
+// rewrite those env values and return a fingerprint that changes whenever a
+// token is refreshed. Including that fingerprint in the runtime start options
+// forces a runtime restart (and thus an MCP server respawn) once the previous
+// token has actually expired, while leaving the runtime untouched within a
+// token's validity window.
+//
+// This is provider-agnostic: every provider in the OAuth registry is applied to
+// any enabled server whose env declares that provider's managed env keys.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { listStoredServers, serverConfigPath } from "@/features/agent/mcp/store";
-import { getFreshGoogleCredentials } from "./google-store";
-
-const GOOGLE_ENV_KEY = "GOOGLE_ACCESS_TOKEN";
-const GOOGLE_CLIENT_ID_ENV_KEY = "GOOGLE_CLIENT_ID";
-const GOOGLE_CLIENT_SECRET_ENV_KEY = "GOOGLE_CLIENT_SECRET";
-const GOOGLE_REFRESH_TOKEN_ENV_KEY = "GOOGLE_REFRESH_TOKEN";
-const MANAGED_GOOGLE_ENV_KEYS = new Set([
-  GOOGLE_CLIENT_ID_ENV_KEY,
-  GOOGLE_CLIENT_SECRET_ENV_KEY,
-  GOOGLE_REFRESH_TOKEN_ENV_KEY,
-  GOOGLE_ENV_KEY,
-]);
+import { OAUTH_PROVIDERS, providerForEnvKeys, type OAuthProvider } from "./oauth-providers";
+import { getFreshOAuthCredentials, type FreshOAuthCredentials } from "./oauth-store";
 
 type McpConfigFile = {
   mcpServers?: Record<string, { env?: Record<string, string> }>;
@@ -45,44 +38,50 @@ async function patchServerToken(
   await writeFile(configPath, JSON.stringify(parsed, null, 2), "utf8");
 }
 
-function hasManagedGoogleEnv(env: Record<string, string> | undefined): boolean {
-  return Object.keys(env ?? {}).some((key) => MANAGED_GOOGLE_ENV_KEYS.has(key));
+function envForProvider(
+  provider: OAuthProvider,
+  fresh: FreshOAuthCredentials,
+): Record<string, string> {
+  const { accessToken, clientId, clientSecret, refreshToken } = provider.envMapping;
+  const env: Record<string, string> = { [accessToken]: fresh.accessToken };
+  if (clientId) env[clientId] = fresh.clientId;
+  if (clientSecret) env[clientSecret] = fresh.clientSecret;
+  if (refreshToken) env[refreshToken] = fresh.refreshToken;
+  return env;
 }
 
 /**
- * Refresh and inject managed OAuth tokens for enabled servers. Returns a
- * fingerprint string that changes only when a token is refreshed, so callers
- * can fold it into the runtime fingerprint. Returns "" when nothing is managed.
+ * Refresh and inject managed OAuth tokens for enabled servers across every
+ * connected provider. Returns a fingerprint string that changes only when a
+ * token is refreshed, so callers can fold it into the runtime fingerprint.
+ * Returns "" when nothing is managed/connected.
  */
 export async function applyManagedOauthTokens(): Promise<string> {
-  const googleServers = listStoredServers().filter(
-    (entry) => entry.enabled && hasManagedGoogleEnv(entry.def.env),
-  );
-  if (googleServers.length === 0) return "";
+  const enabledServers = listStoredServers().filter((entry) => entry.enabled);
+  if (enabledServers.length === 0) return "";
 
-  let fresh: {
-    clientId: string;
-    clientSecret: string;
-    refreshToken: string;
-    accessToken: string;
-    expiresAt: number;
-  } | null;
-  try {
-    fresh = await getFreshGoogleCredentials();
-  } catch {
-    return "";
+  const fingerprints: string[] = [];
+
+  for (const provider of OAUTH_PROVIDERS) {
+    const servers = enabledServers.filter(
+      (entry) => providerForEnvKeys(entry.def.env)?.id === provider.id,
+    );
+    if (servers.length === 0) continue;
+
+    let fresh: FreshOAuthCredentials | null;
+    try {
+      fresh = await getFreshOAuthCredentials(provider.id);
+    } catch {
+      continue;
+    }
+    if (!fresh || !fresh.accessToken) continue;
+
+    const env = envForProvider(provider, fresh);
+    for (const entry of servers) {
+      await patchServerToken(entry.def.id, entry.def.name, env);
+    }
+    fingerprints.push(`${provider.id}:${fresh.expiresAt}`);
   }
-  if (!fresh || !fresh.accessToken) return "";
 
-  const env = {
-    [GOOGLE_CLIENT_ID_ENV_KEY]: fresh.clientId,
-    [GOOGLE_CLIENT_SECRET_ENV_KEY]: fresh.clientSecret,
-    [GOOGLE_REFRESH_TOKEN_ENV_KEY]: fresh.refreshToken,
-    [GOOGLE_ENV_KEY]: fresh.accessToken,
-  };
-
-  for (const entry of googleServers) {
-    await patchServerToken(entry.def.id, entry.def.name, env);
-  }
-  return `google:${fresh.expiresAt}`;
+  return fingerprints.join("|");
 }

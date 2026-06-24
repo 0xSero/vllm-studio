@@ -4,7 +4,7 @@ import { effectInterval, effectTimeout } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { AppPage, PageHeader, RefreshIconButton, SettingsNotice } from "@/ui";
-import { GoogleConnectionPanel } from "./plugins-google-connection";
+import { ConnectionsPanel } from "./plugins-connections";
 import { InstalledMcpServersPanel } from "./plugins-installed-servers";
 import { ManualMcpServerPanel } from "./plugins-manual-server";
 import { ConfigureEntryPanel } from "./plugins-page-parts";
@@ -18,7 +18,7 @@ import {
   type ServersPayload,
 } from "./plugins-types";
 import {
-  isManagedGoogleEntry,
+  oauthProviderIdForEntry,
   parseArgsText,
   parseEnvLines,
   parseTagsText,
@@ -182,11 +182,12 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
   }, [curated, registry, search]);
 
   const beginConfigureEntry = (entry: CatalogueEntry) => {
-    if (isManagedGoogleEntry(entry)) {
+    const providerId = oauthProviderIdForEntry(entry);
+    if (providerId) {
       setBusyId(entry.id);
       setError(null);
       window.open(
-        `/api/oauth/google/start?catalogueId=${encodeURIComponent(entry.id)}`,
+        `/api/oauth/${providerId}/start?catalogueId=${encodeURIComponent(entry.id)}`,
         "_blank",
         "noopener,noreferrer",
       );
@@ -299,7 +300,7 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       {error}
     </SettingsNotice>
   ) : null;
-  const googlePanel = <GoogleConnectionPanel />;
+  const connectionsPanel = <ConnectionsPanel />;
   const customPanel = (
     <div className="space-y-5">
       <InstalledMcpServersPanel
@@ -394,7 +395,7 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       <>
         {errorNotice}
         <div className="space-y-5">
-          {googlePanel}
+          {connectionsPanel}
           {registryPanel}
           {customPanel}
         </div>
@@ -420,7 +421,7 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
         />
         {errorNotice}
         <div className="space-y-5">
-          {googlePanel}
+          {connectionsPanel}
           {registryPanel}
           {customPanel}
         </div>

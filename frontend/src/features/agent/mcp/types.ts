@@ -61,6 +61,12 @@ export type McpCatalogueEntry = {
   env?: Record<string, string>;
   /** Which env keys are mandatory before the server can launch. */
   requiredEnv?: string[];
+  /**
+   * OAuth provider id (see `oauth/oauth-providers.ts`). When set, the entry is
+   * connected with a one-click OAuth button; the provider's tokens are injected
+   * into the server env at launch, so the user fills in no keys.
+   */
+  oauthProvider?: string;
   /** Whether a curated local server needs an explicit target path argument. */
   requiresTargetArg?: boolean;
   /** Optional homepage/docs link. */

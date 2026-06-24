@@ -1,18 +1,16 @@
+import { isManagedOAuthEnvKey, providerForEnvKeys } from "@/features/agent/oauth/oauth-providers";
 import type { CatalogueEntry, McpServer } from "./plugins-types";
 
-const MANAGED_GOOGLE_ENV_KEYS = new Set([
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
-  "GOOGLE_REFRESH_TOKEN",
-  "GOOGLE_ACCESS_TOKEN",
-]);
+export { isManagedOAuthEnvKey };
 
-export function isManagedGoogleEnvKey(key: string): boolean {
-  return MANAGED_GOOGLE_ENV_KEYS.has(key);
+/** The OAuth provider id a catalogue entry connects through, if any. */
+export function oauthProviderIdForEntry(entry: CatalogueEntry): string | null {
+  return entry.oauthProvider ?? providerForEnvKeys(entry.env)?.id ?? null;
 }
 
-export function isManagedGoogleEntry(entry: CatalogueEntry): boolean {
-  return Object.keys(entry.env ?? {}).some(isManagedGoogleEnvKey);
+/** Whether a catalogue entry is connected via a managed OAuth provider. */
+export function isManagedOAuthEntry(entry: CatalogueEntry): boolean {
+  return oauthProviderIdForEntry(entry) !== null;
 }
 
 export function serverDescription(server: McpServer): string {
