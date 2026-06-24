@@ -7,6 +7,7 @@ import {
   FolderTree,
   GitBranch,
   Globe2,
+  ListChecks,
   MessageSquarePlus,
   PanelRight,
   Plus,
@@ -38,7 +39,11 @@ import {
   uniqueTerminalKeys,
   type TerminalOwner,
 } from "@/features/agent/terminal-owners";
-import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
+import {
+  ComputerTabPanel,
+  type SideChatDraft,
+  type SideChatTabsUpdater,
+} from "@/features/agent/ui/computer-tab-panel";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 
@@ -194,20 +199,33 @@ export function AgentBrowserPanel({
     tools.setBrowserUrl(accepted, accepted);
     void runBrowserCommand("navigate", { url: accepted });
   };
-  const openSideChat = useCallback(() => {
-    setSideChatSession((current) =>
-      current.messages.length
-        ? current
-        : {
-            ...current,
-            status: current.status === "loading" ? "idle" : current.status,
-            cwd: activeProject?.path ?? focusedSession?.cwd,
-            projectId: activeProject?.id ?? focusedSession?.projectId,
-            modelId: current.modelId || focusedSession?.modelId || activeModelId,
-          },
-    );
-    tools.setComputerTab("side-chat");
-  }, [activeModelId, activeProject, focusedSession, tools]);
+  const openSideChat = useCallback(
+    (draft?: SideChatDraft) => {
+      if (draft) {
+        const next = createSideChatSession(activeProject ?? null, focusedSession, activeModelId);
+        setSideChatSession({
+          ...next,
+          title: draft.title.trim().slice(0, 80) || "Plan task",
+          input: draft.input,
+        });
+        tools.setComputerTab("side-chat");
+        return;
+      }
+      setSideChatSession((current) =>
+        current.messages.length
+          ? current
+          : {
+              ...current,
+              status: current.status === "loading" ? "idle" : current.status,
+              cwd: activeProject?.path ?? focusedSession?.cwd,
+              projectId: activeProject?.id ?? focusedSession?.projectId,
+              modelId: current.modelId || focusedSession?.modelId || activeModelId,
+            },
+      );
+      tools.setComputerTab("side-chat");
+    },
+    [activeModelId, activeProject, focusedSession, tools],
+  );
   const updateSideChatTabs = useCallback((nextTabsOrUpdater: SideChatTabsUpdater) => {
     setSideChatSession((current) => {
       const nextTabs =
@@ -237,7 +255,7 @@ export function AgentBrowserPanel({
   );
   return (
     <aside
-      className={`${tools.computer.open ? "relative flex" : "hidden"} shrink-0 flex-col border-l border-(--border) bg-(--agent-bg)`}
+      className={`${tools.computer.open ? "relative flex" : "hidden"} shrink-0 flex-col border-l border-(--border) bg-(--color-panel) shadow-[inset_1px_0_rgba(255,255,255,0.02)]`}
       ref={registerComputerAside}
       tabIndex={-1}
       onKeyDown={handleComputerKeyDown}
@@ -248,7 +266,7 @@ export function AgentBrowserPanel({
         aria-orientation="vertical"
         title="Resize computer"
         onMouseDown={startComputerResize}
-        className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--accent)/20"
+        className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--fg)/8"
       />
       <ComputerHeader
         tab={tools.computer.tab}
@@ -299,6 +317,7 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   browser: "Browser",
   files: "Filesystem",
   diff: "Git",
+  plan: "Plan",
   terminal: "Terminal",
 };
 
@@ -319,6 +338,12 @@ const TAB_OPTIONS: Array<{
     label: "Side chat",
     description: "Focused side conversation",
     icon: MessageSquarePlus,
+  },
+  {
+    tab: "plan",
+    label: "Plan",
+    description: "Cursor-style plan and to-do checklist",
+    icon: ListChecks,
   },
   {
     tab: "browser",
@@ -373,7 +398,7 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    <div className="relative flex h-9 shrink-0 items-center gap-1 border-b border-(--border) px-1.5 text-[length:var(--fs-sm)]">
+    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border)/85 bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
@@ -384,7 +409,7 @@ function ComputerHeader({
               key={openTab}
               className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
                 tab === openTab
-                  ? "text-(--fg)/70 hover:bg-(--surface) hover:text-(--fg)/85"
+                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
                   : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
               }`}
               title={meta.label}
@@ -425,7 +450,7 @@ function ComputerHeader({
               key={owner.mountKey}
               className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
                 selected
-                  ? "text-(--fg)/70 hover:bg-(--surface) hover:text-(--fg)/85"
+                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
                   : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
               }`}
               title={shortcut ? `${label} (${shortcut})` : label}
@@ -463,7 +488,7 @@ function ComputerHeader({
           onClick={onShowLauncher}
           className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
             tab === "tools"
-              ? "text-(--fg)/70 hover:bg-(--surface) hover:text-(--fg)/85"
+              ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
               : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
           }`}
           title="Show tools"

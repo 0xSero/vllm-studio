@@ -28,10 +28,16 @@ export type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
   browserBackend?: "embedded" | "sitegeist";
+  // Runtime (focused) session id, so the plan extension writes the plan the
+  // Plan panel reads for the same session.
+  planSessionId?: string;
   canvasEnabled?: boolean;
   plugins?: RuntimePluginRef[];
   skills?: RuntimeSkillRef[];
   promptTemplates?: RuntimePromptTemplateRef[];
+  // Changes only when a managed OAuth token is refreshed, so the runtime
+  // restarts (respawning MCP servers) once a prior token has expired.
+  managedTokenFingerprint?: string;
 };
 
 type RuntimeMcpConfig = {
@@ -142,6 +148,10 @@ export function resolveCanvasExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("canvas.ts", process.env.VLLM_STUDIO_CANVAS_EXTENSION_PATH);
 }
 
+export function resolvePlanExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("plan.ts", process.env.VLLM_STUDIO_PLAN_EXTENSION_PATH);
+}
+
 export function resolveTimeoutExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
     "vllm-studio-timeouts.ts",
@@ -194,6 +204,10 @@ export function resolveCanvasSkillPath(): string | null {
   return resolveBundledSkillPath("canvas", process.env.VLLM_STUDIO_CANVAS_SKILL_PATH);
 }
 
+export function resolvePlanSkillPath(): string | null {
+  return resolveBundledSkillPath("plan", process.env.VLLM_STUDIO_PLAN_SKILL_PATH);
+}
+
 export function pluginFingerprint(options: RuntimeStartOptions): string {
   const names = (options.plugins ?? [])
     .map(
@@ -215,6 +229,7 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
     plugins: names,
     skills,
     promptTemplates,
+    managedToken: options.managedTokenFingerprint ?? "",
   });
 }
 
@@ -299,6 +314,9 @@ function runtimeExtensionPaths(
   return uniqueExistingPaths([
     timeoutExtensionPath,
     agentPolicyExtensionPath,
+    // Plan tools are always available: the Plan panel is a core surface, so the
+    // model can always populate it instead of writing a plan file to the repo.
+    resolvePlanExtensionPath(),
     mcpConfigs.length ? resolveMcpExtensionPath() : null,
     browserExtensionPath,
     options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
@@ -312,6 +330,7 @@ function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginR
     ...pluginSkillPaths(plugins),
     ...selectedSkillPaths(options.skills ?? []),
     loadBrowser ? browserSkillPathFor(backend) : null,
+    resolvePlanSkillPath(),
     options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
   ]);
 }
@@ -325,6 +344,7 @@ function runtimeEnvInjections(
   const relay = readSitegeistRelayEnv(env);
   return {
     VLLM_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
+    VLLM_STUDIO_PLAN_SESSION_ID: options.planSessionId ?? "",
     VLLM_STUDIO_FRONTEND_BASE: frontendBase,
     VLLM_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
     SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",

@@ -58,7 +58,7 @@ export const createProcessManager = (
       } else if (!flagPort && !(backend === "vllm" && port === 8000)) {
         continue;
       }
-      let modelPath = getEngineSpec(backend).extractModelPath(proc.args);
+      const modelPath = getEngineSpec(backend).extractModelPath(proc.args);
       const servedModelName = getEngineSpec(backend).extractServedModelName(proc.args);
 
       return {

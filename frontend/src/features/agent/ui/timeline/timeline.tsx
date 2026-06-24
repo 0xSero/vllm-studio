@@ -261,6 +261,14 @@ function useTimelineScrollEffects({
     const pinToBottom = () => {
       el.scrollTop = el.scrollHeight;
     };
+    let pinFrame: number | null = null;
+    const schedulePinToBottom = () => {
+      if (!stickRef.current || pinFrame !== null) return;
+      pinFrame = window.requestAnimationFrame(() => {
+        pinFrame = null;
+        if (stickRef.current) pinToBottom();
+      });
+    };
     const setStick = (next: boolean) => {
       if (stickRef.current === next) return;
       stickRef.current = next;
@@ -313,28 +321,30 @@ function useTimelineScrollEffects({
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: true });
 
-    // Follow content + viewport growth while pinned. Running synchronously in the
-    // observer callback (before paint) means streaming text and expanding a
-    // reasoning block re-pin without a visible shift.
+    // Follow content + viewport growth while pinned. Coalesce observer bursts to
+    // one scroll write per animation frame; streamed tool/thinking text can
+    // otherwise trigger a scrollTop write for every token and make the timeline
+    // look like it is flickering or fighting itself.
     const listEl = bottom?.parentElement ?? el;
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
-            if (stickRef.current) pinToBottom();
+            schedulePinToBottom();
           });
     resizeObserver?.observe(el);
     if (listEl !== el) resizeObserver?.observe(listEl);
 
-    // Streamed text mutates existing nodes without resizing the observed boxes;
-    // keep following those too while pinned.
+    // Structural timeline changes need following; characterData streaming is
+    // deliberately excluded and left to ResizeObserver so we don't do a DOM
+    // scroll write on every token.
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null
         : new MutationObserver(() => {
-            if (stickRef.current) pinToBottom();
+            schedulePinToBottom();
           });
-    mutationObserver?.observe(listEl, { childList: true, subtree: true, characterData: true });
+    mutationObserver?.observe(listEl, { childList: true, subtree: true });
 
     // Initial alignment (also covers async-loaded history once it renders, via
     // the ResizeObserver above).
@@ -348,6 +358,7 @@ function useTimelineScrollEffects({
       el.removeEventListener("touchmove", onTouchMove);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
+      if (pinFrame !== null) window.cancelAnimationFrame(pinFrame);
     };
   }, [bottom, scroller]);
 

@@ -8,6 +8,8 @@ import { RegistryRow } from "./plugins-page-parts";
 import type { CatalogueEntry } from "./plugins-types";
 
 export function RegistrySearchPanel({
+  title = "Browse and connect MCP servers",
+  description = "Search OAuth-capable and stdio MCP servers. Managed OAuth entries connect without env or key fields.",
   entries,
   loading,
   search,
@@ -16,6 +18,8 @@ export function RegistrySearchPanel({
   onSearchChange,
   onConfigure,
 }: {
+  title?: string;
+  description?: string;
   entries: CatalogueEntry[];
   loading: boolean;
   search: string;
@@ -26,8 +30,8 @@ export function RegistrySearchPanel({
 }) {
   return (
     <SettingsGroup
-      title="Official MCP Registry"
-      description="Search the official MCP Registry plus any compatible registries you explicitly enable."
+      title={title}
+      description={description}
       actions={
         <StatusPill tone={loading ? "info" : "good"} variant="badge">
           {loading ? "searching" : `${entries.length} results`}
@@ -35,8 +39,8 @@ export function RegistrySearchPanel({
       }
     >
       <SettingsRow
-        label="Search registry"
-        description="Search server names from enabled MCP registries."
+        label="Search plugins"
+        description="OAuth-managed results show a Connect action. Other results may need a local command or token."
         control={
           <div className="relative w-full">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--ui-muted)" />

@@ -87,7 +87,7 @@ export const getEngineSpec = (backend: EngineBackend): EngineSpec => SPECS[backe
 export const ALL_ENGINE_SPECS: readonly EngineSpec[] = Object.values(SPECS);
 
 /** Detect which engine a running process belongs to, or null if unrecognized. */
-export const detectEngineFromArgs = (args: string[]): EngineBackend | null => {
+export const detectEngineFromArguments = (args: string[]): EngineBackend | null => {
   for (const spec of ALL_ENGINE_SPECS) {
     if (spec.detectInvocation(args)) return spec.id;
   }

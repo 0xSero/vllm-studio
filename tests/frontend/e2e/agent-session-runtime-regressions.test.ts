@@ -36,9 +36,9 @@ import { blocksFromTurnSnapshots } from "@/features/agent/messages/message-conte
 import { replaySessionEvents } from "@/features/agent/messages/replay";
 import { drainQueueAfterAgentEnd } from "@/features/agent/messages/helpers";
 import {
-  createTextDeltaCoalescer,
+  createEffectTextDeltaCoalescer as createTextDeltaCoalescer,
   textDeltaFromPiEvent,
-} from "@/features/agent/runtime/text-delta-coalescer";
+} from "@/features/agent/runtime/effect-coalescer";
 import { isEmptyStarterSession, pruneSessions } from "@/features/agent/runtime/store";
 import {
   beginSessionSubmit,
@@ -2324,4 +2324,59 @@ test("agent_end un-dims a steer that was never echoed", () => {
 
   session = reduceSessionEvent(session, ctx, "a1", { type: "agent_end" });
   assert.equal(session.messages.find((m) => m.id === "steer1")?.pending, false);
+});
+
+// Regression for finding [4]: a tool block created live from tool_execution_*
+// events (so it lives only in the bubble's blocks, never in a content snapshot)
+// must survive the model's closing text-only message_update. The snapshot rebuild
+// drops tools absent from the latest content; preservation was previously gated
+// to toolcall_* updates only, so a pure text summary made completed tools vanish.
+test("a text-only live message_update after a tool-heavy turn keeps the tool blocks", () => {
+  const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
+  let session: Session = {
+    id: "s-1",
+    runtimeSessionId: "rt-1",
+    piSessionId: "pi-1",
+    title: "t",
+    messages: [
+      { id: "u1", role: "user", text: "build it", timestamp: "" },
+      { id: "a1", role: "assistant", text: "", blocks: [], timestamp: "" },
+    ],
+    status: "running",
+    error: "",
+    input: "",
+    activeAssistantId: "a1",
+  };
+  const ev = (event: Record<string, unknown>) => {
+    session = reduceSessionEvent(session, ctx, "a1", event);
+  };
+
+  // Tool runs live, created from a tool_execution_start event (never enters streamCalls).
+  ev({ type: "tool_execution_start", toolCallId: "call-bash", toolName: "bash" });
+  const created = session.messages.find((m) => m.id === "a1")?.blocks ?? [];
+  assert.ok(
+    created.some((b) => b.kind === "tool" && b.id === "call-bash"),
+    "tool block created from tool_execution_start",
+  );
+
+  // Closing summary arrives as a pure text message_update — its content snapshot
+  // has NO tool part, so the snapshot rebuild would drop the tool without the fix.
+  ev({
+    type: "message_update",
+    message: {
+      role: "assistant",
+      stopReason: "",
+      content: [{ type: "text", text: "Done — the build succeeded." }],
+    },
+  });
+
+  const blocks = session.messages.find((m) => m.id === "a1")?.blocks ?? [];
+  assert.ok(
+    blocks.some((b) => b.kind === "tool" && b.id === "call-bash"),
+    "tool block must survive a text-only message_update",
+  );
+  assert.ok(
+    blocks.some((b) => b.kind === "text" && b.text.includes("build succeeded")),
+    "closing summary text rendered",
+  );
 });

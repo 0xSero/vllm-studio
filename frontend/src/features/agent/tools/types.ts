@@ -13,15 +13,22 @@ import type {
 } from "@/features/agent/composer-context";
 import type { SessionId } from "@/features/agent/runtime/types";
 
-export type ComputerTab =
-  | "status"
-  | "tools"
-  | "canvas"
-  | "side-chat"
-  | "browser"
-  | "files"
-  | "diff"
-  | "terminal";
+// Single source of truth for the right-sidebar tab ids. The `ComputerTab`
+// union is derived from this list, and persistence validates against it, so a
+// new tab only needs to be added here (plus its panel + label in the UI).
+export const COMPUTER_TAB_IDS = [
+  "status",
+  "tools",
+  "canvas",
+  "side-chat",
+  "browser",
+  "files",
+  "diff",
+  "terminal",
+  "plan",
+] as const;
+
+export type ComputerTab = (typeof COMPUTER_TAB_IDS)[number];
 
 export type BrowserBackend = "embedded" | "sitegeist";
 

@@ -282,11 +282,41 @@ function storedSessionsKey(state: WorkspaceState): string {
   return JSON.stringify(entries);
 }
 
+// Cheap O(sessions) fingerprint of everything the active-session broadcast
+// snapshot actually depends on: hydration, the selected-model fallback, focus,
+// pane membership, and each session's identity/status/skill scalars. It
+// deliberately reads `messages.length` (not message bodies) and `usedSkills`
+// length — a streaming text delta grows the last message in place without
+// changing any of these, so the signature is stable across the entire token
+// stream of a turn. Tool selection (plugins/skills) is intentionally excluded:
+// it does not flow through a workspace dispatch, so gating on it would never
+// help and only the next session-field change re-broadcasts it (unchanged from
+// the prior every-dispatch behavior).
+export function activeBroadcastSignature(state: WorkspaceState): string {
+  if (!state.hydrated) return " unhydrated";
+  const parts: string[] = [`m:${state.selectedModel ?? ""}`, `f:${state.focusedPaneId ?? ""}`];
+  for (const [paneId, pane] of state.panesById.entries())
+    parts.push(`P:${paneId}>${pane.sessionId}`);
+  for (const tab of state.sessions.values()) {
+    parts.push(
+      `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|${tab.runtimeSessionId}|` +
+        `${tab.projectId ?? ""}|${tab.cwd ?? ""}|${tab.modelId ?? ""}|${tab.startedAt ?? ""}|` +
+        `${tab.title ?? ""}|${tab.messages.length}|${tab.usedSkills?.length ?? 0}`,
+    );
+  }
+  return parts.join("\n");
+}
+
 function broadcastActiveSessions(
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
+  // Hot path: a coalesced text delta dispatches patchSession on every animation
+  // frame. The broadcast snapshot can't change unless a broadcast-relevant
+  // scalar changed, so short-circuit on the cheap signature BEFORE the
+  // O(sessions x messages) double walk + JSON.stringify that follows.
+  if (activeBroadcastSignature(prevState) === activeBroadcastSignature(nextState)) return;
   const selectionFor = deps.selectionFor ?? (() => EMPTY_SELECTION);
   const previous = computeActiveSessionBroadcast(prevState, selectionFor);
   const next = computeActiveSessionBroadcast(nextState, selectionFor);

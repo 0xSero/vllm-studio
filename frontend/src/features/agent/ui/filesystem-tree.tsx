@@ -13,11 +13,11 @@ function formatEntrySize(size: number): string {
 export function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }) {
   const parts = relPath ? relPath.split("/").filter(Boolean) : [];
   return (
-    <div className="flex h-7 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[length:var(--fs-sm)] text-(--dim)">
+    <div className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[length:var(--fs-sm)] text-(--dim)">
       <button
         type="button"
         onClick={onRoot}
-        className="shrink-0 rounded px-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+        className="shrink-0 rounded-md px-1.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         title="Project root"
       >
         /
@@ -72,7 +72,7 @@ export function TreeFileList({
         return (
           <div key={entry.path}>
             <div
-              className={`flex w-full items-center gap-1 py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--surface) ${isActive ? "bg-(--surface) text-(--fg)" : "text-(--dim)"}`}
+              className={`flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
               {isDir ? (
@@ -104,9 +104,9 @@ export function TreeFileList({
                 className="flex min-w-0 flex-1 items-center gap-1 text-left"
               >
                 {isDir ? (
-                  <Folder className="h-3 w-3 shrink-0 text-(--accent)" />
+                  <Folder className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
                 ) : (
-                  <File className="h-3 w-3 shrink-0" />
+                  <File className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
                 )}
                 <span className="flex-1 truncate">{entry.name}</span>
                 {!isDir && entry.size != null && entry.size > 0 ? (

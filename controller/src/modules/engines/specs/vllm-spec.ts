@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary } from "../../../core/command";
-import type { Recipe } from "../../models/types";
+import type { ProcessInfo, Recipe } from "../../models/types";
 import type { RuntimeBackendInfo } from "../../shared/system-types";
 import {
   getVllmConfigHelp,
@@ -13,7 +13,6 @@ import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import {
   appendExtraArguments,
   getExtraArgument,
-  getPythonPath,
   getVllmPythonPath,
 } from "../process/backend-builder";
 import {
@@ -21,13 +20,12 @@ import {
   getDefaultToolCallParser,
   shouldEnableExpertParallel,
 } from "../process/model-runtime-defaults";
-import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import {
   extractFlag,
   hasCliServeInvocation,
   hasModuleInvocation,
   positionalAfterServe,
-} from "../arg-utils";
+} from "../argument-utilities";
 import type {
   BinaryProbeResult,
   ConfigHelpResult,
@@ -144,7 +142,7 @@ const probeBinary = async (binary: string): Promise<BinaryProbeResult> => {
 
 const getRuntimeInfoAsync = async (
   _config: Config,
-  runningProcess?: Pick<import("../../models/types").ProcessInfo, "pid" | "backend"> | null,
+  _runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
 ): Promise<RuntimeBackendInfo> => {
   const info = await getVllmRuntimeInfo();
   return {

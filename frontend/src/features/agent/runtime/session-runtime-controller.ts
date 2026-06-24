@@ -391,9 +391,26 @@ export function createSessionRuntimeController(
           { runtimeSessionId: entry.sessionId, status: entry.status },
         ]),
     );
-    for (const session of binding?.getSessions() ?? []) {
+    const sessions = binding?.getSessions() ?? [];
+    // A piSessionId held by 2+ open sessions (forked/duplicated tab, pref copy,
+    // or the mid-turn adoption window before one settles) can't disambiguate
+    // which session a runtime entry belongs to. Trusting the pi reverse-index
+    // there would let ONE runtime entry promote/idle AND repoint every session
+    // sharing the id — direct two-session crosstalk. Collect the collided ids so
+    // we fall back to the unambiguous direct runtime match for them.
+    const sharedPiIds = new Set<string>();
+    const seenPiIds = new Set<string>();
+    for (const session of sessions) {
+      if (!session.piSessionId) continue;
+      if (seenPiIds.has(session.piSessionId)) sharedPiIds.add(session.piSessionId);
+      else seenPiIds.add(session.piSessionId);
+    }
+    for (const session of sessions) {
       const direct = byRuntime.get(session.runtimeSessionId);
-      const piMatch = session.piSessionId ? byPi.get(session.piSessionId) : undefined;
+      const piMatch =
+        session.piSessionId && !sharedPiIds.has(session.piSessionId)
+          ? byPi.get(session.piSessionId)
+          : undefined;
       const status = direct ?? piMatch?.status;
       if (!status) continue;
       if (status.active === true) {
@@ -626,9 +643,19 @@ export function createSessionRuntimeController(
 
       for (const [sessionId, want] of desired) {
         if (attachments.has(sessionId)) continue;
-        // Seed the gate from the persisted cursor when a session (re)enters
-        // the live set — e.g. restored from storage as "running".
-        cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
+        // Seed the gate from the persisted cursor ONLY on a genuine first attach
+        // (no live cursor yet) — e.g. a session restored from storage as
+        // "running". When an attachment is torn down and reopened for an
+        // already-live session — a mid-turn piSessionId adoption changes the
+        // connection key, so reconcile closes the old SSE and opens a new one —
+        // the in-memory cursor already holds the highest RECEIVED seq.
+        // Overwriting it with the persisted lastEventSeq, which only tracks
+        // COMMITTED seqs and therefore lags, would rewind the gate and make the
+        // reopened SSE re-deliver the backlog (the first-turn duplication).
+        const existing = cursors.get(sessionId);
+        if (!existing || (want.lastEventSeq ?? 0) > (existing.receivedSeq ?? 0)) {
+          cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
+        }
         attachments.set(
           sessionId,
           openAttachment(sessionId, want.runtimeSessionId, want.piSessionId),

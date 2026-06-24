@@ -1,5 +1,20 @@
 # AGENTS.md
 
+## Working Agreement
+
+- **Do not ask the user questions during execution.** Make a reasonable decision, record it here or in the relevant doc, and continue. Only stop if genuinely blocked (missing credentials, destructive action needing approval).
+- Prefer momentum: pick the most sensible default, proceed, and surface assumptions in the handoff summary rather than as up-front questions.
+
+## Agent Cleanup + Plan Pane (locked decisions)
+
+For the in-flight chat/messages/composer/browser cleanup and the new Plan pane:
+
+- **Plan-pane data source:** markdown/JSON plan file + parser (Option B), mirroring `canvas-store.ts` with a `/api/agent/plan` route. Use Cursor's `### To-dos` / `- [ ]` format. The agent edits the plan via normal file tools; the pane reads/writes it.
+- **Refactor risk appetite:** allow structural/behavioral improvements where clearly better (not strictly behavior-preserving).
+- **Execution model:** dispatch worker subagents in parallel per phase.
+- **Ordering:** Plan pane first (new value), then the cleanup phases.
+- **Verification:** local Electron dev mode + full QA quality gate (`npm --prefix frontend run check:quality`), exercising every interaction.
+
 ## Sensitive Configuration
 
 **NEVER commit sensitive data to Git.** Store these in `.env.local` (already gitignored):

@@ -1,6 +1,7 @@
 import { existsSync, promises as fs, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
+import { listProjectsFromStore } from "./projects-store";
 
 const IGNORE_DIRS = new Set([
   ".git",
@@ -57,6 +58,27 @@ export function assertWorkspaceRoot(rootCwd: string): string {
   return real;
 }
 
+function resolveRealPath(candidate: string): string {
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return path.resolve(candidate);
+  }
+}
+
+// Trust boundary: agent filesystem list/read may only operate inside project
+// roots that are registered server-side. The caller-supplied cwd must resolve
+// to the realpath of a known registered project.
+function resolveProjectRoot(cwd: string): string {
+  const requestedReal = resolveRealPath(cwd);
+  for (const project of listProjectsFromStore()) {
+    if (!project.exists) continue;
+    const projectReal = resolveRealPath(project.path);
+    if (projectReal === requestedReal) return projectReal;
+  }
+  throw new Error("cwd is not a registered project root");
+}
+
 // Reject any path that escapes the project root, resolving symlinks on both the
 // root and the target so a symlink inside the root cannot point outside it.
 function ensureInside(rootCwd: string, target: string): string {
@@ -76,7 +98,8 @@ function ensureInside(rootCwd: string, target: string): string {
 }
 
 export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {
-  const target = ensureInside(rootCwd, path.resolve(rootCwd, relPath || "."));
+  const root = resolveProjectRoot(rootCwd);
+  const target = ensureInside(root, path.resolve(root, relPath || "."));
   if (!existsSync(target)) throw new Error("Not found");
   const stats = statSync(target);
   if (!stats.isDirectory()) throw new Error("Not a directory");
@@ -96,7 +119,7 @@ export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {
     entries.push({
       name,
       path: abs,
-      rel: path.relative(rootCwd, abs),
+      rel: path.relative(root, abs),
       kind: s.isDirectory() ? "directory" : "file",
       size: s.isFile() ? s.size : undefined,
       modifiedAt: s.mtime.toISOString(),
@@ -114,7 +137,8 @@ export async function readFileSnippet(
   relPath: string,
   maxBytes = 5 * 1024 * 1024,
 ): Promise<{ content: string; truncated: boolean; size: number }> {
-  const target = ensureInside(rootCwd, path.resolve(rootCwd, relPath));
+  const root = resolveProjectRoot(rootCwd);
+  const target = ensureInside(root, path.resolve(root, relPath));
   const stats = await fs.stat(target);
   if (!stats.isFile()) throw new Error("Not a file");
   if (stats.size > maxBytes) {

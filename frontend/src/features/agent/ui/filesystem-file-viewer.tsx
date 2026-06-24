@@ -118,9 +118,9 @@ export function FileViewer({
       const composing = composingLine === lineNumber;
       return (
         <div className="group flex flex-col">
-          <div className="flex items-start gap-1 px-1 hover:bg-(--surface)">
+          <div className="flex items-start gap-1 px-1 hover:bg-(--color-surface-hover)">
             <span
-              className="w-8 shrink-0 select-none text-right font-mono text-(--dim)"
+              className="w-8 shrink-0 select-none text-right font-mono text-(--dim)/70"
               style={{ fontSize: fontSize - 2, lineHeight: `${lineHeight}px` }}
             >
               {lineNumber}
@@ -145,7 +145,7 @@ export function FileViewer({
                 setComposingLine(composing ? null : lineNumber);
                 setDraft("");
               }}
-              className="shrink-0 rounded p-0.5 text-(--dim) opacity-0 transition-opacity hover:text-(--fg) group-hover:opacity-100"
+              className="shrink-0 rounded p-0.5 text-(--dim) opacity-0 transition-opacity hover:bg-(--hover) hover:text-(--fg) group-hover:opacity-100"
               title="Comment on this line"
               aria-label={`Comment on line ${lineNumber}`}
               style={{ lineHeight: `${lineHeight}px` }}
@@ -156,7 +156,7 @@ export function FileViewer({
           {lineComments?.map((comment) => (
             <div
               key={comment.id}
-              className="ml-9 mr-2 my-0.5 flex items-start gap-2 rounded border border-(--border)/60 bg-(--surface)/50 px-2 py-1 text-[length:var(--fs-xs)] text-(--fg)/85"
+              className="ml-9 mr-2 my-0.5 flex items-start gap-2 rounded-md border border-(--border)/60 bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg)/85"
             >
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{comment.body}</span>
               <button
@@ -187,7 +187,7 @@ export function FileViewer({
                   }
                 }}
                 placeholder="Add a comment… (⌘↵ to save)"
-                className="w-full resize-none rounded border border-(--border) bg-(--surface) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
+                className="w-full resize-none rounded-md border border-(--border) bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
                 rows={2}
               />
               <div className="flex justify-end gap-1">
@@ -204,7 +204,7 @@ export function FileViewer({
                 <button
                   type="button"
                   onClick={() => submitDraft(lineNumber)}
-                  className="rounded bg-(--accent)/80 px-2 py-0.5 text-[length:var(--fs-xs)] text-white hover:bg-(--accent)"
+                  className="rounded-md bg-(--fg) px-2 py-0.5 text-[length:var(--fs-xs)] text-(--bg) hover:opacity-85"
                 >
                   Comment
                 </button>

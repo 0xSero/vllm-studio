@@ -19,6 +19,7 @@ import {
   sanitizeLogSessionId,
   tailFileLines,
 } from "../../core/log-files";
+import { redactLogLine } from "../../core/log-redaction";
 
 export const registerLogsRoutes: RouteRegistrar = (app, context) => {
   let lastCleanupAt = 0;
@@ -160,14 +161,16 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
     const limit = Math.min(Math.max(Number(ctx.req.query("limit") ?? 2000), 1), 20000);
     const dockerContainer = getDockerContainerForSession(sessionId);
     if (dockerContainer) {
-      const dockerLines = readDockerLogLines(dockerContainer, limit);
+      const dockerLines = readDockerLogLines(dockerContainer, limit).map(redactLogLine);
       if (dockerLines.length > 0) {
         return ctx.json({ id: sessionId, logs: dockerLines, content: dockerLines.join("\n") });
       }
     }
     const path = resolveExistingLogPath(context.config.data_dir, sessionId);
     if (!path) throw notFound("Log not found");
-    const lines = tailFileLines(path, limit).map((line) => line.replace(/\n$/, ""));
+    const lines = tailFileLines(path, limit)
+      .map((line) => line.replace(/\n$/, ""))
+      .map(redactLogLine);
     return ctx.json({ id: sessionId, logs: lines, content: lines.join("\n") });
   });
 
@@ -221,7 +224,10 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
         if (dockerContainer) {
           for await (const line of streamDockerLogLines(dockerContainer, replayLimit, signal)) {
             if (signal.aborted) return;
-            yield new Event(CONTROLLER_EVENTS.LOG, { session_id: sessionId, line }).toSse();
+            yield new Event(CONTROLLER_EVENTS.LOG, {
+              session_id: sessionId,
+              line: redactLogLine(line),
+            }).toSse();
           }
           return;
         }
@@ -230,11 +236,21 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
           for (const line of lines) {
             if (!line) continue;
             if (signal.aborted) return;
-            yield new Event(CONTROLLER_EVENTS.LOG, { session_id: sessionId, line }).toSse();
+            yield new Event(CONTROLLER_EVENTS.LOG, {
+              session_id: sessionId,
+              line: redactLogLine(line),
+            }).toSse();
           }
         }
         for await (const event of context.eventManager.subscribe(`logs:${sessionId}`, signal)) {
-          yield event.toSse();
+          if (event.type === CONTROLLER_EVENTS.LOG && typeof event.data["line"] === "string") {
+            yield new Event(CONTROLLER_EVENTS.LOG, {
+              ...event.data,
+              line: redactLogLine(event.data["line"] as string),
+            }).toSse();
+          } else {
+            yield event.toSse();
+          }
         }
       })()
     );

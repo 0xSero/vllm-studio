@@ -187,16 +187,27 @@ async function startPromptCommand(
           return;
         }
         const message = error instanceof Error ? error.message : "Agent request failed";
-        deps.updateSession(context.sessionId, (session) => ({
-          ...session,
-          error: message,
-          status: "idle",
-          activeAssistantId: undefined,
-        }));
+        deps.updateSession(context.sessionId, (session) =>
+          settleFailedTurn(session, context.assistantId, message),
+        );
       }),
     ),
   );
   await Effect.runPromise(program);
+}
+
+/**
+ * Settle a turn whose submit failed and whose runtime probe confirmed it never
+ * took. A second prompt may have superseded this turn while the failed POST and
+ * the liveness probe were in flight (both are awaited), giving the session a new
+ * `activeAssistantId` and `starting`/`running` status. Only surface the error and
+ * idle the session when it is STILL on this turn's bubble; otherwise the newer
+ * turn owns the intent state and clobbering it would strand the in-flight turn
+ * with no live-target bubble. Mirrors the success path's non-clobbering guard.
+ */
+export function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
+  if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
+  return { ...session, error: message, status: "idle", activeAssistantId: undefined };
 }
 
 function promptTurnRequest(

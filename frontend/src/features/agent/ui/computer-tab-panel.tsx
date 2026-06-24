@@ -5,6 +5,7 @@ import {
   FolderTree,
   GitBranch,
   Globe2,
+  ListChecks,
   MessageSquarePlus,
   TerminalSquare,
 } from "@/ui/icon-registry";
@@ -19,8 +20,14 @@ import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { ComputerStatusPanel } from "@/features/agent/ui/computer-status-panel";
 import { FilesystemPanel } from "@/features/agent/ui/filesystem-panel";
 import { GitDiffPanel } from "@/features/agent/ui/git-diff-panel";
+import { PlanPanel } from "@/features/agent/ui/plan-panel";
 
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
+
+export type SideChatDraft = {
+  title: string;
+  input: string;
+};
 
 type ComputerTabPanelProps = {
   activeModel: AgentModel | null;
@@ -32,7 +39,7 @@ type ComputerTabPanelProps = {
   onCloseSideChat: () => void;
   onCompactSession?: () => Promise<void>;
   onNavigateBrowser: (value: string) => void;
-  onOpenSideChat: () => void;
+  onOpenSideChat: (draft?: SideChatDraft) => void;
   onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
@@ -43,17 +50,34 @@ type ComputerTabPanelProps = {
 };
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
+  const focusedCwd = props.activeProject?.path ?? props.focusedSession?.cwd ?? null;
   const panels: Record<ComputerTab, ReactNode> = {
     status: <StatusTab {...props} />,
     tools: <ComputerLauncherPanel activeTab={props.tools.computer.tab} {...props} />,
     canvas: <CanvasPanel />,
     "side-chat": <SideChatTab {...props} />,
     browser: <BrowserTab {...props} />,
-    files: <FilesTab cwd={props.activeProject?.path ?? null} />,
-    diff: <GitDiffPanel cwd={props.activeProject?.path ?? null} />,
+    files: <FilesTab cwd={focusedCwd} />,
+    diff: <GitDiffPanel cwd={focusedCwd} />,
+    plan: (
+      <PlanPanel
+        sessionId={props.focusedSession?.runtimeSessionId ?? null}
+        onOpenTaskSideChat={(todo) =>
+          props.onOpenSideChat({
+            title: todo.content || "Plan task",
+            input: buildPlanTaskPrompt(todo.content),
+          })
+        }
+      />
+    ),
     terminal: null,
   };
   return panels[props.tools.computer.tab] ?? null;
+}
+
+function buildPlanTaskPrompt(task: string): string {
+  const title = task.trim() || "this plan task";
+  return `Help me complete this plan task:\n\n${title}\n\nFocus only on this task. Start by checking the relevant project context, then either make the smallest correct change or explain the next concrete step.`;
 }
 
 function StatusTab({
@@ -171,7 +195,14 @@ function ComputerLauncherPanel({
       title: "Side chat",
       description: "Start a side conversation",
       icon: MessageSquarePlus,
-      onClick: onOpenSideChat,
+      onClick: () => onOpenSideChat(),
+    },
+    {
+      key: "plan",
+      title: "Plan",
+      description: "Plan and track to-dos",
+      icon: ListChecks,
+      onClick: () => tools.setComputerTab("plan"),
     },
     {
       key: "browser",
@@ -196,8 +227,8 @@ function ComputerLauncherPanel({
     },
   ] as const;
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-5 py-7">
-      <div className="mx-auto flex max-w-[30rem] flex-col gap-3">
+    <section className="min-h-0 flex-1 overflow-y-auto bg-(--color-panel) px-3 py-3">
+      <div className="flex flex-col gap-1">
         {cards.map((card) => {
           const Icon = card.icon;
           const selected = card.key !== "side-chat" && activeTab === card.key;
@@ -206,18 +237,20 @@ function ComputerLauncherPanel({
               key={card.key}
               type="button"
               onClick={card.onClick}
-              className={`group flex min-h-24 flex-col items-center justify-center rounded-xl border px-5 py-5 text-center transition-colors ${
+              className={`group flex min-h-0 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
                 selected
-                  ? "border-(--border) bg-(--surface) text-(--fg)/80"
-                  : "border-transparent bg-black/20 text-(--fg)/75 hover:border-(--border) hover:bg-(--surface)/70"
+                  ? "bg-(--color-surface-hover) text-(--fg)"
+                  : "text-(--fg)/75 hover:bg-(--color-surface-hover) hover:text-(--fg)"
               }`}
             >
-              <Icon className="mb-3 h-5 w-5 text-(--dim)/70 transition-colors group-hover:text-(--fg)/75" />
-              <span className="text-[length:var(--fs-lg)] font-semibold tracking-tight">
-                {card.title}
-              </span>
-              <span className="mt-1.5 text-[length:var(--fs-base)] text-(--dim)">
-                {card.description}
+              <Icon className="h-4 w-4 shrink-0 text-(--dim)/75 transition-colors group-hover:text-(--fg)/80" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[length:var(--fs-lg)] font-medium">
+                  {card.title}
+                </span>
+                <span className="block truncate text-[length:var(--fs-sm)] text-(--dim)">
+                  {card.description}
+                </span>
               </span>
             </button>
           );

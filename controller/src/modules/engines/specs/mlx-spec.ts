@@ -9,7 +9,7 @@ import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-arg
 import {
   extractFlag,
   hasModuleInvocation,
-} from "../arg-utils";
+} from "../argument-utilities";
 import type { EngineSpec } from "../engine-spec";
 
 const MLX_IMPORT_PROBE =
@@ -83,7 +83,7 @@ const getRuntimeInfoAsync = async (
   if (resolved) candidates.push(resolved);
   candidates.push("python3", "python");
 
-  const unique = candidates.filter((c, i, a) => a.indexOf(c) === i);
+  const unique = candidates.filter((candidate, index, allCandidates) => allCandidates.indexOf(candidate) === index);
 
   for (const python of unique) {
     const check = await runCommandAsync(python, ["--version"], { timeoutMs: 2_000 });

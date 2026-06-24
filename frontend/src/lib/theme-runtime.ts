@@ -48,11 +48,11 @@ function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
     separator: `rgba(${ink}, ${isLight ? "0.18" : "0.18"})`,
     hover: `rgba(${ink}, ${isLight ? "0.055" : "0.07"})`,
     active: `rgba(${ink}, ${isLight ? "0.085" : "0.11"})`,
-    composer: "color-mix(in srgb, var(--surface) 92%, var(--bg) 8%)",
+    composer: "color-mix(in srgb, var(--surface) 88%, var(--bg) 12%)",
     "composer-footer": "color-mix(in srgb, var(--surface) 72%, var(--bg) 28%)",
     "composer-shadow": isLight
-      ? "0 12px 36px rgba(0, 0, 0, 0.08)"
-      : "0 18px 60px rgba(0, 0, 0, 0.45)",
+      ? "0 12px 30px rgba(0, 0, 0, 0.07)"
+      : "0 18px 42px rgba(0, 0, 0, 0.42)",
   };
 }
 

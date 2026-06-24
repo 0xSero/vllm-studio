@@ -88,7 +88,14 @@ export function blocksFromMessageContent(
     }),
   );
   const ordered = firstToolCallIndex > -1 ? blocks : reasoningBeforeText(blocks);
-  return errorBlock ? [...ordered, errorBlock] : ordered;
+  // Coalesce adjacent same-kind text/thinking exactly like the live snapshot
+  // path (blocksFromTurnSnapshots) does. A settled message can carry two
+  // adjacent {type:"text"} parts whose boundary falls mid-content (mid-table,
+  // mid-code-fence); without this merge the replay/reload path builds one block
+  // per part and the GFM parser sees two raw fragments, so a table that rendered
+  // correctly live mangles after navigate-away/crash-recovery. The error block
+  // is not text-like, so it is never merged into prose.
+  return mergeAdjacentTextLike(errorBlock ? [...ordered, errorBlock] : ordered);
 }
 
 function assistantErrorBlock(message: string | undefined): AssistantBlock | null {

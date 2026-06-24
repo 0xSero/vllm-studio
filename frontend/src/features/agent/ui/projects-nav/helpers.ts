@@ -71,7 +71,9 @@ export function relativeAge(value?: string | null): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  return days === 1 ? "1 day" : `${days} days`;
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w`;
 }
 
 export function sessionDedupeKey(session: SessionSummary): string {

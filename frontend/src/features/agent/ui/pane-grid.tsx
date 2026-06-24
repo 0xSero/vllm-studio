@@ -145,7 +145,7 @@ function SplitNode({
         role="separator"
         aria-orientation={isRow ? "vertical" : "horizontal"}
         onPointerDown={handlePointerDown}
-        className={`shrink-0 border-(--border) bg-(--bg) hover:bg-(--surface) ${
+        className={`shrink-0 border-(--border)/75 bg-(--color-header) hover:bg-(--surface) ${
           isRow ? "h-full w-1 cursor-col-resize border-x" : "w-full h-1 cursor-row-resize border-y"
         }`}
         title="Drag to resize"
@@ -257,7 +257,7 @@ function PaneLeaf({
       {hoverEdge ? (
         <div
           aria-hidden
-          className={`pointer-events-none absolute z-20 bg-(--accent)/15 ring-1 ring-(--accent) ${
+          className={`pointer-events-none absolute z-20 bg-(--fg)/10 ring-1 ring-(--fg)/35 ${
             hoverEdge === "left"
               ? "inset-y-0 left-0 w-1/2"
               : hoverEdge === "right"

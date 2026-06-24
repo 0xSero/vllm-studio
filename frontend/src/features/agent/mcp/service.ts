@@ -63,6 +63,31 @@ export function handleMcpAction(body: Record<string, unknown> | null) {
   }
 }
 
+export function installManagedGoogleCatalogueServer(catalogueId: string) {
+  const entry = findCatalogueEntry(catalogueId);
+  if (!entry) return mcpBadRequest("Unknown catalogue entry.");
+  if (!entry.env || !Object.keys(entry.env).some((key) => key.startsWith("GOOGLE_"))) {
+    return mcpBadRequest("Catalogue entry is not a managed Google OAuth server.");
+  }
+  upsertServer(
+    {
+      id: `mcp:${entry.name}:managed-google`,
+      name: entry.name,
+      displayName: entry.displayName,
+      description: entry.description,
+      ...(entry.shortDescription ? { shortDescription: entry.shortDescription } : {}),
+      category: entry.category,
+      ...(entry.tags?.length ? { tags: entry.tags } : {}),
+      transport: "stdio",
+      command: entry.command,
+      ...(entry.args?.length ? { args: entry.args } : {}),
+      env: entry.env,
+    },
+    "marketplace",
+  );
+  return mcpOk();
+}
+
 function handleSetEnabled(body: Record<string, unknown>) {
   const id = typeof body.id === "string" ? body.id : "";
   if (!id || typeof body.enabled !== "boolean") {

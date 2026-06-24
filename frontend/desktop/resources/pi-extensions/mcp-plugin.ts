@@ -61,7 +61,6 @@ type McpBridgeStatus = {
   error?: string;
 };
 
-const STARTUP_TIMEOUT_MS = 5_000;
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 const bridgeStatuses: McpBridgeStatus[] = [];
 
@@ -71,6 +70,10 @@ function readTimeoutMs(name: string, fallback: number): number {
 }
 
 const TOOL_TIMEOUT_MS = readTimeoutMs("VLLM_STUDIO_MCP_TOOL_TIMEOUT_MS", DEFAULT_TOOL_TIMEOUT_MS);
+// Startup must tolerate a cold `npx -y <pkg>` / `uvx` download on first launch,
+// which routinely takes longer than a few seconds. Configurable so a slow link
+// can raise it further.
+const STARTUP_TIMEOUT_MS = readTimeoutMs("VLLM_STUDIO_MCP_STARTUP_TIMEOUT_MS", 20_000);
 
 function readPluginConfigs(): McpPluginConfig[] {
   try {

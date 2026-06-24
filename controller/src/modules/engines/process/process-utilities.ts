@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import type { Recipe } from "../../models/types";
 import type { Backend } from "../../shared/recipe-types";
-import { detectEngineFromArgs } from "../engine-spec";
-import { extractFlag as extractFlagUtil } from "../arg-utils";
+import { detectEngineFromArguments } from "../engine-spec";
+import { extractFlag as extractFlagUtility } from "../argument-utilities";
 
-export { extractFlagUtil as extractFlag };
+export { extractFlagUtility as extractFlag };
 
 const splitCommand = (command: string): string[] => {
   const matches = command.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
@@ -13,7 +13,7 @@ const splitCommand = (command: string): string[] => {
 
 export const detectBackend = (args: string[]): Backend | null => {
   if (args.length === 0) return null;
-  return detectEngineFromArgs(args);
+  return detectEngineFromArguments(args);
 };
 
 export const listProcesses = (): Array<{ pid: number; args: string[] }> => {

@@ -281,19 +281,19 @@ function SessionRowContent({
   return (
     <>
       {isRunning ? (
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--accent)" aria-hidden />
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--link)" aria-hidden />
       ) : unseen ? (
         <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent)"
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--link)"
           aria-label="Unseen activity"
           title="Unseen activity"
         />
       ) : null}
-      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
+      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-lg)] font-normal leading-4 text-(--fg)/78 transition-colors group-hover:text-(--fg)/95">
         {label}
       </span>
       {age ? (
-        <span className="shrink-0 pl-1.5 pr-1 font-mono text-[length:var(--fs-2xs)] text-(--dim)">
+        <span className="shrink-0 pl-1.5 pr-1 font-mono text-[length:var(--fs-md)] text-(--dim)">
           {age}
         </span>
       ) : null}
@@ -408,7 +408,7 @@ function SessionPinButton({
         if (!disabled) onToggle();
       }}
       disabled={disabled}
-      className={`pointer-events-none absolute left-1.5 top-1/2 z-20 inline-flex h-5 w-5 shrink-0 -translate-y-1/2 scale-90 items-center justify-center rounded-md bg-(--hover)/95 opacity-0 shadow-[0_0_14px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-[opacity,transform,color] duration-300 ease-out hover:text-(--fg) group-hover:pointer-events-auto group-hover:scale-100 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:scale-100 focus-visible:opacity-100 disabled:opacity-20 ${pinned ? "text-(--accent)" : "text-(--fg)/78"}`}
+      className={`pointer-events-none absolute left-1.5 top-1/2 z-20 inline-flex h-5 w-5 shrink-0 -translate-y-1/2 scale-90 items-center justify-center rounded-md bg-(--hover)/95 opacity-0 shadow-[0_0_14px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-[opacity,transform,color] duration-300 ease-out hover:text-(--fg) group-hover:pointer-events-auto group-hover:scale-100 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:scale-100 focus-visible:opacity-100 disabled:opacity-20 ${pinned ? "text-(--fg)" : "text-(--fg)/78"}`}
       aria-pressed={pinned}
       aria-label={pinned ? "Unpin session" : "Pin session"}
       title={pinned ? "Unpin session" : "Pin session"}

@@ -28,8 +28,6 @@ type CreateEngineJobOptions = {
   backend: RuntimeJobBackend;
   type: EngineJob["type"];
   targetId?: string;
-  command?: string;
-  args?: string[];
   version?: string;
   preferBundled?: boolean;
   runningProcess?: ProcessInfo | null;
@@ -76,7 +74,6 @@ const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
   status: "queued",
   progress: 0,
   message: `${options.type} queued for ${options.backend}`,
-  ...(options.command ? { command: options.command } : {}),
   startedAt: nowIso(),
 });
 
@@ -97,7 +94,6 @@ const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
 };
 
 const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
-  if (options.command) return [options.command, ...(options.args ?? [])].join(" ").trim();
   if (options.type === "install" && isManagedPythonBackend(options.backend)) {
     return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
   }
@@ -262,8 +258,6 @@ const runJob = async (
     }
 
     const upgradeOptions: RuntimeUpgradeOptions = {
-      ...(options.command ? { command: options.command } : {}),
-      ...(options.args ? { args: options.args } : {}),
       ...(options.version ? { version: options.version } : {}),
       ...(options.backend === "sglang" && target?.pythonPath
         ? { pythonPath: target.pythonPath }

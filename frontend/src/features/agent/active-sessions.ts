@@ -23,6 +23,15 @@ export type ActiveAgentSessionSnapshot = {
   plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   usedSkills?: ComposerSkillRef[];
+  /**
+   * Identifies the app instance (window) that wrote this entry. The persist path
+   * stamps every entry it writes; on the next write the merge drops THIS
+   * instance's previously-persisted entries (its `incoming` set is authoritative,
+   * so an entry it no longer lists was closed) while keeping entries written by
+   * other instances (cross-window union). Legacy entries written before this
+   * field existed have no writerId and are preserved.
+   */
+  writerId?: string;
 };
 
 export type ActiveSessionPrefs = Record<string, { hidden?: boolean; pinned?: boolean }>;
@@ -126,10 +135,16 @@ export function mergeActiveAgentSessions(
   previous: ActiveAgentSessionSnapshot[],
   incoming: ActiveAgentSessionSnapshot[],
   prefs: ActiveSessionPrefs = {},
+  ownWriterId?: string,
 ): ActiveAgentSessionSnapshot[] {
   const byKey = new Map<string, ActiveAgentSessionSnapshot>();
   let focusedKey: string | null = null;
   for (const session of previous) {
+    // `incoming` is the authoritative current set for THIS app instance, so its
+    // own previously-persisted entries are replaced wholesale below — a previous
+    // entry this instance no longer lists was closed/pruned and must not linger.
+    // Entries from other instances (or legacy ones with no writerId) are kept.
+    if (ownWriterId && session.writerId === ownWriterId) continue;
     if (!isHidden(session, prefs)) byKey.set(sessionStorageKey(session), session);
   }
   for (const session of incoming) {

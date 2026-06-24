@@ -15,6 +15,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
   const browserExtension = path.join(root, "browser.mjs");
   const sitegeistExtension = path.join(root, "sitegeist-browser.mjs");
   const canvasExtension = path.join(root, "canvas.mjs");
+  const planExtension = path.join(root, "plan.mjs");
   const mcpExtension = path.join(root, "mcp.mjs");
   const pluginRoot = path.join(root, "plugin");
   const pluginSkills = path.join(pluginRoot, "skills");
@@ -22,6 +23,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
   const browserSkill = path.join(root, "browser-skill");
   const sitegeistSkill = path.join(root, "sitegeist-browser-skill");
   const canvasSkill = path.join(root, "canvas-skill");
+  const planSkill = path.join(root, "plan-skill");
   const mcpConfig = path.join(pluginRoot, ".mcp.json");
   const relayEnv = path.join(root, "sitegeist-relay.env");
 
@@ -31,6 +33,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     mkdir(browserSkill),
     mkdir(sitegeistSkill),
     mkdir(canvasSkill),
+    mkdir(planSkill),
   ]);
   await Promise.all(
     [
@@ -39,6 +42,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
       browserExtension,
       sitegeistExtension,
       canvasExtension,
+      planExtension,
       mcpExtension,
     ].map((filePath) =>
       writeFile(filePath, "export default function extensionFactory() {}\n", "utf8"),
@@ -58,10 +62,12 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     VLLM_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH:
       process.env.VLLM_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH,
     VLLM_STUDIO_CANVAS_EXTENSION_PATH: process.env.VLLM_STUDIO_CANVAS_EXTENSION_PATH,
+    VLLM_STUDIO_PLAN_EXTENSION_PATH: process.env.VLLM_STUDIO_PLAN_EXTENSION_PATH,
     VLLM_STUDIO_MCP_EXTENSION_PATH: process.env.VLLM_STUDIO_MCP_EXTENSION_PATH,
     VLLM_STUDIO_BROWSER_SKILL_PATH: process.env.VLLM_STUDIO_BROWSER_SKILL_PATH,
     VLLM_STUDIO_SITEGEIST_BROWSER_SKILL_PATH: process.env.VLLM_STUDIO_SITEGEIST_BROWSER_SKILL_PATH,
     VLLM_STUDIO_CANVAS_SKILL_PATH: process.env.VLLM_STUDIO_CANVAS_SKILL_PATH,
+    VLLM_STUDIO_PLAN_SKILL_PATH: process.env.VLLM_STUDIO_PLAN_SKILL_PATH,
     VLLM_STUDIO_SITEGEIST_RELAY_ENV_PATH: process.env.VLLM_STUDIO_SITEGEIST_RELAY_ENV_PATH,
   };
   Object.assign(process.env, {
@@ -70,10 +76,12 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     VLLM_STUDIO_BROWSER_EXTENSION_PATH: browserExtension,
     VLLM_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH: sitegeistExtension,
     VLLM_STUDIO_CANVAS_EXTENSION_PATH: canvasExtension,
+    VLLM_STUDIO_PLAN_EXTENSION_PATH: planExtension,
     VLLM_STUDIO_MCP_EXTENSION_PATH: mcpExtension,
     VLLM_STUDIO_BROWSER_SKILL_PATH: browserSkill,
     VLLM_STUDIO_SITEGEIST_BROWSER_SKILL_PATH: sitegeistSkill,
     VLLM_STUDIO_CANVAS_SKILL_PATH: canvasSkill,
+    VLLM_STUDIO_PLAN_SKILL_PATH: planSkill,
     VLLM_STUDIO_SITEGEIST_RELAY_ENV_PATH: relayEnv,
   });
 
@@ -93,18 +101,25 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     });
 
     // SDK loads .ts/.js extensions via jiti; we hand it absolute paths instead
-    // of pre-imported factories. The five bundled extensions in this fixture
+    // of pre-imported factories. The six bundled extensions in this fixture
     // are: timeout, agent policy, mcp (since plugins[].mcpConfigPath exists),
-    // browser, canvas.
-    assert.equal(result.extensionPaths.length, 5);
+    // browser, canvas, and plan (always loaded — the Plan panel is core).
+    assert.equal(result.extensionPaths.length, 6);
     assert.deepEqual(result.extensionPaths.toSorted(), [
       agentPolicyExtension,
       browserExtension,
       canvasExtension,
       mcpExtension,
+      planExtension,
       timeoutExtension,
     ]);
-    assert.deepEqual(result.skills, [pluginSkills, selectedSkill, browserSkill, canvasSkill]);
+    assert.deepEqual(result.skills, [
+      pluginSkills,
+      selectedSkill,
+      browserSkill,
+      planSkill,
+      canvasSkill,
+    ]);
     assert.equal(result.envInjections.VLLM_STUDIO_BROWSER_SESSION_ID, "browser-session");
     assert.equal(result.envInjections.VLLM_STUDIO_FRONTEND_BASE, "http://127.0.0.1:3007");
     assert.match(result.envInjections.VLLM_STUDIO_MCP_PLUGIN_CONFIGS, /demo/);
@@ -123,10 +138,11 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
     });
     assert.deepEqual(sitegeistResult.extensionPaths.toSorted(), [
       agentPolicyExtension,
+      planExtension,
       sitegeistExtension,
       timeoutExtension,
     ]);
-    assert.deepEqual(sitegeistResult.skills, [sitegeistSkill]);
+    assert.deepEqual(sitegeistResult.skills, [sitegeistSkill, planSkill]);
     assert.equal(sitegeistResult.envInjections.SITEGEIST_RELAY_SESSION_ID, "sitegeist-session");
     assert.equal(sitegeistResult.envInjections.SITEGEIST_RELAY_URL, "http://127.0.0.1:7717");
     assert.equal(sitegeistResult.envInjections.SITEGEIST_RELAY_TOKEN, "test-token");

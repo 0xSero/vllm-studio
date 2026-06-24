@@ -26,7 +26,7 @@ import {
   reconnectAfter,
 } from "@/features/agent/runtime/runtime-cursor";
 import { createSessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
-import { createTextDeltaCoalescer } from "@/features/agent/runtime/text-delta-coalescer";
+import { createEffectTextDeltaCoalescer as createTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 
 const fixture = JSON.parse(

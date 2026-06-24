@@ -15,7 +15,7 @@ import {
   hasCliServeInvocation,
   hasModuleInvocation,
   positionalAfterServe,
-} from "../arg-utils";
+} from "../argument-utilities";
 import type {
   BinaryProbeResult,
   ConfigHelpResult,
@@ -45,11 +45,9 @@ const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
   const cliBinary = resolveSglangCliBinary(getPythonPath(recipe) ?? null) ?? resolveSglangCliBinary(config.sglang_python ?? null);
 
   let command: string[];
-  let usesServeCli = false;
 
   if (cliBinary && existsSync(cliBinary)) {
     command = [cliBinary, "serve"];
-    usesServeCli = true;
   } else {
     command = [python, "-m", "sglang.launch_server"];
   }
@@ -241,7 +239,7 @@ const getRuntimeInfoAsync = async (
   if (resolved) candidates.push(resolved);
   candidates.push("python3", "python");
 
-  const unique = candidates.filter((c, i, a) => a.indexOf(c) === i);
+  const unique = candidates.filter((candidate, index, allCandidates) => allCandidates.indexOf(candidate) === index);
 
   for (const python of unique) {
     const check = await runCommandAsync(python, ["--version"], { timeoutMs: 2_000 });

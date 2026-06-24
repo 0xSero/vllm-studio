@@ -1,16 +1,15 @@
 import type { Config } from "../../../config/env";
 import { resolveBinary } from "../../../core/command";
-import type { Recipe } from "../../models/types";
+import type { ProcessInfo, Recipe } from "../../models/types";
 import type { RuntimeBackendInfo } from "../../shared/system-types";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
-import { isUpgradeCommandConfigured, LLAMACPP_UPGRADE_ENV } from "../runtimes/upgrade-config";
 import {
   appendLlamacppArguments,
   getExtraArgument,
   resolveLlamaBinary,
 } from "../process/backend-builder";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
-import { extractFlag } from "../arg-utils";
+import { extractFlag } from "../argument-utilities";
 import type {
   ConfigHelpResult,
   EngineSpec,
@@ -56,7 +55,7 @@ const extractServedModelName = (args: string[]): string | null => {
 
 const getRuntimeInfoAsync = async (
   config: Config,
-  _runningProcess?: Pick<import("../../models/types").ProcessInfo, "pid" | "backend"> | null,
+  _runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
 ): Promise<RuntimeBackendInfo> => {
   return getLlamacppRuntimeInfo(config);
 };

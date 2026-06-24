@@ -131,7 +131,7 @@ export function AgentComposerFrame({
   textareaRef,
 }: AgentComposerFrameProps) {
   return (
-    <form onSubmit={onSubmit} className="shrink-0 bg-(--agent-bg) px-6 pb-1.5 pt-2">
+    <form onSubmit={onSubmit} className="shrink-0 bg-(--agent-bg) px-6 pb-2 pt-2.5">
       <AgentQueuePanel
         items={queueItems}
         expanded={queueExpanded}
@@ -146,9 +146,9 @@ export function AgentComposerFrame({
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
         className={cx(
-          // The Codex composer: a big-radius surface over a hairline border and
-          // a soft shadow — the most "designed" object in the pane.
-          "mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] border border-(--border)/60 bg-(--composer) shadow-[var(--composer-shadow)] transition-colors",
+          // The Codex composer: a lifted charcoal surface over a hairline
+          // border, with a soft shadow and compact radius.
+          "mx-auto w-full max-w-[var(--composer-w)] overflow-visible rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-shadow)] transition-colors",
           composerDragActive && "outline outline-1 outline-(--link)/50",
         )}
       >

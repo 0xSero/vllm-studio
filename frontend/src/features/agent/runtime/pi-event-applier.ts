@@ -141,6 +141,13 @@ function reduceAssistantSnapshotEvent(
     const existingBlocks = current.blocks ?? [];
     let blocks = mergeExistingToolState(existingBlocks, blocksFromTurnSnapshots(streamCalls));
     blocks = applyLegacyToolCallDeltaIfSnapshotMissedIt(blocks, existingBlocks, event, content);
+    // Carry over any tool block created from tool_execution_*/toolcall_* events
+    // that the latest content snapshot doesn't list — for EVERY update, not just
+    // toolcall_* ones. Without this, the model's closing text-only summary after
+    // a tool-heavy turn rebuilds blocks from a tool-free snapshot and
+    // mergeExistingToolState silently drops the completed tools (they vanish from
+    // the bubble). Mirrors the replay path, which preserves them unconditionally.
+    blocks = preserveMissingToolBlocks(blocks, existingBlocks);
     // A call that ended (errored or aborted) won't execute its declared tools —
     // settle them so they don't show a perpetual "running" badge. An error marks
     // them errored; an abort just settles them done.
@@ -275,9 +282,22 @@ function nextStreamCalls(
   }
   if (calls.length === 0) {
     calls.push(content);
-  } else {
-    calls[calls.length - 1] = content;
+    return calls;
   }
+  if (type === "message_update") {
+    // Monotonic slot: a message_update may carry a snapshot that momentarily LAGS
+    // the previous frame (assistantSnapshotContent flips between message.content
+    // and assistantMessageEvent.partial.content, which don't advance in lockstep).
+    // Overwriting the current call with a shorter snapshot shrinks the rendered
+    // bubble for one frame — a visible flicker — before the next update re-grows
+    // it. Keep whichever snapshot has the larger payload so the slot never regresses.
+    const existing = calls[calls.length - 1];
+    calls[calls.length - 1] =
+      contentPayloadLength(content) >= contentPayloadLength(existing) ? content : existing;
+    return calls;
+  }
+  // message_end carries the call's settled, authoritative content.
+  calls[calls.length - 1] = content;
   return calls;
 }
 

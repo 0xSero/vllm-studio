@@ -56,7 +56,7 @@ export function GitDiffPanel({ cwd }: { cwd: string | null }) {
   const files = useMemo(() => parseUnifiedDiff(payload?.diff ?? ""), [payload?.diff]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="flex min-h-0 flex-1 flex-col bg-(--color-panel)">
       <GitPanelHeader cwd={cwd} loading={loading} payload={payload} onReload={load} />
       <GitWorkflowBar
         payload={payload}
@@ -92,7 +92,7 @@ function GitPanelHeader({
   onReload: () => Promise<void>;
 }) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-3 text-xs">
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-3 text-xs">
       <GitBranchIcon className="h-3.5 w-3.5 text-(--dim)" />
       <span className="min-w-0 flex-1 truncate text-(--fg)" title={cwd ?? ""}>
         {gitDiffHeaderTitle(payload, cwd)}
@@ -101,7 +101,7 @@ function GitPanelHeader({
         type="button"
         onClick={() => void onReload()}
         disabled={loading || !cwd}
-        className="rounded p-1 text-(--dim) hover:bg-(--surface) hover:text-(--fg) disabled:opacity-40"
+        className="rounded-md p-1 text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-40"
         title="Refresh git state"
       >
         <ReloadIcon className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -130,7 +130,7 @@ function GitWorkflowBar({
   if (!payload?.isRepo) return null;
   const dirty = (payload.status?.length ?? 0) > 0;
   return (
-    <div className="grid gap-2 border-b border-(--border) bg-(--surface)/35 p-2 text-[length:var(--fs-sm)] text-(--dim)">
+    <div className="grid gap-2 border-b border-(--border)/80 bg-(--color-panel) p-2 text-[length:var(--fs-sm)] text-(--dim)">
       <div className="flex flex-wrap items-center gap-2">
         <RefSelect
           refs={payload.refs ?? []}
@@ -142,7 +142,7 @@ function GitWorkflowBar({
           value={draftBranch}
           onChange={(event) => onDraftBranch(event.target.value)}
           placeholder="new branch"
-          className="h-7 min-w-0 flex-1 rounded border border-(--border) bg-(--bg) px-2 text-(--fg) outline-none"
+          className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none focus:border-(--border-hover)"
         />
         <Button
           variant="secondary"
@@ -162,7 +162,7 @@ function GitWorkflowBar({
         </Button>
         {payload.prUrl ? (
           <a
-            className="h-7 rounded border border-(--border) px-2 leading-7 text-(--fg)"
+            className="h-7 rounded-md border border-(--border)/80 px-2 leading-7 text-(--fg) hover:bg-(--hover)"
             href={payload.prUrl}
             target="_blank"
           >
@@ -176,7 +176,7 @@ function GitWorkflowBar({
           onChange={(event) => onCommitMessage(event.target.value)}
           placeholder={dirty ? "commit message" : "working tree clean"}
           disabled={!dirty}
-          className="h-7 min-w-0 flex-1 rounded border border-(--border) bg-(--bg) px-2 text-(--fg) outline-none disabled:opacity-45"
+          className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none disabled:opacity-45 focus:border-(--border-hover)"
         />
         <Button
           variant="secondary"
@@ -216,7 +216,7 @@ function RefSelect({
         event.currentTarget.value &&
         void onRun({ action: "checkout", ref: event.currentTarget.value })
       }
-      className="h-7 min-w-[9rem] rounded border border-(--border) bg-(--bg) px-2 text-(--fg)"
+      className="h-7 min-w-[9rem] rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg)"
       title="Switch branch"
     >
       <option value="">{branch ?? "detached"}</option>
@@ -288,7 +288,7 @@ function EmptyDiffPanel({ loading, status }: { loading: boolean; status: string[
     <div className="p-4 text-xs text-(--dim)">
       {loading ? "Loading diff…" : "No unstaged tracked-file changes."}
       {status.length > 0 ? (
-        <pre className="mt-3 overflow-auto rounded border border-(--border) bg-(--surface) p-2 font-mono text-[length:var(--fs-sm)] text-(--fg)">
+        <pre className="mt-3 overflow-auto rounded-md border border-(--border)/80 bg-(--color-input) p-2 font-mono text-[length:var(--fs-sm)] text-(--fg)">
           {status.join("\n")}
         </pre>
       ) : null}
@@ -307,7 +307,7 @@ function DiffFileList({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[length:var(--fs-sm)] leading-5">
-      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--bg)/95 py-1">
+      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--color-panel)/95 py-1 backdrop-blur">
         <DiffModeButton active={viewMode === "unified"} onClick={() => onViewMode("unified")}>
           Unified
         </DiffModeButton>
@@ -325,11 +325,11 @@ function DiffFileList({
         {files.map((file, fileIndex) => (
           <details
             key={file.path}
-            className="overflow-hidden rounded-md border border-(--border) bg-(--bg)"
+            className="overflow-hidden rounded-md border border-(--border)/80 bg-(--color-panel)"
             open={fileIndex === 0}
           >
             <summary
-              className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border) bg-(--surface)/70 px-2 py-1.5 text-xs text-(--fg) hover:bg-(--surface)"
+              className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-2 py-1.5 text-xs text-(--fg) hover:bg-(--color-surface-hover)"
               title={file.path}
             >
               <span className="min-w-0 flex-1 truncate">{file.path}</span>
@@ -366,7 +366,7 @@ function DiffModeButton({
       type="button"
       onClick={onClick}
       className={`h-6 rounded px-2 text-[length:var(--fs-xs)] ${
-        active ? "bg-(--surface) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
       }`}
     >
       {children}
@@ -438,7 +438,7 @@ function StackedDiff({ file }: { file: DiffFile }) {
 
 function DiffCell({ line, side }: { line?: DiffFile["lines"][number]; side: "old" | "new" }) {
   if (!line) {
-    return <div className="min-h-5 border-r border-(--border)/20 bg-(--surface)/20" />;
+    return <div className="min-h-5 border-r border-(--border)/20 bg-(--color-surface)" />;
   }
   const lineNumber = side === "old" ? line.oldLine : line.newLine;
   return (

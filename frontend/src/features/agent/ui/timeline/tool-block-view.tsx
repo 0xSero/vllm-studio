@@ -111,12 +111,20 @@ function ToolSummary({
   children?: ReactNode;
   open?: boolean;
 }) {
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const expanded = userOpen ?? open;
   const meta = toolMeta(block, filePath);
   const running = block.status === "running";
   const idleColor = toolKindNodeColor(classifyTool(block));
   return (
-    <details className="group min-w-0" open={open}>
-      <summary className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden">
+    <details className="group min-w-0" open={expanded}>
+      <summary
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        onClick={(event) => {
+          event.preventDefault();
+          setUserOpen(!expanded);
+        }}
+      >
         <span
           className={`shrink-0 text-[13px] font-medium leading-5 ${
             running ? "codex-shimmer-text" : idleColor
@@ -135,7 +143,7 @@ function ToolSummary({
           <span className="shrink-0 text-[length:var(--fs-sm)] text-(--err)">failed</span>
         ) : null}
       </summary>
-      {children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
+      {expanded && children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
     </details>
   );
 }

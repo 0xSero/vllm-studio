@@ -9,13 +9,19 @@ import {
   SettingsButton,
   SettingsGroup,
   SettingsInput,
+  SettingsNotice,
   SettingsRow,
   StatusPill,
   UiModal,
   UiModalHeader,
 } from "@/ui";
 import { type CatalogueEntry } from "./plugins-types";
-import { missingRequiredEnv, parseArgsText } from "./plugins-utils";
+import {
+  isManagedGoogleEntry,
+  isManagedGoogleEnvKey,
+  missingRequiredEnv,
+  parseArgsText,
+} from "./plugins-utils";
 
 export function RegistryRow({
   entry,
@@ -31,6 +37,15 @@ export function RegistryRow({
   onConfigure: () => void;
 }) {
   const source = registryLabel(entry);
+  const actionLabel = isManagedGoogleEntry(entry)
+    ? added
+      ? "Reconnect"
+      : "Connect"
+    : added
+      ? "Add another"
+      : entry.command
+        ? "Add"
+        : "Configure";
   return (
     <SettingsRow
       variant="resource"
@@ -67,10 +82,10 @@ export function RegistryRow({
           <SettingsButton
             onClick={onConfigure}
             disabled={busy}
-            aria-label={`${added ? "Add another" : entry.command ? "Add" : "Configure"} ${entry.displayName}`}
-            title={`${added ? "Add another" : entry.command ? "Add" : "Configure"} ${entry.displayName}`}
+            aria-label={`${actionLabel} ${entry.displayName}`}
+            title={`${actionLabel} ${entry.displayName}`}
           >
-            {added ? "Add another" : entry.command ? "Add" : "Configure"}
+            {actionLabel}
           </SettingsButton>
         </>
       }
@@ -115,6 +130,9 @@ export function ConfigureEntryPanel({
   const submitTitle = hasTarget
     ? `Add ${entry.displayName} MCP server`
     : `Add a local path argument before adding ${entry.displayName}`;
+  const envKeys = Object.keys(env);
+  const visibleEnvKeys = envKeys.filter((key) => !isManagedGoogleEnvKey(key));
+  const managedGoogleEnvCount = envKeys.length - visibleEnvKeys.length;
 
   return (
     <UiModal isOpen onClose={onCancel} maxWidth="max-w-2xl">
@@ -179,8 +197,14 @@ export function ConfigureEntryPanel({
         </SettingsGroup>
 
         <SettingsGroup title="Environment">
-          {Object.keys(env).length ? (
-            Object.keys(env).map((key) => (
+          {managedGoogleEnvCount ? (
+            <SettingsNotice tone="info" className="mb-3">
+              Google OAuth values are managed by vLLM Studio and injected at launch. Connect Google
+              above before using this server.
+            </SettingsNotice>
+          ) : null}
+          {visibleEnvKeys.length ? (
+            visibleEnvKeys.map((key) => (
               <SettingsRow
                 key={key}
                 label={key}
@@ -198,7 +222,9 @@ export function ConfigureEntryPanel({
             ))
           ) : (
             <EmptySafeNotice>
-              No environment variables declared by the registry row.
+              {managedGoogleEnvCount
+                ? "No manual environment variables are needed."
+                : "No environment variables declared by the registry row."}
             </EmptySafeNotice>
           )}
         </SettingsGroup>

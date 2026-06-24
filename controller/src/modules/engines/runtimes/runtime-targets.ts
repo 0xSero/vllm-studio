@@ -13,10 +13,8 @@ import {
   parseCommandPython,
   probeBinaryRuntime,
   probePythonRuntime,
-  probeVllmBinaryRuntime,
   splitEnvironmentList,
 } from "./runtime-target-probes";
-import { resolveVllmPythonPath } from "./vllm-python-path";
 import { getEngineSpec } from "../engine-spec";
 import type { BinaryProbeResult } from "../engine-spec";
 

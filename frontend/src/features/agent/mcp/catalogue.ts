@@ -81,6 +81,26 @@ export const MCP_CATALOGUE: McpCatalogueEntry[] = [
     homepage: "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
   },
   {
+    id: "catalogue:google-workspace-oauth",
+    name: "google-workspace",
+    displayName: "Google Workspace (OAuth)",
+    description:
+      "Use the Google account connected above to expose Gmail tools through a stdio MCP server. OAuth values are refreshed and injected by vLLM Studio before each agent turn.",
+    shortDescription: "Gmail via connected Google OAuth",
+    category: "Google",
+    tags: ["google", "gmail", "oauth", "managed"],
+    registry: "curated",
+    command: "npx",
+    args: ["-y", "mcp-server-google-workspace"],
+    env: {
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+      GOOGLE_REFRESH_TOKEN: "",
+      GOOGLE_ACCESS_TOKEN: "",
+    },
+    homepage: "https://glama.ai/mcp/servers/iskifogl/mcp-server-google-workspace",
+  },
+  {
     id: "catalogue:github",
     name: "github",
     displayName: "GitHub",

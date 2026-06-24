@@ -252,9 +252,9 @@ function ModelPickerTrigger({
       aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
     >
       <span className="relative shrink-0">
-        <Brain className={cx("h-3.5 w-3.5 shrink-0", notRunning && "text-(--warn)")} />
+        <Brain className="h-3.5 w-3.5 shrink-0" />
         {notRunning ? (
-          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--warn) ring-1 ring-(--bg)" />
+          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--warn)/80 ring-1 ring-(--bg)" />
         ) : null}
       </span>
       <span

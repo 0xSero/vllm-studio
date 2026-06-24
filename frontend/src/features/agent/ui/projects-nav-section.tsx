@@ -215,7 +215,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col">
-          <div className="mt-4 flex h-5 items-center px-2.5 text-[length:var(--fs-sm)] font-medium text-(--dim)/65">
+          <div className="mt-4 flex h-5 items-center px-2.5 text-[length:var(--fs-sm)] font-normal text-(--dim)/65">
             Pinned
           </div>{" "}
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -247,31 +247,6 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             )}{" "}
         </div>
       ) : null}{" "}
-      {chatProject ? (
-        <>
-          <SidebarSectionHeader
-            label="Chats"
-            open={chatsExpanded}
-            indicator={chatsHasActivity}
-            onToggle={() => setChatsExpanded((value) => !value)}
-            action={
-              <NewChatPlusButton
-                projectId={chatProject.id}
-                label="New chat"
-                className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
-              />
-            }
-          />
-          {chatsExpanded ? (
-            <ProjectSessions
-              project={chatProject}
-              activeSessions={activeSessions}
-              prefs={prefs}
-              excludedIds={pinnedRenderedIds}
-            />
-          ) : null}
-        </>
-      ) : null}
       <SidebarSectionHeader
         label="Projects"
         open={projectsExpanded}
@@ -324,6 +299,31 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             />
           ))
         )
+      ) : null}
+      {chatProject ? (
+        <>
+          <SidebarSectionHeader
+            label="Chats"
+            open={chatsExpanded}
+            indicator={chatsHasActivity}
+            onToggle={() => setChatsExpanded((value) => !value)}
+            action={
+              <NewChatPlusButton
+                projectId={chatProject.id}
+                label="New chat"
+                className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
+              />
+            }
+          />
+          {chatsExpanded ? (
+            <ProjectSessions
+              project={chatProject}
+              activeSessions={activeSessions}
+              prefs={prefs}
+              excludedIds={pinnedRenderedIds}
+            />
+          ) : null}
+        </>
       ) : null}
       {addError ? (
         <div className="px-2 py-1 text-[length:var(--fs-sm)] text-red-400">{addError}</div>
@@ -385,7 +385,7 @@ function SidebarSectionHeader({
   indicator?: boolean;
 }) {
   return (
-    <div className="group mt-4 flex h-5 items-center justify-between px-2.5 text-[length:var(--fs-sm)] font-medium text-(--dim)/65">
+    <div className="group mt-4 flex h-5 items-center justify-between px-2.5 text-[length:var(--fs-sm)] font-normal text-(--dim)/65">
       <button
         type="button"
         onClick={onToggle}
@@ -395,7 +395,7 @@ function SidebarSectionHeader({
         <span>{label}</span>
         {!open && indicator ? (
           <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent)"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--link)"
             aria-label={`${label} has unseen activity`}
             title={`${label} has unseen activity`}
           />

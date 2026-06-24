@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // Aggregated session index across every registered project. The agent
 // sidebar/dashboard loads this once and then filters/searches client-side so
 // search-as-you-type stays snappy without per-keystroke fetches.
-export type AggregatedSession = SessionSummary & {
+type AggregatedSession = SessionSummary & {
   projectId: string;
   projectName: string;
   projectPath: string;

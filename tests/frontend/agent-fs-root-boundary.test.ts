@@ -1,0 +1,123 @@
+import { describe, it, beforeEach, afterEach } from "node:test";
+import { strict as assert } from "node:assert";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  listDirectory,
+  readFileSnippet,
+} from "../../frontend/src/features/agent/fs-store";
+import {
+  addProjectToStore,
+  removeProjectFromStore,
+} from "../../frontend/src/features/agent/projects-store";
+
+async function rejectsWith(
+  fn: () => unknown,
+  expectedMessage: string,
+): Promise<void> {
+  try {
+    await fn();
+  } catch (error) {
+    assert.ok(error instanceof Error);
+    assert.equal((error as Error).message, expectedMessage);
+    return;
+  }
+  throw new Error(`Expected rejection with "${expectedMessage}"`);
+}
+
+describe("agent filesystem root boundary", () => {
+  let originalProjectsFile: string | undefined;
+  let projectDir: string;
+  let projectsFile: string;
+  let projectId: string;
+
+  beforeEach(() => {
+    originalProjectsFile = process.env.VLLM_STUDIO_PROJECTS_FILE;
+    const testDir = mkdtempSync(path.join(tmpdir(), "vllm-studio-agentfs-test-"));
+    projectDir = path.join(testDir, "project");
+    projectsFile = path.join(testDir, "projects.json");
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(path.join(projectDir, "sub"));
+    writeFileSync(path.join(projectDir, "file.txt"), "hello");
+    process.env.VLLM_STUDIO_PROJECTS_FILE = projectsFile;
+    projectId = addProjectToStore(projectDir).id;
+  });
+
+  afterEach(() => {
+    removeProjectFromStore(projectId);
+    if (originalProjectsFile === undefined) {
+      delete process.env.VLLM_STUDIO_PROJECTS_FILE;
+    } else {
+      process.env.VLLM_STUDIO_PROJECTS_FILE = originalProjectsFile;
+    }
+    rmSync(path.dirname(projectDir), { recursive: true, force: true });
+  });
+
+  it("lists a registered project directory", () => {
+    const entries = listDirectory(projectDir, "");
+    const names = entries.map((entry) => entry.name).sort();
+    assert.deepEqual(names, ["file.txt", "sub"]);
+  });
+
+  it("reads a file inside a registered project directory", async () => {
+    const result = await readFileSnippet(projectDir, "file.txt");
+    assert.equal(result.content, "hello");
+    assert.equal(result.truncated, false);
+  });
+
+  it("rejects an unregistered absolute cwd", async () => {
+    const otherDir = mkdtempSync(path.join(tmpdir(), "vllm-studio-agentfs-other-"));
+    try {
+      await rejectsWith(
+        () => listDirectory(otherDir, ""),
+        "cwd is not a registered project root",
+      );
+    } finally {
+      rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects traversal outside the project root", async () => {
+    await rejectsWith(
+      () => listDirectory(projectDir, ".."),
+      "Path escapes project root",
+    );
+  });
+
+  it("rejects a symlinked target that escapes the project root", async () => {
+    const outsideFile = path.join(path.dirname(projectDir), "outside.txt");
+    writeFileSync(outsideFile, "secret");
+    const linkPath = path.join(projectDir, "link.txt");
+    symlinkSync(outsideFile, linkPath);
+    try {
+      await rejectsWith(
+        () => readFileSnippet(projectDir, "link.txt"),
+        "Path escapes project root",
+      );
+    } finally {
+      if (existsSync(outsideFile)) rmSync(outsideFile);
+    }
+  });
+
+  it("accepts access through a symlinked project root that resolves inside the real project", () => {
+    const linkRoot = path.join(path.dirname(projectDir), "project-link");
+    symlinkSync(projectDir, linkRoot);
+    projectId = addProjectToStore(linkRoot).id;
+    try {
+      const entries = listDirectory(linkRoot, "");
+      const names = entries.map((entry) => entry.name).sort();
+      assert.deepEqual(names, ["file.txt", "sub"]);
+    } finally {
+      removeProjectFromStore(projectId);
+      if (existsSync(linkRoot)) rmSync(linkRoot);
+    }
+  });
+});

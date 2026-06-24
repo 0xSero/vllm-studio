@@ -83,7 +83,7 @@ export function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/80">
+      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim)/70 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/80">
         <button
           type="button"
           onClick={handleToggle}
@@ -102,7 +102,7 @@ export function ProjectRow({
               />
             </span>
           )}
-          <span className="truncate text-[length:var(--fs-base)] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
+          <span className="truncate text-[length:var(--fs-lg)] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
             {project.name}
           </span>
           {!project.exists ? (
@@ -324,7 +324,7 @@ export function ActiveSessionRow({
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isFocused = session.focused === true;
-  const rowClass = `group relative flex h-6 items-center rounded-md pl-3 pr-0 transition-colors ${isFocused ? "bg-(--hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--hover) hover:text-(--fg)/95"}`;
+  const rowClass = `group relative flex h-6 items-center rounded-md pl-3 pr-0 transition-colors ${isFocused ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--color-surface-hover) hover:text-(--fg)/95"}`;
 
   return (
     <SessionNavRow
@@ -384,7 +384,7 @@ export function SessionRow({
       age={relativeAge(session.startedAt)}
       isRunning={isRunning}
       unseen={unseen}
-      rowClass="group relative flex h-6 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--hover) hover:text-(--fg)/95"
+      rowClass="group relative flex h-6 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/95"
       renameRowClass="flex h-6 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}

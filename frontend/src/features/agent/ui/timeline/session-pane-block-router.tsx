@@ -189,7 +189,6 @@ const AssistantBlocks = memo(function AssistantBlocks({
           key={item.id}
           segments={item.segments}
           live={live && index === routedBlocks.length - 1}
-          turnLive={live}
         />,
       );
       return;
@@ -363,13 +362,29 @@ type ActivityItem =
   | { kind: "tool"; id: string; block: ToolBlock }
   | { kind: "explore"; id: string; blocks: ToolBlock[] };
 
+// A reasoning segment is one continuous burst of model chain-of-thought (no
+// tools between). Some backends stream it as MANY tiny thinking blocks, and a
+// reasoning model can leak stub fragments (e.g. a lone "The") or empty parts,
+// which previously rendered as a stack of duplicate, nested "Thought" rows.
+// Collapse the whole burst into ONE disclosure: drop empties and consecutive
+// duplicates, then join the distinct fragments.
+function mergeReasoningBlocks(blocks: ThinkingBlock[]): ThinkingBlock | null {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    const text = block.text.trim();
+    if (!text || parts[parts.length - 1] === text) continue;
+    parts.push(text);
+  }
+  if (parts.length === 0) return null;
+  return { kind: "thinking", id: blocks[0]?.id ?? "reasoning", text: parts.join("\n\n") };
+}
+
 function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] {
   const items: ActivityItem[] = [];
   for (const segment of segments) {
     if (segment.kind === "reasoning") {
-      for (const block of segment.blocks) {
-        items.push({ kind: "reasoning", id: block.id, block });
-      }
+      const merged = mergeReasoningBlocks(segment.blocks);
+      if (merged) items.push({ kind: "reasoning", id: merged.id, block: merged });
       continue;
     }
     let run: ToolBlock[] = [];
@@ -402,13 +417,11 @@ function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] {
 const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments,
   live,
-  turnLive,
 }: {
   segments: ActivitySegment[];
-  // `live`: this group is the *actively* streaming block (drives the "Working"
-  // shimmer + live preview). `turnLive`: the whole turn is still streaming.
+  // `live`: this group is the actively streaming block (drives the "Working"
+  // shimmer + live preview).
   live: boolean;
-  turnLive: boolean;
 }) {
   // Global "show reasoning" preference: when off, drop reasoning segments so the
   // group shows tools only (and disappears entirely for thinking-only turns).
@@ -418,15 +431,12 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
     [segments, showReasoning],
   );
   const items = useMemo(() => buildActivityItems(visibleSegments), [visibleSegments]);
-  // Stay expanded for the WHOLE live turn — not just while this group is the
-  // trailing block. Collapsing the moment the answer starts streaming would
-  // shrink on-screen content while the viewport is bottom-pinned (the scroller
-  // runs `overflow-anchor: none`), yanking the view upward — the visible
-  // "shake/jump". Holding the expansion until the turn fully settles lets the
-  // reasoning scroll above the viewport first, so the eventual collapse to the
-  // "Worked for…" summary is off-screen and invisible. A manual toggle still wins.
+  // Keep live work collapsed by default. Streaming reasoning/tool previews can
+  // grow by hundreds of pixels and update every token; auto-opening them makes
+  // the transcript visibly jump and flicker. The summary row stays one line and
+  // users can still expand details explicitly.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-  const expanded = userExpanded ?? turnLive;
+  const expanded = userExpanded ?? false;
   const working =
     live &&
     visibleSegments.some(
@@ -439,6 +449,21 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
   // Reasoning hidden + nothing else to show → render nothing. The turn's
   // "Working for…"/"Worked for…" divider still signals that the model worked.
   if (items.length === 0) return null;
+
+  // A reasoning-only burst (no tools) needs no "Worked for…" wrapper, which
+  // would nest a "Thought" summary around a "Thought" disclosure. Render the
+  // single merged thought directly so the chat shows one clean, top-level row.
+  if (items.every((item) => item.kind === "reasoning")) {
+    return (
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {items.map((item) =>
+          item.kind === "reasoning" ? (
+            <ReasoningDisclosure key={item.id} block={item.block} active={working || live} />
+          ) : null,
+        )}
+      </div>
+    );
+  }
 
   return (
     <details className="group min-w-0" open={expanded}>
@@ -465,20 +490,22 @@ const AssistantActivityGroup = memo(function AssistantActivityGroup({
         )}
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
-      <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
-        {items.map((item, index) => {
-          const isLastItem = index === items.length - 1;
-          if (item.kind === "reasoning") {
-            return (
-              <ReasoningDisclosure key={item.id} block={item.block} active={live && isLastItem} />
-            );
-          }
-          if (item.kind === "explore") {
-            return <ExploreAccordion key={item.id} blocks={item.blocks} live={live} />;
-          }
-          return <ToolBlockView key={item.id} block={item.block} />;
-        })}
-      </div>
+      {expanded ? (
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+          {items.map((item, index) => {
+            const isLastItem = index === items.length - 1;
+            if (item.kind === "reasoning") {
+              return (
+                <ReasoningDisclosure key={item.id} block={item.block} active={live && isLastItem} />
+              );
+            }
+            if (item.kind === "explore") {
+              return <ExploreAccordion key={item.id} blocks={item.blocks} live={live} />;
+            }
+            return <ToolBlockView key={item.id} block={item.block} />;
+          })}
+        </div>
+      ) : null}
     </details>
   );
 });
@@ -533,12 +560,11 @@ function activityPreview(segments: ActivitySegment[]): string | null {
 }
 
 /* Each thinking block is its own collapsible disclosure, shown inline between
-   tool calls inside the activity group. While the model is actively streaming a
-   thought it opens so the reasoning is visible live, then collapses once the
-   turn moves on — unless the user has explicitly toggled it. */
+   tool calls inside the activity group. It stays collapsed by default even while
+   live so streaming thought text doesn't continuously resize the transcript. */
 function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: boolean }) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const open = userOpen ?? active;
+  const open = userOpen ?? false;
   return (
     <details className="group min-w-0" open={open}>
       <summary
@@ -557,19 +583,28 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
         </span>
         <ChevronRight className="h-3 w-3 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
-      <div className="mb-1.5 ml-1.5 mt-1 min-w-0 whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[13px] leading-[1.6] text-(--fg)/60">
-        {block.text}
-      </div>
+      {open ? (
+        <div className="mb-1.5 ml-1.5 mt-1 max-h-[320px] min-w-0 overflow-auto whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[13px] leading-[1.6] text-(--fg)/60">
+          {block.text}
+        </div>
+      ) : null}
     </details>
   );
 }
 
 function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean }) {
+  const [open, setOpen] = useState(false);
   const running = live && blocks.some((block) => block.status === "running");
   const counts = exploreCounts(blocks);
   return (
-    <details className="group min-w-0">
-      <summary className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden">
+    <details className="group min-w-0" open={open}>
+      <summary
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen((value) => !value);
+        }}
+      >
         <span
           className={`shrink-0 text-[13px] font-medium leading-5 ${
             running ? "codex-shimmer-text" : "text-(--fg)/55"
@@ -582,11 +617,13 @@ function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
-      <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
-        {blocks.map((block) => (
-          <ToolBlockView key={block.id} block={block} />
-        ))}
-      </div>
+      {open ? (
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+          {blocks.map((block) => (
+            <ToolBlockView key={block.id} block={block} />
+          ))}
+        </div>
+      ) : null}
     </details>
   );
 }

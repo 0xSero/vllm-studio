@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
         baseUrl: `${backendUrl}/v1`,
         apiKey: settings.apiKey,
         contextWindow,
-        maxTokens: Math.min(contextWindow, 131072),
+        maxTokens: contextWindow,
         reasoning: true,
         images,
       },

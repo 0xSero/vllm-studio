@@ -83,6 +83,7 @@ scripts/*.local.sh
 .worktree/
 .pi/
 .ralph/
+.trace-harness*/
 
 # Sensitive data - do not commit specific IPs or domains
 # Use environment variables or config files instead

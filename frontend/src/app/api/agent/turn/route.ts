@@ -8,6 +8,7 @@ import {
   type AgentTurnRequest,
 } from "@/features/agent/contracts";
 import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
+import { applyManagedOauthTokens } from "@/features/agent/oauth/managed-tokens";
 import type { PiAgentSession, PiAgentStatus } from "@/features/agent/pi-runtime-types";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
@@ -69,14 +70,17 @@ function effectiveStreamingBehavior(turn: AgentTurnRequest, status: PiAgentStatu
 }
 
 async function ensurePromptRuntime(turn: AgentTurnRequest, resolved: ResolvedTurnSession) {
+  const managedTokenFingerprint = await applyManagedOauthTokens();
   await resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
     browserToolEnabled: turn.browserToolEnabled,
     browserSessionId: turn.browserSessionId,
     browserBackend: turn.browserBackend,
+    planSessionId: resolved.sessionId,
     canvasEnabled: turn.canvasEnabled,
     plugins: turn.plugins,
     skills: turn.skills,
     promptTemplates: turn.promptTemplates,
+    managedTokenFingerprint,
   });
 }
 

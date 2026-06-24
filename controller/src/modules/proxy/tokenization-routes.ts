@@ -1,6 +1,7 @@
 import { observeControllerFunction } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import { fetchInference } from "../../services/inference-client";
+import { normalizeToolRequest } from "./content-normalizer";
 
 export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
   app.post("/v1/tokenize", async (ctx) => {
@@ -126,6 +127,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
       if (tools.length > 0) {
         testRequest["tools"] = tools;
       }
+      normalizeToolRequest(testRequest);
       const response = await fetchInference(context, "/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

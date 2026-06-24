@@ -45,6 +45,8 @@ export function AgentComposerActions({
   const usingSitegeist = browserBackend === "sitegeist";
   const browserBackendLabel = usingSitegeist ? "Sitegeist relay" : "embedded panel";
   const browserBackendTarget = usingSitegeist ? "embedded panel" : "Sitegeist relay";
+  const inactiveIconClass = "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/85";
+  const activeIconClass = "bg-(--hover) text-(--fg)/85 hover:text-(--fg)";
 
   return (
     <div className="agent-composer-actions-row flex min-h-8 items-center gap-1.5 bg-transparent px-3 pb-1.5 pt-0.5 text-xs">
@@ -59,7 +61,7 @@ export function AgentComposerActions({
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={readingAttachments || running}
-        className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center text-(--dim) hover:text-(--fg)/80 disabled:opacity-30"
+        className="inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/85 disabled:opacity-30"
         aria-label="Attach files"
         title="Attach files (or paste/drop into composer)"
       >
@@ -75,7 +77,7 @@ export function AgentComposerActions({
             ? "Browser tool: ON — agent can drive the browser"
             : "Browser tool: OFF — click to let the agent navigate, click, fill, and read pages"
         }
-        className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
+        className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${browserToolEnabled ? activeIconClass : inactiveIconClass}`}
       >
         <span className="relative inline-flex">
           <GlobeIcon className="h-3.5 w-3.5" />
@@ -86,7 +88,7 @@ export function AgentComposerActions({
           type="button"
           onClick={onToggleBrowserBackend}
           aria-label={`Browser backend: ${browserBackendLabel}. Switch to ${browserBackendTarget}.`}
-          className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${usingSitegeist ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
+          className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${usingSitegeist ? activeIconClass : inactiveIconClass}`}
           title={`Browser: ${browserBackendLabel}. Click to use ${browserBackendTarget}.`}
         >
           {usingSitegeist ? (
@@ -106,7 +108,7 @@ export function AgentComposerActions({
             ? "Canvas: ON — shared scratchboard tools loaded; model reads/writes the canvas"
             : "Canvas: OFF — click to share a scratchboard with the model (notes, plans, links, state)"
         }
-        className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? "text-(--accent)/70 hover:text-(--accent)" : "text-(--dim)/75 hover:text-(--fg)/80"}`}
+        className={`inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-md ${canvasEnabled ? activeIconClass : inactiveIconClass}`}
       >
         <Code2 className="h-3.5 w-3.5" />
       </button>
@@ -134,7 +136,7 @@ export function AgentComposerActions({
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--accent)/10 px-2 text-[length:var(--fs-sm)] text-(--accent)/75 hover:bg-(--accent)/15 hover:text-(--fg)/85"
+                  className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1 rounded-md bg-(--hover) px-2 text-[length:var(--fs-sm)] text-(--fg)/80 hover:text-(--fg)"
                   title="Steer (Enter): interrupt current turn and send"
                 >
                   <SendIcon className="h-3 w-3" /> Steer

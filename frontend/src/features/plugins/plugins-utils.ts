@@ -1,5 +1,20 @@
 import type { CatalogueEntry, McpServer } from "./plugins-types";
 
+const MANAGED_GOOGLE_ENV_KEYS = new Set([
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_REFRESH_TOKEN",
+  "GOOGLE_ACCESS_TOKEN",
+]);
+
+export function isManagedGoogleEnvKey(key: string): boolean {
+  return MANAGED_GOOGLE_ENV_KEYS.has(key);
+}
+
+export function isManagedGoogleEntry(entry: CatalogueEntry): boolean {
+  return Object.keys(entry.env ?? {}).some(isManagedGoogleEnvKey);
+}
+
 export function serverDescription(server: McpServer): string {
   const summary = server.description?.replace(/\s+/g, " ").trim();
   const short = summary && summary.length > 160 ? `${summary.slice(0, 157)}...` : summary;

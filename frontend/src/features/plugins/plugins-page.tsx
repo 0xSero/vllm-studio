@@ -1,11 +1,10 @@
 "use client";
 
-import { effectTimeout } from "@/lib/effect-timers";
+import { effectInterval, effectTimeout } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { Globe, Plug, ShieldCheck, type LucideIcon } from "@/ui/icon-registry";
-import { SettingsLayout, SettingsNotice, type SettingsSectionDef } from "@/ui/settings";
-import { CuratedQuickAddPanel } from "./plugins-curated-quick-add";
+import { AppPage, PageHeader, RefreshIconButton, SettingsNotice } from "@/ui";
+import { GoogleConnectionPanel } from "./plugins-google-connection";
 import { InstalledMcpServersPanel } from "./plugins-installed-servers";
 import { ManualMcpServerPanel } from "./plugins-manual-server";
 import { ConfigureEntryPanel } from "./plugins-page-parts";
@@ -18,34 +17,13 @@ import {
   type RegistrySource,
   type ServersPayload,
 } from "./plugins-types";
-import { parseArgsText, parseEnvLines, parseTagsText, quoteArgsText } from "./plugins-utils";
-
-type PluginsSectionId = "custom" | "registry" | "curated";
-
-const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
-const SECTIONS: SettingsSectionDef<PluginsSectionId>[] = [
-  {
-    id: "custom",
-    label: "Custom",
-    description: "Installed MCP servers, manual servers, and registry sources.",
-    icon: sectionIcon(Plug),
-  },
-  {
-    id: "registry",
-    label: "Registry",
-    description: "Search official and enabled compatible MCP registries.",
-    icon: sectionIcon(Globe),
-  },
-  {
-    id: "curated",
-    label: "Curated",
-    description: "High-confidence stdio MCP quick-add entries.",
-    icon: sectionIcon(ShieldCheck),
-  },
-];
-
-const isSectionId = (value: string): value is PluginsSectionId =>
-  SECTIONS.some((section) => section.id === value);
+import {
+  isManagedGoogleEntry,
+  parseArgsText,
+  parseEnvLines,
+  parseTagsText,
+  quoteArgsText,
+} from "./plugins-utils";
 
 export function PluginsPage() {
   return <PluginsManager mode="page" />;
@@ -56,11 +34,6 @@ export function PluginsSettingsSection() {
 }
 
 function PluginsManager({ mode }: { mode: "page" | "settings" }) {
-  const [activeSection, setActiveSection] = useState<PluginsSectionId>(() => {
-    if (typeof window === "undefined") return "custom";
-    const hash = window.location.hash.replace("#", "");
-    return isSectionId(hash) ? hash : "custom";
-  });
   const [servers, setServers] = useState<McpServer[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [registry, setRegistry] = useState<CatalogueEntry[]>([]);
@@ -142,19 +115,8 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     [loadRegistry],
   );
 
-  const subscribeHashSection = useCallback((_notify: () => void) => {
-    if (typeof window === "undefined") return () => {};
-    const onHashChange = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (isSectionId(hash)) setActiveSection(hash);
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
-
   useSyncExternalStore(subscribeServers, getPluginsSnapshot, getPluginsSnapshot);
   useSyncExternalStore(subscribeRegistry, getPluginsSnapshot, getPluginsSnapshot);
-  useSyncExternalStore(subscribeHashSection, getPluginsSnapshot, getPluginsSnapshot);
 
   const post = useCallback(
     async (body: unknown, busyKey: string) => {
@@ -211,8 +173,35 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     [servers],
   );
   const curated = catalogue.filter((entry) => entry.registry === "curated");
+  const browseEntries = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return dedupeEntries([
+      ...curated.filter((entry) => matchesEntrySearch(entry, query)),
+      ...registry,
+    ]);
+  }, [curated, registry, search]);
 
   const beginConfigureEntry = (entry: CatalogueEntry) => {
+    if (isManagedGoogleEntry(entry)) {
+      setBusyId(entry.id);
+      setError(null);
+      window.open(
+        `/api/oauth/google/start?catalogueId=${encodeURIComponent(entry.id)}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      let elapsed = 0;
+      const poll = effectInterval(() => {
+        elapsed += 1;
+        void loadServers().then(() => {
+          if (elapsed >= 40) {
+            poll.cancel();
+            setBusyId(null);
+          }
+        });
+      }, 1500);
+      return;
+    }
     setConfigureEntry(entry);
     setConfigureCommand(entry.command || "");
     setConfigureArgs(quoteArgsText(entry.args ?? []));
@@ -299,11 +288,6 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     void loadRegistry();
   }, [loadRegistry, loadServers]);
 
-  const selectSection = (section: PluginsSectionId) => {
-    setActiveSection(section);
-    if (typeof window !== "undefined") window.history.replaceState(null, "", `#${section}`);
-  };
-
   const layoutStatus = loading
     ? "syncing servers"
     : registryLoading
@@ -315,6 +299,7 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       {error}
     </SettingsNotice>
   ) : null;
+  const googlePanel = <GoogleConnectionPanel />;
   const customPanel = (
     <div className="space-y-5">
       <InstalledMcpServersPanel
@@ -378,21 +363,12 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
   );
   const registryPanel = (
     <RegistrySearchPanel
-      entries={registry}
+      entries={browseEntries}
       loading={registryLoading}
       search={search}
       installedNames={installedNames}
       busyId={busyId}
       onSearchChange={setSearch}
-      onConfigure={beginConfigureEntry}
-    />
-  );
-  const curatedPanel = (
-    <CuratedQuickAddPanel
-      entries={curated}
-      installedNames={installedNames}
-      busyId={busyId}
-      loading={loading}
       onConfigure={beginConfigureEntry}
     />
   );
@@ -418,9 +394,9 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       <>
         {errorNotice}
         <div className="space-y-5">
-          {customPanel}
+          {googlePanel}
           {registryPanel}
-          {curatedPanel}
+          {customPanel}
         </div>
         {configurePanel}
       </>
@@ -428,25 +404,30 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
   }
 
   return (
-    <>
-      <SettingsLayout
-        sections={SECTIONS}
-        activeSection={activeSection}
-        title="Plugins"
-        status={layoutStatus}
-        loading={loading || registryLoading}
-        onReload={refreshAll}
-        onSelectSection={selectSection}
-        eyebrow="Tooling"
-      >
+    <AppPage>
+      <div className="mx-auto max-w-5xl px-5 py-6">
+        <PageHeader
+          eyebrow="Tooling"
+          title="Plugins"
+          status={layoutStatus}
+          actions={
+            <RefreshIconButton
+              onClick={refreshAll}
+              loading={loading || registryLoading}
+              label="Refresh plugins"
+            />
+          }
+        />
         {errorNotice}
-        {activeSection === "custom" ? customPanel : null}
-        {activeSection === "registry" ? registryPanel : null}
-        {activeSection === "curated" ? curatedPanel : null}
-      </SettingsLayout>
+        <div className="space-y-5">
+          {googlePanel}
+          {registryPanel}
+          {customPanel}
+        </div>
+      </div>
 
       {configurePanel}
-    </>
+    </AppPage>
   );
 }
 
@@ -454,6 +435,30 @@ function defaultRegistryTag(entry: CatalogueEntry): string {
   if (entry.registry === "official") return "official-registry";
   if (entry.registry === "custom") return "custom-registry";
   return "curated";
+}
+
+function matchesEntrySearch(entry: CatalogueEntry, query: string): boolean {
+  if (!query) return true;
+  return [
+    entry.name,
+    entry.displayName,
+    entry.description,
+    entry.shortDescription,
+    entry.category,
+    ...(entry.tags ?? []),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(query));
+}
+
+function dedupeEntries(entries: CatalogueEntry[]): CatalogueEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = entry.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 const getPluginsSnapshot = (): number => 0;
