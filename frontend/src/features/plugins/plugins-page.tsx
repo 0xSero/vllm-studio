@@ -455,11 +455,22 @@ function matchesEntrySearch(entry: CatalogueEntry, query: string): boolean {
 function dedupeEntries(entries: CatalogueEntry[]): CatalogueEntry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    const key = entry.name.toLowerCase();
+    const key = entryDedupeKey(entry);
+    if (!key) return true;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+// Curated entries are listed before registry results, so collapsing by the
+// visible label keeps the vetted entry and drops registry rows that surface the
+// same server under a reverse-DNS name (e.g. "io.github.../filesystem-mcp").
+function entryDedupeKey(entry: CatalogueEntry): string {
+  return (entry.displayName || entry.name)
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 const getPluginsSnapshot = (): number => 0;
