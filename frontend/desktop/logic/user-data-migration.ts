@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const MIGRATION_MARKER = "legacy-user-data-migration-v1.json";
+const MIGRATION_MARKER_PREFIX = "legacy-user-data-migration-v1";
 const MIGRATED_USER_DATA_PATHS = [
   "Local Storage",
   "Cookies",
@@ -48,7 +48,7 @@ export function migrateLegacyUserData({
   const sourceRoot = path.resolve(legacyDir);
   const targetRoot = path.resolve(targetDir);
   if (sourceRoot === targetRoot || !existsSync(sourceRoot)) return [];
-  const markerPath = path.join(targetRoot, MIGRATION_MARKER);
+  const markerPath = path.join(targetRoot, migrationMarkerName(sourceRoot));
   if (existsSync(markerPath)) return [];
 
   try {
@@ -81,6 +81,14 @@ export function migrateLegacyUserData({
     );
   }
   return migrated;
+}
+
+function migrationMarkerName(sourceRoot: string): string {
+  const sourceKey = sourceRoot
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .slice(-80);
+  return `${MIGRATION_MARKER_PREFIX}-${sourceKey || "source"}.json`;
 }
 
 function copyMissingPath(sourcePath: string, targetPath: string): boolean {

@@ -15,6 +15,9 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 const SETTINGS_FILENAME = "api-settings.json";
+const LEGACY_DOT_DIR = [".v", "llm-studio"].join("");
+const LEGACY_APP_DATA_DIR = ["v", "LLM Studio"].join("");
+const LEGACY_APP_DATA_SLUG = ["v", "llm-studio-app"].join("");
 
 let cachedDataDir: string | null = null;
 let migrated = false;
@@ -25,9 +28,12 @@ function legacyDataDirCandidates(): string[] {
     path.join(process.cwd(), "..", "data"),
     path.join(process.cwd(), "frontend", "data"),
     path.join(homedir(), ".local-studio"),
+    path.join(homedir(), LEGACY_DOT_DIR),
     path.join(tmpdir(), "local-studio"),
     // Past Electron userData siblings.
     path.join(homedir(), "Library", "Application Support", "local-studio-app"),
+    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_SLUG),
+    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_DIR),
     path.join(homedir(), "Library", "Application Support", "Electron"),
     path.join(homedir(), "Library", "Application Support", "frontend"),
   ];

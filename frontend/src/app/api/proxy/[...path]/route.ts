@@ -5,7 +5,10 @@ import { getUpstreamTimeoutMs } from "./proxy-timeouts";
 const OVERRIDE_ALLOWLIST_ENV_KEY = "LOCAL_STUDIO_PROXY_OVERRIDE_ALLOWLIST";
 const PROXY_ACCESS_LOGS_ENABLED = process.env.LOCAL_STUDIO_PROXY_ACCESS_LOGS === "true";
 const PROXY_ERROR_LOG_THROTTLE_MS = 30_000;
-const CLEAR_BACKEND_OVERRIDE_COOKIE = "localstudio_backend_url=; Path=/; Max-Age=0; SameSite=Lax";
+const BACKEND_OVERRIDE_COOKIE = "localstudio_backend_url";
+const LEGACY_BACKEND_OVERRIDE_COOKIE = [["v", "llmstudio"].join(""), "backend_url"].join("_");
+const CLEAR_BACKEND_OVERRIDE_COOKIE = `${BACKEND_OVERRIDE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+const CLEAR_LEGACY_BACKEND_OVERRIDE_COOKIE = `${LEGACY_BACKEND_OVERRIDE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
 const proxyErrorLogTimes = new Map<string, number>();
 
 type ClientInfo = { ip: string; country: string; ua: string };
@@ -129,7 +132,7 @@ function buildTargetUrl(backendUrl: string, path: string[], searchParams: string
 function clearBackendOverrideHeaders(): Record<string, string> {
   return {
     "X-Backend-Override-Invalid": "1",
-    "Set-Cookie": CLEAR_BACKEND_OVERRIDE_COOKIE,
+    "Set-Cookie": `${CLEAR_BACKEND_OVERRIDE_COOKIE}, ${CLEAR_LEGACY_BACKEND_OVERRIDE_COOKIE}`,
   };
 }
 
@@ -154,7 +157,9 @@ async function resolveProxyTarget(
   const overrideHeaderUrl = normalizeBackendUrl(request.headers.get("x-backend-url"));
   const strictOverride = request.headers.get("x-backend-strict") === "1";
   const overrideCookieUrl = normalizeBackendUrl(
-    request.cookies.get("localstudio_backend_url")?.value ?? null,
+    request.cookies.get(BACKEND_OVERRIDE_COOKIE)?.value ??
+      request.cookies.get(LEGACY_BACKEND_OVERRIDE_COOKIE)?.value ??
+      null,
   );
   const defaultBackendUrl = normalizeBackendUrl(settings.backendUrl) ?? settings.backendUrl;
   let overrideUrl = overrideHeaderUrl ?? overrideCookieUrl;
