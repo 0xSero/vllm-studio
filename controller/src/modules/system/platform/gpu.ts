@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { freemem, totalmem } from "node:os";
 import type { GpuInfo, RuntimeGpuMonitoringTool } from "../../models/types";
 import { runCommand } from "../../../core/command";
 import { getGpuInfoFromAmdSmi, getGpuInfoFromRocmSmi } from "./amd-gpu";
@@ -43,7 +44,7 @@ export const getGpuInfoFromNvidiaSmi = (): GpuInfo[] => {
     return lines.map((line, index) => {
       const parts = line.split(",").map((value) => value.trim());
       const [
-        name,
+        rawName,
         memoryTotal,
         memoryUsed,
         memoryFree,
@@ -52,25 +53,38 @@ export const getGpuInfoFromNvidiaSmi = (): GpuInfo[] => {
         powerDraw,
         powerLimit,
       ] = parts;
+      const name = rawName ?? "Unknown";
+      const toFiniteNumber = (value: string | undefined): number => {
+        const parsed = Number(value ?? 0);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
       const toBytes = (megabytes: string | undefined): number =>
-        Math.max(0, Math.round(Number(megabytes ?? 0) * 1024 * 1024));
+        Math.max(0, Math.round(toFiniteNumber(megabytes) * 1024 * 1024));
       const toMb = (megabytes: string | undefined): number =>
-        Math.max(0, Math.round(Number(megabytes ?? 0)));
+        Math.max(0, Math.round(toFiniteNumber(megabytes)));
+      const reportedTotalMb = toMb(memoryTotal);
+      const isUnifiedMemoryNvidia = reportedTotalMb === 0 && /\b(?:GB10|Grace)\b/i.test(name);
+      const fallbackTotalMb = isUnifiedMemoryNvidia ? Math.round(totalmem() / 1024 / 1024) : 0;
+      const fallbackFreeMb = isUnifiedMemoryNvidia ? Math.round(freemem() / 1024 / 1024) : 0;
+      const fallbackUsedMb = Math.max(0, fallbackTotalMb - fallbackFreeMb);
+      const memoryTotalMb = reportedTotalMb || fallbackTotalMb;
+      const memoryUsedMb = toMb(memoryUsed) || fallbackUsedMb;
+      const memoryFreeMb = toMb(memoryFree) || fallbackFreeMb;
       return {
         index,
-        name: name ?? "Unknown",
-        memory_total: toBytes(memoryTotal),
-        memory_total_mb: toMb(memoryTotal),
-        memory_used: toBytes(memoryUsed),
-        memory_used_mb: toMb(memoryUsed),
-        memory_free: toBytes(memoryFree),
-        memory_free_mb: toMb(memoryFree),
-        utilization: Number(utilization ?? 0),
-        utilization_pct: Number(utilization ?? 0),
-        temperature: Number(temperature ?? 0),
-        temp_c: Number(temperature ?? 0),
-        power_draw: Number(powerDraw ?? 0),
-        power_limit: Number(powerLimit ?? 0),
+        name,
+        memory_total: memoryTotalMb * 1024 * 1024,
+        memory_total_mb: memoryTotalMb,
+        memory_used: memoryUsedMb * 1024 * 1024,
+        memory_used_mb: memoryUsedMb,
+        memory_free: memoryFreeMb * 1024 * 1024,
+        memory_free_mb: memoryFreeMb,
+        utilization: toFiniteNumber(utilization),
+        utilization_pct: toFiniteNumber(utilization),
+        temperature: toFiniteNumber(temperature),
+        temp_c: toFiniteNumber(temperature),
+        power_draw: toFiniteNumber(powerDraw),
+        power_limit: toFiniteNumber(powerLimit),
       };
     });
   } catch {
