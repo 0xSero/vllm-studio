@@ -117,6 +117,7 @@ export function Timeline({
             return (
               <div
                 key={message.id}
+                data-timeline-message-id={message.id}
                 // No overflow-anchor:none here — these wrappers must be anchor
                 // candidates so the browser can hold one steady when content
                 // above it grows/shrinks (see the scroller comment).
@@ -146,6 +147,7 @@ export function Timeline({
           <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
         </div>
       </div>
+      <PromptMarkers scroller={scroller} messages={visibleMessages} />
       {!stickToBottom && visibleMessages.length > 0 ? (
         <ScrollToBottomButton
           running={running}
@@ -173,6 +175,163 @@ function ScrollToBottomButton({ running, onClick }: { running: boolean; onClick:
       <ChevronDownIcon className="h-3 w-3" />
     </button>
   );
+}
+
+type PromptMarkerEntry = {
+  id: string;
+  label: string;
+  time: string;
+  top: number;
+};
+
+function PromptMarkers({
+  scroller,
+  messages,
+}: {
+  scroller: HTMLDivElement | null;
+  messages: ChatMessage[];
+}) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const markerCacheRef = useRef<PromptMarkerEntry[]>(EMPTY_PROMPT_MARKERS);
+  const prompts = useMemo(
+    () =>
+      messages
+        .filter((message) => message.role === "user" && userPromptLabel(message).length > 0)
+        .map((message) => ({
+          id: message.id,
+          label: userPromptLabel(message),
+          time: formatPromptTime(message.timestamp),
+        })),
+    [messages],
+  );
+  const readMarkers = useCallback(() => {
+    const next = calculatePromptMarkers(scroller, prompts);
+    const current = markerCacheRef.current;
+    if (samePromptMarkers(current, next)) return current;
+    markerCacheRef.current = next;
+    return next;
+  }, [prompts, scroller]);
+  const subscribeMarkers = useCallback(
+    (onStoreChange: () => void) => {
+      if (!scroller) return () => undefined;
+      let frame = 0;
+      const schedule = () => {
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          onStoreChange();
+        });
+      };
+
+      schedule();
+      const resizeObserver = new ResizeObserver(schedule);
+      resizeObserver.observe(scroller);
+      const list = scroller.querySelector<HTMLElement>("[data-timeline-list]");
+      if (list) resizeObserver.observe(list);
+      return () => {
+        if (frame) window.cancelAnimationFrame(frame);
+        resizeObserver.disconnect();
+      };
+    },
+    [scroller],
+  );
+  const markers = useSyncExternalStore(subscribeMarkers, readMarkers, () => EMPTY_PROMPT_MARKERS);
+
+  if (!scroller || markers.length === 0) return null;
+
+  const scrollToPrompt = (id: string) => {
+    const node = Array.from(
+      scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
+    ).find((element) => element.dataset.timelineMessageId === id);
+    node?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  return (
+    <nav className="prompt-minimap" aria-label="Session prompts">
+      {markers.map((marker) => {
+        const active = hoveredId === marker.id;
+        return (
+          <button
+            key={marker.id}
+            type="button"
+            className="prompt-minimap-marker"
+            style={{ top: `${marker.top}px` }}
+            aria-label={`Scroll to prompt: ${marker.label}`}
+            onMouseEnter={() => setHoveredId(marker.id)}
+            onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
+            onFocus={() => setHoveredId(marker.id)}
+            onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
+            onClick={() => scrollToPrompt(marker.id)}
+          >
+            <span className="prompt-minimap-line" />
+            {active ? (
+              <span className="prompt-minimap-card" role="tooltip">
+                <span className="prompt-minimap-card-text">{marker.label}</span>
+                <span className="prompt-minimap-card-time">{marker.time || "Prompt"}</span>
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+const EMPTY_PROMPT_MARKERS: PromptMarkerEntry[] = [];
+
+type PromptSummary = Omit<PromptMarkerEntry, "top">;
+
+function calculatePromptMarkers(
+  scroller: HTMLDivElement | null,
+  prompts: PromptSummary[],
+): PromptMarkerEntry[] {
+  if (!scroller || prompts.length === 0) return EMPTY_PROMPT_MARKERS;
+  const nodes = Array.from(scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"));
+  const nodeById = new Map(nodes.map((node) => [node.dataset.timelineMessageId, node]));
+  const railPadding = 16;
+  const railHeight = Math.max(1, scroller.clientHeight - railPadding * 2);
+  const documentHeight = Math.max(1, scroller.scrollHeight);
+  return prompts
+    .map((prompt) => {
+      const node = nodeById.get(prompt.id);
+      if (!node) return null;
+      const ratio = Math.min(1, Math.max(0, node.offsetTop / documentHeight));
+      return { ...prompt, top: railPadding + ratio * railHeight };
+    })
+    .filter((marker): marker is PromptMarkerEntry => marker !== null);
+}
+
+function userPromptLabel(message: ChatMessage): string {
+  const text = message.text.trim();
+  if (text) return text.replace(/\s+/g, " ");
+  if (message.attachments?.length) {
+    return message.attachments.map((attachment) => attachment.name).join(", ");
+  }
+  return "";
+}
+
+function formatPromptTime(timestamp?: string): string {
+  const value = timestamp?.trim() ?? "";
+  if (!value) return "";
+  if (/^\d{1,2}:\d{2}(?:\s?[AP]M)?$/i.test(value)) return value;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(parsed),
+  );
+}
+
+function samePromptMarkers(left: PromptMarkerEntry[], right: PromptMarkerEntry[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((marker, index) => {
+    const other = right[index];
+    return (
+      other?.id === marker.id &&
+      other.label === marker.label &&
+      other.time === marker.time &&
+      Math.abs(other.top - marker.top) < 0.5
+    );
+  });
 }
 
 function mergeConsecutiveAssistantMessages(messages: ChatMessage[]): ChatMessage[] {

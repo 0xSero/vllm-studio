@@ -352,6 +352,90 @@
   background-clip: padding-box;
 }
 
+.prompt-minimap {
+  position: absolute;
+  inset-block: 0;
+  left: max(1.25rem, calc((100% - var(--composer-w)) / 2 - 5.75rem));
+  z-index: 12;
+  width: 4.75rem;
+  pointer-events: none;
+}
+
+.prompt-minimap-marker {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 3rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+
+.prompt-minimap-line {
+  display: block;
+  width: 0.82rem;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 26%, transparent);
+  transition:
+    width 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.prompt-minimap-marker:hover .prompt-minimap-line,
+.prompt-minimap-marker:focus-visible .prompt-minimap-line {
+  width: 2rem;
+  background: color-mix(in srgb, var(--fg) 88%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-bg) 72%, transparent);
+}
+
+.prompt-minimap-card {
+  position: absolute;
+  left: 2.55rem;
+  top: 50%;
+  display: grid;
+  width: min(26rem, calc(100vw - 8rem));
+  gap: 0.28rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 0.72rem;
+  background: color-mix(in srgb, var(--surface) 94%, var(--agent-bg));
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
+  color: var(--fg);
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(-50%);
+}
+
+.prompt-minimap-card-text {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 90%, transparent);
+}
+
+.prompt-minimap-card-time {
+  font-size: 11px;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--fg) 48%, transparent);
+}
+
+@media (max-width: 980px) {
+  .prompt-minimap {
+    display: none;
+  }
+}
+
 .agent-activity-preview {
   position: relative;
 }
