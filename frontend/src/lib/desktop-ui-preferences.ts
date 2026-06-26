@@ -69,14 +69,64 @@ async function saveControllerUiPreferences(prefs: Record<string, string>): Promi
   }
 }
 
+function mergeControllersPreference(
+  currentValue: string | null,
+  incomingValue: string,
+): string | null {
+  try {
+    const current = JSON.parse(currentValue || "[]") as unknown;
+    const incoming = JSON.parse(incomingValue) as unknown;
+    if (!Array.isArray(incoming)) return null;
+    const byUrl = new Map<string, Record<string, unknown>>();
+    for (const entry of Array.isArray(current) ? current : []) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const url =
+        typeof (entry as { url?: unknown }).url === "string" ? (entry as { url: string }).url : "";
+      if (url) byUrl.set(url, entry as Record<string, unknown>);
+    }
+    for (const entry of incoming) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const incomingEntry = entry as Record<string, unknown>;
+      const url = typeof incomingEntry.url === "string" ? incomingEntry.url : "";
+      if (!url) continue;
+      const currentEntry = byUrl.get(url);
+      byUrl.set(url, {
+        ...incomingEntry,
+        ...(currentEntry ?? {}),
+        apiKey:
+          typeof currentEntry?.apiKey === "string" && currentEntry.apiKey.trim()
+            ? currentEntry.apiKey
+            : incomingEntry.apiKey,
+        name:
+          typeof currentEntry?.name === "string" && currentEntry.name.trim()
+            ? currentEntry.name
+            : incomingEntry.name,
+      });
+    }
+    const merged = JSON.stringify([...byUrl.values()]);
+    return merged === (currentValue || "") ? null : merged;
+  } catch {
+    return null;
+  }
+}
+
 function applyMissingPreferences(prefs: Record<string, string>): Set<string> {
   const applied = new Set<string>();
   if (typeof window === "undefined") return applied;
   for (const [key, value] of Object.entries(prefs ?? {})) {
     if (!isDurableUiPreferenceKey(key) || typeof value !== "string") continue;
+    const currentValue = window.localStorage.getItem(key);
+    if (key === CONTROLLERS_STORAGE_KEY && currentValue !== null) {
+      const merged = mergeControllersPreference(currentValue, value);
+      if (merged !== null) {
+        window.localStorage.setItem(key, merged);
+        applied.add(key);
+      }
+      continue;
+    }
     // Renderer storage wins when present; controller/database is the durable
     // rebuild/reinstall fallback, not a stale override while the user is active.
-    if (window.localStorage.getItem(key) === null) {
+    if (currentValue === null) {
       window.localStorage.setItem(key, value);
       applied.add(key);
     }
