@@ -175,7 +175,11 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
 
-  if (pathname.startsWith("/setup")) {
+  if (
+    pathname.startsWith("/setup") ||
+    pathname.startsWith("/download") ||
+    pathname.startsWith("/agents")
+  ) {
     return <div className="h-full w-full">{children}</div>;
   }
 
