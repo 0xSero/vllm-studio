@@ -144,22 +144,34 @@ export function MarketingLandingPage() {
         </div>
         <div className={styles.heroScrim} aria-hidden="true" />
         <div className={styles.heroInner}>
-          <p className={styles.eyebrow}>Local inference control plane</p>
-          <h1 id="landing-title" className={styles.heroTitle}>
-            vLLM Studio
-          </h1>
-          <p className={styles.heroCopy}>
-            One surface for controllers, GPUs, models, providers, and agents.
-          </p>
-          <div className={styles.heroActions}>
-            <Link className={styles.button} href="/api/downloads/mac-dmg" prefetch={false} download>
-              <DownloadCloud size={18} aria-hidden="true" />
-              Download for Mac
-            </Link>
-            <Link className={styles.ghostButton} href="/agents">
-              <TerminalSquare size={18} aria-hidden="true" />
-              Agent setup
-            </Link>
+          <div className={styles.heroLayout}>
+            <div className={styles.heroCopyColumn}>
+              <p className={styles.eyebrow}>Local inference control plane</p>
+              <h1 id="landing-title" className={styles.heroTitle}>
+                vLLM Studio
+              </h1>
+              <p className={styles.heroCopy}>
+                Controllers, GPUs, models, providers, agents. One operating surface.
+              </p>
+              <div className={styles.heroActions}>
+                <Link
+                  className={styles.button}
+                  href="/api/downloads/mac-dmg"
+                  prefetch={false}
+                  download
+                >
+                  <DownloadCloud size={18} aria-hidden="true" />
+                  Download for Mac
+                </Link>
+                <Link className={styles.ghostButton} href="/agents">
+                  <TerminalSquare size={18} aria-hidden="true" />
+                  Agent setup
+                </Link>
+              </div>
+            </div>
+            <div className={styles.heroPreview}>
+              <ScreenshotFrame screenshot={screenshots[0]} priority />
+            </div>
           </div>
           <div className={styles.metricStrip} aria-label="vLLM Studio product scope">
             <div className={styles.metric}>

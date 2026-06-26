@@ -117,9 +117,9 @@
 
 .hero {
   position: relative;
-  min-height: calc(100svh - 64px);
+  min-height: min(760px, calc(100svh - 64px));
   display: grid;
-  align-items: end;
+  align-items: center;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
@@ -135,7 +135,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center top;
-  opacity: 0.56;
+  opacity: 0.22;
   filter: saturate(0.92) contrast(1.1);
 }
 
@@ -146,11 +146,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(5, 5, 5, 0.92) 0%,
-      rgba(5, 5, 5, 0.7) 36%,
-      rgba(5, 5, 5, 0.14) 100%
+      rgba(5, 5, 5, 0.94) 0%,
+      rgba(5, 5, 5, 0.8) 46%,
+      rgba(5, 5, 5, 0.48) 100%
     ),
-    linear-gradient(180deg, rgba(5, 5, 5, 0.16) 0%, rgba(5, 5, 5, 0.78) 100%);
+    linear-gradient(180deg, rgba(5, 5, 5, 0.1) 0%, rgba(5, 5, 5, 0.88) 100%);
 }
 
 .heroInner {
@@ -158,7 +158,34 @@
   z-index: 2;
   width: min(1240px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 84px 0 44px;
+  padding: 56px 0 36px;
+}
+
+.heroLayout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.48fr) minmax(0, 0.72fr);
+  gap: 2rem;
+  align-items: center;
+}
+
+.heroCopyColumn {
+  min-width: 0;
+}
+
+.heroPreview {
+  min-width: 0;
+  align-self: end;
+  transform: translateY(10px);
+}
+
+.heroPreview .frame {
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
+.heroPreview .frame img {
+  max-height: 430px;
+  object-fit: cover;
+  object-position: left top;
 }
 
 .eyebrow,
@@ -175,19 +202,19 @@
 }
 
 .heroTitle {
-  max-width: 760px;
-  margin: 1rem 0 1.1rem;
-  font-size: clamp(4.5rem, 12vw, 11.6rem);
-  line-height: 0.82;
-  font-weight: 780;
+  max-width: 520px;
+  margin: 0.85rem 0 0.8rem;
+  font-size: clamp(2.75rem, 5.4vw, 5.6rem);
+  line-height: 0.93;
+  font-weight: 730;
   letter-spacing: 0;
 }
 
 .heroCopy {
-  max-width: 690px;
+  max-width: 500px;
   color: rgba(244, 242, 238, 0.8);
-  font-size: clamp(1.05rem, 1.5vw, 1.42rem);
-  line-height: 1.46;
+  font-size: clamp(1rem, 1.15vw, 1.18rem);
+  line-height: 1.5;
 }
 
 .heroActions,
@@ -202,14 +229,14 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 4.4rem;
+  margin-top: 2rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.1);
 }
 
 .metric {
-  min-height: 96px;
-  padding: 1rem;
+  min-height: 78px;
+  padding: 0.85rem;
   background: rgba(5, 5, 5, 0.72);
 }
 
@@ -218,14 +245,14 @@
   margin-top: 0.46rem;
   color: #fff;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: clamp(1rem, 2vw, 1.9rem);
+  font-size: clamp(0.88rem, 1.35vw, 1.18rem);
   font-weight: 520;
 }
 
 .section {
   width: min(1240px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 86px 0;
+  padding: 72px 0;
 }
 
 .sectionHeader {
@@ -238,9 +265,9 @@
 
 .sectionTitle {
   margin: 0.7rem 0 0;
-  font-size: clamp(2.1rem, 4vw, 5rem);
-  line-height: 0.94;
-  font-weight: 720;
+  font-size: clamp(1.85rem, 2.6vw, 3.1rem);
+  line-height: 1.02;
+  font-weight: 690;
   letter-spacing: 0;
 }
 
@@ -384,9 +411,9 @@
 
 .quote {
   margin: 0;
-  font-size: clamp(2rem, 4.3vw, 5rem);
-  line-height: 0.98;
-  font-weight: 720;
+  font-size: clamp(1.75rem, 3vw, 3.4rem);
+  line-height: 1.04;
+  font-weight: 690;
   letter-spacing: 0;
 }
 
@@ -428,22 +455,22 @@
 .agentHero {
   width: min(1240px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 82px 0 54px;
+  padding: 64px 0 42px;
 }
 
 .agentTitle {
-  max-width: 980px;
-  margin: 0.9rem 0 1rem;
-  font-size: clamp(3.5rem, 8vw, 8.5rem);
-  line-height: 0.86;
-  font-weight: 780;
+  max-width: 760px;
+  margin: 0.75rem 0 0.8rem;
+  font-size: clamp(2.45rem, 4.8vw, 5rem);
+  line-height: 0.98;
+  font-weight: 730;
   letter-spacing: 0;
 }
 
 .agentLead {
   max-width: 820px;
   color: rgba(244, 242, 238, 0.72);
-  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-size: clamp(1rem, 1.2vw, 1.15rem);
   line-height: 1.55;
 }
 
@@ -552,6 +579,7 @@
 
   .metricStrip,
   .sectionHeader,
+  .heroLayout,
   .screenshotGrid,
   .capabilityGrid,
   .downloadGrid,
@@ -560,8 +588,16 @@
     grid-template-columns: 1fr;
   }
 
+  .hero {
+    min-height: auto;
+  }
+
   .heroTitle {
-    font-size: clamp(4.2rem, 19vw, 8rem);
+    font-size: clamp(2.65rem, 10vw, 4.5rem);
+  }
+
+  .heroPreview {
+    transform: none;
   }
 
   .heroCopy,
@@ -588,11 +624,11 @@
   }
 
   .hero {
-    min-height: calc(100svh - 58px);
+    min-height: auto;
   }
 
   .heroInner {
-    padding-top: 58px;
+    padding: 42px 0 30px;
   }
 
   .heroActions,
@@ -611,6 +647,6 @@
   }
 
   .agentTitle {
-    font-size: clamp(3.3rem, 18vw, 6rem);
+    font-size: clamp(2.35rem, 11vw, 3.6rem);
   }
 }
