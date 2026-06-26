@@ -5,7 +5,6 @@ import {
   FolderTree,
   GitBranch,
   Globe2,
-  ListChecks,
   MessageSquarePlus,
   TerminalSquare,
 } from "@/ui/icon-registry";
@@ -50,7 +49,7 @@ type ComputerTabPanelProps = {
 };
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
-  const focusedCwd = props.activeProject?.path ?? props.focusedSession?.cwd ?? null;
+  const focusedCwd = props.focusedSession?.cwd ?? props.activeProject?.path ?? null;
   const panels: Record<ComputerTab, ReactNode> = {
     status: <StatusTab {...props} />,
     tools: <ComputerLauncherPanel activeTab={props.tools.computer.tab} {...props} />,
@@ -112,7 +111,7 @@ function SideChatTab({
   tools,
 }: ComputerTabPanelProps) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
-  const cwd = sideChatSession.cwd ?? activeProject?.path ?? focusedSession?.cwd ?? "";
+  const cwd = sideChatSession.cwd ?? focusedSession?.cwd ?? activeProject?.path ?? "";
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <ChatPane
@@ -201,7 +200,6 @@ function ComputerLauncherPanel({
       key: "plan",
       title: "Plan",
       description: "Plan and track to-dos",
-      icon: ListChecks,
       onClick: () => tools.setComputerTab("plan"),
     },
     {
@@ -230,7 +228,7 @@ function ComputerLauncherPanel({
     <section className="min-h-0 flex-1 overflow-y-auto bg-(--color-panel) px-3 py-3">
       <div className="flex flex-col gap-1">
         {cards.map((card) => {
-          const Icon = card.icon;
+          const Icon = "icon" in card ? card.icon : null;
           const selected = card.key !== "side-chat" && activeTab === card.key;
           return (
             <button
@@ -243,7 +241,9 @@ function ComputerLauncherPanel({
                   : "text-(--fg)/75 hover:bg-(--color-surface-hover) hover:text-(--fg)"
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0 text-(--dim)/75 transition-colors group-hover:text-(--fg)/80" />
+              {Icon ? (
+                <Icon className="h-4 w-4 shrink-0 text-(--dim)/75 transition-colors group-hover:text-(--fg)/80" />
+              ) : null}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[length:var(--fs-lg)] font-medium">
                   {card.title}

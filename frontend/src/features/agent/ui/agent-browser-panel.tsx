@@ -7,7 +7,6 @@ import {
   FolderTree,
   GitBranch,
   Globe2,
-  ListChecks,
   MessageSquarePlus,
   PanelRight,
   Plus,
@@ -76,8 +75,8 @@ function createSideChatSession(
     ...tab,
     runtimeSessionId: newRuntimeId(),
     title: "Side chat",
-    cwd: activeProject?.path ?? focusedSession?.cwd,
-    projectId: activeProject?.id ?? focusedSession?.projectId,
+    cwd: focusedSession?.cwd ?? activeProject?.path,
+    projectId: focusedSession?.projectId ?? activeProject?.id,
     modelId: focusedSession?.modelId ?? activeModelId,
   };
 }
@@ -93,12 +92,12 @@ function terminalOwnerFor(
     return {
       mountKey: sessionKey,
       matchKeys: uniqueTerminalKeys([sessionKey, piKey ?? ""]),
-      cwd: activeProject?.path ?? focusedSession.cwd ?? null,
+      cwd: focusedSession.cwd ?? activeProject?.path ?? null,
       title,
       kind: "session",
       sessionId: focusedSession.id,
       piSessionId: focusedSession.piSessionId ?? null,
-      projectId: activeProject?.id ?? focusedSession.projectId ?? null,
+      projectId: focusedSession.projectId ?? activeProject?.id ?? null,
     };
   }
   if (!activeProject) return null;
@@ -187,7 +186,7 @@ export function AgentBrowserPanel({
     [selectTerminalOwner, terminalState.owners],
   );
   const navigateBrowser = (value: string) => {
-    const next = normalizeBrowserInput(value, activeProject?.path ?? "");
+    const next = normalizeBrowserInput(value, focusedSession?.cwd ?? activeProject?.path ?? "");
     if (!next) return;
     // Accept pane-eligible URLs (public + loopback) and local file:// URLs.
     // Anything else (private LAN ranges, non-http(s)) is rejected before we
@@ -217,8 +216,8 @@ export function AgentBrowserPanel({
           : {
               ...current,
               status: current.status === "loading" ? "idle" : current.status,
-              cwd: activeProject?.path ?? focusedSession?.cwd,
-              projectId: activeProject?.id ?? focusedSession?.projectId,
+              cwd: focusedSession?.cwd ?? activeProject?.path,
+              projectId: focusedSession?.projectId ?? activeProject?.id,
               modelId: current.modelId || focusedSession?.modelId || activeModelId,
             },
       );
@@ -325,7 +324,7 @@ const TAB_OPTIONS: Array<{
   tab: ComputerTab;
   label: string;
   description: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
 }> = [
   {
     tab: "canvas",
@@ -342,8 +341,7 @@ const TAB_OPTIONS: Array<{
   {
     tab: "plan",
     label: "Plan",
-    description: "Cursor-style plan and to-do checklist",
-    icon: ListChecks,
+    description: "Plan and to-do checklist",
   },
   {
     tab: "browser",
@@ -395,7 +393,10 @@ function ComputerHeader({
       ? { label: "Status", icon: Activity }
       : {
           label: TAB_LABELS[candidate],
-          icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
+          icon:
+            candidate === "plan"
+              ? undefined
+              : (TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight),
         };
   return (
     <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border)/85 bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
@@ -421,7 +422,7 @@ function ComputerHeader({
                 }
                 className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
               >
-                <Icon className="pointer-events-none h-3 w-3 shrink-0" />
+                {Icon ? <Icon className="pointer-events-none h-3 w-3 shrink-0" /> : null}
                 <span className="max-w-[7rem] truncate">{meta.label}</span>
               </button>
               {canClose ? (

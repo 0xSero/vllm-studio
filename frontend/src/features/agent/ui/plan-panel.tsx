@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   Circle,
   CircleDot,
-  ListChecks,
   MessageSquarePlus,
   SquarePen,
   XCircle,
@@ -121,9 +120,6 @@ export function PlanPanel({
     <section className="flex min-h-0 flex-1 flex-col bg-(--color-panel)">
       <div className="flex shrink-0 flex-col gap-3 border-b border-(--border) px-3 py-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface)">
-            <ListChecks className="h-3.5 w-3.5 text-(--accent)/80" />
-          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-[length:var(--fs-md)] font-semibold text-(--fg)">
@@ -136,7 +132,7 @@ export function PlanPanel({
               ) : null}
             </div>
             <p className="truncate text-[length:var(--fs-sm)] text-(--dim)">
-              Cursor-style checklist with raw markdown editing.
+              Checklist with raw markdown editing.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-(--border) bg-(--surface) p-0.5">
