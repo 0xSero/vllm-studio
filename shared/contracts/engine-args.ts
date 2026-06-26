@@ -161,3 +161,141 @@ export const stripForeignFlagKeys = (
   }
   return result;
 };
+
+/**
+ * Broad allowlist of vLLM `serve` CLI flags that may safely be forwarded as
+ * `extra_args` (canonical kebab-case). Built from `VLLM_ONLY_FLAG_KEYS`,
+ * `SGLANG_COMPATIBLE_VLLM_KEYS`, plus recipe fields the editor exposes as
+ * structured inputs.
+ *
+ * If a flag is not in this set and does not match an experimental prefix,
+ * `getUnknownVllmExtraArgKeys` will surface it so the command builder can
+ * drop it with a warning instead of blindly forwarding it (which used to
+ * crash vLLM with `unrecognized arguments`, e.g. for `benchmark_notes_<date>`
+ * annotations that got stored in `extra_args`).
+ */
+export const KNOWN_VLLM_EXTRA_ARG_KEYS: ReadonlySet<string> = new Set([
+  ...VLLM_ONLY_FLAG_KEYS.map(normalizeEngineArgKey),
+  ...Array.from(SGLANG_COMPATIBLE_VLLM_KEYS),
+  // Recipe fields also surfaced via extra_args by the editor (defensively
+  // allowed here so a typo there never blocks launch).
+  "tensor-parallel-size",
+  "pipeline-parallel-size",
+  "max-model-len",
+  "gpu-memory-utilization",
+  "max-num-seqs",
+  "kv-cache-dtype",
+  "trust-remote-code",
+  "tool-call-parser",
+  "reasoning-parser",
+  "enable-auto-tool-choice",
+  "quantization",
+  "dtype",
+  "served-model-name",
+  "host",
+  "port",
+  "attention-backend",
+  "moe-backend",
+  "async-scheduling",
+  "hf-overrides",
+  "speculative-config",
+  "speculative-config-2",
+  "compilation-config",
+  "enable-prefix-caching",
+  "enable-chunked-prefill",
+  "load-format",
+  "max-num-batched-tokens",
+  "decode-context-parallel-size",
+  "dcp-comm-backend",
+  "dcp-kv-cache-interleave-size",
+  "fuse-allreduce-rms",
+  "fuse-rms",
+  "fuse-rms-norm",
+  "fuse-rms-quant",
+  "fuse-attn-quant",
+  "extra-llm-config",
+  "override-generation-config",
+  "override-attention-dtype",
+  "tensor-parallel-size-of-mlp",
+]);
+
+/**
+ * Fork-specific or experimental vLLM flag prefixes (voipmonitor/vllm B12X,
+ * darkdevotion, etc.) that ship CLI flags outside the open-source surface.
+ * Forwarded without per-key enumeration.
+ */
+const VLLM_EXPERIMENTAL_PREFIXES: readonly string[] = [
+  "b12x-",
+  "darkdevotion-",
+  "cute-",
+  "fuse-",
+  "rok-",
+  "swap-",
+];
+
+/**
+ * Recipe metadata / launch-control keys that are handled out-of-band by the
+ * command builders (env injection, Docker wrapping, launch overrides) and are
+ * never emitted as CLI flags. Recognised here so they are not surfaced as
+ * "unknown" extra-args (which would log a misleading drop warning every launch).
+ */
+const INTERNAL_RECIPE_KEYS: ReadonlySet<string> = new Set([
+  "venv-path",
+  "env-vars",
+  "visible-devices",
+  "cuda-visible-devices",
+  "hip-visible-devices",
+  "rocr-visible-devices",
+  "description",
+  "tags",
+  "status",
+  "metadata",
+  "llama-bin",
+  "mlx-python",
+  "launch-command",
+  "custom-command",
+  "docker-container",
+  "docker-image",
+]);
+
+/**
+ * Returns true if `key` is a known vLLM extra-arg flag, an internal recipe
+ * metadata key handled out-of-band, or a fork-specific prefix we always pass
+ * through to the CLI.
+ */
+export const isKnownVllmExtraArgKey = (key: string): boolean => {
+  const normalized = normalizeEngineArgKey(key);
+  if (KNOWN_VLLM_EXTRA_ARG_KEYS.has(normalized)) return true;
+  if (INTERNAL_RECIPE_KEYS.has(normalized)) return true;
+  return VLLM_EXPERIMENTAL_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+};
+
+/**
+ * Returns the subset of `extraArgs` whose keys are NOT valid vLLM `serve`
+ * flags. Notes-style keys (`benchmark_notes_<date>`, anything ending in
+ * `_YYYYMMDD`, free-form metadata) fall into this bucket.
+ */
+export const getUnknownVllmExtraArgKeys = (
+  extraArgs: Record<string, unknown> | null | undefined
+): string[] => {
+  const source = extraArgs ?? {};
+  const blocked: string[] = [];
+  for (const key of Object.keys(source)) {
+    if (!isKnownVllmExtraArgKey(key)) {
+      blocked.push(key);
+    }
+  }
+  return blocked;
+};
+
+/**
+ * Returns true if `key` looks like a free-form annotation / notes field
+ * rather than a CLI flag.
+ */
+export const looksLikeNotesKey = (key: string): boolean => {
+  const normalized = normalizeEngineArgKey(key);
+  if (normalized.startsWith("benchmark-notes")) return true;
+  if (normalized.endsWith("-notes")) return true;
+  if (/^.*-\d{6,8}$/.test(normalized)) return true;
+  return false;
+};

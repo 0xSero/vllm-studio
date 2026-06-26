@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Recipe } from "../../models/types";
 import type { Config } from "../../../config/env";
-import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
+import {
+  getUnknownVllmExtraArgKeys,
+  looksLikeNotesKey,
+  stripForeignFlagKeys,
+} from "../../../../../shared/contracts/engine-args";
+import type { Logger } from "../../../core/logger";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
 import { getEngineSpec } from "../engine-spec";
@@ -122,6 +127,66 @@ export const appendExtraArguments = (
   }
   return command;
 };
+
+/**
+ * Filter `extraArguments` against the vLLM `serve` flag allowlist and pass the
+ * remainder to `appendExtraArguments`. Unknown keys would otherwise be
+ * forwarded verbatim, which crashes vLLM with `unrecognized arguments`
+ * (real-world example: `benchmark_notes_20260622` blocks the
+ * `glm-5-2-504b-term` recipe from booting).
+ *
+ * Behaviour:
+ *   - Unknown keys are dropped unless `VLLM_STUDIO_ALLOW_UNKNOWN_VLLM_EXTRA_ARGS`
+ *     is set to `true` (escape hatch for forked vLLM builds outside the
+ *     allowlist).
+ *   - Each drop is logged via `logger` (or `console.warn` as a fallback) so the
+ *     upstream recipe can be cleaned up.
+ *   - Keys that look like free-form notes/annotations are advised to live
+ *     under `description` / `metadata` instead.
+ */
+export const appendVllmExtraArguments = (
+  command: string[],
+  extraArguments: Record<string, unknown>,
+  logger?: Logger,
+): string[] => {
+  const allowUnknown = process.env["VLLM_STUDIO_ALLOW_UNKNOWN_VLLM_EXTRA_ARGS"] === "true";
+  if (allowUnknown) {
+    return appendExtraArguments(command, extraArguments);
+  }
+  const unknown = getUnknownVllmExtraArgKeys(extraArguments);
+  if (unknown.length === 0) {
+    return appendExtraArguments(command, extraArguments);
+  }
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(extraArguments)) {
+    if (!unknown.includes(key)) {
+      filtered[key] = value;
+    }
+  }
+  const strict = process.env["VLLM_STUDIO_STRICT_VLLM_EXTRA_ARGS"] === "true";
+  for (const key of unknown) {
+    const noteLike = looksLikeNotesKey(key);
+    const detail: Record<string, unknown> = {
+      key,
+      hint: noteLike
+        ? "vLLM has no such flag; store notes under recipe.description or recipe.metadata"
+        : "Add the flag to KNOWN_VLLM_EXTRA_ARG_KEYS in shared/contracts/engine-args.ts, or set VLLM_STUDIO_ALLOW_UNKNOWN_VLLM_EXTRA_ARGS=true as a temporary escape hatch",
+    };
+    if (logger) {
+      if (strict) {
+        logger.error("[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode", detail);
+      } else {
+        logger.warn("[vllm-extra-args] dropping unknown vLLM extra_args key", detail);
+      }
+    } else if (strict) {
+      console.error("[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode", detail);
+    } else {
+      console.warn("[vllm-extra-args] dropping unknown vLLM extra_args key", detail);
+    }
+  }
+  return appendExtraArguments(command, filtered);
+};
+
 const normalizeLaunchCommand = (command: string): string => {
   return command
     .replace(/\\\s*\n\s*\+?\s*/g, " ")
@@ -189,11 +254,114 @@ const getLaunchCommandOverride = (recipe: Recipe): string[] | null => {
   const command = splitLaunchCommand(override);
   return command.length > 0 ? command : null;
 };
+
+/** In-container path to the vLLM CLI for forked Docker images. */
+export const CONTAINER_VLLM_BIN = "/opt/venv/bin/vllm";
+const DOCKER_JIT_MOUNT = "/cache/jit";
+
+/**
+ * Env keys that must NOT be forwarded into the container; the image's own baked
+ * value (sometimes intentionally empty) is required.
+ *
+ * NOTE: `NCCL_GRAPH_FILE` is deliberately NOT skipped. The voipmonitor "noxml"
+ * NCCL build treats an empty `NCCL_GRAPH_FILE` as a fatal error, so recipes set
+ * it to `/dev/null` and that override must reach the container.
+ */
+const DOCKER_ENV_SKIP_KEYS = new Set(["NCCL_GRAPH_DUMP_FILE", "VLLM_B12X_MLA_EXTEND_MAX_CHUNKS"]);
+
+/** Read the pinned Docker image for a recipe, if any (`extra_args.docker_image`). */
+export const getDockerImage = (recipe: Recipe): string | null => {
+  const value =
+    getExtraArgument(recipe.extra_args, "docker_image") ??
+    getExtraArgument(recipe.extra_args, "docker-image");
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+};
+
+const sanitizeDockerName = (value: string): string => {
+  const cleaned = value.replace(/[^a-zA-Z0-9_.-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "");
+  return cleaned.length > 0 ? cleaned : "recipe";
+};
+
+const buildDockerEnvFlags = (recipe: Recipe): string[] => {
+  const flags: string[] = [];
+  const seen = new Set<string>();
+  const addEnv = (source: unknown): void => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+    for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
+      if (value === undefined || value === null) continue;
+      if (seen.has(key) || DOCKER_ENV_SKIP_KEYS.has(key)) continue;
+      seen.add(key);
+      flags.push("-e", `${key}=${String(value)}`);
+    }
+  };
+  addEnv(recipe.env_vars);
+  addEnv(getExtraArgument(recipe.extra_args, "env_vars"));
+  return flags;
+};
+
+/**
+ * Wrap a vLLM `serve` invocation so it runs inside a pinned Docker image
+ * (`extra_args.docker_image`). Used for forked vLLM builds (e.g. voipmonitor
+ * B12X) that cannot be installed into the host venv.
+ *
+ * The container runs in the foreground as the controller's child process, so
+ * the existing process-manager stop path tears it down (SIGTERM proxies to the
+ * container; `--rm` removes it). `--network host` lets vLLM bind the recipe's
+ * port directly, and a per-recipe named volume persists the JIT compile cache.
+ */
+export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[]): string[] => {
+  const name = `vllm-studio-${sanitizeDockerName(recipe.id)}`;
+  const jitVolume = `vllm-studio-jit-${sanitizeDockerName(recipe.id)}`;
+  const model = recipe.model_path;
+  const flags = [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    name,
+    "--gpus",
+    "all",
+    "--network",
+    "host",
+    "--ipc",
+    "host",
+    "--shm-size",
+    "32g",
+    "--privileged",
+    "--ulimit",
+    "memlock=-1",
+    "--ulimit",
+    "stack=67108864",
+  ];
+  flags.push(...buildDockerEnvFlags(recipe));
+  flags.push(
+    "-e",
+    `XDG_CACHE_HOME=${DOCKER_JIT_MOUNT}`,
+    "-e",
+    `CUDA_CACHE_PATH=${DOCKER_JIT_MOUNT}`,
+    "-e",
+    `VLLM_CACHE_DIR=${DOCKER_JIT_MOUNT}/vllm`,
+    "-e",
+    `TRITON_CACHE_DIR=${DOCKER_JIT_MOUNT}/triton`,
+  );
+  flags.push("-v", `${model}:${model}:ro`);
+  flags.push("-v", `${jitVolume}:${DOCKER_JIT_MOUNT}`);
+  flags.push(image);
+  flags.push(...inner);
+  return flags;
+};
+
 export const buildVllmCommand = (recipe: Recipe): string[] => {
+  const dockerImage = getDockerImage(recipe);
   const pythonPath = getVllmPythonPath(recipe);
   let command: string[];
   let usesServe = false;
-  if (pythonPath) {
+  if (dockerImage) {
+    command = [CONTAINER_VLLM_BIN, "serve"];
+    usesServe = true;
+  } else if (pythonPath) {
     const vllmBin = join(dirname(pythonPath), "vllm");
     if (existsSync(vllmBin)) {
       command = [vllmBin, "serve"];
@@ -256,7 +424,8 @@ export const buildVllmCommand = (recipe: Recipe): string[] => {
   if (recipe.dtype) {
     command.push("--dtype", recipe.dtype);
   }
-  return appendExtraArguments(command, recipe.extra_args);
+  const built = appendVllmExtraArguments(command, recipe.extra_args);
+  return dockerImage ? wrapVllmInDocker(recipe, dockerImage, built) : built;
 };
 const executableBaseName = (value: string): string => {
   return value.split(/[\\/]/).filter(Boolean).at(-1)?.toLowerCase() ?? value.toLowerCase();

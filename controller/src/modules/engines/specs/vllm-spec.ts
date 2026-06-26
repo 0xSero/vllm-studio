@@ -11,9 +11,12 @@ import {
 import { probeVllmBinaryRuntime } from "../runtimes/runtime-target-probes";
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import {
-  appendExtraArguments,
+  CONTAINER_VLLM_BIN,
+  appendVllmExtraArguments,
+  getDockerImage,
   getExtraArgument,
   getVllmPythonPath,
+  wrapVllmInDocker,
 } from "../process/backend-builder";
 import {
   getDefaultReasoningParser,
@@ -33,10 +36,14 @@ import type {
 } from "../engine-spec";
 
 const buildVllmCommand = (recipe: Recipe): string[] => {
+  const dockerImage = getDockerImage(recipe);
   const pythonPath = getVllmPythonPath(recipe);
   let command: string[];
   let usesServe = false;
-  if (pythonPath) {
+  if (dockerImage) {
+    command = [CONTAINER_VLLM_BIN, "serve"];
+    usesServe = true;
+  } else if (pythonPath) {
     const vllmBin = join(dirname(pythonPath), "vllm");
     if (existsSync(vllmBin)) {
       command = [vllmBin, "serve"];
@@ -99,7 +106,8 @@ const buildVllmCommand = (recipe: Recipe): string[] => {
   if (recipe.dtype) {
     command.push("--dtype", recipe.dtype);
   }
-  return appendExtraArguments(command, recipe.extra_args);
+  const built = appendVllmExtraArguments(command, recipe.extra_args);
+  return dockerImage ? wrapVllmInDocker(recipe, dockerImage, built) : built;
 };
 
 const managedPackageSpec = (version?: string | null): string => {

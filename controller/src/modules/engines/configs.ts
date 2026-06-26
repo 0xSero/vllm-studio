@@ -1,4 +1,12 @@
-export const LIFECYCLE_READY_TIMEOUT_MS = 300_000;
+// Time to wait for a backend to report ready before declaring launch failure.
+// Large MoE models in Docker (weights + AOT compile + full CUDA-graph capture)
+// can take well over the 5-minute default, so allow an env override.
+const parseReadyTimeoutMs = (): number => {
+  const raw = process.env["VLLM_STUDIO_READY_TIMEOUT_MS"];
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+};
+export const LIFECYCLE_READY_TIMEOUT_MS = parseReadyTimeoutMs();
 
 export const DOWNLOAD_DEFAULT_IGNORE_FILENAMES = [".gitattributes", ".gitignore"];
 export const DOWNLOAD_PROGRESS_THROTTLE_MS = 750;
