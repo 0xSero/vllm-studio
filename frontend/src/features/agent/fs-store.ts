@@ -66,17 +66,19 @@ function resolveRealPath(candidate: string): string {
   }
 }
 
-// Trust boundary: agent filesystem list/read may only operate inside project
-// roots that are registered server-side. The caller-supplied cwd must resolve
-// to the realpath of a known registered project.
-function resolveProjectRoot(cwd: string): string {
+// Trust boundary: agent filesystem list/read operates inside the caller's
+// current workspace cwd, while still rejecting filesystem roots and system
+// directories. Registered projects remain accepted, but exact registration is
+// not required: sessions may run from the repo opened by the app, a project
+// subdirectory, or a newly selected cwd before the project registry refreshes.
+function resolveWorkspaceRoot(cwd: string): string {
   const requestedReal = resolveRealPath(cwd);
   for (const project of listProjectsFromStore()) {
     if (!project.exists) continue;
     const projectReal = resolveRealPath(project.path);
     if (projectReal === requestedReal) return projectReal;
   }
-  throw new Error("cwd is not a registered project root");
+  return assertWorkspaceRoot(requestedReal);
 }
 
 // Reject any path that escapes the project root, resolving symlinks on both the
@@ -98,7 +100,7 @@ function ensureInside(rootCwd: string, target: string): string {
 }
 
 export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {
-  const root = resolveProjectRoot(rootCwd);
+  const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath || "."));
   if (!existsSync(target)) throw new Error("Not found");
   const stats = statSync(target);
@@ -137,7 +139,7 @@ export async function readFileSnippet(
   relPath: string,
   maxBytes = 5 * 1024 * 1024,
 ): Promise<{ content: string; truncated: boolean; size: number }> {
-  const root = resolveProjectRoot(rootCwd);
+  const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
   const stats = await fs.stat(target);
   if (!stats.isFile()) throw new Error("Not a file");
@@ -159,7 +161,7 @@ export async function writeFileContent(
   relPath: string,
   content: string,
 ): Promise<void> {
-  const root = resolveProjectRoot(rootCwd);
+  const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
   const stats = await fs.stat(target);
   if (!stats.isFile()) throw new Error("Not a file");

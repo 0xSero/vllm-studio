@@ -82,18 +82,24 @@ describe("agent filesystem root boundary", () => {
     assert.equal(result.content, "updated");
   });
 
-  it("rejects an unregistered absolute cwd", async () => {
+  it("lists an unregistered safe workspace cwd", () => {
     const otherDir = mkdtempSync(
       path.join(tmpdir(), "local-studio-agentfs-other-"),
     );
     try {
-      await rejectsWith(
-        () => listDirectory(otherDir, ""),
-        "cwd is not a registered project root",
-      );
+      writeFileSync(path.join(otherDir, "note.txt"), "hello");
+      const entries = listDirectory(otherDir, "");
+      assert.deepEqual(entries.map((entry) => entry.name), ["note.txt"]);
     } finally {
       rmSync(otherDir, { recursive: true, force: true });
     }
+  });
+
+  it("rejects a system root as cwd", async () => {
+    await rejectsWith(
+      () => listDirectory(path.parse(projectDir).root, ""),
+      "Path is not an allowed workspace root",
+    );
   });
 
   it("rejects traversal outside the project root", async () => {
