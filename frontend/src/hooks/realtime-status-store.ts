@@ -20,7 +20,7 @@ import type {
 } from "@/lib/types";
 
 import api from "@/lib/api/client";
-import { BACKEND_URL_CHANGED_EVENT } from "@/lib/api/connection";
+import { BACKEND_URL_CHANGED_EVENT, getStoredBackendUrl } from "@/lib/api/connection";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const FAST_COMPAT_REQUEST = { timeout: 5_000, retries: 0 } as const;
@@ -68,12 +68,15 @@ const initialSnapshot: RealtimeStatusSnapshot = {
 };
 
 let snapshot: RealtimeStatusSnapshot = initialSnapshot;
+const snapshotsByController = new Map<string, RealtimeStatusSnapshot>();
 const listeners = new Set<() => void>();
 let started = false;
 let pollFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
 let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
 let pollFailureStreak = 0;
 let pollBackoffUntil = 0;
+let activeControllerKey = currentControllerKey();
+let statusRequestSeq = 0;
 
 const POLL_BASE_INTERVAL_MS = 5_000;
 const POLL_MAX_BACKOFF_MS = 30_000;
@@ -90,6 +93,15 @@ function notePollOutcome(connected: boolean) {
     POLL_BASE_INTERVAL_MS * 2 ** (pollFailureStreak - 1),
   );
   pollBackoffUntil = Date.now() + backoff;
+}
+
+function currentControllerKey(): string {
+  if (typeof window === "undefined") return "server";
+  return getStoredBackendUrl() || "default";
+}
+
+function cacheActiveSnapshot(): void {
+  snapshotsByController.set(activeControllerKey, snapshot);
 }
 
 function processKey(process: ProcessInfo | null | undefined): string {
@@ -117,6 +129,7 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
     !areLeasesEqual(snapshot.lease, next.lease);
 
   snapshot = changed ? next : { ...snapshot, lastEventAt: next.lastEventAt };
+  cacheActiveSnapshot();
   if (!changed) return;
 
   for (const l of listeners) l();
@@ -207,10 +220,16 @@ function runtimeSummaryFromCompatibility(
 }
 
 function emitNoPolledStatus() {
+  // Keep a warm cache through transient navigation/SSE handoff failures. The
+  // next poll failure marks the controller offline, but a single missed fast
+  // request should not blank the status page or flash "offline".
+  const hasCachedStatus = Boolean(
+    snapshot.status || snapshot.runtimeSummary || snapshot.gpus.length,
+  );
   emitIfChanged({
     ...snapshot,
     statusLoading: false,
-    connected: false,
+    connected: hasCachedStatus && pollFailureStreak <= 1 ? snapshot.connected : false,
     lastEventAt: Date.now(),
   });
 }
@@ -357,19 +376,29 @@ function handleControllerEvent(detail: ControllerEventDetail | undefined) {
   controllerEventHandlers[detail?.type ?? ""]?.(detail?.data ?? {}, Date.now());
 }
 
-async function fetchStatusNow() {
+async function fetchStatusNow(controllerKey = activeControllerKey) {
+  const requestSeq = ++statusRequestSeq;
+  if (controllerKey !== activeControllerKey) return;
   emitStatusLoading();
   const results = await fetchPollResults();
+  if (controllerKey !== activeControllerKey || requestSeq !== statusRequestSeq) return;
   notePollOutcome(results.statusConnected);
   emitPolledStatus(results);
 }
 
 function resetForControllerSwitch() {
+  cacheActiveSnapshot();
+  activeControllerKey = currentControllerKey();
+  statusRequestSeq += 1;
+  pollFailureStreak = 0;
+  pollBackoffUntil = 0;
+  const cached = snapshotsByController.get(activeControllerKey);
   emitIfChanged({
-    ...initialSnapshot,
+    ...(cached ?? initialSnapshot),
+    statusLoading: true,
     lastEventAt: Date.now(),
   });
-  void fetchStatusNow();
+  void fetchStatusNow(activeControllerKey);
 }
 
 function start() {

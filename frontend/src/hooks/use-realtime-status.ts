@@ -9,7 +9,7 @@ import { useRealtimeStatusStore } from "./realtime-status-store";
  */
 export function useRealtimeStatus() {
   const snap = useRealtimeStatusStore();
-  const connected = Boolean(snap.status);
+  const connected = snap.connected;
 
   return useMemo(
     () => ({
