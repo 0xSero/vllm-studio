@@ -177,11 +177,14 @@ function ScrollToBottomButton({ running, onClick }: { running: boolean; onClick:
   );
 }
 
+const PROMPT_MARKER_HEIGHT_PX = 16;
+const PROMPT_MARKER_GAP_PX = 10;
+const PROMPT_MARKER_MAX_RATIO = 0.6;
+
 type PromptMarkerEntry = {
   id: string;
   label: string;
   time: string;
-  top: number;
 };
 
 function PromptMarkers({
@@ -192,7 +195,6 @@ function PromptMarkers({
   messages: ChatMessage[];
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const markerCacheRef = useRef<PromptMarkerEntry[]>(EMPTY_PROMPT_MARKERS);
   const prompts = useMemo(
     () =>
       messages
@@ -204,58 +206,31 @@ function PromptMarkers({
         })),
     [messages],
   );
-  const readMarkers = useCallback(() => {
-    const next = calculatePromptMarkers(scroller, prompts);
-    const current = markerCacheRef.current;
-    if (samePromptMarkers(current, next)) return current;
-    markerCacheRef.current = next;
-    return next;
-  }, [prompts, scroller]);
-  const subscribeMarkers = useCallback(
-    (onStoreChange: () => void) => {
-      if (!scroller) return () => undefined;
-      let frame = 0;
-      const schedule = () => {
-        if (frame) return;
-        frame = window.requestAnimationFrame(() => {
-          frame = 0;
-          onStoreChange();
-        });
-      };
-
-      schedule();
-      const resizeObserver = new ResizeObserver(schedule);
-      resizeObserver.observe(scroller);
-      const list = scroller.querySelector<HTMLElement>("[data-timeline-list]");
-      if (list) resizeObserver.observe(list);
-      return () => {
-        if (frame) window.cancelAnimationFrame(frame);
-        resizeObserver.disconnect();
-      };
-    },
-    [scroller],
+  const viewportHeight = useScrollerViewportHeight(scroller);
+  if (!scroller || prompts.length === 0) return null;
+  const maxCount = Math.max(
+    1,
+    Math.floor(
+      (viewportHeight * PROMPT_MARKER_MAX_RATIO + PROMPT_MARKER_GAP_PX) /
+        (PROMPT_MARKER_HEIGHT_PX + PROMPT_MARKER_GAP_PX),
+    ),
   );
-  const markers = useSyncExternalStore(subscribeMarkers, readMarkers, () => EMPTY_PROMPT_MARKERS);
-
-  if (!scroller || markers.length === 0) return null;
-
+  const visible = prompts.length > maxCount ? prompts.slice(-maxCount) : prompts;
   const scrollToPrompt = (id: string) => {
     const node = Array.from(
       scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
     ).find((element) => element.dataset.timelineMessageId === id);
     node?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
-
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
-      {markers.map((marker) => {
+      {visible.map((marker) => {
         const active = hoveredId === marker.id;
         return (
           <button
             key={marker.id}
             type="button"
             className="prompt-minimap-marker"
-            style={{ top: `${marker.top}px` }}
             aria-label={`Scroll to prompt: ${marker.label}`}
             onMouseEnter={() => setHoveredId(marker.id)}
             onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
@@ -277,28 +252,21 @@ function PromptMarkers({
   );
 }
 
-const EMPTY_PROMPT_MARKERS: PromptMarkerEntry[] = [];
-
-type PromptSummary = Omit<PromptMarkerEntry, "top">;
-
-function calculatePromptMarkers(
-  scroller: HTMLDivElement | null,
-  prompts: PromptSummary[],
-): PromptMarkerEntry[] {
-  if (!scroller || prompts.length === 0) return EMPTY_PROMPT_MARKERS;
-  const nodes = Array.from(scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"));
-  const nodeById = new Map(nodes.map((node) => [node.dataset.timelineMessageId, node]));
-  const railPadding = 16;
-  const railHeight = Math.max(1, scroller.clientHeight - railPadding * 2);
-  const documentHeight = Math.max(1, scroller.scrollHeight);
-  return prompts
-    .map((prompt) => {
-      const node = nodeById.get(prompt.id);
-      if (!node) return null;
-      const ratio = Math.min(1, Math.max(0, node.offsetTop / documentHeight));
-      return { ...prompt, top: railPadding + ratio * railHeight };
-    })
-    .filter((marker): marker is PromptMarkerEntry => marker !== null);
+function useScrollerViewportHeight(scroller: HTMLDivElement | null): number {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!scroller) return () => undefined;
+      const resizeObserver = new ResizeObserver(onStoreChange);
+      resizeObserver.observe(scroller);
+      return () => resizeObserver.disconnect();
+    },
+    [scroller],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => scroller?.clientHeight ?? 0,
+    () => 0,
+  );
 }
 
 function userPromptLabel(message: ChatMessage): string {
@@ -319,19 +287,6 @@ function formatPromptTime(timestamp?: string): string {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(parsed),
   );
-}
-
-function samePromptMarkers(left: PromptMarkerEntry[], right: PromptMarkerEntry[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((marker, index) => {
-    const other = right[index];
-    return (
-      other?.id === marker.id &&
-      other.label === marker.label &&
-      other.time === marker.time &&
-      Math.abs(other.top - marker.top) < 0.5
-    );
-  });
 }
 
 function mergeConsecutiveAssistantMessages(messages: ChatMessage[]): ChatMessage[] {

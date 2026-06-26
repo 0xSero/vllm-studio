@@ -354,15 +354,22 @@
 
 .prompt-minimap {
   position: absolute;
-  inset-block: 0;
+  top: 50%;
   left: max(1.25rem, calc((100% - var(--composer-w)) / 2 - 5.75rem));
   z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  max-height: 60vh;
   width: 4.75rem;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .prompt-minimap-marker {
-  position: absolute;
+  position: relative;
   left: 0;
   display: flex;
   align-items: center;
@@ -374,7 +381,6 @@
   color: inherit;
   cursor: pointer;
   pointer-events: auto;
-  transform: translateY(-50%);
 }
 
 .prompt-minimap-line {
