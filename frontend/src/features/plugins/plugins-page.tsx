@@ -111,26 +111,47 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     return catalogue.filter((entry) => matchesEntrySearch(entry, query));
   }, [catalogue, search]);
 
+  const assertOAuthClientReady = useCallback(
+    async (providerId: string, displayName: string): Promise<boolean> => {
+      try {
+        const response = await fetch(`/api/oauth/${providerId}`, { cache: "no-store" });
+        const status = (await response.json()) as { hasCredentials?: boolean };
+        if (!status.hasCredentials) {
+          setError(`Set up ${displayName} OAuth client in Connections above before connecting.`);
+          return false;
+        }
+      } catch {}
+      return true;
+    },
+    [],
+  );
+
   const beginConfigureEntry = (entry: CatalogueEntry) => {
     const providerId = oauthProviderIdForEntry(entry);
     if (providerId) {
       setBusyId(entry.id);
       setError(null);
-      window.open(
-        `/api/oauth/${providerId}/start?catalogueId=${encodeURIComponent(entry.id)}`,
-        "_blank",
-        "noopener,noreferrer",
-      );
-      let elapsed = 0;
-      const poll = effectInterval(() => {
-        elapsed += 1;
-        void loadServers().then(() => {
-          if (elapsed >= 40) {
-            poll.cancel();
-            setBusyId(null);
-          }
-        });
-      }, 1500);
+      void (async () => {
+        if (!(await assertOAuthClientReady(providerId, entry.displayName))) {
+          setBusyId(null);
+          return;
+        }
+        window.open(
+          `/api/oauth/${providerId}/start?catalogueId=${encodeURIComponent(entry.id)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        let elapsed = 0;
+        const poll = effectInterval(() => {
+          elapsed += 1;
+          void loadServers().then(() => {
+            if (elapsed >= 40) {
+              poll.cancel();
+              setBusyId(null);
+            }
+          });
+        }, 1500);
+      })();
       return;
     }
     setConfigureEntry(entry);

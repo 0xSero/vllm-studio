@@ -73,7 +73,9 @@ function ProviderConnectionCard({
   const [clientSecret, setClientSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvancedClient, setShowAdvancedClient] = useState(false);
+  const [showAdvancedClient, setShowAdvancedClient] = useState(
+    () => !status.hasCredentials && !status.configuredByApp,
+  );
 
   const providerId = status.providerId;
   const description = getOAuthProvider(providerId)?.description ?? "";
@@ -156,8 +158,8 @@ function ProviderConnectionCard({
 
       {!hasCredentials ? (
         <SettingsNotice tone="warning" className="mb-3">
-          {status.displayName} OAuth is not configured for this app. Set the app-level OAuth client,
-          or use the advanced local fallback below.
+          Set the {status.displayName} OAuth client id and secret below, then Connect. Operators can
+          instead set app-level env vars (see docs).
         </SettingsNotice>
       ) : null}
 
@@ -185,28 +187,34 @@ function ProviderConnectionCard({
         </>
       ) : null}
       <SettingsActions>
-        {!configuredByApp ? (
-          showClientForm ? (
-            <SettingsButton
-              onClick={saveClient}
-              disabled={busy || !clientId.trim() || !clientSecret.trim()}
-            >
-              Save fallback OAuth client
-            </SettingsButton>
-          ) : (
-            <SettingsButton onClick={() => setShowAdvancedClient(true)} disabled={busy}>
-              Advanced: local OAuth client
-            </SettingsButton>
-          )
-        ) : null}
-        <SettingsButton tone="primary" onClick={connect} disabled={busy || !hasCredentials}>
-          {connected ? `Reconnect ${status.displayName}` : `Connect ${status.displayName}`}
-        </SettingsButton>
-        {connected ? (
-          <SettingsButton tone="danger" onClick={disconnect} disabled={busy}>
-            Disconnect
+        {!hasCredentials ? (
+          <SettingsButton
+            tone="primary"
+            onClick={saveClient}
+            disabled={busy || !clientId.trim() || !clientSecret.trim()}
+          >
+            Save {status.displayName} OAuth client
           </SettingsButton>
-        ) : null}
+        ) : (
+          <>
+            {!configuredByApp ? (
+              <SettingsButton
+                onClick={() => setShowAdvancedClient((open) => !open)}
+                disabled={busy}
+              >
+                {showClientForm ? "Hide client form" : "Edit local client"}
+              </SettingsButton>
+            ) : null}
+            <SettingsButton tone="primary" onClick={connect} disabled={busy}>
+              {connected ? `Reconnect ${status.displayName}` : `Connect ${status.displayName}`}
+            </SettingsButton>
+            {connected ? (
+              <SettingsButton tone="danger" onClick={disconnect} disabled={busy}>
+                Disconnect
+              </SettingsButton>
+            ) : null}
+          </>
+        )}
       </SettingsActions>
     </SettingsGroup>
   );
