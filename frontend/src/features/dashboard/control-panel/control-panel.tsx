@@ -91,8 +91,6 @@ function ControllerTab({
         ? "running"
         : "idle"
       : "offline";
-  const model =
-    controller.process?.served_model_name || controller.process?.model_path || "no model";
   return (
     <button
       type="button"
@@ -108,15 +106,6 @@ function ControllerTab({
       <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
       <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
         {state}
-      </span>
-      <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">
-        {controller.gpus.length}× gpu
-      </span>
-      <span
-        className="max-w-[14rem] truncate text-[length:var(--fs-xs)] text-(--dim)"
-        title={model}
-      >
-        {controller.online ? model : controller.error || "unreachable"}
       </span>
     </button>
   );
