@@ -4,7 +4,6 @@ import { effectInterval } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { AppPage, PageHeader, RefreshIconButton, SettingsNotice } from "@/ui";
-import { ConnectionsPanel } from "./plugins-connections";
 import { CuratedMcpSearchPanel } from "./plugins-curated-mcp-search";
 import { InstalledMcpServersPanel } from "./plugins-installed-servers";
 import { ManualMcpServerPanel } from "./plugins-manual-server";
@@ -234,7 +233,6 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       {error}
     </SettingsNotice>
   ) : null;
-  const connectionsPanel = <ConnectionsPanel />;
   const customPanel = (
     <div className="space-y-5">
       <InstalledMcpServersPanel
@@ -309,7 +307,6 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       <>
         {errorNotice}
         <div className="space-y-5">
-          {connectionsPanel}
           {curatedPanel}
           {customPanel}
         </div>
@@ -331,7 +328,6 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
         />
         {errorNotice}
         <div className="space-y-5">
-          {connectionsPanel}
           {curatedPanel}
           {customPanel}
         </div>
