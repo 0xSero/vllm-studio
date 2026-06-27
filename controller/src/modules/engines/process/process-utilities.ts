@@ -1,8 +1,11 @@
 import { spawnSync } from "node:child_process";
+import { dirname } from "node:path";
 import type { Recipe } from "../../models/types";
 import type { Backend } from "../../shared/recipe-types";
 import { detectEngineFromArguments } from "../engine-spec";
 import { extractFlag as extractFlagUtility } from "../argument-utilities";
+import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
+import type { Config } from "../../../config/env";
 
 export { extractFlagUtility as extractFlag };
 
@@ -44,9 +47,14 @@ export const listProcesses = (): Array<{ pid: number; args: string[] }> => {
   }
 };
 
-export const buildEnvironment = (recipe: Recipe): Record<string, string> => {
+export const buildEnvironment = (recipe: Recipe, config?: Pick<Config, "data_dir">): Record<string, string> => {
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
   env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1";
+
+  const venvBin = resolveVenvBinForRecipe(recipe, config?.data_dir);
+  if (venvBin) {
+    env["PATH"] = `${venvBin}:${env["PATH"] ?? ""}`;
+  }
 
   const environmentVariables: Record<string, string> = {};
   if (recipe.env_vars && typeof recipe.env_vars === "object") {
@@ -132,6 +140,18 @@ export const buildEnvironment = (recipe: Recipe): Record<string, string> => {
 
   return env;
 };
+
+function resolveVenvBinForRecipe(
+  recipe: Recipe,
+  dataDir?: string,
+): string | null {
+  const python =
+    recipe.python_path && recipe.python_path.trim()
+      ? recipe.python_path
+      : resolveVllmRecipePythonPath(recipe.python_path, dataDir);
+  if (python) return dirname(python);
+  return null;
+}
 
 export const pidExists = (pid: number): boolean => {
   try {

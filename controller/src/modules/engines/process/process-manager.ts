@@ -284,7 +284,7 @@ export const createProcessManager = (
       ...getLogCleanupDefaultsFromEnvironment(),
       excludePaths: new Set([logFile]),
     });
-    const env = buildEnvironment(updatedRecipe);
+    const env = buildEnvironment(updatedRecipe, config);
 
     try {
       const entry = command[0];
