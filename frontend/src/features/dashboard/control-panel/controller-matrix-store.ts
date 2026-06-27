@@ -15,7 +15,6 @@ import {
   normalizeControllerUrl,
   type SavedController,
 } from "@/lib/api/controllers";
-import type { GPU, ProcessInfo } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;
@@ -26,10 +25,6 @@ export type ControllerSnapshot = SavedController & {
   online: boolean;
   authRequired: boolean;
   running: boolean;
-  process: ProcessInfo | null;
-  gpus: GPU[];
-  inferencePort?: number;
-  error?: string;
 };
 
 export interface ControllerMatrixSnapshot {
@@ -37,16 +32,6 @@ export interface ControllerMatrixSnapshot {
   activeUrl: string;
   visible: boolean;
 }
-
-type SnapshotExtras = {
-  online: boolean;
-  authRequired: boolean;
-  running: boolean;
-  process: ProcessInfo | null;
-  gpus: GPU[];
-  inferencePort?: number;
-  error?: string;
-};
 
 const hidden: ControllerMatrixSnapshot = { rows: [], activeUrl: "", visible: false };
 
@@ -65,22 +50,18 @@ function activeUrlFor(): string {
   return normalizeControllerUrl(getStoredBackendUrl() || controllers[0]?.url || "") ?? "";
 }
 
-function buildSnapshot(
+function row(
   controller: SavedController,
   index: number,
-  extras: SnapshotExtras,
+  online: boolean,
+  authRequired: boolean,
+  running: boolean,
 ): ControllerSnapshot {
-  return { ...controller, index, primary: index === 0, ...extras };
+  return { ...controller, index, primary: index === 0, online, authRequired, running };
 }
 
-function pendingSnapshot(controller: SavedController, index: number): ControllerSnapshot {
-  return buildSnapshot(controller, index, {
-    online: false,
-    authRequired: false,
-    running: false,
-    process: null,
-    gpus: [],
-  });
+function pendingRow(controller: SavedController, index: number): ControllerSnapshot {
+  return row(controller, index, false, false, false);
 }
 
 function loadControllers(): SavedController[] {
@@ -107,10 +88,8 @@ function emit(rows: ControllerSnapshot[]): void {
 
 function reload(): void {
   controllers = loadControllers();
-  const kept = snapshot.rows.filter((row) =>
-    controllers.some((controller) => sameUrl(controller.url, row.url)),
-  );
-  emit(kept.length ? kept : controllers.map(pendingSnapshot));
+  const kept = snapshot.rows.filter((r) => controllers.some((c) => sameUrl(c.url, r.url)));
+  emit(kept.length ? kept : controllers.map(pendingRow));
   void pollOnce();
 }
 
@@ -132,39 +111,19 @@ async function pollController(
     backendUrlOverride: controller.url,
     apiKeyOverride: controller.apiKey,
   });
-  const [statusResult, gpuResult] = await Promise.allSettled([
-    api.getStatus(POLL_REQUEST),
-    api.getGPUs(POLL_REQUEST),
-  ]);
-  if (statusResult.status === "rejected") {
-    const auth = isAuthRequiredError(statusResult.reason);
-    return buildSnapshot(controller, index, {
-      online: false,
-      authRequired: auth,
-      running: false,
-      process: null,
-      gpus: [],
-      error: auth ? "auth required" : errorMessage(statusResult.reason),
-    });
+  try {
+    const status = await api.getStatus(POLL_REQUEST);
+    return row(controller, index, true, false, status.running);
+  } catch (error) {
+    const auth = isAuthRequiredError(error);
+    return row(controller, index, false, auth, false);
   }
-  return buildSnapshot(controller, index, {
-    online: true,
-    authRequired: false,
-    running: statusResult.value.running,
-    process: statusResult.value.process,
-    inferencePort: statusResult.value.inference_port,
-    gpus: gpuResult.status === "fulfilled" ? gpuResult.value.gpus : [],
-  });
 }
 
 function isAuthRequiredError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const status = (error as { status?: unknown }).status;
   return status === 401 || status === 403;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function start(): void {
@@ -186,21 +145,22 @@ function subscribe(onStoreChange: () => void): () => void {
   };
 }
 
-function getMatrixSnapshot(): ControllerMatrixSnapshot {
-  return snapshot;
-}
-
 export function useControllerMatrixStore(): ControllerMatrixSnapshot {
   start();
-  return useSyncExternalStore(subscribe, getMatrixSnapshot, getMatrixSnapshot);
+  return useSyncExternalStore(
+    subscribe,
+    () => snapshot,
+    () => snapshot,
+  );
 }
 
 export function activateController(controller: ControllerSnapshot): void {
   if (controller.apiKey) setApiKey(controller.apiKey);
   setStoredBackendUrl(controller.url);
+  reload();
   void fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ backendUrl: controller.url, apiKey: controller.apiKey || "" }),
-  }).finally(() => window.dispatchEvent(new Event("storage")));
+  });
 }
