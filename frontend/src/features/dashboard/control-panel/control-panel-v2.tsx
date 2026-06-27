@@ -17,6 +17,7 @@ import {
   normalizeControllerUrl,
   type SavedController,
 } from "@/lib/api/controllers";
+import { effectInterval } from "@/lib/effect-timers";
 import type { GPU, ProcessInfo } from "@/lib/types";
 
 const CONTROLLER_POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;
@@ -112,10 +113,10 @@ function ControllerMatrix() {
         if (!cancelled) setSnapshots(next);
       };
       void poll();
-      const interval = window.setInterval(() => void poll(), 5_000);
+      const timer = effectInterval(() => void poll(), 5_000);
       return () => {
         cancelled = true;
-        window.clearInterval(interval);
+        timer.cancel();
       };
     },
     [controllers],
