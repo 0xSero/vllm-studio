@@ -37,6 +37,7 @@ export {
   AlertCircle,
   AlertTriangle,
   Archive,
+  ArrowDownUp,
   ArrowUpCircle,
   AtSign,
   Boxes,

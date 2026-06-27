@@ -1,5 +1,6 @@
-import { ExternalLink, RefreshCw, Search } from "@/ui/icon-registry";
-import { ModelButton, ModelSection, ModelInput, ModelRow, ModelValue, ModelStatus } from "@/ui";
+import { useState, type ReactNode } from "react";
+import { ArrowDownUp, Check, ExternalLink, Filter, Gauge, RefreshCw } from "@/ui/icon-registry";
+import { ModelButton, ModelSection, ModelRow, ModelValue, ModelStatus, SearchInput } from "@/ui";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";
 import { estimateRoughWeightsGb } from "./explore-model-stats";
@@ -50,7 +51,6 @@ export function ExploreControls({
   poolOverrideGb,
   hardwareProfile,
   loading,
-  error,
   search,
   setSearch,
   library,
@@ -66,7 +66,6 @@ export function ExploreControls({
   poolOverrideGb: number | null;
   hardwareProfile: HardwareProfile;
   loading: boolean;
-  error: string | null;
   search: string;
   setSearch: (value: string) => void;
   library: string;
@@ -77,126 +76,163 @@ export function ExploreControls({
   refresh: () => void;
 }) {
   return (
-    <ModelSection
-      title="Explore controls"
-      description="Search Hugging Face, filter by library, tune pooled VRAM."
-      actions={
-        <ModelStatus tone={loading ? "info" : error ? "warning" : "good"}>
-          {loading ? "syncing" : error ? "fallback" : "ready"}
-        </ModelStatus>
-      }
-    >
-      <ExploreSearchRow
-        groupsCount={groupsCount}
-        search={search}
-        setSearch={setSearch}
-        refresh={refresh}
-        loading={loading}
+    <div className="flex items-center gap-2">
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search Hugging Face models"
+        className="flex-1"
       />
-      <ExploreFilterRow library={library} setLibrary={setLibrary} sort={sort} setSort={setSort} />
-      <ExploreVramPoolRow
+      <span className="shrink-0 text-[length:var(--fs-sm)] tabular-nums text-(--ui-muted)">
+        {groupsCount || "defaults"}
+      </span>
+      <ToolbarButton onClick={refresh} disabled={loading} title="Refresh">
+        <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+      </ToolbarButton>
+      <ListPopover
+        icon={Filter}
+        label="Library"
+        options={EXPLORE_LIBRARIES}
+        value={library}
+        onChange={setLibrary}
+        active={library !== ""}
+      />
+      <ListPopover
+        icon={ArrowDownUp}
+        label="Sort by"
+        options={EXPLORE_SORTS}
+        value={sort}
+        onChange={setSort}
+        active={sort !== ""}
+      />
+      <VramPopover
         maxVramGb={maxVramGb}
         detectedPoolGb={detectedPoolGb}
         poolOverrideGb={poolOverrideGb}
         hardwareProfile={hardwareProfile}
         setPoolOverrideGb={setPoolOverrideGb}
       />
-    </ModelSection>
-  );
-}
-
-function ExploreFilterRow({
-  library,
-  setLibrary,
-  sort,
-  setSort,
-}: {
-  library: string;
-  setLibrary: (value: string) => void;
-  sort: string;
-  setSort: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 py-1">
-      <FilterSelect
-        label="Library"
-        value={library}
-        options={EXPLORE_LIBRARIES}
-        onChange={setLibrary}
-      />
-      <FilterSelect label="Sort" value={sort} options={EXPLORE_SORTS} onChange={setSort} />
     </div>
   );
 }
 
-function FilterSelect({
+function ToolbarButton({
+  children,
+  onClick,
+  disabled,
+  title,
+  active,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--ui-border) text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-45 disabled:pointer-events-none"
+    >
+      {children}
+      {active ? (
+        <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-(--ui-accent)" />
+      ) : null}
+    </button>
+  );
+}
+
+function IconPopover({
+  icon: Icon,
   label,
-  value,
-  options,
-  onChange,
+  active,
+  children,
 }: {
+  icon: (props: { className?: string }) => ReactNode;
   label: string;
-  value: string;
-  options: ReadonlyArray<{ value: string; label: string }>;
-  onChange: (value: string) => void;
+  active?: boolean;
+  children: (close: () => void) => ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <label className="inline-flex items-center gap-1.5">
-      <span className="text-[length:var(--fs-xs)] text-(--color-foreground-subtle)">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 rounded-md border border-(--ui-border) bg-(--ui-surface) px-2 text-[length:var(--fs-sm)] text-(--fg) focus:outline-none focus:ring-1 focus:ring-(--ui-info)"
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={label}
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-(--ui-border) text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg)"
       >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        <Icon className="h-3.5 w-3.5" />
+        {active ? (
+          <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-(--ui-accent)" />
+        ) : null}
+      </button>
+      {open ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+            aria-hidden
+            tabIndex={-1}
+          />
+          <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-(--ui-border) bg-(--ui-surface) py-1 shadow-lg">
+            <div className="px-2.5 py-1.5 text-[length:var(--fs-xs)] font-medium uppercase tracking-wide text-(--ui-muted)">
+              {label}
+            </div>
+            {children(() => setOpen(false))}
+          </div>
+        </>
+      ) : null}
+    </div>
   );
 }
 
-function ExploreSearchRow({
-  groupsCount,
-  search,
-  setSearch,
-  refresh,
-  loading,
+function ListPopover({
+  icon,
+  label,
+  options,
+  value,
+  onChange,
+  active,
 }: {
-  groupsCount: number;
-  search: string;
-  setSearch: (value: string) => void;
-  refresh: () => void;
-  loading: boolean;
+  icon: (props: { className?: string }) => ReactNode;
+  label: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  value: string;
+  onChange: (value: string) => void;
+  active?: boolean;
 }) {
   return (
-    <ModelRow
-      label="Search models"
-      description="Repo id, family name, quantization tag, or provider."
-      control={
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
-          <ModelInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search Hugging Face models"
-            className="pl-8"
-          />
+    <IconPopover icon={icon} label={label} active={active}>
+      {(close) => (
+        <div className="max-h-64 overflow-y-auto">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                close();
+              }}
+              className="flex w-full items-center justify-between px-2.5 py-1.5 text-[length:var(--fs-sm)] transition-colors hover:bg-(--ui-hover)"
+            >
+              <span className={opt.value === value ? "text-(--ui-fg)" : "text-(--ui-muted)"}>
+                {opt.label}
+              </span>
+              {opt.value === value ? <Check className="h-3 w-3 text-(--ui-accent)" /> : null}
+            </button>
+          ))}
         </div>
-      }
-      status={<ModelStatus>{groupsCount || "defaults"}</ModelStatus>}
-      actions={
-        <ModelButton onClick={refresh} disabled={loading} title="Refresh Explore">
-          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-        </ModelButton>
-      }
-    />
+      )}
+    </IconPopover>
   );
 }
 
-function ExploreVramPoolRow({
+function VramPopover({
   maxVramGb,
   detectedPoolGb,
   poolOverrideGb,
@@ -210,52 +246,43 @@ function ExploreVramPoolRow({
   setPoolOverrideGb: (value: number | null) => void;
 }) {
   return (
-    <ModelRow
-      label="VRAM pool"
-      description={hardwareProfile.label}
-      control={
-        <VramPoolInput
-          detectedPoolGb={detectedPoolGb}
-          poolOverrideGb={poolOverrideGb}
-          setPoolOverrideGb={setPoolOverrideGb}
-        />
-      }
-      status={
-        <ModelStatus tone={maxVramGb > 0 ? "info" : "default"}>
-          {maxVramGb > 0 ? `${Math.round(maxVramGb)} GB` : "auto"}
-        </ModelStatus>
-      }
-      actions={
-        poolOverrideGb != null ? (
-          <ModelButton onClick={() => setPoolOverrideGb(null)}>Auto</ModelButton>
-        ) : null
-      }
-    />
-  );
-}
-
-function VramPoolInput({
-  detectedPoolGb,
-  poolOverrideGb,
-  setPoolOverrideGb,
-}: {
-  detectedPoolGb: number;
-  poolOverrideGb: number | null;
-  setPoolOverrideGb: (value: number | null) => void;
-}) {
-  return (
-    <input
-      key={poolOverrideGb === null ? "pool-auto" : `pool-${poolOverrideGb}`}
-      type="number"
-      inputMode="decimal"
-      min={1}
-      step={1}
-      placeholder={detectedPoolGb > 0 ? String(Math.round(detectedPoolGb)) : "Auto"}
-      defaultValue={poolOverrideGb === null ? "" : String(poolOverrideGb)}
-      onBlur={(event) => updatePoolOverride(event.currentTarget, poolOverrideGb, setPoolOverrideGb)}
-      className="h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[length:var(--fs-md)] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60"
-      title="Override total VRAM pool for Explore."
-    />
+    <IconPopover icon={Gauge} label="VRAM pool" active={poolOverrideGb != null}>
+      {(close) => (
+        <div className="space-y-2 px-2.5 py-2">
+          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">{hardwareProfile.label}</p>
+          <input
+            key={poolOverrideGb === null ? "pool-auto" : `pool-${poolOverrideGb}`}
+            type="number"
+            inputMode="decimal"
+            min={1}
+            step={1}
+            placeholder={detectedPoolGb > 0 ? String(Math.round(detectedPoolGb)) : "Auto"}
+            defaultValue={poolOverrideGb === null ? "" : String(poolOverrideGb)}
+            onBlur={(event) =>
+              updatePoolOverride(event.currentTarget, poolOverrideGb, setPoolOverrideGb)
+            }
+            className="h-7 w-full rounded-md border border-(--ui-border) bg-(--ui-bg) px-2 text-[length:var(--fs-sm)] text-(--ui-fg) outline-none focus:ring-1 focus:ring-(--ui-accent)/40"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
+              {maxVramGb > 0 ? `${Math.round(maxVramGb)} GB` : "auto"}
+            </span>
+            {poolOverrideGb != null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPoolOverrideGb(null);
+                  close();
+                }}
+                className="text-[length:var(--fs-xs)] text-(--ui-accent) hover:underline"
+              >
+                Reset to auto
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </IconPopover>
   );
 }
 

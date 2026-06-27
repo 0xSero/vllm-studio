@@ -140,7 +140,6 @@ export function ExploreTab() {
         poolOverrideGb={poolOverrideGb}
         hardwareProfile={hardwareProfile}
         loading={loading}
-        error={error}
         search={search}
         setSearch={setSearch}
         library={library}
