@@ -58,8 +58,11 @@ export const getPythonPath = (recipe: Recipe): string | undefined => {
   }
   return undefined;
 };
-export const getVllmPythonPath = (recipe: Recipe): string | undefined => {
-  return resolveVllmRecipePythonPath(recipe.python_path) ?? undefined;
+export const getVllmPythonPath = (
+  recipe: Recipe,
+  dataDir?: string | null,
+): string | undefined => {
+  return resolveVllmRecipePythonPath(recipe.python_path, dataDir) ?? undefined;
 };
 export const appendExtraArguments = (
   command: string[],

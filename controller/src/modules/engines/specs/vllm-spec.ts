@@ -35,9 +35,9 @@ import type {
   EngineSpec,
 } from "../engine-spec";
 
-const buildVllmCommand = (recipe: Recipe): string[] => {
+const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
   const dockerImage = getDockerImage(recipe);
-  const pythonPath = getVllmPythonPath(recipe);
+  const pythonPath = getVllmPythonPath(recipe, config.data_dir);
   let command: string[];
   let usesServe = false;
   if (dockerImage) {
@@ -170,7 +170,7 @@ export const vllmSpec: EngineSpec = {
   id: "vllm",
   healthPath: "/health",
   cliBinary: "vllm",
-  buildCommand: (recipe: Recipe, _config: Config) => buildVllmCommand(recipe),
+  buildCommand: (recipe: Recipe, config: Config) => buildVllmCommand(recipe, config),
   managedPackageSpec,
   detectInvocation,
   extractModelPath,

@@ -21,6 +21,12 @@ import {
 import type { ProcessInfo } from "../../models/types";
 import { ENGINE_INSTALL_TIMEOUT_MS, RUNTIME_UPGRADE_TIMEOUT_MS } from "../configs";
 import { probePythonRuntime } from "./runtime-target-probes";
+import {
+  isManagedPythonBackend,
+  managedVenvName,
+  managedVenvPath,
+  type ManagedPythonBackend,
+} from "./managed-venv";
 
 type RuntimeJobBackend = EngineBackend | "cuda" | "rocm";
 
@@ -105,17 +111,6 @@ const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
   return "configured ROCm upgrade command";
 };
 
-type ManagedPythonBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
-
-const isManagedPythonBackend = (backend: RuntimeJobBackend): backend is ManagedPythonBackend =>
-  backend === "vllm" || backend === "sglang" || backend === "mlx";
-
-const managedVenvName = (backend: ManagedPythonBackend): string => `${backend}-latest`;
-
-export const managedVenvPath = (
-  config: Pick<Config, "data_dir">,
-  backend: ManagedPythonBackend
-): string => join(config.data_dir, "runtime", "venvs", managedVenvName(backend));
 
 export const managedPackageSpec = (
   backend: ManagedPythonBackend,
