@@ -24,12 +24,10 @@ export function ExploreTab() {
     loading,
     error,
     search,
-    task,
     library,
     sort,
     hasMore,
     setSearch,
-    setTask,
     setLibrary,
     setSort,
     loadMore,
@@ -145,8 +143,6 @@ export function ExploreTab() {
         error={error}
         search={search}
         setSearch={setSearch}
-        task={task}
-        setTask={setTask}
         library={library}
         setLibrary={setLibrary}
         sort={sort}

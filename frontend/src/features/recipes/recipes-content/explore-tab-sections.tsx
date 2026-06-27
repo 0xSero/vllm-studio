@@ -24,16 +24,6 @@ const FALLBACK_MODELS = [
   ],
 ] as const;
 
-export const EXPLORE_TASKS = [
-  { value: "", label: "All tasks" },
-  { value: "text-generation", label: "Text generation" },
-  { value: "text2text-generation", label: "Text-to-text" },
-  { value: "conversational", label: "Conversational" },
-  { value: "fill-mask", label: "Fill-mask" },
-  { value: "question-answering", label: "Q&A" },
-  { value: "summarization", label: "Summarization" },
-] as const;
-
 export const EXPLORE_LIBRARIES = [
   { value: "", label: "All libraries" },
   { value: "transformers", label: "Transformers" },
@@ -63,8 +53,6 @@ export function ExploreControls({
   error,
   search,
   setSearch,
-  task,
-  setTask,
   library,
   setLibrary,
   sort,
@@ -81,8 +69,6 @@ export function ExploreControls({
   error: string | null;
   search: string;
   setSearch: (value: string) => void;
-  task: string;
-  setTask: (value: string) => void;
   library: string;
   setLibrary: (value: string) => void;
   sort: string;
@@ -93,7 +79,7 @@ export function ExploreControls({
   return (
     <ModelSection
       title="Explore controls"
-      description="Search Hugging Face, filter by task/library, tune pooled VRAM."
+      description="Search Hugging Face, filter by library, tune pooled VRAM."
       actions={
         <ModelStatus tone={loading ? "info" : error ? "warning" : "good"}>
           {loading ? "syncing" : error ? "fallback" : "ready"}
@@ -107,35 +93,24 @@ export function ExploreControls({
         refresh={refresh}
         loading={loading}
       />
-      <ExploreFilterRow
-        task={task}
-        setTask={setTask}
-        library={library}
-        setLibrary={setLibrary}
-        sort={sort}
-        setSort={setSort}
-      />
+      <ExploreFilterRow library={library} setLibrary={setLibrary} sort={sort} setSort={setSort} />
       <ExploreVramPoolRow
         maxVramGb={maxVramGb}
         detectedPoolGb={detectedPoolGb}
         poolOverrideGb={poolOverrideGb}
+        hardwareProfile={hardwareProfile}
         setPoolOverrideGb={setPoolOverrideGb}
       />
-      <ExploreHardwareHintRow hardwareProfile={hardwareProfile} poolOverrideGb={poolOverrideGb} />
     </ModelSection>
   );
 }
 
 function ExploreFilterRow({
-  task,
-  setTask,
   library,
   setLibrary,
   sort,
   setSort,
 }: {
-  task: string;
-  setTask: (value: string) => void;
   library: string;
   setLibrary: (value: string) => void;
   sort: string;
@@ -143,7 +118,6 @@ function ExploreFilterRow({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
-      <FilterSelect label="Task" value={task} options={EXPLORE_TASKS} onChange={setTask} />
       <FilterSelect
         label="Library"
         value={library}
@@ -226,17 +200,19 @@ function ExploreVramPoolRow({
   maxVramGb,
   detectedPoolGb,
   poolOverrideGb,
+  hardwareProfile,
   setPoolOverrideGb,
 }: {
   maxVramGb: number;
   detectedPoolGb: number;
   poolOverrideGb: number | null;
+  hardwareProfile: HardwareProfile;
   setPoolOverrideGb: (value: number | null) => void;
 }) {
   return (
     <ModelRow
       label="VRAM pool"
-      description="Manual pool wins; clearing the input returns to detected GPUs and server hints."
+      description={hardwareProfile.label}
       control={
         <VramPoolInput
           detectedPoolGb={detectedPoolGb}
@@ -279,23 +255,6 @@ function VramPoolInput({
       onBlur={(event) => updatePoolOverride(event.currentTarget, poolOverrideGb, setPoolOverrideGb)}
       className="h-7 w-full rounded-md border border-transparent bg-(--surface) px-2.5 text-[length:var(--fs-md)] text-(--fg) outline-none transition placeholder:text-(--dim)/65 focus:bg-(--bg) focus:ring-1 focus:ring-(--hl1)/60"
       title="Override total VRAM pool for Explore."
-    />
-  );
-}
-
-function ExploreHardwareHintRow({
-  hardwareProfile,
-  poolOverrideGb,
-}: {
-  hardwareProfile: HardwareProfile;
-  poolOverrideGb: number | null;
-}) {
-  return (
-    <ModelRow
-      label="Hardware profile"
-      description={hardwareProfile.detail}
-      value={<ModelValue>{hardwareProfile.label}</ModelValue>}
-      status={<ModelStatus>{poolOverrideGb != null ? "manual" : "detected"}</ModelStatus>}
     />
   );
 }
