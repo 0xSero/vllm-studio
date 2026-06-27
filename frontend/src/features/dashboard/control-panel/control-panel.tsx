@@ -1,44 +1,24 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
-import { createApiClient } from "@/lib/api/create-api-client";
 import {
-  BACKEND_URL_CHANGED_EVENT,
-  getStoredBackendUrl,
-  setApiKey,
-  setStoredBackendUrl,
-} from "@/lib/api/connection";
-import {
-  CONTROLLERS_CHANGED_EVENT,
-  loadSavedControllers,
-  normalizeControllerUrl,
-  type SavedController,
-} from "@/lib/api/controllers";
-import { effectInterval } from "@/lib/effect-timers";
-import type { GPU, ProcessInfo } from "@/lib/types";
+  activateController,
+  useControllerMatrixStore,
+  type ControllerSnapshot,
+} from "./controller-matrix-store";
 
-const CONTROLLER_POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;
-
-type ControllerSnapshot = SavedController & {
-  index: number;
-  primary: boolean;
-  online: boolean;
-  authRequired: boolean;
-  running: boolean;
-  process: ProcessInfo | null;
-  gpus: GPU[];
-  inferencePort?: number;
-  error?: string;
+const DOT_BY_STATE: Record<string, string> = {
+  auth: "bg-(--hl3)",
+  running: "bg-(--hl2)",
+  idle: "bg-(--dim)",
+  offline: "bg-(--err)",
 };
 
 export function ControlPanel(props: DashboardLayoutProps) {
   const { currentProcess, currentRecipe, metrics, gpus, recipes } = props;
 
-  // One continuous operator sheet. No outer card; section rhythm, hairlines,
-  // compact telemetry, and quiet graph density do the work.
   return (
     <div className="mx-auto w-full max-w-[86rem] px-1 pt-2">
       <ControllerMatrix />
@@ -67,75 +47,8 @@ export function ControlPanel(props: DashboardLayoutProps) {
 }
 
 function ControllerMatrix() {
-  const [controllers, setControllers] = useState<SavedController[]>([]);
-  const [snapshots, setSnapshots] = useState<ControllerSnapshot[]>([]);
-
-  const subscribeControllers = useCallback((_notify: () => void) => {
-    const load = () => {
-      const saved = loadSavedControllers();
-      const byUrl = new Map<string, SavedController>();
-      const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
-      for (const controller of saved) {
-        const url = normalizeControllerUrl(controller.url);
-        if (!url) continue;
-        byUrl.set(url, { ...controller, url });
-      }
-      if (activeUrl && !byUrl.has(activeUrl)) byUrl.set(activeUrl, { url: activeUrl });
-      if (byUrl.size === 0) {
-        const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
-        if (primary) byUrl.set(primary, { url: primary });
-      }
-      const next = [...byUrl.values()];
-      setSnapshots((current) =>
-        current.filter((snapshot) => byUrl.has(normalizeControllerUrl(snapshot.url))),
-      );
-      setControllers(next);
-    };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener(BACKEND_URL_CHANGED_EVENT, load);
-    window.addEventListener(CONTROLLERS_CHANGED_EVENT, load);
-    return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, load);
-      window.removeEventListener(CONTROLLERS_CHANGED_EVENT, load);
-    };
-  }, []);
-
-  const subscribeControllerPolling = useCallback(
-    (_notify: () => void) => {
-      if (controllers.length === 0) return () => {};
-      let cancelled = false;
-      const poll = async () => {
-        const next = await Promise.all(
-          controllers.map((controller, index) => pollController(controller, index)),
-        );
-        if (!cancelled) setSnapshots(next);
-      };
-      void poll();
-      const timer = effectInterval(() => void poll(), 5_000);
-      return () => {
-        cancelled = true;
-        timer.cancel();
-      };
-    },
-    [controllers],
-  );
-
-  useSyncExternalStore(
-    subscribeControllers,
-    getControllerMatrixSnapshot,
-    getControllerMatrixSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeControllerPolling,
-    getControllerMatrixSnapshot,
-    getControllerMatrixSnapshot,
-  );
-
-  if (controllers.length <= 1) return null;
-  const rows = snapshots.length ? snapshots : controllers.map(pendingController);
-  const activeUrl = normalizeControllerUrl(getStoredBackendUrl() || rows[0]?.url || "");
+  const { rows, activeUrl, visible } = useControllerMatrixStore();
+  if (!visible) return null;
   return (
     <section className="mb-3 border-b border-(--border)/35 pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -151,19 +64,8 @@ function ControllerMatrix() {
           <ControllerTab
             key={controller.url}
             controller={controller}
-            active={normalizeControllerUrl(controller.url) === activeUrl}
-            onActivate={() => {
-              if (controller.apiKey) setApiKey(controller.apiKey);
-              setStoredBackendUrl(controller.url);
-              void fetch("/api/settings", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  backendUrl: controller.url,
-                  apiKey: controller.apiKey || "",
-                }),
-              }).finally(() => window.dispatchEvent(new Event("storage")));
-            }}
+            active={controller.url === activeUrl}
+            onActivate={() => activateController(controller)}
           />
         ))}
       </div>
@@ -191,13 +93,6 @@ function ControllerTab({
       : "offline";
   const model =
     controller.process?.served_model_name || controller.process?.model_path || "no model";
-  const dotClass = controller.online
-    ? controller.running
-      ? "bg-(--hl2)"
-      : "bg-(--dim)"
-    : controller.authRequired
-      ? "bg-(--hl3)"
-      : "bg-(--err)";
   return (
     <button
       type="button"
@@ -209,7 +104,7 @@ function ControllerTab({
           : "border-(--border)/55 bg-(--surface)/40 text-(--dim) hover:border-(--border) hover:text-(--fg)"
       }`}
     >
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_BY_STATE[state]}`} aria-hidden />
       <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
       <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
         {state}
@@ -225,71 +120,6 @@ function ControllerTab({
       </span>
     </button>
   );
-}
-
-async function pollController(
-  controller: SavedController,
-  index: number,
-): Promise<ControllerSnapshot> {
-  const api = createApiClient({
-    baseUrl: "/api/proxy",
-    useProxy: true,
-    backendUrlOverride: controller.url,
-    apiKeyOverride: controller.apiKey,
-  });
-  try {
-    const [statusResult, gpuResult] = await Promise.allSettled([
-      api.getStatus(CONTROLLER_POLL_REQUEST),
-      api.getGPUs(CONTROLLER_POLL_REQUEST),
-    ]);
-    if (statusResult.status === "rejected") throw statusResult.reason;
-    return {
-      ...controller,
-      index,
-      primary: index === 0,
-      online: true,
-      authRequired: false,
-      running: statusResult.value.running,
-      process: statusResult.value.process,
-      inferencePort: statusResult.value.inference_port,
-      gpus: gpuResult.status === "fulfilled" ? gpuResult.value.gpus : [],
-    };
-  } catch (error) {
-    return {
-      ...controller,
-      index,
-      primary: index === 0,
-      online: false,
-      authRequired: isAuthRequiredError(error),
-      running: false,
-      process: null,
-      gpus: [],
-      error: isAuthRequiredError(error)
-        ? "auth required"
-        : error instanceof Error
-          ? error.message
-          : String(error),
-    };
-  }
-}
-
-function pendingController(controller: SavedController, index: number): ControllerSnapshot {
-  return {
-    ...controller,
-    index,
-    primary: index === 0,
-    online: false,
-    authRequired: false,
-    running: false,
-    process: null,
-    gpus: [],
-  };
-}
-
-function isAuthRequiredError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const status = (error as { status?: unknown }).status;
-  return status === 401 || status === 403;
 }
 
 function ActivityStrip({ logs }: DashboardLayoutProps) {
@@ -321,5 +151,3 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
 function trimLogLine(line: string): string {
   return line.replace(/^\[[^\]]+\]\s*/, "").slice(0, 180);
 }
-
-const getControllerMatrixSnapshot = (): number => 0;
