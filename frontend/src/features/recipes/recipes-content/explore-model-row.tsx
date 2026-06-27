@@ -69,6 +69,7 @@ export const ExploreModelRow = memo(function ExploreModelRow({
   weightEstimateGb,
   pooledVramGb,
   fit,
+  variants,
   onOpenModelCard,
 }: {
   model: HuggingFaceModel;
@@ -85,7 +86,8 @@ export const ExploreModelRow = memo(function ExploreModelRow({
   weightEstimateGb?: number | null;
   pooledVramGb: number;
   fit?: ModelFit;
-  onOpenModelCard?: () => void;
+  variants: HuggingFaceModel[];
+  onOpenModelCard?: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
 }) {
   const provider = useMemo(() => extractProvider(model.modelId), [model.modelId]);
   const quants = useMemo(() => extractQuantizations(model.tags), [model.tags]);
@@ -103,7 +105,7 @@ export const ExploreModelRow = memo(function ExploreModelRow({
     <ModelRow
       label={rowLabel(model.modelId, child)}
       description={rowDescription(provider, variantCount, child)}
-      onClick={onOpenModelCard}
+      onClick={onOpenModelCard ? () => onOpenModelCard(model, variants, fit) : undefined}
       highlight={
         fit && !child && (fit.status === "best" || fit.status === "fits") ? "success" : "none"
       }

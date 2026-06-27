@@ -33,14 +33,18 @@ export function useDownloads(pollIntervalMs = 2500) {
     }
   }, []);
 
+  const hasActive = downloads.some(
+    (d) => d.status === "downloading" || d.status === "paused" || d.status === "failed",
+  );
+
   const subscribeDownloads = useCallback(
     (_notify: () => void) => {
       void refresh();
       if (pollIntervalMs <= 0) return () => {};
-      const timer = effectInterval(refresh, pollIntervalMs);
+      const timer = effectInterval(refresh, hasActive ? pollIntervalMs : 15_000);
       return () => timer.cancel();
     },
-    [pollIntervalMs, refresh],
+    [pollIntervalMs, refresh, hasActive],
   );
 
   useSyncExternalStore(subscribeDownloads, getDownloadsSnapshot, getDownloadsSnapshot);

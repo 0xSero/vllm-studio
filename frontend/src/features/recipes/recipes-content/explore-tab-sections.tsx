@@ -441,7 +441,8 @@ function exploreGroupRows({
       weightEstimateGb={group.needGb}
       pooledVramGb={maxVramGb}
       fit={group.fit}
-      onOpenModelCard={() => openModelCard(group.lead, group.variants, group.fit)}
+      variants={group.variants}
+      onOpenModelCard={openModelCard}
     />,
   ];
   if (!expanded) return rows;
@@ -464,7 +465,8 @@ function exploreGroupRows({
           weightEstimateGb={estimateRoughWeightsGb(variant)}
           pooledVramGb={maxVramGb}
           fit={group.fit}
-          onOpenModelCard={() => openModelCard(variant, group.variants, group.fit)}
+          variants={group.variants}
+          onOpenModelCard={openModelCard}
         />
       )),
   );

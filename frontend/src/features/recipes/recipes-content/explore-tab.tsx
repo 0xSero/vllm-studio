@@ -131,6 +131,13 @@ export function ExploreTab() {
     [resumeDownload],
   );
 
+  const openModelCard = useCallback(
+    (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => {
+      setSelectedModelCard({ model, variants, fit });
+    },
+    [],
+  );
+
   return (
     <div className="space-y-5">
       <ExploreControls
@@ -166,7 +173,7 @@ export function ExploreTab() {
         pauseDownload={handlePause}
         resumeDownload={handleResume}
         loadMore={loadMore}
-        openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
+        openModelCard={openModelCard}
       />
       <HuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}
