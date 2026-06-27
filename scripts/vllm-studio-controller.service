@@ -1,0 +1,20 @@
+[Unit]
+Description=Local Studio Controller
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sero
+Group=sero
+WorkingDirectory=/home/sero/local-studio
+EnvironmentFile=/home/sero/local-studio/.env
+Environment=PATH=/home/sero/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/sero/.bun/bin/bun /home/sero/local-studio/controller/src/main.ts
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/sero/local-studio/data/controller.log
+StandardError=append:/home/sero/local-studio/data/controller.log
+
+[Install]
+WantedBy=multi-user.target
