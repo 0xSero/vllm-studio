@@ -438,8 +438,6 @@ function exploreGroupRows({
       variantCount={group.variants.length}
       expanded={expanded}
       onToggleExpand={group.variants.length > 1 ? () => toggleExpand(group.key) : undefined}
-      displayDownloads={group.maxDownloads}
-      displayLikes={group.maxLikes}
       weightEstimateGb={group.needGb}
       pooledVramGb={maxVramGb}
       fit={group.fit}

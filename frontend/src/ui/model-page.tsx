@@ -65,9 +65,9 @@ export function ModelRow({
   return (
     <div
       className={cx(
-        "group px-1 py-2.5 transition-colors hover:bg-(--ui-hover)/35",
+        "group px-1 py-2",
         interactive
-          ? "cursor-pointer rounded-md focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45"
+          ? "cursor-pointer rounded-md transition-colors hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45"
           : "",
         highlight === "success" ? "model-row-shine" : "",
         className,
