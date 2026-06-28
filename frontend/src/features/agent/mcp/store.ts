@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveDataDir } from "@/lib/data-dir";
+import { MCP_CATALOGUE } from "@/features/agent/mcp/catalogue";
 import type {
   McpConfigFile,
   McpConfigServer,
@@ -54,9 +55,10 @@ export function saveMcpConfigText(text: string): void {
 
 function readConfig(): McpConfigFile {
   try {
-    return normalizeConfig(
-      JSON.parse(readFileSync(mcpConfigPath(), "utf8")) as Partial<McpConfigFile>,
-    );
+    const parsed = JSON.parse(readFileSync(mcpConfigPath(), "utf8")) as Partial<McpConfigFile>;
+    const normalized = normalizeConfig(parsed);
+    if (JSON.stringify(parsed) !== JSON.stringify(normalized)) writeConfig(normalized);
+    return normalized;
   } catch {
     const migrated = migrateLegacyStore();
     if (Object.keys(migrated.mcp_servers).length) {
@@ -78,9 +80,32 @@ function normalizeConfig(value: Partial<McpConfigFile>): McpConfigFile {
   const next: McpConfigFile = { version: 1, mcp_servers: {} };
   for (const [name, raw] of Object.entries(servers)) {
     const server = normalizeServer(raw);
-    if (server?.command) next.mcp_servers[slugify(name)] = server;
+    const normalizedName = slugify(name);
+    if (server?.command) {
+      next.mcp_servers[normalizedName] = normalizeCuratedServer(normalizedName, server);
+    }
   }
   return next;
+}
+
+function normalizeCuratedServer(name: string, server: McpConfigServer): McpConfigServer {
+  if (server.source !== "curated") return server;
+  const entry = MCP_CATALOGUE.find((item) => item.name === name);
+  if (!entry) return server;
+  return {
+    command: entry.command,
+    ...(entry.args?.length ? { args: entry.args } : {}),
+    ...(entry.cwd ? { cwd: entry.cwd } : {}),
+    ...(entry.env && Object.keys(entry.env).length ? { env: entry.env } : {}),
+    enabled: server.enabled !== false,
+    displayName: entry.displayName,
+    description: entry.description,
+    ...(entry.shortDescription ? { shortDescription: entry.shortDescription } : {}),
+    category: entry.category,
+    ...(entry.tags?.length ? { tags: normalizeTags(entry.tags) } : {}),
+    source: "curated",
+    ...(entry.tools ? { tools: entry.tools } : {}),
+  };
 }
 
 function normalizeServer(value: unknown): McpConfigServer | null {
