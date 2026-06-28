@@ -51,7 +51,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
 
   return (
     <AppPage>
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,640px)] lg:gap-10 lg:py-8">
+      <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10 lg:py-8 2xl:px-10">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
             <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">
