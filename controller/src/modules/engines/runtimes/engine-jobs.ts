@@ -1,8 +1,9 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../../../config/env";
-import type { EngineBackend, EngineJob, RuntimeTarget } from "../../shared/system-types";
+import type { EngineBackend, EngineJob, RuntimeTarget, RuntimeUpgradeResult } from "../../shared/system-types";
 import { getEngineSpec, type InstallOptions } from "../engine-spec";
+import { acquireEngineInstallLock, installLockTimeoutMessage } from "./install-lock";
 import { runPlatformUpgrade } from "./runtime-upgrade";
 import {
   clearRuntimeTargetsCache,
@@ -83,12 +84,60 @@ export const managedPackageSpec = (
   version?: string | null
 ): string => getEngineSpec(backend).managedPackageSpec(version);
 
-const unsupportedMlxUpdate = {
+const unsupportedMlxUpdate: RuntimeUpgradeResult = {
   success: false,
   version: null,
   output: null,
   error: "MLX runtime updates are not supported by the controller yet.",
   used_command: null,
+};
+
+const cancelledResult: RuntimeUpgradeResult = {
+  success: false,
+  version: null,
+  output: null,
+  error: "cancelled by user",
+  used_command: null,
+};
+
+const installLockFailure = (backend: EngineBackend): RuntimeUpgradeResult => ({
+  success: false,
+  version: null,
+  output: null,
+  error: installLockTimeoutMessage(backend),
+  used_command: null,
+});
+
+const runEngineInstall = async (
+  config: Config,
+  job: EngineJob,
+  options: CreateEngineJobOptions,
+  backend: EngineBackend,
+  target: RuntimeTarget | null,
+): Promise<RuntimeUpgradeResult> => {
+  if (backend === "mlx" && options.type === "update") return unsupportedMlxUpdate;
+  const lock = await acquireEngineInstallLock(config, backend, {
+    onWait: (): void => updateRunningJob(job.id, { message: `waiting for in-progress ${backend} install...` }),
+    shouldContinue: (): boolean => jobs.get(job.id)?.status === "running",
+  });
+  if (!lock) return jobs.get(job.id)?.status === "cancelled" ? cancelledResult : installLockFailure(backend);
+  try {
+    if (jobs.get(job.id)?.status !== "running") return cancelledResult;
+    return await getEngineSpec(backend).install({
+      config,
+      version: options.version,
+      pythonPath: target?.pythonPath ?? null,
+      preferBundled: options.preferBundled,
+      createManagedVenv: !options.targetId,
+      onProgress: (update: InstallProgressUpdate): void => updateRunningJob(job.id, update),
+      onSpawn: (child: ChildProcess): void => {
+        jobChildren.set(job.id, child);
+      },
+    } satisfies InstallOptions);
+  } finally {
+    lock.release();
+    jobChildren.delete(job.id);
+  }
 };
 
 const runJob = async (
@@ -118,19 +167,7 @@ const runJob = async (
 
     const result = isPlatformBackend(options.backend)
       ? await runPlatformUpgrade(options.backend, {})
-      : options.backend === "mlx" && options.type === "update"
-        ? unsupportedMlxUpdate
-        : await getEngineSpec(options.backend).install({
-            config,
-            version: options.version,
-            pythonPath: target?.pythonPath ?? null,
-            preferBundled: options.preferBundled,
-            createManagedVenv: !options.targetId,
-            onProgress: (update: InstallProgressUpdate): void => updateRunningJob(job.id, update),
-            onSpawn: (child: ChildProcess): void => {
-              jobChildren.set(job.id, child);
-            },
-          } satisfies InstallOptions);
+      : await runEngineInstall(config, job, options, options.backend, target);
 
     if (options.type === "install" || options.type === "update") {
       clearRuntimeTargetsCache();
