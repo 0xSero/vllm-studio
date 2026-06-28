@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useSyncExternalStore, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   consumeAgentSessionNavTitle,
@@ -22,11 +22,16 @@ import type { SessionId } from "@/features/agent/runtime/types";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { loadPersistedActiveAgentSessions } from "@/features/agent/workspace/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
-import { AgentBrowserPanel } from "@/features/agent/ui/agent-browser-panel";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
+
+const LazyAgentBrowserPanel = lazy(() =>
+  import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
+    default: AgentBrowserPanel,
+  })),
+);
 
 type AgentWorkspaceShellProps = {
   state: WorkspaceState;
@@ -97,17 +102,32 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
             </div>
           )}
         </section>
-        <AgentBrowserPanel
-          handles={handles}
-          activeProject={activeProject}
-          focusedSession={focusedTab}
-          sessions={[...state.sessions.values()]}
-          activeModelId={focusedTab?.modelId ?? state.selectedModel}
-          activeModel={focusedModel}
-          gitSummary={focusedGitSummary}
-        />
+        {tools.computer.open ? (
+          <Suspense fallback={<ComputerPanelFallback />}>
+            <LazyAgentBrowserPanel
+              handles={handles}
+              activeProject={activeProject}
+              focusedSession={focusedTab}
+              sessions={[...state.sessions.values()]}
+              activeModelId={focusedTab?.modelId ?? state.selectedModel}
+              activeModel={focusedModel}
+              gitSummary={focusedGitSummary}
+            />
+          </Suspense>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function ComputerPanelFallback() {
+  return (
+    <aside className="relative flex w-[360px] shrink-0 flex-col border-l border-(--border) bg-(--color-panel)">
+      <div className="h-10 shrink-0 border-b border-(--border)/85 bg-(--color-header)" />
+      <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-(--dim)">
+        Loading tools...
+      </div>
+    </aside>
   );
 }
 
