@@ -201,6 +201,28 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     [oauthDrafts],
   );
 
+  const startGcloudOAuth = useCallback(
+    async (providerId: string) => {
+      const busyKey = oauthBusyId(providerId, "gcloud");
+      setBusyId(busyKey);
+      setError(null);
+      try {
+        const response = await fetch(`/api/oauth/${providerId}/gcloud`, { method: "POST" });
+        const payload = (await response.json()) as { error?: string };
+        if (!response.ok || payload.error) {
+          throw new Error(payload.error || "Could not start gcloud login.");
+        }
+        pollOAuthResult(busyKey);
+      } catch (gcloudError) {
+        setError(
+          gcloudError instanceof Error ? gcloudError.message : "Could not start gcloud login.",
+        );
+        setBusyId((current) => (current === busyKey ? null : current));
+      }
+    },
+    [pollOAuthResult],
+  );
+
   const disconnectOAuth = useCallback(async (providerId: string) => {
     const busyKey = oauthBusyId(providerId, "disconnect");
     setBusyId(busyKey);
@@ -363,6 +385,7 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       }
       onSaveClient={saveOAuthClient}
       onConnect={(providerId) => openOAuth(providerId)}
+      onStartGcloud={startGcloudOAuth}
       onDisconnect={disconnectOAuth}
     />
   );

@@ -12,6 +12,7 @@
 // over unchanged.
 
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { resolveDataDir } from "@/lib/data-dir";
 import { OAUTH_PROVIDERS, getOAuthProvider, type OAuthProvider } from "./oauth-providers";
@@ -29,6 +30,7 @@ export type OAuthCredentials = {
   email: string;
   scopes: string[];
   updatedAt: string;
+  externalCredentialsDisabled: boolean;
 };
 
 export type OAuthStatus = {
@@ -76,6 +78,47 @@ async function readRaw(providerId: string): Promise<Partial<OAuthCredentials>> {
   }
 }
 
+function adcPath(): string {
+  return path.join(os.homedir(), ".config", "gcloud", "application_default_credentials.json");
+}
+
+async function readGoogleAdc(): Promise<Partial<OAuthCredentials>> {
+  try {
+    const data = JSON.parse(await readFile(adcPath(), "utf8")) as Record<string, unknown>;
+    const clientId = typeof data.client_id === "string" ? data.client_id : "";
+    const clientSecret = typeof data.client_secret === "string" ? data.client_secret : "";
+    const refreshToken = typeof data.refresh_token === "string" ? data.refresh_token : "";
+    if (!clientId || !clientSecret) return {};
+    return { clientId, clientSecret, refreshToken };
+  } catch {
+    return {};
+  }
+}
+
+function mergeCredentials(
+  external: Partial<OAuthCredentials>,
+  stored: Partial<OAuthCredentials>,
+): Partial<OAuthCredentials> {
+  return {
+    ...external,
+    ...Object.fromEntries(
+      Object.entries(stored).filter(([, value]) => {
+        if (typeof value === "string") return value.trim().length > 0;
+        if (Array.isArray(value)) return value.length > 0;
+        return value !== undefined;
+      }),
+    ),
+  };
+}
+
+async function readProviderCredentials(
+  provider: OAuthProvider,
+): Promise<Partial<OAuthCredentials>> {
+  const stored = await readRaw(provider.id);
+  if (provider.id !== "google" || stored.externalCredentialsDisabled) return stored;
+  return mergeCredentials(await readGoogleAdc(), stored);
+}
+
 async function writeRaw(providerId: string, creds: Partial<OAuthCredentials>): Promise<void> {
   const filePath = credentialsPath(providerId);
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -106,14 +149,14 @@ function appClientCredentials(provider: OAuthProvider): EffectiveClient | null {
 async function readEffectiveClient(provider: OAuthProvider): Promise<EffectiveClient | null> {
   const appClient = appClientCredentials(provider);
   if (appClient) return appClient;
-  const creds = await readRaw(provider.id);
+  const creds = await readProviderCredentials(provider);
   if (!creds.clientId || !creds.clientSecret) return null;
   return { clientId: creds.clientId, clientSecret: creds.clientSecret, configuredByApp: false };
 }
 
 export async function getOAuthStatus(providerId: string): Promise<OAuthStatus> {
   const provider = requireProvider(providerId);
-  const creds = await readRaw(providerId);
+  const creds = await readProviderCredentials(provider);
   const appClient = appClientCredentials(provider);
   const hasLocalCredentials = Boolean(creds.clientId && creds.clientSecret);
   return {
@@ -159,7 +202,14 @@ export async function disconnectOAuth(providerId: string): Promise<void> {
     accessTokenExpiresAt: 0,
     email: "",
     scopes: [],
+    externalCredentialsDisabled: true,
   });
+}
+
+export async function enableExternalOAuthCredentials(providerId: string): Promise<void> {
+  requireProvider(providerId);
+  const existing = await readRaw(providerId);
+  await writeRaw(providerId, { ...existing, externalCredentialsDisabled: false });
 }
 
 export async function buildAuthUrl(
@@ -290,7 +340,10 @@ export async function getFreshOAuthCredentials(
   providerId: string,
 ): Promise<FreshOAuthCredentials | null> {
   const provider = requireProvider(providerId);
-  const [creds, client] = await Promise.all([readRaw(providerId), readEffectiveClient(provider)]);
+  const [creds, client] = await Promise.all([
+    readProviderCredentials(provider),
+    readEffectiveClient(provider),
+  ]);
   if (!creds.accessToken && !creds.refreshToken) return null;
   if (!client) return null;
 

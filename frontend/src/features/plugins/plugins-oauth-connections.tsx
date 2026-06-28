@@ -26,6 +26,7 @@ export function OAuthConnectionsPanel({
   onDraftChange,
   onSaveClient,
   onConnect,
+  onStartGcloud,
   onDisconnect,
 }: {
   statuses: OAuthStatusView[];
@@ -34,6 +35,7 @@ export function OAuthConnectionsPanel({
   onDraftChange: (providerId: string, draft: OAuthClientDraft) => void;
   onSaveClient: (providerId: string) => void;
   onConnect: (providerId: string) => void;
+  onStartGcloud: (providerId: string) => void;
   onDisconnect: (providerId: string) => void;
 }) {
   const statusMap = new Map(statuses.map((status) => [status.providerId, status]));
@@ -48,6 +50,7 @@ export function OAuthConnectionsPanel({
         const saving = busyId === oauthBusyId(provider.id, "save");
         const connecting = busyId === oauthBusyId(provider.id, "connect");
         const disconnecting = busyId === oauthBusyId(provider.id, "disconnect");
+        const gcloudStarting = busyId === oauthBusyId(provider.id, "gcloud");
         const canSave = Boolean(draft.clientId.trim() && draft.clientSecret.trim());
         return (
           <SettingsRow
@@ -65,6 +68,15 @@ export function OAuthConnectionsPanel({
                 >
                   {status?.connected ? "Reconnect" : connecting ? "Opening" : "Connect"}
                 </SettingsButton>
+                {provider.id === "google" && !status?.connected ? (
+                  <SettingsButton
+                    onClick={() => onStartGcloud(provider.id)}
+                    disabled={gcloudStarting}
+                    title="Open Google login with gcloud"
+                  >
+                    {gcloudStarting ? "Opening gcloud" : "Use gcloud"}
+                  </SettingsButton>
+                ) : null}
                 {status?.connected ? (
                   <SettingsButton
                     tone="danger"
@@ -119,7 +131,10 @@ export function OAuthConnectionsPanel({
   );
 }
 
-export function oauthBusyId(providerId: string, action: "connect" | "disconnect" | "save") {
+export function oauthBusyId(
+  providerId: string,
+  action: "connect" | "disconnect" | "gcloud" | "save",
+) {
   return `oauth:${providerId}:${action}`;
 }
 
