@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { listStoredServers, serverConfigPath } from "@/features/agent/mcp/store";
+import { providerForEnvKeys } from "@/features/agent/oauth/oauth-providers";
 import type { McpServerDef } from "@/features/agent/mcp/types";
 
 /**
@@ -25,6 +26,7 @@ export type McpServerRow = {
   capabilities?: string[];
   skillPath?: string;
   mcpConfigPath?: string;
+  oauthProvider?: string;
 };
 
 /** Check whether a command binary is available on the system PATH. */
@@ -62,6 +64,7 @@ function expandHome(value: string): string {
 function storedRow(def: McpServerDef, source: string, enabled: boolean): McpServerRow {
   const configReady = existsSync(serverConfigPath(def.id));
   const commandReady = isCommandAvailable(def.command, def.cwd);
+  const oauthProvider = providerForEnvKeys(def.env)?.id;
   return {
     id: def.id,
     name: def.name,
@@ -76,6 +79,7 @@ function storedRow(def: McpServerDef, source: string, enabled: boolean): McpServ
     ...(def.category ? { category: def.category } : {}),
     ...(def.tags?.length ? { tags: def.tags } : {}),
     mcpConfigPath: serverConfigPath(def.id),
+    ...(oauthProvider ? { oauthProvider } : {}),
     ...(def.skillPath ? { skillPath: def.skillPath } : {}),
   };
 }

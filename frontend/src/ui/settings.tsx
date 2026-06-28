@@ -80,14 +80,24 @@ export function SettingsGroup({
   description,
   actions,
   children,
+  collapsible,
+  defaultOpen,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   return (
-    <ListGroup title={title} description={description} actions={actions}>
+    <ListGroup
+      title={title}
+      description={description}
+      actions={actions}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
+    >
       {children}
     </ListGroup>
   );

@@ -19,8 +19,14 @@ export function serverDescription(server: McpServer): string {
   return short || "MCP stdio server";
 }
 
-export function serverLocation(server: McpServer): string {
-  const state = !server.enabled ? "disabled" : server.ready ? "connected" : "not ready";
+export function serverLocation(server: McpServer, ready = server.ready): string {
+  const state = !server.enabled
+    ? "disabled"
+    : ready
+      ? "connected"
+      : server.oauthProvider
+        ? "needs account"
+        : "not ready";
   const tags = server.tags?.length ? ` · ${server.tags.join(", ")}` : "";
   return `${state} · @${server.name}${tags}`;
 }

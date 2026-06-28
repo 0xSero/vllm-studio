@@ -12,9 +12,11 @@ import {
 import { StatusPill } from "@/ui/status";
 import type { McpServer } from "./plugins-types";
 import { serverDescription, serverLocation } from "./plugins-utils";
+import type { OAuthStatusView } from "./plugins-oauth-connections";
 
 export function InstalledMcpServersPanel({
   servers,
+  oauthStatuses,
   enabledCount,
   busyId,
   tagDrafts,
@@ -24,6 +26,7 @@ export function InstalledMcpServersPanel({
   onSaveTags,
 }: {
   servers: McpServer[];
+  oauthStatuses: OAuthStatusView[];
   enabledCount: number;
   busyId: string | null;
   tagDrafts: Record<string, string>;
@@ -33,7 +36,10 @@ export function InstalledMcpServersPanel({
   onSaveTags: (server: McpServer) => void;
 }) {
   const disabledCount = servers.length - enabledCount;
-  const readyCount = servers.filter((s) => s.ready).length;
+  const connectedProviders = new Set(
+    oauthStatuses.filter((status) => status.connected).map((status) => status.providerId),
+  );
+  const readyCount = servers.filter((server) => serverReady(server, connectedProviders)).length;
   const notReadyCount = enabledCount - readyCount;
 
   const rows: SettingsFactRow[] = servers.map((server) => ({
@@ -41,10 +47,10 @@ export function InstalledMcpServersPanel({
     variant: "resource",
     label: server.displayName ?? server.name,
     description: serverDescription(server),
-    value: serverLocation(server),
+    value: serverLocation(server, serverReady(server, connectedProviders)),
     mono: true,
     wrap: true,
-    status: serverStatus(server),
+    status: serverStatus(server, connectedProviders),
     actions: (
       <>
         <SettingsButton onClick={() => onToggleServer(server)} disabled={busyId === server.id}>
@@ -115,7 +121,10 @@ export function InstalledMcpServersPanel({
   );
 }
 
-function serverStatus(server: McpServer): NonNullable<SettingsFactRow["status"]> {
+function serverStatus(
+  server: McpServer,
+  connectedProviders: Set<string>,
+): NonNullable<SettingsFactRow["status"]> {
   if (!server.enabled) {
     return {
       label: (
@@ -128,7 +137,7 @@ function serverStatus(server: McpServer): NonNullable<SettingsFactRow["status"]>
     };
   }
   const sourceLabel = server.source === "curated" ? "curated" : "manual";
-  if (server.ready) {
+  if (serverReady(server, connectedProviders)) {
     return {
       label: (
         <span className="flex items-center gap-1">
@@ -143,9 +152,15 @@ function serverStatus(server: McpServer): NonNullable<SettingsFactRow["status"]>
     label: (
       <span className="flex items-center gap-1">
         <CircleAlert className="h-3 w-3" />
-        not ready · {sourceLabel}
+        {server.oauthProvider ? "needs account" : "not ready"} · {sourceLabel}
       </span>
     ),
     tone: "warning",
   };
+}
+
+function serverReady(server: McpServer, connectedProviders: Set<string>): boolean {
+  if (!server.enabled || !server.ready) return false;
+  if (!server.oauthProvider) return true;
+  return connectedProviders.has(server.oauthProvider);
 }

@@ -108,6 +108,8 @@ export function McpJsonConfigPanel({
     <SettingsGroup
       title="MCP JSON"
       description="Edit the canonical mcp_servers config directly. Save regenerates the runtime .mcp.json files used by agent turns."
+      collapsible
+      defaultOpen={false}
       actions={
         <SettingsButton tone="primary" onClick={onSave} disabled={busy || !configText.trim()}>
           Save JSON

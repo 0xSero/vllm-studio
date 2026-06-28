@@ -10,6 +10,7 @@ import type { CatalogueEntry } from "./plugins-types";
 export function CuratedMcpSearchPanel({
   title = "Curated MCP servers",
   description = "Connect reviewed MCP servers. OAuth-managed entries connect without pasted tokens.",
+  defaultOpen = true,
   entries,
   loading,
   search,
@@ -20,6 +21,7 @@ export function CuratedMcpSearchPanel({
 }: {
   title?: string;
   description?: string;
+  defaultOpen?: boolean;
   entries: CatalogueEntry[];
   loading: boolean;
   search: string;
@@ -32,6 +34,8 @@ export function CuratedMcpSearchPanel({
     <SettingsGroup
       title={title}
       description={description}
+      collapsible
+      defaultOpen={defaultOpen}
       actions={
         <StatusPill tone={loading ? "info" : "good"} variant="badge">
           {loading ? "searching" : `${entries.length} results`}

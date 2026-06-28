@@ -334,22 +334,25 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
       {error}
     </SettingsNotice>
   ) : null;
-  const customPanel = (
+  const installedPanel = (
+    <InstalledMcpServersPanel
+      servers={servers}
+      oauthStatuses={oauthStatuses}
+      enabledCount={enabledCount}
+      busyId={busyId}
+      tagDrafts={tagDrafts}
+      onToggleServer={(server) =>
+        void post({ action: "set_enabled", id: server.id, enabled: !server.enabled }, server.id)
+      }
+      onRemoveServer={(server) => void post({ action: "remove", id: server.id }, server.id)}
+      onTagDraftChange={(server, value) =>
+        setTagDrafts((drafts) => ({ ...drafts, [server.id]: value }))
+      }
+      onSaveTags={saveTags}
+    />
+  );
+  const advancedPanel = (
     <div className="space-y-5">
-      <InstalledMcpServersPanel
-        servers={servers}
-        enabledCount={enabledCount}
-        busyId={busyId}
-        tagDrafts={tagDrafts}
-        onToggleServer={(server) =>
-          void post({ action: "set_enabled", id: server.id, enabled: !server.enabled }, server.id)
-        }
-        onRemoveServer={(server) => void post({ action: "remove", id: server.id }, server.id)}
-        onTagDraftChange={(server, value) =>
-          setTagDrafts((drafts) => ({ ...drafts, [server.id]: value }))
-        }
-        onSaveTags={saveTags}
-      />
       <ManualMcpServerPanel
         open={manualOpen}
         name={manualName}
@@ -391,6 +394,9 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
   );
   const curatedPanel = (
     <CuratedMcpSearchPanel
+      title="Add more tools"
+      description="Browse reviewed MCP servers after the account-backed tools are connected."
+      defaultOpen={false}
       entries={browseEntries}
       loading={loading}
       search={search}
@@ -423,8 +429,9 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
         {errorNotice}
         <div className="space-y-5">
           {connectionsPanel}
+          {installedPanel}
           {curatedPanel}
-          {customPanel}
+          {advancedPanel}
         </div>
         {configurePanel}
       </>
@@ -445,8 +452,9 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
         {errorNotice}
         <div className="space-y-5">
           {connectionsPanel}
+          {installedPanel}
           {curatedPanel}
-          {customPanel}
+          {advancedPanel}
         </div>
       </div>
 
