@@ -119,13 +119,14 @@ export type {
 
 export {
   ModelSection,
+  ModelActiveSummary,
   ModelRow,
   ModelValue,
   ModelStatus,
   ModelButton,
   ModelInput,
 } from "./model-page";
-export type { ModelStatusTone } from "./model-page";
+export type { ModelStatusTone, ModelSummaryItem } from "./model-page";
 export { CopyablePathChip } from "./copyable-path-chip";
 
 // Icons (also importable directly from "@/ui/icons").

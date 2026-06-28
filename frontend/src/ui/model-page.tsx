@@ -7,6 +7,11 @@ import { cx } from "./utils";
 export type ModelStatusTone = UiTone;
 export type ModelRowHighlight = "none" | "success";
 
+export type ModelSummaryItem = {
+  label: string;
+  value: ReactNode;
+};
+
 type ModelRowProps = {
   label: string;
   description?: string;
@@ -45,6 +50,79 @@ export function ModelSection({
       </div>
       <div className="divide-y divide-(--ui-border)/55">{children}</div>
     </section>
+  );
+}
+
+export function ModelActiveSummary({
+  title,
+  subtitle,
+  leading,
+  status,
+  actions,
+  details,
+  progress,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  leading?: ReactNode;
+  status?: ReactNode;
+  actions?: ReactNode;
+  details?: ModelSummaryItem[];
+  progress?: ReactNode;
+}) {
+  return (
+    <div className="px-1 py-3">
+      <div className="grid gap-3 rounded-md border border-(--ui-border)/65 bg-(--ui-surface)/45 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <div className="flex min-w-0 gap-3">
+          {leading ? <div className="mt-0.5 shrink-0">{leading}</div> : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div
+                className="min-w-0 truncate text-[length:var(--fs-lg)] font-medium text-(--ui-fg)"
+                title={typeof title === "string" ? title : undefined}
+              >
+                {title}
+              </div>
+              {status ? <div className="shrink-0">{status}</div> : null}
+            </div>
+            {subtitle ? (
+              <div
+                className="mt-1 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)"
+                title={typeof subtitle === "string" ? subtitle : undefined}
+              >
+                {subtitle}
+              </div>
+            ) : null}
+            {details?.length ? (
+              <dl className="mt-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-4">
+                {details.map((item) => (
+                  <div
+                    key={String(item.label)}
+                    className="min-w-0 border-l border-(--ui-border)/70 pl-2"
+                  >
+                    <dt className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] text-(--ui-muted)">
+                      {item.label}
+                    </dt>
+                    <dd
+                      className="mt-0.5 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-fg)"
+                      title={typeof item.value === "string" ? item.value : undefined}
+                    >
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {progress ? (
+              <div className="mt-3 text-[length:var(--fs-sm)] text-(--ui-muted)">{progress}</div>
+            ) : null}
+          </div>
+        </div>
+        {actions ? (
+          <div className="flex shrink-0 items-center justify-end gap-1">{actions}</div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
