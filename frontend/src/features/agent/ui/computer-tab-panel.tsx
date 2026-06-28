@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import {
   FolderTree,
   GitBranch,
@@ -13,13 +13,39 @@ import type { ComputerTab } from "@/features/agent/tools/types";
 import type { Project, GitSummary } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
-import { AgentBrowser, type AgentBrowserHandle } from "@/features/agent/ui/agent-browser";
-import { CanvasPanel } from "@/features/agent/ui/canvas-panel";
+import type { AgentBrowserHandle } from "@/features/agent/ui/agent-browser";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
-import { ComputerStatusPanel } from "@/features/agent/ui/computer-status-panel";
-import { FilesystemPanel } from "@/features/agent/ui/filesystem-panel";
-import { GitDiffPanel } from "@/features/agent/ui/git-diff-panel";
-import { PlanPanel } from "@/features/agent/ui/plan-panel";
+
+const LazyAgentBrowser = lazy(() =>
+  import("@/features/agent/ui/agent-browser").then(({ AgentBrowser }) => ({
+    default: AgentBrowser,
+  })),
+);
+const LazyCanvasPanel = lazy(() =>
+  import("@/features/agent/ui/canvas-panel").then(({ CanvasPanel }) => ({
+    default: CanvasPanel,
+  })),
+);
+const LazyComputerStatusPanel = lazy(() =>
+  import("@/features/agent/ui/computer-status-panel").then(({ ComputerStatusPanel }) => ({
+    default: ComputerStatusPanel,
+  })),
+);
+const LazyFilesystemPanel = lazy(() =>
+  import("@/features/agent/ui/filesystem-panel").then(({ FilesystemPanel }) => ({
+    default: FilesystemPanel,
+  })),
+);
+const LazyGitDiffPanel = lazy(() =>
+  import("@/features/agent/ui/git-diff-panel").then(({ GitDiffPanel }) => ({
+    default: GitDiffPanel,
+  })),
+);
+const LazyPlanPanel = lazy(() =>
+  import("@/features/agent/ui/plan-panel").then(({ PlanPanel }) => ({
+    default: PlanPanel,
+  })),
+);
 
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
 
@@ -53,13 +79,13 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
   const panels: Record<ComputerTab, ReactNode> = {
     status: <StatusTab {...props} />,
     tools: <ComputerLauncherPanel activeTab={props.tools.computer.tab} {...props} />,
-    canvas: <CanvasPanel />,
+    canvas: <LazyCanvasPanel />,
     "side-chat": <SideChatTab {...props} />,
     browser: <BrowserTab {...props} />,
     files: <FilesTab cwd={focusedCwd} />,
-    diff: <GitDiffPanel cwd={focusedCwd} />,
+    diff: <LazyGitDiffPanel cwd={focusedCwd} />,
     plan: (
-      <PlanPanel
+      <LazyPlanPanel
         sessionId={props.focusedSession?.runtimeSessionId ?? null}
         onOpenTaskSideChat={(todo) =>
           props.onOpenSideChat({
@@ -71,7 +97,7 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
     ),
     terminal: null,
   };
-  return panels[props.tools.computer.tab] ?? null;
+  return <Suspense fallback={<ComputerTabFallback />}>{panels[props.tools.computer.tab]}</Suspense>;
 }
 
 function buildPlanTaskPrompt(task: string): string {
@@ -88,7 +114,7 @@ function StatusTab({
   sessions,
 }: ComputerTabPanelProps) {
   return (
-    <ComputerStatusPanel
+    <LazyComputerStatusPanel
       activeProject={activeProject}
       activeModel={activeModel}
       focusedSession={focusedSession}
@@ -152,7 +178,7 @@ function BrowserTab({
   tools,
 }: ComputerTabPanelProps) {
   return (
-    <AgentBrowser
+    <LazyAgentBrowser
       ref={registerBrowserHandle}
       url={tools.browser.url}
       inputValue={tools.browser.input}
@@ -169,8 +195,16 @@ function FilesTab({ cwd }: { cwd: string | null }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1">
-        <FilesystemPanel cwd={cwd} />
+        <LazyFilesystemPanel cwd={cwd} />
       </div>
+    </section>
+  );
+}
+
+function ComputerTabFallback() {
+  return (
+    <section className="flex min-h-0 flex-1 items-center justify-center bg-(--color-panel) text-xs text-(--dim)">
+      Loading...
     </section>
   );
 }
