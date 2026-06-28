@@ -1,6 +1,38 @@
+import type { ChildProcess } from "node:child_process";
+import { runCommandAsync } from "../../../core/command";
+import type { RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
+
 const normalizeEnvironmentCommand = (envKey: string): string | null => {
   const value = process.env[envKey]?.trim();
   return value && value.length > 0 ? value : null;
+};
+
+const UPGRADE_COMMAND_TIMEOUT_MS = 10 * 60_000;
+
+export const runEnvironmentUpgradeCommand = async (
+  command: string,
+  onSpawn?: ((child: ChildProcess) => void) | undefined,
+  timeoutMs: number = UPGRADE_COMMAND_TIMEOUT_MS,
+): Promise<RuntimeUpgradeResult> => {
+  const result = await runCommandAsync(command, [], { timeoutMs, onSpawn });
+  if (result.status === 0) {
+    return {
+      success: true,
+      version: null,
+      output: result.stdout || null,
+      error: result.stderr || null,
+      used_command: command,
+    };
+  }
+  return {
+    success: false,
+    version: null,
+    output: result.stdout || null,
+    error: result.timedOut
+      ? `Upgrade command timed out after ${Math.round(timeoutMs / 60_000)} minutes`
+      : result.stderr || "Upgrade command failed",
+    used_command: command,
+  };
 };
 
 const normalizeTextOrDefault = (envKey: string, fallbackValue: string): string => {

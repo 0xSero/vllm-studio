@@ -3,14 +3,15 @@ import { join } from "node:path";
 import type { Config } from "../../../config/env";
 import { runCommandAsync } from "../../../core/command";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
 import { appendExtraArguments, getPythonPath } from "../process/backend-builder";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import {
   extractFlag,
   hasModuleInvocation,
 } from "../argument-utilities";
-import type { EngineSpec } from "../engine-spec";
+import type { EngineSpec, InstallOptions } from "../engine-spec";
+import { installIntoManagedVenv } from "../runtimes/managed-venv";
 
 const MLX_IMPORT_PROBE =
   "import json, sys\ntry:\n import mlx_lm\n print(json.dumps({'version': getattr(mlx_lm, '__version__', None) or 'installed', 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
@@ -113,14 +114,27 @@ const getRuntimeInfoAsync = async (
   };
 };
 
+const installMlx = async (options: InstallOptions): Promise<RuntimeUpgradeResult> => {
+  const packageSpec = managedPackageSpec(options.version);
+  const pythonPath = options.pythonPath ?? options.config.mlx_python ?? null;
+  return installIntoManagedVenv({
+    config: options.config,
+    backend: "mlx",
+    packageSpec,
+    pythonPath,
+    createManagedVenv: !pythonPath,
+    onProgress: options.onProgress,
+    onSpawn: options.onSpawn,
+  });
+};
+
 export const mlxSpec: EngineSpec = {
   id: "mlx",
-  // mlx_lm.server has no /health endpoint; /v1/models answers 200 once ready.
-  // This mirrors exo-spark's healthPath for MLX.
   healthPath: "/v1/models",
   cliBinary: null,
   buildCommand: buildMlxCommand,
   managedPackageSpec,
+  install: installMlx,
   detectInvocation,
   extractModelPath,
   extractServedModelName,

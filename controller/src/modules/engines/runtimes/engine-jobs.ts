@@ -1,32 +1,23 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommandAsync, type AsyncCommandResult } from "../../../core/command";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "../../shared/system-types";
-import { getEngineSpec } from "../engine-spec";
-import { upgradeVllmRuntime } from "./vllm-runtime";
-import {
-  runPlatformUpgrade,
-  upgradeLlamacppRuntime,
-  upgradeSglangRuntime,
-  type RuntimeUpgradeOptions,
-} from "./runtime-upgrade";
+import { getEngineSpec, type InstallOptions } from "../engine-spec";
+import { runPlatformUpgrade } from "./runtime-upgrade";
 import {
   clearRuntimeTargetsCache,
   getDefaultRuntimeTarget,
   getRuntimeTarget,
 } from "./runtime-targets";
 import type { ProcessInfo } from "../../models/types";
-import { ENGINE_INSTALL_TIMEOUT_MS, RUNTIME_UPGRADE_TIMEOUT_MS } from "../configs";
-import { probePythonRuntime } from "./runtime-target-probes";
 import {
   isManagedPythonBackend,
   managedVenvName,
-  managedVenvPath,
   type ManagedPythonBackend,
+  type InstallProgressUpdate,
 } from "./managed-venv";
+
+export { managedVenvPath } from "./managed-venv";
 
 type RuntimeJobBackend = EngineBackend | "cuda" | "rocm";
 
@@ -40,11 +31,7 @@ type CreateEngineJobOptions = {
 };
 
 const MAX_OUTPUT_TAIL_LENGTH = 4000;
-const JOB_OUTPUT_THROTTLE_MS = 1_000;
-const PIP_PREFLIGHT_TIMEOUT_MS = 10_000;
-const UV_INSTALL_HINT = "curl -LsSf https://astral.sh/uv/install.sh | sh";
 const jobs = new Map<string, EngineJob>();
-// Live subprocess per job so cancelEngineJob can actually kill the work.
 const jobChildren = new Map<string, ChildProcess>();
 
 const tailOutput = (value: string | null | undefined): string | undefined => {
@@ -54,27 +41,12 @@ const tailOutput = (value: string | null | undefined): string | undefined => {
 
 const nowIso = (): string => new Date().toISOString();
 
-const timeoutMinutes = (timeoutMs: number): number => Math.round(timeoutMs / 60_000);
-
-const runJobCommand = async (
-  jobId: string,
-  command: string,
-  args: string[],
-  options: { timeoutMs: number; onOutput?: (chunk: string) => void }
-): Promise<AsyncCommandResult> => {
-  try {
-    return await runCommandAsync(command, args, {
-      ...options,
-      onSpawn: (child) => jobChildren.set(jobId, child),
-    });
-  } finally {
-    jobChildren.delete(jobId);
-  }
-};
+const isPlatformBackend = (backend: RuntimeJobBackend): backend is "cuda" | "rocm" =>
+  backend === "cuda" || backend === "rocm";
 
 const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
   id: randomUUID(),
-  backend: options.backend === "cuda" || options.backend === "rocm" ? "vllm" : options.backend,
+  backend: isPlatformBackend(options.backend) ? "vllm" : options.backend,
   ...(options.targetId ? { targetId: options.targetId } : {}),
   type: options.type,
   status: "queued",
@@ -91,8 +63,6 @@ const updateJob = (id: string, updates: Partial<EngineJob>): EngineJob | null =>
   return next;
 };
 
-// Progress updates and final transitions must not overwrite a job the user
-// already cancelled (the killed subprocess still resolves with a failure).
 const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
   const current = jobs.get(id);
   if (!current || current.status !== "running") return;
@@ -100,131 +70,25 @@ const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
 };
 
 const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
+  if (isPlatformBackend(options.backend)) return `configured ${options.backend.toUpperCase()} upgrade command`;
+  if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
   if (options.type === "install" && isManagedPythonBackend(options.backend)) {
     return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
   }
-  if (options.backend === "vllm") return "python -m pip install --upgrade vllm";
-  if (options.backend === "sglang") return "python -m pip install --upgrade sglang";
-  if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
-  if (options.backend === "mlx") return "configured MLX environment";
-  if (options.backend === "cuda") return "configured CUDA upgrade command";
-  return "configured ROCm upgrade command";
+  return `python -m pip install --upgrade ${managedPackageSpec(options.backend, options.version)}`;
 };
-
 
 export const managedPackageSpec = (
   backend: ManagedPythonBackend,
   version?: string | null
-): string => {
-  return getEngineSpec(backend).managedPackageSpec(version);
-};
+): string => getEngineSpec(backend).managedPackageSpec(version);
 
-const runManagedPythonInstall = async (
-  config: Config,
-  backend: ManagedPythonBackend,
-  options: RuntimeUpgradeOptions,
-  jobId: string
-): Promise<{
-  success: boolean;
-  version: string | null;
-  output: string | null;
-  error: string | null;
-  used_command: string | null;
-}> => {
-  const basePython = resolveBinary("python3") ?? resolveBinary("python");
-  if (!basePython) {
-    return {
-      success: false,
-      version: null,
-      output: null,
-      error: "Python 3 was not found on PATH",
-      used_command: null,
-    };
-  }
-
-  const venvDirectory = managedVenvPath(config, backend);
-  const venvPython = join(venvDirectory, "bin", "python");
-  mkdirSync(dirname(venvDirectory), { recursive: true });
-  if (!existsSync(venvPython)) {
-    updateRunningJob(jobId, { message: `Creating ${backend} virtual environment...` });
-    const create = await runJobCommand(jobId, basePython, ["-m", "venv", venvDirectory], {
-      timeoutMs: RUNTIME_UPGRADE_TIMEOUT_MS,
-    });
-    if (create.status !== 0) {
-      return {
-        success: false,
-        version: null,
-        output: create.stdout || null,
-        error: create.timedOut
-          ? `Creating the ${backend} virtual environment timed out after ${timeoutMinutes(RUNTIME_UPGRADE_TIMEOUT_MS)} minutes`
-          : create.stderr || `Failed to create managed ${backend} virtual environment`,
-        used_command: `${basePython} -m venv ${venvDirectory}`,
-      };
-    }
-  }
-
-  const packageSpec = managedPackageSpec(backend, options.version);
-  const uv = resolveBinary("uv");
-  if (!uv) {
-    const pipCheck = await runJobCommand(jobId, venvPython, ["-m", "pip", "--version"], {
-      timeoutMs: PIP_PREFLIGHT_TIMEOUT_MS,
-    });
-    if (pipCheck.status !== 0) {
-      return {
-        success: false,
-        version: null,
-        output: pipCheck.stdout || null,
-        error: `Neither uv nor a working pip is available to install ${packageSpec}. Install uv with: ${UV_INSTALL_HINT}`,
-        used_command: `${venvPython} -m pip --version`,
-      };
-    }
-  }
-  const installer = uv ? "uv" : "pip";
-  const command = uv ?? venvPython;
-  const args = uv
-    ? ["pip", "install", "--python", venvPython, "--upgrade", packageSpec]
-    : ["-m", "pip", "install", "--upgrade", packageSpec];
-  const usedCommand = [command, ...args].join(" ");
-
-  let outputTail = "";
-  let progress = 0.2;
-  let lastUpdateAt = 0;
-  updateRunningJob(jobId, { progress, message: `Installing ${packageSpec} with ${installer}...` });
-  const install = await runJobCommand(jobId, command, args, {
-    timeoutMs: ENGINE_INSTALL_TIMEOUT_MS,
-    onOutput: (chunk) => {
-      outputTail = (outputTail + chunk).slice(-MAX_OUTPUT_TAIL_LENGTH);
-      const now = Date.now();
-      if (now - lastUpdateAt < JOB_OUTPUT_THROTTLE_MS) return;
-      lastUpdateAt = now;
-      progress = Math.min(0.9, progress + 0.01);
-      updateRunningJob(jobId, {
-        progress,
-        message: `Installing ${packageSpec} with ${installer}...`,
-        outputTail,
-      });
-    },
-  });
-  if (install.status !== 0) {
-    return {
-      success: false,
-      version: null,
-      output: install.stdout || null,
-      error: install.timedOut
-        ? `Install of ${packageSpec} timed out after ${timeoutMinutes(ENGINE_INSTALL_TIMEOUT_MS)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
-        : install.stderr || `Failed to install ${packageSpec}`,
-      used_command: usedCommand,
-    };
-  }
-
-  const probe = await probePythonRuntime(backend, venvPython);
-  return {
-    success: probe.installed,
-    version: probe.version,
-    output: install.stdout || null,
-    error: probe.installed ? null : (probe.message ?? `${backend} import probe failed`),
-    used_command: usedCommand,
-  };
+const unsupportedMlxUpdate = {
+  success: false,
+  version: null,
+  output: null,
+  error: "MLX runtime updates are not supported by the controller yet.",
+  used_command: null,
 };
 
 const runJob = async (
@@ -241,7 +105,7 @@ const runJob = async (
   });
   try {
     let target: RuntimeTarget | null = null;
-    if (options.targetId && options.backend !== "cuda" && options.backend !== "rocm") {
+    if (options.targetId && !isPlatformBackend(options.backend)) {
       target = await getRuntimeTarget(config, options.targetId, options.runningProcess);
       if (!target) throw new Error("Runtime target not found");
       if (options.type !== "inspect" && !target.capabilities.canUpdate) {
@@ -252,36 +116,21 @@ const runJob = async (
       target = await getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
     }
 
-    const upgradeOptions: RuntimeUpgradeOptions = {
-      ...(options.version ? { version: options.version } : {}),
-      ...(options.backend === "sglang" && target?.pythonPath
-        ? { pythonPath: target.pythonPath }
-        : {}),
-    };
-    const result =
-      options.type === "install" && !options.targetId && isManagedPythonBackend(options.backend)
-        ? await runManagedPythonInstall(config, options.backend, upgradeOptions, job.id)
-        : options.backend === "vllm"
-          ? await upgradeVllmRuntime({
-              preferBundled: options.preferBundled ?? false,
-              pythonPath: target?.pythonPath ?? null,
-              ...upgradeOptions,
-            })
-          : options.backend === "sglang"
-            ? await upgradeSglangRuntime(config, upgradeOptions)
-            : options.backend === "llamacpp"
-              ? await upgradeLlamacppRuntime(config, upgradeOptions)
-              : options.backend === "cuda"
-                ? await runPlatformUpgrade("cuda", upgradeOptions)
-                : options.backend === "rocm"
-                  ? await runPlatformUpgrade("rocm", upgradeOptions)
-                  : {
-                      success: false,
-                      version: null,
-                      output: null,
-                      error: "MLX runtime updates are not supported by the controller yet.",
-                      used_command: null,
-                    };
+    const result = isPlatformBackend(options.backend)
+      ? await runPlatformUpgrade(options.backend, {})
+      : options.backend === "mlx" && options.type === "update"
+        ? unsupportedMlxUpdate
+        : await getEngineSpec(options.backend).install({
+            config,
+            version: options.version,
+            pythonPath: target?.pythonPath ?? null,
+            preferBundled: options.preferBundled,
+            createManagedVenv: !options.targetId,
+            onProgress: (update: InstallProgressUpdate): void => updateRunningJob(job.id, update),
+            onSpawn: (child: ChildProcess): void => {
+              jobChildren.set(job.id, child);
+            },
+          } satisfies InstallOptions);
 
     if (options.type === "install" || options.type === "update") {
       clearRuntimeTargetsCache();

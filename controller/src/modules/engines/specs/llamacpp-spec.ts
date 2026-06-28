@@ -1,7 +1,7 @@
 import type { Config } from "../../../config/env";
 import { resolveBinary } from "../../../core/command";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import {
   appendLlamacppArguments,
@@ -13,7 +13,13 @@ import { extractFlag } from "../argument-utilities";
 import type {
   ConfigHelpResult,
   EngineSpec,
+  InstallOptions,
 } from "../engine-spec";
+import {
+  getUpgradeCommandFromEnvironment,
+  LLAMACPP_UPGRADE_ENV,
+  runEnvironmentUpgradeCommand,
+} from "../runtimes/upgrade-config";
 
 const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => {
   const command: string[] = [resolveLlamaBinary(recipe, config)];
@@ -71,12 +77,27 @@ const getConfigHelp = async (config: Config): Promise<ConfigHelpResult> => {
   return { config: result.stdout || null, error: null };
 };
 
+const installLlamacpp = async (options: InstallOptions): Promise<RuntimeUpgradeResult> => {
+  const command = getUpgradeCommandFromEnvironment(LLAMACPP_UPGRADE_ENV);
+  if (!command) {
+    return {
+      success: false,
+      version: null,
+      output: null,
+      error: `No llama.cpp upgrade command configured. Set ${LLAMACPP_UPGRADE_ENV}.`,
+      used_command: null,
+    };
+  }
+  return runEnvironmentUpgradeCommand(command, options.onSpawn);
+};
+
 export const llamacppSpec: EngineSpec = {
   id: "llamacpp",
   healthPath: "/health",
   cliBinary: "llama-server",
   buildCommand: buildLlamacppCommand,
   managedPackageSpec,
+  install: installLlamacpp,
   detectInvocation,
   extractModelPath,
   extractServedModelName,

@@ -7,6 +7,7 @@ import type { RuntimeBackendInfo } from "../../shared/system-types";
 import {
   getVllmConfigHelp,
   getVllmRuntimeInfo,
+  installVllmRuntime,
 } from "../runtimes/vllm-runtime";
 import { probeVllmBinaryRuntime } from "../runtimes/runtime-target-probes";
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
@@ -172,6 +173,7 @@ export const vllmSpec: EngineSpec = {
   cliBinary: "vllm",
   buildCommand: (recipe: Recipe, config: Config) => buildVllmCommand(recipe, config),
   managedPackageSpec,
+  install: installVllmRuntime,
   detectInvocation,
   extractModelPath,
   extractServedModelName,

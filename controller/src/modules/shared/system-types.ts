@@ -18,6 +18,7 @@ export type {
   RuntimeRocmSmiTool,
   RuntimeTarget,
   RuntimeTorchBuildInfo,
+  RuntimeUpgradeResult,
   ServiceInfo,
   SystemConfig,
   SystemRuntimeInfo,

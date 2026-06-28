@@ -14,8 +14,8 @@ export type AsyncCommandResult = CommandResult & {
 
 export type AsyncCommandOptions = {
   timeoutMs: number;
-  onOutput?: (chunk: string) => void;
-  onSpawn?: (child: ChildProcess) => void;
+  onOutput?: ((chunk: string) => void) | undefined;
+  onSpawn?: ((child: ChildProcess) => void) | undefined;
 };
 
 const DEFAULT_TIMEOUT_MS = 3_000;

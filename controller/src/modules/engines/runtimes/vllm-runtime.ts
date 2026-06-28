@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import type { ChildProcess } from "node:child_process";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { resolveVllmPythonPath } from "./vllm-python-path";
 import {
@@ -7,7 +8,10 @@ import {
   getVllmUpgradeVersion,
   VLLM_UPGRADE_ENV,
 } from "./upgrade-config";
-import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS, VLLM_UPGRADE_TIMEOUT_MS } from "../configs";
+import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS, VLLM_UPGRADE_TIMEOUT_MS, ENGINE_INSTALL_TIMEOUT_MS } from "../configs";
+import { installIntoManagedVenv } from "./managed-venv";
+import type { InstallOptions } from "../engine-spec";
+import type { RuntimeUpgradeResult } from "../../shared/system-types";
 
 const resolveVllmUpgradeTarget = (version?: string): string => {
   const configured =
@@ -17,36 +21,6 @@ const resolveVllmUpgradeTarget = (version?: string): string => {
   return normalized.includes("==") || normalized.endsWith(".whl")
     ? normalized
     : `vllm==${normalized}`;
-};
-
-const resolveVllmUpgradeCommand = (
-  pythonPath: string,
-  version: string,
-  preferBundled: boolean,
-  bundledWheel: { path: string; version: string | null } | null
-): { command: string; args: string[] } => {
-  if (preferBundled) {
-    if (bundledWheel) {
-      if (resolveBinary("uv")) {
-        return {
-          command: "uv",
-          args: ["pip", "install", "--python", pythonPath, "--upgrade", bundledWheel.path],
-        };
-      }
-      return {
-        command: pythonPath,
-        args: ["-m", "pip", "install", "--upgrade", bundledWheel.path],
-      };
-    }
-  }
-  const packageSpec = resolveVllmUpgradeTarget(version);
-  if (resolveBinary("uv")) {
-    return {
-      command: "uv",
-      args: ["pip", "install", "--python", pythonPath, "--upgrade", packageSpec],
-    };
-  }
-  return { command: pythonPath, args: ["-m", "pip", "install", "--upgrade", packageSpec] };
 };
 
 const resolvePythonFromScript = (scriptPath: string | null | undefined): string | null => {
@@ -191,94 +165,58 @@ export const getVllmConfigHelp = async (): Promise<{
   return { config: result.stdout || null, error: null };
 };
 
-type VllmUpgradeOptions = {
-  preferBundled?: boolean;
-  version?: string;
-  pythonPath?: string | null;
-};
-
-export const upgradeVllmRuntime = async (
-  options: VllmUpgradeOptions = {}
-): Promise<{
-  success: boolean;
-  version: string | null;
-  output: string | null;
-  error: string | null;
-  used_wheel: string | null;
-  used_command: string | null;
-}> => {
-  const pythonPath = await resolvePythonBinary(options.pythonPath);
-  if (!pythonPath)
-    return {
-      success: false,
-      version: null,
-      output: null,
-      error: "Python runtime not found",
-      used_wheel: null,
-      used_command: null,
-    };
-
-  const command = getUpgradeCommandFromEnvironment(VLLM_UPGRADE_ENV);
-  const preferBundled = options.preferBundled !== false;
-  if (!command) {
-    const version = resolveVllmUpgradeTarget(options.version);
-    const bundledWheel = resolveBundledWheel();
-    const resolvedCommand = resolveVllmUpgradeCommand(
-      pythonPath,
-      version,
-      preferBundled,
-      bundledWheel
-    );
-    const result = await runCommandAsync(resolvedCommand.command, resolvedCommand.args, {
-      timeoutMs: VLLM_UPGRADE_TIMEOUT_MS,
-    });
-    const usedCommand = [resolvedCommand.command, ...resolvedCommand.args].join(" ");
-    if (result.status !== 0) {
-      const usedWheel = preferBundled ? (bundledWheel?.path ?? null) : null;
-      return {
-        success: false,
-        version: null,
-        output: result.stdout || null,
-        error: result.timedOut
-          ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
-          : result.stderr || "Upgrade failed",
-        used_wheel: usedWheel,
-        used_command: usedCommand,
-      };
-    }
-    const runtimeInfo = await getVllmRuntimeInfo(pythonPath);
-    const usedWheel = preferBundled ? (bundledWheel?.path ?? null) : null;
-    return {
-      success: true,
-      version: runtimeInfo.version,
-      output: result.stdout || null,
-      error: result.stderr || null,
-      used_wheel: usedWheel,
-      used_command: usedCommand,
-    };
-  }
+const runEnvironmentUpgradeCommand = async (
+  command: string,
+  onSpawn?: ((child: ChildProcess) => void) | undefined,
+): Promise<RuntimeUpgradeResult> => {
   const result = await runCommandAsync(command, [], {
     timeoutMs: VLLM_UPGRADE_TIMEOUT_MS,
+    onSpawn,
   });
-  const usedCommand = command;
-  if (result.status !== 0)
+  if (result.status === 0) {
     return {
-      success: false,
+      success: true,
       version: null,
       output: result.stdout || null,
-      error: result.timedOut
-        ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
-        : result.stderr || "Upgrade failed",
-      used_wheel: null,
-      used_command: usedCommand,
+      error: result.stderr || null,
+      used_command: command,
     };
-  const runtimeInfo = await getVllmRuntimeInfo(pythonPath);
+  }
   return {
-    success: true,
-    version: runtimeInfo.version,
+    success: false,
+    version: null,
     output: result.stdout || null,
-    error: result.stderr || null,
-    used_wheel: null,
-    used_command: usedCommand,
+    error: result.timedOut
+      ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
+      : result.stderr || "Upgrade failed",
+    used_command: command,
   };
 };
+
+export const installVllmRuntime = async (
+  options: InstallOptions,
+): Promise<RuntimeUpgradeResult> => {
+  const envCommand = getUpgradeCommandFromEnvironment(VLLM_UPGRADE_ENV);
+  if (envCommand) return runEnvironmentUpgradeCommand(envCommand, options.onSpawn);
+
+  const preferBundled = options.preferBundled !== false;
+  const bundledWheel = preferBundled ? resolveBundledWheel() : null;
+  const packageSpec = bundledWheel
+    ? bundledWheel.path
+    : resolveVllmUpgradeTarget(options.version);
+
+  const installTimeoutMs = options.pythonPath
+    ? VLLM_UPGRADE_TIMEOUT_MS
+    : ENGINE_INSTALL_TIMEOUT_MS;
+  return installIntoManagedVenv({
+    config: options.config,
+    backend: "vllm",
+    packageSpec,
+    pythonPath: options.pythonPath ?? null,
+    createManagedVenv: !options.pythonPath,
+    installTimeoutMs,
+    onProgress: options.onProgress,
+    onSpawn: options.onSpawn,
+  });
+};
+
