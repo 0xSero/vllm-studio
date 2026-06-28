@@ -1,9 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import {
-  buildVllmCommand,
-  getDockerImage,
-} from "../../../controller/src/modules/engines/process/backend-builder";
+import { getEngineSpec } from "../../../controller/src/modules/engines/engine-spec";
+import { getDockerImage } from "../../../controller/src/modules/engines/process/backend-builder";
+import type { Config } from "../../../controller/src/config/env";
 import type { Recipe } from "../../../controller/src/modules/models/types";
 
 const baseRecipe = (extra: Record<string, unknown>, env: Record<string, string> = {}): Recipe =>
@@ -30,6 +29,10 @@ const baseRecipe = (extra: Record<string, unknown>, env: Record<string, string> 
     env_vars: env,
     extra_args: extra,
   }) as unknown as Recipe;
+
+const config = { data_dir: "/tmp/local-studio-test" } as Config;
+
+const buildVllmCommand = (recipe: Recipe): string[] => getEngineSpec("vllm").buildCommand(recipe, config);
 
 const pairIndex = (cmd: string[], flag: string, value: string): number => {
   for (let i = 0; i < cmd.length - 1; i += 1) {
