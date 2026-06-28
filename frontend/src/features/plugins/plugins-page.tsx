@@ -532,6 +532,10 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
     const server = serverForEntry(servers, entry);
     const oauthProviderId = oauthProviderIdForEntry(entry);
     const oauthStatus = oauthStatusForEntry(oauthStatuses, entry);
+    if (server && !server.enabled) {
+      await post({ action: "set_enabled", id: server.id, enabled: true }, server.id);
+      return;
+    }
     if (server?.enabled && (!oauthProviderId || oauthStatus?.connected)) {
       window.location.href = "/agent";
       return;
@@ -545,6 +549,10 @@ function PluginsManager({ mode }: { mode: "page" | "settings" }) {
         return;
       }
       openOAuth(oauthProviderId, entry.id);
+      return;
+    }
+    if (!requiresCatalogueConfiguration(entry)) {
+      await post({ action: "add_from_catalogue", catalogueId: entry.id }, entry.id);
       return;
     }
     beginConfigureEntry(entry);
@@ -1034,6 +1042,10 @@ function pluginLucideIcon(entry: CatalogueEntry): LucideIcon {
 
 function pluginSubtitle(entry: CatalogueEntry): string {
   return entry.shortDescription ?? entry.description;
+}
+
+function requiresCatalogueConfiguration(entry: CatalogueEntry): boolean {
+  return entry.requiresTargetArg === true || Object.keys(entry.env ?? {}).length > 0;
 }
 
 function toolLabel(tool: string): string {
