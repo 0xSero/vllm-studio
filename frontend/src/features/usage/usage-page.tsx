@@ -1,10 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { AppPage, PageState, RefreshButton, Tabs } from "@/ui";
-import { DailyUsageChart } from "@/features/usage/daily-usage-chart";
+import {
+  AppPage,
+  PageState,
+  RefreshButton,
+  SegmentedControl,
+  Tabs,
+  type SegmentedItem,
+} from "@/ui";
+import { DailyUsageChart, type UsagePeriod } from "@/features/usage/daily-usage-chart";
 import { ModelPerformanceTable } from "@/features/usage/model-performance-table";
-import { PerformanceDetails } from "@/features/usage/performance-details";
 import { SecondaryMetrics } from "@/features/usage/secondary-metrics";
 import { useUsage, type UsageSource } from "@/features/usage/use-usage";
 import { formatNumber } from "@/lib/formatters";
@@ -15,8 +21,15 @@ const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
   { id: "pi-sessions", label: "Pi sessions", sublabel: "coding-agent JSONL" },
 ];
 
+const PERIOD_ITEMS: Array<SegmentedItem<UsagePeriod>> = [
+  { id: "day", label: "Day" },
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+];
+
 export default function UsagePage() {
   const [tab, setTab] = useState<UsageSource>("provider");
+  const [period, setPeriod] = useState<UsagePeriod>("day");
   const {
     stats,
     peakMetrics,
@@ -28,6 +41,7 @@ export default function UsagePage() {
     loadStats,
     dailyByModel,
     modelsForChart,
+    modelColorIndex,
     sortedModels,
     handleSort,
     toggleRow,
@@ -47,10 +61,7 @@ export default function UsagePage() {
   const safeStats = normalizeUsageStats(stats);
   const totals = safeStats.totals;
   const recent = safeStats.recent_activity;
-  const cache = safeStats.cache;
   const tpr = safeStats.tokens_per_request;
-  const successRate = Number(totals.success_rate ?? 0);
-  const cacheRate = Number(cache.hit_rate ?? 0);
 
   return (
     <AppPage>
@@ -93,7 +104,7 @@ export default function UsagePage() {
             />
           </div>
 
-          <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--border)/40 pb-5 sm:grid-cols-3 lg:grid-cols-6">
+          <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--border)/40 pb-5 lg:grid-cols-4">
             <HeaderStat
               label="prompt"
               value={formatNumber(totals.prompt_tokens)}
@@ -104,7 +115,6 @@ export default function UsagePage() {
               value={formatNumber(totals.completion_tokens)}
               detail="output tokens"
             />
-            <HeaderStat label="success" value={`${successRate.toFixed(1)}%`} detail="chat turns" />
             <HeaderStat
               label="24h req"
               value={formatNumber(recent.last_24h_requests)}
@@ -115,19 +125,25 @@ export default function UsagePage() {
               value={formatNumber(tpr.avg)}
               detail={`${formatNumber(tpr.avg_prompt)} in · ${formatNumber(tpr.avg_completion)} out`}
             />
-            <HeaderStat
-              label="cache"
-              value={`${cacheRate.toFixed(1)}%`}
-              detail={`${formatNumber(cache.hits)} hits · ${formatNumber(cache.misses)} misses`}
-            />
           </dl>
         </section>
 
-        {DailyUsageChart(safeStats, dailyByModel, modelsForChart)}
+        <div className="mb-2 flex justify-end px-2">
+          <SegmentedControl items={PERIOD_ITEMS} value={period} onChange={setPeriod} size="sm" />
+        </div>
+
+        <DailyUsageChart
+          stats={safeStats}
+          dailyByModel={dailyByModel}
+          modelsForChart={modelsForChart}
+          modelColorIndex={modelColorIndex}
+          period={period}
+        />
 
         <ModelPerformanceTable
           expandedRows={expandedRows}
           handleSort={handleSort}
+          modelColorIndex={modelColorIndex}
           peakMetrics={peakMetrics}
           sortDirection={sortDirection}
           sortField={sortField}
@@ -135,10 +151,7 @@ export default function UsagePage() {
           toggleRow={toggleRow}
         />
 
-        <div className="grid gap-x-6 lg:grid-cols-2">
-          {PerformanceDetails(safeStats)}
-          {SecondaryMetrics(safeStats)}
-        </div>
+        {SecondaryMetrics(safeStats)}
       </div>
     </AppPage>
   );
@@ -154,7 +167,9 @@ function HeaderStat({ label, value, detail }: { label: string; value: string; de
         {value}
       </dd>
       {detail ? (
-        <dd className="mt-1 truncate font-mono text-[length:var(--fs-xs)] text-(--dim)">{detail}</dd>
+        <dd className="mt-1 truncate font-mono text-[length:var(--fs-xs)] text-(--dim)">
+          {detail}
+        </dd>
       ) : null}
     </div>
   );

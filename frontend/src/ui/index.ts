@@ -50,8 +50,16 @@ export { RefreshButton } from "./refresh-button";
 export type { RefreshButtonProps } from "./refresh-button";
 
 // Table
-export { Table, THead, TBody, TRow, TH, TCell } from "./table";
-export type { TableProps, THeadProps, TBodyProps, TRowProps, THProps, TCellProps } from "./table";
+export { Table, THead, TBody, TRow, TH, SortableTH, TCell } from "./table";
+export type {
+  TableProps,
+  THeadProps,
+  TBodyProps,
+  TRowProps,
+  THProps,
+  SortableTHProps,
+  TCellProps,
+} from "./table";
 
 // Shared app/page composition
 export { AppPage, PageHeader, SectionNav, RefreshIconButton } from "./page";
@@ -75,6 +83,8 @@ export { ColorField } from "./color-field";
 
 // Display primitives
 export { ProgressBar } from "./progress-bar";
+export { MetricMeter, MetricPanel, MiniBarChart, StackedMetricBar } from "./metric-visuals";
+export type { MetricSegment, MiniBarDatum } from "./metric-visuals";
 export { Stat } from "./stat";
 export { SectionLabel } from "./section-label";
 export { ErrorBox } from "./error-box";
