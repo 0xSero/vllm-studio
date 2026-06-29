@@ -166,6 +166,19 @@ export const createProcessManager = (
     }
   };
 
+  const removeStaleDockerContainerForCommand = (command: string[]): void => {
+    const dockerIndex = command.findIndex(
+      (argument) => argument === "docker" || argument.endsWith("/docker")
+    );
+    if (dockerIndex < 0 || command[dockerIndex + 1] !== "run") return;
+    const name = extractFlag(command.slice(dockerIndex + 2), "--name");
+    if (!name) return;
+    const result = spawnSync("docker", ["rm", "-f", name], { stdio: "ignore" });
+    if (result.status !== 0) {
+      spawnSync("sudo", ["-n", "docker", "rm", "-f", name], { stdio: "ignore" });
+    }
+  };
+
   const sendSignal = (pid: number, signal: NodeJS.Signals): boolean => {
     try {
       process.kill(pid, signal);
@@ -277,6 +290,7 @@ export const createProcessManager = (
     }
 
     await cleanupOrphanedInferenceWorkers("before-launch");
+    removeStaleDockerContainerForCommand(command);
 
     const logFile = primaryLogPathFor(config.data_dir, updatedRecipe.id);
     // Best-effort retention to prevent unbounded growth over long-running installs.
