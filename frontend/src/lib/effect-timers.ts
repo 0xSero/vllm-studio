@@ -22,10 +22,10 @@ export interface EffectTimer {
 export function effectInterval(fn: () => void, intervalMs: number): EffectTimer {
   const fiber = Effect.runFork(
     Effect.sync(fn).pipe(Effect.repeat(Schedule.spaced(intervalMs))),
-  ) as Fiber.RuntimeFiber<void, unknown>;
+  ) as Fiber.Fiber<void, unknown>;
   return {
     cancel: () => {
-      void Promise.resolve(Fiber.interrupt(fiber as never));
+      void Effect.runPromise(Fiber.interrupt(fiber));
     },
   };
 }
@@ -41,10 +41,10 @@ export function effectTimeout(fn: () => void, delayMs: number): EffectTimer {
       yield* Effect.sleep(delayMs);
       fn();
     }),
-  ) as Fiber.RuntimeFiber<void, unknown>;
+  ) as Fiber.Fiber<void, unknown>;
   return {
     cancel: () => {
-      void Promise.resolve(Fiber.interrupt(fiber as never));
+      void Effect.runPromise(Fiber.interrupt(fiber));
     },
   };
 }

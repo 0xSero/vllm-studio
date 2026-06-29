@@ -1,18 +1,18 @@
-// Effect-TS schemas for the agent session runtime wire types.
+// Effect v4 schemas for the agent session runtime wire types.
 //
 // These validate the JSON payloads that cross the SSE/HTTP boundary to the Pi
-// coding-agent runtime. Using @effect/schema here means malformed payloads are
+// coding-agent runtime. Using Effect Schema here means malformed payloads are
 // rejected at the edge instead of silently producing undefined fields deep in
 // the reducer. The Pi event body is intentionally loose (Schema.Unknown) — the
 // full Pi event taxonomy is large and additive, and the pure reducer handles it.
 
-import * as Schema from "@effect/schema/Schema";
+import { Schema } from "effect";
 
 /** Context-usage telemetry attached to a runtime status frame. */
 export const RuntimeContextUsageSchema = Schema.Struct({
-  tokens: Schema.Union(Schema.Null, Schema.Number),
+  tokens: Schema.Union([Schema.Null, Schema.Number]),
   contextWindow: Schema.Number,
-  percent: Schema.Union(Schema.Null, Schema.Number),
+  percent: Schema.Union([Schema.Null, Schema.Number]),
   shouldCompact: Schema.Boolean,
 });
 
@@ -27,11 +27,11 @@ const RuntimeLoggedEventSchema = Schema.Struct({
 export const RuntimeStatusSchema = Schema.Struct({
   active: Schema.optional(Schema.Boolean),
   running: Schema.optional(Schema.Boolean),
-  piSessionId: Schema.optional(Schema.Union(Schema.Null, Schema.String)),
-  modelId: Schema.optional(Schema.Union(Schema.Null, Schema.String)),
+  piSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
+  modelId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   eventSeq: Schema.optional(Schema.Number),
   events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
-  contextUsage: Schema.optional(Schema.Union(Schema.Null, RuntimeContextUsageSchema)),
+  contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
 });
 
 /**
@@ -41,7 +41,7 @@ export const RuntimeStatusSchema = Schema.Struct({
  * the pure pi-event-applier, which handles the full taxonomy.
  */
 const RuntimeEventPayloadSchema = Schema.Struct({
-  type: Schema.Literal("status", "pi"),
+  type: Schema.Literals(["status", "pi"]),
   // Present when `type === "pi"`.
   seq: Schema.optional(Schema.Number),
   // The raw Pi event object (for `type === "pi"`).
@@ -60,10 +60,9 @@ export type DecodedRuntimeEventPayload = Schema.Schema.Type<typeof RuntimeEventP
  */
 export function decodeRuntimeEventPayload(raw: unknown): DecodedRuntimeEventPayload | null {
   if (!raw || typeof raw !== "object") return null;
-  const decoded = Schema.decodeUnknownEither(RuntimeEventPayloadSchema, {
+  return Schema.decodeUnknownOption(RuntimeEventPayloadSchema, {
     onExcessProperty: "preserve",
-  })(raw);
-  return decoded._tag === "Right" ? decoded.right : null;
+  })(raw).pipe((option) => (option._tag === "Some" ? option.value : null));
 }
 
 /** Canonical RuntimeContextUsage — derived from the schema (single source). */

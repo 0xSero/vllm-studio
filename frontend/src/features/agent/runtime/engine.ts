@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
+import { Effect } from "effect";
 import {
   mergeCanonicalAndRuntimeEvents,
   replayCursorAfterRuntimeHydration,
@@ -8,9 +9,7 @@ import {
   usageFromEvent,
 } from "@/features/agent/messages";
 import {
-  activeComposerPlugins,
   selectedContextPrompt,
-  type ComposerPluginRef,
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -26,7 +25,6 @@ import {
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
-const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
 
@@ -93,47 +91,56 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const loadRuntimeStatusCb = useCallback(api.loadRuntimeStatus, []);
 
   const sendControl = useCallback(
-    async (
+    (
       mode: "steer" | "follow_up",
       text: string,
       runtime: string,
       sessionId: SessionId,
       piSessionId?: string | null,
     ): Promise<{ ok: boolean; error?: string }> => {
-      if (!text.trim() || !modelId) return { ok: false };
-      const selection = selectionForRef.current(sessionId);
-      const plugins = activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
-      const skills = selection.skills ?? EMPTY_SKILLS;
-      const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
-      const browserEnabledForTurn = browserToolEnabled;
-      const message = selectedContextPrompt(text, plugins, skills);
-      try {
-        const result = await api.submitTurnCommand({
-          sessionId: runtime,
-          modelId,
-          message,
-          cwd: cwd.trim() || undefined,
-          piSessionId,
-          mode,
-          browserToolEnabled: browserEnabledForTurn,
-          browserSessionId: runtime,
-          browserBackend,
-          canvasEnabled,
-          plugins: plugins as ComposerPluginRef[],
-          skills,
-          promptTemplates,
-        });
-        updateSession(sessionId, (session) => ({
-          ...session,
-          piSessionId: result.piSessionId || session.piSessionId,
-          contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
-          status: "running",
-        }));
-        if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : "Message failed" };
-      }
+      if (!text.trim() || !modelId) return Promise.resolve({ ok: false });
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          const selection = selectionForRef.current(sessionId);
+          const skills = selection.skills ?? EMPTY_SKILLS;
+          const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
+          const browserEnabledForTurn = browserToolEnabled;
+          const message = selectedContextPrompt(text, skills);
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              api.submitTurnCommand({
+                sessionId: runtime,
+                modelId,
+                message,
+                cwd: cwd.trim() || undefined,
+                piSessionId,
+                mode,
+                browserToolEnabled: browserEnabledForTurn,
+                browserSessionId: runtime,
+                browserBackend,
+                canvasEnabled,
+                skills,
+                promptTemplates,
+              }),
+            catch: (error) => error,
+          });
+          updateSession(sessionId, (session) => ({
+            ...session,
+            piSessionId: result.piSessionId || session.piSessionId,
+            contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
+            status: "running",
+          }));
+          if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
+          return { ok: true };
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.succeed({
+              ok: false,
+              error: error instanceof Error ? error.message : "Message failed",
+            }),
+          ),
+        ),
+      );
     },
     [
       browserToolEnabled,
@@ -147,8 +154,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 
   const submitPrompt = useCallback(
-    async (args: SubmitArgs) => {
-      await submitPromptTurn(
+    (args: SubmitArgs) =>
+      submitPromptTurn(
         {
           activeTabId,
           browserToolEnabled,
@@ -163,8 +170,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           updateSession,
         },
         args,
-      );
-    },
+      ),
     [
       activeTabId,
       modelId,
@@ -179,151 +185,185 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 
   const abortTurn = useCallback(
-    async (sessionId: SessionId) => {
-      const session = tabsRef.current.find((tab) => tab.id === sessionId);
-      const runtime = resolveRuntimeSessionId(session, runtimeSessionId);
-      await api.abortSession(runtime);
-      updateSession(sessionId, (s) => ({ ...s, status: "idle" }));
-    },
+    (sessionId: SessionId) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const session = tabsRef.current.find((tab) => tab.id === sessionId);
+          const runtime = resolveRuntimeSessionId(session, runtimeSessionId);
+          yield* Effect.tryPromise({
+            try: () => api.abortSession(runtime),
+            catch: (error) => error,
+          });
+          updateSession(sessionId, (s) => ({ ...s, status: "idle" }));
+        }),
+      ),
     [runtimeSessionId, updateSession],
   );
 
   const loadAndReplay = useCallback(
-    async (piSessionId: string, sessionId: SessionId) => {
-      // Seed from the crash-recovery cache first so prior history shows
-      // instantly and survives a canonical replay that errors, comes back
-      // empty, or can't run at all (no cwd). Canonical content replaces it
-      // below when it loads.
-      const cachedMessages = readTranscriptSnapshot(piSessionId);
-      const seedCached = (session: Session) =>
-        session.messages.length === 0 && cachedMessages
-          ? { ...session, messages: cachedMessages }
-          : session;
-      if (!cwd) {
-        // No cwd yet — we can't hydrate canonical history, but we can still show
-        // the cached transcript. Make sure the session isn't left in a permanent
-        // "loading" state (which blocks the composer's send button) just because
-        // the snapshot reducer optimistically tagged it as loading on hydration.
-        updateSession(sessionId, (session) =>
-          seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
-        );
-        return;
-      }
-      updateSession(sessionId, (session) => ({
-        ...seedCached(session),
-        status: "loading",
-        error: "",
-      }));
-      try {
-        const { events } = await api.loadCanonicalSession(piSessionId, cwd);
-        const runtimeId = resolveRuntimeSessionId(
-          tabsRef.current.find((tab) => tab.id === sessionId),
-          runtimeSessionId,
-        );
-        const runtimeStatus = await api.loadRuntimeStatus(runtimeId, piSessionId);
-        const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-        const replayEvents = mergeCanonicalAndRuntimeEvents(
-          events,
-          runtimeActive ? runtimeStatus?.events : [],
-        );
-        const {
-          messages,
-          title,
-          startedAt,
-          modelId: replayModelId,
-        } = replaySessionEvents(replayEvents);
-        const tokenStats = [...replayEvents]
-          .slice(latestCompactionBoundaryIndex(replayEvents) + 1)
-          .reverse()
-          .map(usageFromEvent)
-          .find((stats): stats is TokenStats => Boolean(stats));
-        const replaySeq = replayCursorAfterRuntimeHydration(runtimeActive, runtimeStatus?.eventSeq);
-        updateSession(sessionId, (session) => ({
-          ...session,
-          // Canonical wins when it has content; an empty replay keeps whatever we
-          // seeded from the cache so a transiently-empty log can't blank history.
-          messages: messages.length > 0 ? messages : session.messages,
-          piSessionId,
-          cwd: session.cwd || cwd,
-          modelId: session.modelId || replayModelId || runtimeStatus?.modelId || modelId,
-          title: title ?? session.title,
-          startedAt: startedAt ?? session.startedAt,
-          tokenStats: tokenStats ?? undefined,
-          contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
-          status: runtimeActive ? "running" : "idle",
-          activeAssistantId: undefined,
-          error: "",
-        }));
-        // Reattach the live stream from the hydrated cursor so EventSource
-        // does not replay already-rendered content.
-        sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
-      } catch (err) {
-        // Canonical read failed. If the runtime is still alive, don't strand the
-        // session idle (which would drop the live stream — reconcile only
-        // subscribes for live statuses): keep the seeded history, mark it running,
-        // and reset the cursor so the reattached SSE replays the runtime backlog.
-        const runtimeId = resolveRuntimeSessionId(
-          tabsRef.current.find((tab) => tab.id === sessionId),
-          runtimeSessionId,
-        );
-        const runtimeStatus = await api.loadRuntimeStatus(runtimeId, piSessionId).catch(() => null);
-        if (runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId)) {
+    (piSessionId: string, sessionId: SessionId) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          // Seed from the crash-recovery cache first so prior history shows
+          // instantly and survives a canonical replay that errors, comes back
+          // empty, or can't run at all (no cwd). Canonical content replaces it
+          // below when it loads.
+          const cachedMessages = readTranscriptSnapshot(piSessionId);
+          const seedCached = (session: Session) =>
+            session.messages.length === 0 && cachedMessages
+              ? { ...session, messages: cachedMessages }
+              : session;
+          if (!cwd) {
+            // No cwd yet — we can't hydrate canonical history, but we can still show
+            // the cached transcript. Make sure the session isn't left in a permanent
+            // "loading" state (which blocks the composer's send button) just because
+            // the snapshot reducer optimistically tagged it as loading on hydration.
+            updateSession(sessionId, (session) =>
+              seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
+            );
+            return;
+          }
           updateSession(sessionId, (session) => ({
-            ...session,
-            contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
-            status: "running",
-            activeAssistantId: undefined,
+            ...seedCached(session),
+            status: "loading",
             error: "",
           }));
-          sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
-          return;
-        }
-        updateSession(sessionId, (session) => ({
-          ...session,
-          error: err instanceof Error ? err.message : "Failed to load session",
-          status: "idle",
-        }));
-      }
-    },
+          const replayResult = yield* Effect.tryPromise({
+            try: () => api.loadCanonicalSession(piSessionId, cwd),
+            catch: (error) => error,
+          }).pipe(Effect.result);
+          if (replayResult._tag === "Success") {
+            const { events } = replayResult.success;
+            const runtimeId = resolveRuntimeSessionId(
+              tabsRef.current.find((tab) => tab.id === sessionId),
+              runtimeSessionId,
+            );
+            const runtimeStatus = yield* Effect.tryPromise({
+              try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
+              catch: () => null,
+            });
+            const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
+            const replayEvents = mergeCanonicalAndRuntimeEvents(
+              events,
+              runtimeActive ? runtimeStatus?.events : [],
+            );
+            const {
+              messages,
+              title,
+              startedAt,
+              modelId: replayModelId,
+            } = replaySessionEvents(replayEvents);
+            const tokenStats = [...replayEvents]
+              .slice(latestCompactionBoundaryIndex(replayEvents) + 1)
+              .reverse()
+              .map(usageFromEvent)
+              .find((stats): stats is TokenStats => Boolean(stats));
+            const replaySeq = replayCursorAfterRuntimeHydration(
+              runtimeActive,
+              runtimeStatus?.eventSeq,
+            );
+            updateSession(sessionId, (session) => ({
+              ...session,
+              // Canonical wins when it has content; an empty replay keeps whatever we
+              // seeded from the cache so a transiently-empty log can't blank history.
+              messages: messages.length > 0 ? messages : session.messages,
+              piSessionId,
+              cwd: session.cwd || cwd,
+              modelId: session.modelId || replayModelId || runtimeStatus?.modelId || modelId,
+              title: title ?? session.title,
+              startedAt: startedAt ?? session.startedAt,
+              tokenStats: tokenStats ?? undefined,
+              contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
+              status: runtimeActive ? "running" : "idle",
+              activeAssistantId: undefined,
+              error: "",
+            }));
+            // Reattach the live stream from the hydrated cursor so EventSource
+            // does not replay already-rendered content.
+            sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
+          } else {
+            const err = replayResult.failure;
+            // Canonical read failed. If the runtime is still alive, don't strand the
+            // session idle (which would drop the live stream — reconcile only
+            // subscribes for live statuses): keep the seeded history, mark it running,
+            // and reset the cursor so the reattached SSE replays the runtime backlog.
+            const runtimeId = resolveRuntimeSessionId(
+              tabsRef.current.find((tab) => tab.id === sessionId),
+              runtimeSessionId,
+            );
+            const runtimeStatus = yield* Effect.tryPromise({
+              try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
+              catch: () => null,
+            });
+            if (runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId)) {
+              updateSession(sessionId, (session) => ({
+                ...session,
+                contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
+                status: "running",
+                activeAssistantId: undefined,
+                error: "",
+              }));
+              sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
+              return;
+            }
+            updateSession(sessionId, (session) => ({
+              ...session,
+              error: err instanceof Error ? err.message : "Failed to load session",
+              status: "idle",
+            }));
+          }
+        }),
+      ),
     [cwd, modelId, runtimeSessionId, updateSession],
   );
 
   const compact = useCallback(
-    async (sessionId: SessionId) => {
-      const session = tabsRef.current.find((tab) => tab.id === sessionId);
-      if (!session || !modelId) return;
-      updateSession(sessionId, (s) => ({ ...s, error: "" }));
-      try {
-        const result = await api.compactSession({
-          sessionId: session.runtimeSessionId || runtimeSessionId,
-          modelId,
-          cwd: cwd.trim() || undefined,
-          piSessionId: session.piSessionId,
-          browserToolEnabled,
-          browserSessionId: session.runtimeSessionId || runtimeSessionId,
-          browserBackend,
-          canvasEnabled,
-          plugins: activeComposerPlugins(
-            selectionForRef.current(sessionId).plugins ?? EMPTY_PLUGINS,
-          ) as ComposerPluginRef[],
-          skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
-          promptTemplates:
-            selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
-        });
-        const nextSessionId = result.status?.piSessionId || session.piSessionId;
-        if (nextSessionId) await loadAndReplay(nextSessionId, sessionId);
-        updateSession(sessionId, (s) => ({
-          ...s,
-          contextUsage: api.runtimeContextUsage(result.status ?? null, null),
-          tokenStats: undefined,
-        }));
-      } catch (error) {
-        updateSession(sessionId, (s) => ({
-          ...s,
-          error: error instanceof Error ? error.message : "Compaction failed",
-        }));
-      }
-    },
+    (sessionId: SessionId) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const session = tabsRef.current.find((tab) => tab.id === sessionId);
+          if (!session || !modelId) return;
+          updateSession(sessionId, (s) => ({ ...s, error: "" }));
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              api.compactSession({
+                sessionId: session.runtimeSessionId || runtimeSessionId,
+                modelId,
+                cwd: cwd.trim() || undefined,
+                piSessionId: session.piSessionId,
+                browserToolEnabled,
+                browserSessionId: session.runtimeSessionId || runtimeSessionId,
+                browserBackend,
+                canvasEnabled,
+                skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
+                promptTemplates:
+                  selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+              }),
+            catch: (error) => error,
+          });
+          const nextSessionId = result.status?.piSessionId || session.piSessionId;
+          if (nextSessionId) {
+            yield* Effect.tryPromise({
+              try: () => loadAndReplay(nextSessionId, sessionId),
+              catch: (error) => error,
+            });
+          }
+          updateSession(sessionId, (s) => ({
+            ...s,
+            contextUsage: api.runtimeContextUsage(result.status ?? null, null),
+            tokenStats: undefined,
+          }));
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              updateSession(sessionId, (s) => ({
+                ...s,
+                error: error instanceof Error ? error.message : "Compaction failed",
+              }));
+            }),
+          ),
+        ),
+      ),
     [
       browserToolEnabled,
       browserBackend,

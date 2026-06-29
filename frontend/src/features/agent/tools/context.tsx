@@ -12,8 +12,8 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { Effect } from "effect";
 import type {
-  ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -49,7 +49,6 @@ export type ToolsContextValue = {
   computer: ComputerState;
   fileOpenRequest: FileOpenRequest | null;
   contextAttachRequest: ContextAttachRequest | null;
-  pluginCatalogue: ComposerPluginRef[];
   skillCatalogue: ComposerSkillRef[];
   promptTemplateCatalogue: ComposerPromptTemplateRef[];
   selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
@@ -81,6 +80,9 @@ export type ToolsContextValue = {
 
 const ToolsContext = createContext<ToolsContextValue | null>(null);
 
+const canvasSessionQuery = (sessionId: SessionId | null | undefined): string =>
+  sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
     return { enabled: false, backend: "embedded", url: "", input: "" };
@@ -110,7 +112,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [contextAttachRequest, setContextAttachRequest] = useState<ContextAttachRequest | null>(
     null,
   );
-  const [pluginCatalogue, setPluginCatalogue] = useState<ComposerPluginRef[]>([]);
   const [skillCatalogue, setSkillCatalogue] = useState<ComposerSkillRef[]>([]);
   const [promptTemplateCatalogue, setPromptTemplateCatalogue] = useState<
     ComposerPromptTemplateRef[]
@@ -120,14 +121,8 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [selectionVersion, setSelectionVersion] = useState(0);
   const activeCanvasSessionRef = useRef<SessionId | null>(null);
   const [activeCanvasSessionId, setActiveCanvasSessionIdState] = useState<SessionId | null>(null);
-  const canvasQuery = (sessionId: SessionId | null) =>
-    sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
-
-  // Discover the workspace-global plugin / skill catalogue once on mount.
-  // The lifecycle bridge lives in `use-tools-catalogue-effects.ts`.
   useToolsCatalogueEffects({
-    onLoaded: ({ plugins, skills, promptTemplates }) => {
-      setPluginCatalogue(plugins);
+    onLoaded: ({ skills, promptTemplates }) => {
       setSkillCatalogue(skills);
       setPromptTemplateCatalogue(promptTemplates);
     },
@@ -290,11 +285,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     // Best-effort server sync; the use-canvas-effects hook owns full hydration
     // and reconciliation. Failures here are harmless because the next mount
     // will re-read the server-side document.
-    void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    }).catch(() => undefined);
+    void Effect.runPromise(syncCanvasEffect(activeCanvasSessionRef.current, { enabled }));
   }, []);
 
   const toggleCanvas = useCallback(() => {
@@ -303,11 +294,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       const tabs = next ? uniqueComputerTabs([...current.tabs, "canvas"]) : current.tabs;
       writeComputerCanvasEnabled(next);
       if (next) writeComputerTabs(tabs);
-      void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      }).catch(() => undefined);
+      void Effect.runPromise(syncCanvasEffect(activeCanvasSessionRef.current, { enabled: next }));
       return {
         ...current,
         canvasEnabled: next,
@@ -324,11 +311,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       current.canvasText === text ? current : { ...current, canvasText: text },
     );
     writeComputerCanvasText(text);
-    void fetch(`/api/agent/canvas${canvasQuery(activeCanvasSessionRef.current)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: true, text }),
-    }).catch(() => undefined);
+    void Effect.runPromise(
+      syncCanvasEffect(activeCanvasSessionRef.current, { enabled: true, text }),
+    );
   }, []);
 
   const requestFileOpen = useCallback((path: string) => {
@@ -374,7 +359,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       const current = map.get(sessionId);
       if (
         current &&
-        current.plugins === selection.plugins &&
         current.skills === selection.skills &&
         current.promptTemplates === selection.promptTemplates
       ) {
@@ -393,7 +377,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       const existing = map.get(id);
       if (
         existing &&
-        existing.plugins === selection.plugins &&
         existing.skills === selection.skills &&
         existing.promptTemplates === selection.promptTemplates
       ) {
@@ -411,7 +394,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       computer,
       fileOpenRequest,
       contextAttachRequest,
-      pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
       selectionFor,
@@ -441,7 +423,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       computer,
       fileOpenRequest,
       contextAttachRequest,
-      pluginCatalogue,
       skillCatalogue,
       promptTemplateCatalogue,
       selectionFor,
@@ -497,21 +478,19 @@ function useCanvasEffects({
     (_notify: () => void) => {
       let cancelled = false;
       const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
-      fetch(`/api/agent/canvas${query}`, { cache: "no-store" })
-        .then((res) =>
-          res.ok
-            ? (res.json() as Promise<{ enabled?: boolean; text?: string }>)
-            : Promise.reject(new Error("Canvas fetch failed")),
-        )
-        .then((payload) => {
-          if (cancelled) return;
-          setComputer((current) => ({
-            ...current,
-            canvasEnabled: payload.enabled ?? current.canvasEnabled,
-            canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
-          }));
-        })
-        .catch(() => undefined);
+      void Effect.runPromise(
+        loadCanvasEffect(query).pipe(
+          Effect.map((payload) => {
+            if (cancelled) return;
+            setComputer((current) => ({
+              ...current,
+              canvasEnabled: payload.enabled ?? current.canvasEnabled,
+              canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
+            }));
+          }),
+          Effect.catch(() => Effect.void),
+        ),
+      );
       return () => {
         cancelled = true;
       };
@@ -524,11 +503,8 @@ function useCanvasEffects({
 
 const getCanvasSnapshot = (): number => 0;
 
-// One-shot fetch of the workspace-global plugin and skill catalogues.
-
 type UseToolsCatalogueEffectsOptions = {
   onLoaded: (payload: {
-    plugins: ComposerPluginRef[];
     skills: ComposerSkillRef[];
     promptTemplates: ComposerPromptTemplateRef[];
   }) => void;
@@ -538,9 +514,13 @@ function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions)
   const onLoadedRef = useRef(onLoaded);
   const subscribe = useCallback((_notify: () => void) => {
     let cancelled = false;
-    void loadToolsCatalogue().then((payload) => {
-      if (!cancelled) onLoadedRef.current(payload);
-    });
+    void Effect.runPromise(
+      loadToolsCatalogueEffect().pipe(
+        Effect.map((payload) => {
+          if (!cancelled) onLoadedRef.current(payload);
+        }),
+      ),
+    );
     return () => {
       cancelled = true;
     };
@@ -549,27 +529,75 @@ function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions)
   useSyncExternalStore(subscribe, getToolsCatalogueSnapshot, getToolsCatalogueSnapshot);
 }
 
-async function loadToolsCatalogue(): Promise<{
-  plugins: ComposerPluginRef[];
+function syncCanvasEffect(
+  sessionId: SessionId | null | undefined,
+  payload: { enabled: boolean; text?: string },
+): Effect.Effect<void> {
+  return Effect.tryPromise({
+    try: () =>
+      fetch(`/api/agent/canvas${canvasSessionQuery(sessionId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    catch: () => undefined,
+  }).pipe(
+    Effect.map(() => undefined),
+    Effect.catch(() => Effect.void),
+  );
+}
+
+function loadCanvasEffect(
+  query: string,
+): Effect.Effect<{ enabled?: boolean; text?: string }, unknown> {
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () => fetch(`/api/agent/canvas${query}`, { cache: "no-store" }),
+      catch: (error) => error,
+    });
+    if (!response.ok) return yield* Effect.fail(new Error("Canvas fetch failed"));
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<{ enabled?: boolean; text?: string }>,
+      catch: (error) => error,
+    });
+  });
+}
+
+function loadToolsCatalogue(): Promise<{
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];
 }> {
-  const [plugins, skills, promptTemplates] = await Promise.all([
-    fetch("/api/mcp/servers?includeDisabled=1", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ servers?: ComposerPluginRef[] }>)
-      .then((payload) => payload.servers ?? [])
-      .catch(() => [] as ComposerPluginRef[]),
-    fetch("/api/agent/skills", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ skills?: ComposerSkillRef[] }>)
-      .then((payload) => payload.skills ?? [])
-      .catch(() => [] as ComposerSkillRef[]),
-    fetch("/api/agent/prompt-templates", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ templates?: ComposerPromptTemplateRef[] }>)
-      .then((payload) => payload.templates ?? [])
-      .catch(() => [] as ComposerPromptTemplateRef[]),
-  ]);
+  return Effect.runPromise(loadToolsCatalogueEffect());
+}
 
-  return { plugins, skills, promptTemplates };
+function loadToolsCatalogueEffect(): Effect.Effect<{
+  skills: ComposerSkillRef[];
+  promptTemplates: ComposerPromptTemplateRef[];
+}> {
+  return Effect.gen(function* () {
+    const [skills, promptTemplates] = yield* Effect.all([
+      loadCatalogueListEffect<ComposerSkillRef>("/api/agent/skills", "skills"),
+      loadCatalogueListEffect<ComposerPromptTemplateRef>(
+        "/api/agent/prompt-templates",
+        "templates",
+      ),
+    ] as const);
+    return { skills, promptTemplates };
+  });
+}
+
+function loadCatalogueListEffect<TItem>(url: string, key: string): Effect.Effect<TItem[]> {
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () => fetch(url, { cache: "no-store" }),
+      catch: (error) => error,
+    });
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<Record<string, TItem[] | undefined>>,
+      catch: (error) => error,
+    });
+    return payload[key] ?? [];
+  }).pipe(Effect.catch(() => Effect.succeed([])));
 }
 
 const getToolsCatalogueSnapshot = (): number => 0;

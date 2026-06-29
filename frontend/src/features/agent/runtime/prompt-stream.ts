@@ -6,11 +6,9 @@ import {
   runtimeStatusLooksActive,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
-import {
-  activeComposerPlugins,
-  type ComposerPluginRef,
-  type ComposerPromptTemplateRef,
-  type ComposerSkillRef,
+import type {
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import type { AgentImageInput } from "@/features/agent/contracts";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
@@ -19,7 +17,6 @@ import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 
-const EMPTY_PLUGINS: ComposerPluginRef[] = [];
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
 
@@ -34,7 +31,6 @@ export type SubmitArgs = {
   images?: AgentImageInput[];
   attachments?: ChatMessageAttachment[];
   browserToolEnabled?: boolean;
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
   targetSessionId?: SessionId;
@@ -57,7 +53,6 @@ export type PromptStreamDeps = {
 type PromptTurnContext = {
   assistantId: string;
   browserEnabledForTurn: boolean;
-  plugins: ComposerPluginRef[];
   promptTemplates: ComposerPromptTemplateRef[];
   runtime: string;
   selected: Session;
@@ -66,12 +61,12 @@ type PromptTurnContext = {
   userId: string;
 };
 
-export async function submitPromptTurn(deps: PromptStreamDeps, args: SubmitArgs): Promise<void> {
+export function submitPromptTurn(deps: PromptStreamDeps, args: SubmitArgs): Promise<void> {
   const context = createPromptTurnContext(deps, args);
-  if (!context) return;
+  if (!context) return Promise.resolve();
 
   appendOptimisticPrompt(deps, context, args);
-  await startPromptCommand(deps, context, args);
+  return startPromptCommand(deps, context, args);
 }
 
 function createPromptTurnContext(
@@ -83,7 +78,6 @@ function createPromptTurnContext(
   if (!selected || !deps.modelId) return null;
 
   const selection = deps.selectionFor(sessionId);
-  const plugins = args.plugins ?? activeComposerPlugins(selection.plugins ?? EMPTY_PLUGINS);
   const skills = args.skills ?? selection.skills ?? EMPTY_SKILLS;
   const promptTemplates =
     args.promptTemplates ?? selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
@@ -91,7 +85,6 @@ function createPromptTurnContext(
   return {
     assistantId: newId("assistant"),
     browserEnabledForTurn: args.browserToolEnabled ?? deps.browserToolEnabled,
-    plugins,
     promptTemplates,
     runtime: selected.runtimeSessionId || deps.runtimeSessionId,
     selected,
@@ -135,15 +128,11 @@ function appendOptimisticPrompt(
   }));
 }
 
-async function startPromptCommand(
+function startPromptCommand(
   deps: PromptStreamDeps,
   context: PromptTurnContext,
   args: SubmitArgs,
 ): Promise<void> {
-  // The turn-accept flow is an Effect program: submit the command, and on any
-  // failure probe the runtime status to see if the turn actually took (the
-  // POST can fail while the runtime still starts the turn). Errors are written
-  // into the session — this function never throws.
   const program = Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
       try: () => api.submitTurnCommand(promptTurnRequest(deps, context, args)),
@@ -163,7 +152,7 @@ async function startPromptCommand(
     );
     if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
   }).pipe(
-    Effect.catchAll(({ error }) =>
+    Effect.catch(({ error }) =>
       Effect.gen(function* () {
         const currentPiSessionId = latestPiSessionId(deps, context, null);
         const status = yield* Effect.tryPromise({
@@ -193,7 +182,7 @@ async function startPromptCommand(
       }),
     ),
   );
-  await Effect.runPromise(program);
+  return Effect.runPromise(program);
 }
 
 /**
@@ -228,7 +217,6 @@ function promptTurnRequest(
     browserSessionId: context.runtime,
     browserBackend: deps.browserBackend,
     canvasEnabled: deps.canvasEnabled,
-    plugins: context.plugins,
     skills: context.skills,
     promptTemplates: context.promptTemplates,
   };

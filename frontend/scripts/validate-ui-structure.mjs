@@ -2,7 +2,7 @@
 // Enforces the frontend layering convention:
 //   src/ui        — shared primitives only; never imports features or app code
 //   src/features  — one folder per page-feature (recipes, discover, settings,
-//                   usage, plugins, setup, logs, dashboard, ...); never imports app code
+//                   usage, setup, logs, dashboard, ...); never imports app code
 //   src/app       — thin route shells composing features; no _components trees
 //   src/lib, src/hooks — shared layer; every module must have consumers in more
 //                   than one feature (or outside features); see shared-layer rule
@@ -24,7 +24,6 @@ const retiredUiFeatureDirs = new Set([
   "discover",
   "configs",
   "usage",
-  "plugins",
   "setup",
   "logs",
   "dashboard",

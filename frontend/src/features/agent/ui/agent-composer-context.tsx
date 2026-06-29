@@ -3,7 +3,6 @@
 import { AtSign, FileText, Slash, Sparkles } from "@/ui/icon-registry";
 import type {
   ComposerMention,
-  ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -18,37 +17,25 @@ export type FileMentionRow = {
 };
 
 export type MentionRow =
-  | { kind: "plugin"; row: ComposerPluginRef }
   | { kind: "skill"; row: ComposerSkillRef }
   | { kind: "promptTemplate"; row: ComposerPromptTemplateRef }
   | { kind: "file"; row: FileMentionRow };
 
-export type LoadedContextKind = "plugin" | "skill" | "promptTemplate";
+export type LoadedContextKind = "skill" | "promptTemplate";
 
 export function AgentLoadedContextTabs({
-  plugins,
   skills,
   promptTemplates,
   onRemove,
 }: {
-  plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];
   onRemove: (kind: LoadedContextKind, id: string) => void;
 }) {
-  if (plugins.length + skills.length + promptTemplates.length === 0) return null;
+  if (skills.length + promptTemplates.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pt-2 text-[length:var(--fs-sm)]">
-      {plugins.map((plugin) => (
-        <LoadedContextTab
-          key={`plugin-${plugin.id}`}
-          prefix="@"
-          label={plugin.displayName ?? plugin.name}
-          title={plugin.path}
-          onRemove={() => onRemove("plugin", plugin.id)}
-        />
-      ))}
       {skills.map((skill) => (
         <LoadedContextTab
           key={`skill-${skill.id}`}
@@ -114,7 +101,7 @@ function LoadedContextTab({
   title,
   onRemove,
 }: {
-  prefix: "@" | "$" | "/";
+  prefix: "$" | "/";
   label: string;
   title?: string;
   onRemove: () => void;
@@ -144,7 +131,7 @@ function MentionPickerHeader({
   kind,
   query,
 }: {
-  kind: "plugin" | "skill" | "promptTemplate";
+  kind: "file" | "skill" | "promptTemplate";
   query: string;
 }) {
   const meta = MENTION_KIND_META[kind];
@@ -171,12 +158,11 @@ function MentionRowItem({
   active: boolean;
   onSelect: () => void;
 }) {
-  const kindMeta = MENTION_KIND_META[entry.kind === "file" ? "plugin" : entry.kind];
+  const kindMeta = MENTION_KIND_META[entry.kind];
   const Icon = entry.kind === "file" ? FileText : kindMeta.Icon;
   const accent = entry.kind === "file" ? "text-(--dim)" : kindMeta.accentClass;
   const title = mentionRowTitle(entry);
   const description = mentionRowDescription(entry);
-  const version = entry.kind === "plugin" ? entry.row.version : undefined;
   const source = entry.kind !== "file" ? (entry.row.source ?? "") : "";
   return (
     <button
@@ -191,9 +177,6 @@ function MentionRowItem({
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5">
           <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
-          {version ? (
-            <span className="font-mono text-[length:var(--fs-xs)] text-(--dim)">{version}</span>
-          ) : null}
         </span>
         {description ? (
           <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)">
@@ -215,27 +198,22 @@ function MentionRowItem({
 
 function mentionRowTitle(entry: MentionRow): string {
   if (entry.kind === "file") return entry.row.rel;
-  return ("displayName" in entry.row && entry.row.displayName) || entry.row.name;
+  return entry.row.name;
 }
 
 function mentionRowDescription(entry: MentionRow): string | undefined {
   if (entry.kind === "file") return entry.row.path;
-  if (entry.kind === "plugin") return entry.row.shortDescription;
   if (entry.kind === "promptTemplate") return entry.row.description;
   return undefined;
 }
 
 function emptyMentionLabel(kind: ComposerMention["kind"]) {
-  if (kind === "plugin") return "plugins or files";
+  if (kind === "file") return "files";
   if (kind === "skill") return "skills";
   return "slash commands";
 }
 
-const LOADED_TAB_META: Record<"@" | "$" | "/", { Icon: typeof AtSign; classes: string }> = {
-  "@": {
-    Icon: AtSign,
-    classes: "border-sky-500/30 bg-sky-500/10 text-sky-300",
-  },
+const LOADED_TAB_META: Record<"$" | "/", { Icon: typeof AtSign; classes: string }> = {
   $: {
     Icon: Sparkles,
     classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
@@ -247,7 +225,7 @@ const LOADED_TAB_META: Record<"@" | "$" | "/", { Icon: typeof AtSign; classes: s
 };
 
 const MENTION_KIND_META: Record<
-  "plugin" | "skill" | "promptTemplate",
+  "file" | "skill" | "promptTemplate",
   {
     title: string;
     hint: string;
@@ -255,8 +233,8 @@ const MENTION_KIND_META: Record<
     accentClass: string;
   }
 > = {
-  plugin: {
-    title: "Plugins & files",
+  file: {
+    title: "Files",
     hint: "Type to filter · Enter to attach",
     Icon: AtSign,
     accentClass: "text-sky-300",

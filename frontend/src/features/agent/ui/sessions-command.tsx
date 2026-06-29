@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { Effect } from "effect";
 import { Search } from "@/ui/icon-registry";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
@@ -44,12 +45,6 @@ const APP_DESTINATIONS: AppDestination[] = [
     label: "Models",
     keywords: "models recipes launch downloads search hugging face explore",
     description: "Search models, manage recipes, launches, and downloads.",
-  },
-  {
-    href: "/plugins",
-    label: "Plugins",
-    keywords: "mcp servers registry curated custom tools",
-    description: "MCP servers, registries, and curated plugin setup.",
   },
   {
     href: "/server",
@@ -106,15 +101,25 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
     (_notify: () => void) => {
       if (!open) return () => {};
       let cancelled = false;
-      void (async () => {
-        try {
-          const response = await fetch("/api/agent/sessions/all?since=30d", { cache: "no-store" });
-          const payload = await safeJson<{ sessions?: AggregatedSession[] }>(response);
+      void Effect.runPromise(
+        Effect.gen(function* () {
+          const response = yield* Effect.tryPromise({
+            try: () => fetch("/api/agent/sessions/all?since=30d", { cache: "no-store" }),
+            catch: (error) => error,
+          });
+          const payload = yield* Effect.tryPromise({
+            try: () => safeJson<{ sessions?: AggregatedSession[] }>(response),
+            catch: (error) => error,
+          });
           if (!cancelled) setSessions(payload.sessions ?? []);
-        } catch {
-          if (!cancelled) setSessions([]);
-        }
-      })();
+        }).pipe(
+          Effect.catch(() =>
+            Effect.sync(() => {
+              if (!cancelled) setSessions([]);
+            }),
+          ),
+        ),
+      );
       return () => {
         cancelled = true;
       };

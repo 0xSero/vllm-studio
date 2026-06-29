@@ -12,13 +12,7 @@ import {
   useComposerTextareaHeightSync,
   type UpdateTab,
 } from "@/features/agent/ui/chat-pane-composer";
-import { browserContextPrompt } from "@/features/agent/browser/context";
-import {
-  activeComposerPlugins,
-  selectedContextPrompt,
-  type ComposerMention,
-  type ComposerPluginRef,
-} from "@/features/agent/composer-context";
+import { type ComposerMention } from "@/features/agent/composer-context";
 import {
   useChatPaneContextAttachEffect,
   useChatPaneDerivedState,
@@ -238,7 +232,6 @@ export function ChatPane({
   const mentionRows = useComposerMentionRows({
     fileMentionRows,
     mention,
-    pluginRows: tools.pluginCatalogue,
     promptTemplateRows: tools.promptTemplateCatalogue,
     skillRows: tools.skillCatalogue,
   });
@@ -283,8 +276,9 @@ export function ChatPane({
     lastAppliedComposerHeightRef,
     lastComposerValueLengthRef,
   });
-  const { selectedPlugins, selectedSkills, selectedPromptTemplates, removeLoadedContext } =
-    useComposerLoadedContext({ activeTab, tools });
+  const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
+    { activeTab, tools },
+  );
 
   const engine = useSessionEngine({
     tabs,
@@ -469,7 +463,6 @@ export function ChatPane({
         queueItems={visibleQueueItems}
         readingAttachments={readingAttachments}
         running={Boolean(running)}
-        selectedPlugins={selectedPlugins}
         selectedSkills={selectedSkills}
         status={activeTab?.status}
         textareaRef={textareaRef}

@@ -49,7 +49,7 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
         eventSourceRef.current.close();
       }
       let disposed = false;
-      let reconnectFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
+      let reconnectFiber: Fiber.Fiber<void, unknown> | null = null;
 
       const open = () => {
         if (disposed) return;
@@ -84,8 +84,8 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
             yield* Effect.sleep(delay);
             open();
           });
-          if (reconnectFiber) void Promise.resolve(Fiber.interrupt(reconnectFiber as never));
-          reconnectFiber = Effect.runFork(program) as never;
+          if (reconnectFiber) void Effect.runPromise(Fiber.interrupt(reconnectFiber));
+          reconnectFiber = Effect.runFork(program);
         };
       };
 
@@ -93,7 +93,7 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
 
       return () => {
         disposed = true;
-        if (reconnectFiber) void Promise.resolve(Fiber.interrupt(reconnectFiber as never));
+        if (reconnectFiber) void Effect.runPromise(Fiber.interrupt(reconnectFiber));
         eventSourceRef.current?.close();
       };
     },

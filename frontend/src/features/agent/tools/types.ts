@@ -2,12 +2,11 @@
 //
 // 1. UI state (workspace-global): which side panel is open, panel width,
 //    browser tool toggle, browser URL.
-// 2. Per-session selection: which plugins/skills the composer has armed for
+// 2. Per-session selection: which skills/templates the composer has armed for
 //    a given session. Lives in a flat map keyed by SessionId so panes /
 //    sessions stay independent of tool choice.
 
 import type {
-  ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -64,7 +63,6 @@ export type ContextAttachRequest = {
 };
 
 export type ToolSelection = {
-  plugins: ComposerPluginRef[];
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];
 };
@@ -72,7 +70,6 @@ export type ToolSelection = {
 export type ToolSelectionMap = ReadonlyMap<SessionId, ToolSelection>;
 
 export const EMPTY_SELECTION: ToolSelection = {
-  plugins: [],
   skills: [],
   promptTemplates: [],
 };

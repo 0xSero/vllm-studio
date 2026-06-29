@@ -70,12 +70,20 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 async function killStaleEmbeddedServer(): Promise<void> {
   const pidFile = embeddedServerPidPath();
   if (!existsSync(pidFile)) return;
   const pid = Number(readFileSync(pidFile, "utf8"));
   rmSync(pidFile, { force: true });
-  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid || !isProcessAlive(pid)) return;
+  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid || !isProcessAlive(pid)) {
+    return;
+  }
   try {
     process.kill(pid, "SIGTERM");
   } catch {
@@ -83,14 +91,12 @@ async function killStaleEmbeddedServer(): Promise<void> {
   }
   const startedAt = Date.now();
   while (Date.now() - startedAt < 1_500 && isProcessAlive(pid)) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await delay(100);
   }
   if (isProcessAlive(pid)) {
     try {
       process.kill(pid, "SIGKILL");
-    } catch {
-      // already gone
-    }
+    } catch {}
   }
 }
 
@@ -119,10 +125,8 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
       if (response.ok || response.status === 307 || response.status === 308) {
         return;
       }
-    } catch {
-      // Keep polling until timeout.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    } catch {}
+    await delay(300);
   }
 
   throw new Error(`Timed out waiting for embedded frontend server: ${url}`);
@@ -186,10 +190,6 @@ export async function startFrontendServer(
     detached: false,
     env: {
       ...process.env,
-      // Restore the user's real login-shell PATH. A Finder/Dock/`open`-launched
-      // app inherits a stripped PATH, so MCP servers spawned by the agent (e.g.
-      // `npx -y <server>`) would otherwise fail with ENOENT and the model would
-      // silently fall back to shell commands instead of the plugin's tools.
       PATH: resolveAugmentedPath(),
       NODE_ENV: "production",
       PORT: String(port),
@@ -248,7 +248,6 @@ export async function startFrontendServer(
 
 export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
   if (!handle?.process) return;
-
   const child = handle.process;
   const pid = child.pid;
   try {
@@ -265,9 +264,7 @@ export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
       if (pid && isProcessAlive(pid)) {
         try {
           process.kill(pid, "SIGKILL");
-        } catch {
-          // already gone
-        }
+        } catch {}
       }
       resolve();
     }, 5_000);

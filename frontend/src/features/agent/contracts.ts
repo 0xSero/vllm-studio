@@ -1,5 +1,4 @@
 import {
-  sanitizeComposerPlugins,
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
 } from "@/features/agent/composer-context";
@@ -128,7 +127,6 @@ export type AgentTurnRequest = {
   browserSessionId?: string;
   browserBackend?: BrowserBackend;
   canvasEnabled: boolean;
-  plugins: ReturnType<typeof sanitizeComposerPlugins>;
   skills: ReturnType<typeof sanitizeComposerSkills>;
   promptTemplates: ReturnType<typeof sanitizeComposerPromptTemplates>;
   mode: AgentTurnMode;
@@ -193,7 +191,6 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       browserSessionId: browserSessionId.value,
       browserBackend,
       canvasEnabled: boolField(body, "canvasEnabled"),
-      plugins: sanitizeComposerPlugins(body.plugins),
       skills: sanitizeComposerSkills(body.skills),
       promptTemplates: sanitizeComposerPromptTemplates(body.promptTemplates),
       mode,
