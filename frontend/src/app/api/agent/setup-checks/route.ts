@@ -8,7 +8,7 @@ import { piResourceDiagnostics } from "@/features/agent/pi-runtime";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export function GET() {
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
   // First-party extension load failures captured during the most recent SDK
@@ -35,7 +35,7 @@ export async function GET() {
         label: "Codex config directory",
         ok: existsSync(codexDir),
         value: codexDir,
-        guidance: "Optional but recommended for plugins and skills parity.",
+        guidance: "Optional but recommended for skills parity.",
       },
     ],
     diagnostics,

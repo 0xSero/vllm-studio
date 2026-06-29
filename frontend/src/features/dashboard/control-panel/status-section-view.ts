@@ -33,6 +33,37 @@ export type RuntimeMetricView = {
   value: string;
 };
 
+type PeakKind = "generation" | "prefill" | "ttft";
+type PeakTier = "session" | "bestSession" | "all";
+
+const PEAK_FIELDS: Record<PeakKind, Record<PeakTier, readonly (keyof Metrics)[]>> = {
+  generation: {
+    session: [
+      "session_peak_generation_tps",
+      "session_peak_generation_throughput",
+      "session_peak_generation",
+    ],
+    bestSession: ["best_session_generation_tps", "session_peak_generation_tps"],
+    all: ["peak_generation_tps"],
+  },
+  prefill: {
+    session: ["session_peak_prefill_tps", "session_peak_prompt_throughput", "session_peak_prefill"],
+    bestSession: ["best_session_prefill_tps", "session_peak_prefill_tps"],
+    all: ["peak_prefill_tps"],
+  },
+  ttft: {
+    session: ["session_peak_best_ttft_ms", "session_peak_ttft_ms"],
+    bestSession: ["best_session_ttft_ms", "session_peak_best_ttft_ms"],
+    all: ["peak_ttft_ms"],
+  },
+};
+
+const PEAK_DISPLAY: Record<PeakKind, { digits: number; suffix: string; label: string }> = {
+  generation: { digits: 1, suffix: "", label: "max" },
+  prefill: { digits: 1, suffix: "", label: "max" },
+  ttft: { digits: 0, suffix: " ms", label: "best" },
+};
+
 type StatusSectionViewInput = {
   currentProcess: ProcessInfo | null;
   currentRecipe: RecipeWithStatus | null;
@@ -64,11 +95,11 @@ export function resolveStatusSectionView({
     sampleInput: {
       key: resolveModelSampleKey(currentProcess, currentRecipe),
       generation: perf.genTps ?? 0,
-      generationPeak: generationPeak(metrics) ?? perf.genTps ?? 0,
+      generationPeak: peakFor(metrics, "generation") ?? perf.genTps ?? 0,
       prefill: perf.prefillTps ?? 0,
-      prefillPeak: prefillPeak(metrics) ?? perf.prefillTps ?? 0,
+      prefillPeak: peakFor(metrics, "prefill") ?? perf.prefillTps ?? 0,
       ttft: perf.ttftMs ?? 0,
-      ttftPeak: ttftPeak(metrics) ?? perf.ttftMs ?? 0,
+      ttftPeak: peakFor(metrics, "ttft") ?? perf.ttftMs ?? 0,
       requests: perf.sessions,
       requestPeak: perf.peakReq || perf.sessions,
       active: isRunning,
@@ -133,19 +164,19 @@ function metricColumnViews(
       label: "Decode",
       value: metricValue(perf.genTps, 1),
       unit: "tok/s",
-      ...generationMaxDetail(metrics),
+      ...peakDetailFor(metrics, "generation"),
     },
     {
       label: "TTFT",
       value: metricValue(perf.ttftMs, 0),
       unit: "ms",
-      ...ttftMaxDetail(metrics),
+      ...peakDetailFor(metrics, "ttft"),
     },
     {
       label: "Prefill",
       value: metricValue(perf.prefillTps, 1),
       unit: "t/s",
-      ...prefillMaxDetail(metrics),
+      ...peakDetailFor(metrics, "prefill"),
     },
   ];
 }
@@ -185,101 +216,33 @@ function runtimeMetricViews(metrics: Metrics | null): RuntimeMetricView[] {
   ];
 }
 
-function generationMaxDetail(metrics: Metrics | null) {
+function readField(metrics: Metrics | null, field: keyof Metrics): number | null {
+  const value = metrics?.[field];
+  return typeof value === "number" ? value : null;
+}
+
+function peakAtTier(metrics: Metrics | null, kind: PeakKind, tier: PeakTier): number | null {
+  return firstPositive(...PEAK_FIELDS[kind][tier].map((f) => readField(metrics, f)));
+}
+
+function peakFor(metrics: Metrics | null, kind: PeakKind): number | null {
+  return firstPositive(
+    peakAtTier(metrics, kind, "session"),
+    peakAtTier(metrics, kind, "bestSession"),
+    peakAtTier(metrics, kind, "all"),
+  );
+}
+
+function peakDetailFor(metrics: Metrics | null, kind: PeakKind) {
+  const { digits, suffix, label } = PEAK_DISPLAY[kind];
   return speedMaxDetail({
-    session: currentSessionGenerationPeak(metrics),
-    bestSession: bestSessionGenerationPeak(metrics),
-    all: allTimeGenerationPeak(metrics),
-    digits: 1,
+    session: peakAtTier(metrics, kind, "session"),
+    bestSession: peakAtTier(metrics, kind, "bestSession"),
+    all: peakAtTier(metrics, kind, "all"),
+    digits,
+    suffix,
+    label,
   });
-}
-
-function prefillMaxDetail(metrics: Metrics | null) {
-  return speedMaxDetail({
-    session: currentSessionPrefillPeak(metrics),
-    bestSession: bestSessionPrefillPeak(metrics),
-    all: allTimePrefillPeak(metrics),
-    digits: 1,
-  });
-}
-
-function ttftMaxDetail(metrics: Metrics | null) {
-  return speedMaxDetail({
-    session: currentSessionTtftPeak(metrics),
-    bestSession: bestSessionTtftPeak(metrics),
-    all: allTimeTtftPeak(metrics),
-    digits: 0,
-    suffix: " ms",
-    label: "best",
-  });
-}
-
-function generationPeak(metrics: Metrics | null): number | null {
-  return firstPositive(
-    currentSessionGenerationPeak(metrics),
-    bestSessionGenerationPeak(metrics),
-    allTimeGenerationPeak(metrics),
-  );
-}
-
-function prefillPeak(metrics: Metrics | null): number | null {
-  return firstPositive(
-    currentSessionPrefillPeak(metrics),
-    bestSessionPrefillPeak(metrics),
-    allTimePrefillPeak(metrics),
-  );
-}
-
-function ttftPeak(metrics: Metrics | null): number | null {
-  return firstPositive(
-    currentSessionTtftPeak(metrics),
-    bestSessionTtftPeak(metrics),
-    allTimeTtftPeak(metrics),
-  );
-}
-
-function currentSessionGenerationPeak(metrics: Metrics | null): number | null {
-  return firstPositive(
-    metrics?.session_peak_generation_tps,
-    metrics?.session_peak_generation_throughput,
-    metrics?.session_peak_generation,
-  );
-}
-
-function bestSessionGenerationPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.best_session_generation_tps, metrics?.session_peak_generation_tps);
-}
-
-function allTimeGenerationPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.peak_generation_tps);
-}
-
-function currentSessionPrefillPeak(metrics: Metrics | null): number | null {
-  return firstPositive(
-    metrics?.session_peak_prefill_tps,
-    metrics?.session_peak_prompt_throughput,
-    metrics?.session_peak_prefill,
-  );
-}
-
-function bestSessionPrefillPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.best_session_prefill_tps, metrics?.session_peak_prefill_tps);
-}
-
-function allTimePrefillPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.peak_prefill_tps);
-}
-
-function currentSessionTtftPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.session_peak_best_ttft_ms, metrics?.session_peak_ttft_ms);
-}
-
-function bestSessionTtftPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.best_session_ttft_ms, metrics?.session_peak_best_ttft_ms);
-}
-
-function allTimeTtftPeak(metrics: Metrics | null): number | null {
-  return firstPositive(metrics?.peak_ttft_ms);
 }
 
 function metricValue(value: number | null, digits: number): string | null {

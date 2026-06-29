@@ -51,7 +51,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
 
   return (
     <AppPage>
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[200px_minmax(0,640px)] lg:gap-10 lg:py-8">
+      <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10 lg:py-8 2xl:px-10">
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-4 flex items-start justify-between gap-3">
             <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">
@@ -80,14 +80,24 @@ export function SettingsGroup({
   description,
   actions,
   children,
+  collapsible,
+  defaultOpen,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   return (
-    <ListGroup title={title} description={description} actions={actions}>
+    <ListGroup
+      title={title}
+      description={description}
+      actions={actions}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
+    >
       {children}
     </ListGroup>
   );
@@ -231,24 +241,6 @@ export function SettingsNotice({
   );
 }
 
-export function SettingsActions({
-  children,
-  flush = false,
-  className,
-}: {
-  children: ReactNode;
-  flush?: boolean;
-  className?: string;
-}) {
-  return (
-    <div className={cx("flex justify-end gap-1", flush ? "" : "px-3.5 py-2", className)}>
-      {children}
-    </div>
-  );
-}
-
-type SettingsControlTone = "accent" | "info";
-
 export function SettingsInput({
   id,
   value,
@@ -279,39 +271,6 @@ export function SettingsInput({
       aria-label={ariaLabel}
       className={cx(
         "h-7 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/50 focus:border-(--ui-accent)/40",
-        className,
-      )}
-    />
-  );
-}
-
-export function SettingsTextarea({
-  value,
-  onChange,
-  placeholder,
-  rows = 3,
-  className = "",
-  focusTone = "accent",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
-  className?: string;
-  focusTone?: SettingsControlTone;
-}) {
-  const focusClass =
-    focusTone === "info" ? "focus:border-(--ui-info)/50" : "focus:border-(--ui-accent)/40";
-
-  return (
-    <textarea
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      className={cx(
-        "w-full resize-none rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 py-1.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/50",
-        focusClass,
         className,
       )}
     />

@@ -10,7 +10,7 @@ import {
   Play,
 } from "@/ui/icon-registry";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
-import { formatBytes, formatNumber } from "@/lib/formatters";
+import { formatBytes } from "@/lib/formatters";
 import { ModelButton, ModelLogo, ModelRow, ModelStatus, type ModelStatusTone } from "@/ui";
 import { extractProvider } from "@/lib/huggingface";
 import { extractQuantizations } from "@/features/discover/utils";
@@ -66,11 +66,10 @@ export const ExploreModelRow = memo(function ExploreModelRow({
   expanded,
   onToggleExpand,
   child,
-  displayDownloads,
-  displayLikes,
   weightEstimateGb,
   pooledVramGb,
   fit,
+  variants,
   onOpenModelCard,
 }: {
   model: HuggingFaceModel;
@@ -84,13 +83,11 @@ export const ExploreModelRow = memo(function ExploreModelRow({
   expanded: boolean;
   onToggleExpand?: () => void;
   child?: boolean;
-  /** When set (e.g. grouped explore row), overrides per-variant HF stats. */
-  displayDownloads?: number;
-  displayLikes?: number;
   weightEstimateGb?: number | null;
   pooledVramGb: number;
   fit?: ModelFit;
-  onOpenModelCard?: () => void;
+  variants: HuggingFaceModel[];
+  onOpenModelCard?: (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => void;
 }) {
   const provider = useMemo(() => extractProvider(model.modelId), [model.modelId]);
   const quants = useMemo(() => extractQuantizations(model.tags), [model.tags]);
@@ -108,22 +105,18 @@ export const ExploreModelRow = memo(function ExploreModelRow({
     <ModelRow
       label={rowLabel(model.modelId, child)}
       description={rowDescription(provider, variantCount, child)}
-      onClick={onOpenModelCard}
+      onClick={onOpenModelCard ? () => onOpenModelCard(model, variants, fit) : undefined}
       highlight={
         fit && !child && (fit.status === "best" || fit.status === "fits") ? "success" : "none"
       }
       value={
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
           <ModelLogo modelId={model.modelId} author={model.author} size={child ? "sm" : "md"} />
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-md)] text-(--dim)">
-              <span className="font-mono text-(--fg)">
-                {quants.length ? quants.join(", ") : child ? "derivative" : "original"}
-              </span>
-              <ExploreVramCell needGb={weightEstimateGb ?? null} poolGb={pooledVramGb} fit={fit} />
-              <span>{formatNumber(displayDownloads ?? model.downloads)} downloads</span>
-              <span>{formatNumber(displayLikes ?? model.likes)} likes</span>
-            </div>
+          <div className="flex min-w-0 items-center gap-2 text-[length:var(--fs-sm)] text-(--dim)">
+            {quants.length ? (
+              <span className="font-mono text-(--ui-muted)">{quants.join(", ")}</span>
+            ) : null}
+            <ExploreVramCell needGb={weightEstimateGb ?? null} poolGb={pooledVramGb} fit={fit} />
           </div>
         </div>
       }

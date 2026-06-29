@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
 import {
   getDefaultReasoningParser,
   getDefaultToolCallParser,
@@ -20,7 +20,15 @@ import type {
   BinaryProbeResult,
   ConfigHelpResult,
   EngineSpec,
+  InstallOptions,
 } from "../engine-spec";
+import { installIntoManagedVenv, managedVenvPython } from "../runtimes/managed-venv";
+import {
+  getUpgradeCommandFromEnvironment,
+  runEnvironmentUpgradeCommand,
+  SGLANG_UPGRADE_ENV,
+} from "../runtimes/upgrade-config";
+import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 
 const SGLANG_IMPORT_PROBE =
   "import json, sys\ntry:\n import sglang\n print(json.dumps({'version': getattr(sglang, '__version__', None), 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
@@ -41,8 +49,14 @@ const resolveSglangCliBinary = (pythonPath: string | null): string | null => {
  * back to `python -m sglang.launch_server` (legacy module invocation).
  */
 const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
-  const python = getPythonPath(recipe) || config.sglang_python || "python";
-  const cliBinary = resolveSglangCliBinary(getPythonPath(recipe) ?? null) ?? resolveSglangCliBinary(config.sglang_python ?? null);
+  const recipePython = getPythonPath(recipe) ?? null;
+  const managedPython = managedVenvPython(config, "sglang");
+  const resolvedManagedPython = existsSync(managedPython) ? managedPython : null;
+  const python = recipePython || config.sglang_python || resolvedManagedPython || "python";
+  const cliBinary =
+    resolveSglangCliBinary(recipePython) ??
+    resolveSglangCliBinary(config.sglang_python ?? null) ??
+    resolveSglangCliBinary(resolvedManagedPython);
 
   let command: string[];
 
@@ -297,12 +311,37 @@ const getConfigHelp = async (_config: Config): Promise<ConfigHelpResult> => {
   return { config: result.stdout || null, error: null };
 };
 
+export const getSglangRuntimePython = (
+  config: Config,
+  options: Pick<{ pythonPath?: string | null }, "pythonPath"> = {},
+): string => {
+  return options.pythonPath?.trim() || config.sglang_python || resolveVllmPythonPath() || "python3";
+};
+
+const installSglang = async (options: InstallOptions): Promise<RuntimeUpgradeResult> => {
+  const envCommand = getUpgradeCommandFromEnvironment(SGLANG_UPGRADE_ENV);
+  if (envCommand) return runEnvironmentUpgradeCommand(envCommand, options.onSpawn);
+
+  const packageSpec = managedPackageSpec(options.version);
+  const pythonPath = options.pythonPath ?? getSglangRuntimePython(options.config, {});
+  return installIntoManagedVenv({
+    config: options.config,
+    backend: "sglang",
+    packageSpec,
+    pythonPath,
+    createManagedVenv: !options.pythonPath,
+    onProgress: options.onProgress,
+    onSpawn: options.onSpawn,
+  });
+};
+
 export const sglangSpec: EngineSpec = {
   id: "sglang",
   healthPath: "/health",
   cliBinary: "sglang",
   buildCommand: buildSglangCommand,
   managedPackageSpec,
+  install: installSglang,
   detectInvocation,
   extractModelPath,
   extractServedModelName,

@@ -14,7 +14,7 @@ export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done"
 
 /**
  * A `Session` is a conversation record — domain content and runtime status,
- * with no tool-selection state. Per-session plugins/skills live in the tools
+ * with no tool-selection state. Per-session skills/templates live in the tools
  * subsystem (`useTools().selectionFor(id)`) keyed by the session id below.
  */
 export type Session = {

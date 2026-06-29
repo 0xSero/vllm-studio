@@ -468,13 +468,20 @@ export function createSessionRuntimeController(
     pollEpoch += 1;
   };
 
-  const pollOnce = async () => {
-    const epoch = pollEpoch;
-    const fetchStartedAt = Date.now();
-    const entries = await api.listRuntimeSessions();
-    if (epoch !== pollEpoch || !binding) return;
-    updateActiveRuntimeIds(entries);
-    applyRuntimeList(entries, fetchStartedAt);
+  const pollOnce = () => {
+    void Effect.runPromise(
+      Effect.gen(function* () {
+        const epoch = pollEpoch;
+        const fetchStartedAt = Date.now();
+        const entries = yield* Effect.tryPromise({
+          try: () => api.listRuntimeSessions(),
+          catch: (error) => error,
+        });
+        if (epoch !== pollEpoch || !binding) return;
+        updateActiveRuntimeIds(entries);
+        applyRuntimeList(entries, fetchStartedAt);
+      }),
+    );
   };
 
   // One SSE attachment per live session: connect, reconnect with a fixed
@@ -503,40 +510,41 @@ export function createSessionRuntimeController(
       }, reconnectDelayMs);
     };
 
-    const reconcileLiveness = async () => {
-      const status = await api.loadRuntimeStatus(runtime, piSessionId);
-      if (closed) return;
-      // Inconclusive probe (network blip / proxy idle-timeout / transient
-      // 5xx): loadRuntimeStatus returns null only on error. Do NOT tear down
-      // or mark the session idle — pi is almost certainly still running.
-      if (!status) {
-        reconnect();
-        return;
-      }
-      if (status.active) {
-        commit(sessionId, (session) => ({
-          ...session,
-          piSessionId: status.piSessionId || session.piSessionId,
-          contextUsage: runtimeContextUsage(status, session.contextUsage),
-          status: "running",
-        }));
-        reconnect();
-        return;
-      }
-      // Definitively idle — close the stream, flush pending deltas, then
-      // settle the session. Order matters: the last coalesced delta must land
-      // before the idle patch.
-      sub?.close();
-      coalescer.flushNow(sessionId);
-      commit(sessionId, (session) =>
-        session.status === "running" || session.status === "starting"
-          ? {
+    const reconcileLiveness = () => {
+      void Effect.runPromise(
+        Effect.gen(function* () {
+          const status = yield* Effect.tryPromise({
+            try: () => api.loadRuntimeStatus(runtime, piSessionId),
+            catch: () => null,
+          });
+          if (closed) return;
+          if (!status) {
+            reconnect();
+            return;
+          }
+          if (status.active) {
+            commit(sessionId, (session) => ({
               ...session,
-              status: "idle",
-              activeAssistantId: undefined,
+              piSessionId: status.piSessionId || session.piSessionId,
               contextUsage: runtimeContextUsage(status, session.contextUsage),
-            }
-          : session,
+              status: "running",
+            }));
+            reconnect();
+            return;
+          }
+          sub?.close();
+          coalescer.flushNow(sessionId);
+          commit(sessionId, (session) =>
+            session.status === "running" || session.status === "starting"
+              ? {
+                  ...session,
+                  status: "idle",
+                  activeAssistantId: undefined,
+                  contextUsage: runtimeContextUsage(status, session.contextUsage),
+                }
+              : session,
+          );
+        }),
       );
     };
 
@@ -575,7 +583,7 @@ export function createSessionRuntimeController(
       close: () => {
         closed = true;
         if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-        if (watchdogFiber) void Promise.resolve(Fiber.interrupt(watchdogFiber as never));
+        if (watchdogFiber) void Effect.runPromise(Fiber.interrupt(watchdogFiber));
         coalescer.flushNow(sessionId);
         sub?.close();
       },

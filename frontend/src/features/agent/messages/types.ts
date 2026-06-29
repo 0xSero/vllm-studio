@@ -1,4 +1,4 @@
-import type { ComposerPluginRef, ComposerSkillRef } from "@/features/agent/composer-context";
+import type { ComposerSkillRef } from "@/features/agent/composer-context";
 
 // Imperative handle exposed by ChatPane so the workspace can replay a past
 // pi session into the focused pane without prop-plumbing indirection. The
@@ -99,7 +99,6 @@ export type SessionTab = {
   contextUsage?: import("@/features/agent/runtime/runtime-schema").RuntimeContextUsage | null;
   activeAssistantId?: string;
   lastEventSeq?: number;
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   // Outgoing pending follow-up messages. Drawn as chips above the input until
   // Pi `queue_update` reconciles the canonical queue. Steering messages are

@@ -1,9 +1,21 @@
 "use client";
 
 import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";
-import { Fragment, type ReactNode } from "react";
+import { Fragment } from "react";
 import { ChevronDown, ChevronUp } from "@/ui/icon-registry";
-import { Table, TBody, TCell, THead, TH, TRow } from "@/ui";
+import {
+  MetricMeter,
+  MetricPanel,
+  MiniBarChart,
+  SortableTH,
+  StackedMetricBar,
+  Table,
+  TBody,
+  TCell,
+  THead,
+  TH,
+  TRow,
+} from "@/ui";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
 import { getModelColor } from "@/features/usage/colors";
 import {
@@ -16,6 +28,7 @@ import {
 interface ModelPerformanceTableProps {
   sortedModels: ModelData[];
   peakMetrics: Map<string, PeakMetrics>;
+  modelColorIndex: Map<string, number>;
   expandedRows: Set<string>;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -23,15 +36,34 @@ interface ModelPerformanceTableProps {
   toggleRow: (model: string) => void;
 }
 
+interface ModelScale {
+  requests: number;
+  tokens: number;
+  latency: number;
+  ttft: number;
+}
+
+const scaleFor = (models: ModelData[]): ModelScale => ({
+  requests: Math.max(...models.map((model) => model.requests), 1),
+  tokens: Math.max(...models.map((model) => model.total_tokens), 1),
+  latency: Math.max(...models.map((model) => model.avg_latency_ms ?? 0), 1),
+  ttft: Math.max(...models.map((model) => model.avg_ttft_ms ?? 0), 1),
+});
+
+const ratio = (value: number | null | undefined, max: number): number =>
+  Math.max(0, Math.min(100, ((value ?? 0) / (max > 0 ? max : 1)) * 100));
+
 export function ModelPerformanceTable({
   expandedRows,
   handleSort,
+  modelColorIndex,
   peakMetrics,
   sortDirection,
   sortField,
   sortedModels,
   toggleRow,
 }: ModelPerformanceTableProps) {
+  const scale = scaleFor(sortedModels);
   return (
     <section className="px-2 pt-2 pb-5">
       <div className="mb-3 flex items-center justify-between">
@@ -51,75 +83,66 @@ export function ModelPerformanceTable({
         <THead className="bg-transparent">
           <TRow className="border-b border-(--border)/40 hover:bg-transparent">
             <TH className="w-6 px-2 py-2" />
-            <SortHeader
+            <SortableTH
               field="model"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("model")}
+              onSort={handleSort}
             >
               Model
-            </SortHeader>
-            <SortHeader
+            </SortableTH>
+            <SortableTH
               field="requests"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("requests")}
+              onSort={handleSort}
               align="right"
             >
               Requests
-            </SortHeader>
-            <SortHeader
+            </SortableTH>
+            <SortableTH
               field="tokens"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("tokens")}
+              onSort={handleSort}
               align="right"
             >
               Tokens
-            </SortHeader>
-            <SortHeader
-              field="success"
-              currentField={sortField}
-              direction={sortDirection}
-              onClick={() => handleSort("success")}
-              align="right"
-            >
-              Success
-            </SortHeader>
-            <SortHeader
+            </SortableTH>
+            <SortableTH
               field="latency"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("latency")}
+              onSort={handleSort}
               align="right"
             >
               Latency
-            </SortHeader>
-            <SortHeader
+            </SortableTH>
+            <SortableTH
               field="ttft"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("ttft")}
+              onSort={handleSort}
               align="right"
             >
               TTFT
-            </SortHeader>
-            <SortHeader
+            </SortableTH>
+            <SortableTH
               field="speed"
               currentField={sortField}
               direction={sortDirection}
-              onClick={() => handleSort("speed")}
+              onSort={handleSort}
               align="right"
             >
               Speed
-            </SortHeader>
+            </SortableTH>
           </TRow>
         </THead>
         <TBody className="divide-y-0">
           {sortedModels.map((model) => {
             const peak = peakMetrics.get(model.model);
             const isExpanded = expandedRows.has(model.model);
-            const modelColor = getModelColor(model.model);
+            const modelColor = getModelColor(modelColorIndex.get(model.model) ?? 0);
 
             return (
               <Fragment key={model.model}>
@@ -147,20 +170,31 @@ export function ModelPerformanceTable({
                       </div>
                     </div>
                   </TCell>
-                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
-                    {formatNumber(model.requests)}
-                  </TCell>
-                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
-                    {formatNumber(model.total_tokens)}
+                  <TCell align="right" className="px-2 py-2">
+                    <MetricMeter
+                      value={formatNumber(model.requests)}
+                      percent={ratio(model.requests, scale.requests)}
+                    />
                   </TCell>
                   <TCell align="right" className="px-2 py-2">
-                    <StatusPill value={model.success_rate} type="success" />
+                    <MetricMeter
+                      value={formatNumber(model.total_tokens)}
+                      percent={ratio(model.total_tokens, scale.tokens)}
+                    />
                   </TCell>
                   <TCell align="right" className="px-2 py-2">
-                    <StatusPill value={model.avg_latency_ms} type="latency" />
+                    <MetricMeter
+                      value={formatDurationOrUnavailable(model.avg_latency_ms)}
+                      percent={ratio(model.avg_latency_ms, scale.latency)}
+                      tone="bad"
+                    />
                   </TCell>
-                  <TCell align="right" className="px-2 py-2 font-mono tabular-nums text-(--dim)">
-                    {formatDurationOrUnavailable(model.avg_ttft_ms)}
+                  <TCell align="right" className="px-2 py-2">
+                    <MetricMeter
+                      value={formatDurationOrUnavailable(model.avg_ttft_ms)}
+                      percent={ratio(model.avg_ttft_ms, scale.ttft)}
+                      tone="bad"
+                    />
                   </TCell>
                   <TCell align="right" className="px-2 py-2 font-mono">
                     {renderSpeedDisplay(resolveSpeedDisplay(model, peak))}
@@ -168,55 +202,8 @@ export function ModelPerformanceTable({
                 </TRow>
                 {isExpanded ? (
                   <TRow className="border-b border-(--border)/25 hover:bg-transparent">
-                    <TCell colSpan={8} className="px-2 py-3">
-                      <dl className="grid grid-cols-2 border-y border-(--border)/40 py-3 sm:grid-cols-4">
-                        <ExpandedCell
-                          label="prompt tokens"
-                          value={formatNumber(model.prompt_tokens)}
-                        />
-                        <ExpandedCell
-                          label="completion tokens"
-                          value={formatNumber(model.completion_tokens)}
-                        />
-                        <ExpandedCell
-                          label="avg tokens/req"
-                          value={formatNumber(model.avg_tokens)}
-                        />
-                        <ExpandedCell
-                          label="p50 latency"
-                          value={formatDurationOrUnavailable(model.p50_latency_ms)}
-                        />
-                        {peak?.prefill_tps ? (
-                          <ExpandedCell
-                            label="peak prefill"
-                            value={`${peak.prefill_tps.toFixed(1)} t/s`}
-                          />
-                        ) : null}
-                        {peak?.generation_tps ? (
-                          <ExpandedCell
-                            label="peak generation"
-                            value={`${peak.generation_tps.toFixed(1)} t/s`}
-                          />
-                        ) : null}
-                        {peak?.ttft_ms ? (
-                          <ExpandedCell
-                            label="best ttft"
-                            value={`${Math.round(peak.ttft_ms)} ms`}
-                          />
-                        ) : null}
-                        {peak?.best_session_prefill_tps ? (
-                          <ExpandedCell
-                            label="session max prefill"
-                            value={`${peak.best_session_prefill_tps.toFixed(1)} t/s`}
-                          />
-                        ) : null}
-                        {peak?.best_session_generation_tps ? (
-                          <ExpandedCell
-                            label="session max generation"
-                            value={`${peak.best_session_generation_tps.toFixed(1)} t/s`}
-                          />
-                        ) : null}
-                      </dl>
+                    <TCell colSpan={7} className="px-2 py-3">
+                      <ExpandedModel model={model} peak={peak} modelColor={modelColor} />
                     </TCell>
                   </TRow>
                 ) : null}
@@ -229,75 +216,61 @@ export function ModelPerformanceTable({
   );
 }
 
-function SortHeader({
-  field,
-  currentField,
-  direction,
-  onClick,
-  children,
-  align = "left",
+function ExpandedModel({
+  model,
+  peak,
+  modelColor,
 }: {
-  field: SortField;
-  currentField: SortField;
-  direction: SortDirection;
-  onClick: () => void;
-  children: ReactNode;
-  align?: "left" | "right";
+  model: ModelData;
+  peak: PeakMetrics | undefined;
+  modelColor: string;
 }) {
-  const isActive = currentField === field;
-
-  return (
-    <TH
-      align={align}
-      className={`cursor-pointer select-none px-3 py-2 font-mono text-[length:var(--fs-xs)] font-normal uppercase tracking-[0.14em] text-(--dim) transition-colors hover:text-(--fg) ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-      onClick={onClick}
-    >
-      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
-        {children}
-        {isActive && <span>{direction === "asc" ? "↑" : "↓"}</span>}
-      </div>
-    </TH>
+  const tokenTotal = Math.max(model.prompt_tokens + model.completion_tokens, 1);
+  const latencyMax = Math.max(
+    model.avg_latency_ms ?? 0,
+    model.p50_latency_ms ?? 0,
+    peak?.ttft_ms ?? 0,
+    1,
   );
-}
-
-function StatusPill({ value, type }: { value: number | null; type: "success" | "latency" }) {
-  if (value === null) {
-    return (
-      <span className="font-mono text-[length:var(--fs-md)] tabular-nums text-(--dim)">
-        {type === "success" ? "0.0%" : "0ms"}
-      </span>
-    );
-  }
-
-  const getColor = () => {
-    if (type === "success") {
-      if (value >= 95) return "text-(--hl2)";
-      if (value >= 90) return "text-(--hl3)";
-      return "text-(--err)";
-    }
-    if (value < 500) return "text-(--hl2)";
-    if (value < 1500) return "text-(--hl3)";
-    return "text-(--err)";
-  };
-
   return (
-    <span className={`font-mono text-[length:var(--fs-md)] tabular-nums ${getColor()}`}>
-      {type === "success" ? `${value.toFixed(1)}%` : formatDurationOrUnavailable(value)}
-    </span>
-  );
-}
-
-function ExpandedCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
-        {label}
-      </dt>
-      <dd className="mt-1 font-mono text-[length:var(--fs-base)] leading-none tabular-nums text-(--fg)">
-        {value}
-      </dd>
+    <div className="grid gap-4 border-y border-(--border)/40 py-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+      <MetricPanel title="Token mix" value={formatNumber(model.total_tokens)}>
+        <StackedMetricBar
+          segments={[
+            { label: "prompt", value: model.prompt_tokens, color: modelColor },
+            { label: "completion", value: model.completion_tokens, color: "var(--hl2)" },
+          ]}
+          total={tokenTotal}
+          formatValue={formatNumber}
+        />
+      </MetricPanel>
+      <MetricPanel title="Latency" value={formatDurationOrUnavailable(model.avg_latency_ms)}>
+        <MiniBarChart
+          bars={[
+            { label: "avg", value: model.avg_latency_ms ?? 0 },
+            { label: "p50", value: model.p50_latency_ms ?? 0 },
+            { label: "ttft", value: model.avg_ttft_ms ?? 0 },
+          ]}
+          max={latencyMax}
+        />
+      </MetricPanel>
+      <MetricPanel title="Throughput" value={formatNumber(model.avg_tokens)}>
+        <MiniBarChart
+          bars={[
+            { label: "avg/req", value: model.avg_tokens },
+            { label: "prefill", value: model.prefill_tps ?? peak?.prefill_tps ?? 0 },
+            { label: "gen", value: model.generation_tps ?? peak?.generation_tps ?? 0 },
+          ]}
+          max={Math.max(
+            model.avg_tokens,
+            model.prefill_tps ?? 0,
+            model.generation_tps ?? 0,
+            peak?.prefill_tps ?? 0,
+            peak?.generation_tps ?? 0,
+            1,
+          )}
+        />
+      </MetricPanel>
     </div>
   );
 }
@@ -310,9 +283,11 @@ function renderSpeedDisplay(speed: SpeedDisplay) {
     return <span className="tabular-nums text-(--fg)">{speed.text}</span>;
   }
   return (
-    <div className={`flex flex-col items-end gap-0.5 ${speed.muted ? "text-(--dim)" : ""}`}>
+    <div
+      className={`flex flex-col items-end gap-1 ${speed.muted ? "text-(--dim)" : "text-(--fg)"}`}
+    >
       {speed.rows.map((row) => (
-        <span key={row} className="tabular-nums text-[length:var(--fs-sm)]">
+        <span key={row} className="tabular-nums text-[length:var(--fs-xs)]">
           {row}
         </span>
       ))}

@@ -1,11 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createConfig } from "../../../controller/src/config/env";
-import { upgradeVllmRuntime } from "../../../controller/src/modules/engines/runtimes/vllm-runtime";
-import {
-  runPlatformUpgrade,
-  upgradeLlamacppRuntime,
-  upgradeSglangRuntime,
-} from "../../../controller/src/modules/engines/runtimes/runtime-upgrade";
+import { getEngineSpec } from "../../../controller/src/modules/engines/engine-spec";
+import { runPlatformUpgrade } from "../../../controller/src/modules/engines/runtimes/runtime-upgrade";
 import { registerControllerTestLifecycle, tempDir } from "./fixtures";
 
 registerControllerTestLifecycle();
@@ -46,7 +42,7 @@ describe("runtime upgrade env-command path", () => {
   test(
     "upgradeVllmRuntime uses the operator-configured command",
     async () => {
-      const result = await upgradeVllmRuntime({});
+      const result = await getEngineSpec("vllm").install({ config: createConfig() });
       expect(result.used_command).toBe("true");
     },
     60_000
@@ -54,13 +50,13 @@ describe("runtime upgrade env-command path", () => {
 
   test("upgradeSglangRuntime uses the operator-configured command", async () => {
     const config = createConfig();
-    const result = await upgradeSglangRuntime(config, {});
+    const result = await getEngineSpec("sglang").install({ config });
     expect(result.used_command).toBe("true");
   });
 
   test("upgradeLlamacppRuntime uses the operator-configured command", async () => {
     const config = createConfig();
-    const result = await upgradeLlamacppRuntime(config, {});
+    const result = await getEngineSpec("llamacpp").install({ config });
     expect(result.used_command).toBe("true");
   });
 

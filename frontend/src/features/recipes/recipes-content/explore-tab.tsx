@@ -24,12 +24,10 @@ export function ExploreTab() {
     loading,
     error,
     search,
-    task,
     library,
     sort,
     hasMore,
     setSearch,
-    setTask,
     setLibrary,
     setSort,
     loadMore,
@@ -133,6 +131,13 @@ export function ExploreTab() {
     [resumeDownload],
   );
 
+  const openModelCard = useCallback(
+    (model: HuggingFaceModel, variants: HuggingFaceModel[], fit?: ModelFit) => {
+      setSelectedModelCard({ model, variants, fit });
+    },
+    [],
+  );
+
   return (
     <div className="space-y-5">
       <ExploreControls
@@ -142,11 +147,8 @@ export function ExploreTab() {
         poolOverrideGb={poolOverrideGb}
         hardwareProfile={hardwareProfile}
         loading={loading}
-        error={error}
         search={search}
         setSearch={setSearch}
-        task={task}
-        setTask={setTask}
         library={library}
         setLibrary={setLibrary}
         sort={sort}
@@ -171,7 +173,7 @@ export function ExploreTab() {
         pauseDownload={handlePause}
         resumeDownload={handleResume}
         loadMore={loadMore}
-        openModelCard={(model, variants, fit) => setSelectedModelCard({ model, variants, fit })}
+        openModelCard={openModelCard}
       />
       <HuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}

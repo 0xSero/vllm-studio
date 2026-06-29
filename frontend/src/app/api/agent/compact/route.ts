@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
+import { Effect } from "effect";
 import {
-  type ComposerPluginRef,
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
-  sanitizeComposerPlugins,
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
   selectedContextInstructions,
@@ -24,17 +23,12 @@ type CompactRequest = {
   browserSessionId?: string;
   browserBackend?: "embedded" | "sitegeist";
   canvasEnabled?: boolean;
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
 
-function compactInstructions(
-  plugins: ComposerPluginRef[],
-  skills: ComposerSkillRef[],
-  custom?: string,
-): string | undefined {
-  const selected = selectedContextInstructions(plugins, skills);
+function compactInstructions(skills: ComposerSkillRef[], custom?: string): string | undefined {
+  const selected = selectedContextInstructions(skills);
   let extra = custom?.trim() || "";
   if (selected && extra) {
     if (selected.includes(extra)) extra = "";
@@ -44,36 +38,50 @@ function compactInstructions(
   return [selected, additional].filter((value): value is string => Boolean(value)).join("\n\n");
 }
 
-export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as CompactRequest | null;
-  if (!body) return jsonError("Invalid JSON body");
+export function POST(request: NextRequest): Promise<Response> {
+  return Effect.runPromise(compactRouteEffect(request));
+}
 
-  const sessionId = body.sessionId?.trim() || "default";
-  const modelId = body.modelId?.trim();
-  const cwd = body.cwd?.trim() || undefined;
-  const piSessionId = body.piSessionId?.trim() || null;
-  if (!modelId) return jsonError("modelId is required");
+function compactRouteEffect(request: NextRequest): Effect.Effect<Response, unknown> {
+  return Effect.gen(function* () {
+    const body = (yield* Effect.tryPromise({
+      try: () => request.json(),
+      catch: () => null,
+    })) as CompactRequest | null;
+    if (!body) return jsonError("Invalid JSON body");
 
-  try {
-    const session = piRuntimeManager.getSession(sessionId);
-    const plugins = sanitizeComposerPlugins(body.plugins);
-    const skills = sanitizeComposerSkills(body.skills);
-    const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
-    await session.ensureStarted(modelId, cwd, piSessionId, {
-      browserToolEnabled: body.browserToolEnabled === true,
-      browserSessionId:
-        typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
-      browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
-      canvasEnabled: body.canvasEnabled === true,
-      plugins,
-      skills,
-      promptTemplates,
-    });
-    const result = await session.compact(
-      compactInstructions(plugins, skills, body.customInstructions),
+    const sessionId = body.sessionId?.trim() || "default";
+    const modelId = body.modelId?.trim();
+    const cwd = body.cwd?.trim() || undefined;
+    const piSessionId = body.piSessionId?.trim() || null;
+    if (!modelId) return jsonError("modelId is required");
+
+    return yield* Effect.gen(function* () {
+      const session = piRuntimeManager.getSession(sessionId);
+      const skills = sanitizeComposerSkills(body.skills);
+      const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
+      yield* Effect.tryPromise({
+        try: () =>
+          session.ensureStarted(modelId, cwd, piSessionId, {
+            browserToolEnabled: body.browserToolEnabled === true,
+            browserSessionId:
+              typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
+            browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
+            canvasEnabled: body.canvasEnabled === true,
+            skills,
+            promptTemplates,
+          }),
+        catch: (error) => error,
+      });
+      const result = yield* Effect.tryPromise({
+        try: () => session.compact(compactInstructions(skills, body.customInstructions)),
+        catch: (error) => error,
+      });
+      return Response.json({ ok: true, result, status: session.status });
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.succeed(jsonError(errorMessage(error, "Compaction failed"), 409)),
+      ),
     );
-    return Response.json({ ok: true, result, status: session.status });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Compaction failed"), 409);
-  }
+  });
 }

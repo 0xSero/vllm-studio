@@ -97,7 +97,7 @@ export function createEffectTextDeltaCoalescer({
         callback();
       }),
     );
-    return { cancel: () => void Promise.resolve(Fiber.interrupt(fiber as never)) };
+    return { cancel: () => void Effect.runPromise(Fiber.interrupt(fiber)) };
   };
   const frameClock = scheduleFrame ?? effectFrame;
 
@@ -184,7 +184,7 @@ export function createEffectTextDeltaCoalescer({
 
 // A single-frame wait. Uses requestAnimationFrame on the DOM; falls back to a
 // zero-delay timeout otherwise (matches the legacy defaultScheduleFrame).
-const waitForAnimationFrame: Effect.Effect<void> = Effect.async<void>((resume) => {
+const waitForAnimationFrame: Effect.Effect<void> = Effect.callback<void>((resume) => {
   let cancelled = false;
   let handle: number | ReturnType<typeof setTimeout>;
   const finish = () => {

@@ -1,5 +1,5 @@
 // Discover prompt templates (.md files with a name/description front matter)
-// that we expose alongside skills and plugins in the composer. Templates are
+// that we expose alongside skills in the composer. Templates are
 // passed to the SDK runtime via `resourceLoaderOptions.additionalPromptTemplatePaths`,
 // so the agent can expand them like `/template-name` shortcuts. This mirrors
 // the layout used by the Pi CLI and Claude Code so dropping a file in

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildSglangCommand } from "../../../controller/src/modules/engines/process/backend-builder";
+import type { Config } from "../../../controller/src/config/env";
+import { getEngineSpec } from "../../../controller/src/modules/engines/engine-spec";
 import { detectBackend } from "../../../controller/src/modules/engines/process/process-utilities";
 
 describe("process utilities", () => {
@@ -33,7 +34,7 @@ describe("process utilities", () => {
 
 describe("SGLang command builder", () => {
   test("emits the launch flags accepted by the installed SGLang runtime", () => {
-    const command = buildSglangCommand(
+    const command = getEngineSpec("sglang").buildCommand(
       {
         id: "glm-5.1",
         name: "GLM-5.1",
@@ -64,7 +65,7 @@ describe("SGLang command builder", () => {
         max_thinking_tokens: null,
         thinking_mode: "conservative",
       } as never,
-      { sglang_python: "python" } as never,
+      { sglang_python: "python", data_dir: "/tmp/local-studio-test" } as Config,
     );
 
     expect(command.slice(0, 4)).toEqual([

@@ -5,7 +5,6 @@ import {
   Cable,
   Cpu,
   GraduationCap,
-  Plug,
   type LucideIcon,
   Paintbrush,
   ServerCog,
@@ -21,7 +20,6 @@ import {
 } from "./agent-settings-sections";
 import { AppearanceSettings } from "./appearance-settings";
 import { EnginesSection } from "./engines-section";
-import { PluginsSettingsSection } from "@/features/plugins/plugins-page";
 import { ServicesSettings, SystemSettings } from "./system-settings-section";
 import { getSettingsViewSnapshot } from "./settings-view-snapshot";
 interface SettingsViewProps {
@@ -48,7 +46,6 @@ const SECTIONS: SettingsSectionDef[] = [
   ["system", "System", "Runtime targets, services, storage, hardware.", Cpu],
   ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
   ["archive", "Archived chats", "Pi sessions kept out of normal chat lists.", Archive],
-  ["plugins", "Plugins", "MCP server catalog, OAuth connections, and composer availability.", Plug],
   [
     "skills",
     "Skills",
@@ -154,7 +151,6 @@ export function SettingsView({
       ) : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
-      {activeSection === "plugins" ? <PluginsSettingsSection /> : null}
       {activeSection === "skills" ? <SkillsSettings /> : null}
       {activeSection === "setup" ? <SetupChecksSettings /> : null}
     </SettingsLayout>

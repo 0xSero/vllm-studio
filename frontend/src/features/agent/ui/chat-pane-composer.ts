@@ -13,18 +13,17 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
+import { Effect } from "effect";
 import {
   type FileMentionRow,
   type LoadedContextKind,
   type MentionRow,
 } from "@/features/agent/ui/agent-composer-context";
 import {
-  activateComposerPlugin,
   byQuery,
   consumeComposerMention,
   detectComposerMention,
   type ComposerMention,
-  type ComposerPluginRef,
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -62,40 +61,53 @@ export function useComposerAttachments({
   const [composerDragActive, setComposerDragActive] = useState(false);
 
   const attachFiles = useCallback(
-    async (files: FileList | File[] | null) => {
+    (files: FileList | File[] | null) => {
       const fileArray = files ? Array.from(files) : [];
-      if (fileArray.length === 0 || !activeTab) return;
+      if (fileArray.length === 0 || !activeTab) return Promise.resolve();
       if (running) {
         updateTab(activeTab.id, (tab) => ({
           ...tab,
           error: "Pause or wait for the current turn before attaching files.",
         }));
-        return;
+        return Promise.resolve();
       }
       setReadingAttachments(true);
-      try {
-        const next = await Promise.all(fileArray.map((file) => createAttachment(file)));
-        setAttachments((current) => {
-          const seen = new Set(current.map(attachmentDedupKey));
-          const uniqueNext: ChatAttachment[] = [];
-          next.forEach((file) => {
-            const key = attachmentDedupKey(file);
-            if (seen.has(key)) return;
-            seen.add(key);
-            uniqueNext.push(file);
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          const next = yield* Effect.all(
+            fileArray.map((file) =>
+              Effect.tryPromise({ try: () => createAttachment(file), catch: (error) => error }),
+            ),
+          );
+          setAttachments((current) => {
+            const seen = new Set(current.map(attachmentDedupKey));
+            const uniqueNext: ChatAttachment[] = [];
+            next.forEach((file) => {
+              const key = attachmentDedupKey(file);
+              if (seen.has(key)) return;
+              seen.add(key);
+              uniqueNext.push(file);
+            });
+            return [...current, ...uniqueNext];
           });
-          return [...current, ...uniqueNext];
-        });
-        updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
-      } catch (err) {
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          error: err instanceof Error ? err.message : "Failed to attach file",
-        }));
-      } finally {
-        setReadingAttachments(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
+          updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
+        }).pipe(
+          Effect.catch((err) =>
+            Effect.sync(() => {
+              updateTab(activeTab.id, (tab) => ({
+                ...tab,
+                error: err instanceof Error ? err.message : "Failed to attach file",
+              }));
+            }),
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              setReadingAttachments(false);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }),
+          ),
+        ),
+      );
     },
     [activeTab, fileInputRef, running, updateTab],
   );
@@ -162,10 +174,6 @@ export function useComposerLoadedContext({
       if (!activeTab) return;
       const current = tools.selectionFor(activeTab.id);
       tools.setSelection(activeTab.id, {
-        plugins:
-          kind === "plugin"
-            ? current.plugins.filter((plugin) => plugin.id !== id)
-            : current.plugins,
         skills:
           kind === "skill" ? current.skills.filter((skill) => skill.id !== id) : current.skills,
         promptTemplates:
@@ -178,7 +186,6 @@ export function useComposerLoadedContext({
   );
 
   return {
-    selectedPlugins: activeSelection.plugins,
     selectedSkills: activeSelection.skills,
     selectedPromptTemplates: activeSelection.promptTemplates,
     removeLoadedContext,
@@ -188,7 +195,6 @@ export function useComposerLoadedContext({
 type UseComposerMentionRowsOptions = {
   fileMentionRows: FileMentionRow[];
   mention: ComposerMention | null;
-  pluginRows: ComposerPluginRef[];
   promptTemplateRows: ComposerPromptTemplateRef[];
   skillRows: ComposerSkillRef[];
 };
@@ -196,7 +202,6 @@ type UseComposerMentionRowsOptions = {
 export function useComposerMentionRows({
   fileMentionRows,
   mention,
-  pluginRows,
   promptTemplateRows,
   skillRows,
 }: UseComposerMentionRowsOptions): MentionRow[] {
@@ -211,10 +216,6 @@ export function useComposerMentionRows({
         row,
       }));
     }
-    const plugins = byQuery(pluginRows, mention.query, 5).map((row) => ({
-      kind: "plugin" as const,
-      row,
-    }));
     const q = mention.query.trim().toLowerCase();
     const files = fileMentionRows
       .filter(
@@ -222,15 +223,13 @@ export function useComposerMentionRows({
       )
       .slice(0, 5)
       .map((row) => ({ kind: "file" as const, row }));
-    return [...plugins, ...files].slice(0, 8);
-  }, [fileMentionRows, mention, pluginRows, promptTemplateRows, skillRows]);
+    return files.slice(0, 8);
+  }, [fileMentionRows, mention, promptTemplateRows, skillRows]);
 }
 
-type ContextRow = ComposerPluginRef | ComposerSkillRef | ComposerPromptTemplateRef;
+type ContextRow = ComposerSkillRef | ComposerPromptTemplateRef;
 type LoadedContextRow = {
   skill?: ComposerSkillRef;
-  server?: ComposerPluginRef;
-  plugin?: ComposerPluginRef;
   template?: ComposerPromptTemplateRef;
 };
 
@@ -254,63 +253,84 @@ export function useComposerMentionSelection({
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }) {
   return useCallback(
-    async (entry: MentionRow) => {
-      if (!activeTab || !mention) return;
+    (entry: MentionRow) => {
+      if (!activeTab || !mention) return Promise.resolve();
 
-      if (entry.kind === "file") {
-        const input = consumeComposerMention(activeTab.input, mention);
-        updateTab(activeTab.id, (tab) => ({ ...tab, input }));
-        addUniqueAttachment(setAttachments, await loadProjectFileAttachment(cwd, entry.row));
-      } else {
-        const selectedRow = await loadContextRow(entry.row, mention.kind);
-        const input = consumeComposerMention(activeTab.input, mention);
-        updateTab(activeTab.id, (tab) => ({ ...tab, input }));
-        applySelectedContext(activeTab.id, mention.kind, selectedRow, tools);
-      }
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          if (entry.kind === "file") {
+            const input = consumeComposerMention(activeTab.input, mention);
+            updateTab(activeTab.id, (tab) => ({ ...tab, input }));
+            const attachment = yield* loadProjectFileAttachmentEffect(cwd, entry.row);
+            addUniqueAttachment(setAttachments, attachment);
+          } else {
+            const selectedRow = yield* loadContextRowEffect(entry.row, mention.kind);
+            const input = consumeComposerMention(activeTab.input, mention);
+            updateTab(activeTab.id, (tab) => ({ ...tab, input }));
+            if (mention.kind !== "file") {
+              applySelectedContext(activeTab.id, mention.kind, selectedRow, tools);
+            }
+          }
 
-      setMention(null);
-      requestAnimationFrame(() => textareaRef.current?.focus());
+          setMention(null);
+          requestAnimationFrame(() => textareaRef.current?.focus());
+        }),
+      );
     },
     [activeTab, cwd, mention, setAttachments, setMention, textareaRef, tools, updateTab],
   );
 }
 
-async function loadProjectFileAttachment(
+function loadProjectFileAttachment(
   cwd: string,
   row: Extract<MentionRow, { kind: "file" }>["row"],
 ): Promise<ChatAttachment> {
-  const loaded = await jsonOrNull<{ content: string; truncated: boolean; size: number }>(
-    `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(row.rel)}`,
-  );
-  return createProjectFileAttachment({
-    id: row.id,
-    name: row.name,
-    path: row.path,
-    content: loaded?.content ?? "",
-    truncated: loaded?.truncated ?? true,
-    size: loaded?.size ?? 0,
+  return Effect.runPromise(loadProjectFileAttachmentEffect(cwd, row));
+}
+
+function loadProjectFileAttachmentEffect(
+  cwd: string,
+  row: Extract<MentionRow, { kind: "file" }>["row"],
+): Effect.Effect<ChatAttachment> {
+  return Effect.gen(function* () {
+    const loaded = yield* jsonOrNullEffect<{ content: string; truncated: boolean; size: number }>(
+      `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(row.rel)}`,
+    );
+    return createProjectFileAttachment({
+      id: row.id,
+      name: row.name,
+      path: row.path,
+      content: loaded?.content ?? "",
+      truncated: loaded?.truncated ?? true,
+      size: loaded?.size ?? 0,
+    });
   });
 }
 
-async function loadContextRow(row: ContextRow, kind: ComposerMention["kind"]): Promise<ContextRow> {
-  if (!row.path) return row;
-  const loaded = await jsonOrNull<LoadedContextRow>(loadEndpoint(kind, row.path));
-  return loaded?.skill
-    ? { ...row, ...loaded.skill, id: row.id }
-    : loaded?.server
-      ? { ...row, ...loaded.server, id: row.id }
-      : loaded?.plugin
-        ? { ...row, ...loaded.plugin, id: row.id }
-        : loaded?.template
-          ? { ...row, ...loaded.template, id: row.id }
-          : row;
+function loadContextRow(row: ContextRow, kind: ComposerMention["kind"]): Promise<ContextRow> {
+  return Effect.runPromise(loadContextRowEffect(row, kind));
+}
+
+function loadContextRowEffect(
+  row: ContextRow,
+  kind: ComposerMention["kind"],
+): Effect.Effect<ContextRow> {
+  if (!row.path) return Effect.succeed(row);
+  const rowPath = row.path;
+  return Effect.gen(function* () {
+    const loaded = yield* jsonOrNullEffect<LoadedContextRow>(loadEndpoint(kind, rowPath));
+    return loaded?.skill
+      ? { ...row, ...loaded.skill, id: row.id }
+      : loaded?.template
+        ? { ...row, ...loaded.template, id: row.id }
+        : row;
+  });
 }
 
 function loadEndpoint(kind: ComposerMention["kind"], path: string): string {
   const encoded = encodeURIComponent(path);
   if (kind === "skill") return `/api/agent/skills/load?path=${encoded}`;
-  if (kind === "promptTemplate") return `/api/agent/prompt-templates/load?path=${encoded}`;
-  return `/api/mcp/servers/load?path=${encoded}`;
+  return `/api/agent/prompt-templates/load?path=${encoded}`;
 }
 
 function applySelectedContext(
@@ -320,12 +340,6 @@ function applySelectedContext(
   tools: Pick<ToolsContextValue, "selectionFor" | "setSelection">,
 ) {
   const current = tools.selectionFor(sessionId);
-  if (kind === "plugin" && !current.plugins.some((plugin) => plugin.id === selectedRow.id)) {
-    return tools.setSelection(sessionId, {
-      ...current,
-      plugins: [...current.plugins, activateComposerPlugin(selectedRow as ComposerPluginRef)],
-    });
-  }
   if (kind === "skill" && !current.skills.some((skill) => skill.id === selectedRow.id)) {
     return tools.setSelection(sessionId, {
       ...current,
@@ -355,9 +369,21 @@ function addUniqueAttachment(
 }
 
 function jsonOrNull<T>(url: string): Promise<T | null> {
-  return fetch(url, { cache: "no-store" })
-    .then((response) => (response.ok ? (response.json() as Promise<T>) : null))
-    .catch(() => null);
+  return Effect.runPromise(jsonOrNullEffect<T>(url));
+}
+
+function jsonOrNullEffect<T>(url: string): Effect.Effect<T | null> {
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () => fetch(url, { cache: "no-store" }),
+      catch: (error) => error,
+    });
+    if (!response?.ok) return null;
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<T>,
+      catch: (error) => error,
+    });
+  }).pipe(Effect.catch(() => Effect.succeed(null)));
 }
 
 export function useComposerTextareaHeightSync({

@@ -124,6 +124,7 @@ export function RecipesContentView(props: Props) {
             loading={loading}
             filter={filter}
             setFilter={setFilter}
+            recipes={recipes}
             sortedRecipes={sortedRecipes}
             runningRecipeId={runningRecipeId}
             runningRecipeName={runningRecipeName}

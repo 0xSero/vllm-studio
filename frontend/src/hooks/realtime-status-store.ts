@@ -8,7 +8,7 @@
 // to controller events for status.
 
 import { useSyncExternalStore } from "react";
-import { Effect, Fiber, Schedule } from "effect";
+import { Effect, Fiber, Result, Schedule } from "effect";
 import type {
   GPU,
   LaunchProgressData,
@@ -71,7 +71,7 @@ let snapshot: RealtimeStatusSnapshot = initialSnapshot;
 const snapshotsByController = new Map<string, RealtimeStatusSnapshot>();
 const listeners = new Set<() => void>();
 let started = false;
-let pollFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
+let pollFiber: Fiber.Fiber<void, unknown> | null = null;
 let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
 let pollFailureStreak = 0;
 let pollBackoffUntil = 0;
@@ -170,29 +170,39 @@ function emitStatusLoading() {
   });
 }
 
-async function fetchPollResults(): Promise<PollResults> {
-  const [statusResult, compatibilityResult, gpuResult, metricsResult] = await Promise.allSettled([
-    api.getStatus(FAST_STATUS_REQUEST),
-    api.getCompatibility(FAST_COMPAT_REQUEST),
-    api.getGPUs(FAST_GPU_REQUEST),
-    api.getMetrics().catch(() => null),
-  ]);
-  const status = statusResult.status === "fulfilled" ? statusResult.value : null;
-  return {
-    compatibility: compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null,
-    gpus:
-      gpuResult.status === "fulfilled" ? (gpuResult.value.gpus ?? snapshot.gpus) : snapshot.gpus,
-    metrics: pollMetrics(metricsResult, status),
-    status,
-    statusConnected: statusResult.status === "fulfilled",
-  };
+const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
+  Effect.tryPromise({ try: load, catch: (error) => error });
+
+function fetchPollResults(): Promise<PollResults> {
+  return Effect.runPromise(fetchPollResultsEffect());
+}
+
+function fetchPollResultsEffect(): Effect.Effect<PollResults> {
+  return Effect.gen(function* () {
+    const [statusResult, compatibilityResult, gpuResult, metricsResult] = yield* Effect.all([
+      Effect.result(requestEffect(() => api.getStatus(FAST_STATUS_REQUEST))),
+      Effect.result(requestEffect(() => api.getCompatibility(FAST_COMPAT_REQUEST))),
+      Effect.result(requestEffect(() => api.getGPUs(FAST_GPU_REQUEST))),
+      Effect.result(
+        requestEffect(() => api.getMetrics()).pipe(Effect.catch(() => Effect.succeed(null))),
+      ),
+    ] as const);
+    const status = Result.isSuccess(statusResult) ? statusResult.success : null;
+    return {
+      compatibility: Result.isSuccess(compatibilityResult) ? compatibilityResult.success : null,
+      gpus: Result.isSuccess(gpuResult) ? (gpuResult.success.gpus ?? snapshot.gpus) : snapshot.gpus,
+      metrics: pollMetrics(metricsResult, status),
+      status,
+      statusConnected: Result.isSuccess(statusResult),
+    };
+  });
 }
 
 function pollMetrics(
-  result: PromiseSettledResult<Metrics | null>,
+  result: Result.Result<Metrics | null, unknown>,
   status: PolledStatus | null,
 ): Metrics | null {
-  if (result.status === "fulfilled" && result.value) return result.value;
+  if (Result.isSuccess(result) && result.success) return result.success;
   return processKey(snapshot.status?.process) === processKey(status?.process)
     ? snapshot.metrics
     : null;
@@ -376,14 +386,20 @@ function handleControllerEvent(detail: ControllerEventDetail | undefined) {
   controllerEventHandlers[detail?.type ?? ""]?.(detail?.data ?? {}, Date.now());
 }
 
-async function fetchStatusNow(controllerKey = activeControllerKey) {
-  const requestSeq = ++statusRequestSeq;
-  if (controllerKey !== activeControllerKey) return;
-  emitStatusLoading();
-  const results = await fetchPollResults();
-  if (controllerKey !== activeControllerKey || requestSeq !== statusRequestSeq) return;
-  notePollOutcome(results.statusConnected);
-  emitPolledStatus(results);
+function fetchStatusNow(controllerKey = activeControllerKey): Promise<void> {
+  return Effect.runPromise(fetchStatusNowEffect(controllerKey));
+}
+
+function fetchStatusNowEffect(controllerKey = activeControllerKey): Effect.Effect<void> {
+  return Effect.gen(function* () {
+    const requestSeq = ++statusRequestSeq;
+    if (controllerKey !== activeControllerKey) return;
+    emitStatusLoading();
+    const results = yield* fetchPollResultsEffect();
+    if (controllerKey !== activeControllerKey || requestSeq !== statusRequestSeq) return;
+    notePollOutcome(results.statusConnected);
+    emitPolledStatus(results);
+  });
 }
 
 function resetForControllerSwitch() {

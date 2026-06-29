@@ -8,7 +8,7 @@ import {
 import { cleanSessionTitle, makeFreshTab, newId } from "@/features/agent/messages/helpers";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
-import type { ComposerPluginRef, ComposerSkillRef } from "@/features/agent/composer-context";
+import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   PaneId,
   PaneState,
@@ -67,12 +67,10 @@ export function setupWarningFromPiCheck(
 }
 
 type PersistedTabShape = Partial<Session> & {
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
 };
 
 export type PersistedSessionMeta = Omit<Session, "messages" | "error"> & {
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
 };
 
@@ -111,7 +109,7 @@ export function normalizePersistedTab(value: unknown): Session | null {
 
 /**
  * Pull the per-session tool selection out of a persisted tab record. Returns
- * null when the persisted shape didn't carry plugins/skills (legacy or fresh).
+ * null when the persisted shape didn't carry skills/templates.
  * `restorePersistedPaneState` aggregates these so the workspace can rehydrate
  * the tools subsystem after mount.
  */
@@ -120,20 +118,18 @@ export function selectionFromPersistedTab(value: unknown): ToolSelection | null 
   const tab = value as PersistedTabShape & {
     promptTemplates?: ToolSelection["promptTemplates"];
   };
-  const plugins = Array.isArray(tab.plugins) ? tab.plugins : [];
   const skills = Array.isArray(tab.skills) ? tab.skills : [];
   const promptTemplates = Array.isArray(tab.promptTemplates) ? tab.promptTemplates : [];
-  if (plugins.length === 0 && skills.length === 0 && promptTemplates.length === 0) {
+  if (skills.length === 0 && promptTemplates.length === 0) {
     return null;
   }
-  return { plugins, skills, promptTemplates };
+  return { skills, promptTemplates };
 }
 
 export type RestoredPaneState = {
   layout: WorkspaceLayout;
   panesById: Map<PaneId, PaneState>;
   sessions: Map<SessionId, Session>;
-  /** Plugin/skill selections rebuilt from the persisted tab records. */
   selections: Map<SessionId, ToolSelection>;
   focusedPaneId: PaneId;
 };
@@ -246,7 +242,6 @@ export function sessionMetaForPersistence(
   if (selection) {
     return {
       ...base,
-      ...(selection.plugins.length > 0 ? { plugins: selection.plugins } : {}),
       ...(selection.skills.length > 0 ? { skills: selection.skills } : {}),
       ...(selection.promptTemplates.length > 0
         ? { promptTemplates: selection.promptTemplates }
@@ -300,9 +295,6 @@ export function loadPersistedActiveAgentSessions(
           focused: entry.focused === true,
           startedAt: typeof entry.startedAt === "string" ? entry.startedAt : undefined,
           updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : "",
-          plugins: Array.isArray(entry.plugins)
-            ? (entry.plugins as ComposerPluginRef[])
-            : undefined,
           skills: Array.isArray(entry.skills) ? (entry.skills as ComposerSkillRef[]) : undefined,
           usedSkills: Array.isArray(entry.usedSkills)
             ? (entry.usedSkills as ComposerSkillRef[])

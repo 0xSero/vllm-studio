@@ -19,7 +19,7 @@ export function useUsage(source: UsageSource = "provider") {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [sortField, setSortField] = useState<SortField>("success");
+  const [sortField, setSortField] = useState<SortField>("tokens");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const loadStats = useCallback(async () => {
@@ -90,6 +90,12 @@ export function useUsage(source: UsageSource = "provider") {
     if (!stats) return [];
     return [...stats.by_model].sort((a, b) => b.total_tokens - a.total_tokens).map((m) => m.model);
   }, [stats]);
+
+  const modelColorIndex = useMemo(() => {
+    const indexByModel = new Map<string, number>();
+    modelsForChart.forEach((model, index) => indexByModel.set(model, index));
+    return indexByModel;
+  }, [modelsForChart]);
 
   const sortedModels = useMemo(() => {
     if (!stats) return [];
@@ -178,6 +184,7 @@ export function useUsage(source: UsageSource = "provider") {
     loadStats,
     dailyByModel,
     modelsForChart,
+    modelColorIndex,
     sortedModels,
     handleSort,
     toggleRow,

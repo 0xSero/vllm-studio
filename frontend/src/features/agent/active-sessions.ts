@@ -1,4 +1,4 @@
-import type { ComposerPluginRef, ComposerSkillRef } from "@/features/agent/composer-context";
+import type { ComposerSkillRef } from "@/features/agent/composer-context";
 
 export type ActiveAgentSessionSnapshot = {
   projectId: string;
@@ -20,7 +20,6 @@ export type ActiveAgentSessionSnapshot = {
   unseen?: boolean;
   startedAt?: string;
   updatedAt: string;
-  plugins?: ComposerPluginRef[];
   skills?: ComposerSkillRef[];
   usedSkills?: ComposerSkillRef[];
   /**
@@ -125,7 +124,6 @@ function applyIncomingSnapshot(
       target.existing?.startedAt,
       preferDefined(session.startedAt, session.updatedAt),
     ),
-    plugins: preferDefined(session.plugins, target.existing?.plugins),
     skills: preferDefined(session.skills, target.existing?.skills),
     usedSkills: preferDefined(session.usedSkills, target.existing?.usedSkills),
   };

@@ -8,12 +8,13 @@ import {
   type AgentSessionEvent,
   type AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { Effect } from "effect";
 import type { AgentImageInput } from "@/features/agent/contracts";
 import {
   applyRuntimeEnvInjections,
-  buildAgentSessionOptions,
-  pluginFingerprint,
-  resolveAgentCwd,
+  buildAgentSessionOptionsSync,
+  runtimeOptionsFingerprint,
+  resolveAgentCwdEffect,
   type RuntimeStartOptions,
 } from "@/features/agent/pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection } from "@/features/agent/pi-runtime-models";
@@ -45,7 +46,7 @@ function runtimeFingerprint(
     modelId,
     cwd,
     piSessionId: piSessionId ?? "",
-    options: pluginFingerprint(options),
+    options: runtimeOptionsFingerprint(options),
   });
 }
 
@@ -96,151 +97,203 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentModelId = "";
   private agentDir = "";
 
-  async ensureStarted(
+  ensureStarted(
     modelId: string,
     cwd?: string,
     piSessionId?: string | null,
     options: RuntimeStartOptions = {},
   ): Promise<void> {
-    const resolvedCwd = await resolveAgentCwd(cwd);
-    const desiredSessionId = piSessionId ?? null;
-    const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
-    if (this.runtime && this.currentFingerprint === fingerprint) return;
-
-    await this.stop();
-    this.eventSeq = 0;
-    this.eventLog = [];
-    this.activePromptCount = 0;
-    this.awaitingPostCompactionUsage = false;
-    this.postCompactionTokensBefore = null;
-    this.warnedCompactionBoundaryShape = false;
-    this.lastError = null;
-
-    const { models, agentDir } = await refreshPiModels();
-    const selectedModel = models.find(
-      (model) => model.id === modelId || model.rawId === modelId || model.name === modelId,
-    );
-    if (!selectedModel) {
-      throw new Error(`Model '${modelId}' is not available from /v1/models.`);
-    }
-    const resolvedSelection = resolvePiModelSelection(selectedModel.id);
-    const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
-    const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
-
-    const sessionOptions = await buildAgentSessionOptions({ options });
-    applyRuntimeEnvInjections(sessionOptions.envInjections);
-    // SessionManager.create() returns the most-recent session for the cwd. When
-    // the caller wants to resume a specific Pi session id, locate its JSONL on
-    // disk and rebind the SessionManager before the SDK constructs the agent.
-    const sessionManager = SessionManager.create(resolvedCwd);
-    const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
-    if (resumeFile) sessionManager.setSessionFile(resumeFile);
-    const resuming = Boolean(resumeFile);
-    const runtime = await createAgentSessionRuntime(
-      async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
-        const services = await createAgentSessionServices({
-          cwd,
-          agentDir,
-          resourceLoaderOptions: {
-            // Do not load user-installed Pi package/drop-in extensions from
-            // settings.json or auto-discovery. Local Studio only allows the
-            // first-party extension paths assembled below plus selected MCP
-            // servers through mcp-plugin.ts.
-            noExtensions: true,
-            additionalSkillPaths: sessionOptions.skills,
-            // Hand the SDK absolute paths so its jiti-based loader handles
-            // .ts/.js resolution. We avoid pre-importing via `import(variable)`
-            // because Next/webpack's static analyser refuses dynamic specifiers.
-            additionalExtensionPaths: sessionOptions.extensionPaths,
-            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
-          },
-        });
-        const model = services.modelRegistry.find(providerId, backendModelId);
-        if (!model) {
-          throw new Error(
-            `Model '${providerId}/${backendModelId}' is not available to the SDK runtime.`,
-          );
-        }
-        const created = await createAgentSessionFromServices({
-          services,
-          sessionManager,
-          sessionStartEvent,
-          model,
-          thinkingLevel: selectedModel.reasoning ? "high" : undefined,
-        });
-        // Capture extension-load failures so the setup-checks endpoint can
-        // surface broken drop-in extensions without the user tailing logs.
-        const extensionErrors = services.resourceLoader
-          .getExtensions()
-          .errors.map(({ path, error }) => ({
-            type: "error" as const,
-            message: `Failed to load extension "${path}": ${error}`,
-            path,
-          }));
-        const diagnostics = [...services.diagnostics, ...extensionErrors];
-        diagnosticsMap().set(
-          agentDir,
-          diagnostics.map((d) => ({
-            type: d.type as PiResourceDiagnostic["type"],
-            message: d.message,
-            path: "path" in d ? (d as { path?: string }).path : undefined,
-          })),
-        );
-        return {
-          ...created,
-          services,
-          diagnostics,
-        };
-      },
-      {
-        cwd: resolvedCwd,
-        agentDir,
-        sessionManager,
-        sessionStartEvent: { type: "session_start", reason: resuming ? "resume" : "startup" },
-      },
-    );
-
-    this.runtime = runtime;
-    this.agentDir = agentDir;
-    this.currentModelId = modelId;
-    this.currentCwd = resolvedCwd;
-    this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
-    this.currentFingerprint = fingerprint;
-    this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
-    this.normalizeCompactionBoundary(runtime.session);
+    return Effect.runPromise(this.ensureStartedEffect(modelId, cwd, piSessionId, options));
   }
 
-  async prompt(
+  private ensureStartedEffect(
+    modelId: string,
+    cwd: string | undefined,
+    piSessionId: string | null | undefined,
+    options: RuntimeStartOptions,
+  ): Effect.Effect<void, unknown> {
+    return Effect.gen(
+      function* (this: PiSdkSession) {
+        const resolvedCwd = yield* resolveAgentCwdEffect(cwd);
+        const desiredSessionId = piSessionId ?? null;
+        const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
+        if (this.runtime && this.currentFingerprint === fingerprint) return;
+
+        yield* this.stopEffect();
+        this.eventSeq = 0;
+        this.eventLog = [];
+        this.activePromptCount = 0;
+        this.awaitingPostCompactionUsage = false;
+        this.postCompactionTokensBefore = null;
+        this.warnedCompactionBoundaryShape = false;
+        this.lastError = null;
+
+        const { models, agentDir } = yield* Effect.tryPromise({
+          try: () => refreshPiModels(),
+          catch: (error) => error,
+        });
+        const selectedModel = models.find(
+          (model) => model.id === modelId || model.rawId === modelId || model.name === modelId,
+        );
+        if (!selectedModel) {
+          return yield* Effect.fail(
+            new Error(`Model '${modelId}' is not available from /v1/models.`),
+          );
+        }
+        const resolvedSelection = resolvePiModelSelection(selectedModel.id);
+        const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
+        const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
+
+        const sessionOptions = buildAgentSessionOptionsSync({ options });
+        applyRuntimeEnvInjections(sessionOptions.envInjections);
+        const sessionManager = SessionManager.create(resolvedCwd);
+        const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
+        if (resumeFile) sessionManager.setSessionFile(resumeFile);
+        const resuming = Boolean(resumeFile);
+        const runtime = yield* Effect.tryPromise({
+          try: () =>
+            createAgentSessionRuntime(
+              ({ cwd, agentDir, sessionManager, sessionStartEvent }) =>
+                Effect.runPromise(
+                  Effect.gen(function* () {
+                    const services = yield* Effect.tryPromise({
+                      try: () =>
+                        createAgentSessionServices({
+                          cwd,
+                          agentDir,
+                          resourceLoaderOptions: {
+                            noExtensions: true,
+                            additionalSkillPaths: sessionOptions.skills,
+                            additionalExtensionPaths: sessionOptions.extensionPaths,
+                            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+                          },
+                        }),
+                      catch: (error) => error,
+                    });
+                    const model = services.modelRegistry.find(providerId, backendModelId);
+                    if (!model) {
+                      return yield* Effect.fail(
+                        new Error(
+                          `Model '${providerId}/${backendModelId}' is not available to the SDK runtime.`,
+                        ),
+                      );
+                    }
+                    const created = yield* Effect.tryPromise({
+                      try: () =>
+                        createAgentSessionFromServices({
+                          services,
+                          sessionManager,
+                          sessionStartEvent,
+                          model,
+                          thinkingLevel: selectedModel.reasoning ? "high" : undefined,
+                        }),
+                      catch: (error) => error,
+                    });
+                    const extensionErrors = services.resourceLoader
+                      .getExtensions()
+                      .errors.map(({ path, error }) => ({
+                        type: "error" as const,
+                        message: `Failed to load extension "${path}": ${error}`,
+                        path,
+                      }));
+                    const diagnostics = [...services.diagnostics, ...extensionErrors];
+                    diagnosticsMap().set(
+                      agentDir,
+                      diagnostics.map((d) => ({
+                        type: d.type as PiResourceDiagnostic["type"],
+                        message: d.message,
+                        path: "path" in d ? (d as { path?: string }).path : undefined,
+                      })),
+                    );
+                    return {
+                      ...created,
+                      services,
+                      diagnostics,
+                    };
+                  }),
+                ),
+              {
+                cwd: resolvedCwd,
+                agentDir,
+                sessionManager,
+                sessionStartEvent: {
+                  type: "session_start",
+                  reason: resuming ? "resume" : "startup",
+                },
+              },
+            ),
+          catch: (error) => error,
+        });
+
+        this.runtime = runtime;
+        this.agentDir = agentDir;
+        this.currentModelId = modelId;
+        this.currentCwd = resolvedCwd;
+        this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
+        this.currentFingerprint = fingerprint;
+        this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
+        this.normalizeCompactionBoundary(runtime.session);
+      }.bind(this),
+    );
+  }
+
+  prompt(
     message: string,
     onEvent: (event: PiEvent, seq: number) => void,
     options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] } = {},
   ): Promise<void> {
+    return Effect.runPromise(this.promptEffect(message, onEvent, options));
+  }
+
+  private promptEffect(
+    message: string,
+    onEvent: (event: PiEvent, seq: number) => void,
+    options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] },
+  ): Effect.Effect<void, unknown> {
     const session = this.requireSession();
     this.normalizeCompactionBoundary(session);
     const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
     this.on("loggedEvent", listener);
     this.activePromptCount += 1;
     this.lastError = null;
-    try {
-      await session.prompt(message, {
-        streamingBehavior: options.streamingBehavior,
-        images: options.images,
-      });
-    } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
-      throw error;
-    } finally {
-      this.activePromptCount = Math.max(0, this.activePromptCount - 1);
-      this.off("loggedEvent", listener);
-    }
+    return Effect.tryPromise({
+      try: () =>
+        session.prompt(message, {
+          streamingBehavior: options.streamingBehavior,
+          images: options.images,
+        }),
+      catch: (error) => error,
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          this.lastError = error instanceof Error ? error.message : String(error);
+        }).pipe(Effect.andThen(Effect.fail(error))),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.activePromptCount = Math.max(0, this.activePromptCount - 1);
+          this.off("loggedEvent", listener);
+        }),
+      ),
+    );
   }
 
-  async steer(message: string, images: AgentImageInput[] = []): Promise<void> {
-    await this.requireSession().steer(message, images);
+  steer(message: string, images: AgentImageInput[] = []): Promise<void> {
+    return Effect.runPromise(
+      Effect.tryPromise({
+        try: () => this.requireSession().steer(message, images),
+        catch: (error) => error,
+      }),
+    );
   }
 
-  async followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
-    await this.requireSession().followUp(message, images);
+  followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
+    return Effect.runPromise(
+      Effect.tryPromise({
+        try: () => this.requireSession().followUp(message, images),
+        catch: (error) => error,
+      }),
+    );
   }
 
   adoptPiSessionId(piSessionId: string | null | undefined): void {
@@ -248,25 +301,49 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
   }
 
-  async compact(customInstructions?: string): Promise<unknown> {
+  compact(customInstructions?: string): Promise<unknown> {
+    return Effect.runPromise(this.compactEffect(customInstructions));
+  }
+
+  private compactEffect(customInstructions?: string): Effect.Effect<unknown, unknown> {
     if (this.activePromptCount > 0) {
-      throw new Error("Cannot compact while the agent is running.");
+      return Effect.fail(new Error("Cannot compact while the agent is running."));
     }
-    const result = await this.requireSession().compact(customInstructions);
-    this.markCompactionAcknowledged(result);
-    return result;
+    return Effect.gen(
+      function* (this: PiSdkSession) {
+        const result = yield* Effect.tryPromise({
+          try: () => this.requireSession().compact(customInstructions),
+          catch: (error) => error,
+        });
+        this.markCompactionAcknowledged(result);
+        return result;
+      }.bind(this),
+    );
   }
 
-  async abort(): Promise<void> {
-    await this.runtime?.session.abort().catch(() => undefined);
+  abort(): Promise<void> {
+    return Effect.runPromise(
+      Effect.tryPromise({
+        try: () => this.runtime?.session.abort() ?? Promise.resolve(),
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => Effect.void)),
+    );
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    return Effect.runPromise(this.stopEffect());
+  }
+
+  private stopEffect(): Effect.Effect<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
     const runtime = this.runtime;
     this.runtime = null;
-    await runtime?.dispose().catch(() => undefined);
+    if (!runtime) return Effect.void;
+    return Effect.tryPromise({
+      try: () => runtime.dispose(),
+      catch: () => undefined,
+    }).pipe(Effect.catch(() => Effect.void));
   }
 
   get status() {

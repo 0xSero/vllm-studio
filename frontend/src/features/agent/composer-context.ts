@@ -1,23 +1,3 @@
-export type ComposerPluginRef = {
-  id: string;
-  name: string;
-  displayName?: string;
-  version?: string;
-  path?: string;
-  enabled?: boolean;
-  description?: string;
-  shortDescription?: string;
-  source?: string;
-  category?: string;
-  capabilities?: string[];
-  defaultPrompts?: string[];
-  brandColor?: string;
-  iconPath?: string;
-  skillPath?: string;
-  mcpConfigPath?: string;
-  instructions?: string;
-};
-
 export type ComposerSkillRef = {
   id: string;
   name: string;
@@ -36,60 +16,15 @@ export type ComposerPromptTemplateRef = {
 };
 
 export type ComposerMention = {
-  kind: "plugin" | "skill" | "promptTemplate";
+  kind: "file" | "skill" | "promptTemplate";
   query: string;
   start: number;
   end: number;
 };
 
-export function activeComposerPlugins(plugins: ComposerPluginRef[] = []): ComposerPluginRef[] {
-  return plugins.filter((plugin) => plugin.enabled !== false);
-}
-
-export function activateComposerPlugin(plugin: ComposerPluginRef): ComposerPluginRef {
-  return { ...plugin, enabled: true };
-}
-
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function stringArrayField(record: Record<string, unknown>, key: string): string[] | undefined {
-  const value = record[key];
-  if (!Array.isArray(value)) return undefined;
-  const strings = value.filter((item): item is string => typeof item === "string" && Boolean(item));
-  return strings.length ? strings : undefined;
-}
-
-export function sanitizeComposerPlugins(value: unknown): ComposerPluginRef[] {
-  if (!Array.isArray(value)) return [];
-  return activeComposerPlugins(
-    value.flatMap((item): ComposerPluginRef[] => {
-      if (!item || typeof item !== "object") return [];
-      const record = item as Record<string, unknown>;
-      const plugin: ComposerPluginRef = {
-        id: stringField(record, "id") ?? "",
-        name: stringField(record, "name") ?? "",
-        displayName: stringField(record, "displayName"),
-        version: stringField(record, "version"),
-        path: stringField(record, "path"),
-        enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
-        description: stringField(record, "description"),
-        shortDescription: stringField(record, "shortDescription"),
-        source: stringField(record, "source"),
-        category: stringField(record, "category"),
-        capabilities: stringArrayField(record, "capabilities"),
-        defaultPrompts: stringArrayField(record, "defaultPrompts"),
-        brandColor: stringField(record, "brandColor"),
-        iconPath: stringField(record, "iconPath"),
-        skillPath: stringField(record, "skillPath"),
-        mcpConfigPath: stringField(record, "mcpConfigPath"),
-        instructions: stringField(record, "instructions"),
-      };
-      return plugin.name || plugin.id || plugin.path ? [plugin] : [];
-    }),
-  );
 }
 
 export function sanitizeComposerSkills(value: unknown): ComposerSkillRef[] {
@@ -144,7 +79,7 @@ export function detectComposerMention(value: string, caret = value.length): Comp
   const match = /(^|\s)([@$])([^\n@$]{0,80})$/.exec(beforeCaret);
   if (!match) return null;
   const token = `${match[2]}${match[3] ?? ""}`;
-  const kind: ComposerMention["kind"] = match[2] === "@" ? "plugin" : "skill";
+  const kind: ComposerMention["kind"] = match[2] === "@" ? "file" : "skill";
   return {
     kind,
     query: (match[3] ?? "").trimStart(),
@@ -161,56 +96,20 @@ export function consumeComposerMention(value: string, mention: ComposerMention):
   return `${before} ${after}`;
 }
 
-export function selectedContextPrompt(
-  text: string,
-  plugins: ComposerPluginRef[] = [],
-  skills: ComposerSkillRef[] = [],
-): string {
-  const lines = selectedContextLines(plugins, skills);
+export function selectedContextPrompt(text: string, skills: ComposerSkillRef[] = []): string {
+  const lines = selectedContextLines(skills);
   if (!lines.length) return text;
   return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");
 }
 
-export function selectedContextInstructions(
-  plugins: ComposerPluginRef[] = [],
-  skills: ComposerSkillRef[] = [],
-): string | undefined {
-  const lines = selectedContextLines(plugins, skills);
+export function selectedContextInstructions(skills: ComposerSkillRef[] = []): string | undefined {
+  const lines = selectedContextLines(skills);
   if (!lines.length) return undefined;
   return ["Preserve this selected composer context after compaction.", ...lines].join("\n");
 }
 
-function selectedContextLines(
-  plugins: ComposerPluginRef[] = [],
-  skills: ComposerSkillRef[] = [],
-): string[] {
-  return [...selectedPluginContextLines(plugins), ...selectedSkillContextLines(skills)];
-}
-
-function selectedPluginContextLines(plugins: ComposerPluginRef[] = []): string[] {
-  const lines: string[] = [];
-  const enabledPlugins = activeComposerPlugins(plugins);
-  if (!enabledPlugins.length) return lines;
-  lines.push(`Enabled plugins: ${enabledPlugins.map(pluginRefLabel).join(", ")}.`);
-  for (const plugin of enabledPlugins) lines.push(...pluginContextLines(plugin));
-  return lines;
-}
-
-function pluginContextLines(plugin: ComposerPluginRef): string[] {
-  const label = pluginRefLabel(plugin);
-  const lines: string[] = [];
-  const summary = plugin.shortDescription ?? plugin.description;
-  if (summary) lines.push(`Plugin ${label}: ${summary}`);
-  if (plugin.capabilities?.length) {
-    lines.push(`Plugin ${label} capabilities: ${plugin.capabilities.join(", ")}`);
-  }
-  if (plugin.defaultPrompts?.length) {
-    lines.push(`Plugin ${label} default prompts: ${plugin.defaultPrompts.slice(0, 2).join(" | ")}`);
-  }
-  if (plugin.instructions) lines.push(`Plugin ${label} instructions:\n${plugin.instructions}`);
-  const runtime = pluginRuntimeDetails(plugin);
-  if (runtime.length) lines.push(`Plugin ${label} runtime: ${runtime.join("; ")}`);
-  return lines;
+function selectedContextLines(skills: ComposerSkillRef[] = []): string[] {
+  return selectedSkillContextLines(skills);
 }
 
 function selectedSkillContextLines(skills: ComposerSkillRef[] = []): string[] {
@@ -221,18 +120,6 @@ function selectedSkillContextLines(skills: ComposerSkillRef[] = []): string[] {
 function skillContextLine(skill: ComposerSkillRef): string {
   const label = `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`;
   return skill.instructions ? `${label}\n${skill.instructions}` : label;
-}
-
-function pluginRuntimeDetails(plugin: ComposerPluginRef): string[] {
-  return [
-    plugin.path ? `plugin=${plugin.path}` : null,
-    plugin.skillPath ? `skills=${plugin.skillPath}` : null,
-    plugin.mcpConfigPath ? `mcp=${plugin.mcpConfigPath}` : null,
-  ].filter((value): value is string => Boolean(value));
-}
-
-function pluginRefLabel(plugin: ComposerPluginRef): string {
-  return plugin.source ? `@${plugin.name} (${plugin.source})` : `@${plugin.name}`;
 }
 
 function searchableText(row: {

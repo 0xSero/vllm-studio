@@ -5,10 +5,7 @@ import path from "node:path";
 
 // A GUI-launched macOS/Linux app (Finder, Dock, `open`) inherits a minimal
 // PATH (/usr/bin:/bin:/usr/sbin:/sbin) that omits Homebrew/nvm/asdf/cargo bin
-// dirs where `node`, `npx`, `uvx`, `bun`, etc. live. The embedded agent server
-// is forked from this process and spawns MCP servers (e.g. `npx -y gmail-mcp`)
-// with that same stripped PATH, so they fail with ENOENT, register no tools,
-// and the model silently falls back to shell commands. Recover the user's real
+// dirs where `node`, `npx`, `uvx`, `bun`, etc. live. Recover the user's real
 // login-shell PATH once at startup and merge it with the inherited PATH plus a
 // set of well-known launcher dirs so those executables resolve.
 

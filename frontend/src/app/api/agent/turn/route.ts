@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { Effect } from "effect";
 import { listSessions } from "@/features/agent/sessions-store";
 import { piRuntimeManager } from "@/features/agent/pi-runtime";
 import {
@@ -8,7 +9,6 @@ import {
   type AgentTurnRequest,
 } from "@/features/agent/contracts";
 import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
-import { applyManagedOauthTokens } from "@/features/agent/oauth/managed-tokens";
 import type { PiAgentSession, PiAgentStatus } from "@/features/agent/pi-runtime-types";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
@@ -69,18 +69,22 @@ function effectiveStreamingBehavior(turn: AgentTurnRequest, status: PiAgentStatu
   return turn.streamingBehavior;
 }
 
-async function ensurePromptRuntime(turn: AgentTurnRequest, resolved: ResolvedTurnSession) {
-  const managedTokenFingerprint = await applyManagedOauthTokens();
-  await resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
-    browserToolEnabled: turn.browserToolEnabled,
-    browserSessionId: turn.browserSessionId,
-    browserBackend: turn.browserBackend,
-    planSessionId: resolved.sessionId,
-    canvasEnabled: turn.canvasEnabled,
-    plugins: turn.plugins,
-    skills: turn.skills,
-    promptTemplates: turn.promptTemplates,
-    managedTokenFingerprint,
+function ensurePromptRuntimeEffect(
+  turn: AgentTurnRequest,
+  resolved: ResolvedTurnSession,
+): Effect.Effect<void, unknown> {
+  return Effect.tryPromise({
+    try: () =>
+      resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
+        browserToolEnabled: turn.browserToolEnabled,
+        browserSessionId: turn.browserSessionId,
+        browserBackend: turn.browserBackend,
+        planSessionId: resolved.sessionId,
+        canvasEnabled: turn.canvasEnabled,
+        skills: turn.skills,
+        promptTemplates: turn.promptTemplates,
+      }),
+    catch: (error) => error,
   });
 }
 
@@ -89,39 +93,49 @@ function launchPrompt(
   resolved: ResolvedTurnSession,
   commandImages: AgentImageInput[] | undefined,
 ) {
-  void resolved.session
-    .prompt(turn.message, () => undefined, {
-      streamingBehavior: resolved.effectiveStreamingBehavior,
-      ...(commandImages ? { images: commandImages } : {}),
-    })
-    .catch(() => {
-      // PiSdkSession records lastError on status. The runtime event/status
-      // subscriber owns user-visible recovery and replay.
-    });
+  void Effect.runPromise(
+    Effect.tryPromise({
+      try: () =>
+        resolved.session.prompt(turn.message, () => undefined, {
+          streamingBehavior: resolved.effectiveStreamingBehavior,
+          ...(commandImages ? { images: commandImages } : {}),
+        }),
+      catch: (error) => error,
+    }).pipe(Effect.catch(() => Effect.void)),
+  );
 }
 
-async function dispatchControl(
+function dispatchControlEffect(
   turn: AgentTurnRequest,
   resolved: ResolvedTurnSession,
   commandImages: AgentImageInput[] | undefined,
-): Promise<"queued" | "rejected"> {
-  if (!resolved.controlTargetActive) return "rejected";
+): Effect.Effect<"queued" | "rejected", unknown> {
+  if (!resolved.controlTargetActive) return Effect.succeed("rejected");
   if (turn.mode === "steer") {
-    await resolved.session.steer(turn.message, commandImages);
-    return "queued";
+    return Effect.tryPromise({
+      try: () => resolved.session.steer(turn.message, commandImages),
+      catch: (error) => error,
+    }).pipe(Effect.map(() => "queued" as const));
   }
   if (turn.mode === "follow_up") {
-    await resolved.session.followUp(turn.message, commandImages);
-    return "queued";
+    return Effect.tryPromise({
+      try: () => resolved.session.followUp(turn.message, commandImages),
+      catch: (error) => error,
+    }).pipe(Effect.map(() => "queued" as const));
   }
-  return "rejected";
+  return Effect.succeed("rejected");
 }
 
-async function resolvePiSessionId(session: PiAgentSession, since: Date) {
+function resolvePiSessionIdEffect(
+  session: PiAgentSession,
+  since: Date,
+): Effect.Effect<string | null, unknown> {
   const status = session.status;
-  if (status.piSessionId || !status.cwd) return status.piSessionId;
-  const recent = await listSessions(status.cwd, { since });
-  return recent[0]?.id ?? null;
+  if (status.piSessionId || !status.cwd) return Effect.succeed(status.piSessionId);
+  return Effect.tryPromise({
+    try: () => listSessions(status.cwd, { since }),
+    catch: (error) => error,
+  }).pipe(Effect.map((recent) => recent[0]?.id ?? null));
 }
 
 function commandResult(
@@ -141,68 +155,80 @@ function commandResult(
   };
 }
 
-export async function POST(request: NextRequest) {
+export function POST(request: NextRequest): Promise<Response> {
+  return Effect.runPromise(turnRouteEffect(request));
+}
+
+function turnRouteEffect(request: NextRequest): Effect.Effect<Response, unknown> {
   const denied = requireApiAccess(request);
-  if (denied) return denied;
-  let rawBody: unknown;
-  try {
-    rawBody = await request.json();
-  } catch {
-    return jsonError("Invalid JSON body");
-  }
-  const parsed = parseAgentTurnRequest(rawBody);
-  if (!parsed.ok) return jsonError(parsed.error);
-  const turn = parsed.value;
-  const commandImages = turn.images.length ? turn.images : undefined;
+  if (denied) return Effect.succeed(denied);
+  return Effect.gen(function* () {
+    const rawBody = yield* Effect.tryPromise({
+      try: () => request.json(),
+      catch: () => null,
+    });
+    if (!rawBody) return jsonError("Invalid JSON body");
+    const parsed = parseAgentTurnRequest(rawBody);
+    if (!parsed.ok) return jsonError(parsed.error);
+    const turn = parsed.value;
+    const commandImages = turn.images.length ? turn.images : undefined;
 
-  try {
-    const turnStartedAt = new Date(Date.now() - 2_000);
-    const resolved = resolveTurnSession(turn);
-    if (!resolved) {
-      const result: AgentTurnCommandResult = {
-        type: "command",
-        outcome: "rejected",
-        runtimeSessionId: turn.sessionId,
-        piSessionId: turn.piSessionId,
-        active: false,
-        error: "Runtime session is no longer active.",
-      };
-      return Response.json(result, { status: 409 });
-    }
-
-    if (turn.mode === "prompt") {
-      await ensurePromptRuntime(turn, resolved);
-      launchPrompt(turn, resolved, commandImages);
-      const resolvedPiSessionId = await resolvePiSessionId(resolved.session, turnStartedAt);
-      adoptRuntimePiSessionId(resolved.session, resolvedPiSessionId);
-      return Response.json(
-        commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
-          piSessionId: resolvedPiSessionId,
-        }),
-      );
-    }
-
-    const controlOutcome = await dispatchControl(turn, resolved, commandImages);
-    if (controlOutcome === "rejected") {
-      return Response.json(
-        commandResult("rejected", resolved, {
+    return yield* Effect.gen(function* () {
+      const turnStartedAt = new Date(Date.now() - 2_000);
+      const resolved = resolveTurnSession(turn);
+      if (!resolved) {
+        const result: AgentTurnCommandResult = {
+          type: "command",
+          outcome: "rejected",
+          runtimeSessionId: turn.sessionId,
+          piSessionId: turn.piSessionId,
+          active: false,
           error: "Runtime session is no longer active.",
-        }),
-        { status: 409 },
-      );
-    }
-    return Response.json(commandResult("queued", resolved));
-  } catch (error) {
-    return Response.json(
-      {
-        type: "command",
-        outcome: "rejected",
-        runtimeSessionId: turn.sessionId,
-        piSessionId: turn.piSessionId,
-        active: false,
-        error: errorMessage(error, "Pi agent turn failed"),
-      } satisfies AgentTurnCommandResult,
-      { status: 500 },
+        };
+        return Response.json(result, { status: 409 });
+      }
+
+      if (turn.mode === "prompt") {
+        yield* ensurePromptRuntimeEffect(turn, resolved);
+        launchPrompt(turn, resolved, commandImages);
+        const resolvedPiSessionId = yield* resolvePiSessionIdEffect(
+          resolved.session,
+          turnStartedAt,
+        );
+        adoptRuntimePiSessionId(resolved.session, resolvedPiSessionId);
+        return Response.json(
+          commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
+            piSessionId: resolvedPiSessionId,
+          }),
+        );
+      }
+
+      const controlOutcome = yield* dispatchControlEffect(turn, resolved, commandImages);
+      if (controlOutcome === "rejected") {
+        return Response.json(
+          commandResult("rejected", resolved, {
+            error: "Runtime session is no longer active.",
+          }),
+          { status: 409 },
+        );
+      }
+      return Response.json(commandResult("queued", resolved));
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.succeed(
+          Response.json(
+            {
+              type: "command",
+              outcome: "rejected",
+              runtimeSessionId: turn.sessionId,
+              piSessionId: turn.piSessionId,
+              active: false,
+              error: errorMessage(error, "Pi agent turn failed"),
+            } satisfies AgentTurnCommandResult,
+            { status: 500 },
+          ),
+        ),
+      ),
     );
-  }
+  });
 }

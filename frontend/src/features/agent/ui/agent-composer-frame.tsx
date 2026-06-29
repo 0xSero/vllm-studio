@@ -11,7 +11,6 @@ import type {
 } from "react";
 import type {
   ComposerMention,
-  ComposerPluginRef,
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
@@ -75,7 +74,6 @@ export type AgentComposerFrameProps = {
   queueItems: QueuedMessage[];
   readingAttachments: boolean;
   running: boolean;
-  selectedPlugins: ComposerPluginRef[];
   selectedSkills: ComposerSkillRef[];
   status?: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -125,7 +123,6 @@ export function AgentComposerFrame({
   queueItems,
   readingAttachments,
   running,
-  selectedPlugins,
   selectedSkills,
   status,
   textareaRef,
@@ -158,7 +155,6 @@ export function AgentComposerFrame({
           </div>
         ) : null}
         <AgentLoadedContextTabs
-          plugins={selectedPlugins}
           skills={selectedSkills}
           promptTemplates={promptTemplates}
           onRemove={onRemoveLoadedContext}

@@ -51,6 +51,11 @@ function getSessionPrefsSnapshot(): SessionPrefs {
   return cachedSessionPrefs;
 }
 
+const SESSION_PREFS_SERVER_SNAPSHOT: SessionPrefs = {};
+function getSessionPrefsSnapshotServer(): SessionPrefs {
+  return SESSION_PREFS_SERVER_SNAPSHOT;
+}
+
 export function useProjectsNavSessionPrefs(): SessionPrefs {
   const subscribeSessionPrefs = useCallback((notify: () => void) => {
     void hydrateSessionPrefsFromDesktop();
@@ -65,7 +70,11 @@ export function useProjectsNavSessionPrefs(): SessionPrefs {
     };
   }, []);
 
-  return useSyncExternalStore(subscribeSessionPrefs, getSessionPrefsSnapshot, () => ({}));
+  return useSyncExternalStore(
+    subscribeSessionPrefs,
+    getSessionPrefsSnapshot,
+    getSessionPrefsSnapshotServer,
+  );
 }
 
 export function useProjectDirectoryPickerModalEffects({

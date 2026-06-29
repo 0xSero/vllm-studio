@@ -1,4 +1,5 @@
 import type { ActiveAgentSessionSnapshot } from "@/features/agent/active-sessions";
+import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { findPaneByPiSessionId } from "@/features/agent/runtime/selectors";
 import type { Project } from "@/features/agent/projects/types";
@@ -26,7 +27,6 @@ import {
 } from "@/lib/workspace-events";
 
 const EMPTY_SELECTION: ToolSelection = {
-  plugins: [],
   skills: [],
   promptTemplates: [],
 };
@@ -161,44 +161,59 @@ function normalizeModelsPayload(
 }
 
 function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
-  const setupChecks = deps.api.loadSetupChecks?.().catch(() => null);
+  const loadSetupChecksEffect = deps.api.loadSetupChecks
+    ? Effect.tryPromise({
+        try: () => deps.api.loadSetupChecks?.() ?? Promise.resolve(null),
+        catch: () => null,
+      }).pipe(Effect.catch(() => Effect.succeed(null)))
+    : Effect.succeed(null);
 
   if (deps.api.loadModels) {
     deps.dispatch?.({ type: "setModelsLoading", loading: true });
     deps.dispatch?.({ type: "setError", error: "" });
-    void deps.api
-      .loadModels()
-      .then((payload) => {
+    void Effect.runPromise(
+      Effect.gen(function* () {
+        const payload = yield* Effect.tryPromise({
+          try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
+          catch: (error) => error,
+        });
         const normalized = normalizeModelsPayload(payload);
-        if (normalized.error) throw new Error(normalized.error);
+        if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
         deps.dispatch?.({ type: "setModels", models: normalized.models });
         if (normalized.models.length > 0) {
           deps.dispatch?.({ type: "setSetupWarning", warning: "" });
         } else {
-          void setupChecks?.then((setupPayload) => {
-            const pi = setupPayload?.checks?.find((check) => check.id === "pi");
-            deps.dispatch?.({
-              type: "setSetupWarning",
-              warning: setupWarningFromPiCheck(pi, false),
-            });
+          const setupPayload = yield* loadSetupChecksEffect;
+          const pi = setupPayload?.checks?.find((check) => check.id === "pi");
+          deps.dispatch?.({
+            type: "setSetupWarning",
+            warning: setupWarningFromPiCheck(pi, false),
           });
         }
-      })
-      .catch((error) => {
-        deps.dispatch?.({
-          type: "setError",
-          error: error instanceof Error ? error.message : "Failed to load models",
-        });
-        deps.dispatch?.({ type: "setModelsLoading", loading: false });
-      });
-  } else if (setupChecks) {
-    void setupChecks.then((payload) => {
-      const pi = payload?.checks?.find((check) => check.id === "pi");
-      deps.dispatch?.({
-        type: "setSetupWarning",
-        warning: setupWarningFromPiCheck(pi, state.models.length > 0),
-      });
-    });
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            deps.dispatch?.({
+              type: "setError",
+              error: error instanceof Error ? error.message : "Failed to load models",
+            });
+            deps.dispatch?.({ type: "setModelsLoading", loading: false });
+          }),
+        ),
+      ),
+    );
+  } else if (deps.api.loadSetupChecks) {
+    void Effect.runPromise(
+      loadSetupChecksEffect.pipe(
+        Effect.map((payload) => {
+          const pi = payload?.checks?.find((check) => check.id === "pi");
+          deps.dispatch?.({
+            type: "setSetupWarning",
+            warning: setupWarningFromPiCheck(pi, state.models.length > 0),
+          });
+        }),
+      ),
+    );
   }
 }
 
@@ -224,7 +239,6 @@ function activeSessionSnapshot(
     focused,
     startedAt: tab.startedAt,
     updatedAt: tab.startedAt || new Date().toISOString(),
-    plugins: selection.plugins.length > 0 ? selection.plugins : undefined,
     skills: selection.skills.length > 0 ? selection.skills : undefined,
     usedSkills: usedSkills.length > 0 ? usedSkills : undefined,
   };

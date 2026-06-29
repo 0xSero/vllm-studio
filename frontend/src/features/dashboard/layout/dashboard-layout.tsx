@@ -2,7 +2,7 @@
 
 import type { DashboardLayoutProps } from "./dashboard-types";
 import { DashboardConnectionBanner } from "./dashboard-connection-banner";
-import { ControlPanel } from "../control-panel/control-panel-v2";
+import { ControlPanel } from "../control-panel/control-panel";
 import { LaunchToast } from "../launch-toast";
 
 export function DashboardLayout(props: DashboardLayoutProps) {

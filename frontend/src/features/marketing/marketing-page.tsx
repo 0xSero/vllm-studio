@@ -48,12 +48,6 @@ const screenshots: Screenshot[] = [
     meta: "live app capture",
     alt: "Local Studio model library with hardware profile, model results, and downloads.",
   },
-  {
-    src: "/marketing/screenshots/plugins.png",
-    title: "MCP",
-    meta: "live app capture",
-    alt: "Local Studio Plugins page showing MCP custom server and registry source settings.",
-  },
 ];
 
 const capabilities: Array<{ icon: LucideIcon; title: string; copy: string }> = [
@@ -70,7 +64,7 @@ const capabilities: Array<{ icon: LucideIcon; title: string; copy: string }> = [
   {
     icon: PlugZap,
     title: "Agents",
-    copy: "Pi runtime, MCP tools, skills, browser, files, project state.",
+    copy: "Pi runtime, skills, browser, files, terminal, project state.",
   },
 ];
 
@@ -89,7 +83,7 @@ const downloads = [
   },
   {
     title: "Agents",
-    copy: "DLTL for controllers, providers, runtimes, MCP, Pi.",
+    copy: "DLTL for controllers, providers, runtimes, and Pi.",
     href: "/agents",
     meta: ["DLTL", "controllers", "providers"],
   },
@@ -188,7 +182,7 @@ export function MarketingLandingPage() {
             </div>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>Tool</span>
-              <span className={styles.metricValue}>Pi + MCP</span>
+              <span className={styles.metricValue}>Pi + local tools</span>
             </div>
           </div>
         </div>
@@ -203,7 +197,7 @@ export function MarketingLandingPage() {
             </h2>
           </div>
           <p className={styles.sectionLead}>
-            Status, runtime, models, plugins. The working surfaces are the pitch.
+            Status, runtime, models, agents. The working surfaces are the pitch.
           </p>
         </div>
         <div className={styles.screenshotGrid}>
@@ -257,7 +251,7 @@ export function MarketingLandingPage() {
         <div className={styles.screenshotGrid}>
           <ScreenshotFrame screenshot={screenshots[3]} />
           <div className={styles.stack}>
-            <ScreenshotFrame screenshot={screenshots[4]} />
+            <ScreenshotFrame screenshot={screenshots[1]} />
             <ScreenshotFrame screenshot={screenshots[2]} />
           </div>
         </div>
@@ -366,18 +360,16 @@ Runtime map:
 - Launch through recipes/UI. Do not make chat proxy calls silently launch models.
 
 Agent setup:
-1. Add MCP servers in Plugins -> Custom.
-2. Open /agent.
-3. Pick the controller model or provider/model route.
-4. Select only the needed MCP tools.
-5. Smoke test: model, controller, tools.
+1. Open /agent.
+2. Pick the controller model or provider/model route.
+3. Smoke test: model, controller, browser, files, and terminal.
 
 Acceptance checks:
 - Settings switches controllers.
 - System shows runtime state.
 - /studio/provider-models lists enabled upstreams.
 - /v1/chat/completions works locally and through one provider route.
-- /agent can complete a turn using the selected model and selected MCP tools.
+- /agent can complete a turn using the selected model and local tools.
 - No secrets in diff, logs, screenshots, or commits.`;
 
 const setupChecks = [
@@ -385,7 +377,7 @@ const setupChecks = [
   "Provider keys live in controller config, not prompts.",
   "provider/model routes to that provider.",
   "Default model names hit the active backend.",
-  "Pi sessions load only selected MCP tools.",
+  "Pi sessions load selected skills and local tools.",
 ];
 
 export function AgentsPage() {
@@ -398,7 +390,7 @@ export function AgentsPage() {
           Set up the stack.
         </h1>
         <p className={styles.agentLead}>
-          A compact DLTL for controllers, providers, runtimes, MCP, and Pi.
+          A compact DLTL for controllers, providers, runtimes, and Pi.
         </p>
         <div className={styles.heroActions}>
           <Link className={styles.button} href="/api/downloads/mac-dmg" prefetch={false} download>
@@ -418,7 +410,7 @@ export function AgentsPage() {
             <Network size={18} aria-hidden="true" />
           </div>
           <h2>Scope</h2>
-          <p>Multi-controller. Multi-provider. Runtime-aware. Tool-gated.</p>
+          <p>Multi-controller. Multi-provider. Runtime-aware. Local-tool aware.</p>
           <div className={styles.checklist}>
             {setupChecks.map((check) => (
               <div className={styles.checkItem} key={check}>
@@ -450,7 +442,7 @@ curl -s "$LOCAL_STUDIO_URL/studio/provider-models"`}</pre>
           <div>
             <p className={styles.sectionKicker}>Where to look</p>
             <h2 id="agent-screenshots-title" className={styles.sectionTitle}>
-              Runtime. MCP. Models.
+              Runtime. Agent. Models.
             </h2>
           </div>
           <p className={styles.sectionLead}>The setup path is visible in the app.</p>
@@ -458,7 +450,7 @@ curl -s "$LOCAL_STUDIO_URL/studio/provider-models"`}</pre>
         <div className={styles.screenshotGrid}>
           <ScreenshotFrame screenshot={screenshots[2]} />
           <div className={styles.stack}>
-            <ScreenshotFrame screenshot={screenshots[4]} />
+            <ScreenshotFrame screenshot={screenshots[3]} />
             <ScreenshotFrame screenshot={screenshots[1]} />
           </div>
         </div>
@@ -480,7 +472,7 @@ curl -s "$LOCAL_STUDIO_URL/studio/provider-models"`}</pre>
             {
               icon: TerminalSquare,
               title: "Pi agents",
-              copy: "Selected MCP, project context, browser, files.",
+              copy: "Skills, project context, browser, files, terminal.",
             },
           ].map(({ icon: Icon, title, copy }) => (
             <article className={styles.capability} key={title}>
@@ -496,7 +488,7 @@ curl -s "$LOCAL_STUDIO_URL/studio/provider-models"`}</pre>
 
       <footer className={styles.footer}>
         <span>Agent setup page</span>
-        <span>Controllers, providers, runtimes, MCP, Pi</span>
+        <span>Controllers, providers, runtimes, Pi</span>
       </footer>
     </main>
   );

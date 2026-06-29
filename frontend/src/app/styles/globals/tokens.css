@@ -186,6 +186,12 @@
   --color-usage-chart-4: #d35656;
   --color-usage-chart-5: #c8792f;
   --color-usage-chart-6: #2d8e91;
+  --color-usage-chart-7: #c9a227;
+  --color-usage-chart-8: #d65a93;
+  --color-usage-chart-9: #5a78d6;
+  --color-usage-chart-10: #88b540;
+  --color-usage-chart-11: #b14a7a;
+  --color-usage-chart-12: #3aa7d8;
 
   /* Context breakdown — sky ramp, deep→pale */
   --color-context-breakdown-1: #0b7fff;
@@ -344,6 +350,12 @@
   --color-usage-chart-4: #e16b6b;
   --color-usage-chart-5: #d48a4c;
   --color-usage-chart-6: #65aaa9;
+  --color-usage-chart-7: #d8b53a;
+  --color-usage-chart-8: #e87ba9;
+  --color-usage-chart-9: #6f8ce0;
+  --color-usage-chart-10: #9cc45a;
+  --color-usage-chart-11: #c26890;
+  --color-usage-chart-12: #5cb8e3;
 
   /* Context breakdown — sky ramp */
   --color-context-breakdown-1: #7ea1c8;

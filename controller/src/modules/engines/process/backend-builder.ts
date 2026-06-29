@@ -1,21 +1,16 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Recipe } from "../../models/types";
 import type { Config } from "../../../config/env";
 import {
-  getUnknownVllmExtraArgKeys,
+  getUnknownVllmExtraArgKeys as getUnknownVllmExtraArgumentKeys,
   looksLikeNotesKey,
-  stripForeignFlagKeys,
 } from "../../../../../shared/contracts/engine-args";
 import type { Logger } from "../../../core/logger";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
 import { getEngineSpec } from "../engine-spec";
-import {
-  getDefaultReasoningParser,
-  getDefaultToolCallParser,
-  shouldEnableExpertParallel,
-} from "./model-runtime-defaults";
+
 export const normalizeJsonArgument = (value: unknown): unknown => {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeJsonArgument(item));
@@ -58,8 +53,11 @@ export const getPythonPath = (recipe: Recipe): string | undefined => {
   }
   return undefined;
 };
-export const getVllmPythonPath = (recipe: Recipe): string | undefined => {
-  return resolveVllmRecipePythonPath(recipe.python_path) ?? undefined;
+export const getVllmPythonPath = (
+  recipe: Recipe,
+  dataDirectory?: string | null,
+): string | undefined => {
+  return resolveVllmRecipePythonPath(recipe.python_path, dataDirectory) ?? undefined;
 };
 export const appendExtraArguments = (
   command: string[],
@@ -153,7 +151,7 @@ export const appendVllmExtraArguments = (
   if (allowUnknown) {
     return appendExtraArguments(command, extraArguments);
   }
-  const unknown = getUnknownVllmExtraArgKeys(extraArguments);
+  const unknown = getUnknownVllmExtraArgumentKeys(extraArguments);
   if (unknown.length === 0) {
     return appendExtraArguments(command, extraArguments);
   }
@@ -282,10 +280,10 @@ const sanitizeDockerName = (value: string): string => {
   return cleaned.length > 0 ? cleaned : "recipe";
 };
 
-const buildDockerEnvFlags = (recipe: Recipe): string[] => {
+const buildDockerEnvironmentFlags = (recipe: Recipe): string[] => {
   const flags: string[] = [];
   const seen = new Set<string>();
-  const addEnv = (source: unknown): void => {
+  const addEnvironment = (source: unknown): void => {
     if (!source || typeof source !== "object") {
       return;
     }
@@ -296,8 +294,8 @@ const buildDockerEnvFlags = (recipe: Recipe): string[] => {
       flags.push("-e", `${key}=${String(value)}`);
     }
   };
-  addEnv(recipe.env_vars);
-  addEnv(getExtraArgument(recipe.extra_args, "env_vars"));
+  addEnvironment(recipe.env_vars);
+  addEnvironment(getExtraArgument(recipe.extra_args, "env_vars"));
   return flags;
 };
 
@@ -335,7 +333,7 @@ export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[])
     "--ulimit",
     "stack=67108864",
   ];
-  flags.push(...buildDockerEnvFlags(recipe));
+  flags.push(...buildDockerEnvironmentFlags(recipe));
   flags.push(
     "-e",
     `XDG_CACHE_HOME=${DOCKER_JIT_MOUNT}`,
@@ -353,80 +351,6 @@ export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[])
   return flags;
 };
 
-export const buildVllmCommand = (recipe: Recipe): string[] => {
-  const dockerImage = getDockerImage(recipe);
-  const pythonPath = getVllmPythonPath(recipe);
-  let command: string[];
-  let usesServe = false;
-  if (dockerImage) {
-    command = [CONTAINER_VLLM_BIN, "serve"];
-    usesServe = true;
-  } else if (pythonPath) {
-    const vllmBin = join(dirname(pythonPath), "vllm");
-    if (existsSync(vllmBin)) {
-      command = [vllmBin, "serve"];
-      usesServe = true;
-    } else {
-      const systemVllm = resolveBinary("vllm");
-      if (systemVllm) {
-        command = [systemVllm, "serve"];
-        usesServe = true;
-      } else {
-        command = [pythonPath, "-m", "vllm.entrypoints.openai.api_server"];
-      }
-    }
-  } else {
-    const resolvedVllm = resolveBinary("vllm");
-    command = [resolvedVllm ?? "vllm", "serve"];
-    usesServe = true;
-  }
-  if (usesServe) {
-    command.push(recipe.model_path);
-  } else {
-    command.push("--model", recipe.model_path);
-  }
-  command.push("--host", recipe.host, "--port", String(recipe.port));
-  if (recipe.served_model_name) {
-    command.push("--served-model-name", recipe.served_model_name);
-  }
-  if (recipe.tensor_parallel_size > 1) {
-    command.push("--tensor-parallel-size", String(recipe.tensor_parallel_size));
-  }
-  if (recipe.pipeline_parallel_size > 1) {
-    command.push("--pipeline-parallel-size", String(recipe.pipeline_parallel_size));
-  }
-  const expertParallelExplicit = getExtraArgument(recipe.extra_args, "enable-expert-parallel");
-  if (shouldEnableExpertParallel(recipe, expertParallelExplicit)) {
-    command.push("--enable-expert-parallel");
-  }
-  command.push("--max-model-len", String(recipe.max_model_len));
-  command.push("--gpu-memory-utilization", String(recipe.gpu_memory_utilization));
-  command.push("--max-num-seqs", String(recipe.max_num_seqs));
-  if (recipe.kv_cache_dtype !== "auto") {
-    command.push("--kv-cache-dtype", recipe.kv_cache_dtype);
-  }
-  if (recipe.trust_remote_code) {
-    command.push("--trust-remote-code");
-  }
-  const toolCallParser =
-    recipe.tool_call_parser !== null ? recipe.tool_call_parser : getDefaultToolCallParser(recipe);
-  if (toolCallParser) {
-    command.push("--tool-call-parser", toolCallParser, "--enable-auto-tool-choice");
-  }
-  const reasoningParser =
-    recipe.reasoning_parser !== null ? recipe.reasoning_parser : getDefaultReasoningParser(recipe);
-  if (reasoningParser) {
-    command.push("--reasoning-parser", reasoningParser);
-  }
-  if (recipe.quantization) {
-    command.push("--quantization", recipe.quantization);
-  }
-  if (recipe.dtype) {
-    command.push("--dtype", recipe.dtype);
-  }
-  const built = appendVllmExtraArguments(command, recipe.extra_args);
-  return dockerImage ? wrapVllmInDocker(recipe, dockerImage, built) : built;
-};
 const executableBaseName = (value: string): string => {
   return value.split(/[\\/]/).filter(Boolean).at(-1)?.toLowerCase() ?? value.toLowerCase();
 };
@@ -438,12 +362,6 @@ const rejectPathTraversal = (value: string, label: string): void => {
   if (value.split(/[\\/]+/).includes("..")) {
     throw new Error(`Invalid ${label}: path traversal is not allowed`);
   }
-};
-export const buildMlxCommand = (recipe: Recipe, config: Config): string[] => {
-  const python = getPythonPath(recipe) || config.mlx_python || "python3";
-  const command = [python, "-m", "mlx_lm.server"];
-  command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
-  return appendExtraArguments(command, stripForeignFlagKeys("mlx", recipe.extra_args));
 };
 export const buildBackendCommand = (recipe: Recipe, config: Config): string[] => {
   const launchCommand = getLaunchCommandOverride(recipe);
@@ -521,59 +439,4 @@ export const appendLlamacppArguments = (
     command.push(flag, String(value));
   }
   return command;
-};
-export const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => {
-  const command: string[] = [resolveLlamaBinary(recipe, config)];
-  command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
-  if (recipe.served_model_name) {
-    command.push("--alias", recipe.served_model_name);
-  }
-  const ctxOverride = getExtraArgument(recipe.extra_args, "ctx-size");
-  if (!ctxOverride && recipe.max_model_len > 0) {
-    command.push("--ctx-size", String(recipe.max_model_len));
-  }
-  return appendLlamacppArguments(command, stripForeignFlagKeys("llamacpp", recipe.extra_args));
-};
-export const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
-  const python = getPythonPath(recipe) || config.sglang_python || "python";
-  const command = [python, "-m", "sglang.launch_server"];
-  command.push("--model-path", recipe.model_path);
-  command.push("--host", recipe.host, "--port", String(recipe.port));
-  if (recipe.served_model_name) {
-    command.push("--served-model-name", recipe.served_model_name);
-  }
-  if (recipe.tensor_parallel_size > 1) {
-    command.push("--tensor-parallel-size", String(recipe.tensor_parallel_size));
-  }
-  if (recipe.pipeline_parallel_size > 1) {
-    command.push("--pipeline-parallel-size", String(recipe.pipeline_parallel_size));
-  }
-  command.push("--context-length", String(recipe.max_model_len));
-  command.push("--mem-fraction-static", String(recipe.gpu_memory_utilization));
-  if (recipe.max_num_seqs > 0) {
-    command.push("--max-running-requests", String(recipe.max_num_seqs));
-  }
-  if (recipe.trust_remote_code) {
-    command.push("--trust-remote-code");
-  }
-  if (recipe.quantization) {
-    command.push("--quantization", recipe.quantization);
-  }
-  if (recipe.kv_cache_dtype && recipe.kv_cache_dtype !== "auto") {
-    command.push("--kv-cache-dtype", recipe.kv_cache_dtype);
-  }
-  if (getExtraArgument(recipe.extra_args, "enable-metrics") === undefined) {
-    command.push("--enable-metrics");
-  }
-  const toolCallParser =
-    recipe.tool_call_parser !== null ? recipe.tool_call_parser : getDefaultToolCallParser(recipe);
-  if (toolCallParser) {
-    command.push("--tool-call-parser", toolCallParser);
-  }
-  const reasoningParser =
-    recipe.reasoning_parser !== null ? recipe.reasoning_parser : getDefaultReasoningParser(recipe);
-  if (reasoningParser) {
-    command.push("--reasoning-parser", reasoningParser);
-  }
-  return appendExtraArguments(command, stripForeignFlagKeys("sglang", recipe.extra_args));
 };

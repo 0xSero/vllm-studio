@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronRight, Copy, GitFork } from "@/ui/icon-registry";
+import { effectInterval } from "@/lib/effect-timers";
 import type {
   AssistantBlock,
   ChatMessage,
@@ -231,8 +232,8 @@ function useNowTicker(active: boolean): number {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (!active) return () => undefined;
-      const id = window.setInterval(onStoreChange, 1_000);
-      return () => window.clearInterval(id);
+      const timer = effectInterval(onStoreChange, 1_000);
+      return () => timer.cancel();
     },
     [active],
   );

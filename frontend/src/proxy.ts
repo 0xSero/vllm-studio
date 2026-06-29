@@ -19,11 +19,6 @@ function denyResponse(isApi: boolean, status: number, message: string): NextResp
   return new NextResponse(message, { status });
 }
 
-// Broad access gate. The frontend hosts an in-process agent with shell/filesystem
-// tools, so every route is privileged. See `@/lib/auth/access` for posture rules;
-// crown-jewel API routes additionally self-check via `@/lib/auth/guard`. Returns
-// a response when access is denied (or a cookie-setting redirect for the one-time
-// `?token=` bootstrap), or null when the request may proceed.
 function enforceAccess(request: NextRequest): NextResponse | null {
   const posture = resolveAccessPosture();
   if (posture.kind === "allow") return null;
@@ -31,8 +26,6 @@ function enforceAccess(request: NextRequest): NextResponse | null {
   const url = request.nextUrl;
   const isApi = url.pathname.startsWith("/api/");
 
-  // One-time bootstrap: `?token=<secret>` on a navigation sets an http-only
-  // cookie and redirects to the clean URL.
   const queryToken = url.searchParams.get("token");
   if (queryToken && timingSafeStringEqual(queryToken.trim(), posture.token)) {
     const clean = url.clone();
@@ -57,11 +50,6 @@ function enforceAccess(request: NextRequest): NextResponse | null {
   return denyResponse(isApi, 401, "Unauthorized");
 }
 
-/**
- * Access gate + logging proxy for security monitoring.
- * Enforces the token posture, then logs allowed requests with IP, path, user
- * agent, and auth status.
- */
 export function proxy(request: NextRequest) {
   const denied = enforceAccess(request);
   if (denied) return denied;
