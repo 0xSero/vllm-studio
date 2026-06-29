@@ -106,9 +106,7 @@ export {
   SettingsValue,
   SettingsButton,
   SettingsInput,
-  SettingsTextarea,
   SettingsNotice,
-  SettingsActions,
 } from "./settings";
 export type {
   SettingsFactRow,

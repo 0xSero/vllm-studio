@@ -454,7 +454,6 @@ export function ToolBlockView({ block }: { block: ToolBlock }) {
     return <BrowserPreview block={block} />;
   }
 
-  // Generic fallback (reads, searches, MCP tools, etc.).
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (

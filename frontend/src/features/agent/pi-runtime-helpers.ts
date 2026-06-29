@@ -2,15 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { Effect } from "effect";
 import { listProjectsFromStore } from "@/features/agent/projects-store";
-
-export type RuntimePluginRef = {
-  id?: string;
-  name?: string;
-  path?: string;
-  skillPath?: string;
-  mcpConfigPath?: string;
-};
 
 export type RuntimeSkillRef = {
   id?: string;
@@ -32,17 +25,8 @@ export type RuntimeStartOptions = {
   // Plan panel reads for the same session.
   planSessionId?: string;
   canvasEnabled?: boolean;
-  plugins?: RuntimePluginRef[];
   skills?: RuntimeSkillRef[];
   promptTemplates?: RuntimePromptTemplateRef[];
-  // Changes only when a managed OAuth token is refreshed, so the runtime
-  // restarts (respawning MCP servers) once a prior token has expired.
-  managedTokenFingerprint?: string;
-};
-
-type RuntimeMcpConfig = {
-  pluginName: string;
-  configPath: string;
 };
 
 export type AgentSessionOptionsInput = {
@@ -87,17 +71,25 @@ export function expandHome(value: string): string {
 // Resolve user-facing cwd input into the concrete directory Pi should run in.
 // The default keeps packaged Electron launches out of "/" by preferring the
 // selected project registry, then repo root during dev, then the user home.
-export async function resolveAgentCwd(input?: string): Promise<string> {
+export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unknown> {
   const defaultCwd = resolveDefaultAgentCwd();
   const raw = input?.trim() || defaultCwd;
   const expanded = expandHome(raw);
   const candidate = path.isAbsolute(expanded) ? expanded : path.resolve(defaultCwd, expanded);
-  const resolved = await realpath(candidate);
-  const info = await stat(resolved);
-  if (!info.isDirectory()) {
-    throw new Error(`Agent cwd is not a directory: ${resolved}`);
-  }
-  return resolved;
+  return Effect.gen(function* () {
+    const resolved = yield* Effect.tryPromise({
+      try: () => realpath(candidate),
+      catch: (error) => error,
+    });
+    const info = yield* Effect.tryPromise({
+      try: () => stat(resolved),
+      catch: (error) => error,
+    });
+    if (!info.isDirectory()) {
+      return yield* Effect.fail(new Error(`Agent cwd is not a directory: ${resolved}`));
+    }
+    return resolved;
+  });
 }
 
 // Locate bundled first-party extensions in both development checkouts and packaged
@@ -166,13 +158,6 @@ export function resolveAgentPolicyExtensionPath(): string | null {
   );
 }
 
-export function resolveMcpExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "mcp-plugin.ts",
-    process.env.LOCAL_STUDIO_MCP_EXTENSION_PATH,
-  );
-}
-
 // Locate a bundled skill directory (contains SKILL.md). Searched only when the
 // matching tool surface is ON so it can be appended to the SDK skill list and
 // teach the model how/when to use those tools.
@@ -211,13 +196,7 @@ export function resolvePlanSkillPath(): string | null {
   return resolveBundledSkillPath("plan", process.env.LOCAL_STUDIO_PLAN_SKILL_PATH);
 }
 
-export function pluginFingerprint(options: RuntimeStartOptions): string {
-  const names = (options.plugins ?? [])
-    .map(
-      (plugin) =>
-        `${plugin.name ?? ""}:${plugin.path ?? ""}:${plugin.skillPath ?? ""}:${plugin.mcpConfigPath ?? ""}`,
-    )
-    .sort();
+export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string {
   const skills = (options.skills ?? [])
     .map((skill) => `${skill.name ?? ""}:${skill.path ?? ""}`)
     .sort();
@@ -229,20 +208,9 @@ export function pluginFingerprint(options: RuntimeStartOptions): string {
     browserBackend: browserBackend(options),
     browserSessionId: options.browserSessionId ?? "",
     canvas: options.canvasEnabled === true,
-    plugins: names,
     skills,
     promptTemplates,
-    managedToken: options.managedTokenFingerprint ?? "",
   });
-}
-
-export function pluginSkillPaths(plugins: RuntimePluginRef[]): string[] {
-  return uniqueExistingPaths(
-    plugins.flatMap((plugin) => [
-      plugin.skillPath,
-      plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, "skills") : null,
-    ]),
-  );
 }
 
 export function selectedSkillPaths(skills: RuntimeSkillRef[]): string[] {
@@ -261,22 +229,6 @@ export function uniqueExistingPaths(values: Array<string | null | undefined>): s
     if (seen.has(resolved)) return false;
     seen.add(resolved);
     return true;
-  });
-}
-
-export function pluginMcpConfigs(plugins: RuntimePluginRef[]): RuntimeMcpConfig[] {
-  const seen = new Set<string>();
-  return plugins.flatMap((plugin) => {
-    const configPath =
-      plugin.mcpConfigPath ??
-      (plugin.path && !plugin.path.endsWith(".app") ? path.join(plugin.path, ".mcp.json") : null);
-    if (!configPath || !existsSync(configPath)) return [];
-    const resolved = path.resolve(configPath);
-    if (seen.has(resolved)) return [];
-    seen.add(resolved);
-    return [
-      { pluginName: plugin.name || path.basename(path.dirname(resolved)), configPath: resolved },
-    ];
   });
 }
 
@@ -305,10 +257,7 @@ function browserSkillPathFor(backend: "embedded" | "sitegeist"): string | null {
   return resolveBrowserSkillPath();
 }
 
-function runtimeExtensionPaths(
-  options: RuntimeStartOptions,
-  mcpConfigs: RuntimeMcpConfig[],
-): string[] {
+function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
   const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
   const browserExtensionPath = shouldLoadBrowserTool(options)
@@ -317,20 +266,16 @@ function runtimeExtensionPaths(
   return uniqueExistingPaths([
     timeoutExtensionPath,
     agentPolicyExtensionPath,
-    // Plan tools are always available: the Plan panel is a core surface, so the
-    // model can always populate it instead of writing a plan file to the repo.
     resolvePlanExtensionPath(),
-    mcpConfigs.length ? resolveMcpExtensionPath() : null,
     browserExtensionPath,
     options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
   ]);
 }
 
-function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginRef[]): string[] {
+function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
   const loadBrowser = shouldLoadBrowserTool(options);
   const backend = browserBackend(options);
   return uniqueExistingPaths([
-    ...pluginSkillPaths(plugins),
     ...selectedSkillPaths(options.skills ?? []),
     loadBrowser ? browserSkillPathFor(backend) : null,
     resolvePlanSkillPath(),
@@ -340,7 +285,6 @@ function runtimeSkillPaths(options: RuntimeStartOptions, plugins: RuntimePluginR
 
 function runtimeEnvInjections(
   options: RuntimeStartOptions,
-  mcpConfigs: RuntimeMcpConfig[],
   env: NodeJS.ProcessEnv,
 ): Record<string, string> {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
@@ -349,7 +293,6 @@ function runtimeEnvInjections(
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     LOCAL_STUDIO_PLAN_SESSION_ID: options.planSessionId ?? "",
     LOCAL_STUDIO_FRONTEND_BASE: frontendBase,
-    LOCAL_STUDIO_MCP_PLUGIN_CONFIGS: JSON.stringify(mcpConfigs),
     SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
     SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
     SITEGEIST_RELAY_SESSION_ID: options.browserSessionId ?? "",
@@ -391,16 +334,18 @@ export function applyRuntimeEnvInjections(
   for (const [key, value] of Object.entries(envInjections)) env[key] = value;
 }
 
-export async function buildAgentSessionOptions(
+export function buildAgentSessionOptions(
   input: AgentSessionOptionsInput,
 ): Promise<AgentSessionOptions> {
+  return Promise.resolve(buildAgentSessionOptionsSync(input));
+}
+
+export function buildAgentSessionOptionsSync(input: AgentSessionOptionsInput): AgentSessionOptions {
   const options = input.options;
-  const plugins = options.plugins ?? [];
-  const mcpConfigs = pluginMcpConfigs(plugins);
   return {
-    extensionPaths: runtimeExtensionPaths(options, mcpConfigs),
-    skills: runtimeSkillPaths(options, plugins),
+    extensionPaths: runtimeExtensionPaths(options),
+    skills: runtimeSkillPaths(options),
     promptTemplatePaths: selectedPromptTemplatePaths(options.promptTemplates ?? []),
-    envInjections: runtimeEnvInjections(options, mcpConfigs, input.processEnv ?? process.env),
+    envInjections: runtimeEnvInjections(options, input.processEnv ?? process.env),
   };
 }

@@ -241,24 +241,6 @@ export function SettingsNotice({
   );
 }
 
-export function SettingsActions({
-  children,
-  flush = false,
-  className,
-}: {
-  children: ReactNode;
-  flush?: boolean;
-  className?: string;
-}) {
-  return (
-    <div className={cx("flex justify-end gap-1", flush ? "" : "px-3.5 py-2", className)}>
-      {children}
-    </div>
-  );
-}
-
-type SettingsControlTone = "accent" | "info";
-
 export function SettingsInput({
   id,
   value,
@@ -289,39 +271,6 @@ export function SettingsInput({
       aria-label={ariaLabel}
       className={cx(
         "h-7 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/50 focus:border-(--ui-accent)/40",
-        className,
-      )}
-    />
-  );
-}
-
-export function SettingsTextarea({
-  value,
-  onChange,
-  placeholder,
-  rows = 3,
-  className = "",
-  focusTone = "accent",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
-  className?: string;
-  focusTone?: SettingsControlTone;
-}) {
-  const focusClass =
-    focusTone === "info" ? "focus:border-(--ui-info)/50" : "focus:border-(--ui-accent)/40";
-
-  return (
-    <textarea
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      className={cx(
-        "w-full resize-none rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 py-1.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/50",
-        focusClass,
         className,
       )}
     />
