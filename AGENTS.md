@@ -65,9 +65,8 @@ These apply to all new and edited code. Existing code is legacy; do not
 ### Effect — the runtime pattern
 
 Use the Effect pattern for async, scheduling, fibers, and streaming. Docs:
-<https://effect.website/docs> (Effect core) and
-<https://effect.website/docs/schema> (`@effect/schema`). Follow the Effect v4
-idioms already established in this repo.
+<https://effect.website/docs> and <https://effect.website/docs/schema>. Follow
+the Effect v4 idioms already established in this repo.
 
 - Prefer `Effect.gen`, `Effect.sync`, `Effect.tryPromise`, `Effect.sleep`,
   `Schedule.spaced`/`Schedule.exponential`, and `Stream` over hand-rolled async.
@@ -78,7 +77,7 @@ idioms already established in this repo.
   with a module-level store whose `subscribe` owns Effect fibers (see
   `src/hooks/realtime-status-store.ts`, `src/hooks/use-controller-events.ts`).
   The few surviving `useEffect` calls are error-boundary legacy; do not add more.
-- Validate data at boundaries with `@effect/schema`, not ad-hoc guards.
+- Validate data at boundaries with Effect v4 `Schema`, not ad-hoc guards.
 
 ### UI — use the kit, do not reinvent
 
