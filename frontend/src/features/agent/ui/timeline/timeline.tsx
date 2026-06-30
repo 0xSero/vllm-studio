@@ -90,73 +90,54 @@ export function Timeline({
   }
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        ref={setScroller}
-        data-timeline-scroller
-        // `min-w-0` is load-bearing: without it this flex child keeps its
-        // `min-width: auto` and a single wide code block (long unwrapped lines)
-        // forces the whole column past the window width — the chat ends up
-        // blank with content shoved off the right. min-w-0 lets the scroller
-        // shrink so the inner `<pre overflow-auto>` clips instead.
-        // overflow-anchor:auto (the browser default, set explicitly) lets native
-        // scroll anchoring absorb size changes ABOVE the viewport — reasoning
-        // collapsing, a tool result expanding, a preview decoding — by adjusting
-        // scrollTop so the visible content stays put instead of jumping. The
-        // message wrappers are anchor candidates; only the bottom sentinel opts
-        // out (below) so anchoring never fights the manual stick-to-bottom pin,
-        // which still owns following new content while the view is at the bottom.
-        // (Measured: a 150px above-viewport growth went from CLS 0.037 → 0.)
-        className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
-      >
-        <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
-          {visibleMessages.map((message, index) => {
-            const isLast = index === visibleMessages.length - 1;
-            const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
-            const isGrouped = message.role === prevRole;
-            return (
-              <div
-                key={message.id}
-                data-timeline-message-id={message.id}
-                // No overflow-anchor:none here — these wrappers must be anchor
-                // candidates so the browser can hold one steady when content
-                // above it grows/shrinks (see the scroller comment).
-                className={`${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""}`}
-              >
-                <MemoMessage
-                  message={message}
-                  live={isLast && running}
-                  running={running}
-                  onForkSession={onForkSession}
-                />
-              </div>
-            );
-          })}
-          {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
-            // Codex waiting state: a cadenced text shimmer, no spinner. Only shown
-            // before the assistant produces its first block — once blocks stream,
-            // the activity rows carry their own live states.
-            <div className="pt-6 pb-4">
-              <span className="codex-shimmer-text text-[13px] font-medium leading-5">Thinking</span>
-            </div>
-          ) : null}
-          {/* The one element that KEEPS overflow-anchor:none: the browser must
-              not anchor to this zero-height bottom sentinel (doing so would
-              re-introduce the bottom-edge fights the manual pin was built to
-              own). Real message wrappers above are the anchor candidates. */}
-          <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
-        </div>
-      </div>
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       <PromptMarkers scroller={scroller} messages={visibleMessages} />
-      {!stickToBottom && visibleMessages.length > 0 ? (
-        <ScrollToBottomButton
-          running={running}
-          onClick={() => {
-            scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
-            onStickToBottomChange?.(true);
-          }}
-        />
-      ) : null}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div
+          ref={setScroller}
+          data-timeline-scroller
+          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
+        >
+          <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
+            {visibleMessages.map((message, index) => {
+              const isLast = index === visibleMessages.length - 1;
+              const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
+              const isGrouped = message.role === prevRole;
+              return (
+                <div
+                  key={message.id}
+                  data-timeline-message-id={message.id}
+                  className={`${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""}`}
+                >
+                  <MemoMessage
+                    message={message}
+                    live={isLast && running}
+                    running={running}
+                    onForkSession={onForkSession}
+                  />
+                </div>
+              );
+            })}
+            {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
+              <div className="pt-6 pb-4">
+                <span className="codex-shimmer-text text-[13px] font-medium leading-5">
+                  Thinking
+                </span>
+              </div>
+            ) : null}
+            <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
+          </div>
+        </div>
+        {!stickToBottom && visibleMessages.length > 0 ? (
+          <ScrollToBottomButton
+            running={running}
+            onClick={() => {
+              scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+              onStickToBottomChange?.(true);
+            }}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
