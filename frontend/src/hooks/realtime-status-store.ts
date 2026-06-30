@@ -239,7 +239,7 @@ function emitNoPolledStatus() {
   emitIfChanged({
     ...snapshot,
     statusLoading: false,
-    connected: hasCachedStatus && pollFailureStreak <= 1 ? snapshot.connected : false,
+    connected: hasCachedStatus && pollFailureStreak <= 3 ? snapshot.connected : false,
     lastEventAt: Date.now(),
   });
 }

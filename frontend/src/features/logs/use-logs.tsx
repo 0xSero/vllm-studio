@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import api from "@/lib/api/client";
-import { getApiKey } from "@/lib/api/connection";
+import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
 
 const MAX_RENDERED_LINES = 20_000;
@@ -51,6 +51,23 @@ export function useLogs() {
     (_notify: () => void) => {
       void loadSessions();
       return () => {};
+    },
+    [loadSessions],
+  );
+
+  const subscribeControllerChanges = useCallback(
+    (_notify: () => void) => {
+      const handler = () => {
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+        setSessions([]);
+        setSelectedSession(null);
+        setLogLines([]);
+        setLoading(true);
+        void loadSessions();
+      };
+      window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
+      return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
     },
     [loadSessions],
   );
@@ -190,6 +207,7 @@ export function useLogs() {
   );
 
   useSyncExternalStore(subscribeLogSessions, getLogsSnapshot, getLogsSnapshot);
+  useSyncExternalStore(subscribeControllerChanges, getLogsSnapshot, getLogsSnapshot);
   useSyncExternalStore(subscribeLogContent, getLogsSnapshot, getLogsSnapshot);
   useSyncExternalStore(subscribeLogStream, getLogsSnapshot, getLogsSnapshot);
   useSyncExternalStore(subscribeLogAutoscroll, getLogsSnapshot, getLogsSnapshot);

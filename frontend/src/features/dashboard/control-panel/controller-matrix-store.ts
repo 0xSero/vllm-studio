@@ -25,6 +25,7 @@ export type ControllerSnapshot = SavedController & {
   online: boolean;
   authRequired: boolean;
   running: boolean;
+  modelName: string | null;
 };
 
 export interface ControllerMatrixSnapshot {
@@ -50,18 +51,33 @@ function activeUrlFor(): string {
   return normalizeControllerUrl(getStoredBackendUrl() || controllers[0]?.url || "") ?? "";
 }
 
-function row(
-  controller: SavedController,
-  index: number,
-  online: boolean,
-  authRequired: boolean,
-  running: boolean,
-): ControllerSnapshot {
-  return { ...controller, index, primary: index === 0, online, authRequired, running };
+function row({
+  authRequired,
+  controller,
+  index,
+  modelName,
+  online,
+  running,
+}: {
+  authRequired: boolean;
+  controller: SavedController;
+  index: number;
+  modelName: string | null;
+  online: boolean;
+  running: boolean;
+}): ControllerSnapshot {
+  return { ...controller, index, primary: index === 0, online, authRequired, running, modelName };
 }
 
 function pendingRow(controller: SavedController, index: number): ControllerSnapshot {
-  return row(controller, index, false, false, false);
+  return row({
+    authRequired: false,
+    controller,
+    index,
+    modelName: null,
+    online: false,
+    running: false,
+  });
 }
 
 function loadControllers(): SavedController[] {
@@ -113,11 +129,35 @@ async function pollController(
   });
   try {
     const status = await api.getStatus(POLL_REQUEST);
-    return row(controller, index, true, false, status.running);
+    return row({
+      authRequired: false,
+      controller,
+      index,
+      modelName: modelNameFor(status.process),
+      online: true,
+      running: status.running,
+    });
   } catch (error) {
     const auth = isAuthRequiredError(error);
-    return row(controller, index, false, auth, false);
+    return row({
+      authRequired: auth,
+      controller,
+      index,
+      modelName: null,
+      online: false,
+      running: false,
+    });
   }
+}
+
+function modelNameFor(
+  process: { served_model_name?: string | null; model_path?: string | null } | null,
+): string | null {
+  const served = process?.served_model_name?.trim();
+  if (served) return served;
+  const path = process?.model_path?.trim();
+  if (!path) return null;
+  return path.replace(/\/+$/, "").split("/").pop() || path;
 }
 
 function isAuthRequiredError(error: unknown): boolean {

@@ -1,5 +1,6 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
-import api from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/create-api-client";
+import { BACKEND_URL_CHANGED_EVENT, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { effectInterval } from "@/lib/effect-timers";
 
@@ -16,13 +17,68 @@ function processKey(process: ProcessInfo | null): string {
 let lastRecipe: RecipeWithStatus | null = null;
 let lastRecipeProcessKey = "";
 
+type DashboardRecipesCache = {
+  currentRecipe: RecipeWithStatus | null;
+  logs: string[];
+  processKey: string;
+  recipes: RecipeWithStatus[];
+};
+
+type DashboardApi = ReturnType<typeof createApiClient>;
+
+const cacheByController = new Map<string, DashboardRecipesCache>();
+
+function controllerKey(): string {
+  return getStoredBackendUrl() || "default";
+}
+
+function apiForController(key: string): DashboardApi {
+  const apiKey = getApiKey();
+  return createApiClient({
+    baseUrl: "/api/proxy",
+    useProxy: true,
+    backendUrlOverride: key === "default" ? undefined : key,
+    ...(apiKey ? { apiKeyOverride: apiKey } : {}),
+  });
+}
+
+function cacheState(
+  key: string,
+  process: ProcessInfo | null,
+  recipes: RecipeWithStatus[],
+  currentRecipe: RecipeWithStatus | null,
+  logs: string[],
+): void {
+  cacheByController.set(key, {
+    currentRecipe,
+    logs,
+    processKey: processKey(process),
+    recipes,
+  });
+}
+
+function cachedState(key: string): DashboardRecipesCache | null {
+  return cacheByController.get(key) ?? null;
+}
+
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
-  const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
-  const [currentRecipe, setCurrentRecipe] = useState<RecipeWithStatus | null>(() =>
-    lastRecipe && lastRecipeProcessKey === processKey(currentProcess) ? lastRecipe : null,
+  const initialCache = cachedState(controllerKey());
+  const [recipes, setRecipes] = useState<RecipeWithStatus[]>(() => initialCache?.recipes ?? []);
+  const [currentRecipe, setCurrentRecipe] = useState<RecipeWithStatus | null>(
+    () =>
+      initialCache?.currentRecipe ??
+      (lastRecipe && lastRecipeProcessKey === processKey(currentProcess) ? lastRecipe : null),
   );
-  const [logs, setLogs] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<string[]>(() => initialCache?.logs ?? []);
+  const [loading, setLoading] = useState(!initialCache);
+
+  const applyCachedState = useCallback((key: string) => {
+    const cached = cachedState(key);
+    setRecipes(cached?.recipes ?? []);
+    setCurrentRecipe(cached?.currentRecipe ?? null);
+    setLogs(cached?.logs ?? []);
+    setLoading(!cached);
+  }, []);
 
   const selectTargetLogSession = useCallback(
     (
@@ -82,49 +138,47 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   );
 
   const refreshLogs = useCallback(
-    async (runningRecipe: RecipeWithStatus | null, limit = 220) => {
-      try {
-        const sessions = await api.getLogSessions();
-        const list = sessions.sessions || [];
-        if (list.length === 0) {
-          setLogs([]);
-          return;
-        }
-        const targetSession = selectTargetLogSession(list, runningRecipe);
-        if (!targetSession) {
-          setLogs([]);
-          return;
-        }
-        const logData = await api.getLogs(targetSession.id, limit).catch(() => ({ logs: [] }));
-        setLogs(logData.logs || []);
-      } catch {
-        setLogs([]);
-      }
+    async (client: DashboardApi, runningRecipe: RecipeWithStatus | null, limit = 220) => {
+      const sessions = await client.getLogSessions();
+      const list = sessions.sessions || [];
+      if (list.length === 0) return [];
+      const targetSession = selectTargetLogSession(list, runningRecipe);
+      if (!targetSession) return [];
+      const logData = await client.getLogs(targetSession.id, limit).catch(() => ({ logs: [] }));
+      return logData.logs || [];
     },
     [selectTargetLogSession],
   );
 
-  const reload = useCallback(async () => {
-    try {
-      const data = await api.getRecipes();
-      const list = data.recipes || [];
-      setRecipes(list);
+  const reload = useCallback(
+    async (targetKey = controllerKey()) => {
+      const client = apiForController(targetKey);
+      try {
+        const data = await client.getRecipes();
+        if (controllerKey() !== targetKey) return;
+        const list = data.recipes || [];
+        setRecipes(list);
 
-      const running = currentProcess
-        ? list.find((r: RecipeWithStatus) => r.status === "running") || null
-        : null;
-      const resolved = running ?? (currentProcess ? currentRecipe : null);
-      setCurrentRecipe(resolved);
-      const key = processKey(currentProcess);
-      lastRecipe = resolved && key ? resolved : null;
-      lastRecipeProcessKey = resolved && key ? key : "";
-      await refreshLogs(resolved);
-    } catch (e) {
-      console.error("Failed to load recipes:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentProcess, currentRecipe, refreshLogs]);
+        const running = currentProcess
+          ? list.find((r: RecipeWithStatus) => r.status === "running") || null
+          : null;
+        const resolved = running ?? (currentProcess ? currentRecipe : null);
+        setCurrentRecipe(resolved);
+        const key = processKey(currentProcess);
+        lastRecipe = resolved && key ? resolved : null;
+        lastRecipeProcessKey = resolved && key ? key : "";
+        const nextLogs = await refreshLogs(client, resolved);
+        if (controllerKey() !== targetKey) return;
+        setLogs(nextLogs);
+        cacheState(targetKey, currentProcess, list, resolved, nextLogs);
+      } catch (e) {
+        console.error("Failed to load recipes:", e);
+      } finally {
+        if (controllerKey() === targetKey) setLoading(false);
+      }
+    },
+    [currentProcess, currentRecipe, refreshLogs],
+  );
 
   const subscribeRecipeReload = useCallback(
     (_notify: () => void) => {
@@ -147,13 +201,33 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     [reload],
   );
 
+  const subscribeControllerChanges = useCallback(
+    (_notify: () => void) => {
+      const handler = () => {
+        const key = controllerKey();
+        applyCachedState(key);
+        void reload(key);
+      };
+      window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+      return () => {
+        window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+      };
+    },
+    [applyCachedState, reload],
+  );
+
   const subscribeRecipeLogPolling = useCallback(
     (_notify: () => void) => {
       if (!currentProcess) return () => {};
       let cancelled = false;
+      const targetKey = controllerKey();
+      const client = apiForController(targetKey);
       const poll = async () => {
         if (cancelled) return;
-        await refreshLogs(currentRecipe);
+        const nextLogs = await refreshLogs(client, currentRecipe).catch(() => []);
+        if (cancelled || controllerKey() !== targetKey) return;
+        setLogs(nextLogs);
+        cacheState(targetKey, currentProcess, recipes, currentRecipe, nextLogs);
       };
       void poll();
       const timer = effectInterval(() => void poll(), 4000);
@@ -162,7 +236,7 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
         timer.cancel();
       };
     },
-    [currentProcess, currentRecipe, refreshLogs],
+    [currentProcess, currentRecipe, recipes, refreshLogs],
   );
 
   useSyncExternalStore(
@@ -172,6 +246,11 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   );
   useSyncExternalStore(
     subscribeRecipeEvents,
+    getDashboardRecipesSnapshot,
+    getDashboardRecipesSnapshot,
+  );
+  useSyncExternalStore(
+    subscribeControllerChanges,
     getDashboardRecipesSnapshot,
     getDashboardRecipesSnapshot,
   );

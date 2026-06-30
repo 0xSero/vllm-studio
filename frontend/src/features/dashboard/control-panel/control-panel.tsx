@@ -104,6 +104,9 @@ function ControllerTab({
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_BY_STATE[state]}`} aria-hidden />
       <span className="max-w-[10rem] truncate font-medium text-(--fg)">{label}</span>
+      {controller.modelName ? (
+        <span className="max-w-[14rem] truncate text-(--dim)">{controller.modelName}</span>
+      ) : null}
       <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
         {state}
       </span>

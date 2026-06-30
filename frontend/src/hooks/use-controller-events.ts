@@ -50,16 +50,14 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
       }
       let disposed = false;
       let reconnectFiber: Fiber.Fiber<void, unknown> | null = null;
+      let failureStreak = 0;
 
       const open = () => {
         if (disposed) return;
         const es = new EventSource(sseUrl);
         eventSourceRef.current = es;
-        let failureStreak = 0;
 
         const onDelivered = (event: MessageEvent) => {
-          // A delivered event proves this backend's /events actually streams, so
-          // reset the backoff — a genuine mid-stream drop should reconnect fast.
           failureStreak = 0;
           handleMessage(event);
         };
@@ -72,12 +70,6 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
         es.onerror = () => {
           if (disposed) return;
           es.close();
-          // The browser's native EventSource reconnects immediately. On a backend
-          // whose /events never streams (e.g. CDN-buffered SSE behind Cloudflare),
-          // that pins a long hung request every few seconds for nothing. Take over
-          // reconnection with capped exponential backoff via Effect.sleep on a
-          // tracked fiber; the realtime-status store's polling fallback keeps data
-          // fresh meanwhile.
           failureStreak = Math.min(failureStreak + 1, 6);
           const delay = Math.min(60_000, 3_000 * 2 ** failureStreak);
           const program = Effect.gen(function* () {

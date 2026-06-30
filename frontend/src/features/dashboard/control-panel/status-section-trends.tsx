@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef } from "react";
+import { getStoredBackendUrl } from "@/lib/api/connection";
 import type { MetricSampleInput } from "./status-section-view";
 
 type MetricSample = {
@@ -18,6 +19,12 @@ type MetricPeak = {
   ttft: number;
 };
 
+const samplesByKey = new Map<string, MetricSample[]>();
+
+function scopedSampleKey(key: string): string {
+  return `${getStoredBackendUrl() || "default"}::${key}`;
+}
+
 export function useMetricSamples({
   key,
   generation,
@@ -32,6 +39,7 @@ export function useMetricSamples({
 }: MetricSampleInput) {
   const samplesRef = useRef<MetricSample[]>([]);
   const sampleKeyRef = useRef<string | null>(null);
+  const scopedKey = scopedSampleKey(key);
   const peaks: MetricPeak = {
     generation: finitePositive(generationPeak),
     prefill: finitePositive(prefillPeak),
@@ -39,9 +47,9 @@ export function useMetricSamples({
     ttft: finitePositive(ttftPeak),
   };
 
-  if (sampleKeyRef.current !== key) {
-    sampleKeyRef.current = key;
-    samplesRef.current = [];
+  if (sampleKeyRef.current !== scopedKey) {
+    sampleKeyRef.current = scopedKey;
+    samplesRef.current = samplesByKey.get(scopedKey) ?? [];
   }
   if (!active) return { samples: zeroSamples(), peaks };
 
@@ -61,7 +69,9 @@ export function useMetricSamples({
     previous.ttft !== next.ttft ||
     previous.requests !== next.requests
   ) {
-    samplesRef.current = [...current, next].slice(-56);
+    const nextSamples = [...current, next].slice(-56);
+    samplesRef.current = nextSamples;
+    samplesByKey.set(scopedKey, nextSamples);
   }
 
   return { samples: samplesRef.current.length > 0 ? samplesRef.current : zeroSamples(), peaks };
