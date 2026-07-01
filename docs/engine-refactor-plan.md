@@ -567,7 +567,27 @@ the audit commands below at the start of each iteration to see current counts.
         integration tests/4 unit tests/jscpd (0 clones)/depcheck all green;
         knip's only complaint is the already-documented `redactLogContent`
         false positive, unrelated to this change.
-  - [ ] `frontend/src/app/api/proxy/[...path]/route.ts` (542)
+  - [x] `frontend/src/app/api/proxy/[...path]/route.ts` (542 → 105) — split
+        by concern into 4 sibling files, matching the directory's existing
+        `proxy-timeouts.ts` convention rather than inventing a new layout:
+        `proxy-logging.ts` (51: `ClientInfo` type + client-info extraction +
+        rate-limited access/error logging), `proxy-target.ts` (144: backend-
+        override resolution + the origin-allowlist trust check — the
+        security-sensitive piece, kept as one cohesive unit), `proxy-
+        fetch.ts` (161: retry/fallback fetch mechanics), `proxy-response.ts`
+        (102: upstream `Response` → `NextResponse` conversion including the
+        SSE passthrough stream). `route.ts` now only wires
+        GET/POST/PUT/DELETE to a thin `handleRequest` orchestrator.
+        Consolidated the client-info shape onto `proxy-logging.ts`'s
+        `ClientInfo` type everywhere (via `Pick<ClientInfo, ...>` where a
+        function only needs part of it) instead of 3 separate inline
+        `{ip, country, ua}`-shaped duplicates. Verified: lint/typecheck/
+        typecheck:desktop/cycles/ui-structure/deadcode/dupes (0 clones)/
+        depcheck/build all green; the route's own e2e test
+        (`api-client-auth-override.test.ts`, 3 tests, imports `GET`
+        directly) passes; full e2e suite shows the same pre-existing
+        215/210/5 baseline (4 known plugin/skill-context failures) as every
+        prior iteration, nothing new broken.
   - [ ] `frontend/src/features/settings/local-agents.ts` (533)
   - [ ] `frontend/src/features/setup/use-setup.ts` (530)
   - [ ] `frontend/src/features/agent/runtime/pi-event-applier.ts` (529)
@@ -1032,3 +1052,24 @@ the audit commands below at the start of each iteration to see current counts.
   [...path]/route.ts` (542) is next on the Part C list, back on the frontend
   side; `session-runtime-controller.ts` stays deferred until a dedicated
   pass.
+
+- **2026-07-01 (iter 21)**: split `app/api/proxy/[...path]/route.ts` (542 →
+  105) — see the Part C checklist above for the full breakdown. This
+  directory already had a `proxy-timeouts.ts` sibling file, so the split
+  followed that existing convention (`proxy-<concern>.ts` siblings) rather
+  than inventing a new layout. Used the split as an opportunity to remove a
+  small real duplication along the way: 3 different files had each
+  independently declared their own `{ip, country, ua}`-shaped inline type
+  for client info; consolidated all of them onto one exported `ClientInfo`
+  type in the new `proxy-logging.ts`, narrowed via `Pick<...>` wherever a
+  function only needed part of it. Verified the route's own dedicated e2e
+  test (`api-client-auth-override.test.ts`, imports `GET` directly — the
+  one existing safety net for this file) plus the full e2e suite (still the
+  same pre-existing 215/210/5 baseline, 4 known plugin/skill-context
+  failures, nothing new) and a full production build (`/api/proxy/[...path]`
+  still resolves as a dynamic route). Frontend
+  lint/typecheck/typecheck:desktop/cycles/ui-structure/deadcode/dupes(0
+  clones)/depcheck/build all green. Next iteration:
+  `frontend/src/features/settings/local-agents.ts` (533) is next on the
+  Part C list; `session-runtime-controller.ts` stays deferred until a
+  dedicated pass.
