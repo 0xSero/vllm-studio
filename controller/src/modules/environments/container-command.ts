@@ -1,6 +1,11 @@
 import type { Recipe } from "../models/types";
-import { buildDockerRunArguments } from "../engines/process/backend-builder";
+import { buildDockerRunArguments, sanitizeDockerName } from "../engines/process/backend-builder";
 import type { EnvironmentEngineId } from "./types";
+
+/** An environment's container is keyed by its own id, not the recipe's — the
+ * same recipe can back multiple environments (different engines/versions). */
+export const environmentContainerName = (environmentId: string): string =>
+  `local-studio-env-${sanitizeDockerName(environmentId)}`;
 
 /** vLLM's official image ENTRYPOINT is already `["vllm", "serve"]`, so the
  * container command is just the engine args. */
@@ -49,5 +54,11 @@ export const buildEnvironmentContainerCommand = (
   engineId: EnvironmentEngineId,
   recipe: Recipe,
   image: string,
+  environmentId: string,
 ): string[] =>
-  buildDockerRunArguments({ recipe, image, inner: INNER_COMMAND_BUILDERS[engineId](recipe) });
+  buildDockerRunArguments({
+    recipe,
+    image,
+    inner: INNER_COMMAND_BUILDERS[engineId](recipe),
+    containerName: environmentContainerName(environmentId),
+  });

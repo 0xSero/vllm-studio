@@ -275,7 +275,7 @@ export const getDockerImage = (recipe: Recipe): string | null => {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 };
 
-const sanitizeDockerName = (value: string): string => {
+export const sanitizeDockerName = (value: string): string => {
   const cleaned = value.replace(/[^a-zA-Z0-9_.-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "");
   return cleaned.length > 0 ? cleaned : "recipe";
 };
@@ -304,6 +304,10 @@ export interface DockerRunOptions {
   image: string;
   /** The command to run inside the container, after the image reference. */
   inner: string[];
+  /** Overrides the derived `local-studio-{recipe.id}` container name — needed
+   * whenever more than one container can exist for the same recipe (e.g. an
+   * environment, which is keyed by its own id, not the recipe's). */
+  containerName?: string;
   /** Extra `-e KEY=VALUE` pairs to set unconditionally (e.g. engine cache dirs). */
   extraEnv?: Record<string, string>;
   /** Extra `-v` volume mounts beyond the model path, each as `source:target[:mode]`. */
@@ -320,10 +324,11 @@ export const buildDockerRunArguments = ({
   recipe,
   image,
   inner,
+  containerName,
   extraEnv: extraEnvironment = {},
   extraVolumes = [],
 }: DockerRunOptions): string[] => {
-  const name = `local-studio-${sanitizeDockerName(recipe.id)}`;
+  const name = containerName ?? `local-studio-${sanitizeDockerName(recipe.id)}`;
   const model = recipe.model_path;
   const flags = [
     "docker",

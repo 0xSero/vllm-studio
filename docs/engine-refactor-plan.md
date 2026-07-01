@@ -178,16 +178,36 @@ Progress:
       `core/async.ts`. Confirmed safe (116/116 still pass) since it's the
       exact same underlying `Effect.sleep`, just via the established
       Effect-backed helper instead of a bare Promise.
-- [ ] **Start/stop lifecycle**: actually running the resolved `docker run`
-      command (`buildEnvironmentContainerCommand`) and tearing it down —
-      `POST /environments/:id/start`, `POST /environments/:id/stop`. "Build"
-      is not a distinct step for these official images (Docker Hub/GHCR
-      pre-built, `docker run` pulls on demand); only relevant later if a
-      custom Dockerfile layer is ever needed on top. NOT STARTED. Reuse
-      `process-manager.ts`'s docker stop/kill patterns
-      (`stopDockerContainersForProcesses`) rather than re-inventing container
-      teardown — read that again before writing anything, since it already
-      solves "how do we cleanly stop a docker-backed process."
+- [x] **Start/stop lifecycle** (2026-07-01): `environment-process.ts`
+      (`startEnvironment`, `stopEnvironment`, `isEnvironmentRunning`) +
+      `POST /environments/:id/start|stop` routes. Fixed a naming bug first:
+      `buildDockerRunArguments`/`buildEnvironmentContainerCommand` derived the
+      container name from `recipe.id`, but one recipe can back *multiple*
+      environments (different engine/version) — added a `containerName`
+      override (`environmentContainerName(environmentId)` = `local-studio-
+      env-{id}`), defaulting to the old recipe-based name for
+      `wrapVllmInDocker`'s existing callers so nothing regressed there.
+      `startEnvironment` mirrors `process-manager.ts`'s launch-then-verify
+      pattern (spawn detached, `Effect.gen` + `delayEffect` for a brief
+      settle window, check for an immediate crash) rather than the full
+      `launchModel` machinery (log-tail capture, crash-loop budget) — kept
+      deliberately minimal for a first pass. `stopEnvironment` reuses the
+      same stop→poll→force-kill shape as `process-manager.ts`'s
+      `killProcess`, simplified because Docker's own `--rm` flag handles
+      container removal once it exits (no PID-tree walking needed).
+      `isEnvironmentRunning` is a plain `docker ps --filter` check — no
+      in-memory tracking, so it's correct even across controller restarts.
+      List/get responses now include `running` alongside `image`.
+      **Testing note**: Docker is actually installed on this dev machine, so
+      tests deliberately never exercise a real successful `start` — that
+      would spawn a genuine `docker run` against a multi-gigabyte official
+      image with no model/GPU present, hanging or polluting the host. Tests
+      cover the safe paths only (unknown-id 404s, not-running short-circuit,
+      `isEnvironmentRunning` for a nonexistent container) — a real start/stop
+      round-trip still needs manual verification on a host with Docker + GPU
+      + a downloaded model. 122/122 integration (up from 116) + 4/4 unit +
+      lint/typecheck/jscpd/depcheck green. Whole `environments/` module is
+      now 399 lines across 7 files, none over 90 lines.
 - [ ] **Frontend**: `/environments` page + creation flow (recipe picker,
       engine + version + variant picker, status, start/stop). NOT STARTED.
 - [x] **Reuse existing recipe types**: confirmed — `buildEnvironmentContainerCommand`
@@ -533,3 +553,25 @@ the audit commands below at the start of each iteration to see current counts.
   `process-manager.ts`'s docker stop/kill handling again first and reuse it,
   don't re-invent container teardown. After that: the frontend `/environments`
   page itself, which is still fully untouched.
+
+- **2026-07-01 (iter 8)**: built start/stop container lifecycle — see Part A
+  above. Caught and fixed a real design bug before it shipped: container
+  naming was keyed off `recipe.id`, which breaks the moment one recipe backs
+  two environments (e.g. trying both vLLM v0.11.0 and v0.12.0 against the
+  same model) — added an explicit `containerName` override. Kept the actual
+  process lifecycle intentionally minimal (no log-tail capture, no
+  crash-loop budget) rather than porting all of `launchModel`'s complexity,
+  since this is a first pass and over-building it now would work against
+  "cleanest possible." Also made a deliberate testing-safety call: this dev
+  machine actually has Docker installed, so a naive integration test hitting
+  `/start` for real would try to pull a multi-gigabyte vLLM/SGLang/llama.cpp
+  image with no GPU or model present — tested only the side-effect-free
+  paths instead and left a clear note that the real happy path needs manual
+  verification. Whole environments module: 399 lines / 7 files, all under
+  90 lines each. **Part A backend is now functionally complete** (types,
+  persistence, image resolution, container command building, full CRUD +
+  start/stop routes). Next iteration: the frontend `/environments` page —
+  still the one completely untouched piece of the user's original ask. Look
+  at `frontend/src/app/recipes/page.tsx` (or equivalent) and the existing
+  `/api/agent/projects`-style Next.js API-route-proxying-to-controller
+  pattern before designing it from scratch.

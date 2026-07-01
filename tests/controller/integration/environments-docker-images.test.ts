@@ -64,9 +64,10 @@ describe("resolveEnvironmentImage", () => {
 
 describe("buildEnvironmentContainerCommand", () => {
   const IMAGE = "vllm/vllm-openai:v0.11.0";
+  const ENVIRONMENT_ID = "env-qwen3-32b";
 
   it("wraps vLLM's official image with --model/--host/--port and no CLI subcommand", () => {
-    const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE);
+    const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, ENVIRONMENT_ID);
     expect(cmd[0]).toBe("docker");
     expect(cmd[1]).toBe("run");
     expect(cmd).toContain(IMAGE);
@@ -81,6 +82,7 @@ describe("buildEnvironmentContainerCommand", () => {
       "sglang",
       baseRecipe({ backend: "sglang" }),
       "lmsysorg/sglang:v0.4.7-cu124",
+      ENVIRONMENT_ID,
     );
     const imageIdx = cmd.indexOf("lmsysorg/sglang:v0.4.7-cu124");
     expect(cmd[imageIdx + 1]).toBe("python3");
@@ -94,6 +96,7 @@ describe("buildEnvironmentContainerCommand", () => {
       "llamacpp",
       baseRecipe({ backend: "llamacpp" }),
       "ghcr.io/ggml-org/llama.cpp:server-cuda-b9853",
+      ENVIRONMENT_ID,
     );
     const imageIdx = cmd.indexOf("ghcr.io/ggml-org/llama.cpp:server-cuda-b9853");
     expect(cmd[imageIdx + 1]).toBe("-m");
@@ -102,8 +105,15 @@ describe("buildEnvironmentContainerCommand", () => {
   });
 
   it("bind-mounts the model path read-only for every engine", () => {
-    const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE);
+    const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, ENVIRONMENT_ID);
     const mountIdx = cmd.indexOf("-v");
     expect(cmd[mountIdx + 1]).toBe("/mnt/llm_models/Qwen3-32B:/mnt/llm_models/Qwen3-32B:ro");
+  });
+
+  it("names the container from the environment id, not the recipe id (one recipe, many environments)", () => {
+    const first = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, "env-a");
+    const second = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, "env-b");
+    expect(first[first.indexOf("--name") + 1]).toBe("local-studio-env-env-a");
+    expect(second[second.indexOf("--name") + 1]).toBe("local-studio-env-env-b");
   });
 });
