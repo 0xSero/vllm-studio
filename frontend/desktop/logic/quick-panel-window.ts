@@ -105,7 +105,3 @@ export function resizeQuickPanelToHome(): void {
   panel.setBounds(centeredTopBounds(DESKTOP_CONFIG.quickPanel.homeWindow));
   panel.setResizable(false);
 }
-
-export function getQuickPanel(): BrowserWindow | null {
-  return panel && !panel.isDestroyed() ? panel : null;
-}
