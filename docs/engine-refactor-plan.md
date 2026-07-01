@@ -133,9 +133,29 @@ Progress:
     lint, typecheck, jscpd, depcheck all green. `knip` flags the 3 new files
     as "unused" — expected and correct: nothing wires them into routes yet
     (next step below), not dead code.
-- [ ] **Persistence**: an `environments` store (JSON-file-backed, same shape
-      as `models/recipes/recipe-store.ts`) holding `{id, name, recipeId,
-      engineId, version, variant, image, status}` records. NOT STARTED.
+- [x] **Persistence** (2026-07-01): `recipe-store.ts` turned out to be
+      **SQLite-backed** (via `openSqliteDatabase`/`bun:sqlite`), not JSON-file
+      as originally assumed above — corrected before building anything.
+      `environments/types.ts` now has `Environment`/`EnvironmentId` (branded,
+      matching `RecipeId`'s pattern) — `{id, name, recipeId, engineId,
+      version, variant, createdAt, updatedAt}`. No `image`/`status` field:
+      the image is *derived* on demand via `resolveEnvironmentImage`, not
+      stored (avoids a second source of truth), and container run/build
+      status is a runtime concern like a recipe's running state — not part
+      of the definition record. `environment-serializer.ts` uses Effect v4
+      `Schema` for validation (`Schema.Struct`/`Schema.Literals`), mirroring
+      `recipe-serializer.ts`'s established pattern exactly.
+      `environment-store.ts` mirrors `RecipeStore`'s CRUD shape (list/get/
+      save/delete), simpler since there's no legacy schema to migrate. Wired
+      into `AppContext.stores.environmentStore` alongside `recipeStore`,
+      sharing the same `dbPath`. Also deleted `EnvironmentImageSpec`/
+      `EnvironmentAccelerator` from `types.ts` — leftover from iter 5, never
+      actually used once `image-registry.ts` settled on a more flexible
+      `variant: string` design; found via this iteration's knip run.
+      New test file `environments-store.test.ts` (4 tests: parse
+      defaults/validation, store round-trip, upsert-bumps-updatedAt).
+      112/112 integration (up from 108) + 4/4 unit + lint/typecheck/jscpd/
+      depcheck all green.
 - [ ] **Controller routes**: `/environments` (create/list), `/environments/:id/
       start`, `/environments/:id/stop`, `/environments/:id` (remove). "Build"
       may not even be a distinct step for vLLM/SGLang (official images are
@@ -452,3 +472,22 @@ the audit commands below at the start of each iteration to see current counts.
   exactly the kind of complexity the user is asking to get away from. Next
   iteration: environments store (mirror `recipe-store.ts`'s shape), then
   routes, then frontend page — in that order, one verified commit each.
+
+- **2026-07-01 (iter 6)**: built the environments persistence layer — see
+  Part A above. Corrected a wrong assumption from iter 5's plan (recipe
+  storage is SQLite, not JSON-file) by actually reading `recipe-store.ts`
+  before building anything, rather than trusting the earlier note. Also used
+  this iteration's knip run to catch and delete two types (`EnvironmentImageSpec`,
+  `EnvironmentAccelerator`) left over from iter 5 that never got wired up
+  once the design settled on something more flexible — exactly the kind of
+  self-cleanup this initiative should keep doing every iteration, not just
+  on the original codebase. `container-command.ts`/`image-registry.ts` still
+  show as "unused files" in knip — expected, routes aren't built yet. Next
+  iteration: controller routes (`POST /environments` create, `GET
+  /environments` list, `DELETE /environments/:id`) wiring the store +
+  image-registry + container-command together, following `models/routes.ts`
+  or `engines/routes.ts` for the Hono route-registration convention already
+  used elsewhere. Start/stop lifecycle (actually running the docker command)
+  can come after — get create/list/delete + the resolved image visible in
+  the API first, verify with a route-level integration test before adding
+  process lifecycle.
