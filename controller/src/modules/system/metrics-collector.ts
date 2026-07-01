@@ -2,7 +2,12 @@ import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import { delay } from "../../core/async";
-import { fetchLocal } from "../../http/local-fetch";
+import type { UsageAggregate } from "../../stores/inference-request-store";
+import {
+  SGLANG_METRIC_NAMES,
+  VLLM_METRIC_NAMES,
+  scrapeEngineMetrics,
+} from "./engine-metrics-scrape";
 import { LLAMACPP_TPS_STALE_MS, scrapeLlamacppThroughput } from "./llamacpp-throughput";
 import {
   bumpBestLower,
@@ -17,17 +22,6 @@ const METRICS_HTTP_TIMEOUT_MS = 5_000;
 const METRICS_RUNTIME_SUMMARY_INTERVAL_MS = 30_000;
 const METRICS_COLLECT_INTERVAL_MS = 5_000;
 const METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS = 5;
-
-type UsageAggregate = {
-  totals?: {
-    total_tokens?: number;
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_requests?: number;
-  };
-  latency?: { avg_ms?: number | null };
-  ttft?: { avg_ms?: number | null };
-};
 
 export const startMetricsCollector = (context: AppContext): (() => void) => {
   let running = true;
@@ -44,39 +38,14 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
   let metricsUnavailableUntil = 0;
 
   const scrapeVllmMetrics = async (port: number): Promise<Record<string, number>> => {
-    try {
-      if (Date.now() < metricsUnavailableUntil) {
-        return {};
-      }
-      const response = await fetchLocal(port, "/metrics", {
-        timeoutMs: METRICS_HTTP_TIMEOUT_MS,
-      });
-      if (response.status !== 200) {
-        if (response.status === 404) {
-          metricsUnavailableUntil = Date.now() + 60_000;
-        }
-        return {};
-      }
+    if (Date.now() < metricsUnavailableUntil) return {};
+    const scrape = await scrapeEngineMetrics(port, METRICS_HTTP_TIMEOUT_MS);
+    if (scrape.status === 404) {
+      metricsUnavailableUntil = Date.now() + 60_000;
+    } else if (scrape.status === 200) {
       metricsUnavailableUntil = 0;
-      const text = await response.text();
-      const metrics: Record<string, number> = {};
-      for (const line of text.split("\n")) {
-        if (line.startsWith("#") || line.trim().length === 0) {
-          continue;
-        }
-        const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)\{?[^}]*\}?\s+([\d.eE+-]+)$/);
-        if (match) {
-          const value = Number(match[2]);
-          const metricName = match[1];
-          if (!Number.isNaN(value) && metricName) {
-            metrics[metricName] = value;
-          }
-        }
-      }
-      return metrics;
-    } catch {
-      return {};
     }
+    return scrape.metrics;
   };
 
   const collect = async (): Promise<void> => {
@@ -191,25 +160,16 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
           const elapsed =
             lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
           const isSglang = current.backend === "sglang";
-          const promptTokenNames = isSglang
-            ? ["sglang:prompt_tokens_total", "sglang:prefill_tokens_total"]
-            : ["vllm:prompt_tokens_total"];
-          const generationTokenNames = isSglang
-            ? [
-                "sglang:generation_tokens_total",
-                "sglang:completion_tokens_total",
-                "sglang:gen_tokens_total",
-              ]
-            : ["vllm:generation_tokens_total"];
+          const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
           if (
             elapsed > 0 &&
             Object.keys(vllmMetrics).length > 0 &&
             Object.keys(lastVllmMetrics).length > 0
           ) {
-            const previousPromptTokens = firstMetric(lastVllmMetrics, promptTokenNames);
-            const currentPromptTokens = firstMetric(vllmMetrics, promptTokenNames);
-            const previousGenerationTokens = firstMetric(lastVllmMetrics, generationTokenNames);
-            const currentGenerationTokens = firstMetric(vllmMetrics, generationTokenNames);
+            const previousPromptTokens = firstMetric(lastVllmMetrics, names.promptTokens);
+            const currentPromptTokens = firstMetric(vllmMetrics, names.promptTokens);
+            const previousGenerationTokens = firstMetric(lastVllmMetrics, names.generationTokens);
+            const currentGenerationTokens = firstMetric(vllmMetrics, names.generationTokens);
             if (currentPromptTokens > previousPromptTokens) {
               promptThroughput = (currentPromptTokens - previousPromptTokens) / elapsed;
             }
@@ -218,56 +178,20 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
             }
           }
 
-          promptThroughput =
-            firstMetric(vllmMetrics, [
-              isSglang ? "sglang:prompt_throughput" : "vllm:prompt_throughput",
-              isSglang ? "sglang:prefill_throughput" : "vllm:prefill_throughput",
-            ]) || promptThroughput;
+          promptThroughput = firstMetric(vllmMetrics, names.promptThroughput) || promptThroughput;
           generationThroughput =
-            firstMetric(vllmMetrics, [
-              isSglang ? "sglang:gen_throughput" : "vllm:gen_throughput",
-              isSglang ? "sglang:generation_throughput" : "vllm:generation_throughput",
-            ]) || generationThroughput;
+            firstMetric(vllmMetrics, names.generationThroughput) || generationThroughput;
 
-          runningRequests = Number(
-            firstMetric(
-              vllmMetrics,
-              isSglang
-                ? ["sglang:num_running_reqs", "sglang:num_requests_running"]
-                : ["vllm:num_requests_running"]
-            )
-          );
-          pendingRequests = Number(
-            firstMetric(
-              vllmMetrics,
-              isSglang
-                ? [
-                    "sglang:num_queue_reqs",
-                    "sglang:num_pending_reqs",
-                    "sglang:num_requests_waiting",
-                  ]
-                : ["vllm:num_requests_waiting"]
-            )
-          );
-          kvCacheUsage = firstMetric(
-            vllmMetrics,
-            isSglang
-              ? ["sglang:token_usage", "sglang:kv_cache_usage_perc"]
-              : ["vllm:kv_cache_usage_perc"]
-          );
-          promptTokensTotal = Number(firstMetric(vllmMetrics, promptTokenNames));
-          generationTokensTotal = Number(firstMetric(vllmMetrics, generationTokenNames));
+          runningRequests = firstMetric(vllmMetrics, names.runningRequests);
+          pendingRequests = firstMetric(vllmMetrics, names.pendingRequests);
+          kvCacheUsage = firstMetric(vllmMetrics, names.kvCacheUsage);
+          promptTokensTotal = firstMetric(vllmMetrics, names.promptTokens);
+          generationTokensTotal = firstMetric(vllmMetrics, names.generationTokens);
 
-          const ttftSumName = isSglang
-            ? "sglang:time_to_first_token_seconds_sum"
-            : "vllm:time_to_first_token_seconds_sum";
-          const ttftCountName = isSglang
-            ? "sglang:time_to_first_token_seconds_count"
-            : "vllm:time_to_first_token_seconds_count";
-          const previousTtftSum = lastVllmMetrics[ttftSumName] ?? 0;
-          const previousTtftCount = lastVllmMetrics[ttftCountName] ?? 0;
-          const currentTtftSum = vllmMetrics[ttftSumName] ?? 0;
-          const currentTtftCount = vllmMetrics[ttftCountName] ?? 0;
+          const previousTtftSum = lastVllmMetrics[names.ttftSum] ?? 0;
+          const previousTtftCount = lastVllmMetrics[names.ttftCount] ?? 0;
+          const currentTtftSum = vllmMetrics[names.ttftSum] ?? 0;
+          const currentTtftCount = vllmMetrics[names.ttftCount] ?? 0;
           const dTtftCount = currentTtftCount - previousTtftCount;
           if (dTtftCount > 0) {
             avgTtftMs = ((currentTtftSum - previousTtftSum) / dTtftCount) * 1000;
@@ -345,9 +269,8 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
           ? context.stores.peakMetricsStore.getSession(sessionPeakId)
           : null;
         const bestSessionPeakData = context.stores.peakMetricsStore.getBestSession(modelId);
-        const usageAggregate = context.stores.inferenceRequestStore.aggregate(
-          new Set([modelId])
-        ) as UsageAggregate | null;
+        const usageAggregate: UsageAggregate | null =
+          context.stores.inferenceRequestStore.aggregate(new Set([modelId]));
         const usageTotals = usageAggregate?.totals;
         const usageLatencyAvg = positiveOrUndefined(usageAggregate?.latency?.avg_ms);
         const usageTtftAvg = positiveOrUndefined(usageAggregate?.ttft?.avg_ms);

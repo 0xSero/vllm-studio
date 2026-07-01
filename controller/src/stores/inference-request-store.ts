@@ -17,6 +17,32 @@ export interface InferenceRequestRecord {
   streamed?: boolean;
 }
 
+export type UsageAggregate = {
+  totals: {
+    total_tokens: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_requests: number;
+    successful_requests: number;
+    failed_requests: number;
+    success_rate: number;
+    unique_sessions: number;
+    unique_users: number;
+  };
+  latency: Record<string, number | null> & { avg_ms: number | null };
+  ttft: Record<string, number | null> & { avg_ms: number | null };
+  tokens_per_request: Record<string, number>;
+  cache: Record<string, number>;
+  week_over_week: Record<string, unknown>;
+  recent_activity: Record<string, unknown>;
+  peak_days: Array<Record<string, unknown>>;
+  peak_hours: Array<Record<string, unknown>>;
+  by_model: Array<Record<string, unknown>>;
+  daily: Array<Record<string, unknown>>;
+  daily_by_model: Array<Record<string, unknown>>;
+  hourly_pattern: Array<Record<string, unknown>>;
+};
+
 interface NumberRow {
   [key: string]: number;
 }
@@ -124,7 +150,7 @@ export class InferenceRequestStore {
    * @param knownModels - Recipe-managed model names to include.
    * @returns Aggregated usage payload or null when no rows match.
    */
-  public aggregate(knownModels: ReadonlySet<string>): Record<string, unknown> | null {
+  public aggregate(knownModels: ReadonlySet<string>): UsageAggregate | null {
     if (!knownModels || knownModels.size === 0) return null;
     const filter = buildModelFilter(knownModels);
     const params = filter.params;

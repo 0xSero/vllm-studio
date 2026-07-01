@@ -1,9 +1,4 @@
-import {
-  Counter,
-  Gauge,
-  Histogram,
-  Registry,
-} from "prom-client";
+import { Counter, Gauge, Registry } from "prom-client";
 
 export interface MetricsRegistry {
   registry: Registry;
