@@ -2,18 +2,15 @@
 import {
   useCallback,
   useMemo,
-  useState,
   useSyncExternalStore,
   type ChangeEvent,
   type ClipboardEvent,
   type Dispatch,
-  type DragEvent,
   type KeyboardEvent,
   type MutableRefObject,
   type RefObject,
   type SetStateAction,
 } from "react";
-import { Effect } from "effect";
 import {
   type FileMentionRow,
   type LoadedContextKind,
@@ -21,7 +18,6 @@ import {
 } from "@/features/agent/ui/agent-composer-context";
 import {
   byQuery,
-  consumeComposerMention,
   detectComposerMention,
   type ComposerMention,
   type ComposerPromptTemplateRef,
@@ -30,136 +26,13 @@ import {
 import { type SessionTab } from "@/features/agent/messages";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import {
-  attachmentDedupKey,
-  createAttachment,
-  createProjectFileAttachment,
-  dataTransferHasFiles,
   filesFromDataTransfer,
   imageFileFromDataUrlText,
-  type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
 
 export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
 
 const getComposerSnapshot = (): number => 0;
-
-type UseComposerAttachmentsOptions = {
-  activeTab: SessionTab | null;
-  running: boolean;
-  updateTab: UpdateTab;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-};
-
-export function useComposerAttachments({
-  activeTab,
-  running,
-  updateTab,
-  fileInputRef,
-}: UseComposerAttachmentsOptions) {
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [readingAttachments, setReadingAttachments] = useState(false);
-  const [composerDragActive, setComposerDragActive] = useState(false);
-
-  const attachFiles = useCallback(
-    (files: FileList | File[] | null) => {
-      const fileArray = files ? Array.from(files) : [];
-      if (fileArray.length === 0 || !activeTab) return Promise.resolve();
-      if (running) {
-        updateTab(activeTab.id, (tab) => ({
-          ...tab,
-          error: "Pause or wait for the current turn before attaching files.",
-        }));
-        return Promise.resolve();
-      }
-      setReadingAttachments(true);
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          const next = yield* Effect.all(
-            fileArray.map((file) =>
-              Effect.tryPromise({ try: () => createAttachment(file), catch: (error) => error }),
-            ),
-          );
-          setAttachments((current) => {
-            const seen = new Set(current.map(attachmentDedupKey));
-            const uniqueNext: ChatAttachment[] = [];
-            next.forEach((file) => {
-              const key = attachmentDedupKey(file);
-              if (seen.has(key)) return;
-              seen.add(key);
-              uniqueNext.push(file);
-            });
-            return [...current, ...uniqueNext];
-          });
-          updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
-        }).pipe(
-          Effect.catch((err) =>
-            Effect.sync(() => {
-              updateTab(activeTab.id, (tab) => ({
-                ...tab,
-                error: err instanceof Error ? err.message : "Failed to attach file",
-              }));
-            }),
-          ),
-          Effect.ensuring(
-            Effect.sync(() => {
-              setReadingAttachments(false);
-              if (fileInputRef.current) fileInputRef.current.value = "";
-            }),
-          ),
-        ),
-      );
-    },
-    [activeTab, fileInputRef, running, updateTab],
-  );
-
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((current) => current.filter((item) => item.id !== id));
-  }, []);
-
-  const clearAttachments = useCallback(() => {
-    setAttachments([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [fileInputRef]);
-
-  const handleComposerDragOver = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasFiles(event.dataTransfer)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = running ? "none" : "copy";
-      setComposerDragActive(true);
-    },
-    [running],
-  );
-
-  const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-    setComposerDragActive(false);
-  }, []);
-
-  const handleComposerDrop = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasFiles(event.dataTransfer)) return;
-      event.preventDefault();
-      setComposerDragActive(false);
-      void attachFiles(filesFromDataTransfer(event.dataTransfer));
-    },
-    [attachFiles],
-  );
-
-  return {
-    attachments,
-    setAttachments,
-    readingAttachments,
-    composerDragActive,
-    attachFiles,
-    removeAttachment,
-    clearAttachments,
-    handleComposerDragOver,
-    handleComposerDragLeave,
-    handleComposerDrop,
-  };
-}
 
 export function useComposerLoadedContext({
   activeTab,
@@ -225,165 +98,6 @@ export function useComposerMentionRows({
       .map((row) => ({ kind: "file" as const, row }));
     return files.slice(0, 8);
   }, [fileMentionRows, mention, promptTemplateRows, skillRows]);
-}
-
-type ContextRow = ComposerSkillRef | ComposerPromptTemplateRef;
-type LoadedContextRow = {
-  skill?: ComposerSkillRef;
-  template?: ComposerPromptTemplateRef;
-};
-
-export function useComposerMentionSelection({
-  activeTab,
-  mention,
-  cwd,
-  tools,
-  updateTab,
-  setAttachments,
-  setMention,
-  textareaRef,
-}: {
-  activeTab: SessionTab | null;
-  mention: ComposerMention | null;
-  cwd: string;
-  tools: Pick<ToolsContextValue, "selectionFor" | "setSelection">;
-  updateTab: (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
-  setAttachments: Dispatch<SetStateAction<ChatAttachment[]>>;
-  setMention: Dispatch<SetStateAction<ComposerMention | null>>;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
-}) {
-  return useCallback(
-    (entry: MentionRow) => {
-      if (!activeTab || !mention) return Promise.resolve();
-
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          if (entry.kind === "file") {
-            const input = consumeComposerMention(activeTab.input, mention);
-            updateTab(activeTab.id, (tab) => ({ ...tab, input }));
-            const attachment = yield* loadProjectFileAttachmentEffect(cwd, entry.row);
-            addUniqueAttachment(setAttachments, attachment);
-          } else {
-            const selectedRow = yield* loadContextRowEffect(entry.row, mention.kind);
-            const input = consumeComposerMention(activeTab.input, mention);
-            updateTab(activeTab.id, (tab) => ({ ...tab, input }));
-            if (mention.kind !== "file") {
-              applySelectedContext(activeTab.id, mention.kind, selectedRow, tools);
-            }
-          }
-
-          setMention(null);
-          requestAnimationFrame(() => textareaRef.current?.focus());
-        }),
-      );
-    },
-    [activeTab, cwd, mention, setAttachments, setMention, textareaRef, tools, updateTab],
-  );
-}
-
-function loadProjectFileAttachment(
-  cwd: string,
-  row: Extract<MentionRow, { kind: "file" }>["row"],
-): Promise<ChatAttachment> {
-  return Effect.runPromise(loadProjectFileAttachmentEffect(cwd, row));
-}
-
-function loadProjectFileAttachmentEffect(
-  cwd: string,
-  row: Extract<MentionRow, { kind: "file" }>["row"],
-): Effect.Effect<ChatAttachment> {
-  return Effect.gen(function* () {
-    const loaded = yield* jsonOrNullEffect<{ content: string; truncated: boolean; size: number }>(
-      `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(row.rel)}`,
-    );
-    return createProjectFileAttachment({
-      id: row.id,
-      name: row.name,
-      path: row.path,
-      content: loaded?.content ?? "",
-      truncated: loaded?.truncated ?? true,
-      size: loaded?.size ?? 0,
-    });
-  });
-}
-
-function loadContextRow(row: ContextRow, kind: ComposerMention["kind"]): Promise<ContextRow> {
-  return Effect.runPromise(loadContextRowEffect(row, kind));
-}
-
-function loadContextRowEffect(
-  row: ContextRow,
-  kind: ComposerMention["kind"],
-): Effect.Effect<ContextRow> {
-  if (!row.path) return Effect.succeed(row);
-  const rowPath = row.path;
-  return Effect.gen(function* () {
-    const loaded = yield* jsonOrNullEffect<LoadedContextRow>(loadEndpoint(kind, rowPath));
-    return loaded?.skill
-      ? { ...row, ...loaded.skill, id: row.id }
-      : loaded?.template
-        ? { ...row, ...loaded.template, id: row.id }
-        : row;
-  });
-}
-
-function loadEndpoint(kind: ComposerMention["kind"], path: string): string {
-  const encoded = encodeURIComponent(path);
-  if (kind === "skill") return `/api/agent/skills/load?path=${encoded}`;
-  return `/api/agent/prompt-templates/load?path=${encoded}`;
-}
-
-function applySelectedContext(
-  sessionId: string,
-  kind: ComposerMention["kind"],
-  selectedRow: ContextRow,
-  tools: Pick<ToolsContextValue, "selectionFor" | "setSelection">,
-) {
-  const current = tools.selectionFor(sessionId);
-  if (kind === "skill" && !current.skills.some((skill) => skill.id === selectedRow.id)) {
-    return tools.setSelection(sessionId, {
-      ...current,
-      skills: [...current.skills, selectedRow as ComposerSkillRef],
-    });
-  }
-  if (
-    kind === "promptTemplate" &&
-    !current.promptTemplates.some((template) => template.id === selectedRow.id)
-  ) {
-    return tools.setSelection(sessionId, {
-      ...current,
-      promptTemplates: [...current.promptTemplates, selectedRow as ComposerPromptTemplateRef],
-    });
-  }
-}
-
-function addUniqueAttachment(
-  setAttachments: Dispatch<SetStateAction<ChatAttachment[]>>,
-  attachment: ChatAttachment,
-) {
-  setAttachments((current) => {
-    const nextKey = attachmentDedupKey(attachment);
-    if (current.some((file) => attachmentDedupKey(file) === nextKey)) return current;
-    return [...current, attachment];
-  });
-}
-
-function jsonOrNull<T>(url: string): Promise<T | null> {
-  return Effect.runPromise(jsonOrNullEffect<T>(url));
-}
-
-function jsonOrNullEffect<T>(url: string): Effect.Effect<T | null> {
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () => fetch(url, { cache: "no-store" }),
-      catch: (error) => error,
-    });
-    if (!response?.ok) return null;
-    return yield* Effect.tryPromise({
-      try: () => response.json() as Promise<T>,
-      catch: (error) => error,
-    });
-  }).pipe(Effect.catch(() => Effect.succeed(null)));
 }
 
 export function useComposerTextareaHeightSync({

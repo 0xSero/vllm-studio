@@ -4,14 +4,14 @@ import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header"
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
 import { type FileMentionRow } from "@/features/agent/ui/agent-composer-context";
 import {
-  useComposerAttachments,
   useComposerLoadedContext,
   useComposerMentionRows,
-  useComposerMentionSelection,
   useComposerTextareaBehavior,
   useComposerTextareaHeightSync,
   type UpdateTab,
 } from "@/features/agent/ui/chat-pane-composer";
+import { useComposerAttachments } from "@/features/agent/ui/chat-pane-composer-attachments";
+import { useComposerMentionSelection } from "@/features/agent/ui/chat-pane-composer-mention-selection";
 import { type ComposerMention } from "@/features/agent/composer-context";
 import { useChatPaneDerivedState } from "@/features/agent/ui/chat-pane-derived-state";
 import {

@@ -497,7 +497,24 @@ the audit commands below at the start of each iteration to see current counts.
         depcheck/build all green; no tests reference this file directly;
         full e2e suite shows the same 4 pre-existing failures as iterations
         2/10/12/13/14/15, nothing new broken.
-  - [ ] `frontend/src/features/agent/ui/chat-pane-composer.ts` (595)
+  - [x] `frontend/src/features/agent/ui/chat-pane-composer.ts` (595 → 306)
+        — extracted the two hooks with no overlap in concern:
+        `chat-pane-composer-attachments.ts` (129: `useComposerAttachments`
+        — drag/drop/paste file attachment state) and
+        `chat-pane-composer-mention-selection.ts` (160:
+        `useComposerMentionSelection` + its private file/context-row-loading
+        helpers). Deleted 3 confirmed-dead plain-Promise wrapper functions
+        found while reading the file fully (`loadProjectFileAttachment`,
+        `loadContextRow`, `jsonOrNull` — each had a `*Effect` sibling that
+        was the one actually called; the plain wrapper had zero callers
+        anywhere in the repo, same pattern as iteration 16's
+        `loadToolsCatalogue`). Updated the one consumer (`chat-pane.tsx`)
+        to import the two relocated hooks from their new files instead of
+        the barrel. Verified: typecheck/lint (0 errors, same 1 pre-existing
+        unrelated warning)/cycles/ui-structure/deadcode/dupes/depcheck/
+        build all green; no tests reference this file directly; full e2e
+        suite shows the same 4 pre-existing failures as iterations
+        2/10/12/13/14/15/16, nothing new broken.
   - [ ] `controller/src/modules/system/metrics-collector.ts` (565)
   - [ ] `frontend/src/lib/api/core.ts` (558)
   - [ ] `controller/src/modules/proxy/openai-routes.ts` (554)
@@ -887,3 +904,24 @@ the audit commands below at the start of each iteration to see current counts.
   `frontend/src/features/agent/ui/chat-pane-composer.ts` (595) is next on
   the Part C list; `session-runtime-controller.ts` stays deferred until a
   dedicated pass.
+
+- **2026-07-01 (iter 17)**: split `chat-pane-composer.ts` (595 → 306) — see
+  the Part C checklist above for the breakdown. Split by hook rather than
+  by mechanism, same as the previous two iterations. Found and deleted 3
+  MORE dead plain-Promise wrapper functions (`loadProjectFileAttachment`,
+  `loadContextRow`, `jsonOrNull`) sitting alongside their actually-used
+  `*Effect` counterparts — this is now the second iteration in a row where
+  reading a file fully before splitting turned up dead Effect-adjacent
+  wrapper functions, suggesting this "keep the old Promise wrapper after
+  converting to Effect" pattern is worth a dedicated grep sweep across the
+  whole frontend at some point rather than only catching it opportunistically.
+  Frontend gate green end to end (typecheck/lint/cycles/ui-structure/
+  deadcode/dupes/depcheck/build), e2e suite shows the same 4 pre-existing
+  failures as iterations 2/10/12/13/14/15/16, nothing new broken. Next
+  iteration: `controller/src/modules/system/metrics-collector.ts` (565) is
+  next on the Part C list — the first CONTROLLER file-size target in this
+  loop (all of iterations 10-17 have been frontend); read
+  `controller/src/modules/engines/routes.ts` or another already-modularized
+  controller file for the house route/module conventions before touching
+  it. `session-runtime-controller.ts` stays deferred until a dedicated
+  pass.
