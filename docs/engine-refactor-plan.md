@@ -588,7 +588,33 @@ the audit commands below at the start of each iteration to see current counts.
         directly) passes; full e2e suite shows the same pre-existing
         215/210/5 baseline (4 known plugin/skill-context failures) as every
         prior iteration, nothing new broken.
-  - [ ] `frontend/src/features/settings/local-agents.ts` (533)
+  - [x] `frontend/src/features/settings/local-agents.ts` (533 → 163) — split
+        into 4 files: `local-agent-types.ts` (40: the shared
+        `LocalAgentId`/`LocalAgentTarget`/`LocalAgentModel`/`AttachAction`/
+        `AttachResult`/`AttachModelInput` types, pulled out first so the
+        detection and merge modules didn't have to import them back from the
+        orchestrator, which would've been circular), `local-agent-config-
+        file-io.ts` (113: generic JSON/YAML read/write/backup primitives
+        with no per-agent knowledge), `local-agent-detection.ts` (87:
+        per-agent config-path resolution + `detectLocalAgents`),
+        `local-agent-config-merge.ts` (176: the 4 per-agent config-merge
+        functions — kept together in one file rather than one-file-per-agent
+        since they share `providerKeyFor`/`slugify` and are meant to be
+        compared side by side, not 4 tiny fragments). `local-agents.ts`
+        itself is now the orchestrator (`planFor`/`attachToAgent`/
+        `attachModelToAgents`) plus the public re-export surface, so the 3
+        existing consumers (`api/local-agents/route.ts`, `attach-local-
+        agents-dialog.tsx`, the e2e test) kept importing from
+        `"@/features/settings/local-agents"` unchanged — no consumer-import
+        updates needed. Also deleted `resolveHermesConfigPath`, a
+        confirmed-dead one-line wrapper around `hermesConfigPath` with zero
+        callers anywhere in the repo (found while reading the file fully
+        before splitting, same pattern as several earlier iterations).
+        Verified: lint/typecheck/typecheck:desktop/cycles/ui-structure/
+        deadcode/dupes (0 clones)/depcheck/build all green; the module's own
+        dedicated e2e test (`local-agents.test.ts`, 10 tests) passes; full
+        e2e suite shows the same pre-existing 215/210/5 baseline, nothing
+        new broken.
   - [ ] `frontend/src/features/setup/use-setup.ts` (530)
   - [ ] `frontend/src/features/agent/runtime/pi-event-applier.ts` (529)
   - [ ] `frontend/src/features/agent/ui/git-diff-panel.tsx` (525)
@@ -1073,3 +1099,29 @@ the audit commands below at the start of each iteration to see current counts.
   `frontend/src/features/settings/local-agents.ts` (533) is next on the
   Part C list; `session-runtime-controller.ts` stays deferred until a
   dedicated pass.
+
+- **2026-07-01 (iter 22)**: split `features/settings/local-agents.ts` (533 →
+  163) — see the Part C checklist above for the full breakdown. The
+  interesting call here was ordering: pulled the shared types into
+  `local-agent-types.ts` *first*, before writing the detection/merge files,
+  specifically to avoid a circular import (detection and merge both need
+  `LocalAgentTarget`/`LocalAgentModel`, and the orchestrator that re-exports
+  them also needs to import *from* detection/merge — those two facts
+  together mean the types can't live in the orchestrator file itself).
+  Kept the 4 per-agent merge functions in one `local-agent-config-merge.ts`
+  file rather than fragmenting further, since splitting them apart would
+  have made the four formats harder to compare side by side for no real
+  size benefit (176 lines total, already well under the target). Found and
+  deleted another confirmed-dead function while reading the file fully
+  first (`resolveHermesConfigPath`, zero callers repo-wide) — this is now
+  the Nth iteration in a row where reading-before-splitting turns up real
+  dead code, reinforcing the note from iteration 17 that a dedicated
+  dead-code grep sweep would likely be worth its own pass at some point.
+  Verified: lint/typecheck/typecheck:desktop/cycles/ui-structure/deadcode/
+  dupes (0 clones)/depcheck/build all green; the module's own dedicated e2e
+  test (`local-agents.test.ts`, 10 tests, exercises real temp-dir file I/O
+  for all 4 agents) passes; full e2e suite shows the same pre-existing
+  215/210/5 baseline, nothing new broken. Next iteration:
+  `frontend/src/features/setup/use-setup.ts` (530) is next on the Part C
+  list; `session-runtime-controller.ts` stays deferred until a dedicated
+  pass.
