@@ -112,12 +112,25 @@ Ordered steps (each = one verifiable commit; run `npm run test:integration`
       Keep `runtime-targets.ts` only for the multi-source discovery UI
       (`/runtime/targets*`), not per-backend single-info routes. NOT DONE YET
       — bigger/riskier than steps 1-3, touches `routes.ts` (474 lines) broadly.
-- [ ] **Step 5**: Convert Effect-free leaf files with no cross-engine coupling
-      to Effect v4 first: `launch-failure-budget.ts`, `install-lock.ts`,
-      `managed-venv.ts`. `core/command.ts`/`core/async.ts` already have
-      Effect-native twins (`runCommandAsyncEffect`, `runCommandEffect`,
-      `resolveBinaryEffect`, `delayEffect`) ready to use — this is a low-risk
-      on-ramp, not new Effect wiring from scratch.
+- [x] **Step 5** (2026-07-01): Converted the two leaf files that actually had
+      async work. `install-lock.ts`'s `acquireEngineInstallLock` (a polling
+      loop: try-acquire, `await delay(pollMs)`, repeat until timeout) is now
+      `Effect.gen`-based using the existing `delayEffect`, with the original
+      Promise-returning signature kept as a thin `Effect.runPromise` wrapper
+      (same convention as `core/command.ts`'s `runCommandAsync`) — zero
+      call-site changes needed. `managed-venv.ts`'s `installIntoManagedVenv`
+      (venv creation → installer resolution → pip/uv install with streaming
+      progress callbacks → post-install probe) fully converted to
+      `Effect.gen` composing `runCommandAsyncEffect` directly instead of
+      awaiting the Promise wrapper; the one remaining Promise call
+      (`probePythonRuntime`, in a different file, out of scope today) is
+      lifted via `Effect.promise` since it never rejects (internally uses
+      `runCommandAsync`, which never rejects). **`launch-failure-budget.ts`
+      needed NO conversion** — checked and it's pure synchronous in-memory
+      state (a `Map`-based crash-loop counter), zero async/Promise anywhere;
+      wrapping it in Effect would be pure ceremony, so left as-is. Controller
+      lint/typecheck/99 integration tests/4 unit tests/jscpd/depcheck all
+      green after.
 - [ ] **Step 6**: Convert `process-manager.ts`/`process-utilities.ts` to Effect.
 - [ ] **Step 7**: Convert `engine-coordinator.ts` LAST — largest state machine,
       most callers, highest risk (abort/lock/lifecycle-intent logic is only
@@ -297,3 +310,16 @@ the audit commands below at the start of each iteration to see current counts.
   after each step. Part B steps 4-7 (routes.ts consistency pass, Effect-v4
   conversion) remain — step 4 touches routes.ts broadly and needs its own
   focused iteration; steps 5-7 are the real Effect migration.
+
+- **2026-07-01 (iter 3)**: executed Part B step 5 (Effect-v4 conversion of the
+  leaf runtime files) — see Part B above for detail. `install-lock.ts` and
+  `managed-venv.ts` now compose `runCommandAsyncEffect`/`delayEffect` via
+  `Effect.gen` internally, keeping their existing Promise-returning public
+  signatures via thin `Effect.runPromise` wrappers (same house convention as
+  `core/command.ts`). Confirmed `launch-failure-budget.ts` has no async work
+  and needs no conversion. Controller lint/typecheck/99 integration/4 unit
+  tests/jscpd/depcheck all green. Next iteration: step 6
+  (`process-manager.ts` 440 lines / `process-utilities.ts` 202 lines →
+  Effect) — bigger surface than step 5, read both fully before converting,
+  same verify-after-each-file discipline. Step 4 (routes.ts consistency) and
+  step 7 (engine-coordinator.ts, highest risk, do last) still untouched.

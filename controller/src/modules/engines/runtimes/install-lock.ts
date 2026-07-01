@@ -1,7 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Effect } from "effect";
 import type { Config } from "../../../config/env";
-import { delay } from "../../../core/async";
+import { delayEffect } from "../../../core/async";
 import type { EngineBackend } from "../../shared/system-types";
 import { ENGINE_INSTALL_TIMEOUT_MS } from "../configs";
 
@@ -50,27 +51,35 @@ const tryAcquireInstallLock = (
   }
 };
 
-export const acquireEngineInstallLock = async (
+const acquireEngineInstallLockEffect = (
+  config: Pick<Config, "data_dir">,
+  backend: EngineBackend,
+  options: AcquireEngineInstallLockOptions,
+  startedAt: number,
+): Effect.Effect<EngineInstallLock | null> =>
+  Effect.gen(function* () {
+    const timeoutMs = options.timeoutMs ?? ENGINE_INSTALL_TIMEOUT_MS;
+    const pollMs = options.pollMs ?? 3_000;
+    let reportedWait = false;
+    while (Date.now() - startedAt < timeoutMs) {
+      if (options.shouldContinue && !options.shouldContinue()) return null;
+      const lock = tryAcquireInstallLock(config, backend);
+      if (lock) return lock;
+      if (!reportedWait) {
+        reportedWait = true;
+        options.onWait?.(installLockPath(config, backend));
+      }
+      yield* delayEffect(pollMs);
+    }
+    return null;
+  });
+
+export const acquireEngineInstallLock = (
   config: Pick<Config, "data_dir">,
   backend: EngineBackend,
   options: AcquireEngineInstallLockOptions = {},
-): Promise<EngineInstallLock | null> => {
-  const timeoutMs = options.timeoutMs ?? ENGINE_INSTALL_TIMEOUT_MS;
-  const pollMs = options.pollMs ?? 3_000;
-  const startedAt = Date.now();
-  let reportedWait = false;
-  while (Date.now() - startedAt < timeoutMs) {
-    if (options.shouldContinue && !options.shouldContinue()) return null;
-    const lock = tryAcquireInstallLock(config, backend);
-    if (lock) return lock;
-    if (!reportedWait) {
-      reportedWait = true;
-      options.onWait?.(installLockPath(config, backend));
-    }
-    await delay(pollMs);
-  }
-  return null;
-};
+): Promise<EngineInstallLock | null> =>
+  Effect.runPromise(acquireEngineInstallLockEffect(config, backend, options, Date.now()));
 
 export const installLockTimeoutMessage = (backend: EngineBackend, timeoutMs = ENGINE_INSTALL_TIMEOUT_MS): string =>
   `${backend} install lock still present after ${Math.round(timeoutMs / 60_000)} minutes`;
