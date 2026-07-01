@@ -425,7 +425,24 @@ the audit commands below at the start of each iteration to see current counts.
         dupes/depcheck/build all green; full e2e suite shows exactly the
         same 4 pre-existing failures already documented from iterations 2
         and 10 (identical test names), nothing new broken.
-  - [ ] `frontend/src/features/agent/ui/agent-browser.tsx` (676)
+  - [x] `frontend/src/features/agent/ui/agent-browser.tsx` (676 → 334) —
+        split into 3 files by natural independent unit (all props-only, no
+        shared module state, same low-risk profile as the earlier
+        `browser-host.ts`/`chat-pane-hooks.tsx` splits):
+        `agent-browser-start-page.tsx` (135: `LocalhostStartPage` +
+        `LocalhostSiteRow`), `agent-browser-reading-view.tsx` (76:
+        `ReadingView` + `resolveBrowserHref` + the `ReadablePage` type),
+        `agent-browser-effects.ts` (137: the two `useSyncExternalStore`-based
+        effect hooks `useLocalhostSitesEffects`/`useAgentBrowserEffects` +
+        the `LocalhostSite` type they own). Main file keeps only the
+        `AgentBrowser` component plus its 3 externally-consumed exports
+        (`WebviewElement`, `AgentBrowserHandle`, confirmed via grep that
+        `LocalhostSite` has no external consumers so it moved freely).
+        Verified: typecheck/lint (0 errors, same 1 pre-existing unrelated
+        warning)/cycles/ui-structure/deadcode/dupes/depcheck/build all
+        green; no tests reference this file directly; full e2e suite shows
+        the same 4 pre-existing failures as iterations 2/10/12, nothing new
+        broken.
   - [ ] `frontend/src/features/agent/ui/filesystem-panel.tsx` (642)
   - [ ] `frontend/src/features/agent/ui/use-workspace.ts` (623)
   - [ ] `frontend/src/features/agent/tools/context.tsx` (603)
@@ -759,4 +776,17 @@ the audit commands below at the start of each iteration to see current counts.
   the same 4 pre-existing failures as documented in iterations 2 and 10,
   nothing new broken. Next iteration: continue down the Part C file-size
   list — `agent-browser.tsx` (676) or `filesystem-panel.tsx` (642) are next;
+  `session-runtime-controller.ts` stays deferred until a dedicated pass.
+
+- **2026-07-01 (iter 13)**: split `agent-browser.tsx` (676 → 334) — see the
+  Part C checklist above for the file breakdown. This one was a clean, low-
+  risk split: the localhost-start-page view, the reading-mode view, and the
+  two effect hooks were all props-only with zero shared module-scope state,
+  same shape as the successful `browser-host.ts`/`chat-pane-hooks.tsx`
+  splits. Confirmed via grep first that `LocalhostSite` (the one type that
+  moved) has no external consumers, so no compatibility shim was needed.
+  Frontend gate green end to end (typecheck/lint/cycles/ui-structure/
+  deadcode/dupes/depcheck/build), e2e suite shows the same 4 pre-existing
+  failures as iterations 2/10/12, nothing new broken. Next iteration:
+  `filesystem-panel.tsx` (642) is next on the Part C list;
   `session-runtime-controller.ts` stays deferred until a dedicated pass.
