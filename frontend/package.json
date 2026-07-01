@@ -7,9 +7,8 @@
     "build": "next build --webpack",
     "start": "node scripts/start-standalone.mjs",
     "start:next": "next start",
-    "test": "tsx --test scripts/test-active-sessions-merge.ts scripts/test-build-agent-session-options.ts scripts/test-desktop-user-data-migration.ts scripts/test-session-runtime-controller-ordering.ts scripts/test-session-runtime-controller-reconnect.ts scripts/test-settle-failed-turn.ts scripts/test-stream-call-monotonic.ts scripts/test-transcript-cache.ts",
+    "test": "tsx --test scripts/test-*.ts",
     "test:e2e": "tsx --test --test-force-exit ../tests/frontend/e2e/*.test.ts",
-    "test:e2e:ui": "playwright test",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
@@ -63,7 +62,6 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "16.2.7",
-    "@playwright/test": "1.60.0",
     "@tailwindcss/postcss": "4.1.18",
     "@types/node": "20.19.27",
     "@types/react": "19.2.7",
