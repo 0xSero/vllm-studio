@@ -38,7 +38,6 @@ data/
 node_modules/
 .next/
 .turbo/
-bun.lock
 
 # IDE
 .idea/
@@ -75,8 +74,6 @@ work/
 .osgrep/
 opencode.json
 
-# MCP servers config (contains API keys)
-data/mcp_servers.json
 
 # Local scripts (user-specific)
 scripts/*.local.sh
