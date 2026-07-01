@@ -75,22 +75,67 @@ Goal: a page where a user picks a recipe + explicit pinned engine version
 
 ## Part B — engine system simplification
 
-- [ ] Introduce a small `EngineSpec`-equivalent interface for our four engines,
-      replacing scattered logic across `engine-spec.ts` /
-      `specs/{vllm,sglang,llamacpp,mlx}-spec.ts` / `runtimes/*` / `process/*`
-      (currently ~4000 LOC across ~25 files in `controller/src/modules/engines`).
-  - Candidate shape: `{ id, bin, healthPath, serveCommand(recipe, port), install: Effect<...>, env? }`.
-- [ ] Collapse `runtimes/runtime-targets.ts` (516 lines — largest file in the
-      module) and `process/process-manager.ts` (440) / `process/backend-builder.ts`
-      (442) — identify duplicate responsibility with `engine-coordinator.ts` (252)
-      and `routes.ts` (474) before rewriting; do not rewrite blind.
-- [ ] Every async path in the engine/recipe modules must use Effect v4
-      (`effect` is already a pinned dep in `controller/package.json`) — audit
-      which files still use raw Promises/async-await and convert.
-- [ ] Keep behavior identical; this is a structure/clarity refactor, not a
-      feature change. Verify against `tests/controller/integration/
-      runtime-recipe-contracts.test.ts` and `stream-proxy-contracts.test.ts`
-      before/after each file's rewrite.
+**2026-07-01 (iter 2) research complete** — full duplication map + ordered
+refactor steps below, produced by deep-reading every file in
+`controller/src/modules/engines/`. Key finding: **`engine-spec.ts` already IS**
+a rich `EngineSpec`-shaped interface (`id, healthPath, cliBinary, buildCommand,
+managedPackageSpec, install, detectInvocation, extract*, probeBinary?,
+resolvePythonPath?, getRuntimeInfo?, getConfigHelp?`), and
+`specs/{vllm,sglang,llamacpp,mlx}-spec.ts` already implement it. **This is not
+a from-scratch redesign** — it's (1) deleting dead/duplicate parallel
+implementations that bypass the spec, and (2) making every consumer
+(`routes.ts` above all) go through `getEngineSpec(backend).X` instead of ad-hoc
+direct imports into `runtime-info.ts`/`vllm-runtime.ts`/`llamacpp-runtime.ts`.
+
+Ordered steps (each = one verifiable commit; run `npm run test:integration`
++ the two named contract tests after each):
+
+- [x] **Step 1** (2026-07-01): `vllm-runtime.ts` had its own private near-copy
+      of `runEnvironmentUpgradeCommand` (different default timeout) instead of
+      importing the shared one from `upgrade-config.ts`. Deleted the copy.
+- [x] **Step 2** (2026-07-01): `runtime-info.ts`'s `getMlxRuntimeInfo` (sync,
+      `runCommand`) duplicated `specs/mlx-spec.ts`'s `getRuntimeInfoAsync`
+      (async, `runCommandAsync`) — same candidate-python discovery + a
+      copy-pasted `MLX_IMPORT_PROBE` string. `routes.ts`'s `GET /runtime/mlx`
+      called the sync dead-path directly instead of
+      `getEngineSpec("mlx").getRuntimeInfo`. Repointed the route, deleted the
+      duplicate implementation + its private helpers.
+- [x] **Step 3** (2026-07-01): same pattern for llama.cpp — `runtime-info.ts`'s
+      `getLlamacppConfigHelp` duplicated `specs/llamacpp-spec.ts`'s
+      `getConfigHelp` (same "resolve bin → runCommandAsync --help" logic).
+      Repointed `/runtime/llamacpp/config` to `getEngineSpec("llamacpp")`,
+      deleted the duplicate.
+- [ ] **Step 4**: Unify `routes.ts`'s four different backend-info access
+      patterns (vllm/mlx go direct to runtime files, sglang/llamacpp go
+      through `runtime-targets.ts`, only sglang's `/config` route uses
+      `getEngineSpec`) onto one consistent `getEngineSpec(backend).X` pattern.
+      Keep `runtime-targets.ts` only for the multi-source discovery UI
+      (`/runtime/targets*`), not per-backend single-info routes. NOT DONE YET
+      — bigger/riskier than steps 1-3, touches `routes.ts` (474 lines) broadly.
+- [ ] **Step 5**: Convert Effect-free leaf files with no cross-engine coupling
+      to Effect v4 first: `launch-failure-budget.ts`, `install-lock.ts`,
+      `managed-venv.ts`. `core/command.ts`/`core/async.ts` already have
+      Effect-native twins (`runCommandAsyncEffect`, `runCommandEffect`,
+      `resolveBinaryEffect`, `delayEffect`) ready to use — this is a low-risk
+      on-ramp, not new Effect wiring from scratch.
+- [ ] **Step 6**: Convert `process-manager.ts`/`process-utilities.ts` to Effect.
+- [ ] **Step 7**: Convert `engine-coordinator.ts` LAST — largest state machine,
+      most callers, highest risk (abort/lock/lifecycle-intent logic is only
+      integration-tested end-to-end, not unit-tested). Diff carefully against
+      `runtime-recipe-contracts.test.ts` (1055 lines) + `stream-proxy-contracts
+      .test.ts` (507 lines) before/after.
+
+Confirmed: `grep -rn 'from "effect"' controller/src/modules/engines/**` returns
+**zero hits** as of 2026-07-01 — the whole module is 100% raw async/Promise
+today (routes.ts alone has 81 async/await/Promise occurrences). Steps 5-7
+above are the actual Effect-v4 migration for this module.
+
+Files already clean, no action needed: `launch-state.ts`,
+`launch-failure-budget.ts`, `model-runtime-defaults.ts`, `install-lock.ts`,
+`argument-utilities.ts` (each single-purpose, <100 lines — already exo-cli
+sized). `backend-builder.ts` vs `specs/*` and `runtime-target-factory.ts` vs
+`specs/*` are NOT duplicated — already correctly split (verified, not just
+assumed).
 
 ## Part C — repo-wide sweep checklist
 
@@ -109,7 +154,18 @@ the audit commands below at the start of each iteration to see current counts.
         (53 lines), `agent-workspace-navigation.ts` (116 lines),
         `render-workspace-pane.tsx` (175 lines). Each new file is a cohesive,
         independently-testable unit — matches the exo-cli small-file ethos.)
-  - [ ] `frontend/src/features/agent/ui/timeline/session-pane-block-router.tsx` (772)
+  - [x] `frontend/src/features/agent/ui/timeline/session-pane-block-router.tsx`
+        (was 772, fixed 2026-07-01: now 134 lines, extracted `activity-grouping.ts`
+        (208, pure logic — types + `groupAssistantBlocks`/`buildActivityItems`/
+        `summarizeActivity`/etc., no JSX), `turn-status-divider.tsx` (67),
+        `assistant-activity-group.tsx` (181), `user-message-block.tsx` (127),
+        `assistant-message-actions.tsx` (61). Updated
+        `tests/frontend/e2e/agent-session-runtime-regressions.test.ts`'s import
+        of `groupAssistantBlocks` to the new `activity-grouping` module (no
+        back-compat re-export kept). 69/70 e2e tests pass — the 1 failure
+        (`skill mentions...composer prompt construction`) is pre-existing,
+        verified via `git stash` against the unmodified file, unrelated
+        subsystem — see "Discovered issues" below.)
   - [ ] `frontend/src/features/agent/ui/chat-pane-hooks.tsx` (736)
   - [ ] `frontend/src/features/agent/browser-host/browser-host.ts` (715)
   - [ ] `frontend/src/features/agent/runtime/session-runtime-controller.ts` (709)
@@ -182,6 +238,13 @@ the audit commands below at the start of each iteration to see current counts.
 
 ## Discovered issues (not yet triaged)
 
+- `tests/frontend/e2e/agent-session-runtime-regressions.test.ts`: "skill
+  mentions and selected skill context survive composer prompt construction"
+  fails on `main` independent of any change made in this initiative (confirmed
+  via `git stash` — same failure on the unmodified tree). Expected
+  `/Loaded skills:/` in composer-constructed prompt text, got `"open the
+  page"`. Unrelated subsystem (composer/skill-mention prompt construction, not
+  timeline/activity rendering) — needs its own investigation, not touched here.
 - `frontend/scripts/patch-pi-ai-openai-text-boundaries.mjs` (a `postinstall`
   hook patching `@earendil-works/pi-ai`'s compiled output) throws
   `Could not find pi-ai assistant text join` when `npm install` re-runs
@@ -210,3 +273,27 @@ the audit commands below at the start of each iteration to see current counts.
   Next iteration: pick the next unchecked file-size item above, OR start
   Part B by reading `engine-coordinator.ts` + `runtime-targets.ts` +
   `process-manager.ts` together to map real duplication before touching code.
+
+- **2026-07-01 (iter 2)**: split `session-pane-block-router.tsx` (772 → 134
+  lines, 5 new files, see checklist above). Researched Part B in full via a
+  dedicated read-only agent — `engine-spec.ts` already is a rich EngineSpec,
+  no redesign needed, just consistency + dead-code removal; wrote the ordered
+  7-step plan into Part B above. Executed steps 1-3 (all "near-zero risk" per
+  the research): deleted a duplicate `runEnvironmentUpgradeCommand` in
+  `vllm-runtime.ts`; found and fixed a **live** duplicate (not just dead code
+  this time) — `runtime-info.ts`'s sync `getMlxRuntimeInfo` bypassed
+  `getEngineSpec("mlx")` from the `/runtime/mlx` route while the aggregate
+  `/system` route already used the spec version, so the two disagreed on
+  `upgrade_command_available`; verified the frontend doesn't actually consume
+  that field from the direct route before repointing it (no user-visible
+  regression) and deleted the dead sync implementation + 3 orphaned helpers
+  (`splitCommand`/`resolvePythonCandidate`/`looksLikePythonExecutable`, dead
+  once their last caller was removed); did the same pattern for llama.cpp
+  config-help (deleted `runtimes/llamacpp-runtime.ts` entirely, repointed
+  `/runtime/llamacpp/config` to `getEngineSpec("llamacpp").getConfigHelp`,
+  after upgrading the spec's version to match the runtime version's more
+  robust binary-path resolution so behavior didn't regress). Controller
+  lint/typecheck/99 integration tests/4 unit tests/jscpd/depcheck all green
+  after each step. Part B steps 4-7 (routes.ts consistency pass, Effect-v4
+  conversion) remain — step 4 touches routes.ts broadly and needs its own
+  focused iteration; steps 5-7 are the real Effect migration.

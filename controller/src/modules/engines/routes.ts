@@ -9,8 +9,7 @@ import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-event
 import { fetchInference } from "../../services/inference-client";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
-import { getLlamacppConfigHelp } from "./runtimes/llamacpp-runtime";
-import { getCudaInfo, getMlxRuntimeInfo } from "./runtimes/runtime-info";
+import { getCudaInfo } from "./runtimes/runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
 import { getEngineSpec } from "./engine-spec";
 import {
@@ -373,7 +372,9 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.get("/runtime/llamacpp/config", async (ctx) => {
-    const config = await getLlamacppConfigHelp(context.config);
+    const spec = getEngineSpec("llamacpp");
+    if (!spec.getConfigHelp) throw notFound("llama.cpp config help not available");
+    const config = await spec.getConfigHelp(context.config);
     return ctx.json(config);
   });
 
@@ -410,7 +411,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
       "runtime.backend.mlx.getCurrentProcess",
       () => context.engineService.getCurrentProcess()
     );
-    return ctx.json(getMlxRuntimeInfo(context.config, current));
+    return ctx.json(await getEngineSpec("mlx").getRuntimeInfo!(context.config, current));
   });
 
   app.get("/runtime/cuda", async (ctx) => {

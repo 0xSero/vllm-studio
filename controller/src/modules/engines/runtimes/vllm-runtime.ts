@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { ChildProcess } from "node:child_process";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { resolveVllmPythonPath } from "./vllm-python-path";
 import {
   getUpgradeCommandFromEnvironment,
   getVllmUpgradeVersion,
+  runEnvironmentUpgradeCommand,
   VLLM_UPGRADE_ENV,
 } from "./upgrade-config";
 import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS, VLLM_UPGRADE_TIMEOUT_MS, ENGINE_INSTALL_TIMEOUT_MS } from "../configs";
@@ -165,39 +165,13 @@ export const getVllmConfigHelp = async (): Promise<{
   return { config: result.stdout || null, error: null };
 };
 
-const runEnvironmentUpgradeCommand = async (
-  command: string,
-  onSpawn?: ((child: ChildProcess) => void) | undefined,
-): Promise<RuntimeUpgradeResult> => {
-  const result = await runCommandAsync(command, [], {
-    timeoutMs: VLLM_UPGRADE_TIMEOUT_MS,
-    onSpawn,
-  });
-  if (result.status === 0) {
-    return {
-      success: true,
-      version: null,
-      output: result.stdout || null,
-      error: result.stderr || null,
-      used_command: command,
-    };
-  }
-  return {
-    success: false,
-    version: null,
-    output: result.stdout || null,
-    error: result.timedOut
-      ? `Upgrade timed out after ${Math.round(VLLM_UPGRADE_TIMEOUT_MS / 60_000)} minutes`
-      : result.stderr || "Upgrade failed",
-    used_command: command,
-  };
-};
-
 export const installVllmRuntime = async (
   options: InstallOptions,
 ): Promise<RuntimeUpgradeResult> => {
   const envCommand = getUpgradeCommandFromEnvironment(VLLM_UPGRADE_ENV);
-  if (envCommand) return runEnvironmentUpgradeCommand(envCommand, options.onSpawn);
+  if (envCommand) {
+    return runEnvironmentUpgradeCommand(envCommand, options.onSpawn, VLLM_UPGRADE_TIMEOUT_MS);
+  }
 
   const preferBundled = options.preferBundled !== false;
   const bundledWheel = preferBundled ? resolveBundledWheel() : null;

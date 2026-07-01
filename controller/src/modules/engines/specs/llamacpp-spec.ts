@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Config } from "../../../config/env";
-import { resolveBinary } from "../../../core/command";
+import { resolveBinary, runCommandAsync } from "../../../core/command";
+import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
@@ -68,9 +71,12 @@ const getRuntimeInfoAsync = async (
 
 const getConfigHelp = async (config: Config): Promise<ConfigHelpResult> => {
   const configured = config.llama_bin || "llama-server";
-  const resolved = resolveBinary(configured) ?? configured;
-  const { runCommandAsync } = await import("../../../core/command");
-  const result = await runCommandAsync(resolved, ["--help"], { timeoutMs: 15_000 });
+  const resolved =
+    resolveBinary(configured) ?? (existsSync(configured) ? resolve(configured) : null);
+  const binary = resolved ?? configured;
+  const result = await runCommandAsync(binary, ["--help"], {
+    timeoutMs: LLAMACPP_HELP_TIMEOUT_MS,
+  });
   if (result.status !== 0) {
     return { config: result.stdout || null, error: result.stderr || "Failed to fetch llama.cpp config" };
   }

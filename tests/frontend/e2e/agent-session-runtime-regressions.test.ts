@@ -57,7 +57,7 @@ import type {
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { collectLeaves } from "@/features/agent/workspace/layout";
-import { groupAssistantBlocks } from "@/features/agent/ui/timeline/session-pane-block-router";
+import { groupAssistantBlocks } from "@/features/agent/ui/timeline/activity-grouping";
 import { resolveStatusSectionView } from "@/features/dashboard/control-panel/status-section-view";
 import {
   makePiEventApplierHarness,

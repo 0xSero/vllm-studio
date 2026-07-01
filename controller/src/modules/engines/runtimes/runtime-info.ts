@@ -17,7 +17,6 @@ import { probeGpuMonitoring } from "../../system/platform/compatibility-report";
 import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info";
 import { resolveNvidiaSmiBinary } from "../../system/platform/smi-tools";
 import { getTorchBuildInfo } from "../../system/platform/torch-info";
-import { resolveVllmPythonPath } from "./vllm-python-path";
 import { getEngineSpec } from "../engine-spec";
 import {
   isUpgradeCommandConfigured,
@@ -115,84 +114,6 @@ export const detectPlatformKind = (args: {
   if (args.hasNvidiaSmi) return "cuda";
   if (args.hasRocmSmi) return "rocm";
   return "unknown";
-};
-
-const splitCommand = (command: string): string[] => {
-  const tokens = command.match(/(?:[^\s"]+|"[^"]*"|'[^']*')+/g) ?? [];
-  return tokens.map((token) => token.replace(/^['"]|['"]$/g, ""));
-};
-
-const resolvePythonCandidate = (candidate: string | null | undefined): string | null => {
-  const value = candidate?.trim();
-  if (!value) return null;
-  if (value.includes("/")) return existsSync(value) ? resolve(value) : value;
-  return resolveBinary(value) ?? value;
-};
-
-const looksLikePythonExecutable = (value: string): boolean => {
-  const base = value.split("/").pop() ?? value;
-  return /^python(?:\d+(?:\.\d+)?)?$/.test(base) || base.includes("python");
-};
-
-const MLX_IMPORT_PROBE =
-  "import json, sys\ntry:\n import mlx_lm\n print(json.dumps({'version': getattr(mlx_lm, '__version__', None) or 'installed', 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
-
-const getRunningMlxPythonCandidates = (
-  runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null
-): string[] => {
-  if (!runningProcess || runningProcess.backend !== "mlx") return [];
-  const result = runCommand("ps", ["-p", String(runningProcess.pid), "-o", "args="]);
-  if (result.status !== 0 || !result.stdout) return [];
-  const args = splitCommand(result.stdout.trim());
-  const candidates: string[] = [];
-  const first = args[0];
-  if (first && looksLikePythonExecutable(first)) {
-    const resolved = resolvePythonCandidate(first);
-    if (resolved) candidates.push(resolved);
-  }
-  const moduleIndex = args.findIndex((argument) => argument === "mlx_lm.server");
-  if (moduleIndex >= 2 && args[moduleIndex - 1] === "-m") {
-    const resolved = resolvePythonCandidate(args[moduleIndex - 2]);
-    if (resolved) candidates.push(resolved);
-  }
-  return candidates.filter((candidate, index, all) => all.indexOf(candidate) === index);
-};
-
-export const getMlxRuntimeInfo = (
-  config: Config,
-  runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null
-): RuntimeBackendInfo => {
-  const candidates: string[] = getRunningMlxPythonCandidates(runningProcess);
-  if (config.mlx_python) candidates.push(config.mlx_python);
-  candidates.push("python3", "python");
-  const unique = candidates.filter((candidate, index, all) => all.indexOf(candidate) === index);
-
-  for (const python of unique) {
-    if (runCommand(python, ["-V"]).status !== 0) continue;
-    const result = runCommand(python, ["-c", MLX_IMPORT_PROBE]);
-    if (result.status !== 0) continue;
-    let parsed: { version?: string | null; python?: string | null } | null = null;
-    try {
-      parsed = JSON.parse(result.stdout) as { version?: string | null; python?: string | null };
-    } catch {
-      continue;
-    }
-    if (parsed?.version) {
-      return {
-        installed: true,
-        version: parsed.version,
-        python_path: parsed.python ?? python,
-        upgrade_command_available: false,
-      };
-    }
-  }
-  const fallback = unique.find((p) => runCommand(p, ["-V"]).status === 0) ?? null;
-  return {
-    installed: false,
-    version: null,
-    python_path: fallback ?? config.mlx_python ?? null,
-    upgrade_command_available: false,
-  };
 };
 
 const parseLlamaVersion = (output: string): string | null => {
