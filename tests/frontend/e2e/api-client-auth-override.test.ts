@@ -9,6 +9,7 @@ import { createApiClient } from "@/lib/api/create-api-client";
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.LOCAL_STUDIO_API_KEY;
 const originalDataDir = process.env.LOCAL_STUDIO_DATA_DIR;
+const originalDesktop = process.env.LOCAL_STUDIO_DESKTOP;
 const dataDirs: string[] = [];
 
 afterEach(() => {
@@ -22,6 +23,11 @@ afterEach(() => {
     delete process.env.LOCAL_STUDIO_DATA_DIR;
   } else {
     process.env.LOCAL_STUDIO_DATA_DIR = originalDataDir;
+  }
+  if (originalDesktop === undefined) {
+    delete process.env.LOCAL_STUDIO_DESKTOP;
+  } else {
+    process.env.LOCAL_STUDIO_DESKTOP = originalDesktop;
   }
   for (const dir of dataDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
@@ -66,6 +72,7 @@ test("proxy suppress-auth header prevents saved settings key from reaching overr
   const dataDir = mkdtempSync(path.join(tmpdir(), "local-studio-proxy-auth-"));
   dataDirs.push(dataDir);
   process.env.LOCAL_STUDIO_DATA_DIR = dataDir;
+  process.env.LOCAL_STUDIO_DESKTOP = "1";
   writeFileSync(
     path.join(dataDir, "api-settings.json"),
     JSON.stringify({
@@ -108,6 +115,35 @@ test("proxy suppress-auth header prevents saved settings key from reaching overr
   assert.equal(response.status, 200);
   assert.equal(upstreamHeaders?.has("Authorization"), false);
   assert.equal(upstreamHeaders?.has("X-Backend-Suppress-Auth"), false);
+});
+
+test("a data dir alone does not grant proxy trust to arbitrary override targets", async () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), "local-studio-proxy-untrusted-"));
+  dataDirs.push(dataDir);
+  process.env.LOCAL_STUDIO_DATA_DIR = dataDir;
+  delete process.env.LOCAL_STUDIO_DESKTOP;
+
+  let upstreamCalled = false;
+  globalThis.fetch = (async () => {
+    upstreamCalled = true;
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+
+  const { GET } = await import("@/app/api/proxy/[...path]/route");
+  const request = new Request("http://localhost/api/proxy/status", {
+    headers: {
+      "X-Backend-Url": "https://typed-controller.example",
+      "X-Backend-Strict": "1",
+    },
+  }) as Request & { cookies: { get: () => undefined } };
+  request.cookies = { get: () => undefined };
+  const response = await GET(
+    request as never,
+    { params: Promise.resolve({ path: ["status"] }) },
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(upstreamCalled, false);
 });
 
 test("omitted API key override still uses the active stored key", async () => {
