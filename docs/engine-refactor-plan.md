@@ -131,7 +131,27 @@ Ordered steps (each = one verifiable commit; run `npm run test:integration`
       wrapping it in Effect would be pure ceremony, so left as-is. Controller
       lint/typecheck/99 integration tests/4 unit tests/jscpd/depcheck all
       green after.
-- [ ] **Step 6**: Convert `process-manager.ts`/`process-utilities.ts` to Effect.
+- [x] **Step 6** (2026-07-01): `process-utilities.ts` needed **no conversion**
+      — checked, it's 100% synchronous (`spawnSync`/`process.kill`/plain
+      object building), zero `async`/`Promise`/`await` anywhere. In
+      `process-manager.ts`, converted the 3 functions with genuine async work
+      to `Effect.gen` (same "Effect-native + thin Promise wrapper" pattern as
+      steps 5): `killProcess` (signal + two poll-for-death loops + final
+      settle delay), `cleanupOrphanedInferenceWorkers` (signal + poll-for-death
+      loop), and `evictModel` (pure sequential composition of the two above +
+      `findInferenceProcess`). **Deliberately left `launchModel` and
+      `findInferenceProcess` as plain async/Promise** — `findInferenceProcess`
+      has no actual async operation in its body (nothing to model in Effect);
+      `launchModel` mixes a timed wait with long-lived `child.on(...)`/
+      `readline` event-listener registration that outlives the wait itself
+      (stdout/stderr line capture keeps running after the "did it crash in the
+      first 3s" check returns) — forcing that into `Effect.callback` would be
+      real behavioral-modeling work, not a mechanical port, and this is the
+      actual model-launch path (same risk profile the plan calls out for
+      `engine-coordinator.ts` in step 7). Verified `npm run test:integration`
+      (all 99, including `runtime-recipe-contracts.test.ts`'s crash-loop/kill
+      scenarios) + lint/typecheck/jscpd/depcheck all green before treating
+      this done.
 - [ ] **Step 7**: Convert `engine-coordinator.ts` LAST — largest state machine,
       most callers, highest risk (abort/lock/lifecycle-intent logic is only
       integration-tested end-to-end, not unit-tested). Diff carefully against
@@ -323,3 +343,18 @@ the audit commands below at the start of each iteration to see current counts.
   Effect) — bigger surface than step 5, read both fully before converting,
   same verify-after-each-file discipline. Step 4 (routes.ts consistency) and
   step 7 (engine-coordinator.ts, highest risk, do last) still untouched.
+
+- **2026-07-01 (iter 4)**: executed Part B step 6 — see Part B above for the
+  full breakdown and the risk judgment call (converted the 3 genuinely-async
+  `process-manager.ts` functions, left `launchModel`'s event-driven spawn
+  logic alone as too risky for a mechanical port). `process-utilities.ts`
+  needed no changes (pure sync). Controller lint/typecheck/99 integration
+  tests (including the crash-loop/kill contract tests, since this touches the
+  actual kill/evict path)/4 unit tests/jscpd/depcheck all green. Remaining in
+  Part B: step 4 (routes.ts consistency — 4 inconsistent backend-info access
+  patterns, not yet unified) and step 7 (`engine-coordinator.ts`, 252 lines,
+  the highest-risk one, saved for last on purpose — read it fully alongside
+  `runtime-recipe-contracts.test.ts` and `stream-proxy-contracts.test.ts`
+  before touching anything). Part A (`/environments` Docker feature) and the
+  ~21 remaining file-size items in Part C are still fully untouched — worth
+  picking one of those next if step 7 doesn't feel safe to rush.

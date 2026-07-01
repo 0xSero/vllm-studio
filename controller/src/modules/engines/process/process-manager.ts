@@ -3,9 +3,9 @@ import type { ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { createInterface } from "node:readline";
-import { setTimeout as delayTimeout } from "node:timers/promises";
+import { Effect } from "effect";
 import type { Config } from "../../../config/env";
-import { delay } from "../../../core/async";
+import { delay, delayEffect } from "../../../core/async";
 import {
   cleanupLogFiles,
   getLogCleanupDefaultsFromEnvironment,
@@ -72,50 +72,54 @@ export const createProcessManager = (
     return null;
   };
 
-  const killProcess = async (pid: number, force: boolean): Promise<boolean> => {
-    if (!pidExists(pid)) {
-      return true;
-    }
-    const tree = buildProcessTree();
-    const children = new Set<number>();
-    collectChildren(tree, pid, children);
-    const allPids = [...children, pid];
-
-    // Docker-backed recipes often leave the actual server inside a container whose
-    // host process tree does not reliably die when the docker CLI process is
-    // signalled. Stop/kill the named container first, then signal the process tree.
-    stopDockerContainersForProcesses(allPids, force);
-
-    const signal = force ? "SIGKILL" : "SIGTERM";
-    for (const childPid of allPids) {
-      sendSignal(childPid, signal);
-    }
-
-    const deadline = Date.now() + (force ? 15_000 : 10_000);
-    while (Date.now() < deadline) {
+  const killProcessEffect = (pid: number, force: boolean): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
       if (!pidExists(pid)) {
-        break;
+        return true;
       }
-      await delayTimeout(250);
-    }
+      const tree = buildProcessTree();
+      const children = new Set<number>();
+      collectChildren(tree, pid, children);
+      const allPids = [...children, pid];
 
-    if (pidExists(pid)) {
-      stopDockerContainersForProcesses(allPids, true);
-      if (!sendSignal(pid, "SIGKILL")) {
-        return false;
+      // Docker-backed recipes often leave the actual server inside a container whose
+      // host process tree does not reliably die when the docker CLI process is
+      // signalled. Stop/kill the named container first, then signal the process tree.
+      stopDockerContainersForProcesses(allPids, force);
+
+      const signal = force ? "SIGKILL" : "SIGTERM";
+      for (const childPid of allPids) {
+        sendSignal(childPid, signal);
       }
-      const finalDeadline = Date.now() + 5_000;
-      while (Date.now() < finalDeadline) {
+
+      const deadline = Date.now() + (force ? 15_000 : 10_000);
+      while (Date.now() < deadline) {
         if (!pidExists(pid)) {
           break;
         }
-        await delayTimeout(250);
+        yield* delayEffect(250);
       }
-    }
 
-    await delay(force ? 500 : 1000);
-    return !pidExists(pid);
-  };
+      if (pidExists(pid)) {
+        stopDockerContainersForProcesses(allPids, true);
+        if (!sendSignal(pid, "SIGKILL")) {
+          return false;
+        }
+        const finalDeadline = Date.now() + 5_000;
+        while (Date.now() < finalDeadline) {
+          if (!pidExists(pid)) {
+            break;
+          }
+          yield* delayEffect(250);
+        }
+      }
+
+      yield* delayEffect(force ? 500 : 1000);
+      return !pidExists(pid);
+    });
+
+  const killProcess = (pid: number, force: boolean): Promise<boolean> =>
+    Effect.runPromise(killProcessEffect(pid, force));
 
   const stopDockerContainersForProcesses = (pids: number[], force: boolean): void => {
     const pidSet = new Set(pids);
@@ -229,39 +233,43 @@ export const createProcessManager = (
     return entry.command.includes("VLLM::Worker");
   };
 
-  const cleanupOrphanedInferenceWorkers = async (reason: string): Promise<number> => {
-    const workers = listProcessTable().filter(isOrphanedInferenceWorker);
-    if (workers.length === 0) {
-      return 0;
-    }
+  const cleanupOrphanedInferenceWorkersEffect = (reason: string): Effect.Effect<number> =>
+    Effect.gen(function* () {
+      const workers = listProcessTable().filter(isOrphanedInferenceWorker);
+      if (workers.length === 0) {
+        return 0;
+      }
 
-    for (const worker of workers) {
-      logger.warn("Killing orphaned inference worker", {
-        pid: worker.pid,
-        reason,
-        command: worker.command,
-      });
-      sendSignal(worker.pid, "SIGTERM");
-    }
-
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline && workers.some((worker) => pidExists(worker.pid))) {
-      await delayTimeout(200);
-    }
-
-    for (const worker of workers) {
-      if (pidExists(worker.pid)) {
-        logger.warn("Force killing orphaned inference worker", {
+      for (const worker of workers) {
+        logger.warn("Killing orphaned inference worker", {
           pid: worker.pid,
           reason,
           command: worker.command,
         });
-        sendSignal(worker.pid, "SIGKILL");
+        sendSignal(worker.pid, "SIGTERM");
       }
-    }
 
-    return workers.length;
-  };
+      const deadline = Date.now() + 2_000;
+      while (Date.now() < deadline && workers.some((worker) => pidExists(worker.pid))) {
+        yield* delayEffect(200);
+      }
+
+      for (const worker of workers) {
+        if (pidExists(worker.pid)) {
+          logger.warn("Force killing orphaned inference worker", {
+            pid: worker.pid,
+            reason,
+            command: worker.command,
+          });
+          sendSignal(worker.pid, "SIGKILL");
+        }
+      }
+
+      return workers.length;
+    });
+
+  const cleanupOrphanedInferenceWorkers = (reason: string): Promise<number> =>
+    Effect.runPromise(cleanupOrphanedInferenceWorkersEffect(reason));
 
   const launchModel = async (recipe: Recipe): Promise<LaunchResult> => {
     const updatedRecipe: Recipe = {
@@ -420,16 +428,20 @@ export const createProcessManager = (
     }
   };
 
-  const evictModel = async (force: boolean): Promise<number | null> => {
-    const current = await findInferenceProcess(config.inference_port);
-    if (!current) {
-      await cleanupOrphanedInferenceWorkers("evict-without-active-process");
-      return null;
-    }
-    await killProcess(current.pid, force);
-    await cleanupOrphanedInferenceWorkers("after-evict");
-    return current.pid;
-  };
+  const evictModelEffect = (force: boolean): Effect.Effect<number | null> =>
+    Effect.gen(function* () {
+      const current = yield* Effect.promise(() => findInferenceProcess(config.inference_port));
+      if (!current) {
+        yield* cleanupOrphanedInferenceWorkersEffect("evict-without-active-process");
+        return null;
+      }
+      yield* killProcessEffect(current.pid, force);
+      yield* cleanupOrphanedInferenceWorkersEffect("after-evict");
+      return current.pid;
+    });
+
+  const evictModel = (force: boolean): Promise<number | null> =>
+    Effect.runPromise(evictModelEffect(force));
 
   return {
     findInferenceProcess,
