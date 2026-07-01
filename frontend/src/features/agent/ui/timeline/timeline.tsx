@@ -90,13 +90,13 @@ export function Timeline({
   }
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div className="agent-timeline-frame relative flex min-h-0 min-w-0 flex-1">
       <PromptMarkers scroller={scroller} messages={visibleMessages} />
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div
           ref={setScroller}
           data-timeline-scroller
-          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable_both-edges]"
+          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-1 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable]"
         >
           <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
             {visibleMessages.map((message, index) => {

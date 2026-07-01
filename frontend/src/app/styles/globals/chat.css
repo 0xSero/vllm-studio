@@ -352,21 +352,30 @@
   background-clip: padding-box;
 }
 
+.agent-timeline-frame {
+  container-type: inline-size;
+}
+
 .prompt-minimap {
-  position: relative;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: max(0.75rem, calc(50% - (var(--composer-w) / 2) - 5rem));
   z-index: 12;
   display: flex;
-  flex: 0 0 4.75rem;
   flex-direction: column;
   align-items: flex-start;
-  align-self: center;
   justify-content: center;
   gap: 10px;
   max-height: 60vh;
   width: 4.75rem;
-  margin-left: 1.25rem;
-  margin-right: 0.75rem;
   pointer-events: none;
+}
+
+@container (max-width: 54rem) {
+  .prompt-minimap {
+    display: none;
+  }
 }
 
 .prompt-minimap-marker {
@@ -435,12 +444,6 @@
   font-size: 11px;
   line-height: 1.2;
   color: color-mix(in srgb, var(--fg) 48%, transparent);
-}
-
-@media (max-width: 980px) {
-  .prompt-minimap {
-    display: none;
-  }
 }
 
 .agent-activity-preview {
