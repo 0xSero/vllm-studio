@@ -203,12 +203,3 @@ export const evictModelEffect = Effect.gen(function* () {
   const data = yield* requestJsonEffect<unknown>("POST", "/evict");
   return isRecord(data) && typeof data.success === "boolean" ? data.success : true;
 });
-
-export const fetchGPUs = (): Promise<GpuSummary[]> => Effect.runPromise(fetchGPUsEffect);
-export const fetchRecipes = (): Promise<RecipeSummary[]> => Effect.runPromise(fetchRecipesEffect);
-export const fetchStatus = (): Promise<Status> => Effect.runPromise(fetchStatusEffect);
-export const fetchConfig = (): Promise<ControllerConfig> => Effect.runPromise(fetchConfigEffect);
-export const fetchLifetimeMetrics = (): Promise<LifetimeMetrics> =>
-  Effect.runPromise(fetchLifetimeMetricsEffect);
-export const launchRecipe = (id: string): Promise<boolean> => Effect.runPromise(launchRecipeEffect(id));
-export const evictModel = (): Promise<boolean> => Effect.runPromise(evictModelEffect);
