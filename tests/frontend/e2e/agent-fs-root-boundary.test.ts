@@ -14,11 +14,11 @@ import {
   listDirectory,
   readFileSnippet,
   writeFileContent,
-} from "../../frontend/src/features/agent/fs-store";
+} from "@/features/agent/fs-store";
 import {
   addProjectToStore,
   removeProjectFromStore,
-} from "../../frontend/src/features/agent/projects-store";
+} from "@/features/agent/projects-store";
 
 async function rejectsWith(
   fn: () => unknown,
