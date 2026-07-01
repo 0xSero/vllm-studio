@@ -110,7 +110,7 @@ the Effect v4 idioms already established in this repo.
 ```bash
 npm --prefix frontend run check:quality   # lint + typecheck + desktop typecheck
                                            # + cycles + ui-structure + knip + jscpd + depcheck + build
-npm run check                              # full repo gate (contracts + structure + frontend + controller + cli)
+npm run check                              # full repo gate (contracts + structure + frontend + controller)
 npm --prefix frontend run test             # frontend unit tests (tsx --test)
 npm run test:e2e                           # controller integration + frontend e2e
 ```

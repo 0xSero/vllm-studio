@@ -14,12 +14,10 @@ It is built from three modules that share one controller API:
 - [`frontend/`](frontend/README.md) — Next.js 16 + React 19 UI and the macOS
   Electron desktop shell. Hosts `/agent` (Pi coding agent runtime), settings,
   usage, recipes, logs, and the browser-facing API routes.
-- [`cli/`](cli/README.md) — Bun CLI for checking and operating a controller from
-  a terminal, with headless commands and an interactive TUI.
 
 ## What is a controller?
 
-A controller is the backend process the UI and CLI talk to — the Bun/Hono
+A controller is the backend process the UI talks to — the Bun/Hono
 server in `controller/`. You can run one locally or point the frontend at a
 remote controller on a GPU host. The controller owns model lifecycle, the
 OpenAI-compatible proxy, system state, and SSE event streams.
@@ -30,12 +28,9 @@ OpenAI-compatible proxy, system state, and SSE event streams.
 flowchart LR
     User["User"] --> Desktop["Electron desktop app"]
     User --> Web["Next.js web UI"]
-    User --> CLI["Bun CLI"]
-
     Desktop --> Frontend["Frontend server / API routes"]
     Web --> Frontend
-    CLI --> Controller["Controller API (Bun + Hono)"]
-    Frontend --> Controller
+    Frontend --> Controller["Controller API (Bun + Hono)"]
 
     Controller --> Runtime["Inference runtime process"]
     Runtime --> Backends["vLLM / SGLang / llama.cpp / MLX recipes"]
@@ -78,7 +73,7 @@ flowchart TB
 
 ## Quick start
 
-Prerequisites: Bun 1.x (controller, CLI), Node.js 20+ and npm (frontend),
+Prerequisites: Bun 1.x (controller), Node.js 20+ and npm (frontend),
 Python 3.10+ on `PATH` (`uv` strongly recommended; engine installs fall back to
 pip), Git. vLLM/SGLang serving on Linux needs NVIDIA driver + CUDA; Apple
 Silicon uses the MLX backend.
@@ -108,12 +103,6 @@ prints a warning, agent streaming may misrender. The setup wizard walks through
 choosing a models directory, installing an engine, downloading a model,
 launching it, and benchmarking. Engine installs (vLLM/SGLang/MLX) land in
 `<data dir>/runtime/venvs/<backend>-latest`.
-
-Optional CLI:
-
-```bash
-cd cli && bun install && bun src/main.ts status
-```
 
 ## Agent runtime
 
@@ -155,8 +144,7 @@ without it. On a trusted LAN you may instead set
 `LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true` to opt out of authentication.
 
 Point the frontend at a remote controller with `BACKEND_URL` or
-`NEXT_PUBLIC_API_URL` (default `http://localhost:8080`). The CLI uses
-`LOCAL_STUDIO_URL`.
+`NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
 
 Remote deployment is handled by `scripts/deploy-remote.sh`. Configure
 `.env.local` first (see `.env.example`):
@@ -180,7 +168,7 @@ Local daemon helpers: `./scripts/daemon-start.sh`, `daemon-status.sh`,
 ## Validation
 
 ```bash
-npm run check        # contracts + structure + frontend quality + controller/cli typecheck
+npm run check        # contracts + structure + frontend quality + controller typecheck
 npm run test:e2e     # controller integration + frontend e2e
 ```
 

@@ -65,7 +65,7 @@ const allowedFiles = new Set([
   "frontend/src/lib/types.ts",
   "frontend/src/lib/controller-events-contract.ts",
 ]);
-const scanRoots = ["shared", "controller/src", "frontend/src", "cli/src"];
+const scanRoots = ["shared", "controller/src", "frontend/src"];
 const findings = [];
 const exportedDeclarations = new Map();
 
