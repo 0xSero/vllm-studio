@@ -7,10 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import { Effect } from "effect";
 import type {
@@ -43,6 +40,8 @@ import {
   writeComputerTabs,
   writeComputerWidth,
 } from "@/features/agent/tools/persistence";
+import { syncCanvasEffect, useCanvasEffects } from "@/features/agent/tools/canvas-effects";
+import { useToolsCatalogueEffects } from "@/features/agent/tools/catalogue-effects";
 
 export type ToolsContextValue = {
   browser: BrowserState;
@@ -79,9 +78,6 @@ export type ToolsContextValue = {
 };
 
 const ToolsContext = createContext<ToolsContextValue | null>(null);
-
-const canvasSessionQuery = (sessionId: SessionId | null | undefined): string =>
-  sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
 
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
@@ -466,138 +462,3 @@ export type {
   ComputerState,
   ComputerTab,
 };
-
-function useCanvasEffects({
-  setComputer,
-  sessionId,
-}: {
-  setComputer: Dispatch<SetStateAction<ComputerState>>;
-  sessionId?: SessionId | null;
-}): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      let cancelled = false;
-      const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
-      void Effect.runPromise(
-        loadCanvasEffect(query).pipe(
-          Effect.map((payload) => {
-            if (cancelled) return;
-            setComputer((current) => ({
-              ...current,
-              canvasEnabled: payload.enabled ?? current.canvasEnabled,
-              canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
-            }));
-          }),
-          Effect.catch(() => Effect.void),
-        ),
-      );
-      return () => {
-        cancelled = true;
-      };
-    },
-    [setComputer, sessionId],
-  );
-
-  useSyncExternalStore(subscribe, getCanvasSnapshot, getCanvasSnapshot);
-}
-
-const getCanvasSnapshot = (): number => 0;
-
-type UseToolsCatalogueEffectsOptions = {
-  onLoaded: (payload: {
-    skills: ComposerSkillRef[];
-    promptTemplates: ComposerPromptTemplateRef[];
-  }) => void;
-};
-
-function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions): void {
-  const onLoadedRef = useRef(onLoaded);
-  const subscribe = useCallback((_notify: () => void) => {
-    let cancelled = false;
-    void Effect.runPromise(
-      loadToolsCatalogueEffect().pipe(
-        Effect.map((payload) => {
-          if (!cancelled) onLoadedRef.current(payload);
-        }),
-      ),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useSyncExternalStore(subscribe, getToolsCatalogueSnapshot, getToolsCatalogueSnapshot);
-}
-
-function syncCanvasEffect(
-  sessionId: SessionId | null | undefined,
-  payload: { enabled: boolean; text?: string },
-): Effect.Effect<void> {
-  return Effect.tryPromise({
-    try: () =>
-      fetch(`/api/agent/canvas${canvasSessionQuery(sessionId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }),
-    catch: () => undefined,
-  }).pipe(
-    Effect.map(() => undefined),
-    Effect.catch(() => Effect.void),
-  );
-}
-
-function loadCanvasEffect(
-  query: string,
-): Effect.Effect<{ enabled?: boolean; text?: string }, unknown> {
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () => fetch(`/api/agent/canvas${query}`, { cache: "no-store" }),
-      catch: (error) => error,
-    });
-    if (!response.ok) return yield* Effect.fail(new Error("Canvas fetch failed"));
-    return yield* Effect.tryPromise({
-      try: () => response.json() as Promise<{ enabled?: boolean; text?: string }>,
-      catch: (error) => error,
-    });
-  });
-}
-
-function loadToolsCatalogue(): Promise<{
-  skills: ComposerSkillRef[];
-  promptTemplates: ComposerPromptTemplateRef[];
-}> {
-  return Effect.runPromise(loadToolsCatalogueEffect());
-}
-
-function loadToolsCatalogueEffect(): Effect.Effect<{
-  skills: ComposerSkillRef[];
-  promptTemplates: ComposerPromptTemplateRef[];
-}> {
-  return Effect.gen(function* () {
-    const [skills, promptTemplates] = yield* Effect.all([
-      loadCatalogueListEffect<ComposerSkillRef>("/api/agent/skills", "skills"),
-      loadCatalogueListEffect<ComposerPromptTemplateRef>(
-        "/api/agent/prompt-templates",
-        "templates",
-      ),
-    ] as const);
-    return { skills, promptTemplates };
-  });
-}
-
-function loadCatalogueListEffect<TItem>(url: string, key: string): Effect.Effect<TItem[]> {
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () => fetch(url, { cache: "no-store" }),
-      catch: (error) => error,
-    });
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json() as Promise<Record<string, TItem[] | undefined>>,
-      catch: (error) => error,
-    });
-    return payload[key] ?? [];
-  }).pipe(Effect.catch(() => Effect.succeed([])));
-}
-
-const getToolsCatalogueSnapshot = (): number => 0;

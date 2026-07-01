@@ -479,7 +479,24 @@ the audit commands below at the start of each iteration to see current counts.
         cycles/ui-structure/deadcode/dupes/depcheck/build all green; full
         e2e suite shows the same 4 pre-existing failures as iterations
         2/10/12/13/14, nothing new broken.
-  - [ ] `frontend/src/features/agent/tools/context.tsx` (603)
+  - [x] `frontend/src/features/agent/tools/context.tsx` (603 → 464) — split
+        by concern rather than by mechanism: `canvas-effects.ts` (77:
+        `useCanvasEffects` + `syncCanvasEffect` + the private
+        `loadCanvasEffect`/`canvasSessionQuery` helpers) and
+        `catalogue-effects.ts` (64: `useToolsCatalogueEffects` + the
+        private `loadToolsCatalogueEffect`/`loadCatalogueListEffect`
+        helpers) — cleaner than one grab-bag "effects" file since the two
+        have nothing to do with each other. Also deleted a genuinely dead
+        function while in there: `loadToolsCatalogue` (a plain-Promise
+        wrapper around `loadToolsCatalogueEffect`) had zero callers anywhere
+        in the repo — confirmed via a repo-wide grep before removing it, not
+        just a knip guess. `ToolsProvider` itself stayed as one unit (its
+        ~20 callbacks all close over the same `browser`/`computer`/
+        `selectionsRef` state). Verified: typecheck/lint (0 errors, same 1
+        pre-existing unrelated warning)/cycles/ui-structure/deadcode/dupes/
+        depcheck/build all green; no tests reference this file directly;
+        full e2e suite shows the same 4 pre-existing failures as iterations
+        2/10/12/13/14/15, nothing new broken.
   - [ ] `frontend/src/features/agent/ui/chat-pane-composer.ts` (595)
   - [ ] `controller/src/modules/system/metrics-collector.ts` (565)
   - [ ] `frontend/src/lib/api/core.ts` (558)
@@ -853,4 +870,20 @@ the audit commands below at the start of each iteration to see current counts.
   2/10/12/13/14, nothing new broken. Next iteration:
   `frontend/src/features/agent/tools/context.tsx` (603) is next on the
   Part C list; `session-runtime-controller.ts` stays deferred until a
+  dedicated pass.
+
+- **2026-07-01 (iter 16)**: split `tools/context.tsx` (603 → 464) — see the
+  Part C checklist above for the breakdown. Split by concern
+  (canvas vs. tools-catalogue) rather than lumping every extracted hook
+  into one generic "effects" file, since the two have nothing to do with
+  each other and a grab-bag file would just be a new place for unrelated
+  code to accumulate. Also deleted a confirmed-dead function
+  (`loadToolsCatalogue`, a never-called plain-Promise wrapper) found while
+  reading the file fully before splitting — exactly the kind of
+  opportunistic cleanup this loop should keep doing. Frontend gate green
+  end to end (typecheck/lint/cycles/ui-structure/deadcode/dupes/depcheck/
+  build), e2e suite shows the same 4 pre-existing failures as iterations
+  2/10/12/13/14/15, nothing new broken. Next iteration:
+  `frontend/src/features/agent/ui/chat-pane-composer.ts` (595) is next on
+  the Part C list; `session-runtime-controller.ts` stays deferred until a
   dedicated pass.
