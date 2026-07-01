@@ -16,7 +16,6 @@ export interface SystemConfig {
   data_dir: string;
   db_path: string;
   sglang_python: string | null;
-  tabby_api_dir: string | null;
   llama_bin: string | null;
   mlx_python: string | null;
 }

@@ -5,7 +5,7 @@ export const createOpenApiSpec = (context: AppContext): Record<string, unknown> 
   info: {
     title: "Local Studio API",
     version: "0.3.2",
-    description: "Model lifecycle management for vLLM, SGLang, and TabbyAPI inference servers",
+    description: "Model lifecycle management for vLLM, SGLang, llama.cpp, and MLX inference servers",
   },
   servers: [
     {
