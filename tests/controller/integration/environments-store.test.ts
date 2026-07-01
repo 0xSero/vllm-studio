@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { EnvironmentStore } from "../../../controller/src/modules/environments/environment-store";
 import { parseEnvironment } from "../../../controller/src/modules/environments/environment-serializer";
-import { asEnvironmentId, type Environment } from "../../../controller/src/modules/environments/types";
+import type { Environment } from "../../../controller/src/modules/environments/types";
 import { delay } from "../../../controller/src/core/async";
 
 const makeEnvironment = (overrides: Partial<Environment> = {}): Environment =>
@@ -28,7 +28,7 @@ describe("parseEnvironment", () => {
     expect(environment.variant).toBeNull();
     expect(environment.createdAt).toBeTruthy();
     expect(environment.updatedAt).toBeTruthy();
-    expect(environment.id).toBe(asEnvironmentId("env-a"));
+    expect(environment.id).toBe("env-a");
   });
 
   it("rejects an engineId outside vllm/sglang/llamacpp (no mlx Docker environments)", () => {
