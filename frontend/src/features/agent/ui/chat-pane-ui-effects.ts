@@ -1,16 +1,10 @@
-import {
-  useCallback,
-  useRef,
-  useSyncExternalStore,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useRef, type Dispatch, type SetStateAction } from "react";
 import { Effect } from "effect";
 import type { ComposerMention } from "@/features/agent/composer-context";
 import { newId } from "@/features/agent/messages";
 import type { ContextAttachRequest } from "@/features/agent/tools/types";
 import { attachmentDedupKey, type ChatAttachment } from "@/features/agent/ui/chat-attachments";
-import { getChatPaneSnapshot } from "@/features/agent/ui/chat-pane-snapshot";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type ChatPaneFileMentionRow = {
   id: string;
@@ -27,12 +21,9 @@ export function useChatPaneStickToBottomEffect({
   activeTabId: string | null | undefined;
   setStickToBottom: Dispatch<SetStateAction<boolean>>;
 }): void {
-  const subscribeStickToBottom = useCallback(() => {
+  useMountSubscription(() => {
     setStickToBottom(true);
-    return () => undefined;
   }, [activeTabId, setStickToBottom]);
-
-  useSyncExternalStore(subscribeStickToBottom, getChatPaneSnapshot, getChatPaneSnapshot);
 }
 
 export function useChatPaneMentionEffects({
@@ -46,15 +37,14 @@ export function useChatPaneMentionEffects({
   setFileMentionRows: Dispatch<SetStateAction<ChatPaneFileMentionRow[]>>;
   setMentionIndex: Dispatch<SetStateAction<number>>;
 }): void {
-  const subscribeMentionIndex = useCallback(() => {
+  useMountSubscription(() => {
     setMentionIndex(0);
-    return () => undefined;
   }, [mention?.kind, mention?.query, setMentionIndex]);
 
-  const subscribeMentionRows = useCallback(() => {
+  useMountSubscription(() => {
     if (!mention || mention.kind !== "file" || !cwd) {
       setFileMentionRows([]);
-      return () => undefined;
+      return;
     }
     let cancelled = false;
     void Effect.runPromise(
@@ -95,9 +85,6 @@ export function useChatPaneMentionEffects({
       cancelled = true;
     };
   }, [cwd, mention, setFileMentionRows]);
-
-  useSyncExternalStore(subscribeMentionIndex, getChatPaneSnapshot, getChatPaneSnapshot);
-  useSyncExternalStore(subscribeMentionRows, getChatPaneSnapshot, getChatPaneSnapshot);
 }
 
 export function useChatPaneContextAttachEffect({
@@ -110,7 +97,7 @@ export function useChatPaneContextAttachEffect({
   setAttachments: Dispatch<SetStateAction<ChatAttachment[]>>;
 }): void {
   const handledContextAttachRef = useRef(0);
-  const subscribeContextAttach = useCallback(() => {
+  useMountSubscription(() => {
     if (
       contextAttachRequest &&
       isFocused &&
@@ -133,8 +120,5 @@ export function useChatPaneContextAttachEffect({
         return [...current, attachment];
       });
     }
-    return () => undefined;
   }, [contextAttachRequest, isFocused, setAttachments]);
-
-  useSyncExternalStore(subscribeContextAttach, getChatPaneSnapshot, getChatPaneSnapshot);
 }

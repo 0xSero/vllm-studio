@@ -3,7 +3,8 @@
 import { DiscoverView } from "@/features/discover/discover-view";
 import { useDiscover } from "@/features/discover/use-discover";
 import { useDownloads } from "@/hooks/use-downloads";
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useMemo, useRef } from "react";
 
 export default function DiscoverPage() {
   const {
@@ -52,28 +53,18 @@ export default function DiscoverPage() {
 
   const completedSet = useRef<Set<string>>(new Set());
 
-  const subscribeCompletedDownloads = useCallback(
-    (_notify: () => void) => {
-      let shouldRefresh = false;
-      for (const download of downloads) {
-        if (download.status === "completed" && !completedSet.current.has(download.id)) {
-          completedSet.current.add(download.id);
-          shouldRefresh = true;
-        }
+  useMountSubscription(() => {
+    let shouldRefresh = false;
+    for (const download of downloads) {
+      if (download.status === "completed" && !completedSet.current.has(download.id)) {
+        completedSet.current.add(download.id);
+        shouldRefresh = true;
       }
-      if (shouldRefresh) {
-        void refreshLocalModels();
-      }
-      return () => {};
-    },
-    [downloads, refreshLocalModels],
-  );
-
-  useSyncExternalStore(
-    subscribeCompletedDownloads,
-    getCompletedDownloadsSnapshot,
-    getCompletedDownloadsSnapshot,
-  );
+    }
+    if (shouldRefresh) {
+      void refreshLocalModels();
+    }
+  }, [downloads, refreshLocalModels]);
 
   const getDownloadForModel = useMemo(() => {
     return (modelId: string) => downloadsByModel.get(modelId) ?? null;
@@ -129,5 +120,3 @@ export default function DiscoverPage() {
     />
   );
 }
-
-const getCompletedDownloadsSnapshot = (): number => 0;

@@ -2,9 +2,10 @@
 
 import { effectTimeout } from "@/lib/effect-timers";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import type { HuggingFaceModel } from "@/lib/types";
 import { fetchHuggingFaceModels, isRecentHuggingFaceModel } from "@/lib/huggingface";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const PAGE_SIZE = 50;
 
@@ -62,16 +63,11 @@ export function useHuggingFaceModelSearch(
     [search, configureParams],
   );
 
-  const subscribeModelSearch = useCallback(
-    (_notify: () => void) => {
-      setPage(0);
-      const timer = effectTimeout(() => void fetchModels(false, 0), 300);
-      return () => timer.cancel();
-    },
-    [fetchModels],
-  );
-
-  useSyncExternalStore(subscribeModelSearch, getModelSearchSnapshot, getModelSearchSnapshot);
+  useMountSubscription(() => {
+    setPage(0);
+    const timer = effectTimeout(() => void fetchModels(false, 0), 300);
+    return () => timer.cancel();
+  }, [fetchModels]);
 
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {
@@ -81,5 +77,3 @@ export function useHuggingFaceModelSearch(
 
   return { models, loading, error, hasMore, loadMore, fetchModels };
 }
-
-const getModelSearchSnapshot = (): number => 0;

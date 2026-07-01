@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
 import { ErrorBox, Input, Button } from "@/ui";
 import type { GitAction, GitRef, GitState } from "@/features/agent/contracts";
 import { safeJson } from "@/features/agent/safe-json";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   diffLineClassName,
   diffLinePrefix,
@@ -491,18 +492,10 @@ function pairDiffLines(file: DiffFile): Array<{
 }
 
 function useGitDiffPanelEffects(load: () => Promise<void>): void {
-  const subscribe = useCallback(
-    (notify: () => void) => {
-      void load().finally(notify);
-      return () => {};
-    },
-    [load],
-  );
-
-  useSyncExternalStore(subscribe, getGitDiffPanelSnapshot, getGitDiffPanelSnapshot);
+  useMountSubscription(() => {
+    void load();
+  }, [load]);
 }
-
-const getGitDiffPanelSnapshot = (): number => 0;
 
 async function loadGitState(cwd: string): Promise<GitState> {
   const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {

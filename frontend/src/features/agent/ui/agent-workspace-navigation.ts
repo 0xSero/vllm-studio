@@ -1,9 +1,9 @@
-import { useCallback, useSyncExternalStore } from "react";
 import { consumeAgentSessionNavTitle } from "@/features/agent/ui/projects-nav-section";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { loadPersistedActiveAgentSessions } from "@/features/agent/workspace/store";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export type SearchParamsReader = {
   get: (key: string) => string | null;
@@ -102,15 +102,7 @@ export function useAgentWorkspaceNavigationEffects({
   searchParams,
   dispatch,
 }: WorkspaceNavigationDeps): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-      return () => {};
-    },
-    [lastHandledNavKey, projects, searchParams, dispatch],
-  );
-
-  useSyncExternalStore(subscribe, getWorkspaceNavigationSnapshot, getWorkspaceNavigationSnapshot);
+  useMountSubscription(() => {
+    requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
+  }, [lastHandledNavKey, projects, searchParams, dispatch]);
 }
-
-const getWorkspaceNavigationSnapshot = (): number => 0;

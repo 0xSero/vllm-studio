@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type ModelLifecycleStatus = "idle" | "starting" | "ready" | "error";
 
@@ -31,7 +32,7 @@ export function useModelLifecycle(): ModelLifecycle {
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const subscribeRecipes = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     let cancelled = false;
     api
       .getRecipes()
@@ -45,8 +46,6 @@ export function useModelLifecycle(): ModelLifecycle {
       cancelled = true;
     };
   }, []);
-
-  useSyncExternalStore(subscribeRecipes, getModelLifecycleSnapshot, getModelLifecycleSnapshot);
 
   const activeRecipeId = useMemo(() => {
     const process = realtime.status?.process;
@@ -95,5 +94,3 @@ export function useModelLifecycle(): ModelLifecycle {
     stop,
   };
 }
-
-const getModelLifecycleSnapshot = (): number => 0;

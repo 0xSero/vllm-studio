@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, Save } from "@/ui/icon-registry";
 import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem } from "@/ui";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { Backend, ModelInfo, Recipe, RecipeWithStatus } from "@/lib/types";
@@ -65,29 +66,24 @@ export function RecipeModal({
   const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
   const safeActiveTab = capabilities.tabs.includes(activeTab) ? activeTab : "general";
 
-  const subscribeLlamaConfigHelp = useCallback(
-    (_notify: () => void) => {
-      if (!isLlamacpp) return () => {};
-      if (llamaConfigHelp) return () => {};
+  useMountSubscription(() => {
+    if (!isLlamacpp) return;
+    if (llamaConfigHelp) return;
 
-      let cancelled = false;
-      api
-        .getLlamacppRuntimeConfig()
-        .then((result) => {
-          if (!cancelled) setLlamaConfigHelp(result);
-        })
-        .catch((error) => {
-          if (!cancelled) setLlamaConfigHelp({ config: null, error: (error as Error).message });
-        });
+    let cancelled = false;
+    api
+      .getLlamacppRuntimeConfig()
+      .then((result) => {
+        if (!cancelled) setLlamaConfigHelp(result);
+      })
+      .catch((error) => {
+        if (!cancelled) setLlamaConfigHelp({ config: null, error: (error as Error).message });
+      });
 
-      return () => {
-        cancelled = true;
-      };
-    },
-    [isLlamacpp, llamaConfigHelp],
-  );
-
-  useSyncExternalStore(subscribeLlamaConfigHelp, getRecipeModalSnapshot, getRecipeModalSnapshot);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLlamacpp, llamaConfigHelp]);
 
   const applyRecipeChange = useCallback(
     (next: RecipeEditor, options: { syncSource?: boolean; syncAuxiliary?: boolean } = {}) => {
@@ -379,8 +375,6 @@ function RecipeModalSummary({
     </div>
   );
 }
-
-const getRecipeModalSnapshot = (): number => 0;
 
 const BACKENDS = new Set<Backend>(["vllm", "sglang", "llamacpp", "mlx"]);
 

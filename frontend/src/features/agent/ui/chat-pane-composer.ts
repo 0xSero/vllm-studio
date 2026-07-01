@@ -2,7 +2,6 @@
 import {
   useCallback,
   useMemo,
-  useSyncExternalStore,
   type ChangeEvent,
   type ClipboardEvent,
   type Dispatch,
@@ -29,10 +28,9 @@ import {
   filesFromDataTransfer,
   imageFileFromDataUrlText,
 } from "@/features/agent/ui/chat-attachments";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
-
-const getComposerSnapshot = (): number => 0;
 
 export function useComposerLoadedContext({
   activeTab,
@@ -111,16 +109,16 @@ export function useComposerTextareaHeightSync({
   lastAppliedComposerHeightRef: MutableRefObject<number>;
   lastComposerValueLengthRef: MutableRefObject<number>;
 }) {
-  const subscribeHeightSync = useCallback(() => {
+  useMountSubscription(() => {
     const node = textareaRef.current;
-    if (!node) return () => undefined;
+    if (!node) return;
 
     if (!value) {
       node.style.height = "";
       node.scrollTop = 0;
       lastAppliedComposerHeightRef.current = 0;
       lastComposerValueLengthRef.current = 0;
-      return () => undefined;
+      return;
     }
 
     node.style.height = "auto";
@@ -128,10 +126,7 @@ export function useComposerTextareaHeightSync({
     node.style.height = `${next}px`;
     lastAppliedComposerHeightRef.current = next;
     lastComposerValueLengthRef.current = value.length;
-    return () => undefined;
   }, [lastAppliedComposerHeightRef, lastComposerValueLengthRef, textareaRef, value]);
-
-  useSyncExternalStore(subscribeHeightSync, getComposerSnapshot, getComposerSnapshot);
 }
 
 export function useComposerTextareaBehavior({

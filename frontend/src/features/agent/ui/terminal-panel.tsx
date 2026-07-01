@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
+import { useRef, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/features/agent/contracts";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,8 +84,6 @@ type PtyBootOptions = {
   ownerKey: string;
 };
 
-const getTerminalPanelSnapshot = (): number => 0;
-
 /** Resolve the Geist Mono font stack from the container's computed styles. */
 function resolveTerminalFont(cssVar: (name: string) => string): string {
   const resolved = cssVar("--font-geist-mono") || "";
@@ -159,7 +158,7 @@ function useTerminalPanelEffects({
   ownerKey: string;
   stateRef: RefObject<TerminalRefs>;
 }): void {
-  const subscribeTerminal = useCallback(() => {
+  useMountSubscription(() => {
     const refs = stateRef.current;
     refs.disposed = false;
     refs.input = "";
@@ -232,8 +231,6 @@ function useTerminalPanelEffects({
       refs.fit = null;
     };
   }, [containerRef, cwd, ownerKey, stateRef]);
-
-  useSyncExternalStore(subscribeTerminal, getTerminalPanelSnapshot, getTerminalPanelSnapshot);
 }
 
 async function bootPty({

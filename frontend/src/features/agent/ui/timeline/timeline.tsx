@@ -4,6 +4,7 @@ import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore } fr
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
 import { ChevronDownIcon } from "@/ui/icons";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 // Mirrors `groupAssistantBlocks`: a message renders something only if it has a
 // non-empty text block or any tool/thinking/event block. Assistant messages
@@ -293,8 +294,6 @@ function mergeConsecutiveAssistantMessages(messages: ChatMessage[]): ChatMessage
 const AT_BOTTOM_THRESHOLD_PX = 80;
 const USER_HOLD_MS = 700;
 
-const getTimelineScrollSnapshot = (): number => 0;
-
 /**
  * Keeps the chat locked to the latest message while streaming and re-pins after
  * any layout growth (new tokens, expanded reasoning, async-loaded history), so
@@ -337,18 +336,16 @@ function useTimelineScrollEffects({
   const userHoldUntilRef = useRef(0);
 
   // Mirror prop + callback into refs in the commit phase (never during render).
-  const subscribeStickRef = useCallback(() => {
+  useMountSubscription(() => {
     stickRef.current = stickToBottom;
-    return () => undefined;
   }, [stickToBottom]);
-  const subscribeOnChangeRef = useCallback(() => {
+  useMountSubscription(() => {
     onChangeRef.current = onStickToBottomChange;
-    return () => undefined;
   }, [onStickToBottomChange]);
 
-  const subscribeScroll = useCallback(() => {
+  useMountSubscription(() => {
     const el = scroller;
-    if (!el) return () => undefined;
+    if (!el) return;
 
     const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
@@ -459,19 +456,13 @@ function useTimelineScrollEffects({
 
   // When the parent forces stick=true (submit, tab change, session load), snap
   // back to the bottom and clear any lingering hold.
-  const subscribeForceStick = useCallback(() => {
+  useMountSubscription(() => {
     if (stickToBottom && scroller) {
       stickRef.current = true;
       userHoldUntilRef.current = 0;
       scroller.scrollTop = scroller.scrollHeight;
     }
-    return () => undefined;
   }, [stickToBottom, scroller]);
-
-  useSyncExternalStore(subscribeStickRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
-  useSyncExternalStore(subscribeOnChangeRef, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
-  useSyncExternalStore(subscribeScroll, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
-  useSyncExternalStore(subscribeForceStick, getTimelineScrollSnapshot, getTimelineScrollSnapshot);
 }
 
 function MessageView({

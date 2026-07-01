@@ -1,27 +1,20 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 /** Resizes the OS-level quick-composer panel from its tiny composer-only
  * "home" bounds to its resizable "thread" bounds the first time a message
  * lands in the focused pane. No-op outside the quick panel (bridge absent). */
 export function useQuickPanelExpandEffect(compact: boolean, focusedMessageCount: number): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      if (compact && focusedMessageCount > 0) {
-        void getQuickPanelBridge()?.expand();
-      }
-      return () => {};
-    },
-    [compact, focusedMessageCount],
-  );
-  useSyncExternalStore(subscribe, getQuickPanelExpandSnapshot, getQuickPanelExpandSnapshot);
+  useMountSubscription(() => {
+    if (compact && focusedMessageCount > 0) {
+      void getQuickPanelBridge()?.expand();
+    }
+  }, [compact, focusedMessageCount]);
 }
-
-const getQuickPanelExpandSnapshot = (): number => 0;
 
 export function QuickPanelTopBar({
   projects,

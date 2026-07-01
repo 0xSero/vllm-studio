@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import api from "@/lib/api/client";
 import { createApiClient } from "@/lib/api/create-api-client";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   clearApiKey,
   clearStoredBackendUrl,
@@ -211,16 +212,10 @@ export function useSettings() {
     }
   }, [apiSettings, loadConfig, persistLocalApiSettings]);
 
-  const subscribeConfigLoad = useCallback(
-    (_notify: () => void) => {
-      void loadConfig();
-      void loadApiSettings();
-      return () => {};
-    },
-    [loadApiSettings, loadConfig],
-  );
-
-  useSyncExternalStore(subscribeConfigLoad, getConfigsSnapshot, getConfigsSnapshot);
+  useMountSubscription(() => {
+    void loadConfig();
+    void loadApiSettings();
+  }, [loadApiSettings, loadConfig]);
 
   return {
     data,
@@ -242,5 +237,3 @@ export function useSettings() {
     backendOnline,
   };
 }
-
-const getConfigsSnapshot = (): number => 0;

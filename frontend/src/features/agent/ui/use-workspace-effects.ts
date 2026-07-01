@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useSyncExternalStore, type RefObject } from "react";
+import { useMemo, useRef, type RefObject } from "react";
 import {
   subscribeWorkspaceWindowEvents,
   type WorkspaceDispatch,
@@ -11,6 +11,7 @@ import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function currentSearchParams(): URLSearchParams {
   return typeof window === "undefined"
@@ -35,40 +36,33 @@ export function useWorkspaceHydrationEffects({
   projectsRef: RefObject<ProjectsContextValue>;
   toolsRef: RefObject<ToolsContextValue>;
 }): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      const params = currentSearchParams();
-      const restoreWorkspace = shouldRestoreWorkspace(params);
-      const { workspace, selections } = restoreWorkspace
-        ? loadInitialFromStorage(window.localStorage)
-        : { workspace: {}, selections: new Map() };
-      dispatch({ type: "hydrate", state: workspace, hydrated: !restoreWorkspace });
-      if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
+  useMountSubscription(() => {
+    const params = currentSearchParams();
+    const restoreWorkspace = shouldRestoreWorkspace(params);
+    const { workspace, selections } = restoreWorkspace
+      ? loadInitialFromStorage(window.localStorage)
+      : { workspace: {}, selections: new Map() };
+    dispatch({ type: "hydrate", state: workspace, hydrated: !restoreWorkspace });
+    if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
 
-      if (projectsRef.current.loaded) {
-        const snapshots = restoreWorkspace ? loadPersistedActiveAgentSessions() : [];
-        dispatch({
-          type: "hydrateActiveSessions",
-          snapshots,
-          projects: projectsRef.current.projects,
-          hasExplicitSessionNav: !restoreWorkspace || hasExplicitSessionNavigation(params),
-        });
-      }
+    if (projectsRef.current.loaded) {
+      const snapshots = restoreWorkspace ? loadPersistedActiveAgentSessions() : [];
+      dispatch({
+        type: "hydrateActiveSessions",
+        snapshots,
+        projects: projectsRef.current.projects,
+        hasExplicitSessionNav: !restoreWorkspace || hasExplicitSessionNavigation(params),
+      });
+    }
 
-      workspaceCommands().bind(dispatch);
-      const unsubscribe = subscribeWorkspaceWindowEvents(window, dispatch);
-      return () => {
-        workspaceCommands().unbind();
-        unsubscribe();
-      };
-    },
-    [dispatch, projectsRef, toolsRef],
-  );
-
-  useSyncExternalStore(subscribe, getWorkspaceHydrationSnapshot, getWorkspaceHydrationSnapshot);
+    workspaceCommands().bind(dispatch);
+    const unsubscribe = subscribeWorkspaceWindowEvents(window, dispatch);
+    return () => {
+      workspaceCommands().unbind();
+      unsubscribe();
+    };
+  }, [dispatch, projectsRef, toolsRef]);
 }
-
-const getWorkspaceHydrationSnapshot = (): number => 0;
 
 type UseWorkspaceRuntimeSyncDeps = {
   dispatch: WorkspaceDispatch;
@@ -98,11 +92,6 @@ function runtimeRegistryKey(sessions: Session[]): string {
     .join("\n");
 }
 
-// The useSyncExternalStore subscriptions below run their side effects purely
-// for the mount/cleanup lifecycle (effect hooks are banned in this codebase).
-// A constant snapshot guarantees they never trigger a re-render.
-const getRuntimeSyncSnapshot = (): number => 0;
-
 // React adapter for the session runtime controller: binds the workspace
 // dispatcher as the controller's commit boundary, reconciles SSE attachments
 // against the live session set, and retriggers the controller's status poll
@@ -114,14 +103,11 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   // Mirror the latest sessions into a ref in the commit phase (never during
   // render) so the long-lived subscriptions below read the current value
   // without re-subscribing on every content update.
-  const subscribeSessionsRef = useCallback(() => {
+  useMountSubscription(() => {
     sessionsRef.current = sessions;
-    return () => undefined;
   }, [sessions]);
-  useSyncExternalStore(subscribeSessionsRef, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Bind the controller's commit boundary to the workspace dispatcher.
-  const subscribeBinding = useCallback(() => {
+  useMountSubscription(() => {
     sessionRuntimeController().bind({
       commit: (sessionId: SessionId, patch: (session: Session) => Session) => {
         dispatch({ type: "patchSession", sessionId, patch });
@@ -129,37 +115,28 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       getSession: (sessionId) => sessionsRef.current.find((session) => session.id === sessionId),
       getSessions: () => sessionsRef.current,
     });
-    return () => undefined;
   }, [dispatch]);
-  useSyncExternalStore(subscribeBinding, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const subscriptionKey = useMemo(() => runtimeSubscriptionKey(sessions), [sessions]);
 
   // Reconcile SSE attachments when the live membership (not content) changes.
-  const subscribeResume = useCallback(() => {
+  useMountSubscription(() => {
     sessionRuntimeController().reconcile(sessionsRef.current);
-    return () => undefined;
   }, [subscriptionKey]);
-  useSyncExternalStore(subscribeResume, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
   const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
 
   // Immediate runtime-list reconcile + steady poll restart whenever session
   // identity (membership / runtime id / pi id / status) changes.
-  const subscribePoll = useCallback(() => {
+  useMountSubscription(() => {
     sessionRuntimeController().pollNow();
-    return () => undefined;
   }, [registryKey]);
-  useSyncExternalStore(subscribePoll, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 
-  // Unmount cleanup: flush pending deltas, close every SSE attachment, stop
-  // the poll, and release the dispatcher binding.
-  const subscribeCleanup = useCallback(
+  useMountSubscription(
     () => () => {
       sessionRuntimeController().closeAll();
       sessionRuntimeController().unbind();
     },
     [],
   );
-  useSyncExternalStore(subscribeCleanup, getRuntimeSyncSnapshot, getRuntimeSyncSnapshot);
 }

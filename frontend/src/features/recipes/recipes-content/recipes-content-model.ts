@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import api from "@/lib/api/client";
 import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { delay } from "@/lib/async";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
@@ -33,19 +34,12 @@ export function useRecipesContentModel() {
 
   const { launchProgress } = useRealtimeStatus();
 
-  const subscribePinnedRecipes = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     try {
       const saved = localStorage.getItem("local-studio-pinned-recipes");
       if (saved) setPinnedRecipes(new Set(JSON.parse(saved)));
     } catch {}
-    return () => {};
   }, []);
-
-  useSyncExternalStore(
-    subscribePinnedRecipes,
-    getRecipesContentModelSnapshot,
-    getRecipesContentModelSnapshot,
-  );
 
   const togglePin = useCallback((recipeId: string) => {
     setPinnedRecipes((prev) => {
@@ -76,25 +70,15 @@ export function useRecipesContentModel() {
     }
   }, []);
 
-  const subscribeRecipes = useCallback(
-    (_notify: () => void) => {
-      void (async () => {
-        try {
-          await loadRecipes();
-        } finally {
-          setLoading(false);
-        }
-      })();
-      return () => {};
-    },
-    [loadRecipes],
-  );
-
-  useSyncExternalStore(
-    subscribeRecipes,
-    getRecipesContentModelSnapshot,
-    getRecipesContentModelSnapshot,
-  );
+  useMountSubscription(() => {
+    void (async () => {
+      try {
+        await loadRecipes();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadRecipes]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -254,5 +238,3 @@ export function useRecipesContentModel() {
     },
   };
 }
-
-const getRecipesContentModelSnapshot = (): number => 0;

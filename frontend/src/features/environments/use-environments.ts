@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import api from "@/lib/api/client";
 import type { EnvironmentEngineId, EnvironmentWithStatus, RecipeWithStatus } from "@/lib/types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const ENGINE_OPTIONS: Array<{ value: EnvironmentEngineId; label: string }> = [
   { value: "vllm", label: "vLLM" },
@@ -49,21 +50,15 @@ export function useEnvironments() {
     }
   }, []);
 
-  const subscribeInitialLoad = useCallback(
-    (_notify: () => void) => {
-      void (async () => {
-        try {
-          await loadAll();
-        } finally {
-          setLoading(false);
-        }
-      })();
-      return () => {};
-    },
-    [loadAll],
-  );
-
-  useSyncExternalStore(subscribeInitialLoad, getEnvironmentsSnapshot, getEnvironmentsSnapshot);
+  useMountSubscription(() => {
+    void (async () => {
+      try {
+        await loadAll();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadAll]);
 
   const handleCreate = useCallback(async () => {
     if (!form.name.trim() || !form.recipeId || !form.version.trim()) return;
@@ -145,5 +140,3 @@ export function useEnvironments() {
     handleStop,
   };
 }
-
-const getEnvironmentsSnapshot = (): number => 0;

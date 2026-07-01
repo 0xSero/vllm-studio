@@ -2,9 +2,10 @@
 
 import { effectInterval, effectTimeout } from "@/lib/effect-timers";
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUpCircle, Check, Loader2, XCircle } from "@/ui/icon-registry";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
 import {
@@ -74,16 +75,11 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     setJobs(jobPayload.jobs);
   }, []);
 
-  const subscribeRuntimeJobs = useCallback(
-    (_notify: () => void) => {
-      void Promise.resolve().then(refreshRuntimeJobs);
-      const jobTimer = effectInterval(() => void refreshRuntimeJobs(), 2500);
-      return () => jobTimer.cancel();
-    },
-    [refreshRuntimeJobs],
-  );
-
-  useSyncExternalStore(subscribeRuntimeJobs, getEnginesSectionSnapshot, getEnginesSectionSnapshot);
+  useMountSubscription(() => {
+    void Promise.resolve().then(refreshRuntimeJobs);
+    const jobTimer = effectInterval(() => void refreshRuntimeJobs(), 2500);
+    return () => jobTimer.cancel();
+  }, [refreshRuntimeJobs]);
 
   const engineRows = useMemo(() => resolveEngineRowsView(targets, backends), [backends, targets]);
   const hasRows = hasHydratedEngineRows(engineRows);
@@ -118,8 +114,6 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
     </div>
   );
 }
-
-const getEnginesSectionSnapshot = (): number => 0;
 
 function HydrationStatus({ hasRows }: { hasRows: boolean }) {
   // Nothing to announce once the data is in — the rows speak for themselves, and

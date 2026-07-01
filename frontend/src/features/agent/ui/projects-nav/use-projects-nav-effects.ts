@@ -18,6 +18,7 @@ import {
   loadSessionPrefs,
   type SessionPrefs,
 } from "@/features/agent/messages/prefs";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type PinnedSession = SessionSummary & { project: ProjectEntry };
 type ActiveAgentSession = ActiveAgentSessionSnapshot;
@@ -26,8 +27,6 @@ type PinnedActiveSession = ActiveAgentSession & {
   firstUserMessage: string | null;
   project: ProjectEntry;
 };
-
-const getProjectsNavSnapshot = (): number => 0;
 
 let cachedSessionPrefs: SessionPrefs = {};
 let cachedSessionPrefsKey = "";
@@ -84,22 +83,17 @@ export function useProjectDirectoryPickerModalEffects({
   loadDirectory: (directoryPath?: string) => Promise<void>;
   open: boolean;
 }): void {
-  const subscribeDirectoryLoad = useCallback(() => {
-    if (!open) return () => undefined;
+  useMountSubscription(() => {
+    if (!open) return;
     void loadDirectory();
-    return () => undefined;
   }, [open, loadDirectory]);
-
-  useSyncExternalStore(subscribeDirectoryLoad, getProjectsNavSnapshot, getProjectsNavSnapshot);
 }
 
 export function useProjectsNavAddProjectEffect(handleAddProject: () => void): void {
-  const subscribeAddProject = useCallback(() => {
+  useMountSubscription(() => {
     window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
   }, [handleAddProject]);
-
-  useSyncExternalStore(subscribeAddProject, getProjectsNavSnapshot, getProjectsNavSnapshot);
 }
 
 export function useActiveAgentSessionsEffect({
@@ -107,7 +101,7 @@ export function useActiveAgentSessionsEffect({
 }: {
   setActiveSessions: Dispatch<SetStateAction<ActiveAgentSession[]>>;
 }): void {
-  const subscribeActiveSessions = useCallback(() => {
+  useMountSubscription(() => {
     const onActiveSessions = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveAgentSession[] }>).detail;
       const sessions = Array.isArray(detail?.sessions) ? detail.sessions : [];
@@ -120,8 +114,6 @@ export function useActiveAgentSessionsEffect({
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActiveSessions);
   }, [setActiveSessions]);
-
-  useSyncExternalStore(subscribeActiveSessions, getProjectsNavSnapshot, getProjectsNavSnapshot);
 }
 
 export function usePinnedSessionsEffect({
@@ -141,14 +133,14 @@ export function usePinnedSessionsEffect({
   projects: ProjectEntry[];
   setPinnedSessions: Dispatch<SetStateAction<Array<PinnedSession | PinnedActiveSession>>>;
 }): void {
-  const subscribePinnedSessions = useCallback(() => {
+  useMountSubscription(() => {
     if (!expanded || projects.length === 0) {
       queueMicrotask(() => setPinnedSessions([]));
-      return () => undefined;
+      return;
     }
     if (!pinnedPrefIdsKey) {
       queueMicrotask(() => setPinnedSessions([]));
-      return () => undefined;
+      return;
     }
     let cancelled = false;
     const pinnedIdsList = pinnedPrefIdsKey.split("\u0000").filter(Boolean);
@@ -218,20 +210,12 @@ export function usePinnedSessionsEffect({
     projects,
     setPinnedSessions,
   ]);
-
-  useSyncExternalStore(subscribePinnedSessions, getProjectsNavSnapshot, getProjectsNavSnapshot);
 }
 
 export function useProjectSessionsReloadEffect(reload: () => Promise<void>): void {
-  const subscribeProjectSessionsReload = useCallback(() => {
+  useMountSubscription(() => {
     void reload();
     window.addEventListener(SESSIONS_CHANGED_EVENT, reload);
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, reload);
   }, [reload]);
-
-  useSyncExternalStore(
-    subscribeProjectSessionsReload,
-    getProjectsNavSnapshot,
-    getProjectsNavSnapshot,
-  );
 }

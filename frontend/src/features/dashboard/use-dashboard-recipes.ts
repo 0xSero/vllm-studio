@@ -1,8 +1,9 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import { createApiClient } from "@/lib/api/create-api-client";
 import { BACKEND_URL_CHANGED_EVENT, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { effectInterval } from "@/lib/effect-timers";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function processKey(process: ProcessInfo | null): string {
   if (!process) return "";
@@ -180,87 +181,48 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     [currentProcess, currentRecipe, refreshLogs],
   );
 
-  const subscribeRecipeReload = useCallback(
-    (_notify: () => void) => {
+  useMountSubscription(() => {
+    void reload();
+  }, [reload]);
+  useMountSubscription(() => {
+    const handler = () => {
       void reload();
-      return () => {};
-    },
-    [reload],
-  );
-
-  const subscribeRecipeEvents = useCallback(
-    (_notify: () => void) => {
-      const handler = () => {
-        void reload();
-      };
-      window.addEventListener("vllm:recipe-event", handler as EventListener);
-      return () => {
-        window.removeEventListener("vllm:recipe-event", handler as EventListener);
-      };
-    },
-    [reload],
-  );
-
-  const subscribeControllerChanges = useCallback(
-    (_notify: () => void) => {
-      const handler = () => {
-        const key = controllerKey();
-        applyCachedState(key);
-        void reload(key);
-      };
-      window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
-      return () => {
-        window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
-      };
-    },
-    [applyCachedState, reload],
-  );
-
-  const subscribeRecipeLogPolling = useCallback(
-    (_notify: () => void) => {
-      if (!currentProcess) return () => {};
-      let cancelled = false;
-      const targetKey = controllerKey();
-      const client = apiForController(targetKey);
-      const poll = async () => {
-        if (cancelled) return;
-        const nextLogs = await refreshLogs(client, currentRecipe).catch(() => []);
-        if (cancelled || controllerKey() !== targetKey) return;
-        setLogs(nextLogs);
-        cacheState(targetKey, currentProcess, recipes, currentRecipe, nextLogs);
-      };
-      void poll();
-      const timer = effectInterval(() => void poll(), 4000);
-      return () => {
-        cancelled = true;
-        timer.cancel();
-      };
-    },
-    [currentProcess, currentRecipe, recipes, refreshLogs],
-  );
-
-  useSyncExternalStore(
-    subscribeRecipeReload,
-    getDashboardRecipesSnapshot,
-    getDashboardRecipesSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeRecipeEvents,
-    getDashboardRecipesSnapshot,
-    getDashboardRecipesSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeControllerChanges,
-    getDashboardRecipesSnapshot,
-    getDashboardRecipesSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeRecipeLogPolling,
-    getDashboardRecipesSnapshot,
-    getDashboardRecipesSnapshot,
-  );
+    };
+    window.addEventListener("vllm:recipe-event", handler as EventListener);
+    return () => {
+      window.removeEventListener("vllm:recipe-event", handler as EventListener);
+    };
+  }, [reload]);
+  useMountSubscription(() => {
+    const handler = () => {
+      const key = controllerKey();
+      applyCachedState(key);
+      void reload(key);
+    };
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+    };
+  }, [applyCachedState, reload]);
+  useMountSubscription(() => {
+    if (!currentProcess) return;
+    let cancelled = false;
+    const targetKey = controllerKey();
+    const client = apiForController(targetKey);
+    const poll = async () => {
+      if (cancelled) return;
+      const nextLogs = await refreshLogs(client, currentRecipe).catch(() => []);
+      if (cancelled || controllerKey() !== targetKey) return;
+      setLogs(nextLogs);
+      cacheState(targetKey, currentProcess, recipes, currentRecipe, nextLogs);
+    };
+    void poll();
+    const timer = effectInterval(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      timer.cancel();
+    };
+  }, [currentProcess, currentRecipe, recipes, refreshLogs]);
 
   return { recipes, currentRecipe, logs, loading, reload };
 }
-
-const getDashboardRecipesSnapshot = (): number => 0;

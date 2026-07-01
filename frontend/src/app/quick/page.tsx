@@ -1,15 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useSyncExternalStore } from "react";
+import { Suspense } from "react";
 import { AgentWorkspace } from "@/features/agent/ui/agent-workspace-shell";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
-
-function getDismissOnEscapeSnapshot(): number {
-  return 0;
-}
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function useDismissOnEscape(): void {
-  const subscribe = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       const bridge = getQuickPanelBridge();
@@ -20,7 +17,6 @@ function useDismissOnEscape(): void {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  useSyncExternalStore(subscribe, getDismissOnEscapeSnapshot, getDismissOnEscapeSnapshot);
 }
 
 export default function QuickPanelPage() {

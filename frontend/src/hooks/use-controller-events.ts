@@ -7,12 +7,13 @@ import {
   isControllerStreamEventType,
   type ControllerBrowserEventChannel,
 } from "@/lib/controller-events-contract";
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   BACKEND_URL_CHANGED_EVENT,
   getApiKey,
   resolveControllerEventsBaseUrl,
 } from "@/lib/api/connection";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 interface SSEPayload<T = unknown> {
   data: T;
@@ -43,74 +44,58 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     ? `${apiBaseUrl}/events?api_key=${encodeURIComponent(apiKey)}`
     : `${apiBaseUrl}/events`;
 
-  const subscribeControllerEvents = useCallback(
-    (_notify: () => void) => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+  useMountSubscription(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+    let disposed = false;
+    let reconnectFiber: Fiber.Fiber<void, unknown> | null = null;
+    let failureStreak = 0;
+
+    const open = () => {
+      if (disposed) return;
+      const es = new EventSource(sseUrl);
+      eventSourceRef.current = es;
+
+      const onDelivered = (event: MessageEvent) => {
+        failureStreak = 0;
+        handleMessage(event);
+      };
+
+      for (const type of CONTROLLER_EVENT_TYPES) {
+        es.addEventListener(type, (event) => onDelivered(event as MessageEvent));
       }
-      let disposed = false;
-      let reconnectFiber: Fiber.Fiber<void, unknown> | null = null;
-      let failureStreak = 0;
+      es.onmessage = (event) => onDelivered(event as MessageEvent);
 
-      const open = () => {
+      es.onerror = () => {
         if (disposed) return;
-        const es = new EventSource(sseUrl);
-        eventSourceRef.current = es;
-
-        const onDelivered = (event: MessageEvent) => {
-          failureStreak = 0;
-          handleMessage(event);
-        };
-
-        for (const type of CONTROLLER_EVENT_TYPES) {
-          es.addEventListener(type, (event) => onDelivered(event as MessageEvent));
-        }
-        es.onmessage = (event) => onDelivered(event as MessageEvent);
-
-        es.onerror = () => {
-          if (disposed) return;
-          es.close();
-          failureStreak = Math.min(failureStreak + 1, 6);
-          const delay = Math.min(60_000, 3_000 * 2 ** failureStreak);
-          const program = Effect.gen(function* () {
-            yield* Effect.sleep(delay);
-            open();
-          });
-          if (reconnectFiber) void Effect.runPromise(Fiber.interrupt(reconnectFiber));
-          reconnectFiber = Effect.runFork(program);
-        };
-      };
-
-      open();
-
-      return () => {
-        disposed = true;
+        es.close();
+        failureStreak = Math.min(failureStreak + 1, 6);
+        const delay = Math.min(60_000, 3_000 * 2 ** failureStreak);
+        const program = Effect.gen(function* () {
+          yield* Effect.sleep(delay);
+          open();
+        });
         if (reconnectFiber) void Effect.runPromise(Fiber.interrupt(reconnectFiber));
-        eventSourceRef.current?.close();
+        reconnectFiber = Effect.runFork(program);
       };
-    },
-    [backendRevision, handleMessage, sseUrl],
-  );
+    };
 
-  const subscribeBackendChanges = useCallback((_notify: () => void) => {
+    open();
+
+    return () => {
+      disposed = true;
+      if (reconnectFiber) void Effect.runPromise(Fiber.interrupt(reconnectFiber));
+      eventSourceRef.current?.close();
+    };
+  }, [backendRevision, handleMessage, sseUrl]);
+
+  useMountSubscription(() => {
     const reconnect = () => setBackendRevision((value) => value + 1);
     window.addEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
     return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
   }, []);
-
-  useSyncExternalStore(
-    subscribeControllerEvents,
-    getControllerEventsSnapshot,
-    getControllerEventsSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeBackendChanges,
-    getControllerEventsSnapshot,
-    getControllerEventsSnapshot,
-  );
 }
-
-const getControllerEventsSnapshot = (): number => 0;
 
 export const dispatchCustomEvent = (name: string, detail: Record<string, unknown>) => {
   if (typeof window === "undefined") return;

@@ -1,13 +1,7 @@
-import {
-  useCallback,
-  useRef,
-  useSyncExternalStore,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { FileOpenRequest } from "@/features/agent/tools/types";
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type UseFilesystemPanelEffectsParams = {
   cwd: string | null;
@@ -32,8 +26,6 @@ type UseFilesystemPanelEffectsParams = {
   setDirLoading: Dispatch<SetStateAction<Set<string>>>;
   setLastOpenFileByProject: (projectPath: string, relPath: string) => void;
 };
-
-const getFilesystemPanelSnapshot = (): number => 0;
 
 export function useFilesystemPanelEffects({
   cwd,
@@ -60,12 +52,11 @@ export function useFilesystemPanelEffects({
 }: UseFilesystemPanelEffectsParams): void {
   const handledFileOpenRequest = useRef(0);
 
-  const subscribeCwdRef = useCallback(() => {
+  useMountSubscription(() => {
     cwdRef.current = cwd;
-    return () => undefined;
   }, [cwd, cwdRef]);
 
-  const subscribeProjectReset = useCallback(() => {
+  useMountSubscription(() => {
     setRelPath("");
     setOpenFile(null);
     setFileContent("");
@@ -78,7 +69,6 @@ export function useFilesystemPanelEffects({
     setExpandedDirs(new Set());
     setDirChildren(new Map());
     setDirLoading(new Set());
-    return () => undefined;
   }, [
     cwd,
     setComments,
@@ -95,10 +85,10 @@ export function useFilesystemPanelEffects({
     setSearchQuery,
   ]);
 
-  const subscribeEntries = useCallback(() => {
+  useMountSubscription(() => {
     if (!cwd) {
       setEntries([]);
-      return () => undefined;
+      return;
     }
     let cancelled = false;
     (async () => {
@@ -118,26 +108,24 @@ export function useFilesystemPanelEffects({
     };
   }, [cwd, relPath, setEntries]);
 
-  const subscribeRememberedFile = useCallback(() => {
-    if (!cwd) return () => undefined;
+  useMountSubscription(() => {
+    if (!cwd) return;
     const remembered = lastOpenFileByProject[cwd];
     if (remembered) setOpenFile(remembered);
-    return () => undefined;
   }, [cwd, lastOpenFileByProject, setOpenFile]);
 
-  const subscribeFileOpenRequest = useCallback(() => {
+  useMountSubscription(() => {
     if (!fileOpenRequest || handledFileOpenRequest.current === fileOpenRequest.id) {
-      return () => undefined;
+      return;
     }
     handledFileOpenRequest.current = fileOpenRequest.id;
     const rel = relativePathForRequest(fileOpenRequest.path, cwd);
-    if (!rel) return () => undefined;
+    if (!rel) return;
     setOpenFile(rel);
     if (cwd) setLastOpenFileByProject(cwd, rel);
-    return () => undefined;
   }, [cwd, fileOpenRequest, setLastOpenFileByProject, setOpenFile]);
 
-  const subscribeOpenFile = useCallback(() => {
+  useMountSubscription(() => {
     if (!cwd || !openFile) {
       setFileContent("");
       setDraftContent("");
@@ -145,7 +133,7 @@ export function useFilesystemPanelEffects({
       setFileSize(0);
       setSaveError(null);
       setComments([]);
-      return () => undefined;
+      return;
     }
     let cancelled = false;
     setLoadingFile(true);
@@ -200,25 +188,6 @@ export function useFilesystemPanelEffects({
     setLoadingFile,
     setSaveError,
   ]);
-
-  useSyncExternalStore(subscribeCwdRef, getFilesystemPanelSnapshot, getFilesystemPanelSnapshot);
-  useSyncExternalStore(
-    subscribeProjectReset,
-    getFilesystemPanelSnapshot,
-    getFilesystemPanelSnapshot,
-  );
-  useSyncExternalStore(subscribeEntries, getFilesystemPanelSnapshot, getFilesystemPanelSnapshot);
-  useSyncExternalStore(
-    subscribeRememberedFile,
-    getFilesystemPanelSnapshot,
-    getFilesystemPanelSnapshot,
-  );
-  useSyncExternalStore(
-    subscribeFileOpenRequest,
-    getFilesystemPanelSnapshot,
-    getFilesystemPanelSnapshot,
-  );
-  useSyncExternalStore(subscribeOpenFile, getFilesystemPanelSnapshot, getFilesystemPanelSnapshot);
 }
 
 function relativePathForRequest(path: string, cwd: string | null): string | null {

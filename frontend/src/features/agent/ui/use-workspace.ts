@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
+import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { safeJson } from "@/features/agent/safe-json";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import { createInitialState, reducer } from "@/features/agent/workspace/store";
 import {
@@ -170,12 +164,10 @@ export function useWorkspace(): UseWorkspaceResult {
   const projectsRef = useRef(projects);
   const tools = useTools();
   const toolsRef = useRef(tools);
-  const subscribeContextRefs = useCallback(() => {
+  useMountSubscription(() => {
     projectsRef.current = projects;
     toolsRef.current = tools;
-    return () => undefined;
   }, [projects, tools]);
-  useSyncExternalStore(subscribeContextRefs, getWorkspaceSyncSnapshot, getWorkspaceSyncSnapshot);
   const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
@@ -258,63 +250,54 @@ export function useWorkspace(): UseWorkspaceResult {
 
   const { dispatch, runBrowserCommand } = controller;
 
-  const subscribeWorkspaceModelStorage = useCallback(
-    (_notify: () => void) => {
-      if (typeof window === "undefined") return () => {};
-      const reload = () => {
-        dispatch({ type: "setModelsLoading", loading: true });
-        dispatch({ type: "setError", error: "" });
-        void loadAgentModelsPayload()
-          .then((models) => {
-            dispatch({ type: "setModels", models: models.models ?? [] });
-          })
-          .catch((error) => {
-            dispatch({
-              type: "setError",
-              error: error instanceof Error ? error.message : String(error),
-            });
-            dispatch({ type: "setModels", models: [] });
-          })
-          .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
-      };
-      const onStorage = (event: StorageEvent | Event) => {
-        const key = (event as StorageEvent).key;
-        if (key && key !== "localstudio_backend_url" && key !== "local-studio.controllers") return;
-        reload();
-      };
-      // Models load once on hydrate; a transient empty/failed initial fetch
-      // (controller briefly slow, model not yet launched, a network blip) would
-      // otherwise strand the picker on "No models" until a manual page reload.
-      // Recover when the user refocuses the window or the network returns — but
-      // only when the list is actually empty and not already loading, so a
-      // populated picker is never re-churned.
-      const recoverIfEmpty = () => {
-        if (stateRef.current.models.length === 0 && !stateRef.current.modelsLoading) reload();
-      };
-      // The initial hydrate load can lose the startup race with the embedded
-      // proxy / controller coming up (a transient "fetch failed"), leaving the
-      // list empty with no focus event to recover it (the window is already
-      // focused on first paint). Retry a few times, backing off, until the list
-      // populates — then the timers no-op.
-      const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
-      window.addEventListener("storage", onStorage);
-      window.addEventListener("focus", recoverIfEmpty);
-      window.addEventListener("online", recoverIfEmpty);
-      return () => {
-        for (const t of retryTimers) window.clearTimeout(t);
-        window.removeEventListener("storage", onStorage);
-        window.removeEventListener("focus", recoverIfEmpty);
-        window.removeEventListener("online", recoverIfEmpty);
-      };
-    },
-    [dispatch],
-  );
-
-  useSyncExternalStore(
-    subscribeWorkspaceModelStorage,
-    getWorkspaceSyncSnapshot,
-    getWorkspaceSyncSnapshot,
-  );
+  useMountSubscription(() => {
+    if (typeof window === "undefined") return;
+    const reload = () => {
+      dispatch({ type: "setModelsLoading", loading: true });
+      dispatch({ type: "setError", error: "" });
+      void loadAgentModelsPayload()
+        .then((models) => {
+          dispatch({ type: "setModels", models: models.models ?? [] });
+        })
+        .catch((error) => {
+          dispatch({
+            type: "setError",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          dispatch({ type: "setModels", models: [] });
+        })
+        .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
+    };
+    const onStorage = (event: StorageEvent | Event) => {
+      const key = (event as StorageEvent).key;
+      if (key && key !== "localstudio_backend_url" && key !== "local-studio.controllers") return;
+      reload();
+    };
+    // Models load once on hydrate; a transient empty/failed initial fetch
+    // (controller briefly slow, model not yet launched, a network blip) would
+    // otherwise strand the picker on "No models" until a manual page reload.
+    // Recover when the user refocuses the window or the network returns — but
+    // only when the list is actually empty and not already loading, so a
+    // populated picker is never re-churned.
+    const recoverIfEmpty = () => {
+      if (stateRef.current.models.length === 0 && !stateRef.current.modelsLoading) reload();
+    };
+    // The initial hydrate load can lose the startup race with the embedded
+    // proxy / controller coming up (a transient "fetch failed"), leaving the
+    // list empty with no focus event to recover it (the window is already
+    // focused on first paint). Retry a few times, backing off, until the list
+    // populates — then the timers no-op.
+    const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", recoverIfEmpty);
+    window.addEventListener("online", recoverIfEmpty);
+    return () => {
+      for (const t of retryTimers) window.clearTimeout(t);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", recoverIfEmpty);
+      window.removeEventListener("online", recoverIfEmpty);
+    };
+  }, [dispatch]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
@@ -440,5 +423,3 @@ export function useWorkspace(): UseWorkspaceResult {
 
   return { state, dispatch, handles };
 }
-
-const getWorkspaceSyncSnapshot = (): number => 0;

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import { Button, Checkbox, UiModal, UiModalHeader } from "@/ui";
-import { getSettingsViewSnapshot } from "@/features/settings/settings-view-snapshot";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type {
   AttachResult,
   LocalAgentId,
@@ -22,7 +22,7 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
   const [results, setResults] = useState<AttachResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const subscribeAgents = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     void fetch("/api/local-agents", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ agents?: LocalAgentTarget[] }>)
       .then((payload) => {
@@ -31,9 +31,7 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
         setSelected(new Set(detected.map((agent) => agent.agent)));
       })
       .catch(() => setAgents([]));
-    return () => {};
   }, []);
-  useSyncExternalStore(subscribeAgents, getSettingsViewSnapshot, getSettingsViewSnapshot);
 
   const toggleAgent = useCallback((agent: LocalAgentId, checked: boolean) => {
     setSelected((current) => {

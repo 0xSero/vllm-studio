@@ -2,7 +2,7 @@
 
 import { Effect, Result } from "effect";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api/client";
 import type {
@@ -14,6 +14,7 @@ import type {
   StudioSettings,
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { describeFailedEngineJob } from "@/features/settings/runtime-targets";
 import { buildStarterRecipe } from "./setup-helpers";
 import {
@@ -173,15 +174,9 @@ export function useSetup() {
     );
   }, [loadSecondarySetupData]);
 
-  const subscribeSetupData = useCallback(
-    (_notify: () => void) => {
-      void loadSetupData();
-      return () => {};
-    },
-    [loadSetupData],
-  );
-
-  useSyncExternalStore(subscribeSetupData, getSetupSnapshot, getSetupSnapshot);
+  useMountSubscription(() => {
+    void loadSetupData();
+  }, [loadSetupData]);
 
   const saveSettings = useCallback(() => {
     if (!modelsDir.trim()) {
@@ -401,5 +396,3 @@ export function useSetup() {
     skipSetup,
   };
 }
-
-const getSetupSnapshot = (): number => 0;

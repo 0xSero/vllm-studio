@@ -6,7 +6,6 @@ import {
   useCallback,
   useRef,
   useState,
-  useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -29,6 +28,7 @@ import {
 } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjects } from "@/features/agent/projects/context";
 import { isChatsProject } from "@/features/agent/projects/types";
 import { ProjectsNavSection } from "@/features/agent/ui/projects-nav-section";
@@ -100,19 +100,16 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
-  const subscribeMobileMenuEscape = useCallback(
-    (_notify: () => void) => {
-      if (!mobileMenuOpen) return () => {};
-      const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") setMobileMenuOpen(false);
-      };
-      document.addEventListener("keydown", onKeyDown);
-      return () => document.removeEventListener("keydown", onKeyDown);
-    },
-    [mobileMenuOpen],
-  );
+  useMountSubscription(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileMenuOpen]);
 
-  const subscribeSearchHotkey = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -123,7 +120,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const subscribeActiveSessions = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     const onActive = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveSessionDetail[] }>).detail;
       setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);
@@ -132,16 +129,11 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
   }, []);
 
-  const subscribeResizeCleanup = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     return () => {
       resizeCleanupRef.current?.();
     };
   }, []);
-
-  useSyncExternalStore(subscribeMobileMenuEscape, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
-  useSyncExternalStore(subscribeSearchHotkey, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
-  useSyncExternalStore(subscribeActiveSessions, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
-  useSyncExternalStore(subscribeResizeCleanup, getLeftSidebarSnapshot, getLeftSidebarSnapshot);
 
   const startSidebarResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -509,5 +501,3 @@ function NavItemDesktop({
     </Link>
   );
 }
-
-const getLeftSidebarSnapshot = (): number => 0;

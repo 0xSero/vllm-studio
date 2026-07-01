@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const MAX_RENDERED_LINES = 20_000;
 
@@ -47,107 +48,6 @@ export function useLogs() {
     }
   }, []);
 
-  const subscribeLogSessions = useCallback(
-    (_notify: () => void) => {
-      void loadSessions();
-      return () => {};
-    },
-    [loadSessions],
-  );
-
-  const subscribeControllerChanges = useCallback(
-    (_notify: () => void) => {
-      const handler = () => {
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-        setSessions([]);
-        setSelectedSession(null);
-        setLogLines([]);
-        setLoading(true);
-        void loadSessions();
-      };
-      window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
-      return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
-    },
-    [loadSessions],
-  );
-
-  const subscribeLogContent = useCallback(
-    (_notify: () => void) => {
-      if (selectedSession) void loadLogContent(selectedSession);
-      return () => {};
-    },
-    [loadLogContent, selectedSession],
-  );
-
-  const subscribeLogStream = useCallback(
-    (_notify: () => void) => {
-      if (!autoRefresh || !selectedSession) {
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close();
-          eventSourceRef.current = null;
-        }
-        return () => {};
-      }
-
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-
-      const apiKey = getApiKey();
-      const base = `/api/proxy/logs/${encodeURIComponent(selectedSession)}/stream`;
-      const url = apiKey
-        ? `${base}?tail=0&api_key=${encodeURIComponent(apiKey)}`
-        : `${base}?tail=0`;
-
-      const es = new EventSource(url);
-      eventSourceRef.current = es;
-
-      const onLog = (event: MessageEvent) => {
-        try {
-          const payload = JSON.parse(event.data) as {
-            data?: { session_id?: unknown; line?: unknown };
-          };
-          const sessionId =
-            typeof payload.data?.session_id === "string" ? payload.data.session_id : null;
-          const line = typeof payload.data?.line === "string" ? payload.data.line : null;
-          if (!line) return;
-          if (sessionId && sessionId !== selectedSession) return;
-          setLogLines((prev) => {
-            const next = prev.length ? [...prev, line] : [line];
-            return next.length > MAX_RENDERED_LINES ? next.slice(-MAX_RENDERED_LINES) : next;
-          });
-        } catch {
-          // Ignore malformed events.
-        }
-      };
-
-      es.addEventListener("log", onLog as unknown as EventListener);
-      es.onerror = () => {
-        // EventSource will auto-reconnect; avoid noisy console output.
-      };
-
-      return () => {
-        es.close();
-        if (eventSourceRef.current === es) {
-          eventSourceRef.current = null;
-        }
-      };
-    },
-    [autoRefresh, selectedSession],
-  );
-
-  const subscribeLogAutoscroll = useCallback(
-    (_notify: () => void) => {
-      if (autoScroll && logRef.current) {
-        logRef.current.scrollTop = logRef.current.scrollHeight;
-      }
-      return () => {};
-    },
-    [logLines.length, autoScroll],
-  );
-
   const deleteSession = useCallback(
     async (sessionId: string) => {
       if (sessionId === "controller") {
@@ -189,29 +89,94 @@ export function useLogs() {
     );
   }, [filter, sessions]);
 
-  const subscribeSelectedSession = useCallback(
-    (_notify: () => void) => {
-      if (filteredSessions.length === 0) {
-        if (selectedSession) {
-          setSelectedSession(null);
-          setLogLines([]);
-        }
-        return () => {};
+  useMountSubscription(() => {
+    void loadSessions();
+  }, [loadSessions]);
+  useMountSubscription(() => {
+    const handler = () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+      setSessions([]);
+      setSelectedSession(null);
+      setLogLines([]);
+      setLoading(true);
+      void loadSessions();
+    };
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
+  }, [loadSessions]);
+  useMountSubscription(() => {
+    if (selectedSession) void loadLogContent(selectedSession);
+  }, [loadLogContent, selectedSession]);
+  useMountSubscription(() => {
+    if (!autoRefresh || !selectedSession) {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
-      if (!selectedSession || !filteredSessions.some((session) => session.id === selectedSession)) {
-        setSelectedSession(filteredSessions[0]?.id ?? null);
-      }
-      return () => {};
-    },
-    [filteredSessions, selectedSession],
-  );
+      return;
+    }
 
-  useSyncExternalStore(subscribeLogSessions, getLogsSnapshot, getLogsSnapshot);
-  useSyncExternalStore(subscribeControllerChanges, getLogsSnapshot, getLogsSnapshot);
-  useSyncExternalStore(subscribeLogContent, getLogsSnapshot, getLogsSnapshot);
-  useSyncExternalStore(subscribeLogStream, getLogsSnapshot, getLogsSnapshot);
-  useSyncExternalStore(subscribeLogAutoscroll, getLogsSnapshot, getLogsSnapshot);
-  useSyncExternalStore(subscribeSelectedSession, getLogsSnapshot, getLogsSnapshot);
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    const apiKey = getApiKey();
+    const base = `/api/proxy/logs/${encodeURIComponent(selectedSession)}/stream`;
+    const url = apiKey ? `${base}?tail=0&api_key=${encodeURIComponent(apiKey)}` : `${base}?tail=0`;
+
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    const onLog = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          data?: { session_id?: unknown; line?: unknown };
+        };
+        const sessionId =
+          typeof payload.data?.session_id === "string" ? payload.data.session_id : null;
+        const line = typeof payload.data?.line === "string" ? payload.data.line : null;
+        if (!line) return;
+        if (sessionId && sessionId !== selectedSession) return;
+        setLogLines((prev) => {
+          const next = prev.length ? [...prev, line] : [line];
+          return next.length > MAX_RENDERED_LINES ? next.slice(-MAX_RENDERED_LINES) : next;
+        });
+      } catch {
+        // Ignore malformed events.
+      }
+    };
+
+    es.addEventListener("log", onLog as unknown as EventListener);
+    es.onerror = () => {
+      // EventSource will auto-reconnect; avoid noisy console output.
+    };
+
+    return () => {
+      es.close();
+      if (eventSourceRef.current === es) {
+        eventSourceRef.current = null;
+      }
+    };
+  }, [autoRefresh, selectedSession]);
+  useMountSubscription(() => {
+    if (autoScroll && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logLines.length, autoScroll]);
+  useMountSubscription(() => {
+    if (filteredSessions.length === 0) {
+      if (selectedSession) {
+        setSelectedSession(null);
+        setLogLines([]);
+      }
+      return;
+    }
+    if (!selectedSession || !filteredSessions.some((session) => session.id === selectedSession)) {
+      setSelectedSession(filteredSessions[0]?.id ?? null);
+    }
+  }, [filteredSessions, selectedSession]);
 
   const formatDateTime = (dateValue: string) =>
     new Date(dateValue).toLocaleString("en-US", {
@@ -274,5 +239,3 @@ export function useLogs() {
     setSelectedSession,
   };
 }
-
-const getLogsSnapshot = (): number => 0;

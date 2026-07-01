@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Download, ExternalLink, Heart, RefreshCw, Sparkles } from "@/ui/icon-registry";
 import type { HuggingFaceModel } from "@/lib/types";
 import {
@@ -11,6 +11,7 @@ import {
   type HuggingFaceModelCardPayload,
 } from "@/lib/huggingface";
 import { formatBytes, formatNumber } from "@/lib/formatters";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Button } from "./button";
 import { MarkdownContent } from "./markdown-content";
 import { RightDetailPanel } from "./right-detail-panel";
@@ -141,15 +142,9 @@ function useModelCardPayload(modelId: string, open: boolean) {
     }
   }, [modelId]);
 
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      if (open && modelId) void load();
-      return () => {};
-    },
-    [load, modelId, open],
-  );
-
-  useSyncExternalStore(subscribe, getModelCardSnapshot, getModelCardSnapshot);
+  useMountSubscription(() => {
+    if (open && modelId) void load();
+  }, [load, modelId, open]);
 
   return { error, loading, payload };
 }
@@ -372,5 +367,3 @@ function formatDate(value?: string): string {
   if (Number.isNaN(date.getTime())) return "unknown";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
-
-const getModelCardSnapshot = (): number => 0;

@@ -1,9 +1,10 @@
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useRef } from "react";
 import { Effect } from "effect";
 import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function loadCatalogueListEffect<TItem>(url: string, key: string): Effect.Effect<TItem[]> {
   return Effect.gen(function* () {
@@ -35,8 +36,6 @@ function loadToolsCatalogueEffect(): Effect.Effect<{
   });
 }
 
-const getToolsCatalogueSnapshot = (): number => 0;
-
 type UseToolsCatalogueEffectsOptions = {
   onLoaded: (payload: {
     skills: ComposerSkillRef[];
@@ -46,7 +45,7 @@ type UseToolsCatalogueEffectsOptions = {
 
 export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions): void {
   const onLoadedRef = useRef(onLoaded);
-  const subscribe = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     let cancelled = false;
     void Effect.runPromise(
       loadToolsCatalogueEffect().pipe(
@@ -59,6 +58,4 @@ export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsO
       cancelled = true;
     };
   }, []);
-
-  useSyncExternalStore(subscribe, getToolsCatalogueSnapshot, getToolsCatalogueSnapshot);
 }

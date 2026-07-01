@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useCallback, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav-section";
 import {
@@ -19,6 +19,7 @@ import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const LazyAgentBrowserPanel = lazy(() =>
   import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
@@ -284,18 +285,10 @@ function useActiveCanvasSessionEffects({
   sessionId: SessionId | null;
   setActiveCanvasSession: (id: SessionId | null) => void;
 }): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      setActiveCanvasSession(sessionId);
-      return () => {};
-    },
-    [sessionId, setActiveCanvasSession],
-  );
-
-  useSyncExternalStore(subscribe, getActiveCanvasSessionSnapshot, getActiveCanvasSessionSnapshot);
+  useMountSubscription(() => {
+    setActiveCanvasSession(sessionId);
+  }, [sessionId, setActiveCanvasSession]);
 }
-
-const getActiveCanvasSessionSnapshot = (): number => 0;
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
   const { state, dispatch, handles } = useWorkspace();

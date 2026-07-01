@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Effect } from "effect";
 import { ChatPaneHandle, type SessionTab } from "@/features/agent/messages";
 import type { SessionEngine } from "@/features/agent/runtime/engine";
-import { getChatPaneSnapshot } from "@/features/agent/ui/chat-pane-snapshot";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function useChatPaneRegisterHandleEffect({
   handle,
@@ -11,13 +11,11 @@ function useChatPaneRegisterHandleEffect({
   handle: ChatPaneHandle;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
 }): void {
-  const subscribeHandle = useCallback(() => {
-    if (!onRegisterHandle) return () => undefined;
+  useMountSubscription(() => {
+    if (!onRegisterHandle) return;
     onRegisterHandle(handle);
     return () => onRegisterHandle(null);
   }, [handle, onRegisterHandle]);
-
-  useSyncExternalStore(subscribeHandle, getChatPaneSnapshot, getChatPaneSnapshot);
 }
 
 export function useChatPaneRuntimeHandle({

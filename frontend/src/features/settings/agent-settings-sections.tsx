@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState } from "react";
 import {
   SettingsButton,
   SettingsFactRows,
@@ -9,7 +9,7 @@ import {
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import { useSidebarStatus } from "@/features/settings/use-sidebar-status";
-import { getSettingsViewSnapshot } from "./settings-view-snapshot";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export function ArchivedChatsSettings() {
   type Session = {
@@ -42,16 +42,12 @@ export function ArchivedChatsSettings() {
       setLoading(false);
     }
   }, []);
-  const subscribeArchivedSessions = useCallback(
-    (_notify: () => void) => {
-      void loadArchivedSessions();
-      window.addEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
-      return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
-    },
-    [loadArchivedSessions],
-  );
 
-  useSyncExternalStore(subscribeArchivedSessions, getSettingsViewSnapshot, getSettingsViewSnapshot);
+  useMountSubscription(() => {
+    void loadArchivedSessions();
+    window.addEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
+    return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
+  }, [loadArchivedSessions]);
   const unarchive = async (session: Session) => {
     setRestoringId(session.id);
     setError("");
@@ -131,15 +127,13 @@ export function ArchivedChatsSettings() {
 export function SkillsSettings() {
   type Skill = { id: string; name: string; source: string; path: string };
   const [skills, setSkills] = useState<Skill[]>([]);
-  const subscribeSkills = useCallback((_notify: () => void) => {
+
+  useMountSubscription(() => {
     void fetch("/api/agent/skills", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ skills?: Skill[] }>)
       .then((payload) => setSkills(payload.skills ?? []))
       .catch(() => setSkills([]));
-    return () => {};
   }, []);
-
-  useSyncExternalStore(subscribeSkills, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const skillRows: SettingsFactRow[] =
     skills.length === 0
       ? [
@@ -177,15 +171,13 @@ export function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
   const [checks, setChecks] = useState<Check[]>([]);
   const controllerStatus = useSidebarStatus();
-  const subscribeSetupChecks = useCallback((_notify: () => void) => {
+
+  useMountSubscription(() => {
     void fetch("/api/agent/setup-checks", { cache: "no-store" })
       .then((res) => res.json() as Promise<{ checks?: Check[] }>)
       .then((payload) => setChecks(payload.checks ?? []))
       .catch(() => setChecks([]));
-    return () => {};
   }, []);
-
-  useSyncExternalStore(subscribeSetupChecks, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const controllerCheck: Check = {
     id: "controller",
     label: "Controller connection",

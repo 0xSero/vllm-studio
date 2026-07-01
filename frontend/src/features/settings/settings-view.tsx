@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import {
   Archive,
   Cable,
@@ -21,7 +21,7 @@ import {
 import { AppearanceSettings } from "./appearance-settings";
 import { EnginesSection } from "./engines-section";
 import { ServicesSettings, SystemSettings } from "./system-settings-section";
-import { getSettingsViewSnapshot } from "./settings-view-snapshot";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 interface SettingsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -89,8 +89,8 @@ export function SettingsView({
     const hash = window.location.hash.replace("#", "");
     return normalizeSectionId(hash) ?? "connection";
   });
-  const subscribeHashSection = useCallback((_notify: () => void) => {
-    if (typeof window === "undefined") return () => {};
+  useMountSubscription(() => {
+    if (typeof window === "undefined") return;
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
       const normalized = normalizeSectionId(hash);
@@ -99,8 +99,6 @@ export function SettingsView({
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
-  useSyncExternalStore(subscribeHashSection, getSettingsViewSnapshot, getSettingsViewSnapshot);
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
     if (typeof window !== "undefined") {

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function normalizePeakNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -63,15 +64,9 @@ export function useUsage(source: UsageSource = "provider") {
     }
   }, [source]);
 
-  const subscribeUsageStats = useCallback(
-    (_notify: () => void) => {
-      void loadStats();
-      return () => {};
-    },
-    [loadStats],
-  );
-
-  useSyncExternalStore(subscribeUsageStats, getUsageSnapshot, getUsageSnapshot);
+  useMountSubscription(() => {
+    void loadStats();
+  }, [loadStats]);
 
   const dailyByModel = useMemo(() => {
     if (!stats || !stats.daily_by_model || !Array.isArray(stats.daily_by_model)) {
@@ -227,5 +222,3 @@ export function useUsage(source: UsageSource = "provider") {
     toggleRow,
   };
 }
-
-const getUsageSnapshot = (): number => 0;

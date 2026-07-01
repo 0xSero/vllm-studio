@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
 import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   engagementTier,
   isDerivativeModel,
@@ -90,12 +91,9 @@ export function useExplore() {
     configureExploreParams,
   );
 
-  const subscribePoolOverride = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     setPoolOverrideGbState(readExplorePoolOverrideGb());
-    return () => {};
   }, []);
-
-  useSyncExternalStore(subscribePoolOverride, getExploreSnapshot, getExploreSnapshot);
 
   const setPoolOverrideGb = useCallback((value: number | null) => {
     writeExplorePoolOverrideGb(value);
@@ -141,15 +139,9 @@ export function useExplore() {
     }
   }, []);
 
-  const subscribeRecommendations = useCallback(
-    (_notify: () => void) => {
-      void loadRecommendationsAndGpus();
-      return () => {};
-    },
-    [loadRecommendationsAndGpus],
-  );
-
-  useSyncExternalStore(subscribeRecommendations, getExploreSnapshot, getExploreSnapshot);
+  useMountSubscription(() => {
+    void loadRecommendationsAndGpus();
+  }, [loadRecommendationsAndGpus]);
 
   const recByKey = useMemo(() => {
     const m = new Map<string, ModelRecommendation>();
@@ -316,7 +308,5 @@ function leadPreferenceScore(model: HuggingFaceModel, search: string): number {
   if (model.likes >= 250) score -= 4;
   return score;
 }
-
-const getExploreSnapshot = (): number => 0;
 
 export type { HardwareProfile };

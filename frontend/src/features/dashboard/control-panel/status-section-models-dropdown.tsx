@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState } from "react";
 import type { RecipeWithStatus } from "@/lib/types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export function ModelsDropdown({
   recipes,
@@ -22,19 +23,14 @@ export function ModelsDropdown({
   const [filter, setFilter] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
 
-  const subscribeOutsideClick = useCallback(
-    (_notify: () => void) => {
-      if (!open) return () => {};
-      const handler = (e: MouseEvent) => {
-        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-      };
-      document.addEventListener("mousedown", handler);
-      return () => document.removeEventListener("mousedown", handler);
-    },
-    [open],
-  );
-
-  useSyncExternalStore(subscribeOutsideClick, getModelsDropdownSnapshot, getModelsDropdownSnapshot);
+  useMountSubscription(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
   const q = filter.toLowerCase();
   const filtered = q
@@ -147,5 +143,3 @@ function ModelDropdownRow({
     </button>
   );
 }
-
-const getModelsDropdownSnapshot = (): number => 0;

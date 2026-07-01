@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ModelInfo, ModelRecommendation } from "@/lib/types";
 import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
 import { extractProvider, extractQuantizations, normalizeModelId } from "@/features/discover/utils";
 
@@ -67,16 +68,10 @@ export function useDiscover() {
     }
   }, []);
 
-  const subscribeDiscoverMetadata = useCallback(
-    (_notify: () => void) => {
-      void loadLocalModels();
-      void loadRecommendations();
-      return () => {};
-    },
-    [loadLocalModels, loadRecommendations],
-  );
-
-  useSyncExternalStore(subscribeDiscoverMetadata, getDiscoverSnapshot, getDiscoverSnapshot);
+  useMountSubscription(() => {
+    void loadLocalModels();
+    void loadRecommendations();
+  }, [loadLocalModels, loadRecommendations]);
 
   const localModelMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -168,5 +163,3 @@ export function useDiscover() {
     isModelLocal,
   };
 }
-
-const getDiscoverSnapshot = (): number => 0;

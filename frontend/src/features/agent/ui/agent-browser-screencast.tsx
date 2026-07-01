@@ -1,6 +1,6 @@
 "use client";
 
-import { effectTimeout } from "@/lib/effect-timers";
+import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 
 /**
  * Live surface for the agent browser pane: renders the server-side headless
@@ -15,14 +15,13 @@ import { effectTimeout } from "@/lib/effect-timers";
  */
 
 import {
-  useCallback,
   useRef,
   useState,
-  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export type BrowserPaneState = {
   url: string;
@@ -71,17 +70,16 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
   // Mirror the latest callbacks into refs in the commit phase (never during
   // render), so the long-lived poll loop always calls the current handlers
   // without restarting.
-  const subscribeCallbackRefs = useCallback(() => {
+  useMountSubscription(() => {
     onStateRef.current = onState;
     onUnavailableRef.current = onUnavailable;
-    return () => undefined;
   }, [onState, onUnavailable]);
 
   // ── Frame poll loop: sequential (no overlap), backs off on transient error,
   // surfaces 503 once as unavailable ────────────────────────────────────
-  const subscribeStream = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     let disposed = false;
-    let timer: ReturnType<typeof effectTimeout> | null = null;
+    let timer: EffectTimer | null = null;
 
     const tick = async () => {
       if (disposed) return;
@@ -118,68 +116,57 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
 
   // ── Address-bar navigation: navigate server-side when the desired URL
   // diverges from what the host last reported ────────────────────────────
-  const subscribeNavigate = useCallback(
-    (_notify: () => void) => {
-      const target = url.trim();
-      if (!target || target === serverUrlRef.current) return () => {};
-      let cancelled = false;
-      void fetch("/api/agent/browser/navigate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: target }),
+  useMountSubscription(() => {
+    const target = url.trim();
+    if (!target || target === serverUrlRef.current) return;
+    let cancelled = false;
+    void fetch("/api/agent/browser/navigate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: target }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as { ok: boolean; error?: string };
+        if (cancelled) return;
+        setNavError(payload.ok ? null : (payload.error ?? "Navigation failed"));
       })
-        .then(async (response) => {
-          const payload = (await response.json()) as { ok: boolean; error?: string };
-          if (cancelled) return;
-          setNavError(payload.ok ? null : (payload.error ?? "Navigation failed"));
-        })
-        .catch((error) => {
-          if (!cancelled) {
-            setNavError(error instanceof Error ? error.message : "Navigation failed");
-          }
-        });
-      return () => {
-        cancelled = true;
-      };
-    },
-    [url],
-  );
+      .catch((error) => {
+        if (!cancelled) {
+          setNavError(error instanceof Error ? error.message : "Navigation failed");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
 
   // ── Viewport sync: match the headless viewport to the pane size ────────
-  const subscribeViewport = useCallback(
-    (_notify: () => void) => {
-      if (!container) return () => {};
-      let timer: ReturnType<typeof effectTimeout> | null = null;
-      const sync = () => {
-        const rect = container.getBoundingClientRect();
-        const width = Math.round(
-          Math.min(VIEWPORT_MAX.width, Math.max(VIEWPORT_MIN.width, rect.width)),
-        );
-        const height = Math.round(
-          Math.min(VIEWPORT_MAX.height, Math.max(VIEWPORT_MIN.height, rect.height)),
-        );
-        if (width === viewportRef.current.width && height === viewportRef.current.height) return;
-        viewportRef.current = { width, height };
-        postBrowser("viewport", { width, height });
-      };
-      const observer = new ResizeObserver(() => {
-        if (timer) timer.cancel();
-        timer = effectTimeout(sync, 250);
-      });
-      observer.observe(container);
-      sync();
-      return () => {
-        if (timer) timer.cancel();
-        observer.disconnect();
-      };
-    },
-    [container],
-  );
-
-  useSyncExternalStore(subscribeCallbackRefs, getScreencastSnapshot, getScreencastSnapshot);
-  useSyncExternalStore(subscribeStream, getScreencastSnapshot, getScreencastSnapshot);
-  useSyncExternalStore(subscribeNavigate, getScreencastSnapshot, getScreencastSnapshot);
-  useSyncExternalStore(subscribeViewport, getScreencastSnapshot, getScreencastSnapshot);
+  useMountSubscription(() => {
+    if (!container) return;
+    let timer: EffectTimer | null = null;
+    const sync = () => {
+      const rect = container.getBoundingClientRect();
+      const width = Math.round(
+        Math.min(VIEWPORT_MAX.width, Math.max(VIEWPORT_MIN.width, rect.width)),
+      );
+      const height = Math.round(
+        Math.min(VIEWPORT_MAX.height, Math.max(VIEWPORT_MIN.height, rect.height)),
+      );
+      if (width === viewportRef.current.width && height === viewportRef.current.height) return;
+      viewportRef.current = { width, height };
+      postBrowser("viewport", { width, height });
+    };
+    const observer = new ResizeObserver(() => {
+      if (timer) timer.cancel();
+      timer = effectTimeout(sync, 250);
+    });
+    observer.observe(container);
+    sync();
+    return () => {
+      if (timer) timer.cancel();
+      observer.disconnect();
+    };
+  }, [container]);
 
   // ── Input forwarding ────────────────────────────────────────────────────
   const toViewport = (event: { clientX: number; clientY: number }) => {
@@ -287,5 +274,3 @@ export function ScreencastSurface({ url, onState, onUnavailable }: Props) {
     </div>
   );
 }
-
-const getScreencastSnapshot = (): number => 0;

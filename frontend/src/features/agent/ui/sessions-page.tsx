@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "@/ui/icon-registry";
 import { Table, THead, TBody, TRow, TH, TCell } from "@/ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { safeJson } from "@/features/agent/safe-json";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
@@ -56,15 +57,11 @@ export default function AgentSessionsPage() {
     }
   }, []);
 
-  const subscribeSessionRows = useCallback(
-    (_notify: () => void) => {
-      void reload();
-      return () => {};
-    },
-    [reload],
-  );
+  useMountSubscription(() => {
+    void reload();
+  }, [reload]);
 
-  const subscribeActiveSessions = useCallback((_notify: () => void) => {
+  useMountSubscription(() => {
     const onActive = (event: Event) => {
       const detail = (event as CustomEvent<{ sessions?: ActiveSession[] }>).detail;
       setActiveSessions(Array.isArray(detail?.sessions) ? detail.sessions : []);
@@ -72,9 +69,6 @@ export default function AgentSessionsPage() {
     window.addEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
     return () => window.removeEventListener(ACTIVE_AGENT_SESSIONS_EVENT, onActive);
   }, []);
-
-  useSyncExternalStore(subscribeSessionRows, getAgentSessionsSnapshot, getAgentSessionsSnapshot);
-  useSyncExternalStore(subscribeActiveSessions, getAgentSessionsSnapshot, getAgentSessionsSnapshot);
 
   const activeByPiId = useMemo(() => indexActiveByPiId(activeSessions), [activeSessions]);
 
@@ -301,8 +295,6 @@ export default function AgentSessionsPage() {
     </div>
   );
 }
-
-const getAgentSessionsSnapshot = (): number => 0;
 
 function SummaryChip({
   label,

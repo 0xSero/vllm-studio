@@ -13,7 +13,7 @@
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
-    "depcheck": "depcheck --ignores=\"@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,jscpd,knip,lint-staged,rehype-highlight,concurrently,cross-env,electron-builder,madge,tsx\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
+    "depcheck": "depcheck --ignores=\"@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,jscpd,knip,lint-staged,concurrently,electron-builder,madge,tsx\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
     "analyze": "ANALYZE=true next build",
     "prepare": "cd .. && git rev-parse --git-dir >/dev/null 2>&1 && npm run setup:git-hooks || true",
     "postinstall": "node scripts/patch-pi-ai-openai-text-boundaries.mjs",

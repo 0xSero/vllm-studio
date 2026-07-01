@@ -1,7 +1,8 @@
-import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Effect } from "effect";
 import type { SessionId } from "@/features/agent/runtime/types";
 import type { ComputerState } from "@/features/agent/tools/types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const canvasSessionQuery = (sessionId: SessionId | null | undefined): string =>
   sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
@@ -40,8 +41,6 @@ function loadCanvasEffect(
   });
 }
 
-const getCanvasSnapshot = (): number => 0;
-
 export function useCanvasEffects({
   setComputer,
   sessionId,
@@ -49,29 +48,24 @@ export function useCanvasEffects({
   setComputer: Dispatch<SetStateAction<ComputerState>>;
   sessionId?: SessionId | null;
 }): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      let cancelled = false;
-      const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
-      void Effect.runPromise(
-        loadCanvasEffect(query).pipe(
-          Effect.map((payload) => {
-            if (cancelled) return;
-            setComputer((current) => ({
-              ...current,
-              canvasEnabled: payload.enabled ?? current.canvasEnabled,
-              canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
-            }));
-          }),
-          Effect.catch(() => Effect.void),
-        ),
-      );
-      return () => {
-        cancelled = true;
-      };
-    },
-    [setComputer, sessionId],
-  );
-
-  useSyncExternalStore(subscribe, getCanvasSnapshot, getCanvasSnapshot);
+  useMountSubscription(() => {
+    let cancelled = false;
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+    void Effect.runPromise(
+      loadCanvasEffect(query).pipe(
+        Effect.map((payload) => {
+          if (cancelled) return;
+          setComputer((current) => ({
+            ...current,
+            canvasEnabled: payload.enabled ?? current.canvasEnabled,
+            canvasText: typeof payload.text === "string" ? payload.text : current.canvasText,
+          }));
+        }),
+        Effect.catch(() => Effect.void),
+      ),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [setComputer, sessionId]);
 }
