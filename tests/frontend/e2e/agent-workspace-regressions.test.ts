@@ -156,8 +156,7 @@ test("pane state round-trips durable session metadata and drops transcripts", ()
   };
   const storage = makeStorage();
   const selection: ToolSelection = {
-    plugins: [{ id: "plug-1" } as ToolSelection["plugins"][number]],
-    skills: [],
+    skills: [{ id: "skill-1", name: "Skill One" }],
     promptTemplates: [],
   };
 

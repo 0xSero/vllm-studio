@@ -2135,15 +2135,15 @@ test("skill mentions and selected skill context survive composer prompt construc
     end: 12,
   });
   assert.match(
-    selectedContextPrompt("open the page", [], skills),
+    selectedContextPrompt("open the page", skills),
     /Loaded skills:/,
   );
   assert.match(
-    selectedContextPrompt("open the page", [], skills),
+    selectedContextPrompt("open the page", skills),
     /Use browser tools/,
   );
   assert.match(
-    selectedContextInstructions([], skills),
+    selectedContextInstructions(skills) ?? "",
     /Preserve this selected composer context/,
   );
 });

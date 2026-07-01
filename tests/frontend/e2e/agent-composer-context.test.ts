@@ -8,22 +8,16 @@ import {
   createProjectFileAttachment,
 } from "@/features/agent/ui/chat-attachments";
 import {
-  byQuery,
   consumeComposerMention,
   detectComposerMention,
 } from "@/features/agent/composer-context";
-import {
-  selectionFromPersistedTab,
-  sessionMetaForPersistence,
-} from "@/features/agent/workspace/store";
-import type { Session } from "@/features/agent/runtime/types";
 
 test("file tagging turns an @ mention into one durable project-file attachment", () => {
   const input = "please inspect @src/app.ts";
   const mention = detectComposerMention(input, input.length);
 
   assert.deepEqual(mention, {
-    kind: "plugin",
+    kind: "file",
     query: "src/app.ts",
     start: 15,
     end: input.length,
@@ -136,64 +130,3 @@ test("media attachments classify audio, video, and PDF previews", async () => {
   assert.match(pdf.content, /PDF preview is visible/);
 });
 
-test("MCP plugin slash and at-mention context persist selected plugin state", () => {
-  const slashMention = detectComposerMention(
-    "/plugins browser",
-    "/plugins browser".length,
-  );
-  const pluginMention = detectComposerMention(
-    "use @filesystem",
-    "use @filesystem".length,
-  );
-  const plugins = [
-    {
-      id: "mcp-filesystem",
-      name: "filesystem",
-      path: "/Users/sero/.codex/mcp/filesystem",
-      mcpConfigPath: "/Users/sero/.codex/mcp/filesystem/.mcp.json",
-      source: "manual",
-    },
-    {
-      id: "mcp-git",
-      name: "git",
-      path: "/Users/sero/.codex/mcp/git",
-      mcpConfigPath: "/Users/sero/.codex/mcp/git/.mcp.json",
-      source: "manual",
-    },
-  ];
-  const session = {
-    id: "s-plugin",
-    runtimeSessionId: "rt-plugin",
-    piSessionId: null,
-    title: "Plugin run",
-    messages: [],
-    status: "idle",
-    error: "",
-    input: "",
-  } satisfies Session;
-
-  assert.deepEqual(slashMention, {
-    kind: "promptTemplate",
-    query: "plugins browser",
-    start: 0,
-    end: "/plugins browser".length,
-  });
-  assert.deepEqual(pluginMention, {
-    kind: "plugin",
-    query: "filesystem",
-    start: 4,
-    end: "use @filesystem".length,
-  });
-  assert.deepEqual(
-    byQuery(plugins, "filesystem").map((plugin) => plugin.id),
-    ["mcp-filesystem"],
-  );
-
-  const persisted = sessionMetaForPersistence(session, {
-    plugins: [plugins[0]],
-    skills: [],
-    promptTemplates: [],
-  });
-  assert.deepEqual(persisted.plugins, [plugins[0]]);
-  assert.deepEqual(selectionFromPersistedTab(persisted)?.plugins, [plugins[0]]);
-});

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { runBrowserPanelCommand } from "@/features/agent/browser/command";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { parseArgsText } from "@/features/plugins/plugins-utils";
 
 declare global {
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
@@ -201,74 +200,3 @@ test("desktop browser reader fetch renders public markdown and rejects private u
   }
 });
 
-test("curated local MCP servers require explicit target args", async () => {
-  const { handleMcpAction } = await import("@/features/agent/mcp/service");
-  const missing = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:filesystem",
-    args: ["-y", "@modelcontextprotocol/server-filesystem"],
-  });
-
-  assert.equal(missing.status, 400);
-  assert.match(String(missing.payload.error), /requires a local path/);
-
-  const flagOnly = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:git",
-    args: ["-y", "@modelcontextprotocol/server-git", "--readonly"],
-  });
-
-  assert.equal(flagOnly.status, 400);
-  assert.match(String(flagOnly.payload.error), /requires a local path/);
-
-  const replacedPackage = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:filesystem",
-    args: ["-y", "malicious-package", "/tmp"],
-  });
-
-  assert.equal(replacedPackage.status, 400);
-  assert.match(String(replacedPackage.payload.error), /reviewed prefix/);
-
-  const urlTarget = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:filesystem",
-    args: [
-      "-y",
-      "@modelcontextprotocol/server-filesystem",
-      "https://evil.example",
-    ],
-  });
-
-  assert.equal(urlTarget.status, 400);
-  assert.match(String(urlTarget.payload.error), /requires a local path/);
-
-  const mixedUrlTarget = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:filesystem",
-    args: [
-      "-y",
-      "@modelcontextprotocol/server-filesystem",
-      "/tmp",
-      "https://evil.example",
-    ],
-  });
-
-  assert.equal(mixedUrlTarget.status, 400);
-  assert.match(String(mixedUrlTarget.payload.error), /requires a local path/);
-
-  const mixedPlainTarget = handleMcpAction({
-    action: "add_from_catalogue",
-    catalogueId: "catalogue:filesystem",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp", "docs"],
-  });
-
-  assert.equal(mixedPlainTarget.status, 400);
-  assert.match(String(mixedPlainTarget.payload.error), /requires a local path/);
-  assert.deepEqual(
-    parseArgsText(
-      '-y @modelcontextprotocol/server-filesystem "/Users/sero/My Project"',
-    ),
-    ["-y", "@modelcontextprotocol/server-filesystem", "/Users/sero/My Project"],
-  );
-});
