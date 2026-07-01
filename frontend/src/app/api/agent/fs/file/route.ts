@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { readFileSnippet, writeFileContent } from "@/features/agent/fs-store";
+import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
@@ -24,6 +25,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
   const relPath = request.nextUrl.searchParams.get("path")?.trim() ?? "";
   if (!cwd || !relPath) {
