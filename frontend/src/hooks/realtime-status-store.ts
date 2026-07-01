@@ -4,8 +4,8 @@
 // GPUs, metrics, launch progress, runtime summary. Fed by the controller SSE
 // (vllm:controller-event, dispatched by use-controller-events) with a 5s
 // poll+backoff fallback. Views derive from the snapshot via
-// realtime-status-store/derive.ts — nothing else may poll getStatus or listen
-// to controller events for status.
+// realtime-status-types.ts — nothing else may poll getStatus or listen to
+// controller events for status.
 
 import { useSyncExternalStore } from "react";
 import { Effect, Fiber, Result, Schedule } from "effect";
@@ -14,13 +14,28 @@ import type {
   LaunchProgressData,
   Metrics,
   ProcessInfo,
-  RuntimePlatformKind,
-  RuntimeGpuMonitoringInfo,
   RuntimeBackendInfo,
 } from "@/lib/types";
 
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getStoredBackendUrl } from "@/lib/api/connection";
+import {
+  areGpusEqual,
+  areLaunchProgressEqual,
+  areLeasesEqual,
+  areMetricsEqual,
+  arePlatformKindsEqual,
+  areRuntimeSummariesEqual,
+  areServicesEqual,
+  areStatusEqual,
+} from "./realtime-status-equality";
+import {
+  isActiveLaunchStage,
+  type LeaseInfo,
+  type RealtimeStatusSnapshot,
+  type RuntimeSummaryData,
+  type ServiceEntry,
+} from "./realtime-status-types";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const FAST_COMPAT_REQUEST = { timeout: 5_000, retries: 0 } as const;
@@ -464,215 +479,4 @@ export function useRealtimeStatusStore(): RealtimeStatusSnapshot {
     () => snapshot,
     () => initialSnapshot,
   );
-}
-
-export interface StatusData {
-  running: boolean;
-  process: ProcessInfo | null;
-  inference_port: number;
-  launching: string | null;
-}
-
-export interface RuntimeSummaryData {
-  platform: { kind: RuntimePlatformKind; vendor: "nvidia" | "amd" | null };
-  gpu_monitoring: RuntimeGpuMonitoringInfo;
-  backends: {
-    vllm: RuntimeBackendInfo;
-    sglang: RuntimeBackendInfo;
-    llamacpp: RuntimeBackendInfo;
-    mlx?: RuntimeBackendInfo;
-  };
-}
-
-export interface ServiceEntry {
-  id: string;
-  kind: string;
-  status: string;
-  last_error?: string | null;
-}
-
-export interface LeaseInfo {
-  holder: string | null;
-  since: string | null;
-}
-
-export interface RealtimeStatusSnapshot {
-  status: StatusData | null;
-  statusLoading: boolean;
-  /** Controller reachability: the last poll succeeded or a live event arrived. */
-  connected: boolean;
-  gpus: GPU[];
-  metrics: Metrics | null;
-  launchProgress: LaunchProgressData | null;
-  platformKind: RuntimePlatformKind | null;
-  runtimeSummary: RuntimeSummaryData | null;
-  services: ServiceEntry[];
-  lease: LeaseInfo | null;
-  lastEventAt: number;
-}
-
-// Pure derivations over the realtime status snapshot. No state, no IO — the
-// realtime-status-store owns the data; consumers derive their views here.
-
-export function isActiveLaunchStage(
-  stage: LaunchProgressData["stage"] | null | undefined,
-): boolean {
-  return (
-    stage === "preempting" || stage === "evicting" || stage === "launching" || stage === "waiting"
-  );
-}
-
-export type SidebarStatusSnapshot = {
-  online: boolean;
-  inferenceOnline: boolean;
-  model: string | null;
-  activityLine: string;
-};
-
-function computeModelName(process: ProcessInfo | null | undefined): string | null {
-  if (!process) return null;
-  const served = process.served_model_name;
-  if (typeof served === "string" && served.trim()) return served.trim();
-  const modelPath = process.model_path;
-  if (typeof modelPath === "string" && modelPath.trim())
-    return modelPath.split("/").pop() ?? modelPath;
-  return null;
-}
-
-export function sidebarStatusFromSnapshot(
-  snapshot: Pick<RealtimeStatusSnapshot, "connected" | "status" | "launchProgress">,
-): SidebarStatusSnapshot {
-  const { connected, status, launchProgress } = snapshot;
-  const inferenceOnline = Boolean(status?.running || status?.process);
-  const model = computeModelName(status?.process);
-  const launchMessage =
-    launchProgress && isActiveLaunchStage(launchProgress.stage) ? launchProgress.message : null;
-
-  const activityLine = launchMessage
-    ? launchMessage
-    : inferenceOnline
-      ? model || "Ready"
-      : connected
-        ? "No model"
-        : "Offline";
-
-  return { online: connected, inferenceOnline, model, activityLine };
-}
-
-function areProcessInfosEqual(a: ProcessInfo | null, b: ProcessInfo | null) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.pid === b.pid &&
-    a.backend === b.backend &&
-    a.model_path === b.model_path &&
-    a.port === b.port &&
-    (a.served_model_name ?? null) === (b.served_model_name ?? null)
-  );
-}
-
-export function areStatusEqual(a: StatusData | null, b: StatusData | null) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.running === b.running &&
-    a.inference_port === b.inference_port &&
-    areProcessInfosEqual(a.process, b.process)
-  );
-}
-
-const GPU_STABLE_KEYS = [
-  "index",
-  "name",
-  "memory_total",
-  "memory_used",
-  "memory_free",
-  "utilization",
-] as const satisfies ReadonlyArray<keyof GPU>;
-
-const GPU_NULLABLE_KEYS = [
-  "temperature",
-  "power_draw",
-  "power_limit",
-] as const satisfies ReadonlyArray<keyof GPU>;
-
-function areGpuEntriesEqual(left: GPU, right: GPU): boolean {
-  return (
-    GPU_STABLE_KEYS.every((key) => left[key] === right[key]) &&
-    GPU_NULLABLE_KEYS.every((key) => (left[key] ?? null) === (right[key] ?? null))
-  );
-}
-
-export function areGpusEqual(a: GPU[], b: GPU[]) {
-  if (a === b) return true;
-  return a.length === b.length && a.every((left, index) => areGpuEntriesEqual(left, b[index]!));
-}
-
-export function arePlatformKindsEqual(
-  a: RuntimePlatformKind | null,
-  b: RuntimePlatformKind | null,
-) {
-  return a === b;
-}
-
-export function areMetricsEqual(a: Metrics | null, b: Metrics | null) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-
-  for (const key of aKeys) {
-    if (!(key in b)) return false;
-    if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) return false;
-  }
-
-  return true;
-}
-
-export function areLaunchProgressEqual(a: LaunchProgressData | null, b: LaunchProgressData | null) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.recipe_id === b.recipe_id &&
-    a.stage === b.stage &&
-    a.message === b.message &&
-    (a.progress ?? null) === (b.progress ?? null)
-  );
-}
-
-export function areRuntimeSummariesEqual(
-  a: RuntimeSummaryData | null,
-  b: RuntimeSummaryData | null,
-) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.platform.kind !== b.platform.kind) return false;
-  if (a.gpu_monitoring.available !== b.gpu_monitoring.available) return false;
-  if (a.gpu_monitoring.tool !== b.gpu_monitoring.tool) return false;
-  for (const key of ["vllm", "sglang", "llamacpp", "mlx"] as const) {
-    if (!a.backends[key] && !b.backends[key]) continue;
-    if (!a.backends[key] || !b.backends[key]) return false;
-    if (a.backends[key].installed !== b.backends[key].installed) return false;
-    if (a.backends[key].version !== b.backends[key].version) return false;
-  }
-  return true;
-}
-
-export function areServicesEqual(a: ServiceEntry[], b: ServiceEntry[]) {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const l = a[i]!;
-    const r = b[i]!;
-    if (l.id !== r.id || l.kind !== r.kind || l.status !== r.status) return false;
-  }
-  return true;
-}
-
-export function areLeasesEqual(a: LeaseInfo | null, b: LeaseInfo | null) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return a.holder === b.holder;
 }

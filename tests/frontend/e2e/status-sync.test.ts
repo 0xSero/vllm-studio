@@ -5,11 +5,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  isActiveLaunchStage,
-  sidebarStatusFromSnapshot,
-} from "@/hooks/realtime-status-store";
-import type { StatusData } from "@/hooks/realtime-status-store";
+import { isActiveLaunchStage, sidebarStatusFromSnapshot } from "@/hooks/realtime-status-types";
+import type { StatusData } from "@/hooks/realtime-status-types";
 import type { LaunchProgressData, ProcessInfo } from "@/lib/types";
 
 function makeProcess(overrides: Partial<ProcessInfo> = {}): ProcessInfo {

@@ -6,11 +6,7 @@ import type {
   RecipeWithStatus,
   RuntimePlatformKind,
 } from "@/lib/types";
-import type {
-  LeaseInfo,
-  RuntimeSummaryData,
-  ServiceEntry,
-} from "@/hooks/realtime-status-store";
+import type { LeaseInfo, RuntimeSummaryData, ServiceEntry } from "@/hooks/realtime-status-types";
 
 export interface DashboardLayoutProps {
   currentProcess: ProcessInfo | null;

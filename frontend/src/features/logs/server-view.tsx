@@ -4,7 +4,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { ExternalLink, RefreshCw } from "@/ui/icon-registry";
 import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
 import { useLogs } from "@/features/logs/use-logs";
-import { useRealtimeStatusStore, type RealtimeStatusSnapshot } from "@/hooks/realtime-status-store";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
+import type { RealtimeStatusSnapshot } from "@/hooks/realtime-status-types";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 
 type Tab = "logs" | "docs";

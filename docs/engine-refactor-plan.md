@@ -398,7 +398,33 @@ the audit commands below at the start of each iteration to see current counts.
         careful line-for-line relocation with the one intentional async fix,
         not a rewrite.
   - [ ] `frontend/src/features/agent/runtime/session-runtime-controller.ts` (709)
-  - [ ] `frontend/src/hooks/realtime-status-store.ts` (678)
+        — deferred (iter 12): it's one ~550-line closure
+        (`createSessionRuntimeController`), not independently-separable
+        top-level units like the successful splits above, and project memory
+        flags this exact file as having had its "ordering consolidated" in a
+        prior session (2026-06-09) with smoke-testing still pending — a
+        careless split risks reintroducing a subtle bug. Revisit only with a
+        dedicated pass, not as a routine file-size item.
+  - [x] `frontend/src/hooks/realtime-status-store.ts` (678 → 482) — split
+        into `realtime-status-types.ts` (102: public types + pure view
+        derivations `isActiveLaunchStage`/`sidebarStatusFromSnapshot`/
+        `computeModelName`) and `realtime-status-equality.ts` (120: the 8
+        pure snapshot-diffing functions, `areStatusEqual` through
+        `areLeasesEqual`). The header comment referenced a
+        `realtime-status-store/derive.ts` file that never actually existed
+        (confirmed via `find`) — stale/aspirational, corrected by this split.
+        Left the singleton-store core (module-scope mutable state, event
+        handlers, polling, `start()`, `useRealtimeStatusStore()`) untouched
+        in the main file, same risk-based reasoning as the
+        `session-runtime-controller.ts` deferral above. Updated the 3 direct
+        consumers (`use-sidebar-status.ts`, `dashboard-types.ts`,
+        `server-view.tsx`) plus one e2e test (`status-sync.test.ts`) to
+        import from the new files directly — no re-export shim, since there
+        were only 3 easy call sites. Verified: typecheck/lint (0 errors, only
+        the 1 pre-existing unrelated warning)/cycles/ui-structure/deadcode/
+        dupes/depcheck/build all green; full e2e suite shows exactly the
+        same 4 pre-existing failures already documented from iterations 2
+        and 10 (identical test names), nothing new broken.
   - [ ] `frontend/src/features/agent/ui/agent-browser.tsx` (676)
   - [ ] `frontend/src/features/agent/ui/filesystem-panel.tsx` (642)
   - [ ] `frontend/src/features/agent/ui/use-workspace.ts` (623)
@@ -713,3 +739,24 @@ the audit commands below at the start of each iteration to see current counts.
   more order-sensitive than a typical file-size target. `realtime-status-
   store.ts` (678) is a safer fallback if `session-runtime-controller.ts`
   looks too risky to touch without more context.
+
+- **2026-07-01 (iter 12)**: read `session-runtime-controller.ts` fully first
+  as instructed — confirmed it's one ~550-line closure
+  (`createSessionRuntimeController`), not independently-separable top-level
+  units like the successful splits so far, and combined with the project
+  memory flag (ordering deliberately consolidated 2026-06-09, smoke-testing
+  still pending) this makes it too risky for a routine file-size pass.
+  Deferred it (documented above in the Part C checklist) and took the
+  pre-identified fallback: split `realtime-status-store.ts` (678 → 482)
+  into `realtime-status-types.ts` and `realtime-status-equality.ts` — see
+  the Part C checklist entry above for the full breakdown. Also caught and
+  corrected a stale comment: the file's header claimed views should derive
+  from a `realtime-status-store/derive.ts` file that was confirmed (via
+  `find`) to never actually exist — the split's new `realtime-status-
+  types.ts` now fills that intended role for real, and the header comment
+  was updated to point at it. Frontend gate green end to end (typecheck/
+  lint/cycles/ui-structure/deadcode/dupes/depcheck/build), e2e suite shows
+  the same 4 pre-existing failures as documented in iterations 2 and 10,
+  nothing new broken. Next iteration: continue down the Part C file-size
+  list — `agent-browser.tsx` (676) or `filesystem-panel.tsx` (642) are next;
+  `session-runtime-controller.ts` stays deferred until a dedicated pass.

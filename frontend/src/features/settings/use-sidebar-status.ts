@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import {
   sidebarStatusFromSnapshot,
-  useRealtimeStatusStore,
   type SidebarStatusSnapshot,
-} from "@/hooks/realtime-status-store";
+} from "@/hooks/realtime-status-types";
 
 export type { SidebarStatusSnapshot };
 
