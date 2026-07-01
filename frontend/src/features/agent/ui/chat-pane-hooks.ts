@@ -1,10 +1,90 @@
-import { useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Effect } from "effect";
 import type { ComposerMention } from "@/features/agent/composer-context";
-import { newId } from "@/features/agent/messages";
+import {
+  newId,
+  visibleQueuedMessages,
+  type ChatPaneHandle,
+  type SessionTab,
+} from "@/features/agent/messages";
+import type { SessionEngine } from "@/features/agent/runtime/engine";
 import type { ContextAttachRequest } from "@/features/agent/tools/types";
 import { attachmentDedupKey, type ChatAttachment } from "@/features/agent/ui/chat-attachments";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+
+export function useChatPaneDerivedState({
+  activeTabId,
+  contextWindow,
+  tabs,
+}: {
+  activeTabId: string;
+  contextWindow: number;
+  tabs: SessionTab[];
+}) {
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
+    [tabs, activeTabId],
+  );
+  const running = activeTab?.status === "running" || activeTab?.status === "starting";
+  const showEmptyPrompt = activeTab && activeTab.messages.length === 0 && !running;
+  const queue = activeTab?.queue ?? [];
+  const sdkContextUsage = activeTab?.contextUsage ?? null;
+  const currentContextTokens = sdkContextUsage?.tokens ?? activeTab?.tokenStats?.current ?? 0;
+  const effectiveContextWindow =
+    sdkContextUsage?.contextWindow && sdkContextUsage.contextWindow > 0
+      ? sdkContextUsage.contextWindow
+      : contextWindow;
+
+  return {
+    activeTab,
+    currentContextTokens,
+    effectiveContextWindow,
+    running,
+    showEmptyPrompt,
+    visibleQueueItems: visibleQueuedMessages(queue),
+  };
+}
+
+export function useChatPaneRuntimeHandle({
+  activeTab,
+  activeTabId,
+  engine,
+  modelId,
+  onRegisterHandle,
+  running,
+}: {
+  activeTab: SessionTab | null;
+  activeTabId: string;
+  engine: SessionEngine;
+  modelId: string;
+  onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
+  running: boolean;
+}) {
+  const [compacting, setCompacting] = useState(false);
+  const loadAndReplay = useCallback(
+    (piSessionId: string) =>
+      activeTabId ? engine.loadAndReplay(piSessionId, activeTabId) : Promise.resolve(),
+    [activeTabId, engine],
+  );
+  const compactSession = useCallback(() => {
+    if (!activeTab || running || compacting || !modelId) return Promise.resolve();
+    setCompacting(true);
+    return Effect.runPromise(
+      Effect.tryPromise({ try: () => engine.compact(activeTab.id), catch: (error) => error }).pipe(
+        Effect.ensuring(Effect.sync(() => setCompacting(false))),
+      ),
+    );
+  }, [activeTab, compacting, engine, modelId, running]);
+  const handle = useMemo<ChatPaneHandle>(
+    () => ({ loadAndReplay, compact: compactSession }),
+    [compactSession, loadAndReplay],
+  );
+  useMountSubscription(() => {
+    if (!onRegisterHandle) return;
+    onRegisterHandle(handle);
+    return () => onRegisterHandle(null);
+  }, [handle, onRegisterHandle]);
+}
 
 type ChatPaneFileMentionRow = {
   id: string;

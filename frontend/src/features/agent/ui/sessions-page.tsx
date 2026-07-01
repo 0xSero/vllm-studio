@@ -9,8 +9,6 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { safeJson } from "@/features/agent/safe-json";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
-// Mirrors the API payload from /api/agent/sessions/all. Kept inline so this
-// Re-export shared session contracts for the local module surface.
 import {
   type ActiveSession,
   type AggregatedSession,

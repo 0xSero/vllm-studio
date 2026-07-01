@@ -24,8 +24,12 @@ import type {
 } from "@/features/agent/workspace/types";
 import { useProjects } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
-import { getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
-import { loadSavedControllers, normalizeControllerUrl } from "@/lib/api/controllers";
+import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
+import {
+  CONTROLLERS_STORAGE_KEY,
+  loadSavedControllers,
+  normalizeControllerUrl,
+} from "@/lib/api/controllers";
 import {
   sanitizeBrowserPaneUrl,
   sanitizeLocalFileUrl,
@@ -270,7 +274,7 @@ export function useWorkspace(): UseWorkspaceResult {
     };
     const onStorage = (event: StorageEvent | Event) => {
       const key = (event as StorageEvent).key;
-      if (key && key !== "localstudio_backend_url" && key !== "local-studio.controllers") return;
+      if (key && key !== BACKEND_URL_STORAGE_KEY && key !== CONTROLLERS_STORAGE_KEY) return;
       reload();
     };
     // Models load once on hydrate; a transient empty/failed initial fetch

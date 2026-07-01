@@ -13,70 +13,27 @@ import {
 import { useComposerAttachments } from "@/features/agent/ui/chat-pane-composer-attachments";
 import { useComposerMentionSelection } from "@/features/agent/ui/chat-pane-composer-mention-selection";
 import { type ComposerMention } from "@/features/agent/composer-context";
-import { useChatPaneDerivedState } from "@/features/agent/ui/chat-pane-derived-state";
 import {
   useChatPaneContextAttachEffect,
+  useChatPaneDerivedState,
   useChatPaneMentionEffects,
+  useChatPaneRuntimeHandle,
   useChatPaneStickToBottomEffect,
-} from "@/features/agent/ui/chat-pane-ui-effects";
-import { useChatPaneRuntimeHandle } from "@/features/agent/ui/chat-pane-runtime-handle";
+} from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
-import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
-import {
-  AssistantBlock,
-  asRecord,
-  ChatMessage,
-  ChatPaneHandle,
-  cleanSessionTitle,
-  EventBlock,
-  isPlaceholderSessionTitle,
-  newId,
-  nowLabel,
-  QueuedMessage,
-  runtimeStatusLooksActive,
-  SessionTab,
-  TextBlock,
-  ThinkingBlock,
-  TokenStats,
-  ToolBlock,
-  visibleQueuedMessages,
-} from "@/features/agent/messages";
-import { copySessionPref, patchSessionPref } from "@/features/agent/messages/prefs";
-import { useSessionEngine, type SessionEngine } from "@/features/agent/runtime/engine";
-import {
-  beginSessionSubmit,
-  endSessionSubmit,
-  type SessionSubmitGuard,
-} from "@/features/agent/runtime/selectors";
-import { useTools, type ToolsContextValue } from "@/features/agent/tools/context";
+import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
+import { useSessionEngine } from "@/features/agent/runtime/engine";
+import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary } from "@/features/agent/projects/types";
-import type { BrowserBackend, ContextAttachRequest } from "@/features/agent/tools/types";
-import {
-  attachmentDedupKey,
-  attachmentPrompt,
-  imageInputFromAttachment,
-  type ChatAttachment,
-} from "@/features/agent/ui/chat-attachments";
+import type { BrowserBackend } from "@/features/agent/tools/types";
 import { Timeline } from "@/features/agent/ui/timeline/timeline";
 import { CloseIcon, ReloadIcon } from "@/ui/icons";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,
 } from "@/features/agent/messages/export-markdown";
-export type {
-  AssistantBlock,
-  ChatMessage,
-  ChatPaneHandle,
-  EventBlock,
-  QueuedMessage,
-  SessionTab,
-  TextBlock,
-  ThinkingBlock,
-  TokenStats,
-  ToolBlock,
-};
-export { visibleQueuedMessages };
+export type { ChatPaneHandle, SessionTab };
 
 const FINALIZATION_RETRY_ERROR_RE =
   /Model did not produce a valid final response\.?\s+Retrying finalization/i;

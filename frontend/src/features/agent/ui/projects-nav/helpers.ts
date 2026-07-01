@@ -54,10 +54,6 @@ export function mergeActiveSessionPref(
   return merged;
 }
 
-export function activeSessionPref(session: ActiveAgentSession, prefs: SessionPrefs): SessionPref {
-  return mergeActiveSessionPref(session, prefs);
-}
-
 export function patchActiveSessionPref(session: ActiveAgentSession, patch: SessionPref) {
   for (const key of activeSessionPrefKeys(session)) patchSessionPref(key, patch);
 }

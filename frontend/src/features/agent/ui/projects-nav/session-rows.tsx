@@ -16,7 +16,7 @@ import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
-  activeSessionPref,
+  mergeActiveSessionPref,
   patchActiveSessionPref,
   relativeAge,
   rememberAgentSessionNavTitle,
@@ -211,7 +211,7 @@ export function ProjectSessions({
   const visibleActiveSessions = useMemo(
     () =>
       projectActiveSessions.filter((session) => {
-        const pref = activeSessionPref(session, prefs);
+        const pref = mergeActiveSessionPref(session, prefs);
         if (pref?.pinned) return false;
         if (session.piSessionId && excludedIds.has(session.piSessionId)) return false;
         return !pref?.hidden;
@@ -290,7 +290,7 @@ export function ProjectSessions({
               key={row.key}
               project={project}
               session={row.active}
-              pref={activeSessionPref(row.active, prefs)}
+              pref={mergeActiveSessionPref(row.active, prefs)}
             />
           ) : (
             <SessionRow

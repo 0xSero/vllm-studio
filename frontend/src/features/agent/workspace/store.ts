@@ -1,4 +1,4 @@
-import { isRecord } from "@/features/agent/guards";
+import { isRecord } from "@/lib/guards";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import {
   mergeActiveAgentSessions,
@@ -15,10 +15,6 @@ import type {
   WorkspaceLayout,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
-// Computer/browser tool state moved to features/agent/tools/ — workspace no longer
-// owns or mutates it.
-
-export { isEmptyStarterTab } from "@/features/agent/workspace/pane-controller";
 
 export const PANE_LAYOUT_KEY = "local-studio.agent.paneLayout";
 export const PANE_STATE_KEY = "local-studio.agent.paneState";

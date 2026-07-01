@@ -8,7 +8,8 @@
 // controller events for status.
 
 import { useSyncExternalStore } from "react";
-import { Effect, Fiber, Result, Schedule } from "effect";
+import { Effect, Result } from "effect";
+import { effectInterval, effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 import type {
   GPU,
   LaunchProgressData,
@@ -19,6 +20,7 @@ import type {
 
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getStoredBackendUrl } from "@/lib/api/connection";
+import { normalizeGpuAliases } from "@/lib/api/system";
 import {
   areGpusEqual,
   areLaunchProgressEqual,
@@ -86,8 +88,7 @@ let snapshot: RealtimeStatusSnapshot = initialSnapshot;
 const snapshotsByController = new Map<string, RealtimeStatusSnapshot>();
 const listeners = new Set<() => void>();
 let started = false;
-let pollFiber: Fiber.Fiber<void, unknown> | null = null;
-let clearLaunchTimer: ReturnType<typeof setTimeout> | null = null;
+let clearLaunchTimer: EffectTimer | null = null;
 let pollFailureStreak = 0;
 let pollBackoffUntil = 0;
 let activeControllerKey = currentControllerKey();
@@ -161,12 +162,10 @@ function reconcileLaunchProgress(
 }
 
 function scheduleLaunchClear(stage: LaunchProgressData["stage"]) {
-  if (clearLaunchTimer) {
-    clearTimeout(clearLaunchTimer);
-    clearLaunchTimer = null;
-  }
+  clearLaunchTimer?.cancel();
+  clearLaunchTimer = null;
   if (stage === "ready" || stage === "error" || stage === "cancelled") {
-    clearLaunchTimer = setTimeout(() => {
+    clearLaunchTimer = effectTimeout(() => {
       emitIfChanged({
         ...snapshot,
         launchProgress: null,
@@ -187,10 +186,6 @@ function emitStatusLoading() {
 
 const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
   Effect.tryPromise({ try: load, catch: (error) => error });
-
-function fetchPollResults(): Promise<PollResults> {
-  return Effect.runPromise(fetchPollResultsEffect());
-}
 
 function fetchPollResultsEffect(): Effect.Effect<PollResults> {
   return Effect.gen(function* () {
@@ -318,10 +313,9 @@ function handleStatusEvent(data: Record<string, unknown>, now: number) {
 }
 
 function handleGpuEvent(data: Record<string, unknown>, now: number) {
-  const list = (data["gpus"] ?? []) as GPU[];
   emitIfChanged({
     ...snapshot,
-    gpus: Array.isArray(list) ? list : [],
+    gpus: normalizeGpuAliases(data["gpus"]),
     lastEventAt: now,
   });
 }
@@ -444,17 +438,15 @@ function start() {
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
   window.addEventListener(BACKEND_URL_CHANGED_EVENT, resetForControllerSwitch);
 
-  // Initial fetch + polling fallback in case SSE is blocked. Runs as an Effect
-  // fiber on a fixed schedule — the poll body checks the SSE freshness window
-  // and backoff gate before firing, same logic as the old setInterval.
+  // Initial fetch + polling fallback in case SSE is blocked. The poll body
+  // checks the SSE freshness window and backoff gate before firing.
   void fetchStatusNow();
-  const pollProgram = Effect.sync(() => {
+  effectInterval(() => {
     const now = Date.now();
     if (now - snapshot.lastEventAt < 10_000) return;
     if (now < pollBackoffUntil) return;
     void fetchStatusNow();
-  }).pipe(Effect.repeat(Schedule.spaced(POLL_BASE_INTERVAL_MS)));
-  pollFiber = Effect.runFork(pollProgram) as never;
+  }, POLL_BASE_INTERVAL_MS);
 
   const onVisibility = () => {
     if (document.visibilityState === "visible") {

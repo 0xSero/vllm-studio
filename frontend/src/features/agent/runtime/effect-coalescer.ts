@@ -1,14 +1,13 @@
 // Effect-TS text-delta coalescer.
 //
-// Replaces the hand-rolled rAF-batched Map in text-delta-coalescer.ts with an
-// Effect program for the frame-scheduling path. The per-session pending state
-// is a plain mutable container (the enqueue path is synchronous and needs
-// immediate read/write — wrapping it in Ref<Effect> would just add ceremony for
-// no gain), while the animation-frame flush runs as a forked Effect fiber.
+// The per-session pending state is a plain mutable container (the enqueue path
+// is synchronous and needs immediate read/write — wrapping it in Ref<Effect>
+// would just add ceremony for no gain), while the animation-frame flush runs
+// as a forked Effect fiber.
 //
-// Merge semantics are identical to the legacy module: same-kind text deltas
-// concatenate so no incremental token is dropped; a kind switch or a non-delta
-// `message_update` flushes first to preserve ordering.
+// Merge semantics: same-kind text deltas concatenate so no incremental token
+// is dropped; a kind switch or a non-delta `message_update` flushes first to
+// preserve ordering.
 
 import { Effect, Fiber } from "effect";
 import type { SessionId } from "@/features/agent/runtime/types";
@@ -205,8 +204,6 @@ const waitForAnimationFrame: Effect.Effect<void> = Effect.callback<void>((resume
   });
 });
 
-// Re-exported helpers shared with the legacy module's callers. Pure functions,
-// kept here so the controller can swap modules without import churn.
 export function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaSnapshot | null {
   if (event.type !== "message_update") return null;
   const assistantMessageEvent = asRecord(event.assistantMessageEvent);

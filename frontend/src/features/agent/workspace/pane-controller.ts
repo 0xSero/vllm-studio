@@ -64,9 +64,6 @@ function pruneOrphanSessions(state: WorkspaceState): WorkspaceState {
   return withSessions(state, pruneSessions(state.sessions, referencedSessionIds(state)));
 }
 
-// Re-exported for back-compat: callers still use this predicate name.
-export { isEmptyStarterSession as isEmptyStarterTab };
-
 function focusExistingSession(
   state: WorkspaceState,
   paneId: PaneId,

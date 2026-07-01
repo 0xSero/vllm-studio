@@ -170,26 +170,20 @@ if (typeof window !== "undefined") {
   })();
 }
 
-// --- Module-level window listeners that sync browser events into the app
-// store. Activated once when this module is first imported. ---
+let appStoreListenersInitialized = false;
 
-let lastWasMobile = false;
+export function initAppStoreListeners() {
+  if (appStoreListenersInitialized || typeof window === "undefined") return;
+  appStoreListenersInitialized = true;
 
-if (typeof window !== "undefined") {
-  // --- Resize → sidebar.collapsed ---
   const onResize = () => {
-    const mobile = window.innerWidth < 768;
-    if (mobile !== lastWasMobile) {
-      lastWasMobile = mobile;
-    }
-    if (mobile && !useAppStore.getState().sidebar.collapsed) {
+    if (window.innerWidth < 768 && !useAppStore.getState().sidebar.collapsed) {
       useAppStore.getState().setSidebarCollapsed(true);
     }
   };
   window.addEventListener("resize", onResize);
   onResize();
 
-  // --- Custom event: vllm:toggle-sidebar ---
   window.addEventListener("vllm:toggle-sidebar", ((event: CustomEvent<{ open?: boolean }>) => {
     const requested = event?.detail?.open;
     if (typeof requested === "boolean") {

@@ -21,17 +21,8 @@ import {
   ProjectSessions,
   SessionRow,
 } from "./projects-nav/session-rows";
-import { activeSessionPref } from "./projects-nav/helpers";
+import { mergeActiveSessionPref } from "./projects-nav/helpers";
 import type { ActiveAgentSession, PinnedActiveSession, PinnedSession } from "./projects-nav/types";
-
-export {
-  consumeAgentSessionNavTitle,
-  mergeActiveSessionPref,
-  rememberAgentSessionNavTitle,
-  triggerAddProjectFlow,
-} from "./projects-nav/helpers";
-
-const useSessionPrefs = useProjectsNavSessionPrefs;
 
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const projectsContext = useProjects();
@@ -52,7 +43,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [pinnedSessions, setPinnedSessions] = useState<Array<PinnedSession | PinnedActiveSession>>(
     [],
   );
-  const prefs = useSessionPrefs();
+  const prefs = useProjectsNavSessionPrefs();
   const pinnedPrefIds = useMemo(
     () =>
       Object.entries(prefs)
@@ -88,7 +79,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     () =>
       activeSessions
         .filter((session) => {
-          const pref = activeSessionPref(session, prefs);
+          const pref = mergeActiveSessionPref(session, prefs);
           return pref.pinned && !pref.hidden;
         })
         .map((session) => ({ session, project: projectsById.get(session.projectId) }))
@@ -223,7 +214,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               key={`${session.paneId}:${session.tabId}`}
               project={project}
               session={session}
-              pref={activeSessionPref(session, prefs)}
+              pref={mergeActiveSessionPref(session, prefs)}
             />
           ))}
           {pinnedSessions
@@ -234,7 +225,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
                   key={`${session.paneId}:${session.tabId}`}
                   project={session.project}
                   session={session}
-                  pref={activeSessionPref(session, prefs)}
+                  pref={mergeActiveSessionPref(session, prefs)}
                 />
               ) : (
                 <SessionRow

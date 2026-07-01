@@ -5,7 +5,6 @@ import {
   CONTROLLER_STREAM_EVENT_TYPES as CONTROLLER_EVENT_TYPES,
   getBrowserEventChannelForControllerEvent,
   isControllerStreamEventType,
-  type ControllerBrowserEventChannel,
 } from "@/lib/controller-events-contract";
 import { useCallback, useRef, useState } from "react";
 import {
@@ -27,12 +26,13 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
       const payload = JSON.parse(event.data) as SSEPayload<Record<string, unknown>>;
-      const eventType = (event as { type?: string }).type || "message";
+      const eventType = event.type || "message";
       const data = payload.data ?? {};
-
-      const handled = dispatchControllerDomainEvent(eventType, data, dispatchCustomEvent);
-      if (!handled && !isKnownControllerEvent(eventType)) {
-        logUnknownControllerEvent(eventType, data);
+      const channel = getBrowserEventChannelForControllerEvent(eventType);
+      if (channel) {
+        window.dispatchEvent(new CustomEvent(channel, { detail: { type: eventType, data } }));
+      } else if (!isControllerStreamEventType(eventType)) {
+        console.warn("[Controller SSE] Unhandled event type", { eventType, data });
       }
     } catch (err) {
       console.error("[Controller SSE] Failed to parse event:", err);
@@ -96,46 +96,3 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, reconnect);
   }, []);
 }
-
-export const dispatchCustomEvent = (name: string, detail: Record<string, unknown>) => {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(name, { detail }));
-};
-
-export type UnknownControllerEventLogger = (
-  message: string,
-  detail: { eventType: string; data: Record<string, unknown> },
-) => void;
-
-export const resolveControllerEventChannel = (
-  eventType: string,
-): ControllerBrowserEventChannel | null => {
-  return getBrowserEventChannelForControllerEvent(eventType);
-};
-
-export const dispatchControllerDomainEvent = (
-  eventType: string,
-  data: Record<string, unknown>,
-  dispatch: (name: string, detail: Record<string, unknown>) => void,
-): boolean => {
-  const channel = resolveControllerEventChannel(eventType);
-  if (!channel) {
-    return false;
-  }
-  dispatch(channel, { type: eventType, data });
-  return true;
-};
-
-export const logUnknownControllerEvent = (
-  eventType: string,
-  data: Record<string, unknown>,
-  logger: UnknownControllerEventLogger = (message, detail) => {
-    console.warn(message, detail);
-  },
-): void => {
-  logger("[Controller SSE] Unhandled event type", { eventType, data });
-};
-
-export const isKnownControllerEvent = (eventType: string): boolean => {
-  return isControllerStreamEventType(eventType);
-};
