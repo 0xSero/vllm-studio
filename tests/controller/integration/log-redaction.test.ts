@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  redactLogLine,
-  redactLogContent,
-} from "../../../controller/src/core/log-redaction";
+import { redactLogLine } from "../../../controller/src/core/log-redaction";
 import { primaryLogPathFor } from "../../../controller/src/core/log-files";
 
 const ENV_KEYS = [
@@ -147,10 +144,11 @@ describe("redactLogLine", () => {
   });
 });
 
-describe("redactLogContent", () => {
+describe("per-line redaction of multi-line content", () => {
   test("redacts secrets across multiple lines", () => {
     const content = "line1\nAuthorization: Bearer sk-abc\nline3\nHF_TOKEN=hf_123\n";
-    expect(redactLogContent(content)).toBe(
+    const redacted = content.split("\n").map(redactLogLine).join("\n");
+    expect(redacted).toBe(
       "line1\nAuthorization: Bearer [redacted]\nline3\nHF_TOKEN=[redacted]\n",
     );
   });

@@ -1,8 +1,6 @@
 import type { ModelDownload } from "../types";
 import { openSqliteDatabase } from "../../../stores/sqlite";
 
-// --- JSON parsing (merged from core/json.ts) ---
-
 /**
  * Parse a JSON string, returning `null` on empty input or parse failure.
  * @param value - JSON string value.

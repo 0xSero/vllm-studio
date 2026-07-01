@@ -1,5 +1,4 @@
-import { resolveBinary } from "../core/command";
-import { runCliCommand } from "./cli-runner";
+import { resolveBinary, runCommandAsync } from "../core/command";
 
 export type SttMode = "strict" | "best_effort";
 
@@ -80,9 +79,7 @@ const transcribeWithWhisperCpp = async (
     args.push("--language", request.language.trim());
   }
 
-  const result = await runCliCommand({
-    command: cliPath,
-    args,
+  const result = await runCommandAsync(cliPath, args, {
     timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
 
@@ -94,14 +91,14 @@ const transcribeWithWhisperCpp = async (
     });
   }
 
-  if (result.exitCode !== 0) {
+  if (result.status !== 0) {
     throw new SttIntegrationError(502, "stt_cli_failed", "STT CLI exited with an error", {
-      exit_code: result.exitCode,
+      exit_code: result.status,
       signal: result.signal,
       stderr: result.stderr,
       stdout: result.stdout,
-      command: result.command,
-      args: result.args,
+      command: cliPath,
+      args,
     });
   }
 

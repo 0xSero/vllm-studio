@@ -11,10 +11,14 @@ export type CommandResult = {
 
 export type AsyncCommandResult = CommandResult & {
   timedOut: boolean;
+  signal: NodeJS.Signals | null;
 };
 
 export type AsyncCommandOptions = {
   timeoutMs: number;
+  cwd?: string | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  stdin?: string | undefined;
   onOutput?: ((chunk: string) => void) | undefined;
   onSpawn?: ((child: ChildProcess) => void) | undefined;
 };
@@ -56,8 +60,16 @@ export const runCommandAsyncEffect = (
   options: AsyncCommandOptions,
 ): Effect.Effect<AsyncCommandResult> =>
   Effect.callback<AsyncCommandResult>((resume) => {
-    const child = spawn(command, args, { env: process.env });
+    const child = spawn(command, args, {
+      env: options.env ?? process.env,
+      ...(options.cwd ? { cwd: options.cwd } : {}),
+    });
     options.onSpawn?.(child);
+    if (options.stdin !== undefined) {
+      child.stdin?.on("error", () => {});
+      child.stdin?.write(options.stdin);
+      child.stdin?.end();
+    }
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -83,10 +95,10 @@ export const runCommandAsyncEffect = (
       options.onOutput?.(chunk);
     });
     child.on("error", (error) => {
-      settle({ status: null, stdout: stdout.trim(), stderr: error.message, timedOut });
+      settle({ status: null, stdout: stdout.trim(), stderr: error.message, timedOut, signal: null });
     });
-    child.on("close", (code) => {
-      settle({ status: code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut });
+    child.on("close", (code, signal) => {
+      settle({ status: code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut, signal });
     });
   });
 

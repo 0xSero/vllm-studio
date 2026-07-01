@@ -72,13 +72,3 @@ export function redactLogLine(line: string): string {
 
   return redacted;
 }
-
-/**
- * Redact a multi-line log string, preserving line endings.
- */
-export function redactLogContent(content: string): string {
-  return content
-    .split(/(\r?\n)/)
-    .map((part, index) => (index % 2 === 0 ? redactLogLine(part) : part))
-    .join("");
-}

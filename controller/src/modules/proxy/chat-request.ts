@@ -2,7 +2,8 @@ import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import type { Recipe } from "../models/types";
 import { PROXY_SESSION_HEADER_NAMES } from "./configs";
-import type { OpenAIUsage } from "./types";
+
+export type OpenAIUsage = Record<string, number>;
 
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
 

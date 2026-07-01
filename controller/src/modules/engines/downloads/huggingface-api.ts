@@ -1,7 +1,5 @@
 import type { DownloadFileInfo } from "../types";
 
-// --- Glob matching (merged from download-globs.ts) ---
-
 const escapeRegex = (value: string): string => value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
 
 const compileGlob = (pattern: string): RegExp => {

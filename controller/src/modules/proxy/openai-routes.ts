@@ -22,9 +22,9 @@ import {
   ensureStreamingUsageIncluded,
   extractSessionId,
   findRecipeByModel,
+  type OpenAIUsage,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
-import type { OpenAIUsage } from "./types";
 
 export interface ModelNotRunningError {
   error: { message: string; type: "model_not_running"; code: "model_not_running" };
@@ -238,9 +238,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
           const choiceRecord = choice as Record<string, unknown>;
           const message = choiceRecord["message"] as Record<string, unknown> | undefined;
           if (!message) continue;
-          // 1) If the backend emitted tool-call XML, extract `tool_calls` before stripping it.
           if (normalizeToolCallsInMessage(message)) choiceRecord["finish_reason"] = "tool_calls";
-          // 2) Move <think>...</think> to `reasoning_content` and strip tool-call XML wrappers from visible content.
           normalizeReasoningAndContentInMessage(message);
           if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
             context.logger.warn(

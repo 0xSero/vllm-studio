@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolveBinary } from "../core/command";
-import { runCliCommand } from "./cli-runner";
+import { resolveBinary, runCommandAsync } from "../core/command";
 
 export type TtsMode = "strict" | "best_effort";
 
@@ -47,11 +46,10 @@ const synthesizeWithPiper = async (request: TtsSynthesisRequest): Promise<void> 
     );
   }
 
-  const result = await runCliCommand({
-    command: cliPath,
-    args: ["--model", request.modelPath, "--output_file", request.outputPath],
+  const args = ["--model", request.modelPath, "--output_file", request.outputPath];
+  const result = await runCommandAsync(cliPath, args, {
     timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    stdinText: request.text,
+    stdin: request.text,
   });
 
   if (result.timedOut) {
@@ -62,14 +60,14 @@ const synthesizeWithPiper = async (request: TtsSynthesisRequest): Promise<void> 
     });
   }
 
-  if (result.exitCode !== 0) {
+  if (result.status !== 0) {
     throw new TtsIntegrationError(502, "tts_cli_failed", "TTS CLI exited with an error", {
-      exit_code: result.exitCode,
+      exit_code: result.status,
       signal: result.signal,
       stderr: result.stderr,
       stdout: result.stdout,
-      command: result.command,
-      args: result.args,
+      command: cliPath,
+      args,
     });
   }
 

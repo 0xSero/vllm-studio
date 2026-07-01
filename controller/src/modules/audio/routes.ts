@@ -4,8 +4,7 @@ import { extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import type { AppContext } from "../../app-context";
-import { resolveBinary } from "../../core/command";
-import { runCliCommand } from "../../services/cli-runner";
+import { resolveBinary, runCommandAsync } from "../../core/command";
 import { SttIntegrationError, transcribeAudio } from "../../services/stt";
 import type { SttMode } from "../../services/stt";
 import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
@@ -176,22 +175,11 @@ const defaultTranscodeToWav = async (options: {
     );
   }
 
-  const result = await runCliCommand({
-    command: ffmpegPath,
-    args: [
-      "-y",
-      "-i",
-      options.sourcePath,
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-f",
-      "wav",
-      options.outputPath,
-    ],
-    timeoutMs: AUDIO_TRANSCODE_TIMEOUT_MS,
-  });
+  const result = await runCommandAsync(
+    ffmpegPath,
+    ["-y", "-i", options.sourcePath, "-ac", "1", "-ar", "16000", "-f", "wav", options.outputPath],
+    { timeoutMs: AUDIO_TRANSCODE_TIMEOUT_MS }
+  );
 
   if (result.timedOut) {
     throw new SttIntegrationError(504, "audio_transcode_timeout", "Audio transcode timed out", {
@@ -200,13 +188,13 @@ const defaultTranscodeToWav = async (options: {
     });
   }
 
-  if (result.exitCode !== 0) {
+  if (result.status !== 0) {
     throw new SttIntegrationError(
       400,
       "audio_transcode_failed",
       "Failed to transcode audio to WAV",
       {
-        exit_code: result.exitCode,
+        exit_code: result.status,
         signal: result.signal,
         stderr: result.stderr,
         stdout: result.stdout,

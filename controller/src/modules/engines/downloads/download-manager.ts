@@ -18,8 +18,6 @@ import type { DownloadStore } from "./download-store";
 import { buildHuggingFaceFileList, fetchHuggingFaceModelInfo } from "./huggingface-api";
 import { DOWNLOAD_DEFAULT_IGNORE_FILENAMES, DOWNLOAD_PROGRESS_THROTTLE_MS } from "../configs";
 
-// --- Byte accounting (merged from download-math.ts) ---
-
 const sumDownloadedBytes = (files: DownloadFileInfo[]): number => {
   return files.reduce((total, file) => total + (file.downloaded_bytes || 0), 0);
 };
@@ -33,8 +31,6 @@ const sumTotalBytes = (files: DownloadFileInfo[]): number | null => {
   }
   return known.reduce((total, file) => total + file.size_bytes, 0);
 };
-
-// --- Path resolution (merged from download-paths.ts) ---
 
 const sanitizePathSegments = (value: string): string[] => {
   return value
