@@ -534,7 +534,20 @@ the audit commands below at the start of each iteration to see current counts.
         knip false positive (confirmed via `git stash` still present on
         unmodified `main`, matching the already-documented note below);
         `test:unit` (4/4) and `test:integration` (122/122) both pass.
-  - [ ] `frontend/src/lib/api/core.ts` (558)
+  - [x] `frontend/src/lib/api/core.ts` (558 → 430) — extracted the two
+        pure, zero-external-consumer helper groups: `http-error-message.ts`
+        (85: `formatHttpErrorMessage` + `isRetryableError`) and
+        `sse-transport-errors.ts` (43: `scrubTransportFetchErrorMessage` +
+        `isBenignSseTransportFailure` + private helpers). Confirmed via
+        grep that `encodePathSegments`/`RequestOptions`/`ApiCore` (used by
+        6 other `lib/api/*.ts` files) stayed in `core.ts` untouched — only
+        the two genuinely private formatting/classification helper groups
+        moved, so zero consumer files needed updating. Verified: typecheck/
+        lint (0 errors, same 1 pre-existing unrelated warning)/cycles/
+        ui-structure/deadcode/dupes/depcheck/build all green; no tests
+        reference this file directly; full e2e suite shows the same 4
+        pre-existing failures as iterations 2/10/12/13/14/15/16/17, nothing
+        new broken.
   - [ ] `controller/src/modules/proxy/openai-routes.ts` (554)
   - [ ] `frontend/src/app/api/proxy/[...path]/route.ts` (542)
   - [ ] `frontend/src/features/settings/local-agents.ts` (533)
@@ -961,3 +974,19 @@ the audit commands below at the start of each iteration to see current counts.
   Next iteration: `frontend/src/lib/api/core.ts` (558) is next on the Part
   C list, back on the frontend side; `session-runtime-controller.ts`
   stays deferred until a dedicated pass.
+
+- **2026-07-01 (iter 19)**: split `lib/api/core.ts` (558 → 430) — see the
+  Part C checklist above for the breakdown. This split was notably lower-
+  risk than most: the two extracted helper groups (HTTP error-message
+  formatting, SSE transport-failure classification) had zero external
+  consumers (confirmed via grep across the whole frontend, not just this
+  directory), so nothing outside `core.ts` itself needed touching — no
+  consumer-import updates, unlike most of the last several iterations.
+  Frontend gate green end to end (typecheck/lint/cycles/ui-structure/
+  deadcode/dupes/depcheck/build), e2e suite shows the same 4 pre-existing
+  failures as iterations 2/10/12/13/14/15/16/17, nothing new broken. Next
+  iteration: `controller/src/modules/proxy/openai-routes.ts` (554) is next
+  on the Part C list, back on the controller side — use the controller
+  verification bar (`bun run typecheck`/`lint`/`standards`/`check`/
+  `test:unit`/`test:integration`) established in iteration 18.
+  `session-runtime-controller.ts` stays deferred until a dedicated pass.
