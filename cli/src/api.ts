@@ -125,10 +125,10 @@ export const fetchGPUsEffect = Effect.gen(function* () {
   return data.gpus.filter(isRecord).map((gpu, index) => ({
     index: toFiniteNumber(gpu.index, index),
     name: typeof gpu.name === "string" ? gpu.name : `GPU ${index}`,
-    memory_used: toFiniteNumber(gpu.memory_used),
-    memory_total: toFiniteNumber(gpu.memory_total),
-    utilization: toFiniteNumber(gpu.utilization),
-    temperature: toFiniteNumber(gpu.temperature),
+    memory_used_mb: toFiniteNumber(gpu.memory_used_mb),
+    memory_total_mb: toFiniteNumber(gpu.memory_total_mb),
+    utilization_pct: toFiniteNumber(gpu.utilization_pct),
+    temp_c: toFiniteNumber(gpu.temp_c),
     power_draw: toFiniteNumber(gpu.power_draw),
   }));
 });

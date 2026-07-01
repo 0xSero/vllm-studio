@@ -5,12 +5,7 @@ import { toGB, toGBFromMB } from "@/lib/formatters";
 export function sumGpuMemoryPoolGb(gpus: GPU[]): number {
   let sum = 0;
   for (const g of gpus) {
-    const fromMb = g.memory_total_mb;
-    if (fromMb != null && Number.isFinite(fromMb) && fromMb > 0) {
-      sum += toGBFromMB(fromMb);
-      continue;
-    }
-    sum += toGB(g.memory_total);
+    sum += toGBFromMB(g.memory_total_mb);
   }
   const rounded = Math.round(sum * 10) / 10;
   return Number.isFinite(rounded) ? rounded : 0;

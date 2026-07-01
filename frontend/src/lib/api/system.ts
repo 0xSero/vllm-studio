@@ -9,6 +9,43 @@ import type {
 } from "../types";
 import type { ApiCore, RequestOptions } from "./core";
 
+const MB = 1024 * 1024;
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function legacyMb(value: unknown): number | null {
+  const bytes = finiteNumber(value);
+  return bytes !== null && bytes > 0 ? bytes / MB : null;
+}
+
+export function normalizeGpuAliases(list: unknown): GPU[] {
+  if (!Array.isArray(list)) return [];
+  const gpus: GPU[] = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    const gpu: GPU = {
+      index: finiteNumber(raw["index"]) ?? 0,
+      name: typeof raw["name"] === "string" ? raw["name"] : "GPU",
+      memory_total_mb: finiteNumber(raw["memory_total_mb"]) ?? legacyMb(raw["memory_total"]) ?? 0,
+      memory_used_mb: finiteNumber(raw["memory_used_mb"]) ?? legacyMb(raw["memory_used"]) ?? 0,
+      memory_free_mb: finiteNumber(raw["memory_free_mb"]) ?? legacyMb(raw["memory_free"]) ?? 0,
+      utilization_pct:
+        finiteNumber(raw["utilization_pct"]) ?? finiteNumber(raw["utilization"]) ?? 0,
+      temp_c: finiteNumber(raw["temp_c"]) ?? finiteNumber(raw["temperature"]) ?? 0,
+    };
+    if (typeof raw["id"] === "string") gpu.id = raw["id"];
+    const powerDraw = finiteNumber(raw["power_draw"]);
+    if (powerDraw !== null) gpu.power_draw = powerDraw;
+    const powerLimit = finiteNumber(raw["power_limit"]);
+    if (powerLimit !== null) gpu.power_limit = powerLimit;
+    gpus.push(gpu);
+  }
+  return gpus;
+}
+
 export function createSystemApi(core: ApiCore) {
   return {
     launch: (recipeId: string): Promise<{ success: boolean; pid?: number; message: string }> =>
@@ -41,7 +78,10 @@ export function createSystemApi(core: ApiCore) {
     countTextTokens: (data: { model: string; text: string }): Promise<{ num_tokens?: number }> =>
       core.request("/v1/count-tokens", { method: "POST", body: JSON.stringify(data) }),
 
-    getGPUs: (options?: RequestOptions): Promise<{ gpus: GPU[] }> => core.request("/gpus", options),
+    getGPUs: async (options?: RequestOptions): Promise<{ gpus: GPU[] }> => {
+      const payload = await core.request<{ gpus?: unknown }>("/gpus", options);
+      return { gpus: normalizeGpuAliases(payload.gpus) };
+    },
 
     calculateVRAM: (data: {
       model: string;

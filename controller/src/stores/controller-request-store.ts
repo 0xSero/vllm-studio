@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { ControllerUsageStats } from "../../../shared/contracts/usage";
 import { openSqliteDatabase, toFiniteNumber, toNullableNumber } from "./sqlite";
 
 export interface ControllerRequestRecord {
@@ -110,7 +111,7 @@ export class ControllerRequestStore {
       );
   }
 
-  public aggregate(): Record<string, unknown> {
+  public aggregate(): ControllerUsageStats {
     const totals = this.db
       .query<NumberRow, []>(
         `SELECT

@@ -175,10 +175,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
     const gpus = getGpuInfo();
     let perGpuCapacityGb = 0;
     if (gpus.length >= tpSize && tpSize > 0) {
-      const candidates = gpus.slice(0, tpSize).map((gpu) => {
-        if (gpu.memory_total_mb) return gpu.memory_total_mb / 1024;
-        return gpu.memory_total / 1024 ** 3;
-      });
+      const candidates = gpus.slice(0, tpSize).map((gpu) => gpu.memory_total_mb / 1024);
       perGpuCapacityGb = Math.min(...candidates);
     }
 

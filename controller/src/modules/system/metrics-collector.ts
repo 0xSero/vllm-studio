@@ -65,7 +65,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
         context.metrics.updateActiveModel();
       }
 
-      context.metrics.updateGpuMetrics(gpuList.map((gpu) => ({ ...gpu })));
+      context.metrics.updateGpuMetrics(gpuList);
       context.metrics.updateSseMetrics(context.eventManager.getStats());
 
       const lifetimeStore = context.stores.lifetimeMetricsStore;
@@ -121,18 +121,12 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
           : null,
       };
 
-      const totalVramUsedGb = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.memory_used_mb ?? 0) / 1024,
-        0
-      );
+      const totalVramUsedGb = gpuList.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
       const totalVramCapacityGb = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024,
+        (sum, gpu) => sum + gpu.memory_total_mb / 1024,
         0
       );
-      const totalPowerLimitWatts = gpuList.reduce(
-        (sum, gpu) => sum + Number(gpu.power_limit ?? 0),
-        0
-      );
+      const totalPowerLimitWatts = gpuList.reduce((sum, gpu) => sum + gpu.power_limit, 0);
 
       if (current) {
         const modelId =

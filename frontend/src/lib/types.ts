@@ -44,12 +44,7 @@ export type {
   SystemRuntimeInfo,
 } from "../../../shared/contracts/system";
 
-export type {
-  ControllerUsageStats,
-  SortDirection,
-  SortField,
-  UsageStats,
-} from "../../../shared/contracts/usage";
+export type { ControllerUsageStats, UsageStats } from "../../../shared/contracts/usage";
 
 export type {
   GPU,
@@ -91,6 +86,7 @@ import type { Environment, EnvironmentEngineId } from "../../../shared/contracts
 
 export interface EnvironmentWithStatus extends Environment {
   image: string;
+  imagePulled: boolean;
   running: boolean;
 }
 
@@ -101,6 +97,7 @@ export interface EnvironmentPayload {
   engineId: EnvironmentEngineId;
   version: string;
   variant?: string;
+  image?: string;
 }
 
 // --- Launch progress ---

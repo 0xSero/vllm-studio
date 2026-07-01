@@ -52,8 +52,6 @@ const contractNames = [
   "StudioDiagnostics",
   "ControllerUsageStats",
   "UsageStats",
-  "SortField",
-  "SortDirection",
 ];
 const allowedFiles = new Set([
   "shared/contracts/recipes.ts",

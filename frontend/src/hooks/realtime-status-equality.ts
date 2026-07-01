@@ -37,17 +37,15 @@ export function areStatusEqual(a: StatusData | null, b: StatusData | null) {
 const GPU_STABLE_KEYS = [
   "index",
   "name",
-  "memory_total",
-  "memory_used",
-  "memory_free",
-  "utilization",
+  "memory_total_mb",
+  "memory_used_mb",
+  "memory_free_mb",
+  "utilization_pct",
 ] as const satisfies ReadonlyArray<keyof GPU>;
 
-const GPU_NULLABLE_KEYS = [
-  "temperature",
-  "power_draw",
-  "power_limit",
-] as const satisfies ReadonlyArray<keyof GPU>;
+const GPU_NULLABLE_KEYS = ["temp_c", "power_draw", "power_limit"] as const satisfies ReadonlyArray<
+  keyof GPU
+>;
 
 function areGpuEntriesEqual(left: GPU, right: GPU): boolean {
   return (

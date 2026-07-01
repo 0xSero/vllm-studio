@@ -1,4 +1,5 @@
 import { Counter, Gauge, Registry } from "prom-client";
+import type { GpuInfo } from "../models/types";
 
 export interface MetricsRegistry {
   registry: Registry;
@@ -8,7 +9,7 @@ export interface MetricsRegistry {
 
 export interface ControllerMetrics {
   updateActiveModel: (modelPath?: string | null, backend?: string | null, servedName?: string | null) => void;
-  updateGpuMetrics: (gpus: Record<string, unknown>[]) => void;
+  updateGpuMetrics: (gpus: GpuInfo[]) => void;
   updateSseMetrics: (stats: Record<string, unknown>) => void;
 }
 
@@ -85,21 +86,11 @@ export const createMetrics = (): { registry: MetricsRegistry; metrics: Controlle
     },
     updateGpuMetrics: (gpus) => {
       for (const gpu of gpus) {
-        const gpuId = String(gpu["id"] ?? gpu["index"] ?? 0);
-        const gpuName = String(gpu["name"] ?? "Unknown");
-        const labels = { gpu_id: gpuId, gpu_name: gpuName };
-        let memoryUsed = Number(gpu["memory_used"] ?? 0);
-        let memoryTotal = Number(gpu["memory_total"] ?? 0);
-        if (memoryUsed < 1_000_000) {
-          memoryUsed = memoryUsed * 1024 * 1024;
-          memoryTotal = memoryTotal * 1024 * 1024;
-        }
-        gpuMemoryUsed.labels(labels).set(memoryUsed);
-        gpuMemoryTotal.labels(labels).set(memoryTotal);
-        const utilization = Number(gpu["utilization"] ?? gpu["utilization_pct"] ?? 0);
-        const temperature = Number(gpu["temperature"] ?? gpu["temp_c"] ?? 0);
-        gpuUtilization.labels(labels).set(utilization);
-        gpuTemperature.labels(labels).set(temperature);
+        const labels = { gpu_id: String(gpu.index), gpu_name: gpu.name };
+        gpuMemoryUsed.labels(labels).set(gpu.memory_used_mb * 1024 * 1024);
+        gpuMemoryTotal.labels(labels).set(gpu.memory_total_mb * 1024 * 1024);
+        gpuUtilization.labels(labels).set(gpu.utilization_pct);
+        gpuTemperature.labels(labels).set(gpu.temp_c);
       }
     },
     updateSseMetrics: (stats) => {

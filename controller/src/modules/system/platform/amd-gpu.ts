@@ -237,7 +237,6 @@ export const getGpuInfoFromAmdSmi = (): GpuInfo[] => {
         const freeMb =
           readAmdSmiValueMb(metric.mem_usage?.free_vram) ?? Math.max(0, totalMb - usedMb);
 
-        const toBytes = (mb: number): number => Math.max(0, Math.round(mb * 1024 * 1024));
         const utilization = Math.max(
           0,
           Math.round(readAmdSmiValueNumber(metric.usage?.gfx_activity) ?? 0)
@@ -255,15 +254,10 @@ export const getGpuInfoFromAmdSmi = (): GpuInfo[] => {
         return {
           index,
           name,
-          memory_total: toBytes(totalMb),
           memory_total_mb: Math.max(0, Math.round(totalMb)),
-          memory_used: toBytes(usedMb),
           memory_used_mb: Math.max(0, Math.round(usedMb)),
-          memory_free: toBytes(freeMb),
           memory_free_mb: Math.max(0, Math.round(freeMb)),
-          utilization,
           utilization_pct: utilization,
-          temperature,
           temp_c: temperature,
           power_draw: powerDraw,
           power_limit: 0,
@@ -312,15 +306,10 @@ export const getGpuInfoFromRocmSmi = (): GpuInfo[] => {
       return {
         index: gpu.index,
         name: gpu.name || "AMD GPU",
-        memory_total: totalBytes,
         memory_total_mb: toMb(totalBytes),
-        memory_used: usedBytes,
         memory_used_mb: toMb(usedBytes),
-        memory_free: freeBytes,
         memory_free_mb: toMb(freeBytes),
-        utilization,
         utilization_pct: utilization,
-        temperature: temperatureC,
         temp_c: temperatureC,
         power_draw: powerDraw,
         power_limit: powerLimit,

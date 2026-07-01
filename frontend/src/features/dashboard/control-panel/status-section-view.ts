@@ -323,13 +323,11 @@ function durationMetric(value: number | undefined): string {
 }
 
 function gpuMemoryUsed(gpu: GPU): number {
-  if (gpu.memory_used_mb != null) return toGBFromMB(gpu.memory_used_mb);
-  return toGB(gpu.memory_used ?? 0);
+  return toGBFromMB(gpu.memory_used_mb);
 }
 
 function gpuMemoryTotal(gpu: GPU): number {
-  if (gpu.memory_total_mb != null) return toGBFromMB(gpu.memory_total_mb);
-  return toGB(gpu.memory_total ?? 0);
+  return toGBFromMB(gpu.memory_total_mb);
 }
 
 function firstPositive(...values: Array<number | null | undefined>): number | null {

@@ -182,6 +182,3 @@ export interface UsageStats {
   }>;
   controller?: ControllerUsageStats;
 }
-
-export type SortField = "model" | "requests" | "tokens" | "success" | "latency" | "ttft" | "speed";
-export type SortDirection = "asc" | "desc";

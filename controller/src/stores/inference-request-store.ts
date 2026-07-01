@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { UsageStats } from "../../../shared/contracts/usage";
 import { openSqliteDatabase, toFiniteNumber, toNullableNumber } from "./sqlite";
 
 export interface InferenceRequestRecord {
@@ -17,31 +18,7 @@ export interface InferenceRequestRecord {
   streamed?: boolean;
 }
 
-export type UsageAggregate = {
-  totals: {
-    total_tokens: number;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_requests: number;
-    successful_requests: number;
-    failed_requests: number;
-    success_rate: number;
-    unique_sessions: number;
-    unique_users: number;
-  };
-  latency: Record<string, number | null> & { avg_ms: number | null };
-  ttft: Record<string, number | null> & { avg_ms: number | null };
-  tokens_per_request: Record<string, number>;
-  cache: Record<string, number>;
-  week_over_week: Record<string, unknown>;
-  recent_activity: Record<string, unknown>;
-  peak_days: Array<Record<string, unknown>>;
-  peak_hours: Array<Record<string, unknown>>;
-  by_model: Array<Record<string, unknown>>;
-  daily: Array<Record<string, unknown>>;
-  daily_by_model: Array<Record<string, unknown>>;
-  hourly_pattern: Array<Record<string, unknown>>;
-};
+export type UsageAggregate = Omit<UsageStats, "controller">;
 
 interface NumberRow {
   [key: string]: number;
@@ -394,7 +371,7 @@ export class InferenceRequestStore {
         change_24h_pct: calcChangePct(toFiniteNumber(recent?.["last_24h"]), toFiniteNumber(recent?.["prev_24h"])),
       },
       peak_days: peakDays.map((row) => ({
-        date: row["date"],
+        date: String(row["date"] ?? ""),
         requests: toFiniteNumber(row["requests"]),
         tokens: toFiniteNumber(row["tokens"]),
       })),
@@ -426,7 +403,7 @@ export class InferenceRequestStore {
         const requests = toFiniteNumber(row["requests"]);
         const ok = toFiniteNumber(row["successful"]);
         return {
-          date: row["date"],
+          date: String(row["date"] ?? ""),
           requests,
           successful: ok,
           success_rate: requests ? (ok / requests) * 100 : 0,
@@ -440,7 +417,7 @@ export class InferenceRequestStore {
         const requests = toFiniteNumber(row["requests"]);
         const ok = toFiniteNumber(row["successful"]);
         return {
-          date: row["date"],
+          date: String(row["date"] ?? ""),
           model: String(row["model"] ?? "unknown"),
           requests,
           successful: ok,

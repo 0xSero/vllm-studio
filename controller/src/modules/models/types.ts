@@ -1,5 +1,5 @@
 import type { Backend as SharedBackend, RecipeBase } from "../shared/recipe-types";
-import type { ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
+import type { GPU, ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
 import type { ConfigData } from "../shared/system-types";
 
 export type { ModelInfo } from "../shared/recipe-types";
@@ -55,21 +55,6 @@ export interface LaunchResult {
   log_file: string | null;
 }
 
-export interface GpuInfo {
-  index: number;
-  name: string;
-  memory_total: number;
-  memory_total_mb: number;
-  memory_used: number;
-  memory_used_mb: number;
-  memory_free: number;
-  memory_free_mb: number;
-  utilization: number;
-  utilization_pct: number;
-  temperature: number;
-  temp_c: number;
-  power_draw: number;
-  power_limit: number;
-}
+export type GpuInfo = Required<Omit<GPU, "id">>;
 
 export type SystemConfigResponse = ConfigData;

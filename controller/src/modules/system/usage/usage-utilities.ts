@@ -1,10 +1,11 @@
+import type { UsageStats } from "../../../../../shared/contracts/usage";
 
 export const calcChange = (current: number, previous: number): number | null => {
   if (!previous || previous === 0) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 };
 
-export const emptyResponse = (): Record<string, unknown> => ({
+export const emptyResponse = (): Omit<UsageStats, "controller"> => ({
   totals: {
     total_tokens: 0,
     prompt_tokens: 0,

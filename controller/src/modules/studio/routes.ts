@@ -71,18 +71,8 @@ const copyDirectory = (source: string, target: string): void => {
   }
 };
 
-export const deriveRecommendationVramGb = (gpus: GpuInfo[]): number => {
-  if (gpus.length === 0) return 0;
-  return gpus.reduce((sum, gpu) => {
-    const gb =
-      gpu.memory_total_mb > 0
-        ? gpu.memory_total_mb / 1024
-        : gpu.memory_total > 0
-          ? gpu.memory_total / 1024 ** 3
-          : 0;
-    return sum + gb;
-  }, 0);
-};
+export const deriveRecommendationVramGb = (gpus: GpuInfo[]): number =>
+  gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
 
 const parseOptionalStringUpdate = (value: unknown): string | null | undefined => {
   if (value === undefined) return undefined;

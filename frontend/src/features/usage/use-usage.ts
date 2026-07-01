@@ -2,9 +2,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
-import type { PeakMetrics, SortDirection, SortField, UsageStats } from "@/lib/types";
+import type { PeakMetrics, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+
+import type { SortDirection, SortField } from "@/features/usage/model-performance-table-model";
 
 function normalizePeakNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;

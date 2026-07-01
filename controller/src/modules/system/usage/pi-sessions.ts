@@ -1,9 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { UsageStats } from "../../../../../shared/contracts/usage";
 import { calcChange } from "./usage-utilities";
-
-type UsagePayload = Record<string, unknown>;
 
 type UsageAccumulator = {
   totalRequests: number;
@@ -194,7 +193,7 @@ export const getUsageFromPiSessions = (
   root = piSessionsRoot(),
   now = new Date(),
   knownModels?: Set<string> // if provided, only these model names are included
-): UsagePayload | null => {
+): Omit<UsageStats, "controller"> | null => {
   const accumulator: UsageAccumulator = {
     totalRequests: 0,
     promptTokens: 0,
@@ -319,7 +318,7 @@ export const getUsageFromPiSessions = (
       generation_tps: null,
     })),
     daily: daily.map((row) => ({
-      date: row.date,
+      date: row.date ?? "",
       requests: row.requests,
       successful: row.successful,
       success_rate: 100,
@@ -328,7 +327,7 @@ export const getUsageFromPiSessions = (
       completion_tokens: row.completion_tokens,
       avg_latency_ms: 0,
     })),
-    daily_by_model: dailyByModel.map((row) => ({ ...row, success_rate: 100 })),
+    daily_by_model: dailyByModel.map((row) => ({ ...row, date: row.date ?? "", success_rate: 100 })),
     hourly_pattern: hourly,
   };
 };

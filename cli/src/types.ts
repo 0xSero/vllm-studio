@@ -6,7 +6,13 @@ export type View = 'dashboard' | 'recipes' | 'status' | 'config';
 export type GpuSummary = Required<
   Pick<
     GPU,
-    "index" | "name" | "memory_used" | "memory_total" | "utilization" | "temperature" | "power_draw"
+    | "index"
+    | "name"
+    | "memory_used_mb"
+    | "memory_total_mb"
+    | "utilization_pct"
+    | "temp_c"
+    | "power_draw"
   >
 >;
 

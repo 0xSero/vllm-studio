@@ -1,3 +1,4 @@
+import type { UsageStats } from "../../../../shared/contracts/usage";
 import { observeControllerFunction } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
@@ -31,17 +32,18 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
         "usage.aggregateInferenceRequests",
         () => context.stores.inferenceRequestStore.aggregate(knownModels)
       );
-      const response = usage ?? emptyResponse();
-      return ctx.json({
-        ...response,
+      const body: UsageStats = {
+        ...(usage ?? emptyResponse()),
         controller: context.stores.controllerRequestStore.aggregate(),
-      });
+      };
+      return ctx.json(body);
     } catch (error) {
       context.logger.error(`[Usage] Error fetching usage stats: ${(error as Error).message}`);
-      return ctx.json({
+      const body: UsageStats = {
         ...emptyResponse(),
         controller: context.stores.controllerRequestStore.aggregate(),
-      });
+      };
+      return ctx.json(body);
     }
   });
 
@@ -53,8 +55,8 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
       const usage = await observeControllerFunction(context, "usage.aggregatePiSessions", () =>
         getUsageFromPiSessions()
       );
-      if (usage) return ctx.json(usage);
-      return ctx.json(emptyResponse());
+      const body: UsageStats = usage ?? emptyResponse();
+      return ctx.json(body);
     } catch (error) {
       context.logger.error(`[Usage] Error fetching pi-sessions usage: ${(error as Error).message}`);
       return ctx.json(emptyResponse());

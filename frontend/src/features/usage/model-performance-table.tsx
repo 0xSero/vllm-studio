@@ -1,21 +1,16 @@
 "use client";
 
-import type { PeakMetrics, SortDirection, SortField } from "@/lib/types";
+import type { PeakMetrics } from "@/lib/types";
+import type { SortDirection, SortField } from "@/features/usage/model-performance-table-model";
 import { Fragment } from "react";
 import { ChevronDown, ChevronUp } from "@/ui/icon-registry";
+import { SortableTH, Table, TBody, TCell, THead, TH, TRow } from "@/ui";
 import {
   MetricMeter,
   MetricPanel,
   MiniBarChart,
-  SortableTH,
   StackedMetricBar,
-  Table,
-  TBody,
-  TCell,
-  THead,
-  TH,
-  TRow,
-} from "@/ui";
+} from "@/features/usage/metric-visuals";
 import { formatNumber, formatDurationOrUnavailable } from "@/lib/formatters";
 import { getModelColor } from "@/features/usage/colors";
 import {

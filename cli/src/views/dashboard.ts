@@ -17,11 +17,11 @@ export function renderDashboard(state: AppState): string {
     const headers = ['ID', 'Name', 'VRAM', 'Util', 'Temp', 'Power'];
     const widths = [2, 18, 15, 5, 5, 6];
     const rows = state.gpus.map(gpu => {
-      const vram = `${formatBytes(gpu.memory_used)}/${formatBytes(gpu.memory_total)}`;
-      const util = gpuColor(gpu.utilization)(`${gpu.utilization}%`);
-      const temp = gpu.temperature >= 80
-        ? c.red(`${gpu.temperature}°C`)
-        : `${gpu.temperature}°C`;
+      const vram = `${formatBytes(gpu.memory_used_mb * 1024 * 1024)}/${formatBytes(gpu.memory_total_mb * 1024 * 1024)}`;
+      const util = gpuColor(gpu.utilization_pct)(`${gpu.utilization_pct}%`);
+      const temp = gpu.temp_c >= 80
+        ? c.red(`${gpu.temp_c}°C`)
+        : `${gpu.temp_c}°C`;
       return [
         gpu.index.toString(),
         gpu.name.slice(0, 20),

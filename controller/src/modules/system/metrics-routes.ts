@@ -38,12 +38,9 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   const gpus = getGpuInfo();
   const lifetimeData = context.stores.lifetimeMetricsStore.getAll();
   const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
-  const vramUsedGb = gpus.reduce((sum, gpu) => sum + Number(gpu.memory_used_mb ?? 0) / 1024, 0);
-  const vramCapacityGb = gpus.reduce(
-    (sum, gpu) => sum + Number(gpu.memory_total_mb ?? 0) / 1024,
-    0
-  );
-  const powerLimitWatts = gpus.reduce((sum, gpu) => sum + Number(gpu.power_limit ?? 0), 0);
+  const vramUsedGb = gpus.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
+  const vramCapacityGb = gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
+  const powerLimitWatts = gpus.reduce((sum, gpu) => sum + gpu.power_limit, 0);
   const baseMetrics: Record<string, unknown> = {
     lifetime_prompt_tokens: lifetimeData["prompt_tokens_total"] ?? 0,
     lifetime_completion_tokens: lifetimeData["completion_tokens_total"] ?? 0,
