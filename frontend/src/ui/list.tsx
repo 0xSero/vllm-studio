@@ -24,9 +24,9 @@ export function ListGroup({
   const [open, setOpen] = useState(defaultOpen);
   const showBody = collapsible ? open : true;
   return (
-    <section className={cx("mb-6 last:mb-0", className)}>
+    <section className={cx("mb-8 last:mb-0", className)}>
       {title || actions ? (
-        <div className="mb-1.5 flex items-end justify-between gap-3 px-3.5">
+        <div className="mb-2 flex items-end justify-between gap-3 px-4">
           {collapsible ? (
             <button
               type="button"
@@ -51,12 +51,12 @@ export function ListGroup({
         </div>
       ) : null}
       {showBody ? (
-        <div className="overflow-hidden rounded-md border border-(--ui-border) bg-(--ui-surface) shadow-[0_1px_0_rgba(255,255,255,0.025)_inset] [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:left-3.5 [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--ui-separator) [&>*]:relative">
+        <div className="overflow-hidden rounded-lg border border-(--ui-border) bg-(--ui-surface) shadow-[0_1px_0_rgba(255,255,255,0.02)_inset] [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:left-4 [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--ui-separator) [&>*]:relative">
           {children}
         </div>
       ) : null}
       {description && showBody ? (
-        <p className="mt-1.5 px-3.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+        <p className="mt-2 px-4 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
           {description}
         </p>
       ) : null}
@@ -89,7 +89,7 @@ export function ListRow({
 
   if (variant === "resource") {
     return (
-      <div className={cx("px-3.5 py-3 transition-colors hover:bg-(--ui-hover)/35", className)}>
+      <div className={cx("px-4 py-3.5 transition-colors hover:bg-(--ui-hover)/35", className)}>
         <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <div className="min-w-0 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -124,7 +124,7 @@ export function ListRow({
   }
 
   return (
-    <div className={cx("px-3.5 py-2.5 transition-colors hover:bg-(--ui-hover)/35", className)}>
+    <div className={cx("px-4 py-3 transition-colors hover:bg-(--ui-hover)/35", className)}>
       <div className="grid min-h-7 grid-cols-1 gap-1.5 md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:items-center md:gap-5">
         <div className="min-w-0">
           <div
