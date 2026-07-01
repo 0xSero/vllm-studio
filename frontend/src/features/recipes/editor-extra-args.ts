@@ -1,3 +1,4 @@
+import { INTERNAL_RECIPE_KEYS } from "../../../../shared/contracts/engine-args";
 import { LLAMACPP_OPTION_KEYS } from "./llamacpp-options";
 import { MLX_OPTION_KEYS } from "./mlx-options";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
@@ -19,10 +20,11 @@ for (const field of EXTRA_ARG_FIELDS) {
   }
 }
 
-["env_vars", "env-vars", "envVars", "status", "launch_command", "custom_command"].forEach(
-  addReservedKeys,
-);
-["default-chat-template-kwargs", "default_chat_template_kwargs"].forEach(addReservedKeys);
+for (const key of INTERNAL_RECIPE_KEYS) {
+  addReservedKeys(key);
+}
+
+["envVars", "default-chat-template-kwargs"].forEach(addReservedKeys);
 
 for (const key of LLAMACPP_OPTION_KEYS) {
   addReservedKeys(key);

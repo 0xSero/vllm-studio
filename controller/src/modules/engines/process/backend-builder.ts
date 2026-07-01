@@ -4,6 +4,8 @@ import type { Recipe } from "../../models/types";
 import type { Config } from "../../../config/env";
 import {
   getUnknownVllmExtraArgKeys as getUnknownVllmExtraArgumentKeys,
+  isInternalRecipeKey,
+  isJsonStringArgumentKey,
   looksLikeNotesKey,
 } from "../../../../../shared/contracts/engine-args";
 import type { Logger } from "../../../core/logger";
@@ -63,28 +65,9 @@ export const appendExtraArguments = (
   command: string[],
   extraArguments: Record<string, unknown>
 ): string[] => {
-  const internalKeys = new Set([
-    "venv_path",
-    "env_vars",
-    "visible_devices",
-    "cuda_visible_devices",
-    "hip_visible_devices",
-    "rocr_visible_devices",
-    "description",
-    "tags",
-    "status",
-    "llama_bin",
-    "mlx_python",
-    "launch_command",
-    "custom_command",
-    "docker_container",
-    "docker_image",
-    "docker-container",
-  ]);
-  const jsonStringKeys = new Set(["speculative_config", "default_chat_template_kwargs"]);
   for (const [key, value] of Object.entries(extraArguments)) {
     const normalizedKey = key.replace(/-/g, "_").toLowerCase();
-    if (internalKeys.has(normalizedKey)) {
+    if (isInternalRecipeKey(key)) {
       continue;
     }
     const flag = `--${key.replace(/_/g, "-")}`;
@@ -104,7 +87,7 @@ export const appendExtraArguments = (
     if (value === undefined || value === null) {
       continue;
     }
-    if (typeof value === "string" && jsonStringKeys.has(normalizedKey)) {
+    if (typeof value === "string" && isJsonStringArgumentKey(key)) {
       const trimmed = value.trim();
       if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try {
@@ -423,24 +406,8 @@ export const appendLlamacppArguments = (
   command: string[],
   extraArguments: Record<string, unknown>
 ): string[] => {
-  const internalKeys = new Set([
-    "venv_path",
-    "env_vars",
-    "visible_devices",
-    "cuda_visible_devices",
-    "hip_visible_devices",
-    "rocr_visible_devices",
-    "description",
-    "tags",
-    "status",
-    "llama_bin",
-    "docker_container",
-    "docker_image",
-    "docker-container",
-  ]);
   for (const [key, value] of Object.entries(extraArguments)) {
-    const normalizedKey = key.replace(/-/g, "_").toLowerCase();
-    if (internalKeys.has(normalizedKey)) {
+    if (isInternalRecipeKey(key)) {
       continue;
     }
     const flag = `--${key.replace(/_/g, "-")}`;

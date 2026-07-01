@@ -56,7 +56,6 @@ export function RecipesContent() {
       runningRecipeName={model.derived.runningRecipe?.name ?? null}
       launchProgressMessage={model.launchProgress?.message ?? null}
       availableModels={model.availableModels}
-      modelServedNames={model.modelServedNames}
       sortedRecipes={model.derived.sortedRecipes}
       onRefresh={model.actions.handleRefresh}
       onNewRecipe={model.actions.handleNewRecipe}

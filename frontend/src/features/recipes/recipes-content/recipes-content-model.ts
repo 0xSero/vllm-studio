@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
-import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { delay } from "@/lib/async";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 import { DEFAULT_RECIPE } from "./default-recipe";
+import type { RecipesTableProps } from "./types";
 import { useRecipesDerived } from "./use-recipes-derived";
 
 export type RecipesContentTab = "recipes" | "explore" | "downloads";
@@ -32,7 +33,7 @@ export function useRecipesContentModel() {
 
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
 
-  const { launchProgress } = useRealtimeStatus();
+  const { launchProgress } = useRealtimeStatusStore();
 
   useMountSubscription(() => {
     try {
@@ -197,6 +198,35 @@ export function useRecipesContentModel() {
     deleteConfirm,
   });
 
+  const table = useMemo<RecipesTableProps>(
+    () => ({
+      recipes: derived.sortedRecipes,
+      pinnedRecipes,
+      recipeMenuOpen,
+      launching,
+      runningRecipeId,
+      onTogglePin: togglePin,
+      onToggleMenu: handleToggleRecipeMenu,
+      onLaunch: handleLaunchRecipe,
+      onStop: handleEvictModel,
+      onEdit: handleEditRecipe,
+      onRequestDelete: handleRequestDelete,
+    }),
+    [
+      derived.sortedRecipes,
+      pinnedRecipes,
+      recipeMenuOpen,
+      launching,
+      runningRecipeId,
+      togglePin,
+      handleToggleRecipeMenu,
+      handleLaunchRecipe,
+      handleEvictModel,
+      handleEditRecipe,
+      handleRequestDelete,
+    ],
+  );
+
   return {
     tab,
     setTab,
@@ -217,13 +247,13 @@ export function useRecipesContentModel() {
     setModalRecipe,
     saving,
     availableModels,
-    modelServedNames: derived.modelServedNames,
     launchProgress,
     derived: {
       sortedRecipes: derived.sortedRecipes,
       runningRecipe: derived.runningRecipe,
       deleteRecipe: derived.deleteRecipe,
     },
+    table,
     actions: {
       handleRefresh,
       handleNewRecipe,

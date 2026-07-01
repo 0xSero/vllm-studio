@@ -11,80 +11,132 @@ import type { Backend } from "./recipes";
  * engines.
  */
 
+export type EngineArgType = "string" | "number" | "boolean";
+
+/**
+ * - `vllm`: vLLM-only secondary flag; stripped before launching other engines.
+ * - `shared`: structured editor field whose flag other engines also accept.
+ * - `device`: launch-control key handled out-of-band, never emitted as a flag.
+ */
+type EngineArgScope = "vllm" | "shared" | "device";
+
+type EngineArgSpec = {
+  readonly field: string;
+  readonly type: EngineArgType;
+  readonly scope: EngineArgScope;
+  readonly aliases?: readonly string[];
+};
+
+/** Canonical kebab-case CLI key for a spec's snake_case field name. */
+export const engineArgKey = (field: string): string => field.replace(/_/g, "-");
+
 /** Normalize a CLI/extra-arg key to canonical kebab-case for comparison. */
 export const normalizeEngineArgKey = (key: string): string =>
   key.replace(/_/g, "-").toLowerCase().trim();
 
 /**
- * vLLM-only secondary flags (canonical kebab-case). These mirror the editor's
- * structured vLLM fields. The list deliberately excludes:
- *  - flags shared with other engines (e.g. `chat-template`),
- *  - device/env keys handled out-of-band (`*-visible-devices`),
- *  - launch overrides and metadata (`launch_command`, `env_vars`, ...).
+ * The structured extra-arg field table: one row per editor field, in editor
+ * display order. CLI keys, engine scoping, and editor field derivations all
+ * flow from here.
  */
-export const VLLM_ONLY_FLAG_KEYS: readonly string[] = [
-  "tokenizer",
-  "tokenizer-mode",
-  "seed",
-  "revision",
-  "code-revision",
-  "load-format",
-  "quantization-param-path",
-  "response-role",
-  "chat-template-content-format",
-  "block-size",
-  "swap-space",
-  "cpu-offload-gb",
-  "num-gpu-blocks-override",
-  "enable-prefix-caching",
-  "enable-chunked-prefill",
-  "max-num-batched-tokens",
-  "scheduling-policy",
-  "max-paddings",
-  "data-parallel-size",
-  "enable-expert-parallel",
-  "enforce-eager",
-  "disable-cuda-graph",
-  "cuda-graph-max-bs",
-  "disable-custom-all-reduce",
-  "use-v2-block-manager",
-  "compilation-config",
-  "speculative-model",
-  "speculative-model-quantization",
-  "num-speculative-tokens",
-  "speculative-draft-tensor-parallel-size",
-  "speculative-max-model-len",
-  "speculative-disable-mqa-scorer",
-  "spec-decoding-acceptance-method",
-  "typical-acceptance-sampler-posterior-threshold",
-  "typical-acceptance-sampler-posterior-alpha",
-  "ngram-prompt-lookup-max",
-  "ngram-prompt-lookup-min",
-  "guided-decoding-backend",
-  "tool-parser-plugin",
-  "enable-lora",
-  "max-loras",
-  "max-lora-rank",
-  "lora-extra-vocab-size",
-  "lora-dtype",
-  "long-lora-scaling-factors",
-  "fully-sharded-loras",
-  "image-input-type",
-  "image-token-id",
-  "image-input-shape",
-  "image-feature-size",
-  "limit-mm-per-prompt",
-  "mm-processor-kwargs",
-  "allowed-local-media-path",
-  "disable-log-requests",
-  "disable-log-stats",
-  "max-log-len",
-  "uvicorn-log-level",
-  "disable-frontend-multiprocessing",
-  "enable-request-id-headers",
-  "disable-fastapi-docs",
-  "return-tokens-as-token-ids",
-];
+export const ENGINE_ARG_SPECS = [
+  { field: "tokenizer", type: "string", scope: "vllm" },
+  { field: "tokenizer_mode", type: "string", scope: "vllm" },
+  { field: "seed", type: "number", scope: "vllm" },
+  { field: "revision", type: "string", scope: "vllm" },
+  { field: "code_revision", type: "string", scope: "vllm" },
+  { field: "load_format", type: "string", scope: "vllm" },
+  { field: "quantization_param_path", type: "string", scope: "vllm" },
+  { field: "chat_template", type: "string", scope: "shared" },
+  { field: "chat_template_content_format", type: "string", scope: "vllm" },
+  { field: "response_role", type: "string", scope: "vllm" },
+  { field: "block_size", type: "number", scope: "vllm" },
+  { field: "swap_space", type: "number", scope: "vllm" },
+  { field: "cpu_offload_gb", type: "number", scope: "vllm" },
+  { field: "num_gpu_blocks_override", type: "number", scope: "vllm" },
+  { field: "enable_prefix_caching", type: "boolean", scope: "vllm" },
+  { field: "enable_chunked_prefill", type: "boolean", scope: "vllm" },
+  { field: "max_num_batched_tokens", type: "number", scope: "vllm" },
+  { field: "scheduling_policy", type: "string", scope: "vllm" },
+  { field: "max_paddings", type: "number", scope: "vllm" },
+  { field: "data_parallel_size", type: "number", scope: "vllm" },
+  { field: "enable_expert_parallel", type: "boolean", scope: "vllm" },
+  { field: "enforce_eager", type: "boolean", scope: "vllm" },
+  { field: "disable_cuda_graph", type: "boolean", scope: "vllm" },
+  { field: "cuda_graph_max_bs", type: "number", scope: "vllm" },
+  { field: "disable_custom_all_reduce", type: "boolean", scope: "vllm" },
+  { field: "use_v2_block_manager", type: "boolean", scope: "vllm" },
+  { field: "compilation_config", type: "string", scope: "vllm" },
+  { field: "speculative_model", type: "string", scope: "vllm" },
+  { field: "speculative_model_quantization", type: "string", scope: "vllm" },
+  { field: "num_speculative_tokens", type: "number", scope: "vllm" },
+  { field: "speculative_draft_tensor_parallel_size", type: "number", scope: "vllm" },
+  { field: "speculative_max_model_len", type: "number", scope: "vllm" },
+  { field: "speculative_disable_mqa_scorer", type: "boolean", scope: "vllm" },
+  { field: "spec_decoding_acceptance_method", type: "string", scope: "vllm" },
+  { field: "typical_acceptance_sampler_posterior_threshold", type: "number", scope: "vllm" },
+  { field: "typical_acceptance_sampler_posterior_alpha", type: "number", scope: "vllm" },
+  { field: "ngram_prompt_lookup_max", type: "number", scope: "vllm" },
+  { field: "ngram_prompt_lookup_min", type: "number", scope: "vllm" },
+  { field: "guided_decoding_backend", type: "string", scope: "vllm" },
+  { field: "tool_parser_plugin", type: "string", scope: "vllm" },
+  { field: "enable_lora", type: "boolean", scope: "vllm" },
+  { field: "max_loras", type: "number", scope: "vllm" },
+  { field: "max_lora_rank", type: "number", scope: "vllm" },
+  { field: "lora_extra_vocab_size", type: "number", scope: "vllm" },
+  { field: "lora_dtype", type: "string", scope: "vllm" },
+  { field: "long_lora_scaling_factors", type: "string", scope: "vllm" },
+  { field: "fully_sharded_loras", type: "boolean", scope: "vllm" },
+  { field: "image_input_type", type: "string", scope: "vllm" },
+  { field: "image_token_id", type: "number", scope: "vllm" },
+  { field: "image_input_shape", type: "string", scope: "vllm" },
+  { field: "image_feature_size", type: "number", scope: "vllm" },
+  { field: "limit_mm_per_prompt", type: "string", scope: "vllm" },
+  { field: "mm_processor_kwargs", type: "string", scope: "vllm" },
+  { field: "allowed_local_media_path", type: "string", scope: "vllm" },
+  { field: "disable_log_requests", type: "boolean", scope: "vllm" },
+  { field: "disable_log_stats", type: "boolean", scope: "vllm" },
+  { field: "max_log_len", type: "number", scope: "vllm" },
+  { field: "uvicorn_log_level", type: "string", scope: "vllm" },
+  { field: "disable_frontend_multiprocessing", type: "boolean", scope: "vllm" },
+  { field: "enable_request_id_headers", type: "boolean", scope: "vllm" },
+  { field: "disable_fastapi_docs", type: "boolean", scope: "vllm" },
+  { field: "return_tokens_as_token_ids", type: "boolean", scope: "vllm" },
+  {
+    field: "visible_devices",
+    type: "string",
+    scope: "device",
+    aliases: [
+      "VISIBLE_DEVICES",
+      "visible_devices",
+      "CUDA_VISIBLE_DEVICES",
+      "cuda_visible_devices",
+      "cuda-visible-devices",
+    ],
+  },
+  {
+    field: "cuda_visible_devices",
+    type: "string",
+    scope: "device",
+    aliases: ["CUDA_VISIBLE_DEVICES", "cuda_visible_devices"],
+  },
+  {
+    field: "hip_visible_devices",
+    type: "string",
+    scope: "device",
+    aliases: ["HIP_VISIBLE_DEVICES", "hip_visible_devices"],
+  },
+  {
+    field: "rocr_visible_devices",
+    type: "string",
+    scope: "device",
+    aliases: ["ROCR_VISIBLE_DEVICES", "rocr_visible_devices"],
+  },
+] as const satisfies readonly EngineArgSpec[];
+
+export const VLLM_ONLY_FLAG_KEYS: readonly string[] = ENGINE_ARG_SPECS.filter(
+  (spec) => spec.scope === "vllm",
+).map((spec) => engineArgKey(spec.field));
 
 /**
  * vLLM flags that SGLang also accepts under the same name. These are kept when
@@ -127,9 +179,7 @@ const SGLANG_COMPATIBLE_VLLM_KEYS: ReadonlySet<string> = new Set([
   "log-requests",
 ]);
 
-const VLLM_ONLY_FLAG_KEY_SET: ReadonlySet<string> = new Set(
-  VLLM_ONLY_FLAG_KEYS.map(normalizeEngineArgKey),
-);
+const VLLM_ONLY_FLAG_KEY_SET: ReadonlySet<string> = new Set(VLLM_ONLY_FLAG_KEYS);
 
 /** Keys that do not belong to `backend` and must be stripped before launch. */
 export const getForeignFlagKeys = (backend: Backend): ReadonlySet<string> => {
@@ -164,7 +214,7 @@ export const stripForeignFlagKeys = (
 
 /**
  * Broad allowlist of vLLM `serve` CLI flags that may safely be forwarded as
- * `extra_args` (canonical kebab-case). Built from `VLLM_ONLY_FLAG_KEYS`,
+ * `extra_args` (canonical kebab-case). Built from the spec table,
  * `SGLANG_COMPATIBLE_VLLM_KEYS`, plus recipe fields the editor exposes as
  * structured inputs.
  *
@@ -175,8 +225,10 @@ export const stripForeignFlagKeys = (
  * annotations that got stored in `extra_args`).
  */
 export const KNOWN_VLLM_EXTRA_ARG_KEYS: ReadonlySet<string> = new Set([
-  ...VLLM_ONLY_FLAG_KEYS.map(normalizeEngineArgKey),
-  ...Array.from(SGLANG_COMPATIBLE_VLLM_KEYS),
+  ...ENGINE_ARG_SPECS.filter((spec) => spec.scope !== "device").map((spec) =>
+    engineArgKey(spec.field),
+  ),
+  ...SGLANG_COMPATIBLE_VLLM_KEYS,
   // Recipe fields also surfaced via extra_args by the editor (defensively
   // allowed here so a typo there never blocks launch).
   "tensor-parallel-size",
@@ -200,11 +252,6 @@ export const KNOWN_VLLM_EXTRA_ARG_KEYS: ReadonlySet<string> = new Set([
   "hf-overrides",
   "speculative-config",
   "speculative-config-2",
-  "compilation-config",
-  "enable-prefix-caching",
-  "enable-chunked-prefill",
-  "load-format",
-  "max-num-batched-tokens",
   "decode-context-parallel-size",
   "dcp-comm-backend",
   "dcp-kv-cache-interleave-size",
@@ -239,13 +286,12 @@ const VLLM_EXPERIMENTAL_PREFIXES: readonly string[] = [
  * never emitted as CLI flags. Recognised here so they are not surfaced as
  * "unknown" extra-args (which would log a misleading drop warning every launch).
  */
-const INTERNAL_RECIPE_KEYS: ReadonlySet<string> = new Set([
+export const INTERNAL_RECIPE_KEYS: ReadonlySet<string> = new Set([
+  ...ENGINE_ARG_SPECS.filter((spec) => spec.scope === "device").map((spec) =>
+    engineArgKey(spec.field),
+  ),
   "venv-path",
   "env-vars",
-  "visible-devices",
-  "cuda-visible-devices",
-  "hip-visible-devices",
-  "rocr-visible-devices",
   "description",
   "tags",
   "status",
@@ -257,6 +303,18 @@ const INTERNAL_RECIPE_KEYS: ReadonlySet<string> = new Set([
   "docker-container",
   "docker-image",
 ]);
+
+export const isInternalRecipeKey = (key: string): boolean =>
+  INTERNAL_RECIPE_KEYS.has(normalizeEngineArgKey(key));
+
+/** Extra-arg keys whose string values are JSON payloads to re-serialize compactly. */
+const JSON_STRING_ARG_KEYS: ReadonlySet<string> = new Set([
+  "speculative-config",
+  "default-chat-template-kwargs",
+]);
+
+export const isJsonStringArgumentKey = (key: string): boolean =>
+  JSON_STRING_ARG_KEYS.has(normalizeEngineArgKey(key));
 
 /**
  * Returns true if `key` is a known vLLM extra-arg flag, an internal recipe

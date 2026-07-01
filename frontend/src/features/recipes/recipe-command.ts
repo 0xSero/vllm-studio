@@ -1,29 +1,18 @@
+import {
+  isInternalRecipeKey,
+  isJsonStringArgumentKey,
+} from "../../../../shared/contracts/engine-args";
 import type { RecipeEditor } from "./recipe-editor";
 import { normalizeExtraArgKey } from "./extra-args";
 import { prepareRecipeForSave } from "./prepare-recipe";
 
 const appendExtraArgsToCommand = (args: string[], extraArgs: Record<string, unknown>): string[] => {
-  const internalKeys = new Set([
-    "venv_path",
-    "env_vars",
-    "visible_devices",
-    "cuda_visible_devices",
-    "hip_visible_devices",
-    "rocr_visible_devices",
-    "description",
-    "tags",
-    "status",
-    "launch_command",
-    "custom_command",
-  ]);
-  const jsonStringKeys = new Set(["speculative_config", "default_chat_template_kwargs"]);
   const existingFlags = new Set(
     args.flatMap((line) => line.split(" ").filter((part) => part.startsWith("--"))),
   );
 
   for (const [key, value] of Object.entries(extraArgs)) {
-    const normalizedKey = normalizeExtraArgKey(key);
-    if (internalKeys.has(normalizedKey)) continue;
+    if (isInternalRecipeKey(key)) continue;
 
     const flag = `--${key.replace(/_/g, "-")}`;
     if (existingFlags.has(flag)) continue;
@@ -35,7 +24,7 @@ const appendExtraArgsToCommand = (args: string[], extraArgs: Record<string, unkn
     }
     if (value === undefined || value === null || value === "") continue;
 
-    if (typeof value === "string" && jsonStringKeys.has(normalizedKey)) {
+    if (typeof value === "string" && isJsonStringArgumentKey(key)) {
       const trimmed = value.trim();
       if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try {
@@ -73,21 +62,8 @@ const appendLlamacppArgsToCommand = (
   args: string[],
   extraArgs: Record<string, unknown>,
 ): string[] => {
-  const internalKeys = new Set([
-    "venv_path",
-    "env_vars",
-    "visible_devices",
-    "cuda_visible_devices",
-    "hip_visible_devices",
-    "rocr_visible_devices",
-    "description",
-    "tags",
-    "status",
-  ]);
-
   for (const [key, value] of Object.entries(extraArgs)) {
-    const normalizedKey = normalizeExtraArgKey(key);
-    if (internalKeys.has(normalizedKey)) continue;
+    if (isInternalRecipeKey(key)) continue;
 
     const flag = `--${key.replace(/_/g, "-")}`;
     if (args.some((entry) => entry.startsWith(flag))) continue;

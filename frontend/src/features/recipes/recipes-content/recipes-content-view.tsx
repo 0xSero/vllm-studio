@@ -31,7 +31,6 @@ type Props = {
   runningRecipeName: string | null;
   launchProgressMessage: string | null;
   availableModels: ModelInfo[];
-  modelServedNames: Record<string, string>;
   sortedRecipes: RecipeWithStatus[];
   onRefresh: () => void;
   onNewRecipe: () => void;
@@ -88,7 +87,6 @@ export function RecipesContentView(props: Props) {
     runningRecipeName,
     launchProgressMessage,
     availableModels,
-    modelServedNames,
     sortedRecipes,
     onRefresh,
     onNewRecipe,
