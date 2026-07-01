@@ -6,11 +6,6 @@ export interface DesktopServerRuntime {
   mode: "dev-server" | "embedded-standalone";
 }
 
-export interface DesktopReleaseChannel {
-  name: "stable" | "beta" | "alpha";
-  allowPrerelease: boolean;
-}
-
 export interface DesktopUpdateSnapshot {
   status:
     | "idle"

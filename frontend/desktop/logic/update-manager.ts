@@ -39,7 +39,7 @@ function ensureFeedConfigured(): { ok: true; url: string } | { ok: false; reason
   autoUpdater.setFeedURL({
     provider: "generic",
     url: feedUrl,
-    channel: DESKTOP_CONFIG.releaseChannel.name,
+    channel: "stable",
   });
 
   return { ok: true, url: feedUrl };
@@ -80,7 +80,7 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
 
   try {
     setUpdateState({ status: "checking" });
-    autoUpdater.allowPrerelease = DESKTOP_CONFIG.releaseChannel.allowPrerelease;
+    autoUpdater.allowPrerelease = false;
     await autoUpdater.checkForUpdates();
     return latestUpdateState;
   } catch (error) {
