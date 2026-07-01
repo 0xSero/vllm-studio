@@ -376,7 +376,27 @@ the audit commands below at the start of each iteration to see current counts.
         after) — see "Discovered issues" below, not caused by this split.
         Frontend lint/typecheck/cycles/ui-structure/deadcode/dupes/depcheck/
         build all green.
-  - [ ] `frontend/src/features/agent/browser-host/browser-host.ts` (715)
+  - [x] `frontend/src/features/agent/browser-host/browser-host.ts` (was 715,
+        fixed 2026-07-01: now 441 lines. Split out `hosted-page.ts` (283
+        lines) — the `HostedPage` class, a fully self-contained wrapper
+        around one CDP page connection (console ring, ref map, screencast
+        fanout), along with the types only it uses (`ConsoleEntry`,
+        `PageState`, `ScreencastFrame`, subscriber types, `CdpTarget`) and
+        its one private helper (`remoteObjectText`). `browser-host.ts` keeps
+        the `BrowserHost` manager class, the target-discovery helpers
+        (`fetchTargets`, `createBlankPage`), and the input-event helpers
+        (`mouseEvent`, `keyEvent`, `clampDelta`), importing `HostedPage` and
+        re-exporting the page-level types so the module's public surface
+        (`browserHost`, `MouseInput`, `KeyInput` — confirmed via grep to be
+        the only things any of the 5 API-route consumers actually import) is
+        unchanged. Also fixed a raw `new Promise(resolve => setTimeout(...))`
+        found in `fetchTargets`'s retry-poll loop while restructuring —
+        replaced with the existing `delay()` Effect helper from `lib/
+        async.ts`. No dedicated tests exist for this module (a pre-existing
+        gap, not introduced here); verified via typecheck/lint/cycles/
+        ui-structure/deadcode/dupes/depcheck/build, all green — this was a
+        careful line-for-line relocation with the one intentional async fix,
+        not a rewrite.
   - [ ] `frontend/src/features/agent/runtime/session-runtime-controller.ts` (709)
   - [ ] `frontend/src/hooks/realtime-status-store.ts` (678)
   - [ ] `frontend/src/features/agent/ui/agent-browser.tsx` (676)
@@ -673,3 +693,23 @@ the audit commands below at the start of each iteration to see current counts.
   `realtime-status-store.ts` 678 are next) — same read-fully-then-split
   discipline, and keep using `git stash` to separate "pre-existing failure"
   from "did I just break this" before assuming a refactor is safe.
+
+- **2026-07-01 (iter 11)**: split `browser-host.ts` (715 → 441 lines) — see
+  Part C checklist above. Confirmed via grep before touching anything that
+  the module's only external consumers (5 API routes) import just
+  `browserHost`/`MouseInput`/`KeyInput`, so extracting the fully
+  self-contained `HostedPage` class into its own `hosted-page.ts` (283
+  lines) needed no public-surface changes. Also fixed a raw-Promise
+  `setTimeout` poll loop found in `fetchTargets` while in there — replaced
+  with the existing `delay()` Effect helper. This module (server-side CDP
+  browser automation) has no dedicated automated tests, a pre-existing gap;
+  relied on careful line-for-line code review plus typecheck/lint/cycles/
+  ui-structure/deadcode/dupes/depcheck/build all green as the verification
+  bar, same as steps 5/6 in Part B when touching untested infrastructure.
+  Next iteration: `session-runtime-controller.ts` (709 lines) is next on the
+  list, but per project memory it was deliberately consolidated for careful
+  ordering in a prior session (2026-06-09) — read it fully and check
+  `docs/`/memory context for *why* before splitting, since this one may be
+  more order-sensitive than a typical file-size target. `realtime-status-
+  store.ts` (678) is a safer fallback if `session-runtime-controller.ts`
+  looks too risky to touch without more context.
