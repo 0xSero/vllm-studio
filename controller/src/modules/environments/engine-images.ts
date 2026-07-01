@@ -2,27 +2,13 @@ import { spawn } from "node:child_process";
 import { resolveBinary, runCommand } from "../../core/command";
 import { DEFAULT_ENGINE_IMAGE_SPECS, resolveEnvironmentImage } from "./image-registry";
 import type { EnvironmentEngineId } from "./types";
+import type {
+  EngineImage,
+  EngineImagePull,
+  EngineImagesInfo,
+} from "../../../../shared/contracts/environments";
 
-export interface EngineImage {
-  image: string;
-  tag: string;
-  size: string;
-}
-
-export interface EngineImagePull {
-  image: string;
-  status: "pulling" | "done" | "failed";
-  startedAt: string;
-  error: string | null;
-}
-
-export interface EngineImagesInfo {
-  id: EnvironmentEngineId;
-  repository: string;
-  defaultImage: string;
-  images: EngineImage[];
-  pulls: EngineImagePull[];
-}
+export type { EngineImage, EngineImagePull, EngineImagesInfo };
 
 const ENGINE_IMAGE_REPOSITORIES: Record<EnvironmentEngineId, string> = {
   vllm: "vllm/vllm-openai",

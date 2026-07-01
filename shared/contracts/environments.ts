@@ -14,3 +14,24 @@ export interface Environment {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface EngineImage {
+  image: string;
+  tag: string;
+  size: string;
+}
+
+export interface EngineImagePull {
+  image: string;
+  status: "pulling" | "done" | "failed";
+  startedAt: string;
+  error: string | null;
+}
+
+export interface EngineImagesInfo {
+  id: EnvironmentEngineId;
+  repository: string;
+  defaultImage: string;
+  images: EngineImage[];
+  pulls: EngineImagePull[];
+}

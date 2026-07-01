@@ -100,20 +100,11 @@ export interface EnvironmentPayload {
   image?: string;
 }
 
-export interface EngineImagePull {
-  image: string;
-  status: "pulling" | "done" | "failed";
-  startedAt: string;
-  error: string | null;
-}
-
-export interface EngineImagesInfo {
-  id: EnvironmentEngineId;
-  repository: string;
-  defaultImage: string;
-  images: Array<{ image: string; tag: string; size: string }>;
-  pulls: EngineImagePull[];
-}
+export type {
+  EngineImage,
+  EngineImagePull,
+  EngineImagesInfo,
+} from "../../../shared/contracts/environments";
 
 // --- Launch progress ---
 
