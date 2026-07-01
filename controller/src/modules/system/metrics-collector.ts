@@ -2,27 +2,21 @@ import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import { delay } from "../../core/async";
-import { listLogFiles, resolveExistingLogPath, tailFileLines } from "../../core/log-files";
 import { fetchLocal } from "../../http/local-fetch";
-import { isRecipeRunning } from "../models/recipes/recipe-matching";
-import type { ProcessInfo, Recipe } from "../models/types";
+import { LLAMACPP_TPS_STALE_MS, scrapeLlamacppThroughput } from "./llamacpp-throughput";
+import {
+  bumpBestLower,
+  bumpPeak,
+  emptyPeaks,
+  firstMetric,
+  positiveOrUndefined,
+  type SessionPeaks,
+} from "./metrics-peaks";
 
 const METRICS_HTTP_TIMEOUT_MS = 5_000;
 const METRICS_RUNTIME_SUMMARY_INTERVAL_MS = 30_000;
 const METRICS_COLLECT_INTERVAL_MS = 5_000;
 const METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS = 5;
-
-const LLAMACPP_LOG_TAIL_LINES = 240;
-const LLAMACPP_TPS_STALE_MS = 15_000;
-const TOKENS_PER_SECOND_PATTERN = /([0-9]+(?:\.[0-9]+)?)\s*tokens\s+per\s+second/i;
-const PROMPT_EVAL_PATTERN = /prompt eval time\s*=/i;
-const EVAL_PATTERN = /(^|\s)eval time\s*=/i;
-
-interface LlamacppThroughputSample {
-  promptTps: number;
-  generationTps: number;
-  sampleKey: string;
-}
 
 type UsageAggregate = {
   totals?: {
@@ -33,127 +27,6 @@ type UsageAggregate = {
   };
   latency?: { avg_ms?: number | null };
   ttft?: { avg_ms?: number | null };
-};
-
-const parseTokensPerSecond = (line: string): number | null => {
-  const match = line.match(TOKENS_PER_SECOND_PATTERN);
-  if (!match?.[1]) return null;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return value;
-};
-
-const parseLlamacppThroughputFromLines = (lines: string[]): LlamacppThroughputSample | null => {
-  if (lines.length === 0) return null;
-
-  let promptLine = "";
-  let evalLine = "";
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index] ?? "";
-    if (!promptLine && PROMPT_EVAL_PATTERN.test(line)) {
-      promptLine = line;
-      continue;
-    }
-    if (!evalLine && EVAL_PATTERN.test(line) && !PROMPT_EVAL_PATTERN.test(line)) {
-      evalLine = line;
-    }
-    if (promptLine && evalLine) break;
-  }
-
-  const promptTps = promptLine ? (parseTokensPerSecond(promptLine) ?? 0) : 0;
-  const generationTps = evalLine ? (parseTokensPerSecond(evalLine) ?? 0) : 0;
-  if (promptTps <= 0 && generationTps <= 0) return null;
-
-  return {
-    promptTps,
-    generationTps,
-    sampleKey: `${promptLine}::${evalLine}`,
-  };
-};
-
-const findRunningRecipeForProcess = (context: AppContext, current: ProcessInfo): Recipe | null => {
-  const recipes = context.stores.recipeStore.list();
-  return (
-    recipes.find((recipe) =>
-      isRecipeRunning(recipe, current, {
-        allowCurrentContainsRecipePath: true,
-      })
-    ) ?? null
-  );
-};
-
-const scrapeLlamacppThroughput = (
-  context: AppContext,
-  current: ProcessInfo
-): LlamacppThroughputSample | null => {
-  const recipe = findRunningRecipeForProcess(context, current);
-  const recipeLogPath = recipe ? resolveExistingLogPath(context.config.data_dir, recipe.id) : null;
-  const servedName = (current.served_model_name ?? "").toLowerCase();
-
-  let logPath = recipeLogPath;
-  if (!logPath) {
-    const entries = listLogFiles(context.config.data_dir).filter(
-      (entry) => entry.sessionId !== "controller"
-    );
-    const byName =
-      servedName.length > 0
-        ? entries.find((entry) => entry.sessionId.toLowerCase().includes(servedName))
-        : null;
-    logPath = byName?.path ?? entries[0]?.path ?? null;
-  }
-
-  if (!logPath) return null;
-  const lines = tailFileLines(logPath, LLAMACPP_LOG_TAIL_LINES);
-  return parseLlamacppThroughputFromLines(lines);
-};
-
-const positiveOrUndefined = (value: unknown): number | undefined => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-interface SessionPeaks {
-  prompt_throughput: number;
-  generation_throughput: number;
-  ttft_ms: number;
-  kv_cache_usage: number;
-  running_requests: number;
-  power_watts: number;
-  vram_used_gb: number;
-}
-
-const emptyPeaks = (): SessionPeaks => ({
-  prompt_throughput: 0,
-  generation_throughput: 0,
-  ttft_ms: 0,
-  kv_cache_usage: 0,
-  running_requests: 0,
-  power_watts: 0,
-  vram_used_gb: 0,
-});
-
-const bumpPeak = (peaks: SessionPeaks, key: keyof SessionPeaks, value: number): void => {
-  if (Number.isFinite(value) && value > peaks[key]) peaks[key] = value;
-};
-
-const bumpBestLower = (peaks: SessionPeaks, key: keyof SessionPeaks, value: number): void => {
-  if (!Number.isFinite(value) || value <= 0) return;
-  if (peaks[key] === 0 || value < peaks[key]) peaks[key] = value;
-};
-
-/**
- * Return the first finite Prometheus metric value for a list of compatible metric names.
- * @param metrics - Scraped Prometheus metrics keyed by metric name.
- * @param names - Candidate metric names in priority order.
- * @returns First finite metric value, or zero when none exists.
- */
-const firstMetric = (metrics: Record<string, number>, names: string[]): number => {
-  for (const name of names) {
-    const value = metrics[name];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-  return 0;
 };
 
 export const startMetricsCollector = (context: AppContext): (() => void) => {

@@ -515,7 +515,25 @@ the audit commands below at the start of each iteration to see current counts.
         build all green; no tests reference this file directly; full e2e
         suite shows the same 4 pre-existing failures as iterations
         2/10/12/13/14/15/16, nothing new broken.
-  - [ ] `controller/src/modules/system/metrics-collector.ts` (565)
+  - [x] `controller/src/modules/system/metrics-collector.ts` (565 → 438) —
+        the first CONTROLLER file-size split in this loop. Split by
+        concern, following the kebab-case `<domain>-<concern>.ts` naming
+        already used in `modules/engines/specs/`/`runtimes/`:
+        `llamacpp-throughput.ts` (89: llama.cpp-specific log-tail parsing —
+        `scrapeLlamacppThroughput`, `parseLlamacppThroughputFromLines`,
+        `parseTokensPerSecond`, `findRunningRecipeForProcess`, the
+        `LlamacppThroughputSample` type) and `metrics-peaks.ts` (47: pure
+        peak-tracking math — `SessionPeaks` type, `emptyPeaks`, `bumpPeak`,
+        `bumpBestLower`, `positiveOrUndefined`, `firstMetric`). Both were
+        genuinely separable: no shared state with `startMetricsCollector`'s
+        closure, only `context`/plain values as params. Confirmed via grep
+        that only `startMetricsCollector` is consumed externally (from
+        `main.ts`). Verified: `bun run typecheck`/`lint`/`standards`
+        (controller's own conventions audit) all clean; `bun run check`
+        (knip/jscpd/depcheck) shows only the pre-existing `redactLogContent`
+        knip false positive (confirmed via `git stash` still present on
+        unmodified `main`, matching the already-documented note below);
+        `test:unit` (4/4) and `test:integration` (122/122) both pass.
   - [ ] `frontend/src/lib/api/core.ts` (558)
   - [ ] `controller/src/modules/proxy/openai-routes.ts` (554)
   - [ ] `frontend/src/app/api/proxy/[...path]/route.ts` (542)
@@ -925,3 +943,21 @@ the audit commands below at the start of each iteration to see current counts.
   controller file for the house route/module conventions before touching
   it. `session-runtime-controller.ts` stays deferred until a dedicated
   pass.
+
+- **2026-07-01 (iter 18)**: split `metrics-collector.ts` (565 → 438) — see
+  the Part C checklist above for the breakdown. First controller-side
+  split of this loop; used the controller's own verification bar instead
+  of the frontend one: `bun run typecheck`, `bun run lint`, `bun run
+  standards` (the repo's own controller-conventions audit script — clean,
+  0 errors/0 warnings across 116 file entries), `bun run check`
+  (knip/jscpd/depcheck), `bun test src` (unit), and `bun test
+  ../tests/controller/integration` (integration) — there's no controller
+  equivalent of the frontend's production build step. Used `git stash` to
+  confirm the one knip complaint (`redactLogContent`) is the
+  already-documented pre-existing false positive, not something this
+  split introduced. All 122 integration + 4 unit tests pass; no test
+  touches this file's internals directly (only the public
+  `startMetricsCollector` export, which didn't move or change shape).
+  Next iteration: `frontend/src/lib/api/core.ts` (558) is next on the Part
+  C list, back on the frontend side; `session-runtime-controller.ts`
+  stays deferred until a dedicated pass.
