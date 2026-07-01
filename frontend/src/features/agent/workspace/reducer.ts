@@ -126,7 +126,6 @@ function reduceWorkspaceStatus(
       const next = { ...state, ...action.state };
       return { ...next, hydrated: action.hydrated ?? next.hydrated };
     }
-    case "workspaceUnmounted":
     case "notifySessionsChanged":
       return state;
     case "setModelsLoading":

@@ -49,7 +49,6 @@ export type WorkspaceHydration = Partial<WorkspaceState>;
 
 export type WorkspaceAction =
   | { type: "hydrate"; state: WorkspaceHydration; hydrated?: boolean }
-  | { type: "workspaceUnmounted" }
   | { type: "setModelsLoading"; loading: boolean }
   | { type: "setModels"; models: AgentModel[]; preferredModelId?: string }
   | { type: "setSelectedModel"; modelId: string }

@@ -11,11 +11,13 @@ import {
 import { safeJson } from "@/features/agent/safe-json";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import { createInitialState, reducer } from "@/features/agent/workspace/store";
-import { createSessionReplayQueue } from "@/features/agent/workspace/replay-queue";
+import {
+  createSessionReplayQueue,
+  type SessionReplayQueue,
+} from "@/features/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import {
   runWorkspaceEffect,
-  type BrowserEventsSubscription,
   type WorkspaceDispatch,
   type WorkspaceEffectDeps,
   type WorkspaceWindow,
@@ -34,21 +36,12 @@ import {
   sanitizeBrowserPaneUrl,
   sanitizeLocalFileUrl,
 } from "@/features/agent/sanitize-embedded-browser-url";
-import type { Project } from "@/features/agent/projects/types";
 import { paneSessions } from "@/features/agent/runtime/selectors";
 import {
   runBrowserPanelCommand,
   type BrowserCommandResult,
 } from "@/features/agent/browser/command";
 import {
-  browserHostIsReady,
-  browserSessionIsKnown,
-  createBrowserEvents,
-  focusedBrowserSessionId,
-  waitForBrowserHost,
-} from "@/features/agent/ui/use-workspace-browser-events";
-import {
-  useBrowserEventsEffects,
   useWorkspaceHydrationEffects,
   useWorkspaceRuntimeSync,
 } from "@/features/agent/ui/use-workspace-effects";
@@ -101,6 +94,24 @@ function createWorkspaceWindow(source: Window): WorkspaceWindow {
     removeEventListener: source.removeEventListener.bind(source),
     setTimeout: source.setTimeout.bind(source),
   };
+}
+
+function waitForBrowserHost(
+  getHandle: () => AgentBrowserHandle | null,
+  timeoutMs = 2_500,
+): Promise<void> {
+  if (getHandle()?.webview || typeof window === "undefined") return Promise.resolve();
+  const startedAt = Date.now();
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const tick = () => {
+    if (getHandle()?.webview || Date.now() - startedAt >= timeoutMs) {
+      resolve();
+      return;
+    }
+    window.setTimeout(tick, 40);
+  };
+  tick();
+  return promise;
 }
 
 function agentModelControllersPayload() {
@@ -157,36 +168,35 @@ function api(): WorkspaceEffectDeps["api"] {
 export function useWorkspace(): UseWorkspaceResult {
   const projects = useProjects();
   const projectsRef = useRef(projects);
-  projectsRef.current = projects;
   const tools = useTools();
   const toolsRef = useRef(tools);
-  toolsRef.current = tools;
+  const subscribeContextRefs = useCallback(() => {
+    projectsRef.current = projects;
+    toolsRef.current = tools;
+    return () => undefined;
+  }, [projects, tools]);
+  useSyncExternalStore(subscribeContextRefs, getWorkspaceSyncSnapshot, getWorkspaceSyncSnapshot);
   const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const browserRef = useRef<AgentBrowserHandle | null>(null);
   const computerAsideRef = useRef<HTMLElement | null>(null);
 
-  const replayQueue = useMemo(
-    () =>
-      createSessionReplayQueue({
-        getHandle: (paneId) => paneHandlesRef.current.get(paneId),
-        getState: () => stateRef.current,
-        setTimeout: (handler, delay) => window.setTimeout(handler, delay),
-      }),
-    [],
+  const replayQueueRef = useRef<SessionReplayQueue | null>(null);
+  const getReplayQueue = useCallback(() => {
+    replayQueueRef.current ??= createSessionReplayQueue({
+      getHandle: (paneId) => paneHandlesRef.current.get(paneId),
+      getState: () => stateRef.current,
+      setTimeout: (handler, delay) => window.setTimeout(handler, delay),
+    });
+    return replayQueueRef.current;
+  }, []);
+  const queueSessionReplay = useCallback(
+    (paneId: PaneId, piSessionId: string) => getReplayQueue().queue(paneId, piSessionId),
+    [getReplayQueue],
   );
-  const queueSessionReplay = replayQueue.queue;
 
   const controller = useMemo(() => {
-    let browserEvents: BrowserEventsSubscription | null = null;
-    const getBrowserEvents = () => {
-      browserEvents ??= createBrowserEvents(runBrowserCommand, (sessionId) => ({
-        focused: focusedBrowserSessionId(stateRef.current),
-        known: browserSessionIsKnown(stateRef.current, sessionId),
-      }));
-      return browserEvents;
-    };
     const makeDeps = (workspaceDispatch: WorkspaceDispatch): WorkspaceEffectDeps | null => {
       if (typeof window === "undefined") return null;
       return {
@@ -195,7 +205,6 @@ export function useWorkspace(): UseWorkspaceResult {
         api: api(),
         dispatch: workspaceDispatch,
         queueReplay: queueSessionReplay,
-        browserEvents: getBrowserEvents(),
         findProjectById: (id) => projectsRef.current.findById(id),
         selectionFor: (id) => toolsRef.current.selectionFor(id),
       };
@@ -204,11 +213,6 @@ export function useWorkspace(): UseWorkspaceResult {
     const workspaceDispatch: WorkspaceDispatch = (action: WorkspaceAction) => {
       const prev = stateRef.current;
       const next = reducer(prev, action);
-      if (action.type === "workspaceUnmounted") {
-        const deps = makeDeps(workspaceDispatch);
-        if (deps) runWorkspaceEffect(action, prev, next, deps);
-        return;
-      }
       stateRef.current = next;
       setState(next);
       const deps = makeDeps(workspaceDispatch);
@@ -221,7 +225,7 @@ export function useWorkspace(): UseWorkspaceResult {
     ): Promise<BrowserCommandResult> => {
       const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
       const currentTools = toolsRef.current;
-      const hadBrowserHost = browserHostIsReady(browserRef.current, isElectron);
+      const hadBrowserHost = Boolean(browserRef.current?.webview);
       // A `navigate` is real, intentional browser use: open the panel so the
       // webview host mounts and the user can watch. Passive verbs (get-url,
       // get-text, screenshot, etc.) only register/select the browser tab without
@@ -240,7 +244,7 @@ export function useWorkspace(): UseWorkspaceResult {
         currentTools.selectComputerTabWithoutOpening("browser");
       }
       if (verb !== "get-url") {
-        await waitForBrowserHost(() => browserRef.current, isElectron);
+        await waitForBrowserHost(() => browserRef.current);
       }
       return runBrowserPanelCommand(verb, payload, {
         browser: browserRef.current,
@@ -249,15 +253,10 @@ export function useWorkspace(): UseWorkspaceResult {
         isElectron,
       });
     };
-    return { browserEvents: getBrowserEvents(), dispatch: workspaceDispatch, runBrowserCommand };
+    return { dispatch: workspaceDispatch, runBrowserCommand };
   }, [queueSessionReplay]);
 
-  const { browserEvents, dispatch, runBrowserCommand } = controller;
-
-  useBrowserEventsEffects({
-    browserEvents,
-    enabled: tools.browser.enabled && tools.computer.open && tools.computer.tab === "browser",
-  });
+  const { dispatch, runBrowserCommand } = controller;
 
   const subscribeWorkspaceModelStorage = useCallback(
     (_notify: () => void) => {
@@ -313,8 +312,8 @@ export function useWorkspace(): UseWorkspaceResult {
 
   useSyncExternalStore(
     subscribeWorkspaceModelStorage,
-    getWorkspaceModelStorageSnapshot,
-    getWorkspaceModelStorageSnapshot,
+    getWorkspaceSyncSnapshot,
+    getWorkspaceSyncSnapshot,
   );
 
   const handles = useMemo<WorkspaceHandles>(
@@ -340,7 +339,7 @@ export function useWorkspace(): UseWorkspaceResult {
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
-        if (handle) replayQueue.notifyHandleRegistered(paneId);
+        if (handle) getReplayQueue().notifyHandleRegistered(paneId);
       },
       compactFocusedSession: async () => {
         const handle = paneHandlesRef.current.get(stateRef.current.focusedPaneId);
@@ -433,7 +432,7 @@ export function useWorkspace(): UseWorkspaceResult {
         }
       },
     }),
-    [dispatch, replayQueue, runBrowserCommand],
+    [dispatch, getReplayQueue, runBrowserCommand],
   );
 
   useWorkspaceHydrationEffects({ dispatch, projectsRef, toolsRef });
@@ -442,4 +441,4 @@ export function useWorkspace(): UseWorkspaceResult {
   return { state, dispatch, handles };
 }
 
-const getWorkspaceModelStorageSnapshot = (): number => 0;
+const getWorkspaceSyncSnapshot = (): number => 0;

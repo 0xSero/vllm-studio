@@ -67,7 +67,6 @@ type Props = {
 
 export type AgentBrowserHandle = {
   webview: WebviewElement | null;
-  iframe: HTMLIFrameElement | null;
 };
 
 export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function AgentBrowser(
@@ -75,7 +74,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
   ref,
 ) {
   const webviewRef = useRef<WebviewElement | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Live mode is the server-side screencast; it is the default everywhere and
   // falls back to reading mode only when the host has no Chromium.
   const [readingMode, setReadingMode] = useState(false);
@@ -98,9 +96,6 @@ export const AgentBrowser = forwardRef<AgentBrowserHandle, Props>(function Agent
     () => ({
       get webview() {
         return webviewRef.current;
-      },
-      get iframe() {
-        return iframeRef.current;
       },
     }),
     [],

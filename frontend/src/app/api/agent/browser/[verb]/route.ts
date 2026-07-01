@@ -8,9 +8,6 @@
 // When Chromium is unavailable (no binary, launch failure), navigate/get-text
 // fall back to reading mode (browser-host/reader.ts); interactive verbs return
 // a clear "Browser unavailable" error.
-//
-// /events, /result, and browser-bridge.ts remain for any other consumers, but
-// this path no longer uses them.
 
 import { NextRequest } from "next/server";
 import { browserHost } from "@/features/agent/browser-host/browser-host";

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore, type RefObject } from "react";
 import {
   subscribeWorkspaceWindowEvents,
-  type BrowserEventsSubscription,
   type WorkspaceDispatch,
 } from "@/features/agent/workspace/effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
@@ -12,26 +11,6 @@ import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
-
-export function useBrowserEventsEffects({
-  browserEvents,
-  enabled,
-}: {
-  browserEvents: BrowserEventsSubscription;
-  enabled: boolean;
-}) {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      browserEvents.setEnabled(enabled);
-      return () => browserEvents.setEnabled(false);
-    },
-    [browserEvents, enabled],
-  );
-
-  useSyncExternalStore(subscribe, getBrowserEventsSnapshot, getBrowserEventsSnapshot);
-}
-
-const getBrowserEventsSnapshot = (): number => 0;
 
 function currentSearchParams(): URLSearchParams {
   return typeof window === "undefined"

@@ -47,11 +47,6 @@ export type WorkspaceWindow = {
   setTimeout?: (handler: () => void, timeout: number) => unknown;
 };
 
-export type BrowserEventsSubscription = {
-  setEnabled: (enabled: boolean) => void;
-  close: () => void;
-};
-
 export type WorkspaceDispatch = (action: WorkspaceAction) => void;
 
 export type WorkspaceEffectDeps = {
@@ -60,7 +55,6 @@ export type WorkspaceEffectDeps = {
   api: WorkspaceApi;
   dispatch?: WorkspaceDispatch;
   queueReplay: (paneId: PaneId, piSessionId: string) => void;
-  browserEvents?: BrowserEventsSubscription;
   /** Resolve a project by id from the projects context (workspace doesn't own project state). */
   findProjectById?: (id: string) => Project | null;
   /** Resolve a session's tool selection from the tools context. */
@@ -141,10 +135,7 @@ export function subscribeWorkspaceWindowEvents(
 
   workspaceWindow.addEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
 
-  return () => {
-    workspaceWindow.removeEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
-    dispatch({ type: "workspaceUnmounted" });
-  };
+  return () => workspaceWindow.removeEventListener(PROJECTS_LOADED_EVENT, onProjectsLoaded);
 }
 
 function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
@@ -472,11 +463,6 @@ export function runWorkspaceEffect(
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  if (action.type === "workspaceUnmounted") {
-    deps.browserEvents?.close();
-    return;
-  }
-
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
 
@@ -494,6 +480,4 @@ export function runWorkspaceEffect(
   ) {
     scheduleSessionsRefresh(deps);
   }
-  // BrowserEventsSubscription.setEnabled is driven by ToolsProvider via
-  // use-workspace; the workspace effect no longer reads `browserToolEnabled`.
 }

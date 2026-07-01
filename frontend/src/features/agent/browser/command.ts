@@ -16,7 +16,6 @@ type BrowserWebview = {
 
 export type BrowserCommandHost = {
   webview: BrowserWebview | null;
-  iframe: HTMLIFrameElement | null;
 };
 
 export type BrowserCommandDeps = {
@@ -69,9 +68,8 @@ export async function runBrowserPanelCommand(
     return runWebviewCommand(verb, payload, webview, deps.setBrowserUrl);
   }
 
-  const iframe = deps.browser?.iframe ?? null;
-  if (!iframe && verb === "get-url") return { ok: true, data: { url: deps.currentUrl, title: "" } };
-  if (!iframe && verb === "navigate") {
+  if (verb === "get-url") return { ok: true, data: { url: deps.currentUrl, title: "" } };
+  if (verb === "navigate") {
     const url = sanitizeBrowserPaneUrl(String(payload.url || ""));
     if (!url)
       return {
@@ -82,8 +80,7 @@ export async function runBrowserPanelCommand(
     deps.setBrowserUrl(url, url);
     return { ok: true, data: { url, pending: true } };
   }
-  if (!iframe) return { ok: false, error: "Browser panel not mounted" };
-  return runIframeCommand(verb, payload, iframe, deps.setBrowserUrl);
+  return { ok: false, error: "Browser panel not mounted" };
 }
 
 async function runWebviewCommand(
@@ -216,33 +213,4 @@ function validateBrowserSelector(selector: string): BrowserCommandResult | null 
 function selectorResult(value: unknown): BrowserCommandResult {
   const found = isRecord(value) && value.found === true;
   return { ok: found, data: { found }, error: found ? undefined : "selector not found" };
-}
-
-function runIframeCommand(
-  verb: string,
-  payload: Record<string, unknown>,
-  iframe: HTMLIFrameElement,
-  setBrowserUrl: BrowserCommandDeps["setBrowserUrl"],
-): BrowserCommandResult {
-  switch (verb) {
-    case "navigate": {
-      const url = sanitizeBrowserPaneUrl(String(payload.url || ""));
-      if (!url)
-        return {
-          ok: false,
-          error:
-            "valid http(s) url required (localhost dev servers allowed; other private hosts are not)",
-        };
-      iframe.src = url;
-      setBrowserUrl(url, url);
-      return { ok: true, data: { url } };
-    }
-    case "get-url":
-      return { ok: true, data: { url: iframe.src, title: "" } };
-    default:
-      return {
-        ok: false,
-        error: `Browser tool '${verb}' is only available in the desktop app (cross-origin iframe restriction in dev).`,
-      };
-  }
 }
