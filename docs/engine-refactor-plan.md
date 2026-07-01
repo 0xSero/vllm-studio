@@ -615,7 +615,30 @@ the audit commands below at the start of each iteration to see current counts.
         dedicated e2e test (`local-agents.test.ts`, 10 tests) passes; full
         e2e suite shows the same pre-existing 215/210/5 baseline, nothing
         new broken.
-  - [ ] `frontend/src/features/setup/use-setup.ts` (530)
+  - [x] `frontend/src/features/setup/use-setup.ts` (530 → 405) — split into
+        2 files: `use-setup-effects.ts` (90: the module-level Effect helpers
+        with no React state — `requestEffect`, `finishRuntimeJobEffect`,
+        `withSetupTimeoutEffect`, `formatLoadWarning`, `setupErrorMessage`,
+        the runtime-job poll constants) and `use-setup-benchmark.ts` (56:
+        the benchmark sub-flow as its own `useSetupBenchmark()` hook, the
+        one piece that only touches its own 3 setters and nothing else in
+        `useSetup`'s state). Deliberately kept the data-loading/runtime-job/
+        download-launch flow together in `useSetup` itself — those share
+        `error`/`diagnostics`/`step` state too broadly to split without real
+        risk, same reasoning already applied to
+        `session-runtime-controller.ts` and the `FilesystemPanel`/
+        `ToolsProvider` components earlier in this loop. Also deleted 2 more
+        confirmed-dead plain-Promise wrapper functions (`fetchRuntimeJob`,
+        `withSetupTimeout`) superseded by their `*Effect` siblings but never
+        removed — same pattern as iterations 16/17/22 (this is now the 4th
+        iteration in a row to find one). Verified: lint/typecheck/
+        typecheck:desktop/cycles/ui-structure/deadcode/dupes (0 clones)/
+        depcheck/build all green; full e2e suite shows the same pre-existing
+        215/210/5 baseline, nothing new broken. No dedicated test exists for
+        this hook (a pre-existing gap); both of its 2 consumers
+        (`app/setup/page.tsx`, `app/settings/page.tsx`) only call
+        `useSetup()` and destructure the result, so the unchanged return
+        shape is the safety net.
   - [ ] `frontend/src/features/agent/runtime/pi-event-applier.ts` (529)
   - [ ] `frontend/src/features/agent/ui/git-diff-panel.tsx` (525)
   - [ ] `frontend/src/features/recipes/recipes-content/explore-tab-sections.tsx` (518)
@@ -1125,3 +1148,27 @@ the audit commands below at the start of each iteration to see current counts.
   `frontend/src/features/setup/use-setup.ts` (530) is next on the Part C
   list; `session-runtime-controller.ts` stays deferred until a dedicated
   pass.
+
+- **2026-07-01 (iter 23)**: split `features/setup/use-setup.ts` (530 → 405)
+  — see the Part C checklist above for the full breakdown. This one was
+  judged lower-risk-to-fully-split than most remaining hooks (the
+  benchmark sub-flow has zero coupling to the rest of the hook's state) but
+  the bulk of the file — data loading, runtime-job install/update, and the
+  download→launch flow — was deliberately left alone since it all shares
+  `error`/`diagnostics`/`step`, the same "don't force a split across broadly
+  shared state" call made for `session-runtime-controller.ts` and a couple
+  of the component splits earlier in the loop. Found and deleted 2 more
+  dead plain-Promise wrapper functions superseded by their `*Effect`
+  siblings (`fetchRuntimeJob`, `withSetupTimeout`) — the 4th iteration in a
+  row this exact pattern has turned up, which is a strong signal a
+  dedicated repo-wide grep for "`function X(...)` next to an `XEffect`
+  version with X never called" would find more of these in one pass rather
+  than one-at-a-time. Verified: lint/typecheck/typecheck:desktop/cycles/
+  ui-structure/deadcode/dupes (0 clones)/depcheck/build all green; full e2e
+  suite shows the same pre-existing 215/210/5 baseline, nothing new broken.
+  Next iteration: `frontend/src/features/agent/runtime/pi-event-
+  applier.ts` (529) is next on the Part C list; `session-runtime-
+  controller.ts` stays deferred until a dedicated pass. Also worth
+  considering for a future iteration: running that repo-wide dead-Promise-
+  wrapper grep sweep as its own dedicated pass instead of only catching
+  instances opportunistically while splitting unrelated files.
