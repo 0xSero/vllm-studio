@@ -5,7 +5,7 @@ import { formatNumber, formatDate } from "@/lib/formatters";
 import { getModelColor } from "@/features/usage/colors";
 import { Stat } from "@/ui";
 
-export type UsagePeriod = "day" | "week" | "month";
+export type UsagePeriod = "day" | "week" | "month" | "year";
 
 interface DailyStat {
   date: string;
@@ -24,6 +24,8 @@ interface DailyUsageProps {
   modelsForChart: string[];
   modelColorIndex: Map<string, number>;
   period: UsagePeriod;
+  allTimeTokens: number;
+  allTimeRequests: number;
 }
 
 interface ModelDataItem {
@@ -54,18 +56,21 @@ const periodLabel: Record<UsagePeriod, string> = {
   day: "Daily usage",
   week: "Weekly usage",
   month: "Monthly usage",
+  year: "Yearly usage",
 };
 
 const periodUnit: Record<UsagePeriod, string> = {
   day: "days",
   week: "weeks",
   month: "months",
+  year: "years",
 };
 
 const averageUnit: Record<UsagePeriod, string> = {
   day: "avg/day",
   week: "avg/week",
   month: "avg/month",
+  year: "avg/year",
 };
 
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
@@ -83,13 +88,14 @@ const weekStart = (date: Date): Date => {
 };
 
 const bucketKey = (date: string, period: UsagePeriod): string => {
-  const parsed = dateFromIso(date);
-  if (period === "week") return isoDate(weekStart(parsed));
+  if (period === "year") return date.slice(0, 4);
   if (period === "month") return date.slice(0, 7);
+  if (period === "week") return isoDate(weekStart(dateFromIso(date)));
   return date;
 };
 
 const bucketLabel = (key: string, period: UsagePeriod): string => {
+  if (period === "year") return key;
   if (period === "month") {
     const parsed = new Date(`${key}-01T00:00:00Z`);
     return parsed.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
@@ -104,11 +110,11 @@ const bucketLabel = (key: string, period: UsagePeriod): string => {
 };
 
 const shortBucketLabel = (key: string, period: UsagePeriod): string => {
+  if (period === "year") return key;
   if (period === "month") {
     const parsed = new Date(`${key}-01T00:00:00Z`);
     return parsed.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
   }
-  if (period === "week") return formatDate(key);
   return formatDate(key);
 };
 
@@ -147,6 +153,8 @@ export function DailyUsageChart({
   modelsForChart,
   modelColorIndex,
   period,
+  allTimeTokens,
+  allTimeRequests,
 }: DailyUsageProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const [hovered, setHovered] = useState<HoverState | null>(null);
@@ -331,10 +339,11 @@ export function DailyUsageChart({
         </div>
       ) : null}
 
-      <dl className="mt-4 grid grid-cols-3 border-b border-(--border)/40 pb-4">
-        <Stat label="total tokens" value={formatNumber(totalTokensInPeriod)} />
-        <Stat label="total requests" value={formatNumber(totalRequestsInPeriod)} />
-        <Stat label="peak bucket" value={formatNumber(maxBucketTokens)} />
+      <dl className="mt-4 grid grid-cols-2 border-b border-(--border)/40 pb-4 sm:grid-cols-4">
+        <Stat label="all-time tokens" value={formatNumber(allTimeTokens)} />
+        <Stat label="all-time requests" value={formatNumber(allTimeRequests)} />
+        <Stat label="tokens in view" value={formatNumber(totalTokensInPeriod)} />
+        <Stat label="requests in view" value={formatNumber(totalRequestsInPeriod)} />
       </dl>
 
       {hovered ? (

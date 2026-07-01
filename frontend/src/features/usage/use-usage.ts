@@ -21,6 +21,7 @@ export function useUsage(source: UsageSource = "provider") {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("tokens");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [selectedModel, setSelectedModel] = useState<string>("all");
 
   const loadStats = useCallback(async () => {
     try {
@@ -78,28 +79,60 @@ export function useUsage(source: UsageSource = "provider") {
     }
     const grouped = new Map<string, Map<string, (typeof stats.daily_by_model)[0]>>();
     for (const entry of stats.daily_by_model) {
+      if (selectedModel !== "all" && entry.model !== selectedModel) continue;
       if (!grouped.has(entry.model)) {
         grouped.set(entry.model, new Map());
       }
       grouped.get(entry.model)!.set(entry.date, entry);
     }
     return grouped;
-  }, [stats]);
+  }, [stats, selectedModel]);
 
-  const modelsForChart = useMemo(() => {
+  const sortedModelNames = useMemo(() => {
     if (!stats) return [];
     return [...stats.by_model].sort((a, b) => b.total_tokens - a.total_tokens).map((m) => m.model);
   }, [stats]);
 
+  const modelOptions = sortedModelNames;
+
+  const modelsForChart = useMemo(
+    () =>
+      selectedModel === "all"
+        ? sortedModelNames
+        : sortedModelNames.filter((model) => model === selectedModel),
+    [sortedModelNames, selectedModel],
+  );
+
   const modelColorIndex = useMemo(() => {
     const indexByModel = new Map<string, number>();
-    modelsForChart.forEach((model, index) => indexByModel.set(model, index));
+    sortedModelNames.forEach((model, index) => indexByModel.set(model, index));
     return indexByModel;
-  }, [modelsForChart]);
+  }, [sortedModelNames]);
+
+  const filteredDaily = useMemo(() => {
+    if (!stats) return [];
+    if (selectedModel === "all") return stats.daily;
+    if (!stats.daily_by_model) return [];
+    return stats.daily_by_model
+      .filter((entry) => entry.model === selectedModel)
+      .map((entry) => ({
+        date: entry.date,
+        requests: entry.requests,
+        successful: entry.successful,
+        success_rate: entry.success_rate,
+        total_tokens: entry.total_tokens,
+        prompt_tokens: entry.prompt_tokens,
+        completion_tokens: entry.completion_tokens,
+        avg_latency_ms: 0,
+      }));
+  }, [stats, selectedModel]);
 
   const sortedModels = useMemo(() => {
     if (!stats) return [];
-    const sorted = [...stats.by_model];
+    const sorted =
+      selectedModel === "all"
+        ? [...stats.by_model]
+        : stats.by_model.filter((m) => m.model === selectedModel);
     sorted.sort((a, b) => {
       let aVal: number | string | null;
       let bVal: number | string | null;
@@ -147,7 +180,7 @@ export function useUsage(source: UsageSource = "provider") {
         : (bNumber as number) - (aNumber as number);
     });
     return sorted;
-  }, [sortField, sortDirection, stats]);
+  }, [sortField, sortDirection, stats, selectedModel]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -185,6 +218,10 @@ export function useUsage(source: UsageSource = "provider") {
     dailyByModel,
     modelsForChart,
     modelColorIndex,
+    modelOptions,
+    filteredDaily,
+    selectedModel,
+    setSelectedModel,
     sortedModels,
     handleSort,
     toggleRow,

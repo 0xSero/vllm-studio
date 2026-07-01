@@ -6,6 +6,7 @@ import {
   PageState,
   RefreshButton,
   SegmentedControl,
+  Select,
   Tabs,
   type SegmentedItem,
 } from "@/ui";
@@ -25,7 +26,10 @@ const PERIOD_ITEMS: Array<SegmentedItem<UsagePeriod>> = [
   { id: "day", label: "Day" },
   { id: "week", label: "Week" },
   { id: "month", label: "Month" },
+  { id: "year", label: "Year" },
 ];
+
+const modelDisplayName = (modelId: string): string => modelId.split("/").pop() ?? modelId;
 
 export default function UsagePage() {
   const [tab, setTab] = useState<UsageSource>("provider");
@@ -42,6 +46,10 @@ export default function UsagePage() {
     dailyByModel,
     modelsForChart,
     modelColorIndex,
+    modelOptions,
+    filteredDaily,
+    selectedModel,
+    setSelectedModel,
     sortedModels,
     handleSort,
     toggleRow,
@@ -55,13 +63,18 @@ export default function UsagePage() {
     onLoad: loadStats,
   });
   if (pageStateRender) return <AppPage>{pageStateRender}</AppPage>;
-
   if (!stats) return null;
 
   const safeStats = normalizeUsageStats(stats);
   const totals = safeStats.totals;
   const recent = safeStats.recent_activity;
   const tpr = safeStats.tokens_per_request;
+  const chartStats = { ...safeStats, daily: filteredDaily };
+
+  const handleTabChange = (next: UsageSource) => {
+    setTab(next);
+    setSelectedModel("all");
+  };
 
   return (
     <AppPage>
@@ -74,7 +87,7 @@ export default function UsagePage() {
             variant="pill"
             items={TABS}
             activeTab={tab}
-            onSelectTab={setTab}
+            onSelectTab={handleTabChange}
             className="[&_button]:h-7 [&_button]:px-2 [&_button]:py-0 [&_button]:text-[length:var(--fs-sm)]"
           />
         </div>
@@ -83,7 +96,9 @@ export default function UsagePage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)] tracking-[0.04em]">
-                <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">Usage</span>
+                <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">
+                  All-time usage
+                </span>
                 <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">
                   {tab === "provider" ? "controller" : "pi sessions"}
                 </span>
@@ -128,16 +143,36 @@ export default function UsagePage() {
           </dl>
         </section>
 
-        <div className="mb-2 flex justify-end px-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--dim)/75">
+              model
+            </span>
+            <div className="w-[14rem] max-w-[60vw]">
+              <Select
+                value={selectedModel}
+                onChange={(event) => setSelectedModel(event.target.value)}
+                options={[
+                  { value: "all", label: "All models" },
+                  ...modelOptions.map((model) => ({
+                    value: model,
+                    label: modelDisplayName(model),
+                  })),
+                ]}
+              />
+            </div>
+          </div>
           <SegmentedControl items={PERIOD_ITEMS} value={period} onChange={setPeriod} size="sm" />
         </div>
 
         <DailyUsageChart
-          stats={safeStats}
+          stats={chartStats}
           dailyByModel={dailyByModel}
           modelsForChart={modelsForChart}
           modelColorIndex={modelColorIndex}
           period={period}
+          allTimeTokens={totals.total_tokens}
+          allTimeRequests={totals.total_requests}
         />
 
         <ModelPerformanceTable
