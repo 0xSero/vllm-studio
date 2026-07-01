@@ -208,8 +208,27 @@ Progress:
       + a downloaded model. 122/122 integration (up from 116) + 4/4 unit +
       lint/typecheck/jscpd/depcheck green. Whole `environments/` module is
       now 399 lines across 7 files, none over 90 lines.
-- [ ] **Frontend**: `/environments` page + creation flow (recipe picker,
-      engine + version + variant picker, status, start/stop). NOT STARTED.
+- [x] **Frontend** (2026-07-01): `/environments` page (`app/environments/
+      page.tsx`, 192 lines) + `features/environments/use-environments.ts`
+      (153 lines, the data/actions hook) + `lib/api/environments.ts` (28
+      lines, `createEnvironmentsApi` following the exact `createRecipesApi`
+      shape). Deliberately used the simpler "container calls a hook, renders
+      inline" pattern from `usage-page.tsx` rather than the heavier
+      3-file atom/component/container split `recipes-content/` uses — that
+      split earns its complexity from ~30 files of tabs/modal/explore-tab
+      logic; a v1 list+create-form page doesn't need the same ceremony
+      (matches "don't design for hypothetical future requirements"). Reuses
+      existing `@/ui` primitives entirely (`AppPage`, `PageState`, `Table`,
+      `Select`, `Input`, `Button`, `RefreshButton`) — no new form controls
+      invented. Added a `/environments` nav entry in `left-sidebar.tsx`
+      (`Boxes` icon). Data-fetching follows the established
+      `useSyncExternalStore`-based "load once on mount" pattern (no
+      `useEffect`, matching the codebase's ban). Frontend
+      lint/typecheck/cycles/ui-structure/deadcode/dupes/depcheck/build all
+      green; `/environments` shows in the build's static route list.
+      **Part A (the user's headline `/environments` ask) is now
+      end-to-end complete**: types → persistence → image resolution →
+      container command building → CRUD + start/stop routes → frontend page.
 - [x] **Reuse existing recipe types**: confirmed — `buildEnvironmentContainerCommand`
       takes the existing `Recipe` type directly, no second recipe concept forked.
 
@@ -575,3 +594,37 @@ the audit commands below at the start of each iteration to see current counts.
   at `frontend/src/app/recipes/page.tsx` (or equivalent) and the existing
   `/api/agent/projects`-style Next.js API-route-proxying-to-controller
   pattern before designing it from scratch.
+
+- **2026-07-01 (iter 9)**: built the `/environments` frontend page — the last
+  untouched piece of the user's original ask, see Part A above. Studied
+  `recipes-content/` (the existing model/view/container split) and
+  `usage-page.tsx` (a simpler container+hook page) before choosing the
+  latter's shape, since the recipe feature's 3-file split is justified by its
+  real complexity (tabs, modal, explore/downloads sub-tabs across ~30 files)
+  and forcing that same structure onto a v1 list+create-form page would be
+  premature. Full stack: `lib/types.ts` (`Environment`/`EnvironmentWithStatus`
+  /`EnvironmentPayload`, careful not to collide with the pre-existing,
+  unrelated `EnvironmentInfo` type also in that file), `lib/api/
+  environments.ts` (mirrors `createRecipesApi`'s exact shape), `use-
+  environments.ts` (state + actions, `useSyncExternalStore` load-on-mount,
+  no `useEffect`), `app/environments/page.tsx` (entirely built from existing
+  `@/ui` primitives — no new form controls), plus a sidebar nav entry.
+  Frontend gate green end to end including a real production build (`
+  /environments` shows in the static route list). **This closes out Part A
+  end-to-end**: a user can now create an environment (recipe + engine +
+  pinned version + optional variant), see its resolved official image and
+  running status, and start/stop it, all from one page backed by the
+  controller work from iterations 5-8.
+
+  Remaining work for future iterations: Part B step 4 (routes.ts
+  backend-info-access consistency) and step 7 (engine-coordinator.ts Effect
+  conversion, saved for last as highest-risk); Part C has ~21 file-size
+  items still outstanding, the Effect-v4 coverage audit hasn't been done as
+  a systematic pass (only fixed opportunistically wherever an iteration
+  happened to touch async code), and the react atom/component/container
+  audit + comment sweep haven't been started at all. The pi-ai postinstall
+  patch script issue and the one knip false positive (`redactLogContent`)
+  are still open. A manual end-to-end test of the real `/environments`
+  start flow (on a host with Docker + GPU + a real downloaded model) is
+  still owed — every iteration so far has only verified the side-effect-free
+  paths automatically.

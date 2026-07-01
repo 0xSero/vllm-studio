@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Microchip,
   HardDrive,
+  Boxes,
   Search as SearchIcon,
   Globe,
   Settings,
@@ -50,6 +51,7 @@ const tabs = [
   { href: "/", label: "Status", icon: Gauge },
   { href: "/usage", label: "Usage", icon: Microchip },
   { href: "/recipes", label: "Models", icon: HardDrive },
+  { href: "/environments", label: "Environments", icon: Boxes },
   { href: "/server", label: "Server", icon: Globe },
 ];
 

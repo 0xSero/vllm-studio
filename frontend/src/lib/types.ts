@@ -84,6 +84,35 @@ export interface RecipeWithStatus extends RecipeBase {
   pp?: number;
 }
 
+// --- Docker environments (a recipe pinned to an official engine image) ---
+
+export type EnvironmentEngineId = "vllm" | "sglang" | "llamacpp";
+
+export interface Environment {
+  id: string;
+  name: string;
+  recipeId: string;
+  engineId: EnvironmentEngineId;
+  version: string;
+  variant: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EnvironmentWithStatus extends Environment {
+  image: string;
+  running: boolean;
+}
+
+export interface EnvironmentPayload {
+  id: string;
+  name: string;
+  recipeId: string;
+  engineId: EnvironmentEngineId;
+  version: string;
+  variant?: string;
+}
+
 // --- Launch progress ---
 
 export type LaunchStage =
