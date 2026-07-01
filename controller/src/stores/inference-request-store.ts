@@ -195,7 +195,7 @@ export class InferenceRequestStore {
            COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) as total_tokens,
            AVG(duration_ms) as avg_latency_ms
          FROM inference_requests
-         WHERE DATE(created_at) >= DATE('now', '-30 days')${filter.clause}
+         WHERE 1=1${filter.clause}
          GROUP BY DATE(created_at)
          ORDER BY date DESC`
       )
@@ -212,7 +212,7 @@ export class InferenceRequestStore {
            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
            COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) as total_tokens
          FROM inference_requests
-         WHERE DATE(created_at) >= DATE('now', '-30 days')${filter.clause}
+         WHERE 1=1${filter.clause}
          GROUP BY DATE(created_at), model
          ORDER BY date DESC`
       )
