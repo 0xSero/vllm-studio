@@ -5,7 +5,6 @@ import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
 } from "@/features/agent/active-sessions";
-import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
 import { hasExplicitSessionNavigation } from "@/features/agent/ui/use-workspace-effects";
 import {
   initialRuntimeStatusPhase,
@@ -40,11 +39,8 @@ import {
   textDeltaFromPiEvent,
 } from "@/features/agent/runtime/effect-coalescer";
 import { isEmptyStarterSession, pruneSessions } from "@/features/agent/runtime/store";
-import {
-  beginSessionSubmit,
-  endSessionSubmit,
-  referencedSessionIds,
-} from "@/features/agent/runtime/selectors";
+import { beginSessionSubmit, endSessionSubmit } from "@/features/agent/runtime/prompt-stream";
+import { controlTargetHasActiveTurn, referencedSessionIds } from "@/features/agent/runtime/selectors";
 import {
   acceptRuntimeSeq,
   adoptExternalCursor,
