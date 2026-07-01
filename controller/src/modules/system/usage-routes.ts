@@ -51,7 +51,7 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
       // whether the model is one of our recipes (so users can see their
       // external model usage too).
       const usage = await observeControllerFunction(context, "usage.aggregatePiSessions", () =>
-        getUsageFromPiSessions(undefined, undefined, undefined)
+        getUsageFromPiSessions()
       );
       if (usage) return ctx.json(usage);
       return ctx.json(emptyResponse());

@@ -1,4 +1,4 @@
-import { Deferred, Effect, Option } from "effect";
+import { Deferred, Effect } from "effect";
 
 export const delayEffect = (milliseconds: number): Effect.Effect<void> => Effect.sleep(milliseconds);
 
@@ -24,17 +24,6 @@ export class AsyncLock {
 
   public acquire(): Promise<() => void> {
     return Effect.runPromise(this.acquireEffect());
-  }
-
-  public acquireWithTimeoutEffect(timeoutMs: number): Effect.Effect<(() => void) | null> {
-    return this.acquireEffect().pipe(
-      Effect.timeoutOption(timeoutMs),
-      Effect.map((result) => (Option.isSome(result) ? result.value : null)),
-    );
-  }
-
-  public acquireWithTimeout(timeoutMs: number): Promise<(() => void) | null> {
-    return Effect.runPromise(this.acquireWithTimeoutEffect(timeoutMs));
   }
 
   public release(): void {

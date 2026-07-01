@@ -1,5 +1,6 @@
 import { AsyncLock, delay } from "../../core/async";
 import { primaryLogPathFor, readFileTailBytes } from "../../core/log-files";
+import { fetchLocal } from "../../http/local-fetch";
 import type { EventManager } from "../system/event-manager";
 import { pidExists } from "./process/process-utilities";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
@@ -204,59 +205,58 @@ export class EngineCoordinator implements EngineService {
       release();
     }
   }
+  private probeHealth(path: string): Promise<boolean> {
+    return fetchLocal(this.deps.config.inference_port, path, {
+      host: this.deps.config.inference_host,
+      timeoutMs: 5000,
+    })
+      .then((response) => response.status === 200)
+      .catch(() => false);
+  }
+
+  private async pollHealthy(options: {
+    healthPath: string;
+    timeoutMs: number;
+    failure?: () => string | null;
+  }): Promise<{ ready: boolean; message: string | null }> {
+    const start = Date.now();
+    while (Date.now() - start < options.timeoutMs) {
+      const failed = options.failure?.();
+      if (failed) return { ready: false, message: failed };
+      if (await this.probeHealth(options.healthPath)) return { ready: true, message: null };
+      await delay(2000);
+    }
+    return { ready: false, message: null };
+  }
+
+  async waitForHealthy(timeoutMs: number): Promise<boolean> {
+    const result = await this.pollHealthy({ healthPath: "/health", timeoutMs });
+    return result.ready;
+  }
+
   private async waitForReady(options: {
     recipe: Recipe;
     pid: number | null;
     logFilePath: string | null;
     cancel?: AbortSignal;
     timeoutMs?: number;
-    fatalPatterns?: string[];
-    onProgress?: (elapsedSeconds: number) => Promise<void>;
   }): Promise<{ ready: true } | { ready: false; message: string }> {
-    const timeout = options.timeoutMs ?? LIFECYCLE_READY_TIMEOUT_MS;
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      if (options.cancel?.aborted) {
-        return { ready: false, message: "Launch cancelled" };
-      }
-      if (options.pid && !pidExists(options.pid)) {
-        const errorTail = options.logFilePath ? readFileTailBytes(options.logFilePath, 500) : "";
-        return {
-          ready: false,
-          message: `Model ${options.recipe.id} crashed during startup: ${errorTail.slice(-200)}`,
-        };
-      }
-      if (options.logFilePath && options.fatalPatterns && options.fatalPatterns.length > 0) {
-        const logTail = readFileTailBytes(options.logFilePath, 3000);
-        for (const pattern of options.fatalPatterns) {
-          if (!logTail.includes(pattern)) continue;
-          const lines = logTail.split("\n");
-          const index = lines.findIndex((line) => line.includes(pattern));
-          const snippet =
-            index >= 0 ? lines.slice(Math.max(0, index - 1), index + 3).join("\n") : pattern;
-          return { ready: false, message: `Fatal error: ${snippet.slice(0, 300)}` };
+    const result = await this.pollHealthy({
+      healthPath: getEngineSpec(options.recipe.backend).healthPath,
+      timeoutMs: options.timeoutMs ?? LIFECYCLE_READY_TIMEOUT_MS,
+      failure: () => {
+        if (options.cancel?.aborted) return "Launch cancelled";
+        if (options.pid && !pidExists(options.pid)) {
+          const errorTail = options.logFilePath ? readFileTailBytes(options.logFilePath, 500) : "";
+          return `Model ${options.recipe.id} crashed during startup: ${errorTail.slice(-200)}`;
         }
-      }
-      try {
-        const { fetchLocal } = await import("../../http/local-fetch");
-        const healthPath = getEngineSpec(options.recipe.backend).healthPath;
-        const response = await fetchLocal(this.deps.config.inference_port, healthPath, {
-          host: this.deps.config.inference_host,
-          timeoutMs: 5000,
-        });
-        if (response.status === 200) {
-          return { ready: true };
-        }
-      } catch {}
-      const elapsedSeconds = Math.floor((Date.now() - start) / 1000);
-      if (options.onProgress) {
-        await options.onProgress(elapsedSeconds);
-      }
-      await delay(2000);
-    }
+        return null;
+      },
+    });
+    if (result.ready) return { ready: true };
     return {
       ready: false,
-      message: `Model ${options.recipe.id} failed to become ready (timeout)`,
+      message: result.message ?? `Model ${options.recipe.id} failed to become ready (timeout)`,
     };
   }
   private findRecipeForProcess(current: ProcessInfo): Recipe | null {

@@ -1,13 +1,12 @@
 import type { RouteRegistrar } from "../../http/route-registrar";
-import { delay } from "../../core/async";
 import { HttpStatus, badRequest, notFound, serviceUnavailable } from "../../core/errors";
 import { optionalEnum, parseJsonObjectBody } from "../../core/validation";
 import { observeControllerFunction } from "../../core/function-observability";
 import { parseRecipe } from "../models/recipes/recipe-serializer";
 import { Event } from "../system/event-manager";
 import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-events";
-import { fetchInference } from "../../services/inference-client";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
+import type { ProcessInfo } from "../models/types";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 import { getCudaInfo } from "./runtimes/runtime-info";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
@@ -71,12 +70,14 @@ const parseRuntimeJobBody = async (ctx: {
 
 export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   const launchAbortControllers = new Map<string, AbortController>();
+  const getObservedProcess = (label: string): Promise<ProcessInfo | null> =>
+    observeControllerFunction(context, `${label}.getCurrentProcess`, () =>
+      context.engineService.getCurrentProcess()
+    );
 
   app.get("/recipes", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
-    const current = await observeControllerFunction(context, "recipes.list.getCurrentProcess", () =>
-      context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("recipes.list");
     // launchState is the transitional truth: it marks the recipe between
     // /launch acceptance and readiness. The process scan is the running truth.
     // (The old getCurrentRecipe() cache showed a crashed model as "starting"
@@ -219,16 +220,8 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   app.get("/wait-ready", async (ctx) => {
     const timeout = Number(ctx.req.query("timeout") ?? 300);
     const start = Date.now();
-    while (Date.now() - start < timeout * 1000) {
-      try {
-        const response = await fetchInference(context, "/health", { timeoutMs: 5000 });
-        if (response.status === 200) {
-          return ctx.json({ ready: true, elapsed: Math.floor((Date.now() - start) / 1000) });
-        }
-      } catch {
-        // Ignore
-      }
-      await delay(2000);
+    if (await context.engineService.waitForHealthy(timeout * 1000)) {
+      return ctx.json({ ready: true, elapsed: Math.floor((Date.now() - start) / 1000) });
     }
     return ctx.json({ ready: false, elapsed: timeout, error: "Timeout waiting for backend" });
   });
@@ -287,43 +280,27 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.get("/runtime/targets", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.targets.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.targets");
     const targets = await getRuntimeTargets(context.config, current);
     return ctx.json({ targets });
   });
 
   app.get("/runtime/targets/:targetId", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.target.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.target");
     const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ target });
   });
 
   app.post("/runtime/targets/:targetId/select", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.target.select.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.target.select");
     const target = await selectRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ target });
   });
 
   app.get("/runtime/targets/:targetId/health", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.target.health.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.target.health");
     const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ health: target.health });
@@ -332,9 +309,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   app.post("/runtime/jobs", async (ctx) => {
     const body = await parseRuntimeJobBody(ctx);
     if (!body.backend) throw badRequest("backend is required");
-    const current = await observeControllerFunction(context, "runtime.jobs.getCurrentProcess", () =>
-      context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.jobs");
     const job = createEngineJob(context.config, {
       backend: body.backend,
       type: body.type ?? "update",
@@ -386,31 +361,19 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.get("/runtime/sglang", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.backend.sglang.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.backend.sglang");
     const target = await getDefaultRuntimeTarget(context.config, "sglang", current);
     return ctx.json(runtimeTargetToBackendInfo(target));
   });
 
   app.get("/runtime/llamacpp", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.backend.llamacpp.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.backend.llamacpp");
     const target = await getDefaultRuntimeTarget(context.config, "llamacpp", current);
     return ctx.json(runtimeTargetToBackendInfo(target));
   });
 
   app.get("/runtime/mlx", async (ctx) => {
-    const current = await observeControllerFunction(
-      context,
-      "runtime.backend.mlx.getCurrentProcess",
-      () => context.engineService.getCurrentProcess()
-    );
+    const current = await getObservedProcess("runtime.backend.mlx");
     return ctx.json(await getEngineSpec("mlx").getRuntimeInfo!(context.config, current));
   });
 

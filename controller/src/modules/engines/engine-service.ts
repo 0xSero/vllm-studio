@@ -33,6 +33,7 @@ export interface EngineService {
   resetLaunchFailureBudget(recipeId: string): void;
 
   getCurrentProcess(): Promise<ProcessInfo | null>;
+  waitForHealthy(timeoutMs: number): Promise<boolean>;
 
   startDownload(request: DownloadRequest): Promise<ModelDownload>;
   pauseDownload(downloadId: string): ModelDownload;

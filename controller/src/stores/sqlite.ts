@@ -13,7 +13,11 @@ const OBSOLETE_TABLES = [
   "usage",
 ] as const;
 
-const dropObsoleteTables = (db: Database): void => {
+const sweptPaths = new Set<string>();
+
+const dropObsoleteTables = (db: Database, dbPath: string): void => {
+  if (sweptPaths.has(dbPath)) return;
+  sweptPaths.add(dbPath);
   for (const table of OBSOLETE_TABLES) {
     db.run(`DROP TABLE IF EXISTS ${table}`);
   }
@@ -47,6 +51,6 @@ export const openSqliteDatabase = (dbPath: string): Database => {
       // Best effort: some filesystems (or in-memory paths) do not support chmod.
     }
   }
-  dropObsoleteTables(db);
+  dropObsoleteTables(db, dbPath);
   return db;
 };

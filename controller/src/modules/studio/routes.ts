@@ -21,6 +21,7 @@ import {
   getPersistedConfigPath,
   loadPersistedConfig,
   savePersistedConfig,
+  type PersistedConfig,
 } from "../../config/persisted-config";
 import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
 
@@ -122,12 +123,15 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
     };
   } => {
     const persisted = loadPersistedConfig(context.config.data_dir);
+    const legacyUiPreferences = (
+      persisted as PersistedConfig & { ui_preferences?: Record<string, string> }
+    ).ui_preferences;
     const dbUiPreferences = context.stores.controllerSettingsStore.getUiPreferences();
     const uiPreferences =
       Object.keys(dbUiPreferences).length > 0
         ? dbUiPreferences
-        : persisted.ui_preferences && typeof persisted.ui_preferences === "object"
-          ? persisted.ui_preferences
+        : legacyUiPreferences && typeof legacyUiPreferences === "object"
+          ? legacyUiPreferences
           : {};
     if (Object.keys(dbUiPreferences).length === 0 && Object.keys(uiPreferences).length > 0) {
       context.stores.controllerSettingsStore.saveUiPreferences(uiPreferences);
@@ -163,10 +167,10 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
       throw badRequest("No supported settings provided");
     }
 
-    const saved = savePersistedConfig(context.config.data_dir, {
-      ...(modelsDirectory !== undefined ? { models_dir: modelsDirectory } : {}),
-      ...(uiPreferences !== undefined ? { ui_preferences: uiPreferences } : {}),
-    });
+    const saved =
+      modelsDirectory !== undefined
+        ? savePersistedConfig(context.config.data_dir, { models_dir: modelsDirectory })
+        : loadPersistedConfig(context.config.data_dir);
 
     if (uiPreferences !== undefined) {
       context.stores.controllerSettingsStore.saveUiPreferences(uiPreferences ?? {});
