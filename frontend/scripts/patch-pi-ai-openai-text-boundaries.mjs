@@ -60,7 +60,7 @@ for (const file of targetFiles) {
   if (!existsSync(file)) continue;
   found += 1;
   let source = readFileSync(file, "utf8");
-  let next = source;
+  let next = source.replaceAll("vllmStudio", "localStudio");
   if (!next.includes(helperMarker)) {
     if (!next.includes(injectionPoint)) {
       throw new Error(`Could not find pi-ai text block helper injection point in ${file}`);
