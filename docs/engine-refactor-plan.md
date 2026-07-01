@@ -57,21 +57,95 @@ process-launch path exo-cli's pattern informs.
 ## Part A — `/environments` (new feature)
 
 Goal: a page where a user picks a recipe + explicit pinned engine version
-(vllm/sglang/llama.cpp/mlx) and we build/run it as a Docker container, instead of
-(or alongside) the native-process launch path.
+(vllm/sglang/llama.cpp) and we run it as a Docker container using the
+**official upstream image** for that version, instead of the native-process
+launch path.
 
-- [ ] Design `EnvironmentSpec`: recipe ref + engine id + pinned version string +
-      Dockerfile/image strategy (base image per engine, version arg).
-- [ ] Controller: `environments` module — create/list/build/start/stop/remove,
-      Dockerfile templates per engine (vllm/sglang/llama.cpp/mlx), mirroring the
-      exo-cli `EngineSpec` shape but with an `image`/`build` effect instead of
-      `install`.
-- [ ] Controller routes: `/environments`, `/environments/:id/build`,
-      `/environments/:id/start`, `/environments/:id/stop`.
-- [ ] Frontend: `/environments` page + creation flow (recipe picker, engine +
-      version picker, build/stream logs, start/stop, status).
-- [ ] Reuse existing recipe store/types where possible — do not fork a second
-      recipe concept; an environment references a recipe + pins a version.
+**2026-07-01 (iter 5) important design correction:** the codebase already has
+a Docker-run mechanism (`backend-builder.ts`'s `wrapVllmInDocker`,
+`extra_args.docker_image` on a recipe, `process-manager.ts`'s docker
+stop/kill, `runtime-targets.ts`'s docker image/container discovery,
+`logs-routes.ts`'s docker log streaming) — but it is a **narrow, vLLM-only
+escape hatch for one specific custom-forked image** (`CONTAINER_VLLM_BIN =
+"/opt/venv/bin/vllm"` is that image's specific file layout, not a generic
+convention). Generalizing it by guessing container paths for sglang/
+llama.cpp would have been irresponsible — instead, researched each engine's
+**real, official, published Docker image** via WebSearch/WebFetch (sourced,
+not guessed):
+
+- **vLLM** — `vllm/vllm-openai` (Docker Hub). `ENTRYPOINT ["vllm", "serve"]`.
+  Plain semver tags for CUDA (`v0.11.0`), accelerator-suffixed variants exist
+  too (`v0.24.0-cu129-ubuntu2404`). Container command = just the engine flags
+  (`--model`, `--host`, `--port`, ...) — no subcommand needed, the entrypoint
+  already runs `vllm serve`.
+  Sources: [vLLM Docker docs](https://docs.vllm.ai/en/stable/deployment/docker/),
+  [vllm/vllm-openai tags](https://hub.docker.com/r/vllm/vllm-openai/tags).
+- **SGLang** — `lmsysorg/sglang` (Docker Hub). No fixed server entrypoint —
+  tags are always accelerator-suffixed (`v0.4.7-cu124`,
+  `v0.4.10.post2-rocm700-mi35x`), and the container command must explicitly
+  invoke `python3 -m sglang.launch_server --model-path ... --host ... --port ...`.
+  Source: [lmsysorg/sglang](https://hub.docker.com/r/lmsysorg/sglang),
+  [sglang docker compose](https://github.com/sgl-project/sglang/blob/main/docker/compose.yaml).
+- **llama.cpp** — `ghcr.io/ggml-org/llama.cpp`. Versioned by **build number**,
+  not semver (e.g. `server-cuda-b9853`, `server-b9853` for CPU,
+  `server-rocm-b{n}`/`server-vulkan-b{n}`/`server-openvino-b{n}` for other
+  accelerators). The `server*` tag variants already run `llama-server` as
+  their entrypoint — container command is just `-m <path> --host --port`.
+  Sources: [llama.cpp docker.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md),
+  [ghcr.io/ggml-org/llama.cpp packages](https://github.com/ggerganov/llama.cpp/pkgs/container/llama.cpp).
+- **MLX is intentionally excluded.** MLX's entire value proposition is native
+  Apple Silicon Metal acceleration; Docker on macOS runs containers inside a
+  Linux VM with no GPU/Metal passthrough, so a "containerized MLX
+  environment" would run with no acceleration at all — not useful. No
+  official MLX Docker image exists either. `EnvironmentEngineId` is
+  `Extract<EngineBackend, "vllm" | "sglang" | "llamacpp">`.
+
+Progress:
+
+- [x] **Safe prerequisite refactor**: extracted `buildDockerRunArguments`
+      (renamed per `unicorn/prevent-abbreviations`) out of `wrapVllmInDocker`
+      in `backend-builder.ts` — the generic `docker run` invocation shape
+      (container naming, `--gpus all --network host --ipc host`, env
+      forwarding, model bind-mount) is now a shared, parameterized helper
+      (`extraEnv`/`extraVolumes` per-call), with `wrapVllmInDocker` reduced to
+      supplying its own JIT-cache-specific env/volume on top. Verified
+      byte-for-byte identical behavior against the existing
+      `vllm-docker-image.test.ts` (4/4 pass unchanged).
+- [x] **`EnvironmentSpec` foundation** (new `controller/src/modules/
+      environments/` module, built on the research above — NOT the
+      vllm-only escape hatch):
+  - `types.ts` (16 lines) — `EnvironmentEngineId`, `EnvironmentAccelerator`,
+    `EnvironmentImageSpec`.
+  - `image-registry.ts` (32 lines) — `resolveEnvironmentImage({engineId,
+    version, variant})`: pure function mapping a pinned version + optional
+    accelerator/build variant to the exact official image reference per
+    engine, using the real tag shapes above (no invented defaults for
+    variants that vary per engine — caller supplies the exact suffix).
+  - `container-command.ts` (49 lines) — `buildEnvironmentContainerCommand
+    (engineId, recipe, image)`: builds the per-engine container CMD (reusing
+    the existing `Recipe` type — no forked recipe concept, per the original
+    plan) and wraps it via the shared `buildDockerRunArguments`.
+  - New test file `tests/controller/integration/environments-docker-images
+    .test.ts` (9 tests, all passing) covering image resolution for all 3
+    engines + variants, and container-command shape for all 3 engines
+    (entrypoint assumptions, model bind-mount, served-model-name handling).
+  - `npm run test:integration` (108/108, up from 99), `test:unit` (4/4),
+    lint, typecheck, jscpd, depcheck all green. `knip` flags the 3 new files
+    as "unused" — expected and correct: nothing wires them into routes yet
+    (next step below), not dead code.
+- [ ] **Persistence**: an `environments` store (JSON-file-backed, same shape
+      as `models/recipes/recipe-store.ts`) holding `{id, name, recipeId,
+      engineId, version, variant, image, status}` records. NOT STARTED.
+- [ ] **Controller routes**: `/environments` (create/list), `/environments/:id/
+      start`, `/environments/:id/stop`, `/environments/:id` (remove). "Build"
+      may not even be a distinct step for vLLM/SGLang (official images are
+      pre-built on Docker Hub, `docker run` pulls on demand) — only relevant
+      if we ever need a custom Dockerfile layer on top; start there instead
+      of assuming a build step is required. NOT STARTED.
+- [ ] **Frontend**: `/environments` page + creation flow (recipe picker,
+      engine + version + variant picker, status, start/stop). NOT STARTED.
+- [x] **Reuse existing recipe types**: confirmed — `buildEnvironmentContainerCommand`
+      takes the existing `Recipe` type directly, no second recipe concept forked.
 
 ## Part B — engine system simplification
 
@@ -358,3 +432,23 @@ the audit commands below at the start of each iteration to see current counts.
   before touching anything). Part A (`/environments` Docker feature) and the
   ~21 remaining file-size items in Part C are still fully untouched — worth
   picking one of those next if step 7 doesn't feel safe to rush.
+
+- **2026-07-01 (iter 5)**: pivoted to Part A after 4 iterations of Part B/C
+  cleanup — the user's headline ask (a new `/environments` page) hadn't been
+  touched yet. Before writing any code, discovered the existing
+  `docker_image`/`wrapVllmInDocker` mechanism is a narrow vLLM-only escape
+  hatch for one custom-forked image, not a generalizable template — so
+  researched the real official Docker images for vLLM/SGLang/llama.cpp via
+  WebSearch/WebFetch instead of guessing container internals (see Part A
+  above for sources and findings). Extracted a safe, verified
+  `buildDockerRunArguments` helper from `wrapVllmInDocker` first, then built
+  the `environments` module foundation (types + pure image-resolution +
+  container-command builders) on top of the *real* image/entrypoint
+  contracts, with 9 new passing tests. Deliberately excluded MLX (no GPU
+  passthrough for Docker on macOS, no official image exists). Did NOT build
+  persistence/routes/frontend yet — those need the same careful pace, and
+  rushing a Docker orchestration lifecycle (build/start/stop, container
+  reaping, log streaming) without room to verify each piece would risk
+  exactly the kind of complexity the user is asking to get away from. Next
+  iteration: environments store (mirror `recipe-store.ts`'s shape), then
+  routes, then frontend page — in that order, one verified commit each.

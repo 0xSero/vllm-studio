@@ -299,19 +299,31 @@ const buildDockerEnvironmentFlags = (recipe: Recipe): string[] => {
   return flags;
 };
 
+export interface DockerRunOptions {
+  recipe: Recipe;
+  image: string;
+  /** The command to run inside the container, after the image reference. */
+  inner: string[];
+  /** Extra `-e KEY=VALUE` pairs to set unconditionally (e.g. engine cache dirs). */
+  extraEnv?: Record<string, string>;
+  /** Extra `-v` volume mounts beyond the model path, each as `source:target[:mode]`. */
+  extraVolumes?: string[];
+}
+
 /**
- * Wrap a vLLM `serve` invocation so it runs inside a pinned Docker image
- * (`extra_args.docker_image`). Used for forked vLLM builds (e.g. voipmonitor
- * B12X) that cannot be installed into the host venv.
- *
- * The container runs in the foreground as the controller's child process, so
- * the existing process-manager stop path tears it down (SIGTERM proxies to the
- * container; `--rm` removes it). `--network host` lets vLLM bind the recipe's
- * port directly, and a per-recipe named volume persists the JIT compile cache.
+ * Shared `docker run` invocation shape for every engine's Docker-backed launch
+ * path: foreground container (so the process-manager stop path's SIGTERM/
+ * `--rm` teardown applies unchanged), host networking so the engine binds the
+ * recipe's port directly, and the model path bind-mounted read-only.
  */
-export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[]): string[] => {
+export const buildDockerRunArguments = ({
+  recipe,
+  image,
+  inner,
+  extraEnv: extraEnvironment = {},
+  extraVolumes = [],
+}: DockerRunOptions): string[] => {
   const name = `local-studio-${sanitizeDockerName(recipe.id)}`;
-  const jitVolume = `local-studio-jit-${sanitizeDockerName(recipe.id)}`;
   const model = recipe.model_path;
   const flags = [
     "docker",
@@ -334,21 +346,38 @@ export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[])
     "stack=67108864",
   ];
   flags.push(...buildDockerEnvironmentFlags(recipe));
-  flags.push(
-    "-e",
-    `XDG_CACHE_HOME=${DOCKER_JIT_MOUNT}`,
-    "-e",
-    `CUDA_CACHE_PATH=${DOCKER_JIT_MOUNT}`,
-    "-e",
-    `VLLM_CACHE_DIR=${DOCKER_JIT_MOUNT}/vllm`,
-    "-e",
-    `TRITON_CACHE_DIR=${DOCKER_JIT_MOUNT}/triton`,
-  );
+  for (const [key, value] of Object.entries(extraEnvironment)) {
+    flags.push("-e", `${key}=${value}`);
+  }
   flags.push("-v", `${model}:${model}:ro`);
-  flags.push("-v", `${jitVolume}:${DOCKER_JIT_MOUNT}`);
+  for (const volume of extraVolumes) {
+    flags.push("-v", volume);
+  }
   flags.push(image);
   flags.push(...inner);
   return flags;
+};
+
+/**
+ * Wrap a vLLM `serve` invocation so it runs inside a pinned Docker image
+ * (`extra_args.docker_image`). Used for forked vLLM builds (e.g. voipmonitor
+ * B12X) that cannot be installed into the host venv. A per-recipe named
+ * volume persists the JIT compile cache across restarts.
+ */
+export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[]): string[] => {
+  const jitVolume = `local-studio-jit-${sanitizeDockerName(recipe.id)}`;
+  return buildDockerRunArguments({
+    recipe,
+    image,
+    inner,
+    extraEnv: {
+      XDG_CACHE_HOME: DOCKER_JIT_MOUNT,
+      CUDA_CACHE_PATH: DOCKER_JIT_MOUNT,
+      VLLM_CACHE_DIR: `${DOCKER_JIT_MOUNT}/vllm`,
+      TRITON_CACHE_DIR: `${DOCKER_JIT_MOUNT}/triton`,
+    },
+    extraVolumes: [`${jitVolume}:${DOCKER_JIT_MOUNT}`],
+  });
 };
 
 const executableBaseName = (value: string): string => {
