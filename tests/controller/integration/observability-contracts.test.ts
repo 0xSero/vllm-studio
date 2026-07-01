@@ -24,14 +24,6 @@ describe("controller route contracts", () => {
     );
     const { app, context } = await createTestHarness();
 
-    const prometheusResponse = await app.request("/metrics");
-    const prometheusText = await prometheusResponse.text();
-    expect(prometheusResponse.status).toBe(200);
-    expect(prometheusResponse.headers.get("content-type")).toContain(
-      "text/plain",
-    );
-    expect(prometheusText).toContain("local_studio");
-
     const currentMetricsResponse = await app.request("/v1/metrics/vllm");
     const currentMetricsBody = await currentMetricsResponse.json();
     expect(currentMetricsResponse.status).toBe(200);
@@ -167,12 +159,6 @@ describe("controller route contracts", () => {
     const rows = readControllerRequestRows();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          method: "GET",
-          path: "/metrics",
-          status: 200,
-          success: 1,
-        }),
         expect.objectContaining({
           method: "GET",
           path: "/v1/metrics/vllm",

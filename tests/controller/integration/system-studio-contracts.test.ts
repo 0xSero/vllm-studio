@@ -67,7 +67,6 @@ describe("controller route contracts", () => {
           name: "Inference runtime",
           status: "stopped",
         }),
-        expect.objectContaining({ name: "Prometheus" }),
         expect.objectContaining({ name: "Frontend" }),
       ]),
     );

@@ -7,7 +7,6 @@ import {
   createLaunchFailureBudget,
   type LaunchFailureBudget,
 } from "./modules/engines/process/launch-failure-budget";
-import { createMetrics, type ControllerMetrics, type MetricsRegistry } from "./modules/system/metrics";
 import { createProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
 import { createEngineCoordinator, type EngineCoordinator } from "./modules/engines/engine-coordinator";
@@ -27,8 +26,6 @@ export interface AppContext {
   eventManager: EventManager;
   launchState: LaunchState;
   launchFailureBudget: LaunchFailureBudget;
-  metrics: ControllerMetrics;
-  metricsRegistry: MetricsRegistry;
   processManager: ProcessManager;
   downloadManager: DownloadManager;
   engineService: EngineCoordinator;
@@ -89,7 +86,6 @@ export const createAppContext = (): AppContext => {
 
   const launchState = createLaunchState();
   const launchFailureBudget = createLaunchFailureBudget();
-  const { registry: metricsRegistry, metrics } = createMetrics();
   const processManager = createProcessManager(config, logger, eventManager);
   const downloadManager = new DownloadManager(config, downloadStore, eventManager, logger);
 
@@ -110,8 +106,6 @@ export const createAppContext = (): AppContext => {
     eventManager,
     launchState,
     launchFailureBudget,
-    metrics,
-    metricsRegistry,
     processManager,
     downloadManager,
     engineService,

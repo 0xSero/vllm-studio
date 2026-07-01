@@ -55,19 +55,6 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
       );
       const gpuList = getGpuInfo();
 
-      if (current) {
-        context.metrics.updateActiveModel(
-          current.model_path,
-          current.backend,
-          current.served_model_name
-        );
-      } else {
-        context.metrics.updateActiveModel();
-      }
-
-      context.metrics.updateGpuMetrics(gpuList);
-      context.metrics.updateSseMetrics(context.eventManager.getStats());
-
       const lifetimeStore = context.stores.lifetimeMetricsStore;
       const totalPowerWatts = gpuList.reduce((sum, gpu) => sum + gpu.power_draw, 0);
       const energyWh = totalPowerWatts * (5 / 3600);

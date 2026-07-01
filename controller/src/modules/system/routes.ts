@@ -11,7 +11,6 @@ import { estimateWeightsSizeBytes } from "../models/model-browser";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import { buildCompatibilityReport } from "./platform/compatibility-report";
-import { fetchLocal } from "../../http/local-fetch";
 import { registerMonitoringRoutes } from "./metrics-routes";
 import { registerLogsRoutes } from "./logs-routes";
 import { registerUsageRoutes } from "./usage-routes";
@@ -230,34 +229,6 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
       protocol: "http",
       status: inferenceStatus,
       description: "Inference backend (vLLM, SGLang, llama.cpp, or MLX)",
-    });
-
-    const redisReachable = await checkService("localhost", 6379);
-    if (redisReachable) {
-      services.push({
-        name: "Redis",
-        port: 6379,
-        internal_port: 6379,
-        protocol: "tcp",
-        status: "running",
-        description: "Cache and rate limiting",
-      });
-    }
-
-    let prometheusStatus = "unknown";
-    try {
-      const response = await fetchLocal(9090, "/-/healthy", { timeoutMs: 2000 });
-      prometheusStatus = response.status === 200 ? "running" : "error";
-    } catch {
-      prometheusStatus = "stopped";
-    }
-    services.push({
-      name: "Prometheus",
-      port: 9090,
-      internal_port: 9090,
-      protocol: "http",
-      status: prometheusStatus,
-      description: "Metrics collection",
     });
 
     const frontendReachable = await checkService("localhost", 3000);

@@ -153,14 +153,7 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
 };
 
 export const registerMonitoringRoutes: RouteRegistrar = (app, context) => {
-  app.get("/metrics", async (_ctx) => {
-    const content = await context.metricsRegistry.getMetrics();
-    return new Response(content, {
-      headers: { "Content-Type": context.metricsRegistry.contentType },
-    });
-  });
-
-  app.get("/v1/metrics/vllm", async (ctx) => {
+app.get("/v1/metrics/vllm", async (ctx) => {
     try {
       const current = await buildCurrentMetrics(context);
       await context.eventManager.publishMetrics(current);
