@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchWithTimeout } from "@/lib/api/http";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
+import { isRecord } from "@/lib/guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,10 +89,6 @@ async function fetchReadme(modelId: string): Promise<string | undefined> {
   if (!response.ok) return undefined;
   const text = await response.text();
   return text.slice(0, MAX_README_CHARS);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function stringValue(value: unknown): string | undefined {

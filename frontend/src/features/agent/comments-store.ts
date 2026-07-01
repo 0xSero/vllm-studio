@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isRecord } from "@/lib/guards";
 
 export type Comment = {
   id: string;
@@ -18,22 +19,20 @@ function commentsPath(rootCwd: string): string {
   return path.join(rootCwd, ".local-studio", "comments.json");
 }
 
-function readDocument(rootCwd: string): CommentsDocument {
-  const filePath = commentsPath(rootCwd);
-  if (!existsSync(filePath)) return { files: {} };
+async function readDocument(rootCwd: string): Promise<CommentsDocument> {
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as Partial<CommentsDocument>;
-    if (!parsed || typeof parsed !== "object" || !parsed.files) return { files: {} };
+    const parsed: unknown = JSON.parse(await readFile(commentsPath(rootCwd), "utf-8"));
+    if (!isRecord(parsed) || !isRecord(parsed.files)) return { files: {} };
     return { files: parsed.files as CommentsDocument["files"] };
   } catch {
     return { files: {} };
   }
 }
 
-function writeDocument(rootCwd: string, document: CommentsDocument): void {
+async function writeDocument(rootCwd: string, document: CommentsDocument): Promise<void> {
   const filePath = commentsPath(rootCwd);
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
 }
 
 function ensureRel(rel: string): string {
@@ -43,40 +42,42 @@ function ensureRel(rel: string): string {
   return rel;
 }
 
-function newId(): string {
-  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function listComments(rootCwd: string, rel: string): Comment[] {
+export async function listComments(rootCwd: string, rel: string): Promise<Comment[]> {
   const safe = ensureRel(rel);
-  const doc = readDocument(rootCwd);
+  const doc = await readDocument(rootCwd);
   return doc.files[safe] ?? [];
 }
 
-export function addComment(rootCwd: string, rel: string, line: number, body: string): Comment {
+export async function addComment(
+  rootCwd: string,
+  rel: string,
+  line: number,
+  body: string,
+): Promise<Comment> {
   const safe = ensureRel(rel);
-  const doc = readDocument(rootCwd);
+  const doc = await readDocument(rootCwd);
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Comment body is required");
   const comment: Comment = {
-    id: newId(),
+    id: `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     line,
     body: trimmed,
     createdAt: new Date().toISOString(),
   };
-  const next = { ...doc.files, [safe]: [...(doc.files[safe] ?? []), comment] };
-  writeDocument(rootCwd, { files: next });
+  await writeDocument(rootCwd, {
+    files: { ...doc.files, [safe]: [...(doc.files[safe] ?? []), comment] },
+  });
   return comment;
 }
 
-export function deleteComment(rootCwd: string, rel: string, id: string): void {
+export async function deleteComment(rootCwd: string, rel: string, id: string): Promise<void> {
   const safe = ensureRel(rel);
-  const doc = readDocument(rootCwd);
+  const doc = await readDocument(rootCwd);
   const list = doc.files[safe];
   if (!list) return;
   const filtered = list.filter((c) => c.id !== id);
   if (filtered.length === list.length) return;
-  writeDocument(rootCwd, {
+  await writeDocument(rootCwd, {
     files: { ...doc.files, [safe]: filtered },
   });
 }

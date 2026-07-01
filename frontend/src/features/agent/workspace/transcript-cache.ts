@@ -18,6 +18,7 @@ import type {
   ChatMessage,
   ChatMessageAttachment,
 } from "@/features/agent/messages/types";
+import { isRecord } from "@/lib/guards";
 
 // Structurally identical to WorkspaceStorage; declared locally so this fallback
 // cache stays dependency-free of the workspace layer (both effects and the
@@ -141,10 +142,6 @@ export function putTranscript(
       [piSessionId]: { messages: bounded, ...(title ? { title } : {}), updatedAt: now },
     },
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 export function parseTranscriptCache(raw: string | null): TranscriptCache {

@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/guards";
 import { sanitizeBrowserPaneUrl } from "@/features/agent/sanitize-embedded-browser-url";
 
 const BROWSER_COMMAND_TIMEOUT_MS = 12_000;
@@ -52,10 +53,6 @@ function detectBotProtection(text: string): string | null {
 
 function isSafeBrowserSelector(selector: string): boolean {
   return selector.length > 0 && selector.length <= 240 && !/[`;{}]/.test(selector);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 export async function runBrowserPanelCommand(

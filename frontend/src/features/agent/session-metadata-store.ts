@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { resolveDataDir } from "@/lib/data-dir";
+import { isRecord } from "@/lib/guards";
 
 const SESSION_METADATA_FILENAME = "agent-session-metadata.json";
 const LOCK_STALE_MS = 10_000;
@@ -67,10 +68,6 @@ function storePath(): string {
 
 function storeLockPath(filepath = storePath()): string {
   return `${filepath}.lock`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function normalizeStore(value: unknown): SessionMetadataStore {

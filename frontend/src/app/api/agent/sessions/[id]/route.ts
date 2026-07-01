@@ -4,6 +4,7 @@ import { existsSync, statSync } from "node:fs";
 import { listSessions, loadSession } from "@/features/agent/sessions-store";
 import { setSessionArchived } from "@/features/agent/session-metadata-store";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
+import { isRecord } from "@/lib/guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,10 +20,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
   const events = await loadSession(result.cwd, id);
   return Response.json({ events });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function isValidSessionId(value: string): boolean {

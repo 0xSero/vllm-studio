@@ -25,6 +25,7 @@ import {
   PROJECTS_LOADED_EVENT,
   SESSIONS_CHANGED_EVENT,
 } from "@/lib/workspace-events";
+import { isRecord } from "@/lib/guards";
 
 const EMPTY_SELECTION: ToolSelection = {
   skills: [],
@@ -100,10 +101,6 @@ function dispatchEvent(deps: WorkspaceEffectDeps, type: string): void {
 
 function dispatchCustomEvent<T>(deps: WorkspaceEffectDeps, type: string, detail: T): void {
   deps.window.dispatchEvent(new deps.window.CustomEvent<T>(type, { detail }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function eventDetail(event: Event): unknown {

@@ -1,5 +1,6 @@
 import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
 import { delay } from "../async";
+import { isRecord } from "../guards";
 import { formatHttpErrorMessage, isRetryableError } from "./http-error-message";
 import {
   isBenignSseTransportFailure,
@@ -72,9 +73,6 @@ export function createApiCore(params: {
 
     return { event: event || "message", data };
   };
-
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
   const maybeClearInvalidBackendOverride = (response: Response): void => {
     if (!useProxy) return;

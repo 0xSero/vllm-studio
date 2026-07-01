@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     return jsonError("cwd must be absolute");
   }
   try {
-    return Response.json({ comments: listComments(cwd, rel) });
+    return Response.json({ comments: await listComments(cwd, rel) });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed"));
   }
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     return jsonError("cwd must be absolute");
   }
   try {
-    const comment = addComment(cwd, rel, line, text);
+    const comment = await addComment(cwd, rel, line, text);
     return Response.json({ comment });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed"));
@@ -58,7 +58,7 @@ export async function DELETE(request: NextRequest) {
     return jsonError("cwd must be absolute");
   }
   try {
-    deleteComment(cwd, rel, id);
+    await deleteComment(cwd, rel, id);
     return Response.json({ ok: true });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed"));
