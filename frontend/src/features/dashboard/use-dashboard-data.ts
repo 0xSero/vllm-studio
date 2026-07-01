@@ -1,13 +1,13 @@
 import { useRouter } from "next/navigation";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
-import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { metricsWithProcessIdentity, scopedMetrics } from "./dashboard-metrics";
 import { useDashboardActions } from "./use-dashboard-actions";
 import { useDashboardRecipes } from "./use-dashboard-recipes";
 
 export function useDashboardData() {
   const router = useRouter();
-  const realtime = useRealtimeStatus();
+  const realtime = useRealtimeStatusStore();
   const currentProcess = realtime.status?.process || null;
   const metrics = scopedMetrics(
     metricsWithProcessIdentity(realtime.metrics, currentProcess),
@@ -33,8 +33,8 @@ export function useDashboardData() {
     runtimeSummary: realtime.runtimeSummary,
     services: realtime.services,
     lease: realtime.lease,
-    isConnected: realtime.isConnected,
-    isStatusLoading: realtime.isStatusLoading,
+    isConnected: realtime.connected,
+    isStatusLoading: realtime.statusLoading,
     inferencePort: realtime.status?.inference_port,
     benchmarking: actions.benchmarking,
     launching: lifecycle.status === "starting",

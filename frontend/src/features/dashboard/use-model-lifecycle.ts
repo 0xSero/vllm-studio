@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
-import { useRealtimeStatus } from "@/hooks/use-realtime-status";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
+import { isActiveLaunchStage } from "@/hooks/realtime-status-types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type ModelLifecycleStatus = "idle" | "starting" | "ready" | "error";
@@ -16,8 +17,6 @@ interface ModelLifecycle {
   stop: () => Promise<void>;
 }
 
-const STARTING_STAGES = new Set(["preempting", "evicting", "launching", "waiting"]);
-
 const matchesProcess = (recipe: RecipeWithStatus, process: ProcessInfo): boolean => {
   if (recipe.model_path && process.model_path && recipe.model_path === process.model_path)
     return true;
@@ -28,7 +27,7 @@ const matchesProcess = (recipe: RecipeWithStatus, process: ProcessInfo): boolean
 };
 
 export function useModelLifecycle(): ModelLifecycle {
-  const realtime = useRealtimeStatus();
+  const realtime = useRealtimeStatusStore();
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +55,7 @@ export function useModelLifecycle(): ModelLifecycle {
   const status = useMemo<ModelLifecycleStatus>(() => {
     const stage = realtime.launchProgress?.stage;
     if (realtime.status?.process) return "ready";
-    if (stage && STARTING_STAGES.has(stage)) {
+    if (isActiveLaunchStage(stage)) {
       return realtime.status?.launching ? "starting" : "idle";
     }
     if (stage === "error") return "error";
