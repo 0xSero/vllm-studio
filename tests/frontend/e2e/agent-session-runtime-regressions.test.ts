@@ -6,7 +6,7 @@ import {
   type ActiveAgentSessionSnapshot,
 } from "@/features/agent/active-sessions";
 import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
-import { hasExplicitSessionNavigation } from "@/features/agent/ui/use-workspace";
+import { hasExplicitSessionNavigation } from "@/features/agent/ui/use-workspace-effects";
 import {
   initialRuntimeStatusPhase,
   replayAfterCursor,

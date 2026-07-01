@@ -461,7 +461,24 @@ the audit commands below at the start of each iteration to see current counts.
         green; no tests reference this file directly; full e2e suite shows
         the same 4 pre-existing failures as iterations 2/10/12/13, nothing
         new broken.
-  - [ ] `frontend/src/features/agent/ui/use-workspace.ts` (623)
+  - [x] `frontend/src/features/agent/ui/use-workspace.ts` (623 → 445) —
+        extracted the 3 self-contained hooks that only take `dispatch`/
+        `sessions`/refs as params and own no state shared with the main
+        `useWorkspace` hook: `use-workspace-effects.ts` (186) holds
+        `useBrowserEventsEffects`, `useWorkspaceHydrationEffects` (+ its
+        private `currentSearchParams`/`shouldRestoreWorkspace` helpers and
+        the exported `hasExplicitSessionNavigation`), and
+        `useWorkspaceRuntimeSync` (+ its private `runtimeSubscriptionKey`/
+        `runtimeRegistryKey` helpers). `useWorkspace` itself — the reducer
+        wiring, the browser-command controller, and the `handles` object —
+        stayed as one unit since those pieces are genuinely coupled through
+        shared refs (`stateRef`, `browserRef`, `toolsRef`). Updated the one
+        test (`agent-session-runtime-regressions.test.ts`) that imported
+        `hasExplicitSessionNavigation` to point at the new file. Verified:
+        typecheck/lint (0 errors, same 1 pre-existing unrelated warning)/
+        cycles/ui-structure/deadcode/dupes/depcheck/build all green; full
+        e2e suite shows the same 4 pre-existing failures as iterations
+        2/10/12/13/14, nothing new broken.
   - [ ] `frontend/src/features/agent/tools/context.tsx` (603)
   - [ ] `frontend/src/features/agent/ui/chat-pane-composer.ts` (595)
   - [ ] `controller/src/modules/system/metrics-collector.ts` (565)
@@ -822,3 +839,18 @@ the audit commands below at the start of each iteration to see current counts.
   broken. Next iteration: `use-workspace.ts` (623) is next on the Part C
   list; `session-runtime-controller.ts` stays deferred until a dedicated
   pass.
+
+- **2026-07-01 (iter 15)**: split `use-workspace.ts` (623 → 445) — see the
+  Part C checklist above for the breakdown. Extracted the 3 hooks that only
+  depend on params (dispatch/sessions/refs), not on `useWorkspace`'s own
+  local state, into `use-workspace-effects.ts` (186). Had to fix one test
+  import (`agent-session-runtime-regressions.test.ts` imported the
+  relocated `hasExplicitSessionNavigation`) — caught immediately by running
+  the full e2e suite before considering the iteration done, exactly the
+  discipline this loop keeps relying on. Frontend gate green end to end
+  (typecheck/lint/cycles/ui-structure/deadcode/dupes/depcheck/build), e2e
+  suite shows the same 4 pre-existing failures as iterations
+  2/10/12/13/14, nothing new broken. Next iteration:
+  `frontend/src/features/agent/tools/context.tsx` (603) is next on the
+  Part C list; `session-runtime-controller.ts` stays deferred until a
+  dedicated pass.
