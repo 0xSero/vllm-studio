@@ -3,30 +3,43 @@ import { badRequest, notFound, serviceUnavailable } from "../../core/errors";
 import { optionalString, parseJsonObjectBody } from "../../core/validation";
 import { resolveBinary } from "../../core/command";
 import { parseEnvironment } from "./environment-serializer";
-import { isEnvironmentRunning, startEnvironment, stopEnvironment } from "./environment-process";
-import { resolveEnvironmentImage } from "./image-registry";
+import { seedEnvironmentsFromRecipes } from "./environment-seeder";
+import {
+  isEnvironmentRunning,
+  listPulledImages,
+  startEnvironment,
+  stopEnvironment,
+} from "./environment-process";
+import { resolveImageForEnvironment } from "./image-registry";
 import type { Environment } from "./types";
 
-const withStatus = (environment: Environment): Environment & { image: string; running: boolean } => ({
-  ...environment,
-  image: resolveEnvironmentImage({
-    engineId: environment.engineId,
-    version: environment.version,
-    ...(environment.variant ? { variant: environment.variant } : {}),
-  }),
-  running: isEnvironmentRunning(environment.id),
-});
+const withStatus = (
+  environment: Environment,
+  pulledImages: Set<string>,
+): Environment & { image: string; imagePulled: boolean; running: boolean } => {
+  const image = resolveImageForEnvironment(environment);
+  return {
+    ...environment,
+    image,
+    imagePulled: pulledImages.has(image),
+    running: isEnvironmentRunning(environment.id),
+  };
+};
 
 export const registerEnvironmentRoutes: RouteRegistrar = (app, context) => {
   app.get("/environments", (ctx) => {
-    const environments = context.stores.environmentStore.list().map(withStatus);
+    seedEnvironmentsFromRecipes(context.stores.recipeStore, context.stores.environmentStore);
+    const pulledImages = listPulledImages();
+    const environments = context.stores.environmentStore
+      .list()
+      .map((environment) => withStatus(environment, pulledImages));
     return ctx.json(environments);
   });
 
   app.get("/environments/:environmentId", (ctx) => {
     const environment = context.stores.environmentStore.get(ctx.req.param("environmentId"));
     if (!environment) throw notFound("Environment not found");
-    return ctx.json(withStatus(environment));
+    return ctx.json(withStatus(environment, listPulledImages()));
   });
 
   app.post("/environments", async (ctx) => {
@@ -43,7 +56,7 @@ export const registerEnvironmentRoutes: RouteRegistrar = (app, context) => {
       throw badRequest(String(error));
     }
     context.stores.environmentStore.save(environment);
-    return ctx.json(withStatus(environment));
+    return ctx.json(withStatus(environment, listPulledImages()));
   });
 
   app.delete("/environments/:environmentId", async (ctx) => {

@@ -46,30 +46,10 @@ const resolveSglangCliBinary = (pythonPath: string | null): string | null => {
   return existsSync(sglangBin) ? sglangBin : null;
 };
 
-/**
- * Build the SGLang serve command. Prefers the `sglang serve` CLI (modern
- * interface, same as exo-spark) when the console script is available, falling
- * back to `python -m sglang.launch_server` (legacy module invocation).
- */
-const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
-  const recipePython = getPythonPath(recipe) ?? null;
-  const managedPython = managedVenvPython(config, "sglang");
-  const resolvedManagedPython = existsSync(managedPython) ? managedPython : null;
-  const python = recipePython || config.sglang_python || resolvedManagedPython || "python";
-  const cliBinary =
-    resolveSglangCliBinary(recipePython) ??
-    resolveSglangCliBinary(config.sglang_python ?? null) ??
-    resolveSglangCliBinary(resolvedManagedPython);
-
-  let command: string[];
-
-  if (cliBinary && existsSync(cliBinary)) {
-    command = [cliBinary, "serve"];
-  } else {
-    command = [python, "-m", "sglang.launch_server"];
-  }
-
-  command.push("--model-path", recipe.model_path);
+/** Engine args shared by the native launch and the environment container:
+ * everything after the `sglang serve` / `launch_server` head. */
+export const buildSglangRecipeArguments = (recipe: Recipe): string[] => {
+  const command: string[] = ["--model-path", recipe.model_path];
   command.push("--host", recipe.host, "--port", String(recipe.port));
 
   if (recipe.served_model_name) {
@@ -114,6 +94,20 @@ const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
   }
 
   return appendExtraArguments(command, stripForeignFlagKeys("sglang", recipe.extra_args));
+};
+
+const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
+  const recipePython = getPythonPath(recipe) ?? null;
+  const managedPython = managedVenvPython(config, "sglang");
+  const resolvedManagedPython = existsSync(managedPython) ? managedPython : null;
+  const python = recipePython || config.sglang_python || resolvedManagedPython || "python";
+  const cliBinary =
+    resolveSglangCliBinary(recipePython) ??
+    resolveSglangCliBinary(config.sglang_python ?? null) ??
+    resolveSglangCliBinary(resolvedManagedPython);
+  const head =
+    cliBinary && existsSync(cliBinary) ? [cliBinary, "serve"] : [python, "-m", "sglang.launch_server"];
+  return [...head, ...buildSglangRecipeArguments(recipe)];
 };
 
 // `sglang[all]` (not bare `sglang`) so the server runtime, tokenizer, and all backends are pulled in.

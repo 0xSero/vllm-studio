@@ -50,8 +50,8 @@ export default function EnvironmentsPage() {
           <div>
             <h1 className="text-[length:var(--fs-2xl)] font-semibold text-(--fg)">Environments</h1>
             <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
-              Run a recipe as a Docker container pinned to an official vLLM, SGLang, or llama.cpp
-              image version.
+              Every docker-capable recipe is seeded here as a container pinned to an official vLLM,
+              SGLang, or llama.cpp image. Adjust the version, then start it.
             </p>
           </div>
           <RefreshButton onRefresh={loadAll} loading={loading} />
@@ -64,13 +64,18 @@ export default function EnvironmentsPage() {
         ) : null}
 
         <section className="mt-5 rounded-[var(--ui-radius)] border border-(--ui-border) p-4">
-          <h2 className="text-[length:var(--fs-md)] font-medium text-(--fg)">New environment</h2>
+          <h2 className="text-[length:var(--fs-md)] font-medium text-(--fg)">
+            Additional environment
+          </h2>
+          <p className="mt-1 text-[length:var(--fs-xs)] text-(--dim)">
+            Pair an existing recipe with a different engine or image version.
+          </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Input
               label="Name"
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Qwen3-32B (vLLM v0.11.0)"
+              placeholder="Qwen3-32B (vLLM v0.24.0)"
             />
             <Select
               label="Recipe"
@@ -91,13 +96,13 @@ export default function EnvironmentsPage() {
               label="Version"
               value={form.version}
               onChange={(event) => setForm({ ...form, version: event.target.value })}
-              placeholder="0.11.0"
+              placeholder="0.24.0"
             />
             <Input
               label="Variant (optional)"
               value={form.variant}
               onChange={(event) => setForm({ ...form, variant: event.target.value })}
-              placeholder="cu124"
+              placeholder="cu129"
             />
           </div>
           <Button
@@ -124,7 +129,8 @@ export default function EnvironmentsPage() {
               {environments.length === 0 ? (
                 <TRow>
                   <TCell colSpan={5} className="py-6 text-center text-(--dim)">
-                    No environments yet — create one above.
+                    No environments yet — add a vLLM, SGLang, or llama.cpp recipe and they are
+                    seeded automatically.
                   </TCell>
                 </TRow>
               ) : (
@@ -144,6 +150,11 @@ export default function EnvironmentsPage() {
                         <span className={environment.running ? "text-(--ok)" : "text-(--dim)"}>
                           {environment.running ? "running" : "stopped"}
                         </span>
+                        {!environment.imagePulled && !environment.running ? (
+                          <span className="ml-2 text-[length:var(--fs-xs)] text-(--warn)">
+                            image not pulled
+                          </span>
+                        ) : null}
                       </TCell>
                       <TCell align="right">
                         <div className="flex justify-end gap-2">

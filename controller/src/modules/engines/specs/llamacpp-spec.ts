@@ -24,8 +24,8 @@ import {
   runEnvironmentUpgradeCommand,
 } from "../runtimes/upgrade-config";
 
-const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => {
-  const command: string[] = [resolveLlamaBinary(recipe, config)];
+export const buildLlamacppRecipeArguments = (recipe: Recipe): string[] => {
+  const command: string[] = [];
   command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
   if (recipe.served_model_name) {
     command.push("--alias", recipe.served_model_name);
@@ -36,6 +36,11 @@ const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => {
   }
   return appendLlamacppArguments(command, stripForeignFlagKeys("llamacpp", recipe.extra_args));
 };
+
+const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => [
+  resolveLlamaBinary(recipe, config),
+  ...buildLlamacppRecipeArguments(recipe),
+];
 
 const managedPackageSpec = (_version?: string | null): string => {
   // llama.cpp is built from source or installed as a binary; no pip package.

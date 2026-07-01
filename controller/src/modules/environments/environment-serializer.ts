@@ -11,6 +11,8 @@ export const environmentSchema = Schema.Struct({
   engineId: Schema.Literals(["vllm", "sglang", "llamacpp"]),
   version: Schema.String,
   variant: nullableStringSchema,
+  image: nullableStringSchema,
+  seeded: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -24,6 +26,8 @@ export const parseEnvironment = (raw: unknown): Environment => {
   const parsed = Schema.decodeUnknownSync(environmentSchema)({
     ...data,
     variant: data["variant"] ?? null,
+    image: data["image"] ?? null,
+    seeded: data["seeded"] ?? false,
     createdAt: data["createdAt"] ?? now,
     updatedAt: data["updatedAt"] ?? now,
   });

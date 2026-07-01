@@ -251,31 +251,36 @@ export function RecipeModal({
           />
           <RecipeModalTabContent
             activeTab={safeActiveTab}
-            recipe={recipe}
-            onChange={applyRecipeChange}
-            availableModels={availableModels}
-            modelServedNames={modelServedNames}
-            capabilities={capabilities}
-            getExtraArgValueForKey={getExtraArgValueForKeyLocal}
-            setExtraArgValueForKey={setExtraArgValueForKeyLocal}
-            envVarEntries={envVarEntries}
-            onAddEnvVar={handleAddEnvVar}
-            onChangeEnvVar={handleEnvVarChange}
-            onRemoveEnvVar={handleRemoveEnvVar}
-            extraArgsText={extraArgsText}
-            extraArgsError={extraArgsError}
-            onExtraArgsChange={handleExtraArgsChange}
-            llamaConfigLoading={llamaConfigLoading}
-            llamaConfigHelp={llamaConfigHelp}
-            recipeSourceText={recipeSourceText}
-            recipeSourceError={recipeSourceError}
-            onRecipeSourceChange={handleRecipeSourceChange}
-            onFormatRecipeSource={handleRecipeSourceFormat}
-            commandText={commandText}
-            generatedCommand={generatedCommand}
-            hasCommandOverride={hasCommandOverride}
-            onCommandChange={handleCommandChange}
-            onResetCommand={handleCommandReset}
+            tab={{
+              recipe,
+              onChange: applyRecipeChange,
+              capabilities,
+              getExtraArgValueForKey: getExtraArgValueForKeyLocal,
+              setExtraArgValueForKey: setExtraArgValueForKeyLocal,
+            }}
+            general={{ availableModels, modelServedNames }}
+            environment={{
+              envVarEntries,
+              onAddEnvVar: handleAddEnvVar,
+              onChangeEnvVar: handleEnvVarChange,
+              onRemoveEnvVar: handleRemoveEnvVar,
+              extraArgsText,
+              extraArgsError,
+              onExtraArgsChange: handleExtraArgsChange,
+              llamaConfigLoading,
+              llamaConfigHelp,
+            }}
+            command={{
+              recipeSourceText,
+              recipeSourceError,
+              onRecipeSourceChange: handleRecipeSourceChange,
+              onFormatRecipeSource: handleRecipeSourceFormat,
+              commandText,
+              generatedCommand,
+              hasCommandOverride,
+              onCommandChange: handleCommandChange,
+              onResetCommand: handleCommandReset,
+            }}
           />
         </div>
       </DrawerBody>

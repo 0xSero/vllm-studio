@@ -81,7 +81,11 @@ describe("environments routes", () => {
     const list = await listResponse.json();
     expect(listResponse.status).toBe(200);
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ image: "lmsysorg/sglang:v0.4.7-cu124" });
+    expect(list[0]).toMatchObject({
+      id: "env-qwen3-32b",
+      seeded: false,
+      image: "lmsysorg/sglang:v0.4.7-cu124",
+    });
 
     const getResponse = await app.request("/environments/env-qwen3-32b");
     expect(getResponse.status).toBe(200);

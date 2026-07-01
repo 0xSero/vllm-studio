@@ -17,7 +17,7 @@ const makeEnvironment = (overrides: Partial<Environment> = {}): Environment =>
   });
 
 describe("parseEnvironment", () => {
-  it("defaults variant to null and stamps created/updated timestamps", () => {
+  it("defaults variant/image to null, seeded to false, and stamps created/updated timestamps", () => {
     const environment = parseEnvironment({
       id: "env-a",
       name: "A",
@@ -26,6 +26,8 @@ describe("parseEnvironment", () => {
       version: "0.4.7",
     });
     expect(environment.variant).toBeNull();
+    expect(environment.image).toBeNull();
+    expect(environment.seeded).toBe(false);
     expect(environment.createdAt).toBeTruthy();
     expect(environment.updatedAt).toBeTruthy();
     expect(environment.id).toBe("env-a");

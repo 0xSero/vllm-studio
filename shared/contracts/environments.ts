@@ -9,6 +9,8 @@ export interface Environment {
   engineId: EnvironmentEngineId;
   version: string;
   variant: string | null;
+  image: string | null;
+  seeded: boolean;
   createdAt: string;
   updatedAt: string;
 }

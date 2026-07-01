@@ -66,42 +66,87 @@ describe("buildEnvironmentContainerCommand", () => {
   const IMAGE = "vllm/vllm-openai:v0.11.0";
   const ENVIRONMENT_ID = "env-qwen3-32b";
 
-  it("wraps vLLM's official image with --model/--host/--port and no CLI subcommand", () => {
+  const innerCommand = (cmd: string[], image: string): string[] => {
+    const imageIdx = cmd.indexOf(image);
+    expect(imageIdx).toBeGreaterThan(-1);
+    return cmd.slice(imageIdx + 1);
+  };
+
+  const flagValue = (args: string[], flag: string): string | undefined => {
+    expect(args).toContain(flag);
+    return args[args.indexOf(flag) + 1];
+  };
+
+  it("feeds vLLM's `vllm serve` entrypoint a positional model path, never --model or a subcommand", () => {
     const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, ENVIRONMENT_ID);
     expect(cmd[0]).toBe("docker");
     expect(cmd[1]).toBe("run");
-    expect(cmd).toContain(IMAGE);
-    const imageIdx = cmd.indexOf(IMAGE);
-    expect(cmd[imageIdx + 1]).toBe("--model");
-    expect(cmd[imageIdx + 2]).toBe("/mnt/llm_models/Qwen3-32B");
-    expect(cmd).toContain("--served-model-name");
+    const inner = innerCommand(cmd, IMAGE);
+    expect(inner[0]).toBe("/mnt/llm_models/Qwen3-32B");
+    expect(inner[1]).toBe("--host");
+    expect(inner[2]).toBe("0.0.0.0");
+    expect(inner[3]).toBe("--port");
+    expect(inner[4]).toBe("8000");
+    expect(inner).not.toContain("--model");
+    expect(inner).not.toContain("serve");
   });
 
-  it("wraps SGLang's official image with the explicit launch_server module", () => {
+  it("carries the full vLLM recipe flag set into the container command", () => {
+    const cmd = buildEnvironmentContainerCommand(
+      "vllm",
+      baseRecipe({ tensor_parallel_size: 4, max_model_len: 16384 }),
+      IMAGE,
+      ENVIRONMENT_ID,
+    );
+    const inner = innerCommand(cmd, IMAGE);
+    expect(flagValue(inner, "--tensor-parallel-size")).toBe("4");
+    expect(flagValue(inner, "--max-model-len")).toBe("16384");
+    expect(flagValue(inner, "--served-model-name")).toBe("qwen3-32b");
+    expect(flagValue(inner, "--gpu-memory-utilization")).toBe("0.9");
+    expect(flagValue(inner, "--max-num-seqs")).toBe("8");
+  });
+
+  it("omits --tensor-parallel-size at the single-GPU default", () => {
+    const cmd = buildEnvironmentContainerCommand("vllm", baseRecipe(), IMAGE, ENVIRONMENT_ID);
+    expect(innerCommand(cmd, IMAGE)).not.toContain("--tensor-parallel-size");
+  });
+
+  it("wraps SGLang's official image with the explicit launch_server module and full recipe args", () => {
     const cmd = buildEnvironmentContainerCommand(
       "sglang",
       baseRecipe({ backend: "sglang" }),
       "lmsysorg/sglang:v0.4.7-cu124",
       ENVIRONMENT_ID,
     );
-    const imageIdx = cmd.indexOf("lmsysorg/sglang:v0.4.7-cu124");
-    expect(cmd[imageIdx + 1]).toBe("python3");
-    expect(cmd[imageIdx + 2]).toBe("-m");
-    expect(cmd[imageIdx + 3]).toBe("sglang.launch_server");
-    expect(cmd).toContain("--model-path");
+    const inner = innerCommand(cmd, "lmsysorg/sglang:v0.4.7-cu124");
+    expect(inner[0]).toBe("python3");
+    expect(inner[1]).toBe("-m");
+    expect(inner[2]).toBe("sglang.launch_server");
+    expect(flagValue(inner, "--model-path")).toBe("/mnt/llm_models/Qwen3-32B");
+    expect(flagValue(inner, "--context-length")).toBe("32768");
+    expect(flagValue(inner, "--mem-fraction-static")).toBe("0.9");
+    expect(flagValue(inner, "--max-running-requests")).toBe("8");
+    expect(inner).toContain("--enable-metrics");
   });
 
-  it("wraps llama.cpp's server image with -m/--host/--port only", () => {
+  it("feeds llama.cpp's llama-server entrypoint --model (not -m) plus alias and context flags", () => {
     const cmd = buildEnvironmentContainerCommand(
       "llamacpp",
       baseRecipe({ backend: "llamacpp" }),
       "ghcr.io/ggml-org/llama.cpp:server-cuda-b9853",
       ENVIRONMENT_ID,
     );
-    const imageIdx = cmd.indexOf("ghcr.io/ggml-org/llama.cpp:server-cuda-b9853");
-    expect(cmd[imageIdx + 1]).toBe("-m");
-    expect(cmd[imageIdx + 2]).toBe("/mnt/llm_models/Qwen3-32B");
-    expect(cmd).not.toContain("--served-model-name");
+    const inner = innerCommand(cmd, "ghcr.io/ggml-org/llama.cpp:server-cuda-b9853");
+    expect(inner[0]).toBe("--model");
+    expect(inner[1]).toBe("/mnt/llm_models/Qwen3-32B");
+    expect(inner[2]).toBe("--host");
+    expect(inner[3]).toBe("0.0.0.0");
+    expect(inner[4]).toBe("--port");
+    expect(inner[5]).toBe("8000");
+    expect(flagValue(inner, "--alias")).toBe("qwen3-32b");
+    expect(flagValue(inner, "--ctx-size")).toBe("32768");
+    expect(inner).not.toContain("-m");
+    expect(inner).not.toContain("--served-model-name");
   });
 
   it("bind-mounts the model path read-only for every engine", () => {

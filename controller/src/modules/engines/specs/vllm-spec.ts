@@ -36,39 +36,8 @@ import type {
   EngineSpec,
 } from "../engine-spec";
 
-const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
-  const dockerImage = getDockerImage(recipe);
-  const pythonPath = getVllmPythonPath(recipe, config.data_dir);
-  let command: string[];
-  let usesServe = false;
-  if (dockerImage) {
-    command = [CONTAINER_VLLM_BIN, "serve"];
-    usesServe = true;
-  } else if (pythonPath) {
-    const vllmBin = join(dirname(pythonPath), "vllm");
-    if (existsSync(vllmBin)) {
-      command = [vllmBin, "serve"];
-      usesServe = true;
-    } else {
-      const systemVllm = resolveBinary("vllm");
-      if (systemVllm) {
-        command = [systemVllm, "serve"];
-        usesServe = true;
-      } else {
-        command = [pythonPath, "-m", "vllm.entrypoints.openai.api_server"];
-      }
-    }
-  } else {
-    const resolvedVllm = resolveBinary("vllm");
-    command = [resolvedVllm ?? "vllm", "serve"];
-    usesServe = true;
-  }
-  if (usesServe) {
-    command.push(recipe.model_path);
-  } else {
-    command.push("--model", recipe.model_path);
-  }
-  command.push("--host", recipe.host, "--port", String(recipe.port));
+export const buildVllmRecipeArguments = (recipe: Recipe): string[] => {
+  const command: string[] = ["--host", recipe.host, "--port", String(recipe.port)];
   if (recipe.served_model_name) {
     command.push("--served-model-name", recipe.served_model_name);
   }
@@ -107,7 +76,42 @@ const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
   if (recipe.dtype) {
     command.push("--dtype", recipe.dtype);
   }
-  const built = appendVllmExtraArguments(command, recipe.extra_args);
+  return appendVllmExtraArguments(command, recipe.extra_args);
+};
+
+const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
+  const dockerImage = getDockerImage(recipe);
+  const pythonPath = getVllmPythonPath(recipe, config.data_dir);
+  let command: string[];
+  let usesServe = false;
+  if (dockerImage) {
+    command = [CONTAINER_VLLM_BIN, "serve"];
+    usesServe = true;
+  } else if (pythonPath) {
+    const vllmBin = join(dirname(pythonPath), "vllm");
+    if (existsSync(vllmBin)) {
+      command = [vllmBin, "serve"];
+      usesServe = true;
+    } else {
+      const systemVllm = resolveBinary("vllm");
+      if (systemVllm) {
+        command = [systemVllm, "serve"];
+        usesServe = true;
+      } else {
+        command = [pythonPath, "-m", "vllm.entrypoints.openai.api_server"];
+      }
+    }
+  } else {
+    const resolvedVllm = resolveBinary("vllm");
+    command = [resolvedVllm ?? "vllm", "serve"];
+    usesServe = true;
+  }
+  if (usesServe) {
+    command.push(recipe.model_path);
+  } else {
+    command.push("--model", recipe.model_path);
+  }
+  const built = [...command, ...buildVllmRecipeArguments(recipe)];
   return dockerImage ? wrapVllmInDocker(recipe, dockerImage, built) : built;
 };
 

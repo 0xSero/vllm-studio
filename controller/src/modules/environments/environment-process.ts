@@ -4,7 +4,7 @@ import { delayEffect } from "../../core/async";
 import { resolveBinary, runCommand, runCommandEffect } from "../../core/command";
 import type { Recipe } from "../models/types";
 import { buildEnvironmentContainerCommand, environmentContainerName } from "./container-command";
-import { resolveEnvironmentImage } from "./image-registry";
+import { resolveImageForEnvironment } from "./image-registry";
 import type { Environment } from "./types";
 
 export interface EnvironmentStartResult {
@@ -27,16 +27,20 @@ export const isEnvironmentRunning = (environmentId: string): boolean => {
   return result.status === 0 && result.stdout.trim() === name;
 };
 
+export const listPulledImages = (): Set<string> => {
+  const docker = resolveBinary("docker");
+  if (!docker) return new Set();
+  const result = runCommand(docker, ["images", "--format", "{{.Repository}}:{{.Tag}}"]);
+  if (result.status !== 0) return new Set();
+  return new Set(result.stdout.split("\n").map((line) => line.trim()).filter(Boolean));
+};
+
 const startEnvironmentEffect = (
   environment: Environment,
   recipe: Recipe,
 ): Effect.Effect<EnvironmentStartResult> =>
   Effect.gen(function* () {
-    const image = resolveEnvironmentImage({
-      engineId: environment.engineId,
-      version: environment.version,
-      ...(environment.variant ? { variant: environment.variant } : {}),
-    });
+    const image = resolveImageForEnvironment(environment);
     const command = buildEnvironmentContainerCommand(
       environment.engineId,
       recipe,
