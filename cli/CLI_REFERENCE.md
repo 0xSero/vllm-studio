@@ -1,7 +1,7 @@
 # Local Studio CLI — Complete Reference
 
-> Comprehensive documentation of the Local Studio CLI — every command, its underlying controller API, response structures, error modes, and the interactive TUI.
-> Source: [`cli/src/`](src/) and [`controller/src/`](../controller/src/)
+> Documentation of the Local Studio CLI — every command, error modes, and the interactive TUI.
+> Source: [`cli/src/`](src/). Controller API: see the live Swagger UI at `<controller>/docs`.
 
 ---
 
@@ -22,19 +22,9 @@
    - [Key Bindings](#41-key-bindings)
    - [Tabs & Views](#42-tabs--views)
    - [Auto-Refresh Cycle](#43-auto-refresh-cycle)
-5. [Controller API Reference (All Endpoints)](#5-controller-api-reference-all-endpoints)
-   - [System Endpoints](#51-system-endpoints)
-   - [Engine / Lifecycle Endpoints](#52-engine--lifecycle-endpoints)
-   - [Model Endpoints](#53-model-endpoints)
-   - [Studio Endpoints](#54-studio-endpoints)
-   - [Proxy / Inference Endpoints](#55-proxy--inference-endpoints)
-   - [Monitoring Endpoints](#56-monitoring-endpoints)
-   - [Logs & Events Endpoints](#57-logs--events-endpoints)
-   - [Runtime Job Endpoints](#58-runtime-job-endpoints)
-   - [Audio Endpoints](#59-audio-endpoints)
+5. [Controller API Reference](#5-controller-api-reference)
 6. [Error Handling & Exit Codes](#6-error-handling--exit-codes)
 7. [Environment Variables](#7-environment-variables)
-8. [Data Types & Response Shapes](#8-data-types--response-shapes)
 
 ---
 
@@ -533,138 +523,13 @@ Run `local-studio` (no arguments) for a live-updating curses-like dashboard.
 
 ---
 
-## 5. Controller API Reference (All Endpoints)
+## 5. Controller API Reference
 
-### 5.1 System Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/status` | `system/routes.ts` | Current inference process status | No |
-| `GET` | `/gpus` | `system/routes.ts` | GPU inventory & metrics | No |
-| `GET` | `/config` | `system/routes.ts` | Full controller configuration + service health + runtime info | No |
-| `GET` | `/compat` | `system/routes.ts` | Compatibility report — GPU monitoring, inference port, runtime health | No |
-| `POST` | `/vram-calculator` | `system/routes.ts` | Estimate VRAM requirements for a model + context length | Yes |
-
-### 5.2 Engine / Lifecycle Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/recipes` | `engines/routes.ts` | List all recipes with status | No |
-| `GET` | `/recipes/:id` | `engines/routes.ts` | Get single recipe by ID | No |
-| `POST` | `/recipes` | `engines/routes.ts` | Create a new recipe | Yes |
-| `PUT` | `/recipes/:id` | `engines/routes.ts` | Update an existing recipe | Yes |
-| `DELETE` | `/recipes/:id` | `engines/routes.ts` | Delete a recipe | Yes |
-| `POST` | `/launch/:recipeId` | `engines/routes.ts` | Launch a recipe (start inference) | Yes |
-| `POST` | `/launch/:recipeId/cancel` | `engines/routes.ts` | Cancel a pending launch | Yes |
-| `POST` | `/evict` | `engines/routes.ts` | Stop running inference | Yes |
-| `GET` | `/wait-ready` | `engines/routes.ts` | Poll until inference backend is healthy (query: `?timeout=300`) | No |
-
-### 5.3 Model Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/v1/models` | `models/routes.ts` | OpenAI-compatible model list (enriched with recipe info) | No (proxy) |
-| `GET` | `/v1/models/:id` | `models/routes.ts` | Single model detail | No (proxy) |
-| `GET` | `/v1/studio/models` | `models/routes.ts` | Detailed model browser — scanned weights, recipe linkage | No |
-| `GET` | `/v1/huggingface/models` | `models/routes.ts` | Browse HuggingFace models (proxied) | No |
-
-### 5.4 Studio Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/studio/settings` | `studio/routes.ts` | Get persisted settings (models_dir) | No |
-| `POST` | `/studio/settings` | `studio/routes.ts` | Update settings | Yes |
-| `GET` | `/studio/diagnostics` | `studio/routes.ts` | Full system diagnostics (CPU, GPU, RAM, disks, runtime) | Yes |
-| `GET` | `/studio/storage` | `studio/routes.ts` | Storage usage — model count, bytes, disk space | No |
-| `GET` | `/studio/recommendations` | `studio/routes.ts` | VRAM-based model recommendations | No |
-| `POST` | `/studio/models/delete` | `studio/routes.ts` | Delete model files from disk | Yes |
-| `POST` | `/studio/models/move` | `studio/routes.ts` | Move model files within models_dir | Yes |
-| `GET` | `/studio/providers` | `studio/provider-routes.ts` | List configured API providers | Yes |
-| `POST` | `/studio/providers` | `studio/provider-routes.ts` | Create a new API provider | Yes |
-| `PUT` | `/studio/providers/:id` | `studio/provider-routes.ts` | Update an API provider | Yes |
-| `DELETE` | `/studio/providers/:id` | `studio/provider-routes.ts` | Delete an API provider | Yes |
-| `GET` | `/studio/provider-models` | `studio/provider-routes.ts` | Fetch models from all enabled providers | Yes |
-| `GET` | `/studio/downloads` | `engines/routes.ts` | List active/finished model downloads | Yes |
-| `GET` | `/studio/downloads/:id` | `engines/routes.ts` | Single download status | Yes |
-| `POST` | `/studio/downloads` | `engines/routes.ts` | Start a model download from HuggingFace | Yes |
-| `POST` | `/studio/downloads/:id/pause` | `engines/routes.ts` | Pause an active download | Yes |
-| `POST` | `/studio/downloads/:id/resume` | `engines/routes.ts` | Resume a paused download | Yes |
-| `POST` | `/studio/downloads/:id/cancel` | `engines/routes.ts` | Cancel a download | Yes |
-
-### 5.5 Proxy / Inference Endpoints
-
-Proxy endpoints forward to the active inference backend (`/health` is answered by the controller itself). Auth is controller-level.
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `POST` | `/v1/chat/completions` | `proxy/openai-routes.ts` | Chat completions (with tool call streaming, content normalization) | Yes |
-| `GET` | `/health` | `http/app.ts` | Controller liveness check (`{ "status": "ok" }`) | No (skip list) |
-| `POST` | `/v1/tokenize` | `proxy/tokenization-routes.ts` | Tokenize text | Yes |
-| `POST` | `/v1/detokenize` | `proxy/tokenization-routes.ts` | Detokenize IDs | Yes |
-| `POST` | `/v1/count-tokens` | `proxy/tokenization-routes.ts` | Count tokens for text | Yes |
-| `POST` | `/v1/tokenize-chat-completions` | `proxy/tokenization-routes.ts` | Tokenize a chat-completions payload | Yes |
-| `POST` | `/api/title` | `proxy/tokenization-routes.ts` | Generate a short title via the active model | Yes |
-
-### 5.6 Monitoring Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/metrics` | `metrics-routes.ts` | Prometheus-formatted metrics | No (skip list) |
-| `GET` | `/v1/metrics/vllm` | `metrics-routes.ts` | Latest vLLM metrics snapshot | No |
-| `GET` | `/peak-metrics` | `metrics-routes.ts` | Per-model peak throughput metrics | No |
-| `GET` | `/lifetime-metrics` | `metrics-routes.ts` | Cumulative lifetime stats (tokens, requests, energy) | No |
-| `POST` | `/benchmark` | `metrics-routes.ts` | Run a benchmark against the active model | Yes |
-
-### 5.7 Logs & Events Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/logs` | `logs-routes.ts` | List log sessions | No |
-| `GET` | `/logs/:sessionId` | `logs-routes.ts` | Get log content for a session (query: `?limit=2000`) | No |
-| `DELETE` | `/logs/:sessionId` | `logs-routes.ts` | Delete a log session | Yes |
-| `GET` | `/logs/:sessionId/stream` | `logs-routes.ts` | SSE stream of log lines (query: `?tail=2000`) | No |
-| `GET` | `/events` | `logs-routes.ts` | SSE stream of all controller events | No (skip list) |
-| `GET` | `/events/stats` | `logs-routes.ts` | Event manager statistics | No |
-
-### 5.8 Runtime Job Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `POST` | `/runtime/jobs` | `engines/routes.ts` | Create a runtime job for an engine backend (install/update) | Yes |
-| `GET` | `/runtime/jobs` | `engines/routes.ts` | List all runtime jobs | No |
-| `GET` | `/runtime/jobs/:jobId` | `engines/routes.ts` | Get runtime job status | No |
-| `POST` | `/runtime/jobs/:jobId/cancel` | `engines/routes.ts` | Cancel a running runtime job | Yes |
-
-### 5.9 Audio Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `POST` | `/v1/audio/transcriptions` | `audio/routes.ts` | Speech-to-text transcription | Yes |
-| `POST` | `/v1/audio/speech` | `audio/routes.ts` | Text-to-speech generation | Yes |
-
-### 5.10 Runtime Endpoints
-
-| Method | Path | Source | Description | Auth |
-|---|---|---|---|---|
-| `GET` | `/runtime/vllm` | `engines/routes.ts` | vLLM runtime info (installed, version, path) | No |
-| `GET` | `/runtime/vllm/config` | `engines/routes.ts` | vLLM configuration help | No |
-| `GET` | `/runtime/sglang` | `engines/routes.ts` | SGLang runtime info | No |
-| `GET` | `/runtime/llamacpp` | `engines/routes.ts` | llama.cpp runtime info | No |
-| `GET` | `/runtime/llamacpp/config` | `engines/routes.ts` | llama.cpp configuration help | No |
-| `GET` | `/runtime/mlx` | `engines/routes.ts` | MLX runtime info | No |
-| `GET` | `/runtime/targets` | `engines/routes.ts` | List runtime targets with current process info | No |
-| `GET` | `/runtime/targets/:targetId` | `engines/routes.ts` | Single runtime target detail | No |
-| `POST` | `/runtime/targets/:targetId/select` | `engines/routes.ts` | Select a runtime target | Yes |
-| `GET` | `/runtime/targets/:targetId/health` | `engines/routes.ts` | Runtime target health | No |
-| `GET` | `/runtime/cuda` | `engines/routes.ts` | CUDA toolkit info (nvcc version, devices) | No |
-| `GET` | `/runtime/rocm` | `engines/routes.ts` | ROCm toolkit info | No |
-| `POST` | `/runtime/vllm/upgrade` | `engines/routes.ts` | Upgrade vLLM installation | Yes |
-| `POST` | `/runtime/sglang/upgrade` | `engines/routes.ts` | Upgrade SGLang installation | Yes |
-| `POST` | `/runtime/llamacpp/upgrade` | `engines/routes.ts` | Upgrade llama.cpp installation | Yes |
-| `POST` | `/runtime/cuda/upgrade` | `engines/routes.ts` | Upgrade CUDA toolkit | Yes |
-| `POST` | `/runtime/rocm/upgrade` | `engines/routes.ts` | Upgrade ROCm toolkit | Yes |
-
----
+The controller serves a live OpenAPI spec — browse it at `<controller>/docs`
+(Swagger UI) or fetch `<controller>/openapi.json`. Endpoint tables are not
+duplicated here because they drift; the spec is generated from the running
+controller. Response shapes come from `shared/contracts/*` — the CLI's types
+(`cli/src/types.ts`) re-export them.
 
 ## 6. Error Handling & Exit Codes
 
@@ -740,98 +605,3 @@ function resolveApiKey(): string | undefined {
 - If no key is configured, the header is omitted entirely.
 
 ---
-
-## 8. Data Types & Response Shapes
-
-### `GPU` (CLI type)
-
-```typescript
-interface GPU {
-  index: number;        // GPU device index
-  name: string;         // GPU model name
-  memory_used: number;  // Used memory in bytes
-  memory_total: number; // Total memory in bytes
-  utilization: number;  // GPU utilization 0-100
-  temperature: number;  // Temperature in °C
-  power_draw: number;   // Power draw in watts
-}
-```
-
-### `Recipe` (CLI type)
-
-```typescript
-interface Recipe {
-  id: string;                    // Unique identifier
-  name: string;                  // Human-readable name
-  model_path: string;            // Path to model weights
-  backend: "sglang" | "vllm" | "llamacpp";  // Inference engine
-  tensor_parallel_size: number;  // GPU count for TP
-  max_model_len: number;         // Maximum context length
-}
-```
-
-**Full recipe (controller-side)** includes an additional `status` field at response time:
-```typescript
-status: "running" | "stopped" | "starting"
-```
-
-### `Status` (CLI type)
-
-```typescript
-interface Status {
-  running: boolean;      // Is a model running?
-  launching: boolean;    // Is a launch in progress?
-  model?: string;        // Served model name
-  backend?: string;      // Inference engine name
-  pid?: number;          // Process ID
-  port?: number;         // Inference server port
-  error?: string;        // Error message if any
-}
-```
-
-### `Config` (CLI type)
-
-```typescript
-interface Config {
-  port: number;           // Controller HTTP port
-  inference_port: number; // Inference backend port
-  models_dir: string;     // Model storage directory
-  data_dir: string;       // Data/config directory
-}
-```
-
-### `LifetimeMetrics` (CLI type)
-
-```typescript
-interface LifetimeMetrics {
-  total_tokens: number;     // Total tokens generated
-  total_requests: number;   // Total inference requests
-  total_energy_kwh: number; // Total energy in kWh
-}
-```
-
-### `AppState` (CLI TUI state)
-
-```typescript
-interface AppState {
-  view: "dashboard" | "recipes" | "status" | "config";
-  selectedIndex: number;            // Selected recipe index
-  gpus: GPU[];                      // GPU list
-  recipes: Recipe[];                // Recipe list
-  status: Status;                   // Current status
-  config: Config | null;            // Controller config
-  lifetime: LifetimeMetrics;        // Lifetime metrics
-  error: string | null;             // Current error message
-}
-```
-
----
-
-*Document generated from Local Studio source code at `cli/src/` and `controller/src/` (researched 2026-05).*
-*For the most up-to-date information, consult the source files directly:*
-- `cli/src/api.ts` — API client layer
-- `cli/src/headless.ts` — Headless command handlers
-- `cli/src/main.ts` — Interactive TUI entry point
-- `controller/src/http/app.ts` — Route registration
-- `controller/src/modules/system/routes.ts` — System endpoints
-- `controller/src/modules/engines/routes.ts` — Engine/lifecycle endpoints
