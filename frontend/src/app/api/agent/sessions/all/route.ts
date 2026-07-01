@@ -58,7 +58,6 @@ export async function GET(request: NextRequest) {
         modelId: null,
         provider: null,
         firstUserMessage: metadata.title,
-        turnCount: 0,
         archived: true,
         archivedAt: metadata.archivedAt,
         projectId: metadata.projectId ?? "",

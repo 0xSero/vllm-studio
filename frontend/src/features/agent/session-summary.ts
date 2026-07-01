@@ -7,7 +7,6 @@ export type SessionSummary = {
   modelId: string | null;
   provider: string | null;
   firstUserMessage: string | null;
-  turnCount: number;
   archived: boolean;
   archivedAt: string | null;
 };

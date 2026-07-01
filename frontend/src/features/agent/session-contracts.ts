@@ -9,7 +9,6 @@ export type AggregatedSession = {
   projectPath: string;
   modelId: string | null;
   firstUserMessage: string | null;
-  turnCount: number;
   startedAt: string;
   updatedAt: string;
   filename: string;
@@ -28,7 +27,7 @@ export type ActiveSession = {
 };
 
 /** Sort fields for the sessions table (distinct from the usage-table SortField). */
-export type SessionSortField = "updatedAt" | "turnCount" | "projectName";
+export type SessionSortField = "updatedAt" | "projectName";
 
 /**
  * Index active (in-pane) sessions by their pi session id, so a stored session

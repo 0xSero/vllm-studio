@@ -101,6 +101,8 @@ function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
   return { isUser: true, text: piTextContent(message.content) };
 }
 
+const SUMMARY_SCAN_LINE_CAP = 2000;
+
 async function readSessionSummary(
   filepath: string,
   filename: string,
@@ -108,28 +110,32 @@ async function readSessionSummary(
   const stats = statSync(filepath);
   let header: Record<string, unknown> | null = null;
   let firstUserMessage: string | null = null;
-  let turnCount = 0;
 
   const stream = createReadStream(filepath, { encoding: "utf-8" });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    let event: Record<string, unknown>;
-    try {
-      event = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    if (!header && event.type === "session") header = event;
-    // Pi writes per-message events. Older versions used `message_end`; current
-    // versions use `message`, and some callers still emit flat `user_message`.
-    const userTurn = userTurnFromEvent(event);
-    if (userTurn.isUser) {
-      turnCount += 1;
-      if (!firstUserMessage && userTurn.text) {
-        firstUserMessage = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
+  try {
+    let scanned = 0;
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      scanned += 1;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue;
       }
+      if (!header && event.type === "session") header = event;
+      if (!firstUserMessage) {
+        const userTurn = userTurnFromEvent(event);
+        if (userTurn.isUser && userTurn.text) {
+          firstUserMessage = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
+        }
+      }
+      if (header && firstUserMessage) break;
+      if (scanned >= SUMMARY_SCAN_LINE_CAP) break;
     }
+  } finally {
+    stream.destroy();
   }
 
   if (!header) return null;
@@ -143,7 +149,6 @@ async function readSessionSummary(
     modelId: typeof header.modelId === "string" ? header.modelId : null,
     provider: typeof header.provider === "string" ? header.provider : null,
     firstUserMessage,
-    turnCount,
     archived: false,
     archivedAt: null,
   };

@@ -101,7 +101,6 @@ export default function AgentSessionsPage() {
     const sorted = [...filtered].sort((a, b) => {
       let cmp = 0;
       if (sortField === "updatedAt") cmp = a.updatedAt.localeCompare(b.updatedAt);
-      else if (sortField === "turnCount") cmp = a.turnCount - b.turnCount;
       else if (sortField === "projectName") cmp = a.projectName.localeCompare(b.projectName);
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -217,14 +216,6 @@ export default function AgentSessionsPage() {
               />
               <TH className="px-3 py-2">Model</TH>
               <SortHeader
-                label="Turns"
-                field="turnCount"
-                sortField={sortField}
-                sortDir={sortDir}
-                onClick={toggleSort}
-                align="right"
-              />
-              <SortHeader
                 label="Updated"
                 field="updatedAt"
                 sortField={sortField}
@@ -238,7 +229,7 @@ export default function AgentSessionsPage() {
             {sessions === null ? (
               <TRow>
                 <TCell
-                  colSpan={6}
+                  colSpan={5}
                   className="px-3 py-8 text-center text-[length:var(--fs-md)] text-(--dim)"
                 >
                   Loading…
@@ -247,7 +238,7 @@ export default function AgentSessionsPage() {
             ) : rows.length === 0 ? (
               <TRow>
                 <TCell
-                  colSpan={6}
+                  colSpan={5}
                   className="px-3 py-10 text-center text-[length:var(--fs-md)] text-(--dim)"
                 >
                   No sessions match these filters.
@@ -296,9 +287,6 @@ export default function AgentSessionsPage() {
                     </TCell>
                     <TCell className="px-3 py-2 font-mono text-[length:var(--fs-sm)] text-(--dim)">
                       {session.modelId ?? "—"}
-                    </TCell>
-                    <TCell className="px-3 py-2 text-right tabular-nums text-(--dim)">
-                      {session.turnCount}
                     </TCell>
                     <TCell className="px-3 py-2 text-right text-(--dim)">
                       {formatRelative(session.updatedAt)}
