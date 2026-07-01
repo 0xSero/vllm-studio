@@ -61,15 +61,8 @@ function getTrustedOverrideOrigins(defaultBackendUrl: string): Set<string> {
   return trusted;
 }
 
-// A backend override is trusted only if its origin matches the default backend
-// or an allowlisted origin (or the desktop app, which is loopback-local). This
-// applies to *every* override target — public or private — so the configured
-// API key is never attached to a request aimed at an untrusted host. An earlier
-// version gated only private addresses, which let a public `x-backend-url` (e.g.
-// https://attacker.example) receive the configured bearer key.
 function isTrustedOverride(urlString: string, defaultBackendUrl: string): boolean {
-  // Desktop app (Electron) runs entirely locally — trust private targets.
-  if (process.env.LOCAL_STUDIO_DATA_DIR) return true;
+  if (process.env.LOCAL_STUDIO_DESKTOP === "1") return true;
 
   const targetOrigin = normalizeOrigin(urlString);
   if (!targetOrigin) return false;

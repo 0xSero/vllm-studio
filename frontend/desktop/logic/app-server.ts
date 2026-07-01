@@ -195,15 +195,10 @@ export async function startFrontendServer(
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
       NEXT_TELEMETRY_DISABLED: "1",
+      LOCAL_STUDIO_DESKTOP: "1",
       LOCAL_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
-      // In packaged Electron, process.cwd() is "/" — pi-runtime.resolveDefaultAgentCwd
-      // does the right thing (prefers the most-recently-added project, falls back
-      // to $HOME) when this env is empty, so leave it unset unless the operator
-      // explicitly supplied one.
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
-      // Expose the embedded server's own URL so the pi browser extension can
-      // call back into /api/agent/browser/*.
       LOCAL_STUDIO_FRONTEND_BASE: url,
     },
   });
