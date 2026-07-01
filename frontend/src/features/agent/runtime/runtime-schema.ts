@@ -45,19 +45,9 @@ const decodePayloadOption = Schema.decodeUnknownOption(RuntimeEventPayloadSchema
   onExcessProperty: "preserve",
 });
 
-const decodeStatusOption = Schema.decodeUnknownOption(RuntimeStatusSchema, {
-  onExcessProperty: "preserve",
-});
-
 export function decodeRuntimeEventPayload(raw: unknown): RuntimeEventPayload | null {
   if (!raw || typeof raw !== "object") return null;
   const option = decodePayloadOption(raw);
-  return option._tag === "Some" ? option.value : null;
-}
-
-export function decodeRuntimeStatus(raw: unknown): RuntimeStatus | null {
-  if (!raw || typeof raw !== "object") return null;
-  const option = decodeStatusOption(raw);
   return option._tag === "Some" ? option.value : null;
 }
 
