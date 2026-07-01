@@ -14,17 +14,19 @@ import type {
   StudioSettings,
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
-import { describeFailedEngineJob, isTerminalEngineJob } from "@/features/settings/runtime-targets";
+import { describeFailedEngineJob } from "@/features/settings/runtime-targets";
 import { buildStarterRecipe } from "./setup-helpers";
+import {
+  CONTROLLER_UNREACHABLE_MESSAGE,
+  finishRuntimeJobEffect,
+  formatLoadWarning,
+  requestEffect,
+  setupErrorMessage,
+  withSetupTimeoutEffect,
+} from "./use-setup-effects";
+import { useSetupBenchmark } from "./use-setup-benchmark";
 
 type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
-
-interface SetupBenchmarkResult {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_time_s: number;
-  generation_tps: number;
-}
 
 export function useSetup() {
   const router = useRouter();
@@ -47,9 +49,9 @@ export function useSetup() {
   const [configuringRecipe, setConfiguringRecipe] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
-  const [benchmarking, setBenchmarking] = useState(false);
-  const [benchmarkResult, setBenchmarkResult] = useState<SetupBenchmarkResult | null>(null);
-  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
+
+  const { benchmarking, benchmarkResult, benchmarkError, runSetupBenchmark, resetBenchmark } =
+    useSetupBenchmark();
 
   const downloadsState = useDownloads(2000);
 
@@ -271,8 +273,7 @@ export function useSetup() {
       setSelectedModel(modelId);
       setLaunchError(null);
       setCreatedRecipeId(null);
-      setBenchmarkResult(null);
-      setBenchmarkError(null);
+      resetBenchmark();
       return Effect.runPromise(
         requestEffect(() => downloadsState.startDownload({ model_id: modelId })).pipe(
           Effect.map(() => setStep(3)),
@@ -284,7 +285,7 @@ export function useSetup() {
         ),
       );
     },
-    [downloadsState],
+    [downloadsState, resetBenchmark],
   );
 
   const submitManualModel = useCallback(() => {
@@ -304,8 +305,7 @@ export function useSetup() {
 
     setConfiguringRecipe(true);
     setLaunchError(null);
-    setBenchmarkResult(null);
-    setBenchmarkError(null);
+    resetBenchmark();
 
     return Effect.runPromise(
       Effect.gen(function* () {
@@ -339,38 +339,7 @@ export function useSetup() {
         Effect.ensuring(Effect.sync(() => setConfiguringRecipe(false))),
       ),
     );
-  }, [activeDownload, createdRecipeId]);
-
-  const runSetupBenchmark = useCallback(() => {
-    setBenchmarking(true);
-    setBenchmarkError(null);
-    setBenchmarkResult(null);
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const result = yield* requestEffect(() => api.runBenchmark(1000, 100));
-        if (result.error) {
-          return yield* Effect.fail(new Error(result.error));
-        }
-        if (!result.benchmark) {
-          return yield* Effect.fail(new Error("Benchmark returned no metrics."));
-        }
-
-        setBenchmarkResult({
-          prompt_tokens: result.benchmark.prompt_tokens,
-          completion_tokens: result.benchmark.completion_tokens,
-          total_time_s: result.benchmark.total_time_s,
-          generation_tps: result.benchmark.generation_tps,
-        });
-      }).pipe(
-        Effect.catch((err) =>
-          Effect.sync(() =>
-            setBenchmarkError(err instanceof Error ? err.message : "Benchmark failed"),
-          ),
-        ),
-        Effect.ensuring(Effect.sync(() => setBenchmarking(false))),
-      ),
-    );
-  }, []);
+  }, [activeDownload, createdRecipeId, resetBenchmark]);
 
   const openChat = useCallback(() => {
     localStorage.setItem("local-studio-setup-complete", "true");
@@ -434,97 +403,3 @@ export function useSetup() {
 }
 
 const getSetupSnapshot = (): number => 0;
-
-// Server-side installs can legitimately run for ~30 minutes; poll fast at
-// first, then back off, and only give up well past the server install timeout.
-const RUNTIME_JOB_POLL_CEILING_MS = 35 * 60_000;
-const RUNTIME_JOB_FAST_POLL_WINDOW_MS = 60_000;
-const RUNTIME_JOB_FAST_POLL_MS = 1_000;
-const RUNTIME_JOB_SLOW_POLL_MS = 3_000;
-
-const CONTROLLER_UNREACHABLE_MESSAGE =
-  "The controller is unreachable, so setup cannot start. Start it with " +
-  "`cd controller && bun src/main.ts` and reload this page.";
-
-const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
-  Effect.tryPromise({ try: load, catch: (error) => error });
-
-function finishRuntimeJobEffect(
-  jobId: string,
-  setRuntimeJobs: (updater: (current: EngineJob[]) => EngineJob[]) => void,
-): Effect.Effect<EngineJob, unknown> {
-  return Effect.gen(function* () {
-    const startedAt = Date.now();
-    let job = yield* fetchRuntimeJobEffect(jobId);
-    while (!isTerminalEngineJob(job)) {
-      const elapsedMs = Date.now() - startedAt;
-      if (elapsedMs >= RUNTIME_JOB_POLL_CEILING_MS) {
-        return yield* Effect.fail(
-          new Error(
-            `The ${job.backend} ${job.type} is still running on the controller after ` +
-              `${Math.round(RUNTIME_JOB_POLL_CEILING_MS / 60_000)} minutes. It keeps running ` +
-              "server-side — watch it under Settings → Engines or in the controller logs, then " +
-              "reload this page once it finishes.",
-          ),
-        );
-      }
-      const intervalMs =
-        elapsedMs < RUNTIME_JOB_FAST_POLL_WINDOW_MS
-          ? RUNTIME_JOB_FAST_POLL_MS
-          : RUNTIME_JOB_SLOW_POLL_MS;
-      yield* Effect.sleep(intervalMs);
-      const next = yield* fetchRuntimeJobEffect(jobId);
-      job = next;
-      setRuntimeJobs((current) => [
-        next,
-        ...current.filter((candidate) => candidate.id !== next.id),
-      ]);
-    }
-    return job;
-  });
-}
-
-function fetchRuntimeJob(jobId: string): Promise<EngineJob> {
-  return Effect.runPromise(fetchRuntimeJobEffect(jobId));
-}
-
-function fetchRuntimeJobEffect(jobId: string): Effect.Effect<EngineJob, unknown> {
-  return requestEffect(() => api.getRuntimeJob(jobId)).pipe(
-    Effect.map((payload) => payload.job),
-    Effect.catch((err) => {
-      if (isMissingRuntimeJobError(err)) {
-        return Effect.fail(
-          new Error("The controller restarted and lost this install job. Re-run the install."),
-        );
-      }
-      return Effect.fail(err);
-    }),
-  );
-}
-
-function isMissingRuntimeJobError(err: unknown): boolean {
-  return err instanceof Error && (err as Error & { status?: number }).status === 404;
-}
-
-function withSetupTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 8_000): Promise<T> {
-  return Effect.runPromise(withSetupTimeoutEffect(promise, label, timeoutMs));
-}
-
-function withSetupTimeoutEffect<T>(
-  promise: Promise<T>,
-  label: string,
-  timeoutMs = 8_000,
-): Effect.Effect<T, Error> {
-  return requestEffect(() => promise).pipe(
-    Effect.timeout(timeoutMs),
-    Effect.catch(() => Effect.fail(new Error(`${label} timed out`))),
-  );
-}
-
-function formatLoadWarning(warnings: string[]): string | null {
-  return warnings.length ? `Some setup data could not load: ${warnings.join("; ")}` : null;
-}
-
-function setupErrorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "unavailable";
-}
