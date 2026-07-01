@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { delay } from "../../../controller/src/core/async";
 
 type EnvSnapshot = Record<string, string | undefined>;
 
@@ -74,7 +75,7 @@ export function registerControllerTestLifecycle() {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await delay(50);
     rmSync(tempDir, { recursive: true, force: true });
   });
 }

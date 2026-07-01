@@ -6,6 +6,7 @@ import { isHttpStatus } from "../core/errors";
 import { registerEngineRoutes } from "../modules/engines/routes";
 import { registerSystemRoutes } from "../modules/system/routes";
 import { registerModelsRoutes } from "../modules/models/routes";
+import { registerEnvironmentRoutes } from "../modules/environments/routes";
 
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
@@ -74,6 +75,7 @@ export const createApp = (context: AppContext): Hono => {
   registerSystemRoutes(app, context);
   registerEngineRoutes(app, context);
   registerModelsRoutes(app, context);
+  registerEnvironmentRoutes(app, context);
   registerStudioRoutes(app, context);
   registerAudioRoutes(app, context);
   registerAllProxyRoutes(app, context);

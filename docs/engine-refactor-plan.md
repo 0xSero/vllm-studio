@@ -156,12 +156,38 @@ Progress:
       defaults/validation, store round-trip, upsert-bumps-updatedAt).
       112/112 integration (up from 108) + 4/4 unit + lint/typecheck/jscpd/
       depcheck all green.
-- [ ] **Controller routes**: `/environments` (create/list), `/environments/:id/
-      start`, `/environments/:id/stop`, `/environments/:id` (remove). "Build"
-      may not even be a distinct step for vLLM/SGLang (official images are
-      pre-built on Docker Hub, `docker run` pulls on demand) — only relevant
-      if we ever need a custom Dockerfile layer on top; start there instead
-      of assuming a build step is required. NOT STARTED.
+- [x] **Controller routes** (2026-07-01): new `environments/routes.ts`
+      (`registerEnvironmentRoutes`, wired into `http/app.ts` next to
+      `registerModelsRoutes`) — `GET /environments` (list), `GET
+      /environments/:id` (get), `POST /environments` (create — validates
+      `recipeId` references a real recipe before saving, mirrors
+      `engines/routes.ts`'s recipe-route error-handling shape), `DELETE
+      /environments/:id`. Every response includes the *resolved* `image`
+      field (computed via `resolveEnvironmentImage` on read, never stored —
+      per the no-second-source-of-truth decision from the persistence step).
+      New route-level test `environments-routes.test.ts` (4 tests: reject
+      create for a nonexistent recipe, create + resolve image, list/get/404,
+      delete + re-delete 404) using the existing shared test harness
+      (`fixtures.ts`'s `createTestApp`/`registerControllerTestLifecycle`).
+      116/116 integration (up from 112) + 4/4 unit + lint/typecheck/jscpd/
+      depcheck green. `container-command.ts` is the only remaining "unused
+      file" per knip — expected, start/stop lifecycle (next) is what calls it.
+      Also fixed a small pre-existing Effect-v4 gap found along the way: the
+      shared `fixtures.ts` test harness had a raw `new Promise(resolve =>
+      setTimeout(...))` in its `afterEach` — replaced with `delay()` from
+      `core/async.ts`. Confirmed safe (116/116 still pass) since it's the
+      exact same underlying `Effect.sleep`, just via the established
+      Effect-backed helper instead of a bare Promise.
+- [ ] **Start/stop lifecycle**: actually running the resolved `docker run`
+      command (`buildEnvironmentContainerCommand`) and tearing it down —
+      `POST /environments/:id/start`, `POST /environments/:id/stop`. "Build"
+      is not a distinct step for these official images (Docker Hub/GHCR
+      pre-built, `docker run` pulls on demand); only relevant later if a
+      custom Dockerfile layer is ever needed on top. NOT STARTED. Reuse
+      `process-manager.ts`'s docker stop/kill patterns
+      (`stopDockerContainersForProcesses`) rather than re-inventing container
+      teardown — read that again before writing anything, since it already
+      solves "how do we cleanly stop a docker-backed process."
 - [ ] **Frontend**: `/environments` page + creation flow (recipe picker,
       engine + version + variant picker, status, start/stop). NOT STARTED.
 - [x] **Reuse existing recipe types**: confirmed — `buildEnvironmentContainerCommand`
@@ -491,3 +517,19 @@ the audit commands below at the start of each iteration to see current counts.
   can come after — get create/list/delete + the resolved image visible in
   the API first, verify with a route-level integration test before adding
   process lifecycle.
+
+- **2026-07-01 (iter 7)**: built environments CRUD routes (`GET/POST
+  /environments`, `GET/DELETE /environments/:id`) — see Part A above. Reused
+  the exact recipe-route conventions from `engines/routes.ts` (validation via
+  `badRequest`/`notFound`, `parseJsonObjectBody`) rather than inventing a new
+  pattern, and put them in a dedicated `environments/routes.ts` file instead
+  of appending to the already-oversized `engines/routes.ts` (474 lines,
+  itself a flagged Part C file-size item) — no point making that cleanup
+  harder later. Added a route-level test using the project's existing shared
+  test harness (`fixtures.ts`). Also fixed a small pre-existing raw-Promise
+  gap in that shared harness while in the area. 116/116 integration + 4/4
+  unit + lint/typecheck/jscpd/depcheck all green. Next iteration: start/stop
+  container lifecycle (`POST /environments/:id/start|stop`) — read
+  `process-manager.ts`'s docker stop/kill handling again first and reuse it,
+  don't re-invent container teardown. After that: the frontend `/environments`
+  page itself, which is still fully untouched.
