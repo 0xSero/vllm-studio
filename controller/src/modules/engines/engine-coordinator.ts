@@ -1,19 +1,16 @@
 import { AsyncLock, delay } from "../../core/async";
 import { primaryLogPathFor, readFileTailBytes } from "../../core/log-files";
-import { Event, type EventManager } from "../system/event-manager";
-import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-events";
+import type { EventManager } from "../system/event-manager";
 import { pidExists } from "./process/process-utilities";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import type { ProcessInfo, Recipe } from "../models/types";
 import type { Config } from "../../config/env";
-import type { Logger } from "../../core/logger";
 import type { ProcessManager } from "./process/process-manager";
 import type { RecipeStore } from "../models/recipes/recipe-store";
 import { LIFECYCLE_READY_TIMEOUT_MS } from "./configs";
 import type {
   EngineService,
   DownloadRequest,
-  HfModel,
   SetActiveRecipeResult,
   SetActiveRecipeOptions,
 } from "./engine-service";
@@ -21,24 +18,20 @@ import type { ModelDownload } from "../shared/recipe-types";
 import type { DownloadManager } from "./downloads/download-manager";
 import type { LaunchFailureBudget } from "./process/launch-failure-budget";
 import { formatLaunchFailureBudgetMessage } from "./process/launch-failure-budget";
-import { fetchHuggingFaceModelInfo } from "./downloads/huggingface-api";
 import { getEngineSpec } from "./engine-spec";
 interface CoordinatorDeps {
   config: Config;
-  logger: Logger;
   eventManager: EventManager;
   processManager: ProcessManager;
   recipeStore: RecipeStore;
   downloadManager: DownloadManager;
   launchFailureBudget: LaunchFailureBudget;
-  abortRunsForModel?: (modelName: string) => number;
 }
 export class EngineCoordinator implements EngineService {
   private readonly switchLock = new AsyncLock();
   private activeLifecycleAbort: AbortController | null = null;
   private activeLaunchPid: number | null = null;
   private lifecycleIntentSerial = 0;
-  private autoActivationBlocked = false;
   constructor(private readonly deps: CoordinatorDeps) {}
 
   async setActiveRecipe(
@@ -47,13 +40,10 @@ export class EngineCoordinator implements EngineService {
   ): Promise<SetActiveRecipeResult> {
     const intentSerial = ++this.lifecycleIntentSerial;
     if (!recipe) {
-      this.autoActivationBlocked = true;
       this.activeLifecycleAbort?.abort();
       if (this.activeLaunchPid) {
         await this.deps.processManager.killProcess(this.activeLaunchPid, true);
       }
-    } else {
-      this.autoActivationBlocked = false;
     }
     const release = await this.switchLock.acquire();
     let spawnedPid: number | null = null;
@@ -115,7 +105,6 @@ export class EngineCoordinator implements EngineService {
         }
         const stopped = await this.deps.processManager.killProcess(process.pid, true);
         if (evictedRecipe) {
-          this.abortRunsForRecipe(evictedRecipe);
           await this.deps.eventManager.publishLaunchProgress(
             evictedRecipe.id,
             stopped ? "stopped" : "error",
@@ -278,176 +267,6 @@ export class EngineCoordinator implements EngineService {
     }
     return null;
   }
-  private abortRunsForRecipe(recipe: Recipe): void {
-    if (!this.deps.abortRunsForModel) return;
-    const modelCandidates = [recipe.served_model_name, recipe.id].filter((value): value is string =>
-      Boolean(value && value.trim())
-    );
-    let totalAborted = 0;
-    const abortedCandidates = new Set<string>();
-    for (const candidate of modelCandidates) {
-      const normalized = candidate.trim();
-      const canonical = normalized.toLowerCase();
-      if (abortedCandidates.has(canonical)) continue;
-      abortedCandidates.add(canonical);
-      totalAborted += this.deps.abortRunsForModel(normalized);
-    }
-    if (totalAborted > 0) {
-      this.deps.logger.info("Aborted active chat runs for evicted model", {
-        recipe_id: recipe.id,
-        aborted_runs: totalAborted,
-      });
-    }
-  }
-  async ensureActive(
-    recipe: Recipe,
-    options: { force_evict?: boolean; publish_events?: boolean } = {}
-  ): Promise<{ switched: boolean; error: string | null }> {
-    const existing = await this.deps.processManager.findInferenceProcess(
-      this.deps.config.inference_port
-    );
-    if (existing && isRecipeRunning(recipe, existing)) {
-      return { switched: false, error: null };
-    }
-    if (this.autoActivationBlocked) {
-      return {
-        switched: false,
-        error:
-          "Model auto-loading is disabled because the model was manually stopped. Start a model from Local Studio before sending local inference requests.",
-      };
-    }
-    const intentSerial = ++this.lifecycleIntentSerial;
-    const lifecycleAbort = new AbortController();
-    this.activeLifecycleAbort = lifecycleAbort;
-    let launchPid: number | null = null;
-    const release = await this.switchLock.acquire();
-    try {
-      if (lifecycleAbort.signal.aborted || intentSerial !== this.lifecycleIntentSerial) {
-        return { switched: false, error: "Model switch cancelled" };
-      }
-      const latest = await this.deps.processManager.findInferenceProcess(
-        this.deps.config.inference_port
-      );
-      if (latest && isRecipeRunning(recipe, latest)) {
-        return { switched: false, error: null };
-      }
-      if (this.autoActivationBlocked) {
-        return {
-          switched: false,
-          error:
-            "Model auto-loading is disabled because the model was manually stopped. Start a model from Local Studio before sending local inference requests.",
-        };
-      }
-      const blocked = this.deps.launchFailureBudget.isBlocked(recipe.id);
-      if (blocked) {
-        return { switched: false, error: formatLaunchFailureBudgetMessage(blocked) };
-      }
-      const publishEvents = options.publish_events !== false;
-      const observedProcess = latest ?? existing;
-      const fromRecipe = observedProcess ? this.findRecipeForProcess(observedProcess) : null;
-      const fromModel = fromRecipe
-        ? (fromRecipe.served_model_name ?? fromRecipe.id)
-        : observedProcess
-          ? observedProcess.model_path
-          : null;
-      const fromBackend = observedProcess?.backend ?? fromRecipe?.backend ?? "unknown";
-      if (publishEvents) {
-        await this.deps.eventManager.publish(
-          new Event(CONTROLLER_EVENTS.MODEL_SWITCH, {
-            status: "started",
-            from_model: fromModel,
-            from_backend: fromBackend,
-            to_recipe_id: recipe.id,
-            to_model: recipe.served_model_name ?? recipe.id,
-            to_backend: recipe.backend,
-          })
-        );
-      }
-      const evictedRecipe = observedProcess ? this.findRecipeForProcess(observedProcess) : null;
-      await this.deps.processManager.evictModel(true);
-      if (evictedRecipe) {
-        this.abortRunsForRecipe(evictedRecipe);
-      }
-      await delay(2000);
-      if (lifecycleAbort.signal.aborted || intentSerial !== this.lifecycleIntentSerial) {
-        return { switched: true, error: "Model switch cancelled" };
-      }
-      const launch = await this.deps.processManager.launchModel(recipe);
-      launchPid = launch.pid;
-      this.activeLaunchPid = launch.pid;
-      if (!launch.success) {
-        const failure = this.deps.launchFailureBudget.recordFailure(recipe.id);
-        const message = `Failed to launch model ${recipe.id}: ${launch.message} (${failure.failure_count}/${failure.limit} launch failures in the current window)`;
-        if (publishEvents) {
-          await this.deps.eventManager.publish(
-            new Event(CONTROLLER_EVENTS.MODEL_SWITCH, {
-              status: "error",
-              to_recipe_id: recipe.id,
-              to_model: recipe.served_model_name ?? recipe.id,
-              to_backend: recipe.backend,
-              reason: message,
-            })
-          );
-        }
-        return { switched: true, error: message };
-      }
-      const logFilePath = primaryLogPathFor(this.deps.config.data_dir, recipe.id);
-      const ready = await this.waitForReady({
-        recipe,
-        pid: launch.pid,
-        logFilePath,
-        timeoutMs: LIFECYCLE_READY_TIMEOUT_MS,
-        cancel: lifecycleAbort.signal,
-      });
-      if (lifecycleAbort.signal.aborted || intentSerial !== this.lifecycleIntentSerial) {
-        if (launch.pid) {
-          await this.deps.processManager.killProcess(launch.pid, true);
-        }
-        return { switched: true, error: "Model switch cancelled" };
-      }
-      if (ready.ready) {
-        this.deps.launchFailureBudget.reset(recipe.id);
-        if (publishEvents) {
-          await this.deps.eventManager.publish(
-            new Event(CONTROLLER_EVENTS.MODEL_SWITCH, {
-              status: "ready",
-              to_recipe_id: recipe.id,
-              to_model: recipe.served_model_name ?? recipe.id,
-              to_backend: recipe.backend,
-              from_model: fromModel,
-              from_backend: fromBackend,
-            })
-          );
-        }
-        return { switched: true, error: null };
-      }
-      if (launch.pid) {
-        await this.deps.processManager.killProcess(launch.pid, true);
-      }
-      const failure = this.deps.launchFailureBudget.recordFailure(recipe.id);
-      const message = `${ready.message} (${failure.failure_count}/${failure.limit} launch failures in the current window)`;
-      if (publishEvents) {
-        await this.deps.eventManager.publish(
-          new Event(CONTROLLER_EVENTS.MODEL_SWITCH, {
-            status: "error",
-            to_recipe_id: recipe.id,
-            to_model: recipe.served_model_name ?? recipe.id,
-            to_backend: recipe.backend,
-            reason: message,
-          })
-        );
-      }
-      return { switched: true, error: message };
-    } finally {
-      if (this.activeLifecycleAbort === lifecycleAbort) {
-        this.activeLifecycleAbort = null;
-      }
-      if (this.activeLaunchPid === launchPid) {
-        this.activeLaunchPid = null;
-      }
-      release();
-    }
-  }
   resetLaunchFailureBudget(recipeId: string): void {
     this.deps.launchFailureBudget.reset(recipeId);
   }
@@ -479,10 +298,6 @@ export class EngineCoordinator implements EngineService {
     return this.deps.downloadManager.get(downloadId);
   }
 
-  async searchHuggingFace(query: string, hfToken?: string | null): Promise<HfModel[]> {
-    const info = await fetchHuggingFaceModelInfo(query, undefined, hfToken ?? undefined);
-    return [{ id: info.modelId ?? query, name: info.modelId ?? query }];
-  }
 }
 export const createEngineCoordinator = (deps: CoordinatorDeps): EngineCoordinator => {
   return new EngineCoordinator(deps);

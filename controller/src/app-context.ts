@@ -95,12 +95,10 @@ export const createAppContext = (): AppContext => {
 
   const engineService = createEngineCoordinator({
     config,
-    logger,
     eventManager,
     processManager,
     recipeStore,
     downloadManager,
-    abortRunsForModel: () => 0,
     launchFailureBudget,
   });
 

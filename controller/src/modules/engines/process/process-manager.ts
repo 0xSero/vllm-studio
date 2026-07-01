@@ -29,7 +29,6 @@ import { getEngineSpec } from "../engine-spec";
 export interface ProcessManager {
   findInferenceProcess: (port: number) => Promise<ProcessInfo | null>;
   launchModel: (recipe: Recipe) => Promise<LaunchResult>;
-  evictModel: (force: boolean) => Promise<number | null>;
   killProcess: (pid: number, force: boolean) => Promise<boolean>;
 }
 
@@ -428,25 +427,9 @@ export const createProcessManager = (
     }
   };
 
-  const evictModelEffect = (force: boolean): Effect.Effect<number | null> =>
-    Effect.gen(function* () {
-      const current = yield* Effect.promise(() => findInferenceProcess(config.inference_port));
-      if (!current) {
-        yield* cleanupOrphanedInferenceWorkersEffect("evict-without-active-process");
-        return null;
-      }
-      yield* killProcessEffect(current.pid, force);
-      yield* cleanupOrphanedInferenceWorkersEffect("after-evict");
-      return current.pid;
-    });
-
-  const evictModel = (force: boolean): Promise<number | null> =>
-    Effect.runPromise(evictModelEffect(force));
-
   return {
     findInferenceProcess,
     launchModel,
-    evictModel,
     killProcess,
   };
 };

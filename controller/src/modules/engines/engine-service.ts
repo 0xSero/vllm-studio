@@ -13,21 +13,6 @@ export interface DownloadRequest {
   hf_token?: string | null;
 }
 
-export interface HfModel {
-  id: string;
-  name?: string;
-  description?: string;
-}
-
-export interface EnsureActiveResult {
-  switched: boolean;
-  error: string | null;
-}
-
-export interface EnsureActiveOptions {
-  force_evict?: boolean;
-  publish_events?: boolean;
-}
 
 export type SetActiveRecipeResult = { ok: true } | { ok: false; error: string };
 
@@ -45,7 +30,6 @@ export interface EngineService {
     recipe: Recipe | null,
     options?: SetActiveRecipeOptions
   ): Promise<SetActiveRecipeResult>;
-  ensureActive(recipe: Recipe, options?: EnsureActiveOptions): Promise<EnsureActiveResult>;
   resetLaunchFailureBudget(recipeId: string): void;
 
   getCurrentProcess(): Promise<ProcessInfo | null>;
@@ -56,6 +40,4 @@ export interface EngineService {
   cancelDownload(downloadId: string): ModelDownload;
   listDownloads(): ModelDownload[];
   getDownload(downloadId: string): ModelDownload | null;
-
-  searchHuggingFace(query: string, hfToken?: string | null): Promise<HfModel[]>;
 }
