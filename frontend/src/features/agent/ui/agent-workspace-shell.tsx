@@ -7,6 +7,8 @@ import {
   triggerAddProjectFlow,
 } from "@/features/agent/ui/projects-nav-section";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
+import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
+import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type {
@@ -37,6 +39,8 @@ type AgentWorkspaceShellProps = {
   state: WorkspaceState;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
+  /** Chrome-free single-pane mode for the global-hotkey quick-composer panel. */
+  compact?: boolean;
 };
 
 export function shouldShowProjectEmptyState(
@@ -51,7 +55,12 @@ export function shouldShowProjectEmptyState(
   );
 }
 
-export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspaceShellProps) {
+export function AgentWorkspaceShell({
+  state,
+  dispatch,
+  handles,
+  compact = false,
+}: AgentWorkspaceShellProps) {
   const projects = useProjects();
   const tools = useTools();
   const searchParams = useSearchParams();
@@ -77,6 +86,7 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
   const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
+  useQuickPanelExpandEffect(compact, focusedTab?.messages.length ?? 0);
   return (
     <div className="agent-workspace flex h-full min-h-0 w-full flex-col bg-(--agent-bg) text-(--fg) md:h-[100dvh]">
       <div className="flex min-h-0 flex-1">
@@ -86,36 +96,105 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
             setupWarning={state.setupWarning}
             onClearError={() => dispatch({ type: "setError", error: "" })}
           />
-          {shouldShowProjectEmptyState(projects, projectParam) ? (
-            <ProjectEmptyState />
-          ) : (
-            <div className="min-h-0 flex-1">
-              <PaneGrid
-                layout={state.layout}
-                renderPane={(paneId) =>
-                  renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles })
-                }
-                onSplit={handles.splitPaneWithPayload}
-                onOpenTab={handles.openSessionPayloadInPane}
-                onResize={handles.setSplitRatio}
-              />
-            </div>
-          )}
-        </section>
-        {tools.computer.open ? (
-          <Suspense fallback={<ComputerPanelFallback />}>
-            <LazyAgentBrowserPanel
-              handles={handles}
-              activeProject={activeProject}
-              focusedSession={focusedTab}
-              sessions={[...state.sessions.values()]}
-              activeModelId={focusedTab?.modelId ?? state.selectedModel}
-              activeModel={focusedModel}
-              gitSummary={focusedGitSummary}
+          {compact ? (
+            <QuickPanelTopBar
+              projects={projects}
+              projectId={activeProject?.id ?? null}
+              sessionId={focusedTab?.piSessionId ?? null}
+              hasThread={Boolean(focusedTab?.piSessionId)}
             />
-          </Suspense>
+          ) : null}
+          <WorkspacePaneContent
+            showEmptyState={shouldShowProjectEmptyState(projects, projectParam)}
+            state={state}
+            projects={projects}
+            tools={tools}
+            dispatch={dispatch}
+            handles={handles}
+            compact={compact}
+          />
+        </section>
+        {!compact ? (
+          <WorkspaceComputerPanel
+            open={tools.computer.open}
+            handles={handles}
+            activeProject={activeProject}
+            focusedTab={focusedTab}
+            sessions={state.sessions}
+            selectedModel={state.selectedModel}
+            focusedModel={focusedModel}
+            focusedGitSummary={focusedGitSummary}
+          />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function WorkspaceComputerPanel({
+  open,
+  handles,
+  activeProject,
+  focusedTab,
+  sessions,
+  selectedModel,
+  focusedModel,
+  focusedGitSummary,
+}: {
+  open: boolean;
+  handles: WorkspaceHandles;
+  activeProject: Project | null;
+  focusedTab: ReturnType<typeof focusedSession>;
+  sessions: WorkspaceState["sessions"];
+  selectedModel: string;
+  focusedModel: AgentModel | null;
+  focusedGitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
+}) {
+  if (!open) return null;
+  return (
+    <Suspense fallback={<ComputerPanelFallback />}>
+      <LazyAgentBrowserPanel
+        handles={handles}
+        activeProject={activeProject}
+        focusedSession={focusedTab}
+        sessions={[...sessions.values()]}
+        activeModelId={focusedTab?.modelId ?? selectedModel}
+        activeModel={focusedModel}
+        gitSummary={focusedGitSummary}
+      />
+    </Suspense>
+  );
+}
+
+function WorkspacePaneContent({
+  showEmptyState,
+  state,
+  projects,
+  tools,
+  dispatch,
+  handles,
+  compact,
+}: {
+  showEmptyState: boolean;
+  state: WorkspaceState;
+  projects: ProjectsContextValue;
+  tools: ReturnType<typeof useTools>;
+  dispatch: WorkspaceDispatch;
+  handles: WorkspaceHandles;
+  compact?: boolean;
+}) {
+  if (showEmptyState) return <ProjectEmptyState />;
+  return (
+    <div className="min-h-0 flex-1">
+      <PaneGrid
+        layout={state.layout}
+        renderPane={(paneId) =>
+          renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles, compact })
+        }
+        onSplit={handles.splitPaneWithPayload}
+        onOpenTab={handles.openSessionPayloadInPane}
+        onResize={handles.setSplitRatio}
+      />
     </div>
   );
 }
@@ -186,6 +265,53 @@ function WorkspaceBanner({
   );
 }
 
+/** Resizes the OS-level quick-composer panel from its tiny composer-only
+ * "home" bounds to its resizable "thread" bounds the first time a message
+ * lands in the focused pane. No-op outside the quick panel (bridge absent). */
+function useQuickPanelExpandEffect(compact: boolean, focusedMessageCount: number): void {
+  const subscribe = useCallback(
+    (_notify: () => void) => {
+      if (compact && focusedMessageCount > 0) {
+        void getQuickPanelBridge()?.expand();
+      }
+      return () => {};
+    },
+    [compact, focusedMessageCount],
+  );
+  useSyncExternalStore(subscribe, getQuickPanelExpandSnapshot, getQuickPanelExpandSnapshot);
+}
+
+const getQuickPanelExpandSnapshot = (): number => 0;
+
+function QuickPanelTopBar({
+  projects,
+  projectId,
+  sessionId,
+  hasThread,
+}: {
+  projects: ProjectsContextValue;
+  projectId: string | null;
+  sessionId: string | null;
+  hasThread: boolean;
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2 py-1">
+      <QuickProjectPicker projects={projects} />
+      {hasThread && projectId ? (
+        <button
+          type="button"
+          onClick={() =>
+            void getQuickPanelBridge()?.focusMainAndNavigate(projectId, sessionId ?? undefined)
+          }
+          className="shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        >
+          Open in Local Studio
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ProjectEmptyState() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6">
@@ -214,6 +340,7 @@ type WorkspacePaneRenderContext = {
   tools: ReturnType<typeof useTools>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
+  compact?: boolean;
 };
 
 type WorkspacePaneView = {
@@ -300,6 +427,7 @@ function renderWorkspacePane({
   tools,
   dispatch,
   handles,
+  compact = false,
 }: WorkspacePaneRenderContext) {
   const view = selectWorkspacePaneView(paneId, state, projects);
   if (!view) return null;
@@ -358,6 +486,7 @@ function renderWorkspacePane({
       rightPanelOpen={tools.computer.open}
       onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
+      showHeader={!compact}
     />
   );
 }
@@ -492,7 +621,9 @@ function useAgentWorkspaceNavigationEffects({
 
 const getWorkspaceNavigationSnapshot = (): number => 0;
 
-export function AgentWorkspace() {
+export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
   const { state, dispatch, handles } = useWorkspace();
-  return <AgentWorkspaceShell state={state} dispatch={dispatch} handles={handles} />;
+  return (
+    <AgentWorkspaceShell state={state} dispatch={dispatch} handles={handles} compact={compact} />
+  );
 }

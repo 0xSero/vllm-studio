@@ -1,8 +1,9 @@
 import "./app-identity";
-import { app, dialog, ipcMain, shell, type BrowserWindow } from "electron";
+import { app, dialog, globalShortcut, ipcMain, shell, type BrowserWindow } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { DesktopAppState } from "./types";
+import { DESKTOP_CONFIG } from "./configs";
 import { writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
@@ -11,6 +12,12 @@ import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
 import { checkForUpdates, getUpdateState, initializeAutoUpdates } from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
+import {
+  hideQuickPanel,
+  resizeQuickPanelToHome,
+  resizeQuickPanelToThread,
+  toggleQuickPanel,
+} from "./logic/quick-panel-window";
 import {
   closePty,
   closePtyByOwner,
@@ -292,6 +299,50 @@ function registerIpcHandlers(): void {
     if (typeof ownerKey !== "string") return;
     closePtyByOwner(ownerKey);
   });
+
+  ipcMain.handle("desktop:quick-panel-expand", async () => {
+    resizeQuickPanelToThread();
+  });
+
+  ipcMain.handle("desktop:quick-panel-dismiss", async () => {
+    hideQuickPanel();
+    resizeQuickPanelToHome();
+  });
+
+  ipcMain.handle(
+    "desktop:focus-main-and-navigate",
+    async (_, projectId: string, sessionId?: string) => {
+      if (typeof projectId !== "string" || !frontendServer) return;
+      const query =
+        typeof sessionId === "string" && sessionId
+          ? `?project=${encodeURIComponent(projectId)}&session=${encodeURIComponent(sessionId)}`
+          : `?project=${encodeURIComponent(projectId)}&new=1`;
+      const targetUrl = `${frontendServer.runtime.url}/agent${query}`;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        await mainWindow.loadURL(targetUrl);
+      } else {
+        mainWindow = createMainWindow(targetUrl);
+        mainWindow.on("closed", () => {
+          mainWindow = null;
+        });
+      }
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      hideQuickPanel();
+      resizeQuickPanelToHome();
+    },
+  );
+}
+
+function registerQuickPanelHotkey(): void {
+  const accelerator = DESKTOP_CONFIG.quickPanel.hotkey;
+  const registered = globalShortcut.register(accelerator, () => {
+    if (!frontendServer) return;
+    toggleQuickPanel(frontendServer.runtime.url);
+  });
+  if (!registered) {
+    log.warn(`Failed to register quick panel hotkey: ${accelerator}`);
+  }
 }
 
 async function shutdown(): Promise<void> {
@@ -299,6 +350,7 @@ async function shutdown(): Promise<void> {
   shutdownPromise = (async () => {
     appState = "stopping";
     stopFrontendHealthMonitor();
+    globalShortcut.unregisterAll();
     killAllPtys();
     await stopFrontendServer(frontendServer);
     frontendServer = undefined;
@@ -380,6 +432,7 @@ async function run(): Promise<void> {
 
   try {
     await bootstrap();
+    registerQuickPanelHotkey();
   } catch (error) {
     log.error(`Failed to bootstrap desktop app: ${String(error)}`);
     app.quit();

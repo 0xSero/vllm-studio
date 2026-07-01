@@ -176,7 +176,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   if (
     pathname.startsWith("/setup") ||
     pathname.startsWith("/download") ||
-    pathname.startsWith("/agents")
+    pathname.startsWith("/agents") ||
+    pathname.startsWith("/quick")
   ) {
     return <div className="h-full w-full">{children}</div>;
   }

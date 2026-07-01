@@ -37,6 +37,12 @@ const bridge: DesktopBridge = {
       return () => ipcRenderer.removeListener("desktop:pty-exit", handler);
     },
   },
+  quickPanel: {
+    expand: () => ipcRenderer.invoke("desktop:quick-panel-expand"),
+    dismiss: () => ipcRenderer.invoke("desktop:quick-panel-dismiss"),
+    focusMainAndNavigate: (projectId, sessionId) =>
+      ipcRenderer.invoke("desktop:focus-main-and-navigate", projectId, sessionId),
+  },
 };
 
 contextBridge.exposeInMainWorld("localStudioDesktop", bridge);

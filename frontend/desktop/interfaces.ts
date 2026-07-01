@@ -42,6 +42,12 @@ export interface PtyBridge {
   ): () => void;
 }
 
+export interface QuickPanelBridge {
+  expand(): Promise<void>;
+  dismiss(): Promise<void>;
+  focusMainAndNavigate(projectId: string, sessionId?: string): Promise<void>;
+}
+
 export interface DesktopBridge {
   getRuntime(): Promise<{
     platform: NodeJS.Platform;
@@ -64,6 +70,7 @@ export interface DesktopBridge {
   loadUiPreferences(): Promise<UiPreferencesPayload>;
   saveUiPreferences(prefs: UiPreferencesPayload): Promise<void>;
   terminal: PtyBridge;
+  quickPanel: QuickPanelBridge;
 }
 
 export interface IpcRequestMap {
