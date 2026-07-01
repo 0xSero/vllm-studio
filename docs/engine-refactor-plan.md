@@ -53,61 +53,27 @@ remains.
 
 ## Part D — cleanup backlog (from the 2026-07-01 full-repo audit)
 
-- [ ] chat-pane satellite re-fold: `chat-pane-derived-state.ts` (35),
-      `chat-pane-runtime-handle.ts` (58), `chat-pane-ui-effects.ts` (140) are
-      single-consumer fragments of `chat-pane.tsx` — fold back or justify.
-- [ ] `recipe-modal/tabs/tab-content.tsx` is a 24-prop forwarding switch;
-      `recipes-content.tsx` forwards 25 props — pass model objects instead.
+Completed 2026-07-01 (waves 1-2): chat-pane satellite re-fold;
+recipe-modal tab-content prop grouping + recipes-content model props;
+engine-args single-sourcing (VLLM_ONLY_FLAG_KEYS / KNOWN_VLLM_EXTRA_ARG_KEYS /
+EXTRA_ARG_FIELDS derived from one shared table); GPU contract unified on
+`*_mb`/`utilization_pct`/`temp_c` with one `normalizeGpuAliases` frontend
+shim; canvas/plan stores on `createSessionScopedJsonStore`;
+skill-discovery/prompt-templates on `discovery-core`; vision flag threaded
+into `browserContextPrompt`; `ActiveSession` derived via Pick;
+runtime wire types schema-derived (no casts); `isRecord` single-sourced in
+`src/lib/guards`; projects-nav barrel dropped; ui-kit single-consumer
+components moved into features + model-card fetch hook extracted;
+environments page in the feature layer; `use-realtime-status` wrapper and
+dead test-seam exports deleted; engine-capabilities spread; store.ts
+listeners behind `initAppStoreListeners()`; usage payloads typed end-to-end
+and SortField/SortDirection moved into the usage feature.
+
+Remaining:
+
 - [ ] vLLM/SGLang recipe tabs hand-write JSX per field with parser catalogs
       trapped in JSX (`tab-features.tsx`) — move onto the data-driven
       `LlamacppOption`-style table + `EngineOptionsSection` renderer.
-- [ ] `shared/contracts/engine-args.ts` `VLLM_ONLY_FLAG_KEYS` hand-mirrors
-      frontend `EXTRA_ARG_FIELDS`; `recipe-command.ts` re-implements flag
-      emission — single-source in the shared contract.
-- [ ] GPU contract dual units (`memory_total`+`memory_total_mb`, …) in
-      `shared/contracts/observability.ts` — pick one canonical set, update
-      controller emitters + frontend widgets + cli, drop the unit-guessing
-      heuristic in `controller/src/modules/system/metrics.ts`.
-- [ ] `canvas-store.ts`/`plan-store.ts` twins → one
-      `createSessionScopedJsonStore` factory; `comments-store.ts` uses sync
-      fs — align when the factory lands.
-- [ ] `skill-discovery.ts`/`prompt-templates-store.ts` parallel scan/contain/
-      cap frameworks → shared core.
-- [ ] Vision heuristics duplicated: `models.ts` `inferVisionSupport` vs
-      `browser/context.ts` `modelLikelySupportsVision` — thread the resolved
-      `AgentModel.vision` flag into `browserContextPrompt` and delete the
-      second heuristic.
-- [ ] `session-contracts.ts` `ActiveSession` hand-mirrors
-      `active-sessions.ts` `ActiveAgentSessionSnapshot` — derive with Pick.
-- [ ] `runtime/api.ts`: schema half-migration — kill the
-      `as unknown as RuntimeEventPayload` double cast, decode
-      `/runtime/status` + `/runtime/sessions` through the existing schemas.
-- [ ] `isRecord` inlined 7+ times beside `guards.ts` — import it everywhere
-      (or move to `src/lib`).
-- [ ] `projects-nav-section.tsx` accidental barrel (re-exports helpers other
-      files import through the component) + `useSessionPrefs` alias —
-      repoint the 2 consumers, drop the re-exports.
-- [ ] Move single-consumer ui-kit components into their features:
-      `metric-visuals` → usage, `model-stop-confirm` → dashboard,
-      `fact-grid` → setup, `copyable-path-chip` → agent;
-      `huggingface-model-card` fetches data inside `src/ui` — extract the
-      fetch hook to `src/hooks`.
-- [ ] `app/environments/page.tsx` (186 lines) violates the thin-route-shell
-      rule — move JSX into `features/environments/`.
-- [ ] `use-realtime-status.ts` is a zero-value rename wrapper; dead
-      `pollFiber` in `realtime-status-store.ts`; hand-rolled fibers where
-      `lib/effect-timers.ts` exists.
-- [ ] Dead test-seam exports in `hooks/use-controller-events.ts`
-      (`resolveControllerEventChannel`, `dispatchControllerDomainEvent`,
-      `logUnknownControllerEvent`, `isKnownControllerEvent`).
-- [ ] `engine-capabilities.ts` VLLM/SGLANG blocks field-identical — spread.
-- [ ] `store.ts` module-level window listeners on import — move into an
-      explicit init called from providers; delete dead `lastWasMobile`.
-- [x] `proxy-target.ts` desktop-mode flag — now `LOCAL_STUDIO_DESKTOP=1`,
-      set by the Electron main process (2026-07-01).
-- [ ] `shared/contracts/usage.ts`: controller never imports it — type the
-      `/usage` handlers, shrink the frontend re-normalizer, move
-      `SortField`/`SortDirection` into the usage feature.
 - [x] `cli/CLI_REFERENCE.md` controller-API snapshot cut; points at the live
       `/docs` swagger (2026-07-01).
 - [ ] `docker-compose.yml` provisions a foreign postgres for litellm — left
