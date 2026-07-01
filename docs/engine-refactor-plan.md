@@ -443,7 +443,24 @@ the audit commands below at the start of each iteration to see current counts.
         green; no tests reference this file directly; full e2e suite shows
         the same 4 pre-existing failures as iterations 2/10/12, nothing new
         broken.
-  - [ ] `frontend/src/features/agent/ui/filesystem-panel.tsx` (642)
+  - [x] `frontend/src/features/agent/ui/filesystem-panel.tsx` (642 → 401) —
+        extracted the one genuinely independent unit:
+        `filesystem-panel-effects.ts` (242) holds
+        `useFilesystemPanelEffects` (6 `useSyncExternalStore`-based
+        subscriptions: cwd-ref sync, project reset, directory-entries fetch,
+        remembered-file restore, external file-open-request handling,
+        open-file content+comments fetch) plus its params type and the pure
+        `relativePathForRequest` helper it alone uses. Confirmed via grep
+        that neither the hook nor the helper has any consumer outside this
+        component. Main file keeps the `FilesystemPanel` component itself
+        (state + local callbacks + JSX) as one cohesive unit — it wasn't
+        split further since all its pieces genuinely share the same local
+        state, unlike the effects hook which only needed setters passed in.
+        Verified: typecheck/lint (0 errors, same 1 pre-existing unrelated
+        warning)/cycles/ui-structure/deadcode/dupes/depcheck/build all
+        green; no tests reference this file directly; full e2e suite shows
+        the same 4 pre-existing failures as iterations 2/10/12/13, nothing
+        new broken.
   - [ ] `frontend/src/features/agent/ui/use-workspace.ts` (623)
   - [ ] `frontend/src/features/agent/tools/context.tsx` (603)
   - [ ] `frontend/src/features/agent/ui/chat-pane-composer.ts` (595)
@@ -790,3 +807,18 @@ the audit commands below at the start of each iteration to see current counts.
   failures as iterations 2/10/12, nothing new broken. Next iteration:
   `filesystem-panel.tsx` (642) is next on the Part C list;
   `session-runtime-controller.ts` stays deferred until a dedicated pass.
+
+- **2026-07-01 (iter 14)**: split `filesystem-panel.tsx` (642 → 401) — see
+  the Part C checklist above for the breakdown. Only one piece of this file
+  was independently separable (the `useFilesystemPanelEffects` hook + its
+  private `relativePathForRequest` helper, which take setters as params and
+  own no module-scope state of their own); the `FilesystemPanel` component
+  itself stayed as one unit since its callbacks and JSX all share the same
+  local state and splitting further would just be moving code around for
+  its own sake. Confirmed via grep that both extracted pieces have zero
+  consumers outside this file. Frontend gate green end to end (typecheck/
+  lint/cycles/ui-structure/deadcode/dupes/depcheck/build), e2e suite shows
+  the same 4 pre-existing failures as iterations 2/10/12/13, nothing new
+  broken. Next iteration: `use-workspace.ts` (623) is next on the Part C
+  list; `session-runtime-controller.ts` stays deferred until a dedicated
+  pass.
