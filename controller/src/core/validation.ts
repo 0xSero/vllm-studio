@@ -21,23 +21,6 @@ export const optionalString = (
 ): string | undefined => (typeof record[key] === "string" ? (record[key] as string) : undefined);
 
 /**
- * Optional string-array field. Matches the historical inline guards:
- * non-array values are treated as absent; an array containing non-string
- * entries is rejected.
- */
-export const optionalStringArray = (
-  record: Record<string, unknown>,
-  key: string,
-): string[] | undefined => {
-  const value = record[key];
-  if (!Array.isArray(value)) return undefined;
-  if (value.some((entry) => typeof entry !== "string")) {
-    throw badRequest(`${key} must be an array of strings`);
-  }
-  return value as string[];
-};
-
-/**
  * Optional string-enum field. Matches the historical inline guards: values
  * that are missing, non-string, or empty are treated as absent; only a
  * non-empty string outside `values` is rejected.

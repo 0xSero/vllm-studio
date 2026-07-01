@@ -2,32 +2,23 @@
 
 import { Suspense, lazy, useCallback, useSyncExternalStore, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav-section";
 import {
-  consumeAgentSessionNavTitle,
-  triggerAddProjectFlow,
-} from "@/features/agent/ui/projects-nav-section";
-import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
-import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
-import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
+  QuickPanelTopBar,
+  useQuickPanelExpandEffect,
+} from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
-import type {
-  AgentModel,
-  PaneId,
-  PaneState,
-  WorkspaceState,
-} from "@/features/agent/workspace/types";
+import type { AgentModel, WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { SessionId } from "@/features/agent/runtime/types";
-import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
-import { loadPersistedActiveAgentSessions } from "@/features/agent/workspace/store";
-import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
-import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
-import { collectLeaves } from "@/features/agent/workspace/layout";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
+import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
+import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 
 const LazyAgentBrowserPanel = lazy(() =>
   import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
@@ -265,53 +256,6 @@ function WorkspaceBanner({
   );
 }
 
-/** Resizes the OS-level quick-composer panel from its tiny composer-only
- * "home" bounds to its resizable "thread" bounds the first time a message
- * lands in the focused pane. No-op outside the quick panel (bridge absent). */
-function useQuickPanelExpandEffect(compact: boolean, focusedMessageCount: number): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      if (compact && focusedMessageCount > 0) {
-        void getQuickPanelBridge()?.expand();
-      }
-      return () => {};
-    },
-    [compact, focusedMessageCount],
-  );
-  useSyncExternalStore(subscribe, getQuickPanelExpandSnapshot, getQuickPanelExpandSnapshot);
-}
-
-const getQuickPanelExpandSnapshot = (): number => 0;
-
-function QuickPanelTopBar({
-  projects,
-  projectId,
-  sessionId,
-  hasThread,
-}: {
-  projects: ProjectsContextValue;
-  projectId: string | null;
-  sessionId: string | null;
-  hasThread: boolean;
-}) {
-  return (
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2 py-1">
-      <QuickProjectPicker projects={projects} />
-      {hasThread && projectId ? (
-        <button
-          type="button"
-          onClick={() =>
-            void getQuickPanelBridge()?.focusMainAndNavigate(projectId, sessionId ?? undefined)
-          }
-          className="shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-        >
-          Open in Local Studio
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 function ProjectEmptyState() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6">
@@ -330,164 +274,6 @@ function ProjectEmptyState() {
         </button>
       </div>
     </div>
-  );
-}
-
-type WorkspacePaneRenderContext = {
-  paneId: PaneId;
-  state: WorkspaceState;
-  projects: ProjectsContextValue;
-  tools: ReturnType<typeof useTools>;
-  dispatch: WorkspaceDispatch;
-  handles: WorkspaceHandles;
-  compact?: boolean;
-};
-
-type WorkspacePaneView = {
-  paneId: PaneId;
-  pane: PaneState;
-  session: ReturnType<typeof activeSession>;
-  sessionList: NonNullable<ReturnType<typeof activeSession>>[];
-  project: Project | null;
-  cwd: string;
-  modelId: string;
-  model: AgentModel | null;
-  gitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
-  gitBranch: string | null;
-  isNewSession: boolean;
-  canClose: boolean;
-  isFocused: boolean;
-};
-
-function paneGitBranch(
-  summary: ReturnType<ProjectsContextValue["gitSummary"]>,
-  project: Project | null,
-): string | null {
-  return summary?.isRepo === false ? null : (summary?.branch ?? project?.branch ?? null);
-}
-
-function selectWorkspacePaneView(
-  paneId: PaneId,
-  state: WorkspaceState,
-  projects: ProjectsContextValue,
-): WorkspacePaneView | null {
-  const pane = state.panesById.get(paneId);
-  if (!pane) return null;
-  const session = activeSession(state, paneId);
-  const project = projects.resolveProject(session);
-  const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
-  const gitSummary = projects.gitSummary(project?.path);
-  return {
-    paneId,
-    pane,
-    session,
-    sessionList: session ? [session] : [],
-    project,
-    cwd: session?.cwd ?? project?.path ?? projects.agentCwd,
-    modelId,
-    model: state.models.find((model) => model.id === modelId) ?? null,
-    gitSummary,
-    gitBranch: paneGitBranch(gitSummary, project),
-    isNewSession: Boolean(session && !session.piSessionId && session.messages.length === 0),
-    canClose: collectLeaves(state.layout).length > 1,
-    isFocused: state.focusedPaneId === paneId,
-  };
-}
-
-function resolvePaneModelId(
-  sessionModelId: string | undefined,
-  selectedModelId: string,
-  models: AgentModel[],
-): string {
-  const candidates = [sessionModelId, selectedModelId].filter((value): value is string =>
-    Boolean(value?.trim()),
-  );
-  for (const candidate of candidates) {
-    const exact = models.find((model) => model.id === candidate);
-    if (exact) return exact.id;
-    const alias = models.find(
-      (model) =>
-        model.rawId === candidate || model.name === candidate || model.id.endsWith(`/${candidate}`),
-    );
-    if (alias) return alias.id;
-  }
-  return (
-    selectedModelId ||
-    sessionModelId ||
-    models.find((model) => model.active)?.id ||
-    models[0]?.id ||
-    ""
-  );
-}
-
-function renderWorkspacePane({
-  paneId,
-  state,
-  projects,
-  tools,
-  dispatch,
-  handles,
-  compact = false,
-}: WorkspacePaneRenderContext) {
-  const view = selectWorkspacePaneView(paneId, state, projects);
-  if (!view) return null;
-  const browserPanelOpen =
-    view.isFocused &&
-    tools.browser.enabled &&
-    tools.computer.open &&
-    tools.computer.tab === "browser";
-
-  return (
-    <ChatPane
-      key={view.paneId}
-      paneId={view.paneId}
-      runtimeSessionId={view.session?.runtimeSessionId ?? ""}
-      modelId={view.modelId}
-      modelName={view.model?.name ?? view.modelId ?? null}
-      modelSupportsVision={view.model?.vision ?? false}
-      modelsLoading={state.modelsLoading}
-      contextWindow={view.model?.contextWindow ?? 0}
-      cwd={view.cwd}
-      projectName={view.project?.name ?? null}
-      gitBranch={view.gitBranch}
-      gitSummary={view.gitSummary}
-      onInitGit={handles.initGitForActiveProject}
-      modelSelector={
-        <AgentModelPicker
-          models={state.models}
-          selectedModel={view.modelId}
-          onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
-          loading={state.modelsLoading}
-        />
-      }
-      browserToolEnabled={browserPanelOpen}
-      browserBackend={tools.browser.backend}
-      onToggleBrowserBackend={tools.toggleBrowserBackend}
-      onToggleBrowserTool={() => {
-        if (browserPanelOpen) {
-          tools.closeComputerTab("browser");
-          tools.setBrowserEnabled(false);
-          return;
-        }
-        tools.setComputerTab("browser");
-        tools.setBrowserEnabled(true);
-      }}
-      canvasEnabled={view.isFocused && tools.computer.canvasEnabled}
-      onToggleCanvas={tools.toggleCanvas}
-      onPiSessionIdChange={handles.notifySessionsChanged}
-      isFocused={view.isFocused}
-      onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
-      tabs={view.sessionList}
-      activeTabId={view.pane.sessionId}
-      onTabsChange={(nextTabsOrUpdater) => handles.setPaneTabs(view.paneId, nextTabsOrUpdater)}
-      onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
-      onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
-      onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
-      rightPanelOpen={tools.computer.open}
-      onToggleRightPanel={tools.toggleComputerOpen}
-      onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
-      showHeader={!compact}
-    />
   );
 }
 
@@ -510,116 +296,6 @@ function useActiveCanvasSessionEffects({
 }
 
 const getActiveCanvasSessionSnapshot = (): number => 0;
-
-type SearchParamsReader = {
-  get: (key: string) => string | null;
-};
-
-type WorkspaceNavigationDeps = {
-  lastHandledNavKey: string;
-  projects: ProjectsContextValue;
-  searchParams: SearchParamsReader;
-  dispatch: WorkspaceDispatch;
-};
-
-type PersistedSession = ReturnType<typeof loadPersistedActiveAgentSessions>[number];
-
-function navigationKey(
-  projectId: string | null,
-  sessionId: string | null,
-  newParam: string | null,
-  openParam: string | null,
-  splitParam: string | null,
-): string {
-  if (!(projectId || sessionId || newParam || openParam)) return "";
-  return `${projectId ?? ""}|${sessionId ?? ""}|${newParam ?? ""}|${openParam ?? ""}|${splitParam ?? ""}`;
-}
-
-function persistedSessionFor(sessionId: string | null): PersistedSession | null {
-  if (!sessionId) return null;
-  return (
-    loadPersistedActiveAgentSessions().find((session) => session.piSessionId === sessionId) ?? null
-  );
-}
-
-function projectForNavigation(
-  projects: ProjectsContextValue,
-  projectId: string | null,
-  persistedSession: PersistedSession | null,
-) {
-  if (projectId) return projects.findById(projectId);
-  if (persistedSession?.projectId) return projects.findById(persistedSession.projectId);
-  return null;
-}
-
-function replayTabFor(persistedSession: PersistedSession | null) {
-  const tab = makeFreshTab();
-  if (!persistedSession) return tab;
-  return {
-    ...tab,
-    id: persistedSession.tabId || tab.id,
-    runtimeSessionId: persistedSession.runtimeSessionId || tab.runtimeSessionId,
-    piSessionId: persistedSession.piSessionId,
-    projectId: persistedSession.projectId,
-    cwd: persistedSession.cwd,
-    modelId: persistedSession.modelId,
-    title: persistedSession.title || tab.title,
-    startedAt: persistedSession.startedAt ?? persistedSession.updatedAt,
-  };
-}
-
-function requestWorkspaceUrlNavigation({
-  lastHandledNavKey,
-  projects,
-  searchParams,
-  dispatch,
-}: WorkspaceNavigationDeps): void {
-  const projectId = searchParams.get("project");
-  const sessionId = searchParams.get("session");
-  const newParam = searchParams.get("new");
-  const openParam = searchParams.get("open");
-  const splitParam = searchParams.get("split");
-  const key = navigationKey(projectId, sessionId, newParam, openParam, splitParam);
-  if (!key || lastHandledNavKey === key) return;
-
-  const persistedSession = persistedSessionFor(sessionId);
-  const project = projectForNavigation(projects, projectId, persistedSession);
-  if (projectId && !project) return;
-
-  if (project) projects.selectProject(project);
-  const sessionTitle = sessionId ? consumeAgentSessionNavTitle(sessionId) : undefined;
-
-  dispatch({
-    type: "urlNavRequested",
-    key,
-    project,
-    sessionId,
-    ...(sessionTitle ? { sessionTitle } : {}),
-    newSession: newParam !== null,
-    split: splitParam === "1",
-    paneId: newPaneId(),
-    tab: replayTabFor(persistedSession),
-  });
-}
-
-function useAgentWorkspaceNavigationEffects({
-  lastHandledNavKey,
-  projects,
-  searchParams,
-  dispatch,
-}: WorkspaceNavigationDeps): void {
-  const subscribe = useCallback(
-    (_notify: () => void) => {
-      requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-      return () => {};
-    },
-    [lastHandledNavKey, projects, searchParams, dispatch],
-  );
-
-  useSyncExternalStore(subscribe, getWorkspaceNavigationSnapshot, getWorkspaceNavigationSnapshot);
-}
-
-const getWorkspaceNavigationSnapshot = (): number => 0;
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
   const { state, dispatch, handles } = useWorkspace();

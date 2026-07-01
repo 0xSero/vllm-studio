@@ -30,6 +30,6 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "effect": "^4.0.0-beta.90"
+    "effect": "4.0.0-beta.90"
   }
 }

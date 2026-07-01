@@ -11,19 +11,19 @@ const getExplicitPythonOverride = (): string | null => {
 };
 
 const managedVenvCandidate = (
-  dataDir: string | null | undefined,
+  dataDirectory: string | null | undefined,
   backend: ManagedPythonBackend,
 ): string | null => {
-  if (!dataDir) return null;
-  const python = managedVenvPython({ data_dir: dataDir }, backend);
+  if (!dataDirectory) return null;
+  const python = managedVenvPython({ data_dir: dataDirectory }, backend);
   return existsSync(python) ? python : null;
 };
 
-export const resolveVllmPythonPath = (dataDir?: string | null): string | null => {
+export const resolveVllmPythonPath = (dataDirectory?: string | null): string | null => {
   const candidates = [
     getExplicitPythonOverride(),
     DEFAULT_CANONICAL_PYTHON_PATH,
-    managedVenvCandidate(dataDir, "vllm"),
+    managedVenvCandidate(dataDirectory, "vllm"),
   ];
   for (const candidate of candidates) {
     if (candidate && existsSync(candidate)) {
@@ -35,10 +35,10 @@ export const resolveVllmPythonPath = (dataDir?: string | null): string | null =>
 
 export const resolveVllmRecipePythonPath = (
   recipePythonPath: string | null | undefined,
-  dataDir?: string | null,
+  dataDirectory?: string | null,
 ): string | null => {
   if (recipePythonPath && existsSync(recipePythonPath)) {
     return recipePythonPath;
   }
-  return resolveVllmPythonPath(dataDir);
+  return resolveVllmPythonPath(dataDirectory);
 };

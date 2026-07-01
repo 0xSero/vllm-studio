@@ -134,69 +134,6 @@ const looksLikePythonExecutable = (value: string): boolean => {
   return /^python(?:\d+(?:\.\d+)?)?$/.test(base) || base.includes("python");
 };
 
-const getRunningSglangPythonCandidates = (
-  runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null
-): string[] => {
-  if (!runningProcess || runningProcess.backend !== "sglang") return [];
-  const result = runCommand("ps", ["-p", String(runningProcess.pid), "-o", "args="]);
-  if (result.status !== 0 || !result.stdout) return [];
-  const args = splitCommand(result.stdout.trim());
-  const candidates: string[] = [];
-  const first = args[0];
-  if (first && looksLikePythonExecutable(first)) {
-    const resolved = resolvePythonCandidate(first);
-    if (resolved) candidates.push(resolved);
-  }
-  const moduleIndex = args.findIndex((argument) => argument === "sglang.launch_server");
-  if (moduleIndex >= 2 && args[moduleIndex - 1] === "-m") {
-    const resolved = resolvePythonCandidate(args[moduleIndex - 2]);
-    if (resolved) candidates.push(resolved);
-  }
-  return candidates.filter((candidate, index, all) => all.indexOf(candidate) === index);
-};
-
-const SGLANG_IMPORT_PROBE =
-  "import json, sys\ntry:\n import sglang\n print(json.dumps({'version': getattr(sglang, '__version__', None), 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
-
-export const getSglangRuntimeInfo = (
-  config: Config,
-  runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null
-): RuntimeBackendInfo => {
-  const candidates: string[] = getRunningSglangPythonCandidates(runningProcess);
-  if (config.sglang_python) candidates.push(config.sglang_python);
-  const canonical = resolveVllmPythonPath();
-  if (canonical) candidates.push(canonical);
-  candidates.push("python3", "python");
-  const unique = candidates.filter((candidate, index, all) => all.indexOf(candidate) === index);
-
-  for (const python of unique) {
-    if (runCommand(python, ["-V"]).status !== 0) continue;
-    const result = runCommand(python, ["-c", SGLANG_IMPORT_PROBE]);
-    if (result.status !== 0) continue;
-    let parsed: { version?: string | null; python?: string | null } | null = null;
-    try {
-      parsed = JSON.parse(result.stdout) as { version?: string | null; python?: string | null };
-    } catch {
-      continue;
-    }
-    if (parsed?.version) {
-      return {
-        installed: true,
-        version: parsed.version,
-        python_path: parsed.python ?? python,
-        upgrade_command_available: true,
-      };
-    }
-  }
-  const fallback = unique.find((p) => runCommand(p, ["-V"]).status === 0) ?? null;
-  return {
-    installed: false,
-    version: null,
-    python_path: fallback ?? config.sglang_python ?? null,
-    upgrade_command_available: Boolean(fallback),
-  };
-};
-
 const MLX_IMPORT_PROBE =
   "import json, sys\ntry:\n import mlx_lm\n print(json.dumps({'version': getattr(mlx_lm, '__version__', None) or 'installed', 'python': sys.executable}))\nexcept Exception:\n print(json.dumps({'version': None, 'python': sys.executable}))";
 

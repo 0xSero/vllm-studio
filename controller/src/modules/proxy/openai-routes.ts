@@ -412,7 +412,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     const KEEPALIVE_BYTES = sseEncoder.encode(": keepalive\n\n");
     const KEEPALIVE_INTERVAL_MS = 15_000;
     let keepaliveId: ReturnType<typeof setInterval> | null = null;
-    const stopKeepalive = () => {
+    const stopKeepalive = (): void => {
       if (keepaliveId) {
         clearInterval(keepaliveId);
         keepaliveId = null;
@@ -420,7 +420,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     };
 
     const responseStream = new ReadableStream<Uint8Array>({
-      async start(controller) {
+      async start(controller): Promise<void> {
         controller.enqueue(KEEPALIVE_BYTES);
         keepaliveId = setInterval(() => {
           try { controller.enqueue(KEEPALIVE_BYTES); } catch {
@@ -544,7 +544,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
         }
       },
 
-      cancel() {
+      cancel(): void {
         stopKeepalive();
       },
     });

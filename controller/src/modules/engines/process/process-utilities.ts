@@ -143,12 +143,12 @@ export const buildEnvironment = (recipe: Recipe, config?: Pick<Config, "data_dir
 
 function resolveVenvBinForRecipe(
   recipe: Recipe,
-  dataDir?: string,
+  dataDirectory?: string,
 ): string | null {
   const python =
     recipe.python_path && recipe.python_path.trim()
       ? recipe.python_path
-      : resolveVllmRecipePythonPath(recipe.python_path, dataDir);
+      : resolveVllmRecipePythonPath(recipe.python_path, dataDirectory);
   if (python) return dirname(python);
   return null;
 }

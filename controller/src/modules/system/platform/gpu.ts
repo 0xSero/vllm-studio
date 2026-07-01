@@ -58,8 +58,6 @@ export const getGpuInfoFromNvidiaSmi = (): GpuInfo[] => {
         const parsed = Number(value ?? 0);
         return Number.isFinite(parsed) ? parsed : 0;
       };
-      const toBytes = (megabytes: string | undefined): number =>
-        Math.max(0, Math.round(toFiniteNumber(megabytes) * 1024 * 1024));
       const toMb = (megabytes: string | undefined): number =>
         Math.max(0, Math.round(toFiniteNumber(megabytes)));
       const reportedTotalMb = toMb(memoryTotal);
