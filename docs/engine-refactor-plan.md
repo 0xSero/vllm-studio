@@ -548,7 +548,25 @@ the audit commands below at the start of each iteration to see current counts.
         reference this file directly; full e2e suite shows the same 4
         pre-existing failures as iterations 2/10/12/13/14/15/16/17, nothing
         new broken.
-  - [ ] `controller/src/modules/proxy/openai-routes.ts` (554)
+  - [x] `controller/src/modules/proxy/openai-routes.ts` (554 → 277) — split
+        into 3 cohesive files: `chat-request.ts` (131: session-id/recipe-
+        matching/usage-attachment pure helpers, plus
+        `createNonRunningModelWarner` — turned the old `warnNonRunningModel`
+        closure-over-a-Map into an explicit factory so the rate-limiting
+        state isn't implicitly hidden in `registerOpenAIRoutes`'s scope),
+        `chat-reasoning-heuristics.ts` (54: the two pure Trinity/implicit-
+        reasoning model-quirk functions), `chat-completions-stream.ts` (219:
+        the full SSE keepalive `ReadableStream` response builder, taking an
+        explicit params object instead of closing over two dozen locals).
+        `openai-routes.ts` now only parses the request, resolves
+        provider/recipe routing, and dispatches to the non-streaming path
+        inline or `buildChatCompletionsStreamResponse`. Kept
+        `modelNotRunningError` in place (tiny, tested externally by
+        `tests/controller/integration/openai-routes-helpers.test.ts`, no
+        reason to move it). Verified: typecheck/lint/`standards`/122
+        integration tests/4 unit tests/jscpd (0 clones)/depcheck all green;
+        knip's only complaint is the already-documented `redactLogContent`
+        false positive, unrelated to this change.
   - [ ] `frontend/src/app/api/proxy/[...path]/route.ts` (542)
   - [ ] `frontend/src/features/settings/local-agents.ts` (533)
   - [ ] `frontend/src/features/setup/use-setup.ts` (530)
@@ -990,3 +1008,27 @@ the audit commands below at the start of each iteration to see current counts.
   verification bar (`bun run typecheck`/`lint`/`standards`/`check`/
   `test:unit`/`test:integration`) established in iteration 18.
   `session-runtime-controller.ts` stays deferred until a dedicated pass.
+
+- **2026-07-01 (iter 20)**: before starting, found and committed an unrelated
+  pending change already sitting in the working tree from outside this loop
+  (a prompt-minimap layout fix in `chat.css`/`timeline.tsx` — switched it
+  from a flex-sibling with margins to an absolute overlay driven by a
+  container query instead of a viewport media query); verified
+  `check:static` green with it present, committed it separately before
+  touching this iteration's own target so it didn't get mixed into an
+  unrelated refactor commit. Then split `openai-routes.ts` (554 → 277) — see
+  the Part C checklist above for the full breakdown. This was the first
+  route-handler-shaped split in the loop (previous controller splits were
+  either pure-logic modules or a metrics collector) — the interesting
+  decision was turning the old `warnNonRunningModel` closure (which captured
+  a `Map` from `registerOpenAIRoutes`'s scope) into an explicit
+  `createNonRunningModelWarner(logger)` factory instead of just relocating
+  the closure as-is, since a bare relocated closure would've needed to keep
+  living inside `registerOpenAIRoutes` anyway — the factory shape is what
+  actually made the extraction possible. Controller
+  typecheck/lint/standards/122 integration/4 unit/jscpd/depcheck all green
+  (same pre-existing `redactLogContent` knip false positive as every prior
+  iteration, nothing new). Next iteration: `frontend/src/app/api/proxy/
+  [...path]/route.ts` (542) is next on the Part C list, back on the frontend
+  side; `session-runtime-controller.ts` stays deferred until a dedicated
+  pass.
