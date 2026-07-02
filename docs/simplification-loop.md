@@ -445,8 +445,28 @@ src + frontend/src + frontend/desktop + tests + shared/:
 - Did NOT chase src/ exports-used-in-own-file (knip ignoreExportsUsedInFile:true
   is a deliberate choice; de-exporting internally-used exports en masse is risky).
 
+## CSS-TOKEN + TEST-COVERAGE AUDIT — I18 (no change)
+
+Two blind-spot investigations, both correctly declined:
+- CSS custom-property audit: 163/313 globals tokens have no var()/(--x) reference
+  — but this is a TAILWIND v4 FALSE-POSITIVE TRAP. The @theme/@theme-inline blocks
+  turn --color-*/--radius-*/--text-*/--font-* into GENERATED utility classes
+  (bg-sky-500, rounded-md, text-emerald-400) used across 52 TSX files; a
+  var()-grep structurally cannot see utility consumption. Removing any would
+  break utilities + violate the absolute UI-pixel-identical rule. DO NOT attempt
+  a CSS-token cut by grep. Even the few non-palette semantic tokens (--ui-active
+  etc.) aren't worth the theme-break risk for ~lines of CSS. NO CHANGE.
+- Test-coverage audit: every test file IS wired to a runner (controller: bun test
+  src = 3 unit files; bun test ../tests/controller/integration = 20; frontend:
+  tsx --test scripts/test-*.ts = 8 unit; ../tests/frontend/e2e/*.test.ts = 27
+  e2e). No orphaned/never-run tests. Clean.
+
 ## Iteration log
 
+- **I18 (2026-07-02)**: two blind-spot investigations, both correctly declined —
+  CSS tokens (Tailwind-v4 @theme utility-generation false-positive trap; removing
+  would break the UI) and test coverage (all files wired, no orphans). No code
+  change; branch stays verified-green. Remaining candidates are traps, not cuts.
 - **I17 (2026-07-02)**: shared-contract export audit — the one dead-code class
   knip can't see (it never scans shared/). Cut 4 unused engine-args exports to
   module-private; verified the other 67 are consumed. Genuine surface reduction,
