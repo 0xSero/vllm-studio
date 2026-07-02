@@ -6,7 +6,7 @@ import type { AppContext } from "../../app-context";
 import { SttIntegrationError, transcribeAudio } from "../../services/stt";
 import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
 import type { AudioRouteDependencies } from "./interfaces";
-import { AUDIO_TEMP_PATH_SEGMENTS } from "./configs";
+const AUDIO_TEMP_PATH_SEGMENTS = ["tmp", "audio"];
 import {
   defaultTranscodeToWav,
   ensureServiceLease,

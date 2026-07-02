@@ -4,7 +4,7 @@ import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import {
   appendLlamacppArguments,

@@ -4,7 +4,7 @@ import type { Config } from "../../../config/env";
 import { loadPersistedConfig, savePersistedConfig } from "../../../config/persisted-config";
 import { resolveBinary, runCommand } from "../../../core/command";
 import type { ProcessInfo } from "../../models/types";
-import type { EngineBackend, RuntimeBackendInfo, RuntimeTarget } from "../../shared/system-types";
+import type { EngineBackend, RuntimeBackendInfo, RuntimeTarget } from "../../../../../shared/contracts/system";
 import { detectBackend, listProcesses } from "../process/process-utilities";
 import { makeRuntimeTarget } from "./runtime-target-factory";
 import {

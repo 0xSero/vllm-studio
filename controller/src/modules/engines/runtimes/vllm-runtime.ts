@@ -16,7 +16,7 @@ import {
   resolvePythonFromScript,
 } from "./runtime-target-probes";
 import type { InstallOptions } from "../engine-spec";
-import type { RuntimeUpgradeResult } from "../../shared/system-types";
+import type { RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
 
 const resolveVllmUpgradeTarget = (version?: string): string =>
   normalizePackageSpec("vllm", version?.trim() || getVllmUpgradeVersion());

@@ -3,17 +3,34 @@ import { parseJsonObjectBody } from "../../core/validation";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import { savePersistedConfig, type ProviderConfig } from "../../config/persisted-config";
 
+type ProviderView = {
+  id: string;
+  name: string;
+  base_url: string;
+  enabled: boolean;
+  has_api_key: boolean;
+};
+
+const serializeProvider = (p: ProviderConfig): ProviderView => ({
+  id: p.id,
+  name: p.name,
+  base_url: p.base_url,
+  enabled: p.enabled,
+  has_api_key: Boolean(p.api_key),
+});
+
+const saveProviders = (
+  context: { config: { data_dir: string; providers: ProviderConfig[] } },
+  providers: ProviderConfig[]
+): void => {
+  savePersistedConfig(context.config.data_dir, { providers });
+  context.config.providers = providers;
+};
+
 /** CRUD for external inference providers plus model discovery across them. */
 export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
   app.get("/studio/providers", async (ctx) => {
-    const providers = context.config.providers.map((p) => ({
-      id: p.id,
-      name: p.name,
-      base_url: p.base_url,
-      enabled: p.enabled,
-      has_api_key: Boolean(p.api_key),
-    }));
-    return ctx.json({ providers });
+    return ctx.json({ providers: context.config.providers.map(serializeProvider) });
   });
 
   app.post("/studio/providers", async (ctx) => {
@@ -33,20 +50,14 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
     if (existing) throw badRequest(`Provider "${id}" already exists`);
 
     const provider: ProviderConfig = { id, name, base_url: baseUrl, api_key: apiKey, enabled };
-    const providers = [...context.config.providers, provider];
-    savePersistedConfig(context.config.data_dir, { providers });
-    context.config.providers = providers;
+    saveProviders(context, [...context.config.providers, provider]);
 
-    return ctx.json({
-      success: true,
-      provider: { id, name, base_url: baseUrl, enabled, has_api_key: Boolean(apiKey) },
-    });
+    return ctx.json({ success: true, provider: serializeProvider(provider) });
   });
 
   app.put("/studio/providers/:id", async (ctx) => {
     const providerId = ctx.req.param("id");
-    const body = await ctx.req.json().catch(() => ({}));
-    if (!body || typeof body !== "object") throw badRequest("Invalid payload");
+    const body = await parseJsonObjectBody(ctx);
 
     const index = context.config.providers.findIndex((p) => p.id === providerId);
     if (index < 0) throw notFound(`Provider "${providerId}" not found`);
@@ -54,10 +65,11 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
     const current = context.config.providers[index];
     if (!current) throw notFound(`Provider "${providerId}" not found`);
 
-    const name = typeof body.name === "string" ? body.name.trim() : current.name;
-    const baseUrl = typeof body.base_url === "string" ? body.base_url.trim() : current.base_url;
-    const apiKey = typeof body.api_key === "string" ? body.api_key.trim() : current.api_key;
-    const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
+    const name = typeof body["name"] === "string" ? body["name"].trim() : current.name;
+    const baseUrl =
+      typeof body["base_url"] === "string" ? body["base_url"].trim() : current.base_url;
+    const apiKey = typeof body["api_key"] === "string" ? body["api_key"].trim() : current.api_key;
+    const enabled = typeof body["enabled"] === "boolean" ? body["enabled"] : current.enabled;
 
     const updated: ProviderConfig = {
       id: providerId,
@@ -68,13 +80,9 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
     };
     const providers = [...context.config.providers];
     providers[index] = updated;
-    savePersistedConfig(context.config.data_dir, { providers });
-    context.config.providers = providers;
+    saveProviders(context, providers);
 
-    return ctx.json({
-      success: true,
-      provider: { id: providerId, name, base_url: baseUrl, enabled, has_api_key: Boolean(apiKey) },
-    });
+    return ctx.json({ success: true, provider: serializeProvider(updated) });
   });
 
   app.delete("/studio/providers/:id", async (ctx) => {
@@ -82,9 +90,10 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
     const index = context.config.providers.findIndex((p) => p.id === providerId);
     if (index < 0) throw notFound(`Provider "${providerId}" not found`);
 
-    const providers = context.config.providers.filter((p) => p.id !== providerId);
-    savePersistedConfig(context.config.data_dir, { providers });
-    context.config.providers = providers;
+    saveProviders(
+      context,
+      context.config.providers.filter((p) => p.id !== providerId)
+    );
 
     return ctx.json({ success: true });
   });

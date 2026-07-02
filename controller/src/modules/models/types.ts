@@ -1,8 +1,8 @@
-import type { Backend as SharedBackend, RecipeBase } from "../shared/recipe-types";
+import type { Backend as SharedBackend, RecipeBase } from "../../../../shared/contracts/recipes";
 import type { GPU, ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
-import type { ConfigData } from "../shared/system-types";
+import type { ConfigData } from "../../../../shared/contracts/system";
 
-export type { ModelInfo } from "../shared/recipe-types";
+export type { ModelInfo } from "../../../../shared/contracts/recipes";
 export type {
   ServiceInfo,
   SystemConfig,
@@ -25,7 +25,7 @@ export type {
   SystemRuntimeInfo,
   CompatibilityReport,
   ConfigData,
-} from "../shared/system-types";
+} from "../../../../shared/contracts/system";
 
 export type Brand<Primitive, Label extends string> = Primitive & {
   readonly __brand: Label;

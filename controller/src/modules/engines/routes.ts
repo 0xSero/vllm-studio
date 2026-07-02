@@ -239,17 +239,19 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/studio/downloads", async (ctx) => {
-    const body = await ctx.req.json().catch(() => ({}));
-    if (body && typeof body !== "object") throw badRequest("Invalid payload");
-    const modelId = typeof body?.model_id === "string" ? body.model_id : null;
+    const body = await parseJsonObjectBody(ctx);
+    const modelId = typeof body["model_id"] === "string" ? body["model_id"] : null;
     if (!modelId) throw badRequest("model_id is required");
     const download = await context.downloadManager.start({
       model_id: modelId,
-      revision: typeof body?.revision === "string" ? body.revision : null,
-      destination_dir: typeof body?.destination_dir === "string" ? body.destination_dir : null,
-      allow_patterns: Array.isArray(body?.allow_patterns) ? body.allow_patterns.map(String) : null,
-      ignore_patterns: Array.isArray(body?.ignore_patterns)
-        ? body.ignore_patterns.map(String)
+      revision: typeof body["revision"] === "string" ? body["revision"] : null,
+      destination_dir:
+        typeof body["destination_dir"] === "string" ? body["destination_dir"] : null,
+      allow_patterns: Array.isArray(body["allow_patterns"])
+        ? body["allow_patterns"].map(String)
+        : null,
+      ignore_patterns: Array.isArray(body["ignore_patterns"])
+        ? body["ignore_patterns"].map(String)
         : null,
       hf_token: resolveHfToken(ctx, body),
     });
@@ -264,7 +266,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/studio/downloads/:downloadId/resume", async (ctx) => {
-    const body = await ctx.req.json().catch(() => ({}));
+    const body = await parseJsonObjectBody(ctx);
     const token = resolveHfToken(ctx, body);
     const id = ctx.req.param("downloadId");
     if (!context.downloadManager.get(id)) throw notFound("Download not found");

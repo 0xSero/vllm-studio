@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import type { Config } from "../../../config/env";
 import { delayEffect } from "../../../core/async";
-import type { EngineBackend } from "../../shared/system-types";
+import type { EngineBackend } from "../../../../../shared/contracts/system";
 import { ENGINE_INSTALL_TIMEOUT_MS } from "../configs";
 
 interface EngineInstallLock {

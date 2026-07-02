@@ -1,7 +1,12 @@
 import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import type { Recipe } from "../models/types";
-import { PROXY_SESSION_HEADER_NAMES } from "./configs";
+const PROXY_SESSION_HEADER_NAMES = [
+  "x-vllm-session-id",
+  "x-session-id",
+  "x-chat-session-id",
+  "openai-conversation-id",
+];
 
 export type OpenAIUsage = Record<string, number>;
 

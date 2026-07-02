@@ -6,11 +6,9 @@ import { SttIntegrationError } from "../../services/stt";
 import type { SttMode } from "../../services/stt";
 import { TtsIntegrationError } from "../../services/tts";
 import type { TtsMode } from "../../services/tts";
-import {
-  AUDIO_DEFAULT_MODE,
-  AUDIO_REPLACE_TRUE_VALUES,
-  AUDIO_TRANSCODE_TIMEOUT_MS,
-} from "./configs";
+const AUDIO_DEFAULT_MODE = "strict";
+const AUDIO_REPLACE_TRUE_VALUES = ["1", "true", "yes", "on"];
+const AUDIO_TRANSCODE_TIMEOUT_MS = 60_000;
 
 export const parseField = (value: FormDataEntryValue | null): string | undefined => {
   if (typeof value !== "string") return undefined;

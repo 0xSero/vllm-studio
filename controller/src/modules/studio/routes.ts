@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, resolve, sep } from "node:path";
 import { badRequest, notFound } from "../../core/errors";
+import { parseJsonObjectBody } from "../../core/validation";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -143,13 +144,10 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/studio/settings", async (ctx) => {
-    const body = await ctx.req.json().catch(() => ({}));
-    if (body && typeof body !== "object") {
-      throw badRequest("Invalid payload");
-    }
+    const body = await parseJsonObjectBody(ctx);
 
-    const modelsDirectory = parseOptionalStringUpdate(body?.models_dir);
-    const uiPreferences = parseUiPreferencesUpdate(body?.ui_preferences);
+    const modelsDirectory = parseOptionalStringUpdate(body["models_dir"]);
+    const uiPreferences = parseUiPreferencesUpdate(body["ui_preferences"]);
 
     const hasAnyUpdate = modelsDirectory !== undefined || uiPreferences !== undefined;
 
@@ -242,11 +240,8 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/studio/models/delete", async (ctx) => {
-    const body = await ctx.req.json().catch(() => ({}));
-    if (body && typeof body !== "object") {
-      throw badRequest("Invalid payload");
-    }
-    const target = typeof body?.path === "string" ? body.path : "";
+    const body = await parseJsonObjectBody(ctx);
+    const target = typeof body["path"] === "string" ? body["path"] : "";
     if (!target) {
       throw badRequest("path is required");
     }
@@ -264,12 +259,9 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/studio/models/move", async (ctx) => {
-    const body = await ctx.req.json().catch(() => ({}));
-    if (body && typeof body !== "object") {
-      throw badRequest("Invalid payload");
-    }
-    const source = typeof body?.source_path === "string" ? body.source_path : "";
-    const targetRoot = typeof body?.target_root === "string" ? body.target_root : "";
+    const body = await parseJsonObjectBody(ctx);
+    const source = typeof body["source_path"] === "string" ? body["source_path"] : "";
+    const targetRoot = typeof body["target_root"] === "string" ? body["target_root"] : "";
     if (!source || !targetRoot) {
       throw badRequest("source_path and target_root are required");
     }

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
 import { appendExtraArguments, getPythonPath } from "../process/backend-builder";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import {

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../shared/system-types";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
 import {
   getDefaultReasoningParser,
   getDefaultToolCallParser,

@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../../../config/env";
-import type { EngineBackend, EngineJob, RuntimeTarget, RuntimeUpgradeResult } from "../../shared/system-types";
+import type { EngineBackend, EngineJob, RuntimeTarget, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
 import { getEngineSpec, type InstallOptions } from "../engine-spec";
 import { acquireEngineInstallLock, installLockTimeoutMessage } from "./install-lock";
 import { runPlatformUpgrade } from "./runtime-upgrade";

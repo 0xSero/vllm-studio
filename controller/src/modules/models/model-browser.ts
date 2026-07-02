@@ -1,11 +1,19 @@
 import { statSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo } from "./types";
-import {
-  MODEL_BROWSER_CONFIG_FILENAMES,
-  MODEL_BROWSER_WEIGHT_EXTENSIONS,
-  MODEL_QUANTIZATION_SIGNATURES,
-} from "./configs";
+const MODEL_BROWSER_WEIGHT_EXTENSIONS = [".safetensors", ".bin", ".gguf"] as const;
+const MODEL_BROWSER_CONFIG_FILENAMES = ["config.json"] as const;
+const MODEL_QUANTIZATION_SIGNATURES = [
+  "awq",
+  "gptq",
+  "gguf",
+  "fp16",
+  "bf16",
+  "int8",
+  "int4",
+  "w4a16",
+  "w8a16",
+];
 
 export const looksLikeModelDirectory = (path: string): boolean => {
   if (!existsSync(path)) {
