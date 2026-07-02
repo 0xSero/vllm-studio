@@ -168,7 +168,16 @@ async function restartFrontendServer(port?: number): Promise<void> {
       await delay(backoffMs);
       if (isAppStopping()) return;
     }
-    frontendServer = await startFrontendServer({ port, onExit: handleFrontendServerExit });
+    const started = await startFrontendServer({ port, onExit: handleFrontendServerExit });
+    // Shutdown may have begun during the fork. If so, shutdown() already cleared
+    // the health monitor and no-op'd the (mid-restart undefined) server stop —
+    // so tear this just-started server down instead of re-arming the monitor and
+    // resurrecting a server the app is trying to quit.
+    if (isAppStopping()) {
+      await stopFrontendServer(started).catch(() => undefined);
+      return;
+    }
+    frontendServer = started;
     startFrontendHealthMonitor();
     const nextUrl = frontendServer.runtime.url;
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -435,6 +444,16 @@ async function run(): Promise<void> {
     registerQuickPanelHotkey();
   } catch (error) {
     log.error(`Failed to bootstrap desktop app: ${String(error)}`);
+    // Surface the failure instead of vanishing from the dock with no feedback
+    // (port in use, unwritable userData, missing server.js, slow-start timeout).
+    try {
+      dialog.showErrorBox(
+        "Local Studio failed to start",
+        `${error instanceof Error ? error.message : String(error)}\n\nSee the app logs for details.`,
+      );
+    } catch {
+      // dialog unavailable (very early failure) — the log above still records it.
+    }
     app.quit();
   }
 }

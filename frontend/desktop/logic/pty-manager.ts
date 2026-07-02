@@ -37,6 +37,7 @@ type Session = {
 };
 
 const MAX_REPLAY_CHARS = 200_000;
+const MAX_PTY_SESSIONS = 64;
 const sessions = new Map<string, Session>();
 const sessionsByOwner = new Map<string, string>();
 let factory: PtyFactory | null = null;
@@ -99,6 +100,13 @@ function safeOwnerKey(input: string | undefined | null): string | null {
   return key ? key.slice(0, 512) : null;
 }
 
+// Coerce a renderer-supplied terminal dimension to a sane integer; a non-numeric
+// value (e.g. a string) would otherwise become NaN and reach node-pty spawn.
+function clampPtyDimension(value: unknown, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 2 ? parsed : fallback;
+}
+
 function appendReplay(session: Session, chunk: string): void {
   session.replay += chunk;
   if (session.replay.length > MAX_REPLAY_CHARS) {
@@ -147,14 +155,20 @@ export function openPty(
   }
   const ownerKey = safeOwnerKey(opts.ownerKey);
   const cwd = safeCwd(opts.cwd);
-  const cols = Math.max(2, Math.floor(opts.cols ?? 80));
-  const rows = Math.max(2, Math.floor(opts.rows ?? 24));
+  const cols = clampPtyDimension(opts.cols, 80);
+  const rows = clampPtyDimension(opts.rows, 24);
   const existing = ownerKey ? ownedSession(ownerKey) : null;
   if (existing) {
     attachWebContents(existing, webContents);
     resizePty(existing.id, cols, rows);
     log.info(`pty-manager: attached id=${existing.id} owner=${ownerKey}`);
     return { id: existing.id, replay: existing.replay, reused: true };
+  }
+
+  // Cap live shells so a buggy/compromised renderer can't loop openPty with
+  // fresh owner keys and fork-bomb the host.
+  if (sessions.size >= MAX_PTY_SESSIONS) {
+    throw new Error(`PTY limit reached (${MAX_PTY_SESSIONS} active terminals)`);
   }
 
   const { shell, args } = resolveShell();
@@ -198,7 +212,13 @@ export function openPty(
 export function writePty(id: string, data: string): void {
   const session = sessions.get(id);
   if (!session) return;
-  session.pty.write(data);
+  try {
+    session.pty.write(data);
+  } catch (error) {
+    // The pty may have exited between its onExit and closeInternal removing the
+    // session; writing to a dead fd throws. Match resize/kill, which guard too.
+    log.error(`pty-manager: write failed id=${id}: ${String(error)}`);
+  }
 }
 
 export function resizePty(id: string, cols: number, rows: number): void {

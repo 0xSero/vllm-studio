@@ -38,6 +38,7 @@ export function createMainWindow(appUrl: string): BrowserWindow {
 
   hardenWebContents(window, new URL(appUrl).origin);
 
+  let lastRendererReloadAt = 0;
   window.webContents.on("render-process-gone", (_event, details) => {
     void memorySummary().then((memory) => {
       log.error(
@@ -51,6 +52,15 @@ export function createMainWindow(appUrl: string): BrowserWindow {
         ].join(" "),
       );
     });
+    // Recover from a renderer crash (OOM/GPU/abnormal) by reloading, so the user
+    // isn't left with a permanent blank window. Rate-limited so a hard crash-loop
+    // doesn't spin — after that the window stays blank rather than thrashing.
+    if (details.reason === "clean-exit" || window.isDestroyed()) return;
+    const now = Date.now();
+    if (now - lastRendererReloadAt < 10_000) return;
+    lastRendererReloadAt = now;
+    log.warn("Reloading window after renderer crash");
+    window.webContents.reload();
   });
 
   window.once("ready-to-show", () => window.show());
