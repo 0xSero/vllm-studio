@@ -31,7 +31,7 @@ type EngineArgSpec = {
 export const engineArgKey = (field: string): string => field.replace(/_/g, "-");
 
 /** Normalize a CLI/extra-arg key to canonical kebab-case for comparison. */
-export const normalizeEngineArgKey = (key: string): string =>
+const normalizeEngineArgKey = (key: string): string =>
   key.replace(/_/g, "-").toLowerCase().trim();
 
 /**
@@ -134,7 +134,7 @@ export const ENGINE_ARG_SPECS = [
   },
 ] as const satisfies readonly EngineArgSpec[];
 
-export const VLLM_ONLY_FLAG_KEYS: readonly string[] = ENGINE_ARG_SPECS.filter(
+const VLLM_ONLY_FLAG_KEYS: readonly string[] = ENGINE_ARG_SPECS.filter(
   (spec) => spec.scope === "vllm",
 ).map((spec) => engineArgKey(spec.field));
 
@@ -182,7 +182,7 @@ const SGLANG_COMPATIBLE_VLLM_KEYS: ReadonlySet<string> = new Set([
 const VLLM_ONLY_FLAG_KEY_SET: ReadonlySet<string> = new Set(VLLM_ONLY_FLAG_KEYS);
 
 /** Keys that do not belong to `backend` and must be stripped before launch. */
-export const getForeignFlagKeys = (backend: Backend): ReadonlySet<string> => {
+const getForeignFlagKeys = (backend: Backend): ReadonlySet<string> => {
   if (backend === "vllm") return new Set();
   if (backend === "sglang") {
     return new Set(
@@ -321,7 +321,7 @@ export const isJsonStringArgumentKey = (key: string): boolean =>
  * metadata key handled out-of-band, or a fork-specific prefix we always pass
  * through to the CLI.
  */
-export const isKnownVllmExtraArgKey = (key: string): boolean => {
+const isKnownVllmExtraArgKey = (key: string): boolean => {
   const normalized = normalizeEngineArgKey(key);
   if (KNOWN_VLLM_EXTRA_ARG_KEYS.has(normalized)) return true;
   if (INTERNAL_RECIPE_KEYS.has(normalized)) return true;
