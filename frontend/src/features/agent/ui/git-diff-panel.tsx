@@ -324,32 +324,58 @@ function DiffFileList({
       </div>
       <div className="flex flex-col gap-2">
         {files.map((file, fileIndex) => (
-          <details
+          <DiffFileEntry
             key={file.path}
-            className="overflow-hidden rounded-md border border-(--border)/80 bg-(--color-panel)"
-            open={fileIndex === 0}
-          >
-            <summary
-              className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-2 py-1.5 text-xs text-(--fg) hover:bg-(--color-surface-hover)"
-              title={file.path}
-            >
-              <span className="min-w-0 flex-1 truncate">{file.path}</span>
-              <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
-                <span className="text-emerald-400">+{file.additions}</span>{" "}
-                <span className="text-red-400">-{file.deletions}</span>
-              </span>
-            </summary>
-            {viewMode === "side-by-side" ? (
-              <SideBySideDiff file={file} />
-            ) : viewMode === "stacked" ? (
-              <StackedDiff file={file} />
-            ) : (
-              <UnifiedDiff file={file} />
-            )}
-          </details>
+            file={file}
+            viewMode={viewMode}
+            defaultOpen={fileIndex === 0}
+          />
         ))}
       </div>
     </div>
+  );
+}
+
+// Render a file's diff body only while its <details> is open. A collapsed
+// <details> keeps its children in the DOM, so without this a large diff (a
+// lockfile, a big refactor) would materialize every file's full line list at
+// once — tens of thousands of grid rows — and freeze the pane.
+function DiffFileEntry({
+  file,
+  viewMode,
+  defaultOpen,
+}: {
+  file: DiffFile;
+  viewMode: "unified" | "side-by-side" | "stacked";
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      className="overflow-hidden rounded-md border border-(--border)/80 bg-(--color-panel)"
+      open={open}
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-2 py-1.5 text-xs text-(--fg) hover:bg-(--color-surface-hover)"
+        title={file.path}
+      >
+        <span className="min-w-0 flex-1 truncate">{file.path}</span>
+        <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
+          <span className="text-emerald-400">+{file.additions}</span>{" "}
+          <span className="text-red-400">-{file.deletions}</span>
+        </span>
+      </summary>
+      {open ? (
+        viewMode === "side-by-side" ? (
+          <SideBySideDiff file={file} />
+        ) : viewMode === "stacked" ? (
+          <StackedDiff file={file} />
+        ) : (
+          <UnifiedDiff file={file} />
+        )
+      ) : null}
+    </details>
   );
 }
 
