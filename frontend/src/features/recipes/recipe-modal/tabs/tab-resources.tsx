@@ -1,7 +1,8 @@
 "use client";
 
 import { Cpu, Database, GitBranch, Settings } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Slider } from "@/ui";
+import { FormField, FormSection, Input, Slider } from "@/ui";
+import { RecipeCheckbox } from "../recipe-fields";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
@@ -116,9 +117,10 @@ function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
         ) : null}
       </div>
       {capabilities.parallelism === "full" ? (
-        <CheckboxRow
-          checked={recipe.enable_expert_parallel || false}
-          onChange={(checked) => onChange({ ...recipe, enable_expert_parallel: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="enable_expert_parallel"
           label="Expert Parallel (MoE)"
           description="Shard MoE experts across the parallel group."
         />

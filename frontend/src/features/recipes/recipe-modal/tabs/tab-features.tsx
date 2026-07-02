@@ -1,7 +1,8 @@
 "use client";
 
 import { Brain, MessageSquare, Settings, Wrench } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
+import { FormField, FormSection, Input, Select } from "@/ui";
+import { RecipeCheckbox } from "../recipe-fields";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
@@ -93,9 +94,10 @@ function ToolCallingSection({ recipe, onChange, capabilities }: SectionProps) {
               placeholder="Path to custom parser module"
             />
           </FormField>
-          <CheckboxRow
-            checked={recipe.enable_auto_tool_choice || false}
-            onChange={(checked) => onChange({ ...recipe, enable_auto_tool_choice: checked })}
+          <RecipeCheckbox
+            recipe={recipe}
+            onChange={onChange}
+            field="enable_auto_tool_choice"
             label="Enable Auto Tool Choice"
             description="Automatically decide when to use tools"
           />
@@ -139,9 +141,10 @@ function ReasoningSection({ recipe, onChange, capabilities }: SectionProps) {
               placeholder="e.g., xgrammar, outlines"
             />
           </FormField>
-          <CheckboxRow
-            checked={recipe.enable_thinking || false}
-            onChange={(checked) => onChange({ ...recipe, enable_thinking: checked })}
+          <RecipeCheckbox
+            recipe={recipe}
+            onChange={onChange}
+            field="enable_thinking"
             label="Enable Thinking Mode"
             description="Show the model's thinking process"
           />

@@ -1,10 +1,11 @@
 "use client";
 
 import { Clock, Database, Settings, Zap } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
+import { FormField, FormSection, Input, Select } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";
+import { RecipeCheckbox } from "../recipe-fields";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
 
 export function RecipeModalTabPerformance({
@@ -75,15 +76,17 @@ function KvCacheSection({ recipe, onChange, capabilities }: SectionProps) {
       </div>
       {capabilities.caching ? (
         <div className="grid grid-cols-2 gap-3">
-          <CheckboxRow
-            checked={recipe.enable_prefix_caching || false}
-            onChange={(checked) => onChange({ ...recipe, enable_prefix_caching: checked })}
+          <RecipeCheckbox
+            recipe={recipe}
+            onChange={onChange}
+            field="enable_prefix_caching"
             label="Prefix Caching"
             description="Cache shared prefixes"
           />
-          <CheckboxRow
-            checked={recipe.enable_chunked_prefill || false}
-            onChange={(checked) => onChange({ ...recipe, enable_chunked_prefill: checked })}
+          <RecipeCheckbox
+            recipe={recipe}
+            onChange={onChange}
+            field="enable_chunked_prefill"
             label="Chunked Prefill"
             description="Interleave prefill/decode"
           />
@@ -174,27 +177,31 @@ function CudaGraphsSection({
   return (
     <FormSection icon={<Zap className="h-4 w-4" />} title="CUDA Graphs & Compilation">
       <div className="grid grid-cols-2 gap-3">
-        <CheckboxRow
-          checked={recipe.enforce_eager || false}
-          onChange={(checked) => onChange({ ...recipe, enforce_eager: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="enforce_eager"
           label="Enforce Eager Mode"
           description="Disables CUDA graphs for debugging"
         />
-        <CheckboxRow
-          checked={recipe.disable_cuda_graph || false}
-          onChange={(checked) => onChange({ ...recipe, disable_cuda_graph: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="disable_cuda_graph"
           label="Disable CUDA Graph"
           description="Skip graph capture for dynamic shapes"
         />
-        <CheckboxRow
-          checked={recipe.use_v2_block_manager || false}
-          onChange={(checked) => onChange({ ...recipe, use_v2_block_manager: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="use_v2_block_manager"
           label="v2 Block Manager"
           description="New memory management"
         />
-        <CheckboxRow
-          checked={recipe.disable_custom_all_reduce || false}
-          onChange={(checked) => onChange({ ...recipe, disable_custom_all_reduce: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="disable_custom_all_reduce"
           label="Disable Custom AllReduce"
           description="Use default NCCL collectives"
         />

@@ -1,7 +1,8 @@
 "use client";
 
 import { Boxes, Layers, Settings } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
+import { FormField, FormSection, Input, Select } from "@/ui";
+import { RecipeCheckbox } from "../recipe-fields";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
@@ -163,9 +164,10 @@ function WeightsSection({ recipe, onChange, capabilities }: SectionProps) {
         </div>
       ) : null}
       {capabilities.trustRemoteCode ? (
-        <CheckboxRow
-          checked={recipe.trust_remote_code || false}
-          onChange={(checked) => onChange({ ...recipe, trust_remote_code: checked })}
+        <RecipeCheckbox
+          recipe={recipe}
+          onChange={onChange}
+          field="trust_remote_code"
           label="Trust Remote Code"
           description="Allow the model repo to execute custom modeling code."
         />
