@@ -6,6 +6,7 @@ import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { isActiveLaunchStage } from "@/hooks/realtime-status-types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/api/connection";
 
 type ModelLifecycleStatus = "idle" | "starting" | "ready" | "error";
 
@@ -33,16 +34,24 @@ export function useModelLifecycle(): ModelLifecycle {
 
   useMountSubscription(() => {
     let cancelled = false;
-    api
-      .getRecipes()
-      .then((data) => {
-        if (!cancelled) setRecipes(data.recipes || []);
-      })
-      .catch(() => {
-        if (!cancelled) setRecipes([]);
-      });
+    const loadRecipes = (): void => {
+      api
+        .getRecipes()
+        .then((data) => {
+          if (!cancelled) setRecipes(data.recipes || []);
+        })
+        .catch(() => {
+          if (!cancelled) setRecipes([]);
+        });
+    };
+    loadRecipes();
+    // Recipes are per-controller; refetch on controller switch so activeRecipeId
+    // isn't resolved against the previous controller's stale list.
+    const onBackendChange = (): void => loadRecipes();
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, onBackendChange);
     return () => {
       cancelled = true;
+      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, onBackendChange);
     };
   }, []);
 

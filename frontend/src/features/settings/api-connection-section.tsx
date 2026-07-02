@@ -17,7 +17,12 @@ import {
   saveSavedControllers,
   type SavedController,
 } from "@/lib/api/controllers";
-import { getStoredBackendUrl, setApiKey, setStoredBackendUrl } from "@/lib/api/connection";
+import {
+  clearApiKey,
+  getStoredBackendUrl,
+  setApiKey,
+  setStoredBackendUrl,
+} from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { StatusPill, Spinner } from "@/ui";
 import {
@@ -112,7 +117,10 @@ export function ApiConnectionSection({
 
   const activate = (entry: ControllerEntry) => {
     // Switching never deletes anything — every row stays in the list.
+    // Clear the runtime key when the target has none, so the previous
+    // controller's key isn't leaked to this controller's host.
     if (entry.apiKey) setApiKey(entry.apiKey);
+    else clearApiKey();
     setStoredBackendUrl(entry.url);
     onApiSettingsChange({
       ...apiSettings,

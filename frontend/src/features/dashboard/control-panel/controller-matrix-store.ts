@@ -5,6 +5,7 @@ import { Effect, Fiber, Schedule } from "effect";
 import { createApiClient } from "@/lib/api/create-api-client";
 import {
   BACKEND_URL_CHANGED_EVENT,
+  clearApiKey,
   getStoredBackendUrl,
   setApiKey,
   setStoredBackendUrl,
@@ -97,8 +98,35 @@ function loadControllers(): SavedController[] {
   return [...byUrl.values()];
 }
 
+function rowsEqual(a: ControllerSnapshot[], b: ControllerSnapshot[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((row, index) => {
+    const other = b[index];
+    return (
+      other !== undefined &&
+      row.url === other.url &&
+      row.online === other.online &&
+      row.authRequired === other.authRequired &&
+      row.running === other.running &&
+      row.modelName === other.modelName &&
+      row.primary === other.primary &&
+      row.index === other.index
+    );
+  });
+}
+
 function emit(rows: ControllerSnapshot[]): void {
-  snapshot = { rows, activeUrl: activeUrlFor(), visible: controllers.length > 1 };
+  const next = { rows, activeUrl: activeUrlFor(), visible: controllers.length > 1 };
+  // The poll rebuilds rows every 5s; skip notifying when nothing observable
+  // changed so every consumer isn't re-rendered on each idle tick.
+  if (
+    next.activeUrl === snapshot.activeUrl &&
+    next.visible === snapshot.visible &&
+    rowsEqual(next.rows, snapshot.rows)
+  ) {
+    return;
+  }
+  snapshot = next;
   for (const listener of listeners) listener();
 }
 
@@ -195,7 +223,11 @@ export function useControllerMatrixStore(): ControllerMatrixSnapshot {
 }
 
 export function activateController(controller: ControllerSnapshot): void {
+  // Clear when the target has no key — runtimeApiKey is a process-global, so a
+  // leftover key from the previous controller would otherwise be sent to this
+  // controller's (different) host.
   if (controller.apiKey) setApiKey(controller.apiKey);
+  else clearApiKey();
   setStoredBackendUrl(controller.url);
   reload();
   void fetch("/api/settings", {

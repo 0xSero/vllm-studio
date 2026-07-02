@@ -267,6 +267,16 @@ async function bootPty({
     );
   });
   const { id, replay } = await pty.open({ cwd: cwd ?? undefined, cols, rows, ownerKey });
+  // The panel may have unmounted while pty.open was in flight. The outer effect
+  // cleanup already ran (with cleanupTerminal still null, so it disposed
+  // nothing), so tear down the listeners we registered before the await here —
+  // otherwise every aborted boot permanently leaks a pty-data + pty-exit
+  // ipcRenderer listener and wires observers to a dead element.
+  if (refs.disposed) {
+    dataDisposer();
+    exitDisposer();
+    return () => {};
+  }
   currentId = id;
   if (replay) term.write(replay);
   for (const item of queuedData) {
