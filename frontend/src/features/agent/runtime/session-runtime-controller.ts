@@ -416,6 +416,15 @@ export function createSessionRuntimeController(
       if (status.active === true) {
         const patch = patchRuntimeStatus(status);
         const nextRuntimeSessionId = piMatch?.runtimeSessionId ?? session.runtimeSessionId;
+        // Adopting a different runtime id means the session is now served by a
+        // fresh runtime whose event seq restarts from 0. The cursor is keyed by
+        // the stable sessionId and still holds the OLD runtime's seq, so a
+        // reconnect would resume "after <old seq>" and skip the new runtime's
+        // early events. Reset it (as noteTurnAccepted does on a restart) before
+        // the store change triggers reconcile's SSE reopen.
+        if (nextRuntimeSessionId !== session.runtimeSessionId) {
+          adoptCursor(session.id, undefined);
+        }
         commit(session.id, (current) => {
           if (sameRuntimePatch(current, patch, "running", nextRuntimeSessionId)) return current;
           return {
@@ -497,6 +506,12 @@ export function createSessionRuntimeController(
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let lastPayloadAt = Date.now();
 
+    const cancelReconnect = () => {
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      reconnecting = false;
+    };
+
     const reconnect = () => {
       if (closed || reconnecting) return;
       reconnecting = true;
@@ -532,6 +547,10 @@ export function createSessionRuntimeController(
             reconnect();
             return;
           }
+          // A reconnect armed by a prior onError must not fire connect() after
+          // we've decided this runtime is idle — it would reopen an SSE against
+          // a session we just idled.
+          cancelReconnect();
           sub?.close();
           coalescer.flushNow(sessionId);
           commit(sessionId, (session) =>
@@ -692,9 +711,12 @@ export function createSessionRuntimeController(
       stopPoll();
       for (const attachment of attachments.values()) attachment.close();
       attachments.clear();
-      coalescer.flushAll();
-      // Workspace teardown: drop every live-target pin so a remount can't inherit
-      // a stale id from the previous mount.
+      coalescer.clear();
+      // Workspace teardown: drop every per-session map so the app-lifetime
+      // singleton doesn't retain one entry per session ever opened. Also drops
+      // every live-target pin so a remount can't inherit a stale id.
+      cursors.clear();
+      turnAcceptedAt.clear();
       streamContext.liveAssistantIds.clear();
     },
   };
