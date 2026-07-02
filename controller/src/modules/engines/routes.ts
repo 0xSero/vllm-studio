@@ -227,13 +227,13 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.get("/studio/downloads", async (ctx) => {
-    const downloads = context.engineService.listDownloads();
+    const downloads = context.downloadManager.list();
     return ctx.json({ downloads });
   });
 
   app.get("/studio/downloads/:downloadId", async (ctx) => {
     const id = ctx.req.param("downloadId");
-    const download = context.engineService.getDownload(id);
+    const download = context.downloadManager.get(id);
     if (!download) throw notFound("Download not found");
     return ctx.json({ download });
   });
@@ -243,7 +243,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     if (body && typeof body !== "object") throw badRequest("Invalid payload");
     const modelId = typeof body?.model_id === "string" ? body.model_id : null;
     if (!modelId) throw badRequest("model_id is required");
-    const download = await context.engineService.startDownload({
+    const download = await context.downloadManager.start({
       model_id: modelId,
       revision: typeof body?.revision === "string" ? body.revision : null,
       destination_dir: typeof body?.destination_dir === "string" ? body.destination_dir : null,
@@ -258,8 +258,8 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
 
   app.post("/studio/downloads/:downloadId/pause", async (ctx) => {
     const id = ctx.req.param("downloadId");
-    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
-    const download = context.engineService.pauseDownload(id);
+    if (!context.downloadManager.get(id)) throw notFound("Download not found");
+    const download = context.downloadManager.pause(id);
     return ctx.json({ download });
   });
 
@@ -267,15 +267,15 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     const body = await ctx.req.json().catch(() => ({}));
     const token = resolveHfToken(ctx, body);
     const id = ctx.req.param("downloadId");
-    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
-    const download = context.engineService.resumeDownload(id, token);
+    if (!context.downloadManager.get(id)) throw notFound("Download not found");
+    const download = context.downloadManager.resume(id, token ?? null);
     return ctx.json({ download });
   });
 
   app.post("/studio/downloads/:downloadId/cancel", async (ctx) => {
     const id = ctx.req.param("downloadId");
-    if (!context.engineService.getDownload(id)) throw notFound("Download not found");
-    const download = context.engineService.cancelDownload(id);
+    if (!context.downloadManager.get(id)) throw notFound("Download not found");
+    const download = context.downloadManager.cancel(id);
     return ctx.json({ download });
   });
 

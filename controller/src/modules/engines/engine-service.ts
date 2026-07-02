@@ -1,18 +1,6 @@
 import type { Recipe, ProcessInfo } from "../models/types";
-import type { ModelDownload } from "../shared/recipe-types";
 
 export type { Recipe, ProcessInfo };
-export type { ModelDownload };
-
-export interface DownloadRequest {
-  model_id: string;
-  revision?: string | null;
-  destination_dir?: string | null;
-  allow_patterns?: string[] | null;
-  ignore_patterns?: string[] | null;
-  hf_token?: string | null;
-}
-
 
 export type SetActiveRecipeResult = { ok: true } | { ok: false; error: string };
 
@@ -34,11 +22,4 @@ export interface EngineService {
 
   getCurrentProcess(): Promise<ProcessInfo | null>;
   waitForHealthy(timeoutMs: number): Promise<boolean>;
-
-  startDownload(request: DownloadRequest): Promise<ModelDownload>;
-  pauseDownload(downloadId: string): ModelDownload;
-  resumeDownload(downloadId: string, hfToken?: string | null): ModelDownload;
-  cancelDownload(downloadId: string): ModelDownload;
-  listDownloads(): ModelDownload[];
-  getDownload(downloadId: string): ModelDownload | null;
 }

@@ -11,12 +11,9 @@ import type { RecipeStore } from "../models/recipes/recipe-store";
 import { LIFECYCLE_READY_TIMEOUT_MS } from "./configs";
 import type {
   EngineService,
-  DownloadRequest,
   SetActiveRecipeResult,
   SetActiveRecipeOptions,
 } from "./engine-service";
-import type { ModelDownload } from "../shared/recipe-types";
-import type { DownloadManager } from "./downloads/download-manager";
 import type { LaunchFailureBudget } from "./process/launch-failure-budget";
 import { formatLaunchFailureBudgetMessage } from "./process/launch-failure-budget";
 import { getEngineSpec } from "./engine-spec";
@@ -25,7 +22,6 @@ interface CoordinatorDeps {
   eventManager: EventManager;
   processManager: ProcessManager;
   recipeStore: RecipeStore;
-  downloadManager: DownloadManager;
   launchFailureBudget: LaunchFailureBudget;
 }
 export class EngineCoordinator implements EngineService {
@@ -274,30 +270,6 @@ export class EngineCoordinator implements EngineService {
   async getCurrentProcess(): Promise<ProcessInfo | null> {
     return this.deps.processManager.findInferenceProcess(this.deps.config.inference_port);
   }
-
-  async startDownload(request: DownloadRequest): Promise<ModelDownload> {
-    return await this.deps.downloadManager.start(request);
-  }
-
-  pauseDownload(downloadId: string): ModelDownload {
-    return this.deps.downloadManager.pause(downloadId);
-  }
-
-  resumeDownload(downloadId: string, hfToken?: string | null): ModelDownload {
-    return this.deps.downloadManager.resume(downloadId, hfToken ?? null);
-  }
-
-  cancelDownload(downloadId: string): ModelDownload {
-    return this.deps.downloadManager.cancel(downloadId);
-  }
-  listDownloads(): ModelDownload[] {
-    return this.deps.downloadManager.list();
-  }
-
-  getDownload(downloadId: string): ModelDownload | null {
-    return this.deps.downloadManager.get(downloadId);
-  }
-
 }
 export const createEngineCoordinator = (deps: CoordinatorDeps): EngineCoordinator => {
   return new EngineCoordinator(deps);

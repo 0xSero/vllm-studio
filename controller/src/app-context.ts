@@ -94,7 +94,6 @@ export const createAppContext = (): AppContext => {
     eventManager,
     processManager,
     recipeStore,
-    downloadManager,
     launchFailureBudget,
   });
 
