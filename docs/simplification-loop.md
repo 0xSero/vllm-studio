@@ -248,8 +248,48 @@ VERIFIED-NOT-DEAD: voice/audio flow (no wired mic UI, but settings surface
 voiceUrl/voiceModel, endpoints functional, user configures whisper model) — a
 real feature, kept per "maintain all features". CI workflows have no redundancy.
 
+## DEFERRED-ITEM INVESTIGATION — I9 (recipes cluster simplification)
+
+Investigated the two simplifications deferred from I8 plus the agent's other
+recipe-cluster candidates. CONCLUSION: none is a safe/beneficial cut. Do NOT
+re-attempt — reasons below.
+
+- Tab field-helper extraction (I8 #1): a standalone RecipeCheckbox helper was
+  built + all 10 checkbox sites converted (commit cdc4b29c) — but it measured
+  NET +52 LINES (new ~40-line file + repeated recipe/onChange props per site
+  negate the savings for only 10 sites). A bound helper would cut lines but
+  needs a component created inside render (identity/remount anti-pattern).
+  REVERTED (0a81dfb0). Type-safety gain didn't justify going against the cut
+  mandate. The number/text/select fields have real per-site variance
+  (|| "" vs ?? default, enum casts, placeholders) — a shared helper there risks
+  silent serialization drift the gates can't catch.
+- Dead RecipeEditor fields (I8 #2): NOT dead. EXTRA_ARG_FIELDS is DERIVED from
+  ENGINE_ARG_SPECS (shared contract) and each spec.field is typed keyof
+  RecipeEditor. The unrendered fields are the typed backing for the engine-arg
+  lift/lower system AND feed VLLM_ONLY_FLAG_KEYS (foreign-flag strip). Removing
+  them breaks typecheck or the strip feature. The round-trip is a no-op whether
+  a field is lifted or not, so there's no runtime cost to leaving them.
+- Command-arg emitters (agent #3): appendExtraArgsToCommand (vLLM) vs
+  appendLlamacppArgsToCommand legitimately differ — boolean-false pushes the flag
+  for vLLM but is skipped for llama.cpp; arrays JSON-stringify for vLLM but expand
+  to repeated flags for llama.cpp; different dedup + JSON-string handling. Merging
+  needs 4+ behavior flags = more complexity, not less.
+- EngineOptionsSection per-tab wrapper (agent #5): only 4 sites; wrapper overhead
+  ≈ savings (net ~neutral). Not worth the churn.
+
+Net: the recipes cluster is already well-factored; its apparent duplication is
+either engine-semantic or a deliberate typed spec system. The real value there
+was the I8 bug fixes (tp/pp/port/gpu-util floors, llama.cpp flag collision).
+
 ## Iteration log
 
+- **I9 (2026-07-02)**: pursued the 2 deferred recipe simplifications + agent's
+  other cluster candidates. Built + REVERTED the checkbox helper (measured net
+  +52 lines). Proved the "dead" RecipeEditor fields are a coupled ENGINE_ARG_SPECS
+  type system (not dead) and the command emitters are engine-semantic (can't
+  merge). No code change kept — disciplined decline, documented so future
+  iterations skip them. Gates green throughout. The recipes cluster is
+  well-factored; I8 bug fixes were its real value.
 - **I8 (2026-07-02)**: bug-hunt round 4 (env/studio/audio + recipes editor,
   2 agents). Fixed 1 HIGH (audio OOM DoS) + 8 MED/LOW correctness/security/
   editor-validation issues + 4 dedups across 2 commits. Deferred 2 larger recipe
