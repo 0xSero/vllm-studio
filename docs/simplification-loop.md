@@ -461,7 +461,71 @@ Two blind-spot investigations, both correctly declined:
   tsx --test scripts/test-*.ts = 8 unit; ../tests/frontend/e2e/*.test.ts = 27
   e2e). No orphaned/never-run tests. Clean.
 
+## PI-PARITY AUDIT — I19 (deep pi comparison + derived cuts)
+
+User asked for a deep review of earendil-works/pi vs this repo ("pi is my
+favorite codebase; I want to feel that way about ours"). Two deep-review agents
++ personal reads. Full findings summarized here so future iterations use them.
+
+What pi does that we already match: acyclic dependency graph (ours enforced by
+validate-shared-contracts + madge + structure validators; pi's by npm package
+boundaries), controlled file sizes (our median 100/max 731 beats pi's median
+116/max 5,780), zero-`any` typing discipline (ours is stricter), current docs.
+The controller "would sit comfortably next to pi."
+
+Where pi is structurally better — ranked, with disposition:
+1. ONE streaming primitive (88-line EventStream) + ONE pipeline; we have 8
+   transform layers engine→pixel plus a parallel hydration reducer
+   (messages/replay.ts duplicating pi-event-applier control flow). BLOCKED-ON-
+   USER: this is the agent-simplification plan (memory: 6-step plan awaiting
+   go); the seams are where every historical streaming bug lived. Not for the
+   autonomous loop.
+2. Session identity: pi has one; we have 4 namespaces (pane SessionId,
+   runtimeSessionId ×21 files, piSessionId ×46, proxy session_id from 7
+   sources). BLOCKED-ON-USER (step 5 of the same plan, riskiest).
+3. The agent runtime lives inside the Next server (piRuntimeManager on
+   globalThis, 43 app/api/agent/* route dirs) instead of a separate layer.
+   BLOCKED-ON-USER (architectural).
+4. pi's test harness runs the REAL stack against a production-path fake
+   provider (faux.ts in src, .inMemory() constructors); test:src ratio 0.73 vs
+   our 0.16, and our riskiest controller paths (download-manager real-run,
+   process-manager spawn, environment start) are untested. Candidate for a
+   future test-investment iteration (adds code — needs user appetite).
+5. pi is a real npm workspace; we import shared/ via ../../../.. relative
+   paths with per-package toolchains. SKIP: workspace conversion is churn with
+   real breakage risk (bun vs npm lockfiles), ~0 line win.
+6. Liveness: pi awaits listeners in one settlement chain; we run triple
+   arbitration (SSE + poll + probe) twice over. Verified deliberate (race
+   comments per leg) — KEEP.
+
+I19 actions taken:
+- CUT eslint-plugin-boundaries (dep + config block): PROVEN INERT — its only
+  rule (app→app, warn) never fires: src/app is one boundaries element, and
+  dozens of legit app→app imports (route-helpers, chunk-recovery) produce zero
+  warnings. Real layering enforcement already lives in validate-ui-structure
+  .mjs (ui purity, feature→app ban, _components ban, shared-consumer rule).
+  Supersedes I6's "kept as layering docs" nit with new evidence.
+- DECLINED UsageStats dead-field cut (p50/p95/p99, tokens_per_sec, prefill_tps,
+  unique_users hardcoded null/0 in inference-request-store + usage-utilities +
+  pi-sessions): the fields ARE rendered (model-performance-table p50/prefill
+  cells, secondary-metrics p50/p95) and the prefill column merges live
+  peak.prefill_tps (real data). Cutting changes pixels; wiring real percentile
+  SQL adds code. Another I9/I18-class trap — do not re-propose.
+- DECLINED AGENTS.md "no comments" contradiction (reviewer flag): not real —
+  the rule scopes to new/edited code and calls existing code legacy.
+- ASK-USER list (untracked, no-delete rule): frontend/playwright-report/,
+  frontend/test-results/ (stale, no Playwright anywhere), cli/ + frontend/
+  frontend/ junk dirs (already listed).
+
 ## Iteration log
+
+- **I19 (2026-07-02)**: pi-parity audit (user-requested deep comparison of
+  earendil-works/pi vs this repo) folded into the loop. One genuine cut:
+  eslint-plugin-boundaries removed (provably inert; validator covers layering).
+  Usage dead-field cut and AGENTS.md contradiction investigated and declined
+  with reasons. Big pi-parity gaps (pipeline consolidation, session identity,
+  runtime placement, test harness depth) recorded as BLOCKED-ON-USER — they are
+  the agent-simplification plan, not autonomous-loop material. Gates green.
 
 - **I18 (2026-07-02)**: two blind-spot investigations, both correctly declined —
   CSS tokens (Tailwind-v4 @theme utility-generation false-positive trap; removing
