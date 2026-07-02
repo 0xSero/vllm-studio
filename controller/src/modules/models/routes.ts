@@ -28,7 +28,7 @@ import { buildModelInfo, discoverModelDirectories } from "./model-browser";
 import { notFound } from "../../core/errors";
 import { observeControllerFunction } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
-import { fetchInference } from "../../services/inference-client";
+import { fetchInference } from "../../http/local-fetch";
 
 function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);

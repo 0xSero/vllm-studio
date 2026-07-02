@@ -3,7 +3,7 @@ import { HttpStatus, notFound } from "../../core/errors";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
-import { buildInferenceUrl } from "../../services/inference-client";
+import { buildInferenceUrl } from "../../http/local-fetch";
 import {
   DEFAULT_CHAT_PROVIDER,
   parseProviderModel,

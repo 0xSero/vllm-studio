@@ -3,7 +3,7 @@ import { observeControllerFunction } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
-import { fetchInference } from "../../services/inference-client";
+import { fetchInference } from "../../http/local-fetch";
 import type { UsageAggregate } from "../../stores/inference-request-store";
 import {
   SGLANG_METRIC_NAMES,

@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 
+import type { AppContext } from "../app-context";
+
 export type LocalFetchOptions = RequestInit & { host?: string; timeoutMs?: number };
 
 const normalizePath = (path: string): string => {
@@ -41,3 +43,16 @@ export const fetchLocal = (
   path: string,
   options: LocalFetchOptions = {}
 ): Promise<Response> => Effect.runPromise(fetchLocalEffect(port, path, options));
+
+export const buildInferenceUrl = (context: AppContext, path: string): string =>
+  buildLocalUrl(context.config.inference_port, path, context.config.inference_host);
+
+export const fetchInference = (
+  context: AppContext,
+  path: string,
+  options: LocalFetchOptions = {}
+): Promise<Response> =>
+  fetchLocal(context.config.inference_port, path, {
+    host: context.config.inference_host,
+    ...options,
+  });
