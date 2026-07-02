@@ -29,7 +29,7 @@ const TIMEOUT_KILL_GRACE_MS = 5_000;
 export const runCommandEffect = (
   command: string,
   args: string[],
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS
 ): Effect.Effect<CommandResult> =>
   Effect.sync(() => {
     try {
@@ -51,13 +51,13 @@ export const runCommandEffect = (
 export const runCommand = (
   command: string,
   args: string[],
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS
 ): CommandResult => Effect.runSync(runCommandEffect(command, args, timeoutMs));
 
 export const runCommandAsyncEffect = (
   command: string,
   args: string[],
-  options: AsyncCommandOptions,
+  options: AsyncCommandOptions
 ): Effect.Effect<AsyncCommandResult> =>
   Effect.callback<AsyncCommandResult>((resume) => {
     const child = spawn(command, args, {
@@ -95,7 +95,13 @@ export const runCommandAsyncEffect = (
       options.onOutput?.(chunk);
     });
     child.on("error", (error) => {
-      settle({ status: null, stdout: stdout.trim(), stderr: error.message, timedOut, signal: null });
+      settle({
+        status: null,
+        stdout: stdout.trim(),
+        stderr: error.message,
+        timedOut,
+        signal: null,
+      });
     });
     child.on("close", (code, signal) => {
       settle({ status: code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut, signal });
@@ -105,9 +111,8 @@ export const runCommandAsyncEffect = (
 export const runCommandAsync = (
   command: string,
   args: string[],
-  options: AsyncCommandOptions,
-): Promise<AsyncCommandResult> =>
-  Effect.runPromise(runCommandAsyncEffect(command, args, options));
+  options: AsyncCommandOptions
+): Promise<AsyncCommandResult> => Effect.runPromise(runCommandAsyncEffect(command, args, options));
 
 const isExecutableFile = (filePath: string): boolean => {
   try {
@@ -118,48 +123,45 @@ const isExecutableFile = (filePath: string): boolean => {
   }
 };
 
-export const resolveBinaryEffect = (binaryName: string): Effect.Effect<string | null> =>
-  Effect.sync(() => {
-    if (!binaryName) return null;
+export const resolveBinary = (binaryName: string): string | null => {
+  if (!binaryName) return null;
 
-    if (binaryName.includes("/")) {
-      const resolved = resolve(binaryName);
-      return isExecutableFile(resolved) ? resolved : null;
+  if (binaryName.includes("/")) {
+    const resolved = resolve(binaryName);
+    return isExecutableFile(resolved) ? resolved : null;
+  }
+
+  const searchPaths: string[] = [];
+  const runtimeOverride = process.env["LOCAL_STUDIO_RUNTIME_BIN"];
+  const runtimeBin =
+    runtimeOverride ?? (process.env["SNAP"] ? resolve(process.cwd(), "runtime", "bin") : null);
+  if (runtimeBin && existsSync(runtimeBin)) {
+    searchPaths.push(runtimeBin);
+  }
+
+  const pathValue = process.env["PATH"];
+  if (pathValue) {
+    for (const entry of pathValue.split(":")) {
+      if (entry) searchPaths.push(entry);
     }
+  }
 
-    const searchPaths: string[] = [];
-    const runtimeOverride = process.env["LOCAL_STUDIO_RUNTIME_BIN"];
-    const runtimeBin = runtimeOverride ?? (process.env["SNAP"] ? resolve(process.cwd(), "runtime", "bin") : null);
-    if (runtimeBin && existsSync(runtimeBin)) {
-      searchPaths.push(runtimeBin);
-    }
+  const home = process.env["HOME"];
+  if (home) {
+    searchPaths.push(join(home, ".local", "bin"));
+    searchPaths.push(join(home, "bin"));
+  }
 
-    const pathValue = process.env["PATH"];
-    if (pathValue) {
-      for (const entry of pathValue.split(":")) {
-        if (entry) searchPaths.push(entry);
-      }
-    }
+  const user = process.env["USER"] ?? process.env["LOGNAME"];
+  if (user) {
+    searchPaths.push(join("/home", user, ".local", "bin"));
+    searchPaths.push(join("/home", user, "bin"));
+  }
 
-    const home = process.env["HOME"];
-    if (home) {
-      searchPaths.push(join(home, ".local", "bin"));
-      searchPaths.push(join(home, "bin"));
-    }
+  for (const entry of searchPaths) {
+    const candidate = join(entry, binaryName);
+    if (isExecutableFile(candidate)) return candidate;
+  }
 
-    const user = process.env["USER"] ?? process.env["LOGNAME"];
-    if (user) {
-      searchPaths.push(join("/home", user, ".local", "bin"));
-      searchPaths.push(join("/home", user, "bin"));
-    }
-
-    for (const entry of searchPaths) {
-      const candidate = join(entry, binaryName);
-      if (isExecutableFile(candidate)) return candidate;
-    }
-
-    return null;
-  });
-
-export const resolveBinary = (binaryName: string): string | null =>
-  Effect.runSync(resolveBinaryEffect(binaryName));
+  return null;
+};

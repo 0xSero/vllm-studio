@@ -1,29 +1,27 @@
-import { Deferred, Effect } from "effect";
+import { Effect } from "effect";
 
-export const delayEffect = (milliseconds: number): Effect.Effect<void> => Effect.sleep(milliseconds);
+export const delayEffect = (milliseconds: number): Effect.Effect<void> =>
+  Effect.sleep(milliseconds);
 
-export const delay = (milliseconds: number): Promise<void> => Effect.runPromise(delayEffect(milliseconds));
+export const delay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export class AsyncLock {
   private queue: Array<() => void> = [];
   private locked = false;
 
-  public acquireEffect(): Effect.Effect<() => void> {
+  public acquire(): Promise<() => void> {
     if (!this.locked) {
       this.locked = true;
-      return Effect.succeed(() => this.release());
+      return Promise.resolve(() => this.release());
     }
 
-    return Effect.callback<() => void>((resume) => {
+    return new Promise((resolve) => {
       this.queue.push(() => {
         this.locked = true;
-        resume(Effect.succeed(() => this.release()));
+        resolve(() => this.release());
       });
     });
-  }
-
-  public acquire(): Promise<() => void> {
-    return Effect.runPromise(this.acquireEffect());
   }
 
   public release(): void {
@@ -36,13 +34,16 @@ export class AsyncLock {
   }
 }
 
+type QueueResolver<TValue> = {
+  resolve: (value: TValue) => void;
+  reject: (error: Error) => void;
+  cleanup: () => void;
+};
+
 export class AsyncQueue<TValue> {
   private readonly capacity: number;
   private readonly items: TValue[] = [];
-  private readonly resolvers: Array<{
-    deferred: Deferred.Deferred<TValue, Error>;
-    cleanup: () => void;
-  }> = [];
+  private readonly resolvers: Array<QueueResolver<TValue>> = [];
   private closed = false;
   private evictedCount = 0;
 
@@ -57,7 +58,7 @@ export class AsyncQueue<TValue> {
     const resolver = this.resolvers.shift();
     if (resolver) {
       resolver.cleanup();
-      void Effect.runPromise(Deferred.succeed(resolver.deferred, item));
+      resolver.resolve(item);
       return true;
     }
     if (this.capacity <= 0) {
@@ -99,30 +100,30 @@ export class AsyncQueue<TValue> {
       const resolver = this.resolvers.shift();
       if (resolver) {
         resolver.cleanup();
-        void Effect.runPromise(Deferred.fail(resolver.deferred, new Error("Queue closed")));
+        resolver.reject(new Error("Queue closed"));
       }
     }
   }
 
-  public shiftEffect(signal?: AbortSignal): Effect.Effect<TValue, Error> {
+  public shift(signal?: AbortSignal): Promise<TValue> {
     if (this.items.length > 0) {
-      return Effect.succeed(this.items.shift() as TValue);
+      return Promise.resolve(this.items.shift() as TValue);
     }
 
-    const deferred = Deferred.makeUnsafe<TValue, Error>();
-    const cleanup = (): void => signal?.removeEventListener("abort", onAbort);
-    const onAbort = (): void => {
-      const index = this.resolvers.findIndex((entry) => entry.deferred === deferred);
-      if (index >= 0) this.resolvers.splice(index, 1);
-      cleanup();
-      void Effect.runPromise(Deferred.fail(deferred, new Error("Queue aborted")));
-    };
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
-    this.resolvers.push({ deferred, cleanup });
-    return Deferred.await(deferred);
-  }
-
-  public shift(signal?: AbortSignal): Promise<TValue> {
-    return Effect.runPromise(this.shiftEffect(signal));
+    return new Promise<TValue>((resolve, reject) => {
+      const entry: QueueResolver<TValue> = {
+        resolve,
+        reject,
+        cleanup: () => signal?.removeEventListener("abort", onAbort),
+      };
+      const onAbort = (): void => {
+        const index = this.resolvers.indexOf(entry);
+        if (index >= 0) this.resolvers.splice(index, 1);
+        entry.cleanup();
+        reject(new Error("Queue aborted"));
+      };
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+      this.resolvers.push(entry);
+    });
   }
 }
