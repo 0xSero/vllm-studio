@@ -28,7 +28,6 @@ const MIGRATED_USER_DATA_PATHS = [
   "computer-use",
   "controllers.json",
   "embedded-frontend.port",
-  "list-1-to-5000.txt",
   "logs",
   "mcp",
   "pi-agent",

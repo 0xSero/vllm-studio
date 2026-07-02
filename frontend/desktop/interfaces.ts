@@ -73,15 +73,3 @@ export interface DesktopBridge {
   quickPanel: QuickPanelBridge;
 }
 
-export interface IpcRequestMap {
-  "desktop:get-runtime": () => Awaited<ReturnType<DesktopBridge["getRuntime"]>>;
-  "desktop:open-external": (url: string) => Awaited<ReturnType<DesktopBridge["openExternal"]>>;
-  "desktop:get-update-status": () => Awaited<ReturnType<DesktopBridge["getUpdateStatus"]>>;
-  "desktop:check-for-updates": () => Awaited<ReturnType<DesktopBridge["checkForUpdates"]>>;
-  "desktop:open-directory": () => Awaited<ReturnType<DesktopBridge["openDirectory"]>>;
-  "desktop:list-projects": () => Awaited<ReturnType<DesktopBridge["listProjects"]>>;
-  "desktop:add-project": (
-    directoryPath: string,
-  ) => Awaited<ReturnType<DesktopBridge["addProject"]>>;
-  "desktop:remove-project": (id: string) => Awaited<ReturnType<DesktopBridge["removeProject"]>>;
-}

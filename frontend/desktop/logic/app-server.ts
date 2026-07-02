@@ -8,6 +8,16 @@ import { log } from "../helpers/logger";
 import { resolveStablePort } from "../helpers/ports";
 import { resolveAugmentedPath } from "../helpers/resolve-path";
 
+// The most recently forked embedded server. A single process-exit hook kills
+// whichever child is current — registering a fresh once("exit") per (re)start
+// leaked listeners on every frontend restart.
+let currentEmbeddedServer: ChildProcess | null = null;
+process.once("exit", () => {
+  if (currentEmbeddedServer && !currentEmbeddedServer.killed) {
+    currentEmbeddedServer.kill("SIGTERM");
+  }
+});
+
 interface ServerHandle {
   runtime: DesktopServerRuntime;
   process?: ChildProcess;
@@ -57,8 +67,13 @@ function persistPort(port: number): void {
 }
 
 function writeEmbeddedServerPid(pid: number | undefined): void {
-  mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
-  writeFileSync(embeddedServerPidPath(), String(pid ?? ""));
+  try {
+    mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
+    writeFileSync(embeddedServerPidPath(), String(pid ?? ""));
+  } catch {
+    // Non-fatal: stale-pid cleanup just won't find a file next launch. The
+    // server is already running; failing here would orphan it.
+  }
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -225,9 +240,7 @@ export async function startFrontendServer(
     options.onExit?.({ code, signal, pid: child.pid });
   });
 
-  process.once("exit", () => {
-    if (!child.killed) child.kill("SIGTERM");
-  });
+  currentEmbeddedServer = child;
 
   await waitForServer(url, DESKTOP_CONFIG.startupTimeoutMs);
 

@@ -24,9 +24,6 @@ let serverRoot = standaloneRoot;
 if (existsSync(frontendStandalone)) {
   console.log("Detected nested frontend structure in standalone build.");
   serverRoot = frontendStandalone;
-  
-  // We need to copy public and static to the nested location too, or just run from there
-  // The server.js is likely in frontend/server.js
 }
 
 console.log(`Starting server from: ${serverRoot}`);
