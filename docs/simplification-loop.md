@@ -397,8 +397,30 @@ Browser-host sweep (commit ee39801c) — the last complex unswept surface:
   synchronous; #5 benign. CLEARED: no launch arg-injection, CDP calls time out
   (10s), JSON.parse guarded.
 
+## PI-RUNTIME AUDIT — I15 (personal, no change)
+
+Audited the server-side pi-runtime session manager (pi-runtime.ts, the privileged
+process that spawns/manages pi coding-agent sessions) — the last unswept complex
+surface. CONCLUSION: sound, no safe actionable change. Do NOT re-hunt.
+- loggedEvent listener cleanup is correct: prompt-path listener removed via
+  Effect.ensuring (pi-runtime.ts:272-277); SSE route wires off = onLoggedEvent(...)
+  and calls it in close() on request.signal abort + terminal events
+  (runtime/events/route.ts:50-60,80,119). No EventEmitter leak.
+- eventLog bounded at 2000/session (pi-runtime.ts:429).
+- sessions Map is never pruned BY DESIGN: runtimes are kept alive across turns for
+  instant session resume (a core feature). Deletion is disabled (405); archiving
+  must not stop a resumable runtime. An LRU/cap would risk the resume feature the
+  loop has preserved. Retained shells for never-started sessions are negligible
+  (EventEmitter + empty arrays). Not a safe-to-fix bug.
+
 ## Iteration log
 
+- **I15 (2026-07-02)**: personally audited the last unswept privileged surface —
+  the server-side pi-runtime session manager. Found it sound (correct listener
+  cleanup, bounded eventLog, session persistence intentional for resume). No safe
+  change; documented so it isn't re-hunted. Branch unchanged, still verified green.
+  LOOP AT COMPLETION: every subsystem swept (9 rounds), ~47 bugs fixed incl. 4 HIGH,
+  docs/deps clean, 375 tests green, releasable.
 - **I14 (2026-07-02)**: full-branch verification (375 tests green across 46
   commits, all gates clean) + bug-hunt round 9 (server-side browser host).
   Fixed HIGH orphaned-Chromium leak (no exit hook) + MED recovery-path CDP
