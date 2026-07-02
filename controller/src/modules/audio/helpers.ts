@@ -54,70 +54,78 @@ export const parseJsonReplace = (value: unknown): boolean => {
   return false;
 };
 
-export const looksLikeWav = (bytes: Uint8Array, mimeType?: string): boolean => {
-  if (mimeType?.toLowerCase().includes("wav")) {
-    return true;
-  }
+export const looksLikeWav = (bytes: Uint8Array): boolean => {
+  // Verify the RIFF/WAVE header rather than trusting a client-supplied MIME
+  // type: a client sending arbitrary bytes as audio/wav would otherwise skip
+  // transcode and feed non-WAV data straight to the STT engine.
   if (bytes.length < 12) return false;
   const riff = String.fromCharCode(...bytes.slice(0, 4));
   const wave = String.fromCharCode(...bytes.slice(8, 12));
   return riff === "RIFF" && wave === "WAVE";
 };
 
-export const resolveSttModelPath = (
+type AudioModelError = new (
+  status: number,
+  code: string,
+  message: string,
+  details?: Record<string, unknown>,
+) => Error;
+
+const resolveAudioModelPath = (
   context: AppContext,
-  modelField: FormDataEntryValue | null,
+  requested: string | undefined,
+  subdir: "stt" | "tts",
+  envVariable: string,
+  IntegrationError: AudioModelError,
 ): { requestedModel: string; modelPath: string } => {
-  const requestedModel = parseField(modelField) ?? process.env["LOCAL_STUDIO_STT_MODEL"]?.trim();
+  const requestedModel = requested || process.env[envVariable]?.trim();
   if (!requestedModel) {
-    throw new SttIntegrationError(
+    throw new IntegrationError(
       400,
       "model_missing",
-      "No STT model provided. Set model field or LOCAL_STUDIO_STT_MODEL.",
+      `No ${subdir.toUpperCase()} model provided. Set model field or ${envVariable}.`,
     );
   }
 
   const modelPath = requestedModel.includes("/")
     ? resolve(requestedModel)
-    : resolve(context.config.models_dir, "stt", requestedModel);
+    : resolve(context.config.models_dir, subdir, requestedModel);
 
   if (!existsSync(modelPath)) {
-    throw new SttIntegrationError(400, "model_not_found", "STT model path does not exist", {
-      requested_model: requestedModel,
-      resolved_model_path: modelPath,
-    });
+    throw new IntegrationError(
+      400,
+      "model_not_found",
+      `${subdir.toUpperCase()} model path does not exist`,
+      { requested_model: requestedModel, resolved_model_path: modelPath },
+    );
   }
 
   return { requestedModel, modelPath };
 };
+
+export const resolveSttModelPath = (
+  context: AppContext,
+  modelField: FormDataEntryValue | null,
+): { requestedModel: string; modelPath: string } =>
+  resolveAudioModelPath(
+    context,
+    parseField(modelField),
+    "stt",
+    "LOCAL_STUDIO_STT_MODEL",
+    SttIntegrationError,
+  );
 
 export const resolveTtsModelPath = (
   context: AppContext,
   modelValue: unknown,
-): { requestedModel: string; modelPath: string } => {
-  const explicitModel = typeof modelValue === "string" ? modelValue.trim() : "";
-  const requestedModel = explicitModel || process.env["LOCAL_STUDIO_TTS_MODEL"]?.trim();
-  if (!requestedModel) {
-    throw new TtsIntegrationError(
-      400,
-      "model_missing",
-      "No TTS model provided. Set model field or LOCAL_STUDIO_TTS_MODEL.",
-    );
-  }
-
-  const modelPath = requestedModel.includes("/")
-    ? resolve(requestedModel)
-    : resolve(context.config.models_dir, "tts", requestedModel);
-
-  if (!existsSync(modelPath)) {
-    throw new TtsIntegrationError(400, "model_not_found", "TTS model path does not exist", {
-      requested_model: requestedModel,
-      resolved_model_path: modelPath,
-    });
-  }
-
-  return { requestedModel, modelPath };
-};
+): { requestedModel: string; modelPath: string } =>
+  resolveAudioModelPath(
+    context,
+    typeof modelValue === "string" ? modelValue.trim() : undefined,
+    "tts",
+    "LOCAL_STUDIO_TTS_MODEL",
+    TtsIntegrationError,
+  );
 
 export const ensureServiceLease = async (
   context: AppContext,

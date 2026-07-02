@@ -31,5 +31,12 @@ export const parseEnvironment = (raw: unknown): Environment => {
     createdAt: data["createdAt"] ?? now,
     updatedAt: data["updatedAt"] ?? now,
   });
+  // The image is pushed as a positional token into the `docker run` argv. A
+  // flag-shaped value (e.g. "--privileged", "-v") would be consumed by docker
+  // as an option and shift the image/inner tokens — argv-flag injection. The
+  // pull path already gates images; reject leading-dash here too.
+  if (parsed.image !== null && parsed.image.startsWith("-")) {
+    throw new Error(`Invalid environment image: must not start with "-"`);
+  }
   return parsed;
 };

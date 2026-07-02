@@ -7,6 +7,9 @@ import { SttIntegrationError, transcribeAudio } from "../../services/stt";
 import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
 import type { AudioRouteDependencies } from "./interfaces";
 const AUDIO_TEMP_PATH_SEGMENTS = ["tmp", "audio"];
+// Cap the STT upload so a single large POST can't buffer unbounded bytes into
+// memory and OOM the controller. Generous for any real speech clip.
+const MAX_STT_UPLOAD_BYTES = 100 * 1024 * 1024;
 import {
   defaultTranscodeToWav,
   ensureServiceLease,
@@ -38,6 +41,13 @@ export const registerAudioRoutes = (
       if (!(file instanceof File)) {
         throw new SttIntegrationError(400, "file_missing", "Multipart field 'file' is required");
       }
+      if (file.size > MAX_STT_UPLOAD_BYTES) {
+        throw new SttIntegrationError(
+          413,
+          "file_too_large",
+          `Audio upload exceeds the ${Math.round(MAX_STT_UPLOAD_BYTES / (1024 * 1024))} MB limit`,
+        );
+      }
 
       const mode = parseMode(formData.get("mode"));
       const replace = parseReplace(formData.get("replace"));
@@ -59,7 +69,7 @@ export const registerAudioRoutes = (
       await writeFile(uploadPath, uploadBuffer);
 
       let audioPath = uploadPath;
-      if (!looksLikeWav(uploadBuffer, file.type)) {
+      if (!looksLikeWav(uploadBuffer)) {
         const wavPath = join(temporaryDirectory, `${randomUUID()}.wav`);
         cleanupPaths.add(wavPath);
         audioPath = await transcodeToWav({
@@ -161,7 +171,7 @@ export const registerAudioRoutes = (
         return ctx.json(conflict, { status: 409 });
       }
 
-      const temporaryDirectory = join(context.config.data_dir, "tmp", "audio");
+      const temporaryDirectory = join(context.config.data_dir, ...AUDIO_TEMP_PATH_SEGMENTS);
       await mkdir(temporaryDirectory, { recursive: true });
 
       const outputPath = join(temporaryDirectory, `${randomUUID()}.wav`);

@@ -72,6 +72,23 @@ const copyDirectory = (source: string, target: string): void => {
   }
 };
 
+// Resolve a caller-supplied path and confirm it is inside models_dir, defeating
+// `../` traversal. `allowRoot` permits the models_dir itself (move targets).
+const resolveInsideModelsRoot = (
+  modelsDirectory: string,
+  target: string,
+  label: string,
+  allowRoot = false,
+): string => {
+  const resolved = resolve(target);
+  const modelsRoot = resolve(modelsDirectory);
+  const rootPrefix = modelsRoot.endsWith(sep) ? modelsRoot : modelsRoot + sep;
+  if (!resolved.startsWith(rootPrefix) && !(allowRoot && resolved === modelsRoot)) {
+    throw badRequest(`${label} must be inside models_dir`);
+  }
+  return resolved;
+};
+
 export const deriveRecommendationVramGb = (gpus: GpuInfo[]): number =>
   gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
 
@@ -245,12 +262,7 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
     if (!target) {
       throw badRequest("path is required");
     }
-    const resolved = resolve(target);
-    const modelsRoot = resolve(context.config.models_dir);
-    const rootPrefix = modelsRoot.endsWith(sep) ? modelsRoot : modelsRoot + sep;
-    if (!resolved.startsWith(rootPrefix)) {
-      throw badRequest("path must be inside models_dir");
-    }
+    const resolved = resolveInsideModelsRoot(context.config.models_dir, target, "path");
     if (!existsSync(resolved)) {
       throw notFound("Model path not found");
     }
@@ -265,16 +277,17 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
     if (!source || !targetRoot) {
       throw badRequest("source_path and target_root are required");
     }
-    const resolvedSource = resolve(source);
-    const resolvedTargetRoot = resolve(targetRoot);
-    const modelsRoot = resolve(context.config.models_dir);
-    const rootPrefix = modelsRoot.endsWith(sep) ? modelsRoot : modelsRoot + sep;
-    if (!resolvedSource.startsWith(rootPrefix)) {
-      throw badRequest("source_path must be inside models_dir");
-    }
-    if (!resolvedTargetRoot.startsWith(rootPrefix) && resolvedTargetRoot !== modelsRoot) {
-      throw badRequest("target_root must be inside models_dir");
-    }
+    const resolvedSource = resolveInsideModelsRoot(
+      context.config.models_dir,
+      source,
+      "source_path",
+    );
+    const resolvedTargetRoot = resolveInsideModelsRoot(
+      context.config.models_dir,
+      targetRoot,
+      "target_root",
+      true,
+    );
     if (!existsSync(resolvedSource)) {
       throw notFound("source_path not found");
     }
