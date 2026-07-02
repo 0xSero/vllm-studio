@@ -2,6 +2,17 @@ import type { MiddlewareHandler } from "hono";
 import { isHttpStatus } from "../core/errors";
 import type { AppContext } from "../app-context";
 
+// High-frequency polling and streaming paths; recording every hit would grow
+// the telemetry tables without bound and drown real traffic in the stats.
+export const TELEMETRY_SKIP_PATHS = new Set([
+  "/health",
+  "/metrics",
+  "/events",
+  "/status",
+  "/api/docs",
+  "/api/spec",
+]);
+
 function elapsedMs(start: number): number {
   return Math.round(performance.now() - start);
 }
@@ -21,6 +32,10 @@ export function createControllerRequestObservabilityMiddleware(
   context: AppContext
 ): MiddlewareHandler {
   return async (ctx, next) => {
+    if (TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
+      await next();
+      return;
+    }
     const start = performance.now();
     const method = ctx.req.method.toUpperCase();
     const path = ctx.req.path;

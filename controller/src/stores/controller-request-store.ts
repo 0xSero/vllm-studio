@@ -23,12 +23,17 @@ export interface ControllerFunctionCallRecord {
 
 type NumberRow = Record<string, number | string | null>;
 
+const RETENTION_DAYS = 14;
+const PRUNE_EVERY_N_RECORDS = 1000;
+
 export class ControllerRequestStore {
   private readonly db: Database;
+  private recordsSincePrune = 0;
 
   public constructor(dbPath: string) {
     this.db = openSqliteDatabase(dbPath);
     this.migrate();
+    this.prune();
   }
 
   private migrate(): void {
@@ -74,6 +79,21 @@ export class ControllerRequestStore {
     );
   }
 
+  private prune(): void {
+    for (const table of ["controller_requests", "controller_function_calls"]) {
+      this.db.run(
+        `DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`
+      );
+    }
+  }
+
+  private maybePrune(): void {
+    this.recordsSincePrune += 1;
+    if (this.recordsSincePrune < PRUNE_EVERY_N_RECORDS) return;
+    this.recordsSincePrune = 0;
+    this.prune();
+  }
+
   public record(record: ControllerRequestRecord): void {
     const durationMs = Math.max(0, Math.round(record.duration_ms));
     this.db
@@ -92,6 +112,7 @@ export class ControllerRequestStore {
         record.error_message ?? null,
         record.user_agent ?? null
       );
+    this.maybePrune();
   }
 
   public recordFunctionCall(record: ControllerFunctionCallRecord): void {
@@ -109,6 +130,7 @@ export class ControllerRequestStore {
         record.error_class ?? null,
         record.error_message ?? null
       );
+    this.maybePrune();
   }
 
   public aggregate(): ControllerUsageStats {

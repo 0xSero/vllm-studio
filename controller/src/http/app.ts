@@ -17,7 +17,10 @@ import {
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
 } from "./security-middleware";
-import { createControllerRequestObservabilityMiddleware } from "./observability-middleware";
+import {
+  createControllerRequestObservabilityMiddleware,
+  TELEMETRY_SKIP_PATHS,
+} from "./observability-middleware";
 
 // Parse a comma-separated list of controller URLs into a set of origins. Used to
 // allowlist cross-controller passthrough targets so the route cannot be turned
@@ -60,8 +63,7 @@ export const createApp = (context: AppContext): Hono => {
   );
 
   app.use("*", async (ctx, next) => {
-    const skip = new Set(["/health", "/metrics", "/events", "/status", "/api/docs", "/api/spec"]);
-    if (!skip.has(ctx.req.path)) {
+    if (!TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
       context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
     }
     await next();
