@@ -385,6 +385,10 @@ export const createToolCallStream = (
             return;
           }
           if (result.done) {
+            // Flush any bytes the streaming decoder is still holding (an
+            // incomplete multibyte char at the final chunk boundary); without
+            // this final decode the trailing character would be dropped.
+            buffer += decoder.decode();
             if (buffer) {
               const trailing = buffer.endsWith("\r") ? buffer.slice(0, -1) : buffer;
               if (trailing.length > 0) {

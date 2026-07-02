@@ -113,15 +113,20 @@ export const recordNonStreamingInferenceUsage = (
 
   const totals = readUsageTotals(input.usage);
   addLifetimeUsage(options.stores, totals);
-  tryRecordInference(options, {
-    ...input.record,
-    prompt_tokens: totals.promptTokens,
-    completion_tokens: totals.completionTokens,
-    reasoning_tokens: totals.reasoningTokens,
-    cache_read_tokens: totals.cacheReadTokens,
-    cache_write_tokens: totals.cacheWriteTokens,
-    streamed: false,
-  });
+  // Match the streaming path: only write an inference_request row for a
+  // billable response. An upstream 4xx/5xx whose JSON body happens to carry a
+  // zero-token usage object would otherwise pollute the request table.
+  if (hasBillableTokens(totals)) {
+    tryRecordInference(options, {
+      ...input.record,
+      prompt_tokens: totals.promptTokens,
+      completion_tokens: totals.completionTokens,
+      reasoning_tokens: totals.reasoningTokens,
+      cache_read_tokens: totals.cacheReadTokens,
+      cache_write_tokens: totals.cacheWriteTokens,
+      streamed: false,
+    });
+  }
   return totals;
 };
 

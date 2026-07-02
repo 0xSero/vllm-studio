@@ -89,7 +89,15 @@ export const attachSessionUsage = (
 
   const promptTokens = usage?.["prompt_tokens"] ?? 0;
   const completionTokens = usage?.["completion_tokens"] ?? 0;
-  const reasoningTokens = usage?.["reasoning_tokens"] ?? 0;
+  // Some vLLM builds nest reasoning tokens under completion_tokens_details
+  // rather than the flat field; match inference-accounting's readUsageTotals so
+  // the echoed session usage doesn't report 0 while accounting records the real
+  // value.
+  const completionDetails = usage?.["completion_tokens_details"] as
+    | Record<string, number>
+    | undefined;
+  const reasoningTokens =
+    usage?.["reasoning_tokens"] ?? completionDetails?.["reasoning_tokens"] ?? 0;
 
   result["session_id"] = sessionId;
   result["session_usage"] = {

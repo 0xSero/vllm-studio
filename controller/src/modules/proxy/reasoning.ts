@@ -205,27 +205,40 @@ const extractThinkBlocks = (text: string): { cleaned: string; extracted: string 
 };
 
 export const normalizeReasoningAndContentInMessage = (message: Record<string, unknown>): void => {
-  const contentRaw = typeof message["content"] === "string" ? String(message["content"]) : "";
+  // Only a string content carries inline <think> blocks or is safe to rewrite.
+  // A multi-part array content (e.g. text + image_url) must be left untouched —
+  // coercing it to "" here would silently drop the whole message body.
+  const contentIsString = typeof message["content"] === "string";
+  const contentRaw = contentIsString ? String(message["content"]) : "";
   const reasoningRaw = firstReasoningField(message);
 
   const contentThink = extractThinkBlocks(contentRaw);
   const reasoningThink = extractThinkBlocks(reasoningRaw);
 
-  const nextReasoning = [reasoningThink.cleaned, contentThink.extracted, reasoningThink.extracted]
-    .filter((v) => v.trim().length > 0)
+  // Dedup identical segments: when a model emits its reasoning BOTH inline in
+  // content (<think>…</think>) and in the dedicated reasoning field, the
+  // content-extracted and reasoning-field text are the same string — joining
+  // them verbatim doubled the reasoning.
+  const nextReasoning = [
+    reasoningThink.cleaned,
+    contentThink.extracted,
+    reasoningThink.extracted,
+  ]
+    .map((v) => v.trim())
+    .filter((v, index, all) => v.length > 0 && all.indexOf(v) === index)
     .join("\n");
   const nextContent = contentThink.cleaned;
 
-  if (nextContent !== contentRaw) message["content"] = nextContent;
+  if (contentIsString && nextContent !== contentRaw) message["content"] = nextContent;
   if (message["reasoning_content"] !== nextReasoning) message["reasoning_content"] = nextReasoning;
 
-  const strippedContent = stripToolCallXmlBlocks(
-    typeof message["content"] === "string" ? String(message["content"]) : "",
-  );
+  if (contentIsString) {
+    const strippedContent = stripToolCallXmlBlocks(String(message["content"] ?? ""));
+    message["content"] = collapseRepeatedVisibleContent(strippedContent);
+  }
   const strippedReasoning = stripToolCallXmlBlocks(
     typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : "",
   );
-  message["content"] = collapseRepeatedVisibleContent(strippedContent);
   if (strippedReasoning) {
     message["reasoning_content"] = strippedReasoning;
   } else {

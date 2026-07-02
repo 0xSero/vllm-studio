@@ -194,6 +194,43 @@ describe("createToolCallStream content fidelity", () => {
     ]);
     expect(got).toBe("Hello world\n\n- a\n- b");
   });
+
+  // Regression: a multibyte UTF-8 character split across the FINAL upstream byte
+  // chunk boundary was dropped, because the streaming decoder's trailing bytes
+  // were never flushed with a no-arg decode() when the stream ended.
+  test("preserves a multibyte char split across the final chunk boundary", async () => {
+    const payload =
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "café" } }] })}\n\n` +
+      "data: [DONE]\n\n";
+    const bytes = new TextEncoder().encode(payload);
+    // Split the "é" (0xC3 0xA9): cut one byte before the very end of its first
+    // occurrence so its two bytes land in different reader chunks.
+    const splitAt = payload.indexOf("é") + 1;
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, splitAt));
+        controller.enqueue(bytes.slice(splitAt));
+        controller.close();
+      },
+    });
+    const out = createToolCallStream(source.getReader());
+    const reader = out.getReader();
+    let raw = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      raw += decoder.decode(value, { stream: true });
+    }
+    const content = parseSseEvents(raw)
+      .filter((value) => value !== "[DONE]")
+      .map((value) => {
+        const delta = (JSON.parse(value) as { choices?: Array<{ delta?: { content?: string } }> })
+          .choices?.[0]?.delta?.content;
+        return typeof delta === "string" ? delta : "";
+      })
+      .join("");
+    expect(content).toBe("café");
+  });
 });
 
 describe("think rewriter", () => {
