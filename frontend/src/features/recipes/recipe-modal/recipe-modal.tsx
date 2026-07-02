@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { RefreshCw, Save } from "@/ui/icon-registry";
-import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem } from "@/ui";
+import { Save } from "@/ui/icon-registry";
+import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem, Spinner } from "@/ui";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
@@ -312,7 +312,7 @@ export function RecipeModal({
             !(recipe.model_path ?? "").trim()
           }
           icon={
-            saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />
+            saving ? <Spinner size="xs" variant="refresh" /> : <Save className="h-3 w-3" />
           }
         >
           {saving ? "Saving..." : "Save recipe"}

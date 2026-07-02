@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { LoaderCircle, Square, TriangleAlert, X } from "@/ui/icon-registry";
-import { Button, UiModal, UiModalHeader } from "@/ui";
+import { Square, TriangleAlert, X } from "@/ui/icon-registry";
+import { Button, UiModal, UiModalHeader, Spinner } from "@/ui";
 
 type StopTriggerArgs = {
   open: () => void;
@@ -75,7 +75,7 @@ export function ModelStopConfirm({ trigger, onStop }: ModelStopConfirmProps) {
               Cancel
             </Button>
             <Button variant="danger" onClick={confirmStop} disabled={stopping}>
-              {stopping && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
+              {stopping && <Spinner size="sm" />}
               {stopping ? "Stopping..." : "Stop model"}
             </Button>
           </div>

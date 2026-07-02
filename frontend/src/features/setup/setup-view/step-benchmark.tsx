@@ -1,7 +1,7 @@
 "use client";
 
-import { Activity, LayoutDashboard, Loader2, MessageCircle } from "@/ui/icon-registry";
-import { Alert, Button, Card } from "@/ui";
+import { Activity, LayoutDashboard, MessageCircle } from "@/ui/icon-registry";
+import { Alert, Button, Card, Spinner } from "@/ui";
 import { FactGrid } from "@/features/setup/fact-grid";
 
 interface SetupBenchmarkResult {
@@ -44,7 +44,7 @@ export function StepBenchmark({
           disabled={benchmarking}
           icon={
             benchmarking ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner />
             ) : (
               <Activity className="h-4 w-4" />
             )

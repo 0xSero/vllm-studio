@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2, Rocket } from "@/ui/icon-registry";
-import { Alert, Button, Card } from "@/ui";
+import { Rocket } from "@/ui/icon-registry";
+import { Alert, Button, Card, Spinner } from "@/ui";
 import { FactGrid } from "@/features/setup/fact-grid";
 
 export function StepLaunch({
@@ -53,7 +53,7 @@ export function StepLaunch({
           disabled={configuringRecipe}
           icon={
             configuringRecipe ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner />
             ) : (
               <Rocket className="h-4 w-4" />
             )

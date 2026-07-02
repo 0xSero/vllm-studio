@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Download, Menu, RefreshCw } from "@/ui/icon-registry";
-import { Button, Checkbox, SearchInput } from "@/ui";
+import { Button, Checkbox, SearchInput, Spinner } from "@/ui";
 import type { LogSession } from "@/lib/types";
 import { LogsSessionsSidebar } from "./logs-sessions-sidebar";
 
@@ -60,7 +60,7 @@ export function LogsView({
     return (
       <div className="flex items-center justify-center h-full bg-(--surface)">
         <div className="flex items-center gap-2 text-(--dim)">
-          <RefreshCw className="h-4 w-4 animate-spin" />
+          <Spinner variant="refresh" />
           <span className="text-sm">Loading logs...</span>
         </div>
       </div>
@@ -147,7 +147,7 @@ export function LogsView({
               {loadingContent ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex items-center gap-2 text-(--dim)">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <Spinner variant="refresh" />
                     <span>Loading...</span>
                   </div>
                 </div>

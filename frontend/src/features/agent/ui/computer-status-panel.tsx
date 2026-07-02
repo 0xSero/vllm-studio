@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { Code2, Loader2 } from "@/ui/icon-registry";
+import { Spinner } from "@/ui";
+import { Code2 } from "@/ui/icon-registry";
 import { formatTokenCount } from "@/features/agent/messages";
 import { useTools } from "@/features/agent/tools/context";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
@@ -78,7 +79,7 @@ export function ComputerStatusPanel({
             } disabled:pointer-events-none disabled:opacity-30`}
             title={compactTitle(compactHighlighted)}
           >
-            {compacting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {compacting ? <Spinner size="xs" /> : null}
             {compacting ? "Compacting" : "Compact"}
           </button>
         </StatusActionRow>

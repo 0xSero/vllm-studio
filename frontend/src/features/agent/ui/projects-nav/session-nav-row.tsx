@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { Spinner } from "@/ui";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "@/ui/icon-registry";
 import { useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { CloseIcon, EyeOffIcon, MoreIcon, PinIcon } from "@/ui/icons";
@@ -281,7 +281,7 @@ function SessionRowContent({
   return (
     <>
       {isRunning ? (
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-(--link)" aria-hidden />
+        <Spinner size="xs" className="shrink-0 text-(--link)" />
       ) : unseen ? (
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--link)"

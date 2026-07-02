@@ -1,16 +1,5 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
-import {
-  Check,
-  CircleDot,
-  Eye,
-  EyeOff,
-  Link as LinkIcon,
-  Loader2,
-  Plus,
-  Save,
-  Trash2,
-  X,
-} from "@/ui/icon-registry";
+import { Check, CircleDot, Eye, EyeOff, Link as LinkIcon, Plus, Save, Trash2, X } from "@/ui/icon-registry";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import {
   loadSavedControllers,
@@ -20,7 +9,7 @@ import {
 } from "@/lib/api/controllers";
 import { getStoredBackendUrl, setApiKey, setStoredBackendUrl } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
-import { StatusPill } from "@/ui";
+import { StatusPill, Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup, SettingsInput, SettingsRow, SettingsValue, type StatusTone } from "./settings-ui";
 
 type ControllerEntry = SavedController & { id: string };
@@ -231,7 +220,7 @@ export function ApiConnectionSection({
             <>
               <SettingsButton onClick={onTestConnection} disabled={testing || apiSettingsLoading}>
                 {testing ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size="xs" />
                 ) : (
                   <LinkIcon className="h-3 w-3" />
                 )}
@@ -243,7 +232,7 @@ export function ApiConnectionSection({
                 tone="primary"
               >
                 {saving ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size="xs" />
                 ) : (
                   <Save className="h-3 w-3" />
                 )}

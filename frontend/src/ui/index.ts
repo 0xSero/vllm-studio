@@ -84,6 +84,8 @@ export { ProgressBar } from "./progress-bar";
 export { Stat } from "./stat";
 export { SectionLabel } from "./section-label";
 export { ErrorBox } from "./error-box";
+export { Spinner } from "./spinner";
+export type { SpinnerSize } from "./spinner";
 
 export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";

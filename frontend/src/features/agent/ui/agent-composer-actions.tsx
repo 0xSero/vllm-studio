@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
-import { Code2, Loader2, Plus } from "@/ui/icon-registry";
+import { Spinner } from "@/ui";
+import { Code2, Plus } from "@/ui/icon-registry";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, PanelIcon, SendIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 
@@ -121,7 +122,7 @@ export function AgentComposerActions({
                 className="inline-flex !h-7 !min-h-7 shrink-0 items-center gap-1.5 px-2 text-[length:var(--fs-sm)] text-(--dim)"
                 title="Waiting for the model to start"
               >
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner size="xs" />
                 Starting…
               </span>
             ) : inputHasText ? (
@@ -164,7 +165,7 @@ export function AgentComposerActions({
             title="Send (Enter) · Queue (Tab)"
           >
             {starting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" />
             ) : (
               <SendIcon className="h-3.5 w-3.5" />
             )}

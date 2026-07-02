@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw } from "@/ui/icon-registry";
-import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow } from "@/ui";
+import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow, Spinner } from "@/ui";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { originalModelKey } from "@/lib/huggingface";
 import { ModelRow } from "./model-row";
@@ -77,7 +76,7 @@ export function DiscoverResults({
   if (loading && models.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-(--dim)">
-        <RefreshCw className="h-5 w-5 animate-spin" />
+        <Spinner size="lg" variant="refresh" />
       </div>
     );
   }
@@ -142,7 +141,7 @@ export function DiscoverResults({
           >
             {loading ? (
               <span className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin" />
+                <Spinner variant="refresh" />
                 Loading...
               </span>
             ) : (

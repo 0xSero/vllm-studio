@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronRight, Loader2, Rocket } from "@/ui/icon-registry";
-import { Button, Card, Input, StatusPill } from "@/ui";
+import { ChevronRight, Rocket } from "@/ui/icon-registry";
+import { Button, Card, Input, StatusPill, Spinner } from "@/ui";
 import type { StudioDiagnostics, StudioSettings } from "@/lib/types";
 
 export function StepWelcome({
@@ -60,7 +60,7 @@ export function StepWelcome({
           disabled={savingSettings}
           icon={
             savingSettings ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner />
             ) : (
               <ChevronRight className="h-4 w-4" />
             )

@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "@/ui/icon-registry";
-import { Alert, AppPage, Button, Card } from "@/ui";
+import { AlertTriangle } from "@/ui/icon-registry";
+import { Alert, AppPage, Button, Card, Spinner } from "@/ui";
 import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
 import type {
   EngineJob,
@@ -134,7 +134,7 @@ export function SetupView({
 
         {loading && (
           <Card padding="lg" className="flex items-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-(--dim)" />
+            <Spinner size="lg" className="text-(--dim)" />
             <span className="text-sm text-(--dim)">Preparing your setup...</span>
           </Card>
         )}
