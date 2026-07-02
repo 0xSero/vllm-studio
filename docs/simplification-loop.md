@@ -281,8 +281,41 @@ Net: the recipes cluster is already well-factored; its apparent duplication is
 either engine-semantic or a deliberate typed spec system. The real value there
 was the I8 bug fixes (tp/pp/port/gpu-util floors, llama.cpp flag collision).
 
+## BUG HUNT LOG — round 5 (I10, agent view/rendering layer)
+
+One-agent sweep 2026-07-02 of the frontend agent VIEW components (timeline,
+attachments, filesystem viewer, git-diff, plan, canvas). I personally audited
+the controller GPU/platform parsing (nvidia/amd/rocm/metrics) and found it
+robust — no change. Commits 2ab8ad43, cb9963a1.
+
+Fixed:
+- timeline merged-message key grew per segment (a->a:b->a:b:c) within a turn →
+  remounted the assistant <article> on every tool boundary, collapsing expanded
+  disclosures. Anchor on the first (unique) segment id.
+- attachment blob preview URLs never revoked → reclaim on removing an un-sent
+  attachment (sent ones keep theirs; message may reference the blob).
+- plan-panel debounced save timer not cleared on unmount → cancel it.
+- canvas detectPreviewKind (regex scans of whole buffer) memoized.
+- PERF git-diff rendered every file's full line grid even when the <details>
+  was collapsed → freeze on huge diffs. DiffFileEntry renders the body only
+  while expanded.
+
+Deferred (documented): file-viewer splits multi-line highlight.js spans per
+line (cosmetic coloring only; correct fix = risky span-stack repair over every
+file, net +code for a cosmetic issue — not worth it).
+
+CHECKED-CLEAN: no XSS (all dangerouslySetInnerHTML fed by hljs-escaped output;
+iframe sandboxes correct); untrusted hrefs neutralized by react-markdown;
+filesystem tree can't self-expand a symlink cycle. Controller GPU/platform
+parsing is robust (NaN guards, unit handling, N/A cases).
+
 ## Iteration log
 
+- **I10 (2026-07-02)**: bug-hunt round 5 (agent view/rendering layer). Fixed 5
+  real issues (timeline remount, attachment blob leak, plan timer leak, canvas
+  memo, git-diff freeze) across 2 commits; deferred 1 cosmetic (highlight span
+  split) with reason. Personally verified controller GPU/platform parsing is
+  robust (no change). All gates green (127 integration + 227 e2e + build).
 - **I9 (2026-07-02)**: pursued the 2 deferred recipe simplifications + agent's
   other cluster candidates. Built + REVERTED the checkbox helper (measured net
   +52 lines). Proved the "dead" RecipeEditor fields are a coupled ENGINE_ARG_SPECS
