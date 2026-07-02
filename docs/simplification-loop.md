@@ -413,8 +413,29 @@ surface. CONCLUSION: sound, no safe actionable change. Do NOT re-hunt.
   loop has preserved. Retained shells for never-started sessions are negligible
   (EventEmitter + empty arrays). Not a safe-to-fix bug.
 
+## CONFIG/SCRIPT AUDIT — I16
+
+Systematic pass over every tracked config file + npm script (charter's
+settings/config mandate). Result: ONE genuine cut, rest verified purposeful.
+- CUT: controller/.lintstagedrc.json (dead — lint-staged not a controller dep,
+  no controller script/hook invokes it; pre-commit controller branch only runs
+  typecheck). commit 67a81dac.
+- KEPT (verified wired/justified): tsconfig ×3 (distinct compile targets),
+  eslint ×2 + knip ×2 (distinct rule sets/entries), jscpd ×2 (intentional
+  per-workspace minTokens), depcheckrc/postcss/prettierrc/prettierignore/
+  release.config all used, frontend .lintstagedrc wired (dep + precommit).
+- frontend 32 scripts are purposeful: check:* is gate composition, desktop:* is
+  a real build/run/dist/dev matrix. Only near-dup (typecheck:desktop ==
+  desktop:build:main) is a meaningful gate-vs-build naming distinction — NOT
+  consolidated (marginal, risks gate composition). daemon.sh/deploy-remote.sh
+  are README-documented user helpers; frontend/scripts/test-*.ts run via glob.
+
 ## Iteration log
 
+- **I16 (2026-07-02)**: config/script audit (charter's settings/config mandate).
+  ONE genuine cut: dead controller/.lintstagedrc.json. Verified all other config
+  files + the 32 frontend scripts are wired/purposeful. Gates green. Loop remains
+  at completion — surface is now genuinely minimal.
 - **I15 (2026-07-02)**: personally audited the last unswept privileged surface —
   the server-side pi-runtime session manager. Found it sound (correct listener
   cleanup, bounded eventLog, session persistence intentional for resume). No safe
