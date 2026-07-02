@@ -51,13 +51,7 @@ export function StepLaunch({
         <Button
           onClick={configureAndLaunch}
           disabled={configuringRecipe}
-          icon={
-            configuringRecipe ? (
-              <Spinner />
-            ) : (
-              <Rocket className="h-4 w-4" />
-            )
-          }
+          icon={configuringRecipe ? <Spinner /> : <Rocket className="h-4 w-4" />}
         >
           {configuringRecipe ? "Launching..." : "Configure & Launch"}
         </Button>

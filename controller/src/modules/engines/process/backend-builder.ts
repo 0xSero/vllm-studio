@@ -23,7 +23,7 @@ export const normalizeJsonArgument = (value: unknown): unknown => {
       Object.entries(record).map(([key, entry]) => [
         key.replace(/-/g, "_"),
         normalizeJsonArgument(entry),
-      ])
+      ]),
     );
   }
   return value;
@@ -63,7 +63,7 @@ export const getVllmPythonPath = (
 };
 export const appendExtraArguments = (
   command: string[],
-  extraArguments: Record<string, unknown>
+  extraArguments: Record<string, unknown>,
 ): string[] => {
   for (const [key, value] of Object.entries(extraArguments)) {
     const normalizedKey = key.replace(/-/g, "_").toLowerCase();
@@ -155,12 +155,18 @@ export const appendVllmExtraArguments = (
     };
     if (logger) {
       if (strict) {
-        logger.error("[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode", detail);
+        logger.error(
+          "[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode",
+          detail,
+        );
       } else {
         logger.warn("[vllm-extra-args] dropping unknown vLLM extra_args key", detail);
       }
     } else if (strict) {
-      console.error("[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode", detail);
+      console.error(
+        "[vllm-extra-args] dropping unknown vLLM extra_args key in strict mode",
+        detail,
+      );
     } else {
       console.warn("[vllm-extra-args] dropping unknown vLLM extra_args key", detail);
     }
@@ -404,7 +410,7 @@ export const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
 };
 export const appendLlamacppArguments = (
   command: string[],
-  extraArguments: Record<string, unknown>
+  extraArguments: Record<string, unknown>,
 ): string[] => {
   for (const [key, value] of Object.entries(extraArguments)) {
     if (isInternalRecipeKey(key)) {

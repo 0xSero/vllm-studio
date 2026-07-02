@@ -6,7 +6,11 @@
 //   { kind: "key",   type: "down" | "up" | "char", key, code, text? }
 
 import { NextRequest } from "next/server";
-import { browserHost, type KeyInput, type MouseInput } from "@/features/agent/browser-host/browser-host";
+import {
+  browserHost,
+  type KeyInput,
+  type MouseInput,
+} from "@/features/agent/browser-host/browser-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +43,12 @@ export async function POST(request: NextRequest) {
 
 async function dispatch(body: InputBody): Promise<void> {
   if (body.kind === "key") {
-    await browserHost.dispatchKey({ type: body.type, key: body.key, code: body.code, text: body.text });
+    await browserHost.dispatchKey({
+      type: body.type,
+      key: body.key,
+      code: body.code,
+      text: body.text,
+    });
     return;
   }
   if (body.kind === "wheel") {

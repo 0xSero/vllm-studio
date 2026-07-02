@@ -36,7 +36,7 @@ export const parseProviderModel = (rawModel: string): ParsedProviderModel => {
 
 export const resolveConfiguredProviderConfig = (
   providerId: string,
-  providers: ProviderConfig[] = []
+  providers: ProviderConfig[] = [],
 ): ProviderRouteConfig | null => {
   const match = providers.find((p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled);
   if (!match || !match.api_key) return null;
@@ -45,7 +45,7 @@ export const resolveConfiguredProviderConfig = (
 
 export const resolveProviderConfig = (
   provider: string,
-  config: ControllerProviderRoutingConfig = {}
+  config: ControllerProviderRoutingConfig = {},
 ): ProviderRouteConfig | null => {
   return resolveConfiguredProviderConfig(provider, config.providers);
 };

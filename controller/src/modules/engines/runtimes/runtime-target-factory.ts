@@ -46,7 +46,7 @@ const createCapabilities = (target: {
 const createHealth = (
   installed: boolean,
   source: RuntimeTargetSource,
-  message?: string
+  message?: string,
 ): RuntimeTarget["health"] => {
   let status: RuntimeHealthStatus = installed ? "ok" : "warning";
   if (source === "running") status = "ok";

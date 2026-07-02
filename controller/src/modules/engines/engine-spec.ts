@@ -8,7 +8,11 @@
 import type { ChildProcess } from "node:child_process";
 import type { Config } from "../../config/env";
 import type { Recipe, ProcessInfo } from "../models/types";
-import type { EngineBackend, RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../shared/contracts/system";
+import type {
+  EngineBackend,
+  RuntimeBackendInfo,
+  RuntimeUpgradeResult,
+} from "../../../../shared/contracts/system";
 import type { InstallProgressUpdate } from "./runtimes/managed-venv";
 
 export type { InstallProgressUpdate };

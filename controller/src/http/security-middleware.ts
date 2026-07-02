@@ -107,7 +107,7 @@ export function createMutatingRateLimitMiddleware(
   options: {
     windowMs?: number;
     maxRequests?: number;
-  } = {}
+  } = {},
 ): MiddlewareHandler {
   const windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
   const maxRequests = options.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
@@ -158,7 +158,7 @@ export function createReadRateLimitMiddleware(
   options: {
     windowMs?: number;
     maxRequests?: number;
-  } = {}
+  } = {},
 ): MiddlewareHandler {
   const windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
   const maxRequests = options.maxRequests ?? DEFAULT_READ_RATE_LIMIT_MAX_REQUESTS;

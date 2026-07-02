@@ -15,20 +15,11 @@ describe("process utilities", () => {
   });
 
   test("classifies exact vLLM and SGLang launch invocations", () => {
-    expect(
-      detectBackend(["/opt/venvs/vllm/bin/vllm", "serve", "/models/model-a"]),
-    ).toBe("vllm");
-    expect(
-      detectBackend(["python", "-m", "vllm.entrypoints.openai.api_server"]),
-    ).toBe("vllm");
-    expect(
-      detectBackend([
-        "python",
-        "-m",
-        "sglang.launch_server",
-        "/models/model-b",
-      ]),
-    ).toBe("sglang");
+    expect(detectBackend(["/opt/venvs/vllm/bin/vllm", "serve", "/models/model-a"])).toBe("vllm");
+    expect(detectBackend(["python", "-m", "vllm.entrypoints.openai.api_server"])).toBe("vllm");
+    expect(detectBackend(["python", "-m", "sglang.launch_server", "/models/model-b"])).toBe(
+      "sglang",
+    );
   });
 });
 
@@ -68,12 +59,7 @@ describe("SGLang command builder", () => {
       { sglang_python: "python", data_dir: "/tmp/local-studio-test" } as Config,
     );
 
-    expect(command.slice(0, 4)).toEqual([
-      "python",
-      "-m",
-      "sglang.launch_server",
-      "--model-path",
-    ]);
+    expect(command.slice(0, 4)).toEqual(["python", "-m", "sglang.launch_server", "--model-path"]);
     expect(command).toContain("/mnt/llm_models/GLM-5.1-478B-REAP-NVFP4");
     expect(command).toContain("--context-length");
     expect(command).toContain("--max-running-requests");

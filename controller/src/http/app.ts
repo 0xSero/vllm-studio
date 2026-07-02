@@ -39,7 +39,7 @@ export const createApp = (context: AppContext): Hono => {
         "Retry-After",
       ],
       maxAge: 600,
-    })
+    }),
   );
 
   app.use("*", async (ctx, next) => {

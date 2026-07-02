@@ -30,7 +30,7 @@ export interface NonRunningModelWarnDetails {
  * hammering the same rejected request doesn't flood the controller log.
  */
 export const createNonRunningModelWarner = (
-  logger: Pick<Logger, "warn">
+  logger: Pick<Logger, "warn">,
 ): ((details: NonRunningModelWarnDetails) => void) => {
   const warnings = new Map<string, NonRunningModelWarningState>();
   return (details) => {
@@ -62,7 +62,7 @@ export const createNonRunningModelWarner = (
 
 export const extractSessionId = (
   parsedBody: Record<string, unknown>,
-  header: (name: string) => string | undefined
+  header: (name: string) => string | undefined,
 ): string | null => {
   const fromHeader = PROXY_SESSION_HEADER_NAMES.map((name) => header(name)).find(Boolean);
   if (fromHeader?.trim()) return fromHeader.trim();
@@ -83,7 +83,7 @@ export const extractSessionId = (
 export const attachSessionUsage = (
   result: Record<string, unknown>,
   sessionId: string | null,
-  usage: OpenAIUsage | undefined
+  usage: OpenAIUsage | undefined,
 ): void => {
   if (!sessionId) return;
 
@@ -104,7 +104,7 @@ export const attachSessionUsage = (
 
 export const findRecipeByModel = (
   modelName: string,
-  context: Pick<AppContext, "stores">
+  context: Pick<AppContext, "stores">,
 ): Recipe | null => {
   const lower = modelName.toLowerCase();
   for (const recipe of context.stores.recipeStore.list()) {

@@ -47,7 +47,7 @@ export const parseCommandPython = (args: string[]): string | null => {
     (argument) =>
       argument === "vllm.entrypoints.openai.api_server" ||
       argument === "sglang.launch_server" ||
-      argument === "mlx_lm.server"
+      argument === "mlx_lm.server",
   );
   if (moduleIndex >= 2 && args[moduleIndex - 1] === "-m") {
     const candidate = args[moduleIndex - 2];
@@ -72,7 +72,7 @@ export interface PythonRuntimeProbe {
 
 export const probePythonRuntime = async (
   backend: PythonProbeBackend,
-  python: string
+  python: string,
 ): Promise<PythonRuntimeProbe> => {
   const check = await runCommandAsync(python, ["--version"], { timeoutMs: 2_000 });
   if (check.status !== 0) {
@@ -124,11 +124,11 @@ export const probePythonRuntime = async (
 
 export const probeBackendRuntime = async (
   backend: PythonProbeBackend,
-  candidates: Array<string | null | undefined>
+  candidates: Array<string | null | undefined>,
 ): Promise<PythonRuntimeProbe> => {
   const unique = candidates.filter(
     (candidate, index, all): candidate is string =>
-      Boolean(candidate) && all.indexOf(candidate) === index
+      Boolean(candidate) && all.indexOf(candidate) === index,
   );
   let fallback: PythonRuntimeProbe | null = null;
   for (const candidate of unique) {
@@ -147,9 +147,7 @@ export const probeBackendRuntime = async (
   );
 };
 
-export const probeRunningProcessPython = async (
-  pid: number
-): Promise<string | null> => {
+export const probeRunningProcessPython = async (pid: number): Promise<string | null> => {
   const result = await runCommandAsync("ps", ["-p", String(pid), "-o", "args="], {
     timeoutMs: 3_000,
   });
@@ -200,7 +198,7 @@ export const resolvePythonFromScript = (scriptPath: string | null | undefined): 
 };
 
 export const probeBinaryRuntime = async (
-  binary: string
+  binary: string,
 ): Promise<{
   installed: boolean;
   version: string | null;
@@ -234,7 +232,7 @@ export const probeBinaryRuntime = async (
 };
 
 export const probeVllmBinaryRuntime = async (
-  binary: string
+  binary: string,
 ): Promise<{
   installed: boolean;
   version: string | null;

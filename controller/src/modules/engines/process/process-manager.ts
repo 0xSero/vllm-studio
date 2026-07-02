@@ -35,7 +35,7 @@ export interface ProcessManager {
 export const createProcessManager = (
   config: Config,
   logger: Logger,
-  eventManager?: EventManager
+  eventManager?: EventManager,
 ): ProcessManager => {
   type ProcessTableEntry = {
     pid: number;
@@ -132,7 +132,7 @@ export const createProcessManager = (
       if (Number.isFinite(port) && port > 0) inferencePorts.add(port);
 
       const dockerIndex = proc.args.findIndex(
-        (argument) => argument === "docker" || argument.endsWith("/docker")
+        (argument) => argument === "docker" || argument.endsWith("/docker"),
       );
       if (dockerIndex < 0 || proc.args[dockerIndex + 1] !== "run") continue;
       const name = extractFlag(proc.args.slice(dockerIndex + 2), "--name");
@@ -146,7 +146,7 @@ export const createProcessManager = (
     if (inferencePorts.size > 0) {
       for (const proc of processes) {
         const dockerIndex = proc.args.findIndex(
-          (argument) => argument === "docker" || argument.endsWith("/docker")
+          (argument) => argument === "docker" || argument.endsWith("/docker"),
         );
         if (dockerIndex < 0 || proc.args[dockerIndex + 1] !== "run") continue;
         const dockerPort = Number(extractFlag(proc.args, "--port"));
@@ -171,7 +171,7 @@ export const createProcessManager = (
 
   const removeStaleDockerContainerForCommand = (command: string[]): void => {
     const dockerIndex = command.findIndex(
-      (argument) => argument === "docker" || argument.endsWith("/docker")
+      (argument) => argument === "docker" || argument.endsWith("/docker"),
     );
     if (dockerIndex < 0 || command[dockerIndex + 1] !== "run") return;
     const name = extractFlag(command.slice(dockerIndex + 2), "--name");

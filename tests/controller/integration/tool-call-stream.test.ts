@@ -118,7 +118,10 @@ describe("createToolCallStream SSE framing", () => {
 
 /** Concatenate the `content` deltas the rewriter emits for incremental tokens. */
 async function streamContent(tokens: string[]): Promise<string> {
-  const lines: string[] = [`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "" } }] })}`, ""];
+  const lines: string[] = [
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "" } }] })}`,
+    "",
+  ];
   for (const content of tokens) {
     lines.push(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}`, "");
   }
@@ -140,7 +143,16 @@ describe("createToolCallStream content fidelity", () => {
   // a newline — collapsing every blank line and list break in the rendered
   // answer (e.g. "it.\n\nI rewrote it as:\n- a\n- b" -> "it.I rewrote it as:- a- b").
   test("preserves standalone newline deltas when the message starts with a newline", async () => {
-    const tokens = ["\n", "Fair — I overdesigned it.", "\n\n", "I rewrote it as:", "\n", "- a", "\n", "- b"];
+    const tokens = [
+      "\n",
+      "Fair — I overdesigned it.",
+      "\n\n",
+      "I rewrote it as:",
+      "\n",
+      "- a",
+      "\n",
+      "- b",
+    ];
     expect(await streamContent(tokens)).toBe(tokens.join(""));
   });
 
@@ -174,7 +186,12 @@ describe("createToolCallStream content fidelity", () => {
   // A cumulative-snapshot backend (each delta is the full content so far) is
   // sliced to the new suffix rather than duplicated.
   test("slices cumulative snapshot deltas instead of duplicating them", async () => {
-    const got = await streamContent(["Hello", "Hello world", "Hello world\n\n- a", "Hello world\n\n- a\n- b"]);
+    const got = await streamContent([
+      "Hello",
+      "Hello world",
+      "Hello world\n\n- a",
+      "Hello world\n\n- a\n- b",
+    ]);
     expect(got).toBe("Hello world\n\n- a\n- b");
   });
 });
@@ -200,9 +217,7 @@ describe("think rewriter", () => {
 
     expect(thinkingTagPrefixIsPartial("<thinking ")).toBe(true);
     expect(thinkingTagPrefixIsPartial("</thinking")).toBe(true);
-    expect(
-      rewriter.rewrite('<thinking mode="deep">reason</thinking>answer'),
-    ).toEqual({
+    expect(rewriter.rewrite('<thinking mode="deep">reason</thinking>answer')).toEqual({
       content: "answer",
       reasoningAppend: "reason",
     });

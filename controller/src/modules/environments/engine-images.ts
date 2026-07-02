@@ -63,9 +63,7 @@ export const listEngineImages = (): EngineImagesInfo[] => {
 };
 
 export const isKnownEngineImage = (image: string): boolean =>
-  Object.values(ENGINE_IMAGE_REPOSITORIES).some((repository) =>
-    image.startsWith(`${repository}:`),
-  );
+  Object.values(ENGINE_IMAGE_REPOSITORIES).some((repository) => image.startsWith(`${repository}:`));
 
 export const startEngineImagePull = (image: string): EngineImagePull => {
   const existing = pulls.get(image);

@@ -172,7 +172,7 @@ export const parseRecipe = (raw: unknown): Recipe => {
   });
   const environmentVariables = parsed.env_vars
     ? Object.fromEntries(
-        Object.entries(parsed.env_vars).map(([key, value]) => [key, String(value)])
+        Object.entries(parsed.env_vars).map(([key, value]) => [key, String(value)]),
       )
     : null;
   return {

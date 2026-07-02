@@ -136,10 +136,10 @@ export const getGpuInfoFromIntelSysfs = (): GpuInfo[] =>
     const hwmonPaths = findHwmonPaths(gpu.path);
     const temperature = Math.round((readHwmonMetric(hwmonPaths, "temp1_input") ?? 0) / 1000);
     const powerDraw = Number(
-      ((readHwmonMetric(hwmonPaths, "power1_input") ?? 0) / 1_000_000).toFixed(1)
+      ((readHwmonMetric(hwmonPaths, "power1_input") ?? 0) / 1_000_000).toFixed(1),
     );
     const powerLimit = Number(
-      ((readHwmonMetric(hwmonPaths, "power1_cap") ?? 0) / 1_000_000).toFixed(1)
+      ((readHwmonMetric(hwmonPaths, "power1_cap") ?? 0) / 1_000_000).toFixed(1),
     );
     const toMb = (bytes: number): number => Math.max(0, Math.round(bytes / 1024 / 1024));
 

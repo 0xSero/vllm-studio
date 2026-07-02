@@ -44,7 +44,7 @@ const resolveBundledWheel = (): { path: string; version: string | null } | null 
   const runtimeDirectory = resolve(process.cwd(), "runtime", "wheels");
   if (!existsSync(runtimeDirectory)) return null;
   const candidates = readdirSync(runtimeDirectory).filter(
-    (file) => file.startsWith("vllm-") && file.endsWith(".whl")
+    (file) => file.startsWith("vllm-") && file.endsWith(".whl"),
   );
   if (candidates.length === 0) return null;
   const withStats = candidates
@@ -114,13 +114,9 @@ export const installVllmRuntime = async (
 
   const preferBundled = options.preferBundled !== false;
   const bundledWheel = preferBundled ? resolveBundledWheel() : null;
-  const packageSpec = bundledWheel
-    ? bundledWheel.path
-    : resolveVllmUpgradeTarget(options.version);
+  const packageSpec = bundledWheel ? bundledWheel.path : resolveVllmUpgradeTarget(options.version);
 
-  const installTimeoutMs = options.pythonPath
-    ? VLLM_UPGRADE_TIMEOUT_MS
-    : ENGINE_INSTALL_TIMEOUT_MS;
+  const installTimeoutMs = options.pythonPath ? VLLM_UPGRADE_TIMEOUT_MS : ENGINE_INSTALL_TIMEOUT_MS;
   return installIntoManagedVenv({
     config: options.config,
     backend: "vllm",
@@ -132,4 +128,3 @@ export const installVllmRuntime = async (
     onSpawn: options.onSpawn,
   });
 };
-

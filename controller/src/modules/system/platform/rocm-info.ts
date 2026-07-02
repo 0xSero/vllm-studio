@@ -34,8 +34,7 @@ const readRocmVersion = (): string | null => {
       if (existsSync(overridden)) {
         return readFileSync(overridden, "utf-8").trim() || null;
       }
-    } catch {
-    }
+    } catch {}
   }
 
   const rocmInfoDirectory = "/opt/rocm/.info";
@@ -50,8 +49,7 @@ const readRocmVersion = (): string | null => {
         }
       }
     }
-  } catch {
-  }
+  } catch {}
 
   for (const filePath of candidates) {
     try {
@@ -59,8 +57,7 @@ const readRocmVersion = (): string | null => {
         const content = readFileSync(filePath, "utf-8").trim();
         if (content) return content;
       }
-    } catch {
-    }
+    } catch {}
   }
 
   return null;

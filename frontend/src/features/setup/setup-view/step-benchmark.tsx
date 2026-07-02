@@ -42,13 +42,7 @@ export function StepBenchmark({
         <Button
           onClick={runSetupBenchmark}
           disabled={benchmarking}
-          icon={
-            benchmarking ? (
-              <Spinner />
-            ) : (
-              <Activity className="h-4 w-4" />
-            )
-          }
+          icon={benchmarking ? <Spinner /> : <Activity className="h-4 w-4" />}
         >
           {benchmarking ? "Benchmarking..." : "Run Benchmark"}
         </Button>

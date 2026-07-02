@@ -1,7 +1,12 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../../../config/env";
-import type { EngineBackend, EngineJob, RuntimeTarget, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
+import type {
+  EngineBackend,
+  EngineJob,
+  RuntimeTarget,
+  RuntimeUpgradeResult,
+} from "../../../../../shared/contracts/system";
 import { getEngineSpec, type InstallOptions } from "../engine-spec";
 import { acquireEngineInstallLock, installLockTimeoutMessage } from "./install-lock";
 import { runPlatformUpgrade } from "./runtime-upgrade";
@@ -71,7 +76,8 @@ const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
 };
 
 const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
-  if (isPlatformBackend(options.backend)) return `configured ${options.backend.toUpperCase()} upgrade command`;
+  if (isPlatformBackend(options.backend))
+    return `configured ${options.backend.toUpperCase()} upgrade command`;
   if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
   if (options.type === "install" && isManagedPythonBackend(options.backend)) {
     return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
@@ -81,7 +87,7 @@ const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
 
 export const managedPackageSpec = (
   backend: ManagedPythonBackend,
-  version?: string | null
+  version?: string | null,
 ): string => getEngineSpec(backend).managedPackageSpec(version);
 
 const unsupportedMlxUpdate: RuntimeUpgradeResult = {
@@ -117,10 +123,12 @@ const runEngineInstall = async (
 ): Promise<RuntimeUpgradeResult> => {
   if (backend === "mlx" && options.type === "update") return unsupportedMlxUpdate;
   const lock = await acquireEngineInstallLock(config, backend, {
-    onWait: (): void => updateRunningJob(job.id, { message: `waiting for in-progress ${backend} install...` }),
+    onWait: (): void =>
+      updateRunningJob(job.id, { message: `waiting for in-progress ${backend} install...` }),
     shouldContinue: (): boolean => jobs.get(job.id)?.status === "running",
   });
-  if (!lock) return jobs.get(job.id)?.status === "cancelled" ? cancelledResult : installLockFailure(backend);
+  if (!lock)
+    return jobs.get(job.id)?.status === "cancelled" ? cancelledResult : installLockFailure(backend);
   try {
     if (jobs.get(job.id)?.status !== "running") return cancelledResult;
     return await getEngineSpec(backend).install({
@@ -143,7 +151,7 @@ const runEngineInstall = async (
 const runJob = async (
   config: Config,
   job: EngineJob,
-  options: CreateEngineJobOptions
+  options: CreateEngineJobOptions,
 ): Promise<void> => {
   if (jobs.get(job.id)?.status !== "queued") return;
   updateJob(job.id, {

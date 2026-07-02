@@ -32,7 +32,12 @@ export const listPulledImages = (): Set<string> => {
   if (!docker) return new Set();
   const result = runCommand(docker, ["images", "--format", "{{.Repository}}:{{.Tag}}"]);
   if (result.status !== 0) return new Set();
-  return new Set(result.stdout.split("\n").map((line) => line.trim()).filter(Boolean));
+  return new Set(
+    result.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
 };
 
 const startEnvironmentEffect = (
@@ -68,7 +73,8 @@ const startEnvironmentEffect = (
 export const startEnvironment = (
   environment: Environment,
   recipe: Recipe,
-): Promise<EnvironmentStartResult> => Effect.runPromise(startEnvironmentEffect(environment, recipe));
+): Promise<EnvironmentStartResult> =>
+  Effect.runPromise(startEnvironmentEffect(environment, recipe));
 
 const stopEnvironmentEffect = (environmentId: string, force: boolean): Effect.Effect<boolean> =>
   Effect.gen(function* () {

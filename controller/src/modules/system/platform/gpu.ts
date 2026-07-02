@@ -31,7 +31,7 @@ export const getGpuInfoFromNvidiaSmi = (): GpuInfo[] => {
     const result = runCommand(
       nvidiaSmi,
       [`--query-gpu=${query}`, "--format=csv,noheader,nounits"],
-      5_000
+      5_000,
     );
     if (result.status !== 0 || !result.stdout) return [];
 

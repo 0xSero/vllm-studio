@@ -24,7 +24,7 @@ export type HuggingFaceModelInfo = {
 export const fetchHuggingFaceModelInfo = async (
   modelId: string,
   revision?: string | null,
-  hfToken?: string | null
+  hfToken?: string | null,
 ): Promise<HuggingFaceModelInfo> => {
   const encodedModelId = modelId.split("/").map(encodeURIComponent).join("/");
   const url = new URL(`https://huggingface.co/api/models/${encodedModelId}`);
@@ -46,7 +46,7 @@ export const fetchHuggingFaceModelInfo = async (
 export const buildHuggingFaceFileList = (
   modelInfo: HuggingFaceModelInfo,
   allowPatterns: string[],
-  ignorePatterns: string[]
+  ignorePatterns: string[],
 ): DownloadFileInfo[] => {
   const siblings = modelInfo.siblings ?? [];
   const files: DownloadFileInfo[] = [];

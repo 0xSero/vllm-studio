@@ -4,7 +4,7 @@ export const normalizeToolRequest = (payload: Record<string, unknown>): Record<s
       (functionDefinition) => ({
         type: "function",
         function: canonicalizeFunction(functionDefinition),
-      })
+      }),
     );
     delete payload["functions"];
   }
@@ -53,7 +53,7 @@ export const normalizeToolRequest = (payload: Record<string, unknown>): Record<s
 };
 
 const canonicalizeFunction = (
-  functionDefinition: Record<string, unknown>
+  functionDefinition: Record<string, unknown>,
 ): Record<string, unknown> => {
   const rest: Record<string, unknown> = {};
   for (const key of Object.keys(functionDefinition)) {

@@ -159,12 +159,9 @@ describe("controller route contracts", () => {
     expect(missingLaunchResponse.status).toBe(404);
     expect(missingLaunchBody).toEqual({ detail: "Recipe not found" });
 
-    const missingCancelResponse = await app.request(
-      "/launch/missing-recipe/cancel",
-      {
-        method: "POST",
-      },
-    );
+    const missingCancelResponse = await app.request("/launch/missing-recipe/cancel", {
+      method: "POST",
+    });
     const missingCancelBody = await missingCancelResponse.json();
     expect(missingCancelResponse.status).toBe(404);
     expect(missingCancelBody).toEqual({
@@ -316,9 +313,7 @@ describe("controller route contracts", () => {
     expect(downloadsResponse.status).toBe(200);
     expect(downloadsBody).toEqual({ downloads: [] });
 
-    const missingDownloadResponse = await app.request(
-      "/studio/downloads/missing-download",
-    );
+    const missingDownloadResponse = await app.request("/studio/downloads/missing-download");
     const missingDownloadBody = await missingDownloadResponse.json();
     expect(missingDownloadResponse.status).toBe(404);
     expect(missingDownloadBody).toEqual({ detail: "Download not found" });
@@ -333,14 +328,11 @@ describe("controller route contracts", () => {
     expect(invalidDownloadBody).toEqual({ detail: "model_id is required" });
 
     for (const action of ["pause", "resume", "cancel"]) {
-      const response = await app.request(
-        `/studio/downloads/missing-download/${action}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      );
+      const response = await app.request(`/studio/downloads/missing-download/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
       const body = await response.json();
       expect(response.status).toBe(404);
       expect(body).toEqual({ detail: "Download not found" });
@@ -351,10 +343,9 @@ describe("controller route contracts", () => {
     expect(runtimeTargetsResponse.status).toBe(200);
     expect(Array.isArray(runtimeTargetsBody.targets)).toBe(true);
 
-    const missingTargetResponse = await app.request(
-      "/runtime/targets/missing-target/select",
-      { method: "POST" },
-    );
+    const missingTargetResponse = await app.request("/runtime/targets/missing-target/select", {
+      method: "POST",
+    });
     const missingTargetBody = await missingTargetResponse.json();
     expect(missingTargetResponse.status).toBe(404);
     expect(missingTargetBody).toEqual({ detail: "Runtime target not found" });
@@ -373,8 +364,7 @@ describe("controller route contracts", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ backend: "unknown", type: "update" }),
     });
-    const invalidRuntimeBackendBody =
-      await invalidRuntimeBackendResponse.json();
+    const invalidRuntimeBackendBody = await invalidRuntimeBackendResponse.json();
     expect(invalidRuntimeBackendResponse.status).toBe(400);
     expect(invalidRuntimeBackendBody).toEqual({ detail: "Invalid backend" });
 
@@ -383,8 +373,7 @@ describe("controller route contracts", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ backend: "vllm", type: "restart" }),
     });
-    const invalidRuntimeJobTypeBody =
-      await invalidRuntimeJobTypeResponse.json();
+    const invalidRuntimeJobTypeBody = await invalidRuntimeJobTypeResponse.json();
     expect(invalidRuntimeJobTypeResponse.status).toBe(400);
     expect(invalidRuntimeJobTypeBody).toEqual({ detail: "Invalid job type" });
 
@@ -531,8 +520,7 @@ describe("controller route contracts", () => {
       }),
       health: { status: "ok" },
     });
-    if (!target)
-      throw new Error("Expected configured llama.cpp runtime target");
+    if (!target) throw new Error("Expected configured llama.cpp runtime target");
 
     const sglangTarget = targetsBody.targets.find(
       (candidate: Record<string, unknown>) =>
@@ -559,8 +547,7 @@ describe("controller route contracts", () => {
       }),
       health: { status: "ok" },
     });
-    if (!sglangTarget)
-      throw new Error("Expected configured SGLang runtime target");
+    if (!sglangTarget) throw new Error("Expected configured SGLang runtime target");
 
     const mlxTarget = targetsBody.targets.find(
       (candidate: Record<string, unknown>) =>
@@ -586,12 +573,9 @@ describe("controller route contracts", () => {
     if (!mlxTarget) throw new Error("Expected configured MLX runtime target");
 
     const targetId = String(target.id);
-    const selectResponse = await app.request(
-      `/runtime/targets/${targetId}/select`,
-      {
-        method: "POST",
-      },
-    );
+    const selectResponse = await app.request(`/runtime/targets/${targetId}/select`, {
+      method: "POST",
+    });
     const selectBody = await selectResponse.json();
     expect(selectResponse.status).toBe(200);
     expect(selectBody.target).toMatchObject({
@@ -680,12 +664,9 @@ describe("controller route contracts", () => {
     expect(missingJobResponse.status).toBe(404);
     expect(missingJobBody).toEqual({ detail: "Runtime job not found" });
 
-    const missingCancelResponse = await app.request(
-      "/runtime/jobs/missing-job/cancel",
-      {
-        method: "POST",
-      },
-    );
+    const missingCancelResponse = await app.request("/runtime/jobs/missing-job/cancel", {
+      method: "POST",
+    });
     const missingCancelBody = await missingCancelResponse.json();
     expect(missingCancelResponse.status).toBe(404);
     expect(missingCancelBody).toEqual({ detail: "Runtime job not found" });
@@ -826,10 +807,12 @@ describe("controller route contracts", () => {
   }, 30_000);
 
   test("managed runtime install helpers stay inside controller data dir", async () => {
-    const { managedPackageSpec, managedVenvPath } =
-      await import("../../../controller/src/modules/engines/runtimes/engine-jobs");
-    const { getSglangRuntimePython } =
-      await import("../../../controller/src/modules/engines/runtimes/runtime-upgrade");
+    const { managedPackageSpec, managedVenvPath } = await import(
+      "../../../controller/src/modules/engines/runtimes/engine-jobs"
+    );
+    const { getSglangRuntimePython } = await import(
+      "../../../controller/src/modules/engines/runtimes/runtime-upgrade"
+    );
     const selectedSglangPython = join(
       tempDir,
       "runtime",
@@ -866,15 +849,9 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      vllmBody.version === null || typeof vllmBody.version === "string",
-    ).toBe(true);
-    expect(
-      vllmBody.python_path === null || typeof vllmBody.python_path === "string",
-    ).toBe(true);
-    expect(
-      vllmBody.vllm_bin === null || typeof vllmBody.vllm_bin === "string",
-    ).toBe(true);
+    expect(vllmBody.version === null || typeof vllmBody.version === "string").toBe(true);
+    expect(vllmBody.python_path === null || typeof vllmBody.python_path === "string").toBe(true);
+    expect(vllmBody.vllm_bin === null || typeof vllmBody.vllm_bin === "string").toBe(true);
 
     const sglangResponse = await app.request("/runtime/sglang");
     const sglangBody = await sglangResponse.json();
@@ -883,13 +860,10 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      sglangBody.version === null || typeof sglangBody.version === "string",
-    ).toBe(true);
-    expect(
-      sglangBody.python_path === null ||
-        typeof sglangBody.python_path === "string",
-    ).toBe(true);
+    expect(sglangBody.version === null || typeof sglangBody.version === "string").toBe(true);
+    expect(sglangBody.python_path === null || typeof sglangBody.python_path === "string").toBe(
+      true,
+    );
 
     const llamaResponse = await app.request("/runtime/llamacpp");
     const llamaBody = await llamaResponse.json();
@@ -898,13 +872,8 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      llamaBody.version === null || typeof llamaBody.version === "string",
-    ).toBe(true);
-    expect(
-      llamaBody.binary_path === null ||
-        typeof llamaBody.binary_path === "string",
-    ).toBe(true);
+    expect(llamaBody.version === null || typeof llamaBody.version === "string").toBe(true);
+    expect(llamaBody.binary_path === null || typeof llamaBody.binary_path === "string").toBe(true);
 
     const mlxResponse = await app.request("/runtime/mlx");
     const mlxBody = await mlxResponse.json();
@@ -913,12 +882,8 @@ describe("controller route contracts", () => {
       installed: expect.any(Boolean),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      mlxBody.version === null || typeof mlxBody.version === "string",
-    ).toBe(true);
-    expect(
-      mlxBody.python_path === null || typeof mlxBody.python_path === "string",
-    ).toBe(true);
+    expect(mlxBody.version === null || typeof mlxBody.version === "string").toBe(true);
+    expect(mlxBody.python_path === null || typeof mlxBody.python_path === "string").toBe(true);
 
     const cudaResponse = await app.request("/runtime/cuda");
     const cudaBody = await cudaResponse.json();
@@ -926,14 +891,10 @@ describe("controller route contracts", () => {
     expect(cudaBody).toMatchObject({
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      cudaBody.driver_version === null ||
-        typeof cudaBody.driver_version === "string",
-    ).toBe(true);
-    expect(
-      cudaBody.cuda_version === null ||
-        typeof cudaBody.cuda_version === "string",
-    ).toBe(true);
+    expect(cudaBody.driver_version === null || typeof cudaBody.driver_version === "string").toBe(
+      true,
+    );
+    expect(cudaBody.cuda_version === null || typeof cudaBody.cuda_version === "string").toBe(true);
 
     const rocmResponse = await app.request("/runtime/rocm");
     const rocmBody = await rocmResponse.json();
@@ -942,16 +903,9 @@ describe("controller route contracts", () => {
       gpu_arch: expect.any(Array),
       upgrade_command_available: expect.any(Boolean),
     });
-    expect(
-      rocmBody.rocm_version === null ||
-        typeof rocmBody.rocm_version === "string",
-    ).toBe(true);
-    expect(
-      rocmBody.hip_version === null || typeof rocmBody.hip_version === "string",
-    ).toBe(true);
-    expect(
-      rocmBody.smi_tool === null || typeof rocmBody.smi_tool === "string",
-    ).toBe(true);
+    expect(rocmBody.rocm_version === null || typeof rocmBody.rocm_version === "string").toBe(true);
+    expect(rocmBody.hip_version === null || typeof rocmBody.hip_version === "string").toBe(true);
+    expect(rocmBody.smi_tool === null || typeof rocmBody.smi_tool === "string").toBe(true);
 
     const rows = readControllerRequestRows();
     expect(rows).toEqual(

@@ -44,9 +44,9 @@ describe("resolveEnvironmentImage", () => {
   });
 
   it("resolves SGLang's version+accelerator tag", () => {
-    expect(resolveEnvironmentImage({ engineId: "sglang", version: "0.4.7", variant: "cu124" })).toBe(
-      "lmsysorg/sglang:v0.4.7-cu124",
-    );
+    expect(
+      resolveEnvironmentImage({ engineId: "sglang", version: "0.4.7", variant: "cu124" }),
+    ).toBe("lmsysorg/sglang:v0.4.7-cu124");
   });
 
   it("resolves llama.cpp's build-number tag", () => {

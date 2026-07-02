@@ -4,7 +4,11 @@ import type { Config } from "../../../config/env";
 import { loadPersistedConfig, savePersistedConfig } from "../../../config/persisted-config";
 import { resolveBinary, runCommand } from "../../../core/command";
 import type { ProcessInfo } from "../../models/types";
-import type { EngineBackend, RuntimeBackendInfo, RuntimeTarget } from "../../../../../shared/contracts/system";
+import type {
+  EngineBackend,
+  RuntimeBackendInfo,
+  RuntimeTarget,
+} from "../../../../../shared/contracts/system";
 import { detectBackend, listProcesses } from "../process/process-utilities";
 import { makeRuntimeTarget } from "./runtime-target-factory";
 import {
@@ -102,7 +106,7 @@ const collectRunningTargets = (runningProcess?: ProcessInfo | null): RuntimeTarg
         active: activePid !== null && entry.pid === activePid,
         pythonPath,
         binaryPath,
-      })
+      }),
     );
   }
   return targets;
@@ -143,23 +147,23 @@ const collectVenvPythonFiles = (config: Config): string[] => {
 // candidate order so addTarget keeps its order-dependent dedupe behavior.
 const probePythonCandidates = (
   backend: PythonProbeBackend,
-  candidates: string[]
+  candidates: string[],
 ): Promise<Array<{ candidate: string; probe: Awaited<ReturnType<typeof probePythonRuntime>> }>> =>
   Promise.all(
     candidates.map(async (candidate) => ({
       candidate,
       probe: await probePythonRuntime(backend, candidate),
-    }))
+    })),
   );
 
 const collectPythonTargets = async (
   backend: PythonProbeBackend,
   config: Config,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget[]> => {
   const targets: RuntimeTarget[] = [];
   const running = collectRunningTargets(runningProcess).filter(
-    (target) => target.backend === backend
+    (target) => target.backend === backend,
   );
   for (const target of running) addTarget(targets, target);
 
@@ -171,7 +175,10 @@ const collectPythonTargets = async (
           ...splitEnvironmentList(process.env["LOCAL_STUDIO_RUNTIME_PYTHONS"]),
         ]
       : backend === "sglang"
-        ? [config.sglang_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"])]
+        ? [
+            config.sglang_python,
+            ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"]),
+          ]
         : [config.mlx_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"])];
   for (const { candidate, probe } of await probePythonCandidates(backend, unique(configured))) {
     addTarget(
@@ -186,7 +193,7 @@ const collectPythonTargets = async (
         version: probe.version,
         pythonPath: probe.pythonPath ?? candidate,
         healthMessage: probe.message,
-      })
+      }),
     );
   }
 
@@ -212,7 +219,7 @@ const collectPythonTargets = async (
         version: probe.version,
         pythonPath: probe.pythonPath ?? candidate,
         healthMessage: probe.message,
-      })
+      }),
     );
   }
 
@@ -234,7 +241,7 @@ const collectPythonTargets = async (
         version: probe.version,
         pythonPath: probe.pythonPath ?? systemPython,
         healthMessage: probe.message,
-      })
+      }),
     );
   }
 
@@ -242,7 +249,9 @@ const collectPythonTargets = async (
   const spec = getEngineSpec(backend);
   if (spec.cliBinary && spec.probeBinary) {
     const binary =
-      process.env["LOCAL_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1" ? null : resolveBinary(spec.cliBinary);
+      process.env["LOCAL_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1"
+        ? null
+        : resolveBinary(spec.cliBinary);
     if (binary) {
       const probe: BinaryProbeResult = await spec.probeBinary(binary);
       addTarget(
@@ -258,7 +267,7 @@ const collectPythonTargets = async (
           pythonPath: probe.pythonPath ?? null,
           binaryPath: probe.binaryPath,
           healthMessage: probe.message,
-        })
+        }),
       );
     }
   }
@@ -268,11 +277,11 @@ const collectPythonTargets = async (
 
 const collectLlamacppTargets = async (
   config: Config,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget[]> => {
   const targets: RuntimeTarget[] = [];
   const running = collectRunningTargets(runningProcess).filter(
-    (target) => target.backend === "llamacpp"
+    (target) => target.backend === "llamacpp",
   );
   for (const target of running) addTarget(targets, target);
 
@@ -290,7 +299,7 @@ const collectLlamacppTargets = async (
         version: probe.version,
         binaryPath: probe.binaryPath,
         healthMessage: probe.message,
-      })
+      }),
     );
   }
 
@@ -310,7 +319,7 @@ const collectLlamacppTargets = async (
         version: probe.version,
         binaryPath: probe.binaryPath,
         healthMessage: probe.message,
-      })
+      }),
     );
   }
   return targets;
@@ -344,7 +353,7 @@ const collectDockerTargets = (backend: EngineBackend): RuntimeTarget[] => {
           label: `${backend} Docker image (${image})`,
           installed: true,
           dockerImage: image,
-        })
+        }),
       );
     }
   }
@@ -366,7 +375,7 @@ const collectDockerTargets = (backend: EngineBackend): RuntimeTarget[] => {
           installed: true,
           active: true,
           dockerImage: image,
-        })
+        }),
       );
     }
   }
@@ -394,7 +403,7 @@ const collectBundledTargets = (backend: EngineBackend): RuntimeTarget[] => {
           installed: true,
           version,
           binaryPath: fullPath,
-        })
+        }),
       );
     }
   } catch {
@@ -420,13 +429,13 @@ const sortTargets = (targets: RuntimeTarget[]): RuntimeTarget[] => {
       Number(second.active) - Number(first.active) ||
       Number(second.installed) - Number(first.installed) ||
       compareVersions(second.version, first.version) ||
-      first.label.localeCompare(second.label)
+      first.label.localeCompare(second.label),
   );
 };
 
 export const getRuntimeTargets = async (
   config: Config,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget[]> => {
   const now = Date.now();
   if (
@@ -444,8 +453,8 @@ export const getRuntimeTargets = async (
     backends.map((backend) =>
       backend === "llamacpp"
         ? collectLlamacppTargets(config, runningProcess)
-        : collectPythonTargets(backend, config, runningProcess)
-    )
+        : collectPythonTargets(backend, config, runningProcess),
+    ),
   );
   backends.forEach((backend, index) => {
     for (const target of backendTargetGroups[index] ?? []) addTarget(targets, target);
@@ -464,7 +473,7 @@ export const getRuntimeTargets = async (
 export const getRuntimeTarget = async (
   config: Config,
   targetIdValue: string,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget | null> => {
   const targets = await getRuntimeTargets(config, runningProcess);
   return targets.find((target) => target.id === targetIdValue) ?? null;
@@ -473,7 +482,7 @@ export const getRuntimeTarget = async (
 export const selectRuntimeTarget = async (
   config: Config,
   targetIdValue: string,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget | null> => {
   const target = await getRuntimeTarget(config, targetIdValue, runningProcess);
   if (!target) return null;
@@ -491,10 +500,10 @@ export const selectRuntimeTarget = async (
 export const getDefaultRuntimeTarget = async (
   config: Config,
   backend: EngineBackend,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<RuntimeTarget | null> => {
   const targets = (await getRuntimeTargets(config, runningProcess)).filter(
-    (target) => target.backend === backend
+    (target) => target.backend === backend,
   );
   const newestInstalled = targets
     .filter((target) => target.installed)

@@ -44,7 +44,11 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
     return `${message} ${JSON.stringify(details)}`;
   };
 
-  const toFileLine = (target: LogLevel, message: string, details?: Record<string, unknown>): string => {
+  const toFileLine = (
+    target: LogLevel,
+    message: string,
+    details?: Record<string, unknown>,
+  ): string => {
     const ts = new Date().toISOString();
     const base = format(message, details);
     return `${ts} ${target.toUpperCase()} ${base}\n`;

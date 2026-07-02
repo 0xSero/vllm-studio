@@ -71,8 +71,7 @@ const readUsageTotals = (usage: InferenceUsageInput): InferenceUsageTotals => {
   return {
     promptTokens: usage.prompt_tokens ?? 0,
     completionTokens: usage.completion_tokens ?? 0,
-    reasoningTokens:
-      usage.reasoning_tokens ?? completionDetails?.["reasoning_tokens"] ?? 0,
+    reasoningTokens: usage.reasoning_tokens ?? completionDetails?.["reasoning_tokens"] ?? 0,
     cacheReadTokens: promptDetails?.["cached_tokens"] ?? usage.cache_read_tokens ?? 0,
     cacheWriteTokens: usage.cache_write_tokens ?? 0,
   };
@@ -80,7 +79,7 @@ const readUsageTotals = (usage: InferenceUsageInput): InferenceUsageTotals => {
 
 const addLifetimeUsage = (
   stores: InferenceAccountingStores,
-  totals: InferenceUsageTotals
+  totals: InferenceUsageTotals,
 ): void => {
   if (totals.promptTokens > 0) {
     stores.lifetimeMetricsStore.addPromptTokens(totals.promptTokens);
@@ -97,7 +96,7 @@ const addLifetimeUsage = (
 
 const tryRecordInference = (
   options: InferenceAccountingOptions,
-  record: InferenceRequestRecord
+  record: InferenceRequestRecord,
 ): void => {
   try {
     options.stores.inferenceRequestStore.record(record);
@@ -108,7 +107,7 @@ const tryRecordInference = (
 
 export const recordNonStreamingInferenceUsage = (
   options: InferenceAccountingOptions,
-  input: NonStreamingInferenceRecordInput
+  input: NonStreamingInferenceRecordInput,
 ): InferenceUsageTotals | null => {
   if (!input.usage) return null;
 
@@ -128,7 +127,7 @@ export const recordNonStreamingInferenceUsage = (
 
 export const recordStreamingInferenceUsage = (
   options: InferenceAccountingOptions,
-  input: StreamingInferenceRecordInput
+  input: StreamingInferenceRecordInput,
 ): InferenceUsageTotals => {
   const totals = readUsageTotals(input.usage);
   addLifetimeUsage(options.stores, totals);

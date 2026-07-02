@@ -3,7 +3,15 @@
 import { Plus, Search, Square } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui";
-import { ModelActiveSummary, ModelButton, ModelInput, ModelRow, ModelSection, ModelStatus, type ModelSummaryItem } from "./model-page";
+import {
+  ModelActiveSummary,
+  ModelButton,
+  ModelInput,
+  ModelRow,
+  ModelSection,
+  ModelStatus,
+  type ModelSummaryItem,
+} from "./model-page";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { RecipesTableProps } from "./types";
 import { RecipesTable } from "./recipes-table";

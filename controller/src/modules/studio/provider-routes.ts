@@ -21,7 +21,7 @@ const serializeProvider = (p: ProviderConfig): ProviderView => ({
 
 const saveProviders = (
   context: { config: { data_dir: string; providers: ProviderConfig[] } },
-  providers: ProviderConfig[]
+  providers: ProviderConfig[],
 ): void => {
   savePersistedConfig(context.config.data_dir, { providers });
   context.config.providers = providers;
@@ -92,7 +92,7 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
 
     saveProviders(
       context,
-      context.config.providers.filter((p) => p.id !== providerId)
+      context.config.providers.filter((p) => p.id !== providerId),
     );
 
     return ctx.json({ success: true });
@@ -120,7 +120,7 @@ export const registerStudioProviderRoutes: RouteRegistrar = (app, context) => {
         } catch {
           // skip unreachable providers
         }
-      })
+      }),
     );
 
     return ctx.json({ providers: results });

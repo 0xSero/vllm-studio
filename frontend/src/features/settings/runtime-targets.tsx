@@ -244,11 +244,7 @@ function RuntimeTargetAction({
       disabled={disabled}
       title={canUpdate ? undefined : unsupportedReason}
     >
-      {running ? (
-        <Spinner size="xs" />
-      ) : (
-        <ArrowUpCircle className="h-3 w-3" />
-      )}
+      {running ? <Spinner size="xs" /> : <ArrowUpCircle className="h-3 w-3" />}
       {running ? job?.status : canUpdate ? (target.installed ? "Update" : "Install") : "Managed"}
     </SettingsButton>
   );

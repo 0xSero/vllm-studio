@@ -115,7 +115,7 @@ export class EventManager {
   public async publishLogLine(sessionId: string, line: string): Promise<void> {
     await this.publish(
       new Event(CONTROLLER_EVENTS.LOG, { session_id: sessionId, line }),
-      `logs:${sessionId}`
+      `logs:${sessionId}`,
     );
   }
 
@@ -123,7 +123,7 @@ export class EventManager {
     recipeId: string,
     stage: string,
     message: string,
-    progress?: number
+    progress?: number,
   ): Promise<void> {
     const payload: Record<string, unknown> = { recipe_id: recipeId, stage, message };
     if (progress !== undefined) {

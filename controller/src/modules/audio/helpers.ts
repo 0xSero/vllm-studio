@@ -66,14 +66,14 @@ export const looksLikeWav = (bytes: Uint8Array, mimeType?: string): boolean => {
 
 export const resolveSttModelPath = (
   context: AppContext,
-  modelField: FormDataEntryValue | null
+  modelField: FormDataEntryValue | null,
 ): { requestedModel: string; modelPath: string } => {
   const requestedModel = parseField(modelField) ?? process.env["LOCAL_STUDIO_STT_MODEL"]?.trim();
   if (!requestedModel) {
     throw new SttIntegrationError(
       400,
       "model_missing",
-      "No STT model provided. Set model field or LOCAL_STUDIO_STT_MODEL."
+      "No STT model provided. Set model field or LOCAL_STUDIO_STT_MODEL.",
     );
   }
 
@@ -93,7 +93,7 @@ export const resolveSttModelPath = (
 
 export const resolveTtsModelPath = (
   context: AppContext,
-  modelValue: unknown
+  modelValue: unknown,
 ): { requestedModel: string; modelPath: string } => {
   const explicitModel = typeof modelValue === "string" ? modelValue.trim() : "";
   const requestedModel = explicitModel || process.env["LOCAL_STUDIO_TTS_MODEL"]?.trim();
@@ -101,7 +101,7 @@ export const resolveTtsModelPath = (
     throw new TtsIntegrationError(
       400,
       "model_missing",
-      "No TTS model provided. Set model field or LOCAL_STUDIO_TTS_MODEL."
+      "No TTS model provided. Set model field or LOCAL_STUDIO_TTS_MODEL.",
     );
   }
 
@@ -123,7 +123,7 @@ export const ensureServiceLease = async (
   context: AppContext,
   mode: SttMode | TtsMode,
   replace: boolean,
-  serviceId: "stt" | "tts"
+  serviceId: "stt" | "tts",
 ): Promise<Record<string, unknown> | null> => {
   const holder = await context.processManager.findInferenceProcess(context.config.inference_port);
   if (!holder) {
@@ -164,14 +164,14 @@ export const defaultTranscodeToWav = async (options: {
     throw new SttIntegrationError(
       503,
       "ffmpeg_missing",
-      "ffmpeg is required for non-WAV uploads. Install ffmpeg or upload WAV input."
+      "ffmpeg is required for non-WAV uploads. Install ffmpeg or upload WAV input.",
     );
   }
 
   const result = await runCommandAsync(
     ffmpegPath,
     ["-y", "-i", options.sourcePath, "-ac", "1", "-ar", "16000", "-f", "wav", options.outputPath],
-    { timeoutMs: AUDIO_TRANSCODE_TIMEOUT_MS }
+    { timeoutMs: AUDIO_TRANSCODE_TIMEOUT_MS },
   );
 
   if (result.timedOut) {
@@ -191,7 +191,7 @@ export const defaultTranscodeToWav = async (options: {
         signal: result.signal,
         stderr: result.stderr,
         stdout: result.stdout,
-      }
+      },
     );
   }
 

@@ -3,7 +3,10 @@ import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
+import type {
+  RuntimeBackendInfo,
+  RuntimeUpgradeResult,
+} from "../../../../../shared/contracts/system";
 import {
   getDefaultReasoningParser,
   getDefaultToolCallParser,
@@ -106,7 +109,9 @@ const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
     resolveSglangCliBinary(config.sglang_python ?? null) ??
     resolveSglangCliBinary(resolvedManagedPython);
   const head =
-    cliBinary && existsSync(cliBinary) ? [cliBinary, "serve"] : [python, "-m", "sglang.launch_server"];
+    cliBinary && existsSync(cliBinary)
+      ? [cliBinary, "serve"]
+      : [python, "-m", "sglang.launch_server"];
   return [...head, ...buildSglangRecipeArguments(recipe)];
 };
 
@@ -214,9 +219,14 @@ const getConfigHelp = async (config: Config): Promise<ConfigHelpResult> => {
   }
 
   const python = resolvePythonPath(config) ?? "python3";
-  const result = await runCommandAsync(python, ["-m", "sglang.launch_server", "--help"], { timeoutMs: 15_000 });
+  const result = await runCommandAsync(python, ["-m", "sglang.launch_server", "--help"], {
+    timeoutMs: 15_000,
+  });
   if (result.status !== 0) {
-    return { config: result.stdout || null, error: result.stderr || "Failed to fetch SGLang config" };
+    return {
+      config: result.stdout || null,
+      error: result.stderr || "Failed to fetch SGLang config",
+    };
   }
   return { config: result.stdout || null, error: null };
 };

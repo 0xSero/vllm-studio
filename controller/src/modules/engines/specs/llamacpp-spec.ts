@@ -4,7 +4,10 @@ import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsync } from "../../../core/command";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
+import type {
+  RuntimeBackendInfo,
+  RuntimeUpgradeResult,
+} from "../../../../../shared/contracts/system";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import {
   appendLlamacppArguments,
@@ -13,11 +16,7 @@ import {
 } from "../process/backend-builder";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
 import { extractFlag } from "../argument-utilities";
-import type {
-  ConfigHelpResult,
-  EngineSpec,
-  InstallOptions,
-} from "../engine-spec";
+import type { ConfigHelpResult, EngineSpec, InstallOptions } from "../engine-spec";
 import {
   getUpgradeCommandFromEnvironment,
   LLAMACPP_UPGRADE_ENV,
@@ -83,7 +82,10 @@ const getConfigHelp = async (config: Config): Promise<ConfigHelpResult> => {
     timeoutMs: LLAMACPP_HELP_TIMEOUT_MS,
   });
   if (result.status !== 0) {
-    return { config: result.stdout || null, error: result.stderr || "Failed to fetch llama.cpp config" };
+    return {
+      config: result.stdout || null,
+      error: result.stderr || "Failed to fetch llama.cpp config",
+    };
   }
   return { config: result.stdout || null, error: null };
 };

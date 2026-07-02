@@ -26,7 +26,7 @@ import {
 
 const resolveHfToken = (
   ctx: { req: { header: (name: string) => string | undefined } },
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
 ): string | null => {
   const bodyToken = typeof body?.["hf_token"] === "string" ? String(body?.["hf_token"]) : null;
   const headerToken = ctx.req.header("x-hf-token") ?? ctx.req.header("x-huggingface-token") ?? null;
@@ -71,7 +71,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   const launchAbortControllers = new Map<string, AbortController>();
   const getObservedProcess = (label: string): Promise<ProcessInfo | null> =>
     observeControllerFunction(context, `${label}.getCurrentProcess`, () =>
-      context.engineService.getCurrentProcess()
+      context.engineService.getCurrentProcess(),
     );
 
   app.get("/recipes", async (ctx) => {
@@ -132,7 +132,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     if (!deleted) throw notFound("Recipe not found");
     context.engineService.resetLaunchFailureBudget(recipeId);
     await context.eventManager.publish(
-      new Event(CONTROLLER_EVENTS.RECIPE_DELETED, { recipe_id: recipeId })
+      new Event(CONTROLLER_EVENTS.RECIPE_DELETED, { recipe_id: recipeId }),
     );
     return ctx.json({ success: true });
   });
@@ -163,7 +163,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
       });
     }
     const current = await context.processManager.findInferenceProcess(
-      context.config.inference_port
+      context.config.inference_port,
     );
     if (current && !isRecipeRunning(recipe, current, { allowEitherPathContains: true })) {
       context.logger.warn("Rejected launch request while another model is running", {
@@ -244,8 +244,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     const download = await context.downloadManager.start({
       model_id: modelId,
       revision: typeof body["revision"] === "string" ? body["revision"] : null,
-      destination_dir:
-        typeof body["destination_dir"] === "string" ? body["destination_dir"] : null,
+      destination_dir: typeof body["destination_dir"] === "string" ? body["destination_dir"] : null,
       allow_patterns: Array.isArray(body["allow_patterns"])
         ? body["allow_patterns"].map(String)
         : null,

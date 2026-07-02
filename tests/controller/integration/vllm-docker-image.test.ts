@@ -32,7 +32,8 @@ const baseRecipe = (extra: Record<string, unknown>, env: Record<string, string> 
 
 const config = { data_dir: "/tmp/local-studio-test" } as Config;
 
-const buildVllmCommand = (recipe: Recipe): string[] => getEngineSpec("vllm").buildCommand(recipe, config);
+const buildVllmCommand = (recipe: Recipe): string[] =>
+  getEngineSpec("vllm").buildCommand(recipe, config);
 
 const pairIndex = (cmd: string[], flag: string, value: string): number => {
   for (let i = 0; i < cmd.length - 1; i += 1) {

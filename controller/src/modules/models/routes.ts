@@ -231,7 +231,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
     }
 
     const roots = Array.from(rootIndex.values()).sort((left, right) =>
-      left.path.localeCompare(right.path)
+      left.path.localeCompare(right.path),
     );
     const scanRoots = roots.filter((root) => root.exists).map((root) => root.path);
 
@@ -250,7 +250,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
       models.push(info);
     }
     models.sort((left, right) =>
-      String(left.name).toLowerCase().localeCompare(String(right.name).toLowerCase())
+      String(left.name).toLowerCase().localeCompare(String(right.name).toLowerCase()),
     );
 
     const rootsPayload = roots.map((root) => ({
@@ -317,14 +317,14 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         fetch(url),
         search && search.includes("/")
           ? fetch(
-              `https://huggingface.co/api/models/${search.split("/").map(encodeURIComponent).join("/")}`
+              `https://huggingface.co/api/models/${search.split("/").map(encodeURIComponent).join("/")}`,
             )
           : Promise.resolve(null),
       ]);
       if (!listResponse.ok) {
         return ctx.json(
           { detail: `HuggingFace API error: ${listResponse.status}` },
-          { status: listResponse.status }
+          { status: listResponse.status },
         );
       }
       const data = ((await listResponse.json()) as Record<string, unknown>[]).map(normalize);
@@ -345,7 +345,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
     } catch (error) {
       return ctx.json(
         { detail: `Failed to reach HuggingFace API: ${String(error)}` },
-        { status: 503 }
+        { status: 503 },
       );
     }
   });

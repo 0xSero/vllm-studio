@@ -46,7 +46,8 @@ export const registerEnvironmentRoutes: RouteRegistrar = (app, context) => {
     if (!isKnownEngineImage(image)) {
       throw badRequest(`"${image}" is not a known engine image repository`);
     }
-    if (!resolveBinary("docker")) throw serviceUnavailable("docker is not installed or not on PATH");
+    if (!resolveBinary("docker"))
+      throw serviceUnavailable("docker is not installed or not on PATH");
     return ctx.json(startEngineImagePull(image));
   });
 
@@ -92,7 +93,8 @@ export const registerEnvironmentRoutes: RouteRegistrar = (app, context) => {
     if (!recipe) {
       throw badRequest(`Environment "${environmentId}" references a missing recipe`);
     }
-    if (!resolveBinary("docker")) throw serviceUnavailable("docker is not installed or not on PATH");
+    if (!resolveBinary("docker"))
+      throw serviceUnavailable("docker is not installed or not on PATH");
     if (isEnvironmentRunning(environmentId)) {
       return ctx.json({ started: true, message: "Already running" });
     }
@@ -102,7 +104,8 @@ export const registerEnvironmentRoutes: RouteRegistrar = (app, context) => {
 
   app.post("/environments/:environmentId/stop", async (ctx) => {
     const environmentId = ctx.req.param("environmentId");
-    if (!context.stores.environmentStore.get(environmentId)) throw notFound("Environment not found");
+    if (!context.stores.environmentStore.get(environmentId))
+      throw notFound("Environment not found");
     const force = ctx.req.query("force") === "1";
     const stopped = await stopEnvironment(environmentId, force);
     return ctx.json({ stopped });

@@ -25,12 +25,12 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
   app.get("/usage", async (ctx) => {
     try {
       const knownModels = await observeControllerFunction(context, "usage.collectKnownModels", () =>
-        collectKnownModels(context)
+        collectKnownModels(context),
       );
       const usage = await observeControllerFunction(
         context,
         "usage.aggregateInferenceRequests",
-        () => context.stores.inferenceRequestStore.aggregate(knownModels)
+        () => context.stores.inferenceRequestStore.aggregate(knownModels),
       );
       const body: UsageStats = {
         ...(usage ?? emptyResponse()),
@@ -53,7 +53,7 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
       // whether the model is one of our recipes (so users can see their
       // external model usage too).
       const usage = await observeControllerFunction(context, "usage.aggregatePiSessions", () =>
-        getUsageFromPiSessions()
+        getUsageFromPiSessions(),
       );
       const body: UsageStats = usage ?? emptyResponse();
       return ctx.json(body);

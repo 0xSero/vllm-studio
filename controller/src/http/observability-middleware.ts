@@ -29,7 +29,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function createControllerRequestObservabilityMiddleware(
-  context: AppContext
+  context: AppContext,
 ): MiddlewareHandler {
   return async (ctx, next) => {
     if (TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {

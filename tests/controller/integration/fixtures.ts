@@ -49,9 +49,7 @@ export type ControllerFunctionCallRow = {
 
 export function registerControllerTestLifecycle() {
   beforeEach(() => {
-    envSnapshot = Object.fromEntries(
-      ENV_KEYS.map((key) => [key, process.env[key]]),
-    );
+    envSnapshot = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
     tempDir = mkdtempSync(join(tmpdir(), "local-studio-controller-test-"));
     Object.assign(process.env, {
       LOCAL_STUDIO_DATA_DIR: tempDir,
@@ -134,8 +132,5 @@ export async function collectSseJson(stream: ReadableStream<Uint8Array>) {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
-    .map(
-      (line) =>
-        JSON.parse(line.slice("data: ".length)) as Record<string, unknown>,
-    );
+    .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
 }

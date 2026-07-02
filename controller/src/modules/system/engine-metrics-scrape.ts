@@ -10,7 +10,7 @@ export type EngineScrape = {
 
 export const scrapeEngineMetrics = async (
   port: number,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<EngineScrape> => {
   const scrape: EngineScrape = {
     status: 0,

@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 import { StatusPill } from "@/ui";
-import { SettingsButton, SettingsFactRows, SettingsGroup, type SettingsFactRow } from "./settings-ui";
+import {
+  SettingsButton,
+  SettingsFactRows,
+  SettingsGroup,
+  type SettingsFactRow,
+} from "./settings-ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import { useSidebarStatus } from "@/features/settings/use-sidebar-status";

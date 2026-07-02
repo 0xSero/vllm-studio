@@ -30,11 +30,7 @@ import {
   hasModuleInvocation,
   positionalAfterServe,
 } from "../argument-utilities";
-import type {
-  BinaryProbeResult,
-  ConfigHelpResult,
-  EngineSpec,
-} from "../engine-spec";
+import type { BinaryProbeResult, ConfigHelpResult, EngineSpec } from "../engine-spec";
 
 export const buildVllmRecipeArguments = (recipe: Recipe): string[] => {
   const command: string[] = ["--host", recipe.host, "--port", String(recipe.port)];

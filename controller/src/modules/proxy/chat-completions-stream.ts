@@ -32,7 +32,7 @@ export interface ChatCompletionsStreamParameters {
  * long vLLM prefill (no bytes otherwise flow until the first token).
  */
 export const buildChatCompletionsStreamResponse = (
-  parameters: ChatCompletionsStreamParameters
+  parameters: ChatCompletionsStreamParameters,
 ): Response => {
   const {
     upstreamUrl,
@@ -175,7 +175,7 @@ export const buildChatCompletionsStreamResponse = (
                 duration_ms: Math.round(performance.now() - requestStart),
                 status: upstreamResponse.status,
               },
-            }
+            },
           );
         },
         () => {
@@ -184,9 +184,9 @@ export const buildChatCompletionsStreamResponse = (
         {
           bufferImplicitReasoningContent: shouldBufferImplicitReasoningContent(
             recordedModel,
-            reasoningParser
+            reasoningParser,
           ),
-        }
+        },
       );
 
       const pipeReader = toolCallStream.getReader();

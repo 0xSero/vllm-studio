@@ -6,8 +6,9 @@ registerControllerTestLifecycle();
 
 describe("controller route contracts", () => {
   test("stream proxy keeps content with null tool_calls as answer text", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -52,9 +53,7 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -71,8 +70,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy keeps same-delta content visible when tool_calls are present", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -103,9 +103,7 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -113,14 +111,13 @@ describe("controller route contracts", () => {
 
     expect(delta?.content).toBe("Let me inspect the file first.");
     expect(delta?.reasoning_content).toBeUndefined();
-    expect(delta?.tool_calls).toEqual([
-      expect.objectContaining({ id: "call-read" }),
-    ]);
+    expect(delta?.tool_calls).toEqual([expect.objectContaining({ id: "call-read" })]);
   });
 
   test("stream proxy splits implicit thinking close tags without duplicating answer text", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -131,8 +128,7 @@ describe("controller route contracts", () => {
                 {
                   index: 0,
                   delta: {
-                    content:
-                      "I should inspect this first. </think>Here is the answer.",
+                    content: "I should inspect this first. </think>Here is the answer.",
                   },
                 },
               ],
@@ -144,9 +140,7 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -155,14 +149,13 @@ describe("controller route contracts", () => {
     expect(delta?.content).toBe("Here is the answer.");
     expect(delta?.reasoning_content).toBe("I should inspect this first. ");
     expect(String(delta?.reasoning_content)).not.toContain("</think>");
-    expect(String(delta?.reasoning_content)).not.toContain(
-      "Here is the answer.",
-    );
+    expect(String(delta?.reasoning_content)).not.toContain("Here is the answer.");
   });
 
   test("stream proxy buffers split implicit thinking until the close tag arrives", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -195,9 +188,7 @@ describe("controller route contracts", () => {
       }),
     );
     const deltas = events.map((event) => {
-      const choices = event["choices"] as
-        | Array<{ delta?: Record<string, unknown> }>
-        | undefined;
+      const choices = event["choices"] as Array<{ delta?: Record<string, unknown> }> | undefined;
       return choices?.[0]?.delta ?? {};
     });
 
@@ -209,8 +200,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy normalizes openai-compatible reasoning aliases", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -233,9 +225,7 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const firstEvent = events[0] as {
       choices?: Array<{ delta?: Record<string, unknown> }>;
     };
@@ -246,8 +236,9 @@ describe("controller route contracts", () => {
   });
 
   test("message normalizer maps reasoning aliases to reasoning_content", async () => {
-    const { normalizeReasoningAndContentInMessage } =
-      await import("../../../controller/src/modules/proxy/reasoning");
+    const { normalizeReasoningAndContentInMessage } = await import(
+      "../../../controller/src/modules/proxy/reasoning"
+    );
     const message: Record<string, unknown> = {
       role: "assistant",
       content: "pong",
@@ -262,8 +253,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy still extracts XML tool calls after stripping visible content", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -287,15 +279,11 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const toolEvent = events.find((event) => {
       const choices = event["choices"];
       if (!Array.isArray(choices)) return false;
-      const firstChoice = choices[0] as
-        | { delta?: Record<string, unknown> }
-        | undefined;
+      const firstChoice = choices[0] as { delta?: Record<string, unknown> } | undefined;
       return Array.isArray(firstChoice?.delta?.tool_calls);
     }) as { choices?: Array<{ delta?: Record<string, unknown> }> } | undefined;
 
@@ -311,8 +299,9 @@ describe("controller route contracts", () => {
   });
 
   test("stream proxy extracts bare JSON tool lines without showing them as content", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -331,9 +320,7 @@ describe("controller route contracts", () => {
                       JSON.stringify({
                         tool: "set_plan",
                         args: {
-                          steps: [
-                            { title: "Search for Oxsero on major platforms" },
-                          ],
+                          steps: [{ title: "Search for Oxsero on major platforms" }],
                         },
                       }),
                     ].join("\n"),
@@ -348,17 +335,15 @@ describe("controller route contracts", () => {
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const visibleContent = events
       .flatMap((event) =>
         Array.isArray(event["choices"])
           ? event["choices"].map((choice) =>
               String(
-                ((choice as { delta?: Record<string, unknown> }).delta?.[
-                  "content"
-                ] as string | undefined) ?? "",
+                ((choice as { delta?: Record<string, unknown> }).delta?.["content"] as
+                  | string
+                  | undefined) ?? "",
               ),
             )
           : [],
@@ -367,9 +352,7 @@ describe("controller route contracts", () => {
     const toolEvent = events.find((event) => {
       const choices = event["choices"];
       if (!Array.isArray(choices)) return false;
-      const firstChoice = choices[0] as
-        | { delta?: Record<string, unknown> }
-        | undefined;
+      const firstChoice = choices[0] as { delta?: Record<string, unknown> } | undefined;
       return Array.isArray(firstChoice?.delta?.tool_calls);
     }) as { choices?: Array<{ delta?: Record<string, unknown> }> } | undefined;
 
@@ -395,8 +378,9 @@ describe("controller route contracts", () => {
   });
 
   test("tool XML parser repairs malformed JSON arguments through pi-ai", async () => {
-    const { parseToolCallsFromContent } =
-      await import("../../../controller/src/modules/proxy/tool-call-parser");
+    const { parseToolCallsFromContent } = await import(
+      "../../../controller/src/modules/proxy/tool-call-parser"
+    );
 
     const [call] = parseToolCallsFromContent(
       `<tool_call><function=write_file><arguments>{"content":"hello
@@ -410,8 +394,9 @@ world"}</arguments></tool_call>`,
   });
 
   test("tool XML parser extracts invoke parameter blocks", async () => {
-    const { parseToolCallsFromContent, stripToolCallsFromContent } =
-      await import("../../../controller/src/modules/proxy/tool-call-parser");
+    const { parseToolCallsFromContent, stripToolCallsFromContent } = await import(
+      "../../../controller/src/modules/proxy/tool-call-parser"
+    );
 
     const content =
       '<invoke name="set_goal"> <parameter name="objective">Deep research on 0xsero</parameter> </invoke>';
@@ -443,8 +428,9 @@ world"}</arguments></tool_call>`,
   });
 
   test("stream proxy extracts invoke XML tool calls without visible content", async () => {
-    const { createToolCallStream } =
-      await import("../../../controller/src/modules/proxy/tool-call-stream");
+    const { createToolCallStream } = await import(
+      "../../../controller/src/modules/proxy/tool-call-stream"
+    );
     const encoder = new TextEncoder();
     const upstream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -468,17 +454,15 @@ world"}</arguments></tool_call>`,
       },
     });
 
-    const events = await collectSseJson(
-      createToolCallStream(upstream.getReader()),
-    );
+    const events = await collectSseJson(createToolCallStream(upstream.getReader()));
     const visibleContent = events
       .flatMap((event) =>
         Array.isArray(event["choices"])
           ? event["choices"].map((choice) =>
               String(
-                ((choice as { delta?: Record<string, unknown> }).delta?.[
-                  "content"
-                ] as string | undefined) ?? "",
+                ((choice as { delta?: Record<string, unknown> }).delta?.["content"] as
+                  | string
+                  | undefined) ?? "",
               ),
             )
           : [],
@@ -487,9 +471,7 @@ world"}</arguments></tool_call>`,
     const toolEvent = events.find((event) => {
       const choices = event["choices"];
       if (!Array.isArray(choices)) return false;
-      const firstChoice = choices[0] as
-        | { delta?: Record<string, unknown> }
-        | undefined;
+      const firstChoice = choices[0] as { delta?: Record<string, unknown> } | undefined;
       return Array.isArray(firstChoice?.delta?.tool_calls);
     }) as { choices?: Array<{ delta?: Record<string, unknown> }> } | undefined;
 

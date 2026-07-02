@@ -128,7 +128,7 @@ const rocmSmiToBytes = (parsed: { value: number; unit: string } | null): number 
 
 const enrichUnitFromLabel = (
   parsed: { value: number; unit: string } | null,
-  label: string
+  label: string,
 ): { value: number; unit: string } | null => {
   if (!parsed) return null;
   if (parsed.unit) return parsed;
@@ -161,11 +161,11 @@ export const parseRocmSmiText = (text: string): RocmSmiParsed[] => {
       if (valueText) entry.name = valueText;
     } else if (label.includes("total vram")) {
       entry.memory_total_bytes = rocmSmiToBytes(
-        enrichUnitFromLabel(parseRocmSmiValue(valueText), label)
+        enrichUnitFromLabel(parseRocmSmiValue(valueText), label),
       );
     } else if (label.includes("used vram")) {
       entry.memory_used_bytes = rocmSmiToBytes(
-        enrichUnitFromLabel(parseRocmSmiValue(valueText), label)
+        enrichUnitFromLabel(parseRocmSmiValue(valueText), label),
       );
     } else if (label.includes("gpu use")) {
       const parsed = parseRocmSmiValue(valueText.replace("%", "").trim());
@@ -239,17 +239,20 @@ export const getGpuInfoFromAmdSmi = (): GpuInfo[] => {
 
         const utilization = Math.max(
           0,
-          Math.round(readAmdSmiValueNumber(metric.usage?.gfx_activity) ?? 0)
+          Math.round(readAmdSmiValueNumber(metric.usage?.gfx_activity) ?? 0),
         );
         const temperature = Math.max(
           0,
           Math.round(
             readAmdSmiValueNumber(metric.temperature?.hotspot) ??
               readAmdSmiValueNumber(metric.temperature?.edge) ??
-              0
-          )
+              0,
+          ),
         );
-        const powerDraw = Math.max(0, Number(readAmdSmiValueNumber(metric.power?.socket_power) ?? 0));
+        const powerDraw = Math.max(
+          0,
+          Number(readAmdSmiValueNumber(metric.power?.socket_power) ?? 0),
+        );
 
         return {
           index,

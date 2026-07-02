@@ -58,13 +58,7 @@ export function StepWelcome({
         <Button
           onClick={saveSettings}
           disabled={savingSettings}
-          icon={
-            savingSettings ? (
-              <Spinner />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )
-          }
+          icon={savingSettings ? <Spinner /> : <ChevronRight className="h-4 w-4" />}
         >
           Continue
         </Button>

@@ -44,7 +44,7 @@ export class RecipeStore {
   /** Fixes stale python_path values on all vLLM recipes at startup. */
   private normalizeVllmRecipes(): void {
     const update = this.db.prepare(
-      `UPDATE recipes SET ${this.useJsonColumn ? "json" : "data"} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      `UPDATE recipes SET ${this.useJsonColumn ? "json" : "data"} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     );
     const column = this.useJsonColumn ? "json" : "data";
     const rows = this.db.query(`SELECT id, ${column} FROM recipes`).all() as Array<{
@@ -64,7 +64,7 @@ export class RecipeStore {
           continue;
         }
         const currentPythonPath = resolveVllmRecipePythonPath(
-          typeof parsed["python_path"] === "string" ? String(parsed["python_path"]) : null
+          typeof parsed["python_path"] === "string" ? String(parsed["python_path"]) : null,
         );
         if (
           typeof parsed["python_path"] === "string" &&
@@ -142,7 +142,7 @@ export class RecipeStore {
         INSERT INTO recipes (id, ${column}, created_at, updated_at)
         VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP
-      `
+      `,
         )
         .run(recipe.id, data);
       return;
@@ -152,7 +152,7 @@ export class RecipeStore {
         `
       INSERT INTO recipes (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-    `
+    `,
       )
       .run(recipe.id, data);
   }

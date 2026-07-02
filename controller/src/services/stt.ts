@@ -24,7 +24,7 @@ export class SttIntegrationError extends Error {
     status: number,
     code: string,
     message: string,
-    details: Record<string, unknown> = {}
+    details: Record<string, unknown> = {},
   ) {
     super(message);
     this.status = status;
@@ -57,7 +57,7 @@ const parseWhisperOutput = (stdout: string, stderr: string): string => {
 };
 
 const transcribeWithWhisperCpp = async (
-  request: SttTranscriptionRequest
+  request: SttTranscriptionRequest,
 ): Promise<SttTranscriptionResult> => {
   const configuredPath = process.env["LOCAL_STUDIO_STT_CLI"];
   const cliPath = configuredPath ? resolveBinary(configuredPath) : resolveBinary("whisper-cli");
@@ -70,7 +70,7 @@ const transcribeWithWhisperCpp = async (
       {
         configured_path: configuredPath ?? null,
         expected_binary: "whisper-cli",
-      }
+      },
     );
   }
 
@@ -118,7 +118,7 @@ const transcribeWithWhisperCpp = async (
 };
 
 export const transcribeAudio = async (
-  request: SttTranscriptionRequest
+  request: SttTranscriptionRequest,
 ): Promise<SttTranscriptionResult> => {
   const backend = (process.env["LOCAL_STUDIO_STT_BACKEND"] ?? "whispercpp").toLowerCase();
 

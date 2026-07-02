@@ -17,11 +17,7 @@ describe("controller route contracts", () => {
   test("monitoring and log routes persist operational observability", async () => {
     const logsDir = join(tempDir, "logs");
     mkdirSync(logsDir, { recursive: true });
-    writeFileSync(
-      join(logsDir, "vllm_route-test.log"),
-      "first line\nsecond line\n",
-      "utf8",
-    );
+    writeFileSync(join(logsDir, "vllm_route-test.log"), "first line\nsecond line\n", "utf8");
     const { app, context } = await createTestHarness();
 
     const currentMetricsResponse = await app.request("/v1/metrics/vllm");
@@ -38,17 +34,14 @@ describe("controller route contracts", () => {
     expect(peakMetricsResponse.status).toBe(200);
     expect(peakMetricsBody).toEqual({ metrics: [] });
 
-    const missingPeakResponse = await app.request(
-      "/peak-metrics?model_id=missing-model",
-    );
+    const missingPeakResponse = await app.request("/peak-metrics?model_id=missing-model");
     const missingPeakBody = await missingPeakResponse.json();
     expect(missingPeakResponse.status).toBe(200);
     expect(missingPeakBody).toEqual({ error: "No metrics for this model" });
 
-    const benchmarkResponse = await app.request(
-      "/benchmark?prompt_tokens=20&max_tokens=4",
-      { method: "POST" },
-    );
+    const benchmarkResponse = await app.request("/benchmark?prompt_tokens=20&max_tokens=4", {
+      method: "POST",
+    });
     const benchmarkBody = await benchmarkResponse.json();
     expect(benchmarkResponse.status).toBe(200);
     expect(benchmarkBody).toEqual({ error: "No model running" });
@@ -77,16 +70,11 @@ describe("controller route contracts", () => {
     });
 
     const streamController = new AbortController();
-    const logStreamResponse = await app.request(
-      "/logs/route-test/stream?tail=1",
-      {
-        signal: streamController.signal,
-      },
-    );
+    const logStreamResponse = await app.request("/logs/route-test/stream?tail=1", {
+      signal: streamController.signal,
+    });
     expect(logStreamResponse.status).toBe(200);
-    expect(logStreamResponse.headers.get("content-type")).toContain(
-      "text/event-stream",
-    );
+    expect(logStreamResponse.headers.get("content-type")).toContain("text/event-stream");
     const logStreamReader = logStreamResponse.body?.getReader();
     expect(logStreamReader).toBeDefined();
     const logStreamChunk = await logStreamReader!.read();
@@ -117,9 +105,7 @@ describe("controller route contracts", () => {
       signal: eventsController.signal,
     });
     expect(eventsResponse.status).toBe(200);
-    expect(eventsResponse.headers.get("content-type")).toContain(
-      "text/event-stream",
-    );
+    expect(eventsResponse.headers.get("content-type")).toContain("text/event-stream");
     const eventsReader = eventsResponse.body?.getReader();
     expect(eventsReader).toBeDefined();
     const eventsRead = eventsReader!.read();
@@ -292,12 +278,8 @@ describe("controller route contracts", () => {
       failed_calls: 0,
       success_rate: 100,
     });
-    expect(
-      body.controller.function_calls.latency.avg_ms,
-    ).toBeGreaterThanOrEqual(0);
-    expect(
-      body.controller.function_calls.latency.max_ms,
-    ).toBeGreaterThanOrEqual(0);
+    expect(body.controller.function_calls.latency.avg_ms).toBeGreaterThanOrEqual(0);
+    expect(body.controller.function_calls.latency.max_ms).toBeGreaterThanOrEqual(0);
     expect(body.controller.function_calls.by_function).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -395,10 +377,7 @@ describe("controller route contracts", () => {
       successful_calls: 1,
       failed_calls: 1,
     });
-    expect(body.controller.function_calls.totals.success_rate).toBeCloseTo(
-      50,
-      2,
-    );
+    expect(body.controller.function_calls.totals.success_rate).toBeCloseTo(50, 2);
     expect(body.controller.function_calls.recent_errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

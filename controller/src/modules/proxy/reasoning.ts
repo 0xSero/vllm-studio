@@ -26,12 +26,12 @@ export type ThinkRewriter = {
   drainPendingContent: () => string;
   rewrite: (
     deltaText: string,
-    defaultToReasoning?: boolean
+    defaultToReasoning?: boolean,
   ) => { content: string; reasoningAppend: string };
 };
 
 const getThinkingTagLength = (
-  suffix: string
+  suffix: string,
 ): { kind: "open" | "close"; length: number } | null => {
   if (!suffix.startsWith("<")) return null;
   const closeIndex = suffix.indexOf(">");
@@ -73,7 +73,7 @@ export const thinkingTagPrefixIsPartial = (suffix: string): boolean => {
 export const createThinkRewriter = (
   settings: {
     bufferImplicitReasoningContent?: boolean;
-  } = {}
+  } = {},
 ): ThinkRewriter => {
   let inThink = false;
   let thinkCarry = "";
@@ -97,7 +97,7 @@ export const createThinkRewriter = (
     },
     rewrite(
       deltaText: string,
-      defaultToReasoning = false
+      defaultToReasoning = false,
     ): { content: string; reasoningAppend: string } {
       const combined = thinkCarry + (deltaText ?? "");
       const combinedLower = combined.toLowerCase();
@@ -171,7 +171,6 @@ export const createThinkRewriter = (
   };
 };
 
-
 const stripToolCallXmlBlocks = (text: string): string => {
   if (!text) return "";
   let cleaned = stripToolCallsFromContent(text);
@@ -221,10 +220,10 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
   if (message["reasoning_content"] !== nextReasoning) message["reasoning_content"] = nextReasoning;
 
   const strippedContent = stripToolCallXmlBlocks(
-    typeof message["content"] === "string" ? String(message["content"]) : ""
+    typeof message["content"] === "string" ? String(message["content"]) : "",
   );
   const strippedReasoning = stripToolCallXmlBlocks(
-    typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : ""
+    typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : "",
   );
   message["content"] = collapseRepeatedVisibleContent(strippedContent);
   if (strippedReasoning) {
@@ -267,7 +266,7 @@ export const normalizeToolCallsInMessage = (message: Record<string, unknown>): b
  */
 export const exposeReasoningAsContentWhenEmpty = (
   message: Record<string, unknown>,
-  model: string
+  model: string,
 ): boolean => {
   const modelLower = model.toLowerCase();
   if (!modelLower.includes("trinity-large-thinking")) return false;
@@ -292,7 +291,7 @@ export const exposeReasoningAsContentWhenEmpty = (
 
 export const shouldBufferImplicitReasoningContent = (
   model: string,
-  reasoningParser: string | null | undefined
+  reasoningParser: string | null | undefined,
 ): boolean => {
   const parser = (reasoningParser ?? "").toLowerCase();
   const modelLower = model.toLowerCase();

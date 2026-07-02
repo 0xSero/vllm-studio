@@ -22,7 +22,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
   const checkService = (
     host: string,
     port: number,
-    timeoutMs = SYSTEM_DEFAULT_SERVICE_CHECK_TIMEOUT_MS
+    timeoutMs = SYSTEM_DEFAULT_SERVICE_CHECK_TIMEOUT_MS,
   ): Promise<boolean> => {
     return new Promise((resolve) => {
       const socket = connect({ port, host });
@@ -66,7 +66,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
     const portOpen = await checkService(
       SYSTEM_SERVICE_CHECK_HOST,
       context.config.inference_port,
-      SYSTEM_COMPAT_SERVICE_CHECK_TIMEOUT_MS
+      SYSTEM_COMPAT_SERVICE_CHECK_TIMEOUT_MS,
     );
 
     const report = buildCompatibilityReport({

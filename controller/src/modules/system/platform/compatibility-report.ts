@@ -7,11 +7,7 @@ import type {
   SystemRuntimeInfo,
 } from "../../models/types";
 import { runCommand } from "../../../core/command";
-import {
-  resolveAmdSmiBinary,
-  resolveNvidiaSmiBinary,
-  resolveRocmSmiBinary,
-} from "./smi-tools";
+import { resolveAmdSmiBinary, resolveNvidiaSmiBinary, resolveRocmSmiBinary } from "./smi-tools";
 
 const toEvidence = (lines: Array<string | null | undefined>): string | null => {
   const filtered = lines.filter((line): line is string => Boolean(line && line.trim()));
@@ -20,7 +16,7 @@ const toEvidence = (lines: Array<string | null | undefined>): string | null => {
 
 const addCheck = (
   checks: CompatibilityCheck[],
-  check: Omit<CompatibilityCheck, "severity"> & { severity: CompatibilitySeverity }
+  check: Omit<CompatibilityCheck, "severity"> & { severity: CompatibilitySeverity },
 ): void => {
   checks.push({
     id: check.id,
@@ -33,7 +29,7 @@ const addCheck = (
 
 export const probeGpuMonitoring = (
   kind: SystemRuntimeInfo["platform"]["kind"],
-  rocmTool: RuntimeRocmSmiTool | null
+  rocmTool: RuntimeRocmSmiTool | null,
 ): { available: boolean; tool: RuntimeGpuMonitoringTool | null } => {
   if (kind === "cuda") {
     const binary = resolveNvidiaSmiBinary();

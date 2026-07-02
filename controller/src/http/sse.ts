@@ -40,7 +40,7 @@ const HEARTBEAT_TICK = Symbol("sse-heartbeat-tick");
 export async function* withSseHeartbeat(
   frames: AsyncIterable<string>,
   intervalMs: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const iterator = frames[Symbol.asyncIterator]();
   let pending = iterator.next();

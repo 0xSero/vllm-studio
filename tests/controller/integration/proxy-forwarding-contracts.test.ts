@@ -25,17 +25,14 @@ describe("controller route contracts", () => {
       num_tokens: 0,
     });
 
-    const chatTokenizeResponse = await app.request(
-      "/v1/tokenize-chat-completions",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "mock-model",
-          messages: [{ role: "user", content: "hello world" }],
-        }),
-      },
-    );
+    const chatTokenizeResponse = await app.request("/v1/tokenize-chat-completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "mock-model",
+        messages: [{ role: "user", content: "hello world" }],
+      }),
+    });
     const chatTokenizeBody = await chatTokenizeResponse.json();
     expect(chatTokenizeResponse.status).toBe(200);
     expect(chatTokenizeBody).toEqual({

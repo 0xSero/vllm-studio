@@ -27,7 +27,7 @@ import {
 import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
 
 const getDiskInfo = (
-  path: string
+  path: string,
 ): {
   path: string;
   total_bytes: number | null;

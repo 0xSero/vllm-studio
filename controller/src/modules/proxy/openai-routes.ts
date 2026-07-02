@@ -40,7 +40,7 @@ export interface ModelNotRunningError {
  */
 export const modelNotRunningError = (
   activeModel: string | null,
-  requestedModel: string | null | undefined
+  requestedModel: string | null | undefined,
 ): ModelNotRunningError => {
   const message = activeModel
     ? `Model ${activeModel} is running; ${requestedModel} is not. Launch it from the frontend before sending requests.`
@@ -144,7 +144,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     // it instead of silently thrashing the GPU.
     if (matchedRecipe) {
       const current = await context.processManager.findInferenceProcess(
-        context.config.inference_port
+        context.config.inference_port,
       );
       const matches =
         current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
@@ -227,7 +227,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
             duration_ms: Math.round(performance.now() - requestStart),
             status: response.status,
           },
-        }
+        },
       );
 
       attachSessionUsage(result, sessionId, usage);
@@ -246,7 +246,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
               {
                 model: recordedModel,
                 source: sourceHeader,
-              }
+              },
             );
           }
         }

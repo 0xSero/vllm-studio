@@ -63,14 +63,14 @@ export class ControllerSettingsStore {
     const clean = Object.fromEntries(
       Object.entries(preferences).filter(
         (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && entry[0].length > 0 && typeof entry[1] === "string"
-      )
+          typeof entry[0] === "string" && entry[0].length > 0 && typeof entry[1] === "string",
+      ),
     );
     this.db
       .query(
         `INSERT INTO controller_settings (key, value, updated_at)
          VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
       )
       .run(UI_PREFERENCES_KEY, JSON.stringify(clean));
     return clean;

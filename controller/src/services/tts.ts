@@ -19,7 +19,7 @@ export class TtsIntegrationError extends Error {
     status: number,
     code: string,
     message: string,
-    details: Record<string, unknown> = {}
+    details: Record<string, unknown> = {},
   ) {
     super(message);
     this.status = status;
@@ -42,7 +42,7 @@ const synthesizeWithPiper = async (request: TtsSynthesisRequest): Promise<void> 
       {
         configured_path: configuredPath ?? null,
         expected_binary: "piper",
-      }
+      },
     );
   }
 
@@ -80,7 +80,7 @@ const synthesizeWithPiper = async (request: TtsSynthesisRequest): Promise<void> 
         output_path: request.outputPath,
         stderr: result.stderr,
         stdout: result.stdout,
-      }
+      },
     );
   }
 };

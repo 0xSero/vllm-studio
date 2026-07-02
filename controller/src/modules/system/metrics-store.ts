@@ -34,7 +34,7 @@ export class PeakMetricsStore {
       )
     `);
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_peak_metric_sessions_model_updated ON peak_metric_sessions(model_id, updated_at)`
+      `CREATE INDEX IF NOT EXISTS idx_peak_metric_sessions_model_updated ON peak_metric_sessions(model_id, updated_at)`,
     );
   }
 
@@ -49,7 +49,7 @@ export class PeakMetricsStore {
     modelId: string,
     prefillTps?: number,
     generationTps?: number,
-    ttftMs?: number
+    ttftMs?: number,
   ): Record<string, unknown> {
     const current = this.get(modelId);
     const updates: Record<string, number> = {};
@@ -93,7 +93,7 @@ export class PeakMetricsStore {
           .join(", ");
         this.db
           .query(
-            `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`
+            `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
           )
           .run(...Object.values(updates), modelId);
       } else {
@@ -102,13 +102,13 @@ export class PeakMetricsStore {
             `
           INSERT INTO peak_metrics (model_id, prefill_tps, generation_tps, ttft_ms)
           VALUES (?, ?, ?, ?)
-        `
+        `,
           )
           .run(
             modelId,
             updates["prefill_tps"] ?? null,
             updates["generation_tps"] ?? null,
-            updates["ttft_ms"] ?? null
+            updates["ttft_ms"] ?? null,
           );
       }
     }
@@ -126,7 +126,7 @@ export class PeakMetricsStore {
         total_tokens = total_tokens + excluded.total_tokens,
         total_requests = total_requests + excluded.total_requests,
         updated_at = CURRENT_TIMESTAMP
-    `
+    `,
       )
       .run(modelId, tokens, requests);
   }
@@ -144,7 +144,7 @@ export class PeakMetricsStore {
     modelId: string,
     prefillTps?: number,
     generationTps?: number,
-    ttftMs?: number
+    ttftMs?: number,
   ): Record<string, unknown> {
     this.db
       .query(
@@ -178,7 +178,7 @@ export class PeakMetricsStore {
             ELSE peak_metric_sessions.best_ttft_ms
           END,
           updated_at = CURRENT_TIMESTAMP
-      `
+      `,
       )
       .run(sessionId, modelId, prefillTps ?? null, generationTps ?? null, ttftMs ?? null);
 
@@ -207,7 +207,7 @@ export class PeakMetricsStore {
           COALESCE(peak_prefill_tps, 0) DESC,
           updated_at DESC
         LIMIT 1
-      `
+      `,
       )
       .get(modelId) as Record<string, unknown> | null;
     return row ? { ...row } : null;
@@ -284,7 +284,7 @@ export class LifetimeMetricsStore {
       .query(
         `INSERT INTO lifetime_metrics (key, value, updated_at)
        VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
       )
       .run(key, value);
   }
@@ -294,7 +294,7 @@ export class LifetimeMetricsStore {
       .query(
         `INSERT INTO lifetime_metrics (key, value, updated_at)
        VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(key) DO UPDATE SET value = value + excluded.value, updated_at = CURRENT_TIMESTAMP`
+       ON CONFLICT(key) DO UPDATE SET value = value + excluded.value, updated_at = CURRENT_TIMESTAMP`,
       )
       .run(key, delta);
     return this.get(key);

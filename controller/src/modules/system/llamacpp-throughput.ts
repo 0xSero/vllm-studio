@@ -58,14 +58,14 @@ const findRunningRecipeForProcess = (context: AppContext, current: ProcessInfo):
     recipes.find((recipe) =>
       isRecipeRunning(recipe, current, {
         allowCurrentContainsRecipePath: true,
-      })
+      }),
     ) ?? null
   );
 };
 
 export const scrapeLlamacppThroughput = (
   context: AppContext,
-  current: ProcessInfo
+  current: ProcessInfo,
 ): LlamacppThroughputSample | null => {
   const recipe = findRunningRecipeForProcess(context, current);
   const recipeLogPath = recipe ? resolveExistingLogPath(context.config.data_dir, recipe.id) : null;
@@ -74,7 +74,7 @@ export const scrapeLlamacppThroughput = (
   let logPath = recipeLogPath;
   if (!logPath) {
     const entries = listLogFiles(context.config.data_dir).filter(
-      (entry) => entry.sessionId !== "controller"
+      (entry) => entry.sessionId !== "controller",
     );
     const byName =
       servedName.length > 0

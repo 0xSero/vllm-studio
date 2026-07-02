@@ -72,7 +72,7 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
   async function* streamDockerLogLines(
     container: string,
     replayLimit: number,
-    signal: AbortSignal
+    signal: AbortSignal,
   ): AsyncGenerator<string> {
     const child = spawn("docker", ["logs", "--tail", String(replayLimit), "--follow", container], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -203,8 +203,8 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
           }
         })(),
         15_000,
-        signal
-      )
+        signal,
+      ),
     );
     return new Response(stream, {
       headers: buildSseHeaders(),
@@ -250,7 +250,7 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
             yield event.toSse();
           }
         }
-      })()
+      })(),
     );
 
     return new Response(stream, {

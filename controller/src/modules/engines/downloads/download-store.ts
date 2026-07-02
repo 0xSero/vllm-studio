@@ -77,7 +77,7 @@ export class DownloadStore {
       INSERT INTO model_downloads (id, data, updated_at)
       VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-    `
+    `,
       )
       .run(download.id, data);
   }

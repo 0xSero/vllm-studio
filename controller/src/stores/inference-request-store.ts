@@ -25,7 +25,7 @@ interface NumberRow {
 }
 
 const buildModelFilter = (
-  knownModels?: ReadonlySet<string>
+  knownModels?: ReadonlySet<string>,
 ): { clause: string; params: string[] } => {
   if (!knownModels || knownModels.size === 0) return { clause: "", params: [] };
   const params = [...knownModels];
@@ -74,10 +74,10 @@ export class InferenceRequestStore {
       )
     `);
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
     );
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`,
     );
   }
 
@@ -100,7 +100,7 @@ export class InferenceRequestStore {
            prompt_tokens, completion_tokens, reasoning_tokens,
            cache_read_tokens, cache_write_tokens, total_tokens,
            ttft_ms, duration_ms, status, streamed
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.model,
@@ -116,7 +116,7 @@ export class InferenceRequestStore {
         record.ttft_ms ?? null,
         record.duration_ms ?? null,
         record.status ?? 200,
-        record.streamed ? 1 : 0
+        record.streamed ? 1 : 0,
       );
   }
 
@@ -143,7 +143,7 @@ export class InferenceRequestStore {
            COALESCE(SUM(cache_write_tokens), 0) as cache_write,
            COUNT(DISTINCT session_id) as unique_sessions
          FROM inference_requests
-         WHERE 1=1${filter.clause}`
+         WHERE 1=1${filter.clause}`,
       )
       .get(...params) as NumberRow | null;
 
@@ -163,7 +163,7 @@ export class InferenceRequestStore {
            AVG(duration_ms) as avg_dur,
            AVG(ttft_ms) as avg_ttft
          FROM inference_requests
-         WHERE 1=1${filter.clause}`
+         WHERE 1=1${filter.clause}`,
       )
       .get(...params) as NumberRow | null;
     const successful = toFiniteNumber(successRow?.["ok"]);
@@ -183,7 +183,7 @@ export class InferenceRequestStore {
          WHERE 1=1${filter.clause}
          GROUP BY model
          ORDER BY total_tokens DESC
-         LIMIT 25`
+         LIMIT 25`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -200,7 +200,7 @@ export class InferenceRequestStore {
          FROM inference_requests
          WHERE 1=1${filter.clause}
          GROUP BY DATE(created_at)
-         ORDER BY date DESC`
+         ORDER BY date DESC`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -217,7 +217,7 @@ export class InferenceRequestStore {
          FROM inference_requests
          WHERE 1=1${filter.clause}
          GROUP BY DATE(created_at), model
-         ORDER BY date DESC`
+         ORDER BY date DESC`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -231,7 +231,7 @@ export class InferenceRequestStore {
          FROM inference_requests
          WHERE 1=1${filter.clause}
          GROUP BY strftime('%H', created_at)
-         ORDER BY hour`
+         ORDER BY hour`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -245,7 +245,7 @@ export class InferenceRequestStore {
          WHERE 1=1${filter.clause}
          GROUP BY DATE(created_at)
          ORDER BY requests DESC
-         LIMIT 5`
+         LIMIT 5`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -258,7 +258,7 @@ export class InferenceRequestStore {
          WHERE DATE(created_at) >= DATE('now', '-7 days')${filter.clause}
          GROUP BY strftime('%H', created_at)
          ORDER BY requests DESC
-         LIMIT 5`
+         LIMIT 5`,
       )
       .all(...params) as Array<Record<string, unknown>>;
 
@@ -270,7 +270,7 @@ export class InferenceRequestStore {
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-48 hours') AND datetime(created_at) < datetime('now', '-24 hours') THEN 1 ELSE 0 END) as prev_24h,
            COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as last_24h_tokens
          FROM inference_requests
-         WHERE 1=1${filter.clause}`
+         WHERE 1=1${filter.clause}`,
       )
       .get(...params) as NumberRow | null;
 
@@ -284,7 +284,7 @@ export class InferenceRequestStore {
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END) as last_week_tokens,
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') AND status >= 200 AND status < 300 THEN 1 ELSE 0 END) as last_week_ok
          FROM inference_requests
-         WHERE 1=1${filter.clause}`
+         WHERE 1=1${filter.clause}`,
       )
       .get(...params) as NumberRow | null;
 
@@ -327,9 +327,11 @@ export class InferenceRequestStore {
           (max, row) =>
             Math.max(
               max,
-              toFiniteNumber(row["requests"]) ? Math.round(toFiniteNumber(row["total_tokens"]) / toFiniteNumber(row["requests"])) : 0
+              toFiniteNumber(row["requests"])
+                ? Math.round(toFiniteNumber(row["total_tokens"]) / toFiniteNumber(row["requests"]))
+                : 0,
             ),
-          0
+          0,
         ),
         p50: 0,
         p95: 0,
@@ -355,11 +357,11 @@ export class InferenceRequestStore {
         change_pct: {
           requests: calcChangePct(
             toFiniteNumber(week?.["this_week_requests"]),
-            toFiniteNumber(week?.["last_week_requests"])
+            toFiniteNumber(week?.["last_week_requests"]),
           ),
           tokens: calcChangePct(
             toFiniteNumber(week?.["this_week_tokens"]),
-            toFiniteNumber(week?.["last_week_tokens"])
+            toFiniteNumber(week?.["last_week_tokens"]),
           ),
         },
       },
@@ -368,7 +370,10 @@ export class InferenceRequestStore {
         last_24h_requests: toFiniteNumber(recent?.["last_24h"]),
         prev_24h_requests: toFiniteNumber(recent?.["prev_24h"]),
         last_24h_tokens: toFiniteNumber(recent?.["last_24h_tokens"]),
-        change_24h_pct: calcChangePct(toFiniteNumber(recent?.["last_24h"]), toFiniteNumber(recent?.["prev_24h"])),
+        change_24h_pct: calcChangePct(
+          toFiniteNumber(recent?.["last_24h"]),
+          toFiniteNumber(recent?.["prev_24h"]),
+        ),
       },
       peak_days: peakDays.map((row) => ({
         date: String(row["date"] ?? ""),

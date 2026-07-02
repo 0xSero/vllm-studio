@@ -51,7 +51,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
   const collect = async (): Promise<void> => {
     try {
       const current = await context.processManager.findInferenceProcess(
-        context.config.inference_port
+        context.config.inference_port,
       );
       const gpuList = getGpuInfo();
 
@@ -109,10 +109,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
       };
 
       const totalVramUsedGb = gpuList.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
-      const totalVramCapacityGb = gpuList.reduce(
-        (sum, gpu) => sum + gpu.memory_total_mb / 1024,
-        0
-      );
+      const totalVramCapacityGb = gpuList.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
       const totalPowerLimitWatts = gpuList.reduce((sum, gpu) => sum + gpu.power_limit, 0);
 
       if (current) {
@@ -187,7 +184,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
               modelId,
               promptThroughput > 0 ? promptThroughput : undefined,
               generationThroughput > 0 ? generationThroughput : undefined,
-              avgTtftMs > 0 ? avgTtftMs : undefined
+              avgTtftMs > 0 ? avgTtftMs : undefined,
             );
           }
         } else if (current.backend === "llamacpp") {
@@ -210,7 +207,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
               modelId,
               sample.promptTps > 0 ? sample.promptTps : undefined,
               sample.generationTps > 0 ? sample.generationTps : undefined,
-              undefined
+              undefined,
             );
           }
 
@@ -241,7 +238,7 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
             modelId,
             sessionPeaks.prompt_throughput > 0 ? sessionPeaks.prompt_throughput : undefined,
             sessionPeaks.generation_throughput > 0 ? sessionPeaks.generation_throughput : undefined,
-            sessionPeaks.ttft_ms > 0 ? sessionPeaks.ttft_ms : undefined
+            sessionPeaks.ttft_ms > 0 ? sessionPeaks.ttft_ms : undefined,
           );
         }
 

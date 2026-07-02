@@ -39,9 +39,7 @@ describe("controller route contracts", () => {
     const compatResponse = await app.request("/compat");
     const compatBody = await compatResponse.json();
     expect(compatResponse.status).toBe(200);
-    expect(compatBody.platform).toEqual(
-      expect.objectContaining({ kind: expect.any(String) }),
-    );
+    expect(compatBody.platform).toEqual(expect.objectContaining({ kind: expect.any(String) }));
     expect(compatBody.gpu_monitoring).toEqual(
       expect.objectContaining({ available: expect.any(Boolean) }),
     );
@@ -148,9 +146,7 @@ describe("controller route contracts", () => {
     const settingsResponse = await app.request("/studio/settings");
     const settingsBody = await settingsResponse.json();
     expect(settingsResponse.status).toBe(200);
-    expect(settingsBody.effective.models_dir).toBe(
-      process.env.LOCAL_STUDIO_MODELS_DIR,
-    );
+    expect(settingsBody.effective.models_dir).toBe(process.env.LOCAL_STUDIO_MODELS_DIR);
 
     const settingsUpdateResponse = await app.request("/studio/settings", {
       method: "POST",
@@ -191,18 +187,15 @@ describe("controller route contracts", () => {
     });
     expect(createProviderBody.provider.api_key).toBeUndefined();
 
-    const updateProviderResponse = await app.request(
-      "/studio/providers/local",
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: "Local Provider Updated",
-          base_url: "http://127.0.0.1:9000",
-          enabled: false,
-        }),
-      },
-    );
+    const updateProviderResponse = await app.request("/studio/providers/local", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Local Provider Updated",
+        base_url: "http://127.0.0.1:9000",
+        enabled: false,
+      }),
+    });
     const updateProviderBody = await updateProviderResponse.json();
     expect(updateProviderResponse.status).toBe(200);
     expect(updateProviderBody.provider).toMatchObject({
@@ -213,12 +206,9 @@ describe("controller route contracts", () => {
       has_api_key: true,
     });
 
-    const deleteProviderResponse = await app.request(
-      "/studio/providers/local",
-      {
-        method: "DELETE",
-      },
-    );
+    const deleteProviderResponse = await app.request("/studio/providers/local", {
+      method: "DELETE",
+    });
     const deleteProviderBody = await deleteProviderResponse.json();
     expect(deleteProviderResponse.status).toBe(200);
     expect(deleteProviderBody).toEqual({ success: true });
@@ -263,8 +253,7 @@ describe("controller route contracts", () => {
 
   test("studio operational routes expose storage contracts and validate model file actions", async () => {
     const modelsDir = process.env.LOCAL_STUDIO_MODELS_DIR;
-    if (!modelsDir)
-      throw new Error("LOCAL_STUDIO_MODELS_DIR is required for tests");
+    if (!modelsDir) throw new Error("LOCAL_STUDIO_MODELS_DIR is required for tests");
     const modelPath = join(modelsDir, "studio-route-model");
     const targetRoot = join(modelsDir, "archive");
     const movedModelPath = join(targetRoot, "studio-route-model");
@@ -312,9 +301,7 @@ describe("controller route contracts", () => {
       disk: { path: modelsDir },
     });
 
-    const recommendationsResponse = await app.request(
-      "/studio/recommendations",
-    );
+    const recommendationsResponse = await app.request("/studio/recommendations");
     const recommendationsBody = await recommendationsResponse.json();
     expect(recommendationsResponse.status).toBe(200);
     expect(Array.isArray(recommendationsBody.recommendations)).toBe(true);
@@ -325,26 +312,20 @@ describe("controller route contracts", () => {
     expect(providerModelsResponse.status).toBe(200);
     expect(providerModelsBody).toEqual({ providers: [] });
 
-    const missingDeletePathResponse = await app.request(
-      "/studio/models/delete",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      },
-    );
+    const missingDeletePathResponse = await app.request("/studio/models/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
     const missingDeletePathBody = await missingDeletePathResponse.json();
     expect(missingDeletePathResponse.status).toBe(400);
     expect(missingDeletePathBody).toEqual({ detail: "path is required" });
 
-    const outsideDeletePathResponse = await app.request(
-      "/studio/models/delete",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: tempDir }),
-      },
-    );
+    const outsideDeletePathResponse = await app.request("/studio/models/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: tempDir }),
+    });
     const outsideDeletePathBody = await outsideDeletePathResponse.json();
     expect(outsideDeletePathResponse.status).toBe(400);
     expect(outsideDeletePathBody).toEqual({

@@ -13,7 +13,7 @@ const buildLocalUrl = (port: number, path: string, host = "localhost"): string =
 export const fetchLocal = async (
   port: number,
   path: string,
-  options: LocalFetchOptions = {}
+  options: LocalFetchOptions = {},
 ): Promise<Response> => {
   const { host, timeoutMs, signal, ...init } = options;
   const url = buildLocalUrl(port, path, host);
@@ -41,7 +41,7 @@ export const buildInferenceUrl = (context: AppContext, path: string): string =>
 export const fetchInference = (
   context: AppContext,
   path: string,
-  options: LocalFetchOptions = {}
+  options: LocalFetchOptions = {},
 ): Promise<Response> =>
   fetchLocal(context.config.inference_port, path, {
     host: context.config.inference_host,

@@ -23,7 +23,7 @@ const upgradeTimeoutMessage = (): string =>
 
 export const runPlatformUpgrade = async (
   platform: "cuda" | "rocm",
-  _options: RuntimeUpgradeOptions
+  _options: RuntimeUpgradeOptions,
 ): Promise<RuntimeUpgradeResult> => {
   const envKey = platform === "cuda" ? CUDA_UPGRADE_ENV : ROCM_UPGRADE_ENV;
   const command = getUpgradeCommandFromEnvironment(envKey);
@@ -50,9 +50,21 @@ export const runPlatformUpgrade = async (
   }
   if (platform === "cuda") {
     const info = getCudaInfo();
-    return { success, version: info.cuda_version || info.driver_version, output: result.stdout || null, error: null, used_command: command };
+    return {
+      success,
+      version: info.cuda_version || info.driver_version,
+      output: result.stdout || null,
+      error: null,
+      used_command: command,
+    };
   }
   const smiTool = resolveRocmSmiTool();
   const info = getRocmInfo(smiTool);
-  return { success, version: info.rocm_version || info.hip_version, output: result.stdout || null, error: null, used_command: command };
+  return {
+    success,
+    version: info.rocm_version || info.hip_version,
+    output: result.stdout || null,
+    error: null,
+    used_command: command,
+  };
 };

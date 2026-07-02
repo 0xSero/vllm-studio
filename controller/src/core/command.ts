@@ -29,7 +29,7 @@ const TIMEOUT_KILL_GRACE_MS = 5_000;
 export const runCommandEffect = (
   command: string,
   args: string[],
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Effect.Effect<CommandResult> =>
   Effect.sync(() => {
     try {
@@ -51,13 +51,13 @@ export const runCommandEffect = (
 export const runCommand = (
   command: string,
   args: string[],
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): CommandResult => Effect.runSync(runCommandEffect(command, args, timeoutMs));
 
 export const runCommandAsyncEffect = (
   command: string,
   args: string[],
-  options: AsyncCommandOptions
+  options: AsyncCommandOptions,
 ): Effect.Effect<AsyncCommandResult> =>
   Effect.callback<AsyncCommandResult>((resume) => {
     const child = spawn(command, args, {
@@ -111,7 +111,7 @@ export const runCommandAsyncEffect = (
 export const runCommandAsync = (
   command: string,
   args: string[],
-  options: AsyncCommandOptions
+  options: AsyncCommandOptions,
 ): Promise<AsyncCommandResult> => Effect.runPromise(runCommandAsyncEffect(command, args, options));
 
 const isExecutableFile = (filePath: string): boolean => {

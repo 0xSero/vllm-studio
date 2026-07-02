@@ -67,37 +67,23 @@ describe("redactLogLine", () => {
     expect(redactLogLine("HUGGING_FACE_HUB_TOKEN=hf_secret")).toBe(
       "HUGGING_FACE_HUB_TOKEN=[redacted]",
     );
-    expect(redactLogLine('export HF_TOKEN="hf_quoted_token"')).toBe(
-      'export HF_TOKEN=[redacted]',
-    );
+    expect(redactLogLine('export HF_TOKEN="hf_quoted_token"')).toBe("export HF_TOKEN=[redacted]");
   });
 
   test("redacts OpenAI / Anthropic API key env assignments", () => {
-    expect(redactLogLine("OPENAI_API_KEY=sk-openai-secret")).toBe(
-      "OPENAI_API_KEY=[redacted]",
-    );
-    expect(redactLogLine("ANTHROPIC_API_KEY=sk-ant-secret")).toBe(
-      "ANTHROPIC_API_KEY=[redacted]",
-    );
+    expect(redactLogLine("OPENAI_API_KEY=sk-openai-secret")).toBe("OPENAI_API_KEY=[redacted]");
+    expect(redactLogLine("ANTHROPIC_API_KEY=sk-ant-secret")).toBe("ANTHROPIC_API_KEY=[redacted]");
   });
 
   test("redacts generic *_API_KEY and *_TOKEN env assignments", () => {
-    expect(redactLogLine("MY_SERVICE_API_KEY=abc123")).toBe(
-      "MY_SERVICE_API_KEY=[redacted]",
-    );
+    expect(redactLogLine("MY_SERVICE_API_KEY=abc123")).toBe("MY_SERVICE_API_KEY=[redacted]");
     expect(redactLogLine("SESSION_TOKEN=xyz789")).toBe("SESSION_TOKEN=[redacted]");
   });
 
   test("redacts JSON-ish secret pairs", () => {
-    expect(redactLogLine('{ "api_key": "sk-json-key" }')).toBe(
-      '{ "api_key": "[redacted]" }',
-    );
-    expect(redactLogLine("{ 'token': 'secret-token' }")).toBe(
-      "{ 'token': '[redacted]' }",
-    );
-    expect(redactLogLine('{"openai_api_key":"sk-123"}')).toBe(
-      '{"openai_api_key":"[redacted]"}',
-    );
+    expect(redactLogLine('{ "api_key": "sk-json-key" }')).toBe('{ "api_key": "[redacted]" }');
+    expect(redactLogLine("{ 'token': 'secret-token' }")).toBe("{ 'token': '[redacted]' }");
+    expect(redactLogLine('{"openai_api_key":"sk-123"}')).toBe('{"openai_api_key":"[redacted]"}');
   });
 
   test("redacts CLI flag secrets", () => {
@@ -148,9 +134,7 @@ describe("per-line redaction of multi-line content", () => {
   test("redacts secrets across multiple lines", () => {
     const content = "line1\nAuthorization: Bearer sk-abc\nline3\nHF_TOKEN=hf_123\n";
     const redacted = content.split("\n").map(redactLogLine).join("\n");
-    expect(redacted).toBe(
-      "line1\nAuthorization: Bearer [redacted]\nline3\nHF_TOKEN=[redacted]\n",
-    );
+    expect(redacted).toBe("line1\nAuthorization: Bearer [redacted]\nline3\nHF_TOKEN=[redacted]\n");
   });
 });
 

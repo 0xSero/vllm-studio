@@ -42,7 +42,7 @@ const sanitizePathSegments = (value: string): string[] => {
 const resolveDownloadRoot = (
   config: Config,
   modelId: string,
-  destination?: string | null
+  destination?: string | null,
 ): string => {
   const base = resolve(config.models_dir);
   const segments = destination ? sanitizePathSegments(destination) : sanitizePathSegments(modelId);
@@ -78,7 +78,7 @@ export class DownloadManager {
     private readonly config: Config,
     private readonly store: DownloadStore,
     private readonly eventManager: EventManager,
-    private readonly logger: Logger
+    private readonly logger: Logger,
   ) {
     this.rehydrate();
   }
@@ -157,7 +157,7 @@ export class DownloadManager {
     } catch (error) {
       throw new Error(
         `Models directory is not writable by the controller: ${this.config.models_dir}. ` +
-          `Update Settings → Models directory to a writable server path. ${String(error)}`
+          `Update Settings → Models directory to a writable server path. ${String(error)}`,
       );
     }
   }
@@ -285,7 +285,7 @@ export class DownloadManager {
     download: ModelDownload,
     file: DownloadFileInfo,
     controller: AbortController,
-    hfToken: string | null
+    hfToken: string | null,
   ): Promise<void> {
     const closeWriter = (writer: ReturnType<typeof createWriteStream>): Promise<void> =>
       new Promise((resolve, reject) => {
@@ -398,7 +398,7 @@ export class DownloadManager {
   private persistFileUpdate(download: ModelDownload, file: DownloadFileInfo): ModelDownload {
     const latest = this.store.get(download.id) ?? download;
     const updatedFiles = latest.files.map((entry) =>
-      entry.path === file.path ? { ...file } : entry
+      entry.path === file.path ? { ...file } : entry,
     );
     const updated: ModelDownload = {
       ...latest,

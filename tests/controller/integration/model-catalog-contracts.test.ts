@@ -54,8 +54,7 @@ describe("controller route contracts", () => {
 
   test("model catalog routes expose recipe-backed model details and discovery metadata", async () => {
     const modelsDir = process.env.LOCAL_STUDIO_MODELS_DIR;
-    if (!modelsDir)
-      throw new Error("LOCAL_STUDIO_MODELS_DIR is required for tests");
+    if (!modelsDir) throw new Error("LOCAL_STUDIO_MODELS_DIR is required for tests");
     const modelPath = join(modelsDir, "catalog-route-model");
     mkdirSync(modelPath, { recursive: true });
     writeFileSync(
@@ -385,9 +384,7 @@ describe("controller route contracts", () => {
 
     try {
       const app = await createTestApp();
-      const response = await app.request(
-        "/v1/huggingface/models?search=llama&limit=1",
-      );
+      const response = await app.request("/v1/huggingface/models?search=llama&limit=1");
       const body = await response.json();
 
       expect(response.status).toBe(200);

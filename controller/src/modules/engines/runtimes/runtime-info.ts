@@ -30,7 +30,7 @@ let systemRuntimeInFlight: Promise<SystemRuntimeInfo> | null = null;
 
 export const getSystemRuntimeInfo = async (
   config: Config,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<SystemRuntimeInfo> => {
   const now = Date.now();
   if (systemRuntimeCache && systemRuntimeCache.expiresAt > now) {
@@ -51,11 +51,11 @@ export const getSystemRuntimeInfo = async (
 
 const computeSystemRuntimeInfo = async (
   config: Config,
-  runningProcess?: ProcessInfo | null
+  runningProcess?: ProcessInfo | null,
 ): Promise<SystemRuntimeInfo> => {
   const gpus = getGpuInfo();
   const types = Array.from(
-    new Set(gpus.map((gpu) => gpu.name).filter((name) => name && name !== "Unknown"))
+    new Set(gpus.map((gpu) => gpu.name).filter((name) => name && name !== "Unknown")),
   );
   const [vllmInfo, sglangInfo, llamaInfo, mlxInfo] = await Promise.all([
     getVllmRuntimeInfo(),

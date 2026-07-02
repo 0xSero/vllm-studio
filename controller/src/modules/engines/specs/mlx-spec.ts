@@ -1,23 +1,23 @@
 import { existsSync } from "node:fs";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "../../../../../shared/contracts/system";
+import type {
+  RuntimeBackendInfo,
+  RuntimeUpgradeResult,
+} from "../../../../../shared/contracts/system";
 import { appendExtraArguments, getPythonPath } from "../process/backend-builder";
 import { stripForeignFlagKeys } from "../../../../../shared/contracts/engine-args";
-import {
-  extractFlag,
-  hasModuleInvocation,
-} from "../argument-utilities";
+import { extractFlag, hasModuleInvocation } from "../argument-utilities";
 import type { EngineSpec, InstallOptions } from "../engine-spec";
 import { installIntoManagedVenv, managedVenvPython } from "../runtimes/managed-venv";
-import {
-  probeBackendRuntime,
-  probeRunningProcessPython,
-} from "../runtimes/runtime-target-probes";
+import { probeBackendRuntime, probeRunningProcessPython } from "../runtimes/runtime-target-probes";
 
 const buildMlxCommand = (recipe: Recipe, config: Config): string[] => {
   const managedPython = managedVenvPython(config, "mlx");
-  const python = getPythonPath(recipe) || config.mlx_python || (existsSync(managedPython) ? managedPython : "python3");
+  const python =
+    getPythonPath(recipe) ||
+    config.mlx_python ||
+    (existsSync(managedPython) ? managedPython : "python3");
   const command = [python, "-m", "mlx_lm.server"];
   command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
   return appendExtraArguments(command, stripForeignFlagKeys("mlx", recipe.extra_args));
@@ -56,9 +56,7 @@ const getRuntimeInfoAsync = async (
   runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
 ): Promise<RuntimeBackendInfo> => {
   const runningPython =
-    runningProcess?.backend === "mlx"
-      ? await probeRunningProcessPython(runningProcess.pid)
-      : null;
+    runningProcess?.backend === "mlx" ? await probeRunningProcessPython(runningProcess.pid) : null;
   const probe = await probeBackendRuntime("mlx", [
     runningPython,
     config.mlx_python,

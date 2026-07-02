@@ -73,7 +73,7 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
   const prometheus = scrape.metrics;
   const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
   const usageAggregate: UsageAggregate | null = context.stores.inferenceRequestStore.aggregate(
-    buildModelKeys(modelId, current?.model_path)
+    buildModelKeys(modelId, current?.model_path),
   );
   const usageTotals = usageAggregate?.totals;
   const promptTokensTotal = firstMetric(prometheus, names.promptTokens);
@@ -92,7 +92,7 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
       promptThroughput = Math.max(0, (promptTokensTotal - previous.promptTokens) / elapsedSeconds);
       generationThroughput = Math.max(
         0,
-        (generationTokensTotal - previous.genTokens) / elapsedSeconds
+        (generationTokensTotal - previous.genTokens) / elapsedSeconds,
       );
       throughputSamples.set(modelId, {
         promptTokens: promptTokensTotal,
@@ -149,7 +149,7 @@ const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, 
 };
 
 export const registerMonitoringRoutes: RouteRegistrar = (app, context) => {
-app.get("/v1/metrics/vllm", async (ctx) => {
+  app.get("/v1/metrics/vllm", async (ctx) => {
     try {
       const current = await buildCurrentMetrics(context);
       await context.eventManager.publishMetrics(current);
@@ -211,7 +211,7 @@ app.get("/v1/metrics/vllm", async (ctx) => {
           modelId,
           undefined,
           generationTps,
-          undefined
+          undefined,
         );
         context.stores.peakMetricsStore.addTokens(modelId, completionTokens, 1);
 

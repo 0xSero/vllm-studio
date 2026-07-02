@@ -18,9 +18,7 @@ describe("runtime upgrade env-command path", () => {
   let envSnapshot: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    envSnapshot = Object.fromEntries(
-      UPGRADE_ENV_KEYS.map((key) => [key, process.env[key]])
-    );
+    envSnapshot = Object.fromEntries(UPGRADE_ENV_KEYS.map((key) => [key, process.env[key]]));
     for (const key of UPGRADE_ENV_KEYS) {
       process.env[key] = "true";
     }
@@ -39,14 +37,10 @@ describe("runtime upgrade env-command path", () => {
   // Unlike the other engines, the vllm path probes for a real python binary and
   // re-reads runtime info after the command, so on a machine without vllm the
   // python startup/import probes can take ~20s. Give it a generous timeout.
-  test(
-    "upgradeVllmRuntime uses the operator-configured command",
-    async () => {
-      const result = await getEngineSpec("vllm").install({ config: createConfig() });
-      expect(result.used_command).toBe("true");
-    },
-    60_000
-  );
+  test("upgradeVllmRuntime uses the operator-configured command", async () => {
+    const result = await getEngineSpec("vllm").install({ config: createConfig() });
+    expect(result.used_command).toBe("true");
+  }, 60_000);
 
   test("upgradeSglangRuntime uses the operator-configured command", async () => {
     const config = createConfig();

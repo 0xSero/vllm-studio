@@ -6,10 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 import { parseBooleanFlag } from "../core/validation";
 
-const positiveIntegerSchema = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThan(0),
-);
+const positiveIntegerSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
 
 export interface Config {
   host: string;
@@ -80,7 +77,7 @@ export const createConfig = (): Config => {
       ...new Set(
         candidates
           .map((entry) => normalizeOrigin(entry))
-          .filter((entry): entry is string => Boolean(entry))
+          .filter((entry): entry is string => Boolean(entry)),
       ),
     ];
   };
@@ -129,7 +126,9 @@ export const createConfig = (): Config => {
   // The db default follows the resolved data dir so overriding LOCAL_STUDIO_DATA_DIR
   // alone keeps the database inside it.
   const dataDirectory = resolve(parsed.LOCAL_STUDIO_DATA_DIR);
-  const databasePath = resolve(parsed.LOCAL_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"));
+  const databasePath = resolve(
+    parsed.LOCAL_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"),
+  );
 
   const config: Config = {
     host,
@@ -152,7 +151,7 @@ export const createConfig = (): Config => {
   const allowUnauthenticated = parseBooleanFlag(parsed.LOCAL_STUDIO_ALLOW_UNAUTHENTICATED);
   if (!config.api_key && !allowUnauthenticated && !isLoopbackHost(host)) {
     throw new Error(
-      "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments."
+      "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments.",
     );
   }
 

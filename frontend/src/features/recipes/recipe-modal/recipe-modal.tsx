@@ -311,9 +311,7 @@ export function RecipeModal({
             !(recipe.name ?? "").trim() ||
             !(recipe.model_path ?? "").trim()
           }
-          icon={
-            saving ? <Spinner size="xs" variant="refresh" /> : <Save className="h-3 w-3" />
-          }
+          icon={saving ? <Spinner size="xs" variant="refresh" /> : <Save className="h-3 w-3" />}
         >
           {saving ? "Saving..." : "Save recipe"}
         </Button>

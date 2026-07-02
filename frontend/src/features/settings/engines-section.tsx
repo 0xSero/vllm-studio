@@ -9,7 +9,13 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
 import { RowDetailLine, StatusPill, Spinner } from "@/ui";
-import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow, SettingsValue } from "./settings-ui";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsNotice,
+  SettingsRow,
+  SettingsValue,
+} from "./settings-ui";
 import {
   ENGINE_META,
   MANAGED_RUNTIME_BACKENDS,

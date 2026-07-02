@@ -36,7 +36,7 @@ export class EngineCoordinator {
 
   async setActiveRecipe(
     recipe: Recipe | null,
-    options: SetActiveRecipeOptions = {}
+    options: SetActiveRecipeOptions = {},
   ): Promise<SetActiveRecipeResult> {
     const intentSerial = ++this.lifecycleIntentSerial;
     if (!recipe) {
@@ -67,12 +67,12 @@ export class EngineCoordinator {
         targetRecipe.id,
         "cancelled",
         "Launch cancelled",
-        0
+        0,
       );
       return { ok: false, error: "Launch cancelled" };
     };
     const abortIfNeeded = async (
-      targetRecipe: Recipe | null
+      targetRecipe: Recipe | null,
     ): Promise<SetActiveRecipeResult | null> => {
       if (!isAborted()) return null;
       if (!targetRecipe) return null;
@@ -83,7 +83,7 @@ export class EngineCoordinator {
         return { ok: false, error: "Launch cancelled" };
       }
       const current = await this.deps.processManager.findInferenceProcess(
-        this.deps.config.inference_port
+        this.deps.config.inference_port,
       );
       const initialAbort = await abortIfNeeded(recipe);
       if (initialAbort) return initialAbort;
@@ -100,7 +100,7 @@ export class EngineCoordinator {
             evictedRecipe.id,
             "stopping",
             `Stopping ${evictedRecipe.name}...`,
-            0.1
+            0.1,
           );
         }
         const stopped = await this.deps.processManager.killProcess(process.pid, true);
@@ -109,7 +109,7 @@ export class EngineCoordinator {
             evictedRecipe.id,
             stopped ? "stopped" : "error",
             stopped ? "Model stopped" : "Model did not stop cleanly",
-            stopped ? 1 : 0
+            stopped ? 1 : 0,
           );
         }
         return stopped;
@@ -136,7 +136,7 @@ export class EngineCoordinator {
         recipe.id,
         "launching",
         `Starting ${recipe.name}...`,
-        0.25
+        0.25,
       );
       const launch = await this.deps.processManager.launchModel(recipe);
       spawnedPid = launch.pid;
@@ -147,7 +147,7 @@ export class EngineCoordinator {
           recipe.id,
           "error",
           `${launch.message} (${failure.failure_count}/${failure.limit} launch failures in the current window)`,
-          0
+          0,
         );
         return { ok: false, error: launch.message };
       }
@@ -157,7 +157,7 @@ export class EngineCoordinator {
         recipe.id,
         "waiting",
         "Loading model... (0s)",
-        0.5
+        0.5,
       );
       const waitOptions: Parameters<typeof this.waitForReady>[0] = {
         recipe,
@@ -178,7 +178,7 @@ export class EngineCoordinator {
           recipe.id,
           "ready",
           "Model is ready!",
-          1
+          1,
         );
         return { ok: true };
       }
@@ -190,7 +190,7 @@ export class EngineCoordinator {
         recipe.id,
         "error",
         `${ready.message} (${failure.failure_count}/${failure.limit} launch failures in the current window)`,
-        0
+        0,
       );
       return { ok: false, error: ready.message };
     } finally {

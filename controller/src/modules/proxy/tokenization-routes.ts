@@ -11,7 +11,11 @@ const withRunningModel =
     context: AppContext,
     observedName: string,
     emptyPayload: Record<string, unknown>,
-    handler: (ctx: Context, current: ProcessInfo, body: Record<string, unknown>) => Promise<Response>
+    handler: (
+      ctx: Context,
+      current: ProcessInfo,
+      body: Record<string, unknown>,
+    ) => Promise<Response>,
   ) =>
   async (ctx: Context): Promise<Response> => {
     const current = await findObservedInferenceProcess(context, observedName);
@@ -33,7 +37,9 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
     withRunningModel(context, "countTokens", { num_tokens: 0 }, async (ctx, current, body) => {
       const text = typeof body["text"] === "string" ? body["text"] : "";
       const model =
-        typeof body["model"] === "string" ? body["model"] : (current.served_model_name ?? "default");
+        typeof body["model"] === "string"
+          ? body["model"]
+          : (current.served_model_name ?? "default");
       try {
         const response = await fetchInference(context, "/tokenize", {
           method: "POST",
@@ -49,7 +55,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
       } catch (error) {
         return ctx.json({ error: String(error), num_tokens: 0 });
       }
-    })
+    }),
   );
 
   app.post(
@@ -145,7 +151,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
           },
           model,
         });
-      }
-    )
+      },
+    ),
   );
 };

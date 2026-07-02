@@ -23,7 +23,7 @@ import {
 export const registerAudioRoutes = (
   app: Hono,
   context: AppContext,
-  dependencies: AudioRouteDependencies = {}
+  dependencies: AudioRouteDependencies = {},
 ): void => {
   const transcribe = dependencies.transcribe ?? transcribeAudio;
   const transcodeToWav = dependencies.transcodeToWav ?? defaultTranscodeToWav;
@@ -78,7 +78,7 @@ export const registerAudioRoutes = (
         throw new SttIntegrationError(
           502,
           "stt_empty_result",
-          "STT completed but returned an empty transcript"
+          "STT completed but returned an empty transcript",
         );
       }
 
@@ -91,7 +91,7 @@ export const registerAudioRoutes = (
             error: error.message,
             ...error.details,
           },
-          { status: error.status }
+          { status: error.status },
         );
       }
 
@@ -105,7 +105,7 @@ export const registerAudioRoutes = (
           error: "Internal STT error",
           details: String(error),
         },
-        { status: 500 }
+        { status: 500 },
       );
     } finally {
       await Promise.all(
@@ -115,7 +115,7 @@ export const registerAudioRoutes = (
           } catch {
             // Ignore cleanup failures.
           }
-        })
+        }),
       );
     }
   });
@@ -136,7 +136,7 @@ export const registerAudioRoutes = (
         throw new TtsIntegrationError(
           400,
           "input_missing",
-          "input is required and cannot be empty"
+          "input is required and cannot be empty",
         );
       }
 
@@ -148,7 +148,7 @@ export const registerAudioRoutes = (
         throw new TtsIntegrationError(
           400,
           "unsupported_response_format",
-          "Only response_format='wav' is supported"
+          "Only response_format='wav' is supported",
         );
       }
 
@@ -188,7 +188,7 @@ export const registerAudioRoutes = (
             error: error.message,
             ...error.details,
           },
-          { status: error.status }
+          { status: error.status },
         );
       }
 
@@ -202,7 +202,7 @@ export const registerAudioRoutes = (
           error: "Internal TTS error",
           details: String(error),
         },
-        { status: 500 }
+        { status: 500 },
       );
     } finally {
       await Promise.all(
@@ -212,7 +212,7 @@ export const registerAudioRoutes = (
           } catch {
             // Ignore cleanup failures.
           }
-        })
+        }),
       );
     }
   });

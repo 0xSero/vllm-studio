@@ -7,9 +7,6 @@ export interface AudioRouteDependencies {
     modelPath: string;
     language?: string;
   }) => Promise<SttTranscriptionResult>;
-  transcodeToWav?: (options: {
-    sourcePath: string;
-    outputPath: string;
-  }) => Promise<string>;
+  transcodeToWav?: (options: { sourcePath: string; outputPath: string }) => Promise<string>;
   synthesize?: (request: TtsSynthesisRequest) => Promise<void>;
 }

@@ -21,10 +21,8 @@ interface AcquireEngineInstallLockOptions {
 const installLockDirectory = (config: Pick<Config, "data_dir">): string =>
   join(config.data_dir, "runtime", "locks");
 
-const installLockPath = (
-  config: Pick<Config, "data_dir">,
-  backend: EngineBackend,
-): string => join(installLockDirectory(config), `${backend}.install.lock`);
+const installLockPath = (config: Pick<Config, "data_dir">, backend: EngineBackend): string =>
+  join(installLockDirectory(config), `${backend}.install.lock`);
 
 const nodeErrorCode = (error: unknown): string | null =>
   error instanceof Error && "code" in error ? String(error.code) : null;
@@ -32,8 +30,7 @@ const nodeErrorCode = (error: unknown): string | null =>
 const releaseInstallLock = (path: string): void => {
   try {
     rmSync(path);
-  } catch {
-  }
+  } catch {}
 };
 
 const tryAcquireInstallLock = (
@@ -43,7 +40,11 @@ const tryAcquireInstallLock = (
   const path = installLockPath(config, backend);
   mkdirSync(installLockDirectory(config), { recursive: true });
   try {
-    writeFileSync(path, JSON.stringify({ backend, pid: process.pid, startedAt: new Date().toISOString() }), { flag: "wx" });
+    writeFileSync(
+      path,
+      JSON.stringify({ backend, pid: process.pid, startedAt: new Date().toISOString() }),
+      { flag: "wx" },
+    );
     return { path, release: () => releaseInstallLock(path) };
   } catch (error) {
     if (nodeErrorCode(error) !== "EEXIST") throw error;
@@ -81,5 +82,8 @@ export const acquireEngineInstallLock = (
 ): Promise<EngineInstallLock | null> =>
   Effect.runPromise(acquireEngineInstallLockEffect(config, backend, options, Date.now()));
 
-export const installLockTimeoutMessage = (backend: EngineBackend, timeoutMs = ENGINE_INSTALL_TIMEOUT_MS): string =>
+export const installLockTimeoutMessage = (
+  backend: EngineBackend,
+  timeoutMs = ENGINE_INSTALL_TIMEOUT_MS,
+): string =>
   `${backend} install lock still present after ${Math.round(timeoutMs / 60_000)} minutes`;

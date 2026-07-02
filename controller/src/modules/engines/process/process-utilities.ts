@@ -47,7 +47,10 @@ export const listProcesses = (): Array<{ pid: number; args: string[] }> => {
   }
 };
 
-export const buildEnvironment = (recipe: Recipe, config?: Pick<Config, "data_dir">): Record<string, string> => {
+export const buildEnvironment = (
+  recipe: Recipe,
+  config?: Pick<Config, "data_dir">,
+): Record<string, string> => {
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
   env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1";
 
@@ -141,10 +144,7 @@ export const buildEnvironment = (recipe: Recipe, config?: Pick<Config, "data_dir
   return env;
 };
 
-function resolveVenvBinForRecipe(
-  recipe: Recipe,
-  dataDirectory?: string,
-): string | null {
+function resolveVenvBinForRecipe(recipe: Recipe, dataDirectory?: string): string | null {
   const python =
     recipe.python_path && recipe.python_path.trim()
       ? recipe.python_path
@@ -190,7 +190,7 @@ export const buildProcessTree = (): Map<number, number[]> => {
 export const collectChildren = (
   tree: Map<number, number[]>,
   pid: number,
-  accumulator: Set<number>
+  accumulator: Set<number>,
 ): void => {
   const children = tree.get(pid) ?? [];
   for (const child of children) {

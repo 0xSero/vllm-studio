@@ -1,5 +1,12 @@
 import { StatusPill } from "@/ui";
-import { SettingsFactRows, SettingsGroup, SettingsRow, SettingsValue, type SettingsFactRow, type StatusTone } from "./settings-ui";
+import {
+  SettingsFactRows,
+  SettingsGroup,
+  SettingsRow,
+  SettingsValue,
+  type SettingsFactRow,
+  type StatusTone,
+} from "./settings-ui";
 import type { ApiConnectionSettings } from "./types";
 import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
 

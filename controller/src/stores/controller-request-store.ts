@@ -52,13 +52,13 @@ export class ControllerRequestStore {
       )
     `);
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_created_at ON controller_requests(created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_controller_requests_created_at ON controller_requests(created_at)`,
     );
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_path_created ON controller_requests(path, created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_controller_requests_path_created ON controller_requests(path, created_at)`,
     );
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_status_created ON controller_requests(status, created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_controller_requests_status_created ON controller_requests(status, created_at)`,
     );
     this.db.run(`
       CREATE TABLE IF NOT EXISTS controller_function_calls (
@@ -72,17 +72,17 @@ export class ControllerRequestStore {
       )
     `);
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_created_at ON controller_function_calls(created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_created_at ON controller_function_calls(created_at)`,
     );
     this.db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_name_created ON controller_function_calls(function_name, created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_name_created ON controller_function_calls(function_name, created_at)`,
     );
   }
 
   private prune(): void {
     for (const table of ["controller_requests", "controller_function_calls"]) {
       this.db.run(
-        `DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`
+        `DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`,
       );
     }
   }
@@ -100,7 +100,7 @@ export class ControllerRequestStore {
       .query(
         `INSERT INTO controller_requests (
            method, path, status, duration_ms, success, error_class, error_message, user_agent
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.method.toUpperCase(),
@@ -110,7 +110,7 @@ export class ControllerRequestStore {
         record.success ? 1 : 0,
         record.error_class ?? null,
         record.error_message ?? null,
-        record.user_agent ?? null
+        record.user_agent ?? null,
       );
     this.maybePrune();
   }
@@ -121,14 +121,14 @@ export class ControllerRequestStore {
       .query(
         `INSERT INTO controller_function_calls (
            function_name, duration_ms, success, error_class, error_message
-         ) VALUES (?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?)`,
       )
       .run(
         record.function_name,
         durationMs,
         record.success ? 1 : 0,
         record.error_class ?? null,
-        record.error_message ?? null
+        record.error_message ?? null,
       );
     this.maybePrune();
   }
@@ -142,7 +142,7 @@ export class ControllerRequestStore {
            COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_requests,
            AVG(duration_ms) as avg_duration_ms,
            MAX(duration_ms) as max_duration_ms
-         FROM controller_requests`
+         FROM controller_requests`,
       )
       .get() as NumberRow | null;
 
@@ -163,7 +163,7 @@ export class ControllerRequestStore {
          FROM controller_requests
          GROUP BY method, path
          ORDER BY requests DESC, path ASC
-         LIMIT 50`
+         LIMIT 50`,
       )
       .all() as NumberRow[];
 
@@ -174,7 +174,7 @@ export class ControllerRequestStore {
            COUNT(*) as requests
          FROM controller_requests
          GROUP BY status
-         ORDER BY requests DESC, status ASC`
+         ORDER BY requests DESC, status ASC`,
       )
       .all() as NumberRow[];
 
@@ -190,7 +190,7 @@ export class ControllerRequestStore {
          FROM controller_requests
          WHERE success = 0
          ORDER BY created_at DESC
-         LIMIT 25`
+         LIMIT 25`,
       )
       .all() as NumberRow[];
 
@@ -200,7 +200,7 @@ export class ControllerRequestStore {
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_hour,
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') AND success = 0 THEN 1 ELSE 0 END) as last_24h_failed
-         FROM controller_requests`
+         FROM controller_requests`,
       )
       .get() as NumberRow | null;
 
@@ -212,7 +212,7 @@ export class ControllerRequestStore {
            COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_calls,
            AVG(duration_ms) as avg_duration_ms,
            MAX(duration_ms) as max_duration_ms
-         FROM controller_function_calls`
+         FROM controller_function_calls`,
       )
       .get() as NumberRow | null;
 
@@ -228,7 +228,7 @@ export class ControllerRequestStore {
          FROM controller_function_calls
          GROUP BY function_name
          ORDER BY calls DESC, function_name ASC
-         LIMIT 50`
+         LIMIT 50`,
       )
       .all() as NumberRow[];
 
@@ -242,7 +242,7 @@ export class ControllerRequestStore {
          FROM controller_function_calls
          WHERE success = 0
          ORDER BY created_at DESC
-         LIMIT 25`
+         LIMIT 25`,
       )
       .all() as NumberRow[];
 

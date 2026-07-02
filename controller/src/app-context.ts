@@ -7,7 +7,10 @@ import {
   createLaunchFailureBudget,
   type LaunchFailureBudget,
 } from "./modules/engines/process/launch-failure-budget";
-import { createProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
+import {
+  createProcessManager,
+  type ProcessManager,
+} from "./modules/engines/process/process-manager";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
 import { EngineCoordinator } from "./modules/engines/engine-coordinator";
 import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
@@ -80,7 +83,7 @@ export const createAppContext = (): AppContext => {
   modelsDirectoryState = ensureModelsDirectory(config.models_dir);
   if (modelsDirectoryState === "missing") {
     logger.warn(
-      `Models directory ${config.models_dir} does not exist and could not be created; set LOCAL_STUDIO_MODELS_DIR to a writable path`
+      `Models directory ${config.models_dir} does not exist and could not be created; set LOCAL_STUDIO_MODELS_DIR to a writable path`,
     );
   }
 

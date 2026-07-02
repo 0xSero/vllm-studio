@@ -25,7 +25,10 @@ export async function POST(request: NextRequest) {
   }
   try {
     await browserHost.setViewport(width, height);
-    return Response.json({ ok: true, data: { width: Math.round(width), height: Math.round(height) } });
+    return Response.json({
+      ok: true,
+      data: { width: Math.round(width), height: Math.round(height) },
+    });
   } catch (error) {
     return Response.json({
       ok: false,

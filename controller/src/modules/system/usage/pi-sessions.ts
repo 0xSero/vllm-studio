@@ -75,7 +75,7 @@ const upsertUsage = (
   key: string,
   model: string,
   usage: { prompt: number; completion: number; total: number },
-  date?: string
+  date?: string,
 ): void => {
   const existing =
     map.get(key) ??
@@ -108,7 +108,7 @@ const addAssistantUsage = (
     cacheRead: number;
     cacheWrite: number;
   },
-  now: Date
+  now: Date,
 ): void => {
   const date = timestamp.toISOString().slice(0, 10);
   const hour = timestamp.getUTCHours();
@@ -156,7 +156,7 @@ const parseTimestamp = (value: unknown, fallback: Date): Date => {
 
 const parseAssistantUsage = (
   event: Record<string, unknown>,
-  fallbackModel: string | null
+  fallbackModel: string | null,
 ): {
   model: string;
   prompt: number;
@@ -192,7 +192,7 @@ const parseAssistantUsage = (
 export const getUsageFromPiSessions = (
   root = piSessionsRoot(),
   now = new Date(),
-  knownModels?: Set<string> // if provided, only these model names are included
+  knownModels?: Set<string>, // if provided, only these model names are included
 ): Omit<UsageStats, "controller"> | null => {
   const accumulator: UsageAccumulator = {
     totalRequests: 0,
@@ -241,10 +241,10 @@ export const getUsageFromPiSessions = (
     .sort((a, b) => b.total_tokens - a.total_tokens)
     .slice(0, 25);
   const daily = [...accumulator.daily.values()].sort((a, b) =>
-    String(b.date ?? "").localeCompare(String(a.date ?? ""))
+    String(b.date ?? "").localeCompare(String(a.date ?? "")),
   );
   const dailyByModel = [...accumulator.dailyByModel.values()].sort((a, b) =>
-    String(b.date ?? "").localeCompare(String(a.date ?? ""))
+    String(b.date ?? "").localeCompare(String(a.date ?? "")),
   );
   const hourly = [...accumulator.hourly.values()].sort((a, b) => a.hour - b.hour);
   const peakDays = daily
@@ -277,7 +277,7 @@ export const getUsageFromPiSessions = (
       avg_completion: Math.round(accumulator.completionTokens / accumulator.totalRequests),
       max: byModel.reduce(
         (max, row) => Math.max(max, Math.round(row.total_tokens / row.requests)),
-        0
+        0,
       ),
       p50: 0,
       p95: 0,
@@ -327,7 +327,11 @@ export const getUsageFromPiSessions = (
       completion_tokens: row.completion_tokens,
       avg_latency_ms: 0,
     })),
-    daily_by_model: dailyByModel.map((row) => ({ ...row, date: row.date ?? "", success_rate: 100 })),
+    daily_by_model: dailyByModel.map((row) => ({
+      ...row,
+      date: row.date ?? "",
+      success_rate: 100,
+    })),
     hourly_pattern: hourly,
   };
 };

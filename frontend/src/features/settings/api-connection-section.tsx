@@ -1,5 +1,15 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { Check, CircleDot, Eye, EyeOff, Link as LinkIcon, Plus, Save, Trash2, X } from "@/ui/icon-registry";
+import {
+  Check,
+  CircleDot,
+  Eye,
+  EyeOff,
+  Link as LinkIcon,
+  Plus,
+  Save,
+  Trash2,
+  X,
+} from "@/ui/icon-registry";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import {
   loadSavedControllers,
@@ -10,7 +20,14 @@ import {
 import { getStoredBackendUrl, setApiKey, setStoredBackendUrl } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { StatusPill, Spinner } from "@/ui";
-import { SettingsButton, SettingsGroup, SettingsInput, SettingsRow, SettingsValue, type StatusTone } from "./settings-ui";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsInput,
+  SettingsRow,
+  SettingsValue,
+  type StatusTone,
+} from "./settings-ui";
 
 type ControllerEntry = SavedController & { id: string };
 
@@ -219,11 +236,7 @@ export function ApiConnectionSection({
           actions={
             <>
               <SettingsButton onClick={onTestConnection} disabled={testing || apiSettingsLoading}>
-                {testing ? (
-                  <Spinner size="xs" />
-                ) : (
-                  <LinkIcon className="h-3 w-3" />
-                )}
+                {testing ? <Spinner size="xs" /> : <LinkIcon className="h-3 w-3" />}
                 Test
               </SettingsButton>
               <SettingsButton
@@ -231,11 +244,7 @@ export function ApiConnectionSection({
                 disabled={saving || apiSettingsLoading}
                 tone="primary"
               >
-                {saving ? (
-                  <Spinner size="xs" />
-                ) : (
-                  <Save className="h-3 w-3" />
-                )}
+                {saving ? <Spinner size="xs" /> : <Save className="h-3 w-3" />}
                 Save active
               </SettingsButton>
             </>

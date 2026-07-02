@@ -156,7 +156,11 @@ const installIntoManagedVenvEffect = (
         if (now - lastUpdateAt < JOB_OUTPUT_THROTTLE_MS) return;
         lastUpdateAt = now;
         progress = Math.min(0.9, progress + 0.01);
-        options.onProgress?.({ progress, message: `Installing ${packageSpec} with ${installer}...`, outputTail });
+        options.onProgress?.({
+          progress,
+          message: `Installing ${packageSpec} with ${installer}...`,
+          outputTail,
+        });
       },
     });
     if (install.status !== 0) {

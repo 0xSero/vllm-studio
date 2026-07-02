@@ -164,11 +164,7 @@ export function AgentComposerActions({
             aria-label="Send"
             title="Send (Enter) · Queue (Tab)"
           >
-            {starting ? (
-              <Spinner size="sm" />
-            ) : (
-              <SendIcon className="h-3.5 w-3.5" />
-            )}
+            {starting ? <Spinner size="sm" /> : <SendIcon className="h-3.5 w-3.5" />}
           </button>
         )}
       </div>

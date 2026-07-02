@@ -23,7 +23,7 @@ const normalizeModelPath = (path: string): string => path.replace(/\/+$/, "");
 export const isRecipeRunning = (
   recipe: Recipe,
   current: ProcessInfo,
-  options: RecipeMatchOptions = {}
+  options: RecipeMatchOptions = {},
 ): boolean => {
   const canonicalName = (recipe.served_model_name ?? "").toLowerCase();
   if (

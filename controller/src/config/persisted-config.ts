@@ -39,7 +39,7 @@ type PersistedConfigUpdates = {
 
 export const savePersistedConfig = (
   dataDirectory: string,
-  updates: PersistedConfigUpdates
+  updates: PersistedConfigUpdates,
 ): PersistedConfig => {
   const path = getPersistedConfigPath(dataDirectory);
   const current = loadPersistedConfig(dataDirectory);

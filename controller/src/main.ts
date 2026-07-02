@@ -51,7 +51,7 @@ const logBootSummary = (port: number): void => {
       `models_dir=${config.models_dir} (${modelsDirectoryState === "missing" ? "MISSING" : modelsDirectoryState})`,
       `auth=${authMode}`,
       `gpu_tool=${detectGpuMonitoringTool() ?? "none detected"}`,
-    ].join(" ")
+    ].join(" "),
   );
 };
 

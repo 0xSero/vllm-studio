@@ -42,7 +42,9 @@ export function SegmentedControl<T extends string = string>({
             onClick={() => onChange(item.id)}
             className={cx(
               "inline-flex items-center gap-1.5 rounded-md transition-colors",
-              size === "sm" ? "px-2 py-0.5 text-[length:var(--fs-sm)]" : "px-2.5 py-1 text-[length:var(--fs-md)]",
+              size === "sm"
+                ? "px-2 py-0.5 text-[length:var(--fs-sm)]"
+                : "px-2.5 py-1 text-[length:var(--fs-md)]",
               active
                 ? "bg-(--ui-surface) text-(--ui-fg) shadow-sm"
                 : "text-(--ui-muted) hover:text-(--ui-fg)",

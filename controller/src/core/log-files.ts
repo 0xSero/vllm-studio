@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, openSync, closeSync, readSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  openSync,
+  closeSync,
+  readSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 
 const LOG_PREFIX = "vllm_";
@@ -21,7 +30,8 @@ export interface LogCleanupOptions {
 }
 
 export const getLogCleanupDefaultsFromEnvironment = (): Omit<LogCleanupOptions, "excludePaths"> => {
-  const clampInt = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+  const clampInt = (value: number, min: number, max: number): number =>
+    Math.min(Math.max(value, min), max);
   const parseIntOr = (raw: string | undefined, fallback: number): number => {
     if (!raw) return fallback;
     const n = Number.parseInt(raw, 10);
@@ -39,12 +49,15 @@ export const getLogCleanupDefaultsFromEnvironment = (): Omit<LogCleanupOptions, 
   return {
     maxAgeMs,
     maxFiles: maxFiles <= 0 ? Number.MAX_SAFE_INTEGER : clampInt(maxFiles, 1, 100_000),
-    maxTotalBytes: maxTotalBytes <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(1_000_000, maxTotalBytes),
+    maxTotalBytes:
+      maxTotalBytes <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(1_000_000, maxTotalBytes),
   };
 };
 
 export const sanitizeLogSessionId = (sessionId: string): string => {
-  const safe = Array.from(sessionId).filter((char) => /[a-zA-Z0-9._-]/.test(char)).join("");
+  const safe = Array.from(sessionId)
+    .filter((char) => /[a-zA-Z0-9._-]/.test(char))
+    .join("");
   return safe;
 };
 
@@ -80,7 +93,9 @@ const scanLogDirectory = (directory: string, source: LogFileEntry["source"]): Lo
       .map((name) => {
         const path = join(directory, name);
         const stat = statSync(path);
-        const sessionId = name.replace(new RegExp(`^${LOG_PREFIX}`), "").replace(new RegExp(`${LOG_SUFFIX}$`), "");
+        const sessionId = name
+          .replace(new RegExp(`^${LOG_PREFIX}`), "")
+          .replace(new RegExp(`${LOG_SUFFIX}$`), "");
         return {
           sessionId,
           path,
@@ -96,7 +111,10 @@ const scanLogDirectory = (directory: string, source: LogFileEntry["source"]): Lo
 
 export const listLogFiles = (dataDirectory: string): LogFileEntry[] => {
   const primaryDirectory = resolve(dataDirectory, "logs");
-  const all = [...scanLogDirectory(primaryDirectory, "data_dir"), ...scanLogDirectory(FALLBACK_LOG_DIR, "tmp")];
+  const all = [
+    ...scanLogDirectory(primaryDirectory, "data_dir"),
+    ...scanLogDirectory(FALLBACK_LOG_DIR, "tmp"),
+  ];
 
   // Deduplicate by session id, preferring the newest mtime.
   const bySession = new Map<string, LogFileEntry>();
@@ -110,7 +128,10 @@ export const listLogFiles = (dataDirectory: string): LogFileEntry[] => {
   return Array.from(bySession.values()).sort((a, b) => b.mtimeMs - a.mtimeMs);
 };
 
-export const cleanupLogFiles = (dataDirectory: string, options: LogCleanupOptions): { deleted: number } => {
+export const cleanupLogFiles = (
+  dataDirectory: string,
+  options: LogCleanupOptions,
+): { deleted: number } => {
   const { maxAgeMs, maxFiles, maxTotalBytes, excludePaths } = options;
   const now = Date.now();
 
@@ -182,7 +203,11 @@ export const readFileTailBytes = (path: string, maxBytes: number): string => {
   }
 };
 
-export const tailFileLines = (path: string, limit: number, maxBytes = 10 * 1024 * 1024): string[] => {
+export const tailFileLines = (
+  path: string,
+  limit: number,
+  maxBytes = 10 * 1024 * 1024,
+): string[] => {
   if (limit <= 0) return [];
   if (!existsSync(path)) return [];
 

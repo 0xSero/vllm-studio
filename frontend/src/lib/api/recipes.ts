@@ -20,4 +20,3 @@ export function createRecipesApi(core: ApiCore) {
       core.request(`/recipes/${id}`, { method: "DELETE" }),
   };
 }
-

@@ -27,7 +27,11 @@ export const bumpPeak = (peaks: SessionPeaks, key: keyof SessionPeaks, value: nu
   if (Number.isFinite(value) && value > peaks[key]) peaks[key] = value;
 };
 
-export const bumpBestLower = (peaks: SessionPeaks, key: keyof SessionPeaks, value: number): void => {
+export const bumpBestLower = (
+  peaks: SessionPeaks,
+  key: keyof SessionPeaks,
+  value: number,
+): void => {
   if (!Number.isFinite(value) || value <= 0) return;
   if (peaks[key] === 0 || value < peaks[key]) peaks[key] = value;
 };

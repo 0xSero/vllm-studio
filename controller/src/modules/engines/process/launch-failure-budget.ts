@@ -18,23 +18,19 @@ export interface LaunchFailureBudget {
 export const LAUNCH_FAILURE_LIMIT = 3;
 export const LAUNCH_FAILURE_WINDOW_MS = 10 * 60 * 1000;
 
-export const formatLaunchFailureBudgetMessage = (
-  snapshot: LaunchFailureBudgetSnapshot
-): string => {
+export const formatLaunchFailureBudgetMessage = (snapshot: LaunchFailureBudgetSnapshot): string => {
   return `Launch crash-loop budget exhausted for ${snapshot.recipe_id}: ${snapshot.failure_count}/${snapshot.limit} failed attempts in ${Math.round(snapshot.window_ms / 60_000)} minutes. Edit the recipe or retry after ${snapshot.reset_at}.`;
 };
 
 export const createLaunchFailureBudget = (
   limit = LAUNCH_FAILURE_LIMIT,
-  windowMs = LAUNCH_FAILURE_WINDOW_MS
+  windowMs = LAUNCH_FAILURE_WINDOW_MS,
 ): LaunchFailureBudget => {
   const failuresByRecipe = new Map<string, number[]>();
 
   const prune = (recipeId: string, now = Date.now()): number[] => {
     const cutoff = now - windowMs;
-    const kept = (failuresByRecipe.get(recipeId) ?? []).filter(
-      (timestamp) => timestamp > cutoff
-    );
+    const kept = (failuresByRecipe.get(recipeId) ?? []).filter((timestamp) => timestamp > cutoff);
     if (kept.length > 0) {
       failuresByRecipe.set(recipeId, kept);
     } else {
@@ -43,10 +39,7 @@ export const createLaunchFailureBudget = (
     return kept;
   };
 
-  const snapshot = (
-    recipeId: string,
-    failures: number[]
-  ): LaunchFailureBudgetSnapshot | null => {
+  const snapshot = (recipeId: string, failures: number[]): LaunchFailureBudgetSnapshot | null => {
     if (failures.length === 0) return null;
     const oldest = Math.min(...failures);
     return {

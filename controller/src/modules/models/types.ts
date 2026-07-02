@@ -1,5 +1,8 @@
 import type { Backend as SharedBackend, RecipeBase } from "../../../../shared/contracts/recipes";
-import type { GPU, ProcessInfo as PublicProcessInfo } from "../../../../shared/contracts/observability";
+import type {
+  GPU,
+  ProcessInfo as PublicProcessInfo,
+} from "../../../../shared/contracts/observability";
 import type { ConfigData } from "../../../../shared/contracts/system";
 
 export type { ModelInfo } from "../../../../shared/contracts/recipes";
