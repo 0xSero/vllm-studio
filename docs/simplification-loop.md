@@ -132,8 +132,40 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
 - I1: repo mapped; 4 audits run; charter + docs/ux-stories.md written; config/CI
   batch committed (24b12fad).
 
+## BUG HUNT LOG (post-convergence)
+
+Two-agent adversarial sweep 2026-07-02. Findings verified by tracing callers,
+then fixed. Commits 10c42cbe (runtime), 7e43d6e0 (security).
+
+Runtime/state (5, all fixed):
+- poll-adopts-new-runtimeSessionId left the event cursor on the old runtime's
+  seq → reconnect skipped the new runtime's early events (lost turn content).
+- session-json-store (plan/canvas): unlocked read-modify-write + non-atomic
+  writeFile → lost updates + silent doc wipe on crash mid-write. Now per-file
+  serialized + write-then-rename.
+- closeAll didn't clear cursors/turnAcceptedAt/coalescer slots → app-lifetime
+  singleton leaked one entry per session opened.
+- abortTurn only wrote status:idle → perpetual "running" tool badges + stale
+  activeAssistantId when SSE detached before the terminal event.
+- reconcileLiveness idle branch didn't cancel an armed reconnect timer → SSE
+  reopened against a just-idled session.
+
+Security (privileged Next API routes):
+- HIGH middleware matcher excluded image extensions → any dynamic route with a
+  .png suffix skipped the frontend-token gate. FIXED (match /api/:path*).
+- MED added requireApiAccess to fs/file GET, git/git-diff GET, abort, canvas,
+  plan, comments, compact (were edge-gate-only). No-op when no token set.
+- LOW git checkout/createBranch leading-dash arg injection. FIXED (-- + reject).
+- REVIEWED-BY-DESIGN: fs cwd = user-chosen project dir (local agent needs
+  arbitrary dirs); now token-gated. SSRF/traversal/SSE-abort all checked clean.
+
 ## Iteration log
 
+- **I5 (2026-07-02)**: post-convergence bug hunt (2 adversarial agents over the
+  agent runtime + privileged API routes). 10 verified findings fixed across 2
+  commits (10c42cbe runtime, 7e43d6e0 security) incl. a HIGH token-gate bypass
+  and a silent plan/canvas data-wipe race. All gates green: 126 controller
+  integration + 227 frontend e2e + build. See BUG HUNT LOG above.
 - **I4 (2026-07-02)**: cd2eb9a9 (bundle-analyzer dep + start:next footgun cut),
   34787a05 (unconsumed Docker pipeline: deploy-frontend.yml + 2 Dockerfiles +
   2 dockerignores — nothing pulls the ghcr image; deploys are native), 419af980
