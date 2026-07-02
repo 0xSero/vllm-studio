@@ -218,8 +218,43 @@ Frontend realtime/desktop (fixed):
 - controller-matrix store diffs before emit (was re-rendering all consumers /5s).
 - LOW left: snapshotsByController growth (bounded by controllers visited).
 
+## BUG HUNT LOG — round 4 (I8, env/studio/audio + recipes editor)
+
+Two-agent sweep 2026-07-02 over the last unaudited high-complexity surfaces.
+Commits 53118b09 (controller), 24dabc48 (frontend).
+
+Controller env/studio/audio (fixed):
+- HIGH unbounded STT upload buffered fully into memory (OOM DoS) → 100MB cap.
+- looksLikeWav trusted client MIME, skipping the RIFF/WAVE header check → header
+  now authoritative.
+- environment create accepted any image string pushed as a docker-run positional
+  token (flag-shaped → argv injection) → reject leading-dash like the pull path.
+- SIMPLIFY: collapsed dup STT/TTS model-path resolvers; extracted
+  resolveInsideModelsRoot (delete+move dup'd the traversal guard); constant reuse.
+
+Frontend recipes editor (fixed):
+- tensor/pipeline parallel accepted 0 (clearing → tp_size:0, controller checks
+  isInt only) → floor at 1. port accepted 0 → default. gpu-util slider min 0 →
+  0.05 (0 emits invalid flag).
+- llama.cpp arg builder's startsWith(flag) let a longer sibling flag suppress a
+  distinct shorter flag (--rope-scaling vs --rope-scale) → whole-token match.
+- 'override' badge stayed lit when typed command == generated → clear editedCommand.
+- SIMPLIFY: engine-options-section reused shared coerceBoolean.
+- DEFERRED (larger, documented): tab field-helper extraction (~150 lines, ~39
+  sites, must preserve empties-to-undefined + enum casts); dead RecipeEditor
+  fields (must keep ENGINE_ARG_SPECS rows for VLLM_ONLY_FLAG_KEYS).
+
+VERIFIED-NOT-DEAD: voice/audio flow (no wired mic UI, but settings surface
+voiceUrl/voiceModel, endpoints functional, user configures whisper model) — a
+real feature, kept per "maintain all features". CI workflows have no redundancy.
+
 ## Iteration log
 
+- **I8 (2026-07-02)**: bug-hunt round 4 (env/studio/audio + recipes editor,
+  2 agents). Fixed 1 HIGH (audio OOM DoS) + 8 MED/LOW correctness/security/
+  editor-validation issues + 4 dedups across 2 commits. Deferred 2 larger recipe
+  refactors with reasons. Confirmed voice flow is a real feature (kept). All
+  gates green (127 integration + 227 e2e + build). See BUG HUNT LOG round 4.
 - **I7 (2026-07-02)**: bug-hunt round 3 (proxy + realtime/desktop, 2 agents +
   personal SSE-framing audit). Fixed 1 HIGH (cross-host key leak), 1 HIGH-noted
   left (upstream timeout, conflicts with no-truncation), and 8 MED/LOW proxy +
