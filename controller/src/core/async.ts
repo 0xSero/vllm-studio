@@ -109,6 +109,11 @@ export class AsyncQueue<TValue> {
     if (this.items.length > 0) {
       return Promise.resolve(this.items.shift() as TValue);
     }
+    // An already-aborted signal never dispatches `abort` to a listener added
+    // afterwards, so registering below would hang forever and leak the resolver.
+    if (signal?.aborted) {
+      return Promise.reject(new Error("Queue aborted"));
+    }
 
     return new Promise<TValue>((resolve, reject) => {
       const entry: QueueResolver<TValue> = {
