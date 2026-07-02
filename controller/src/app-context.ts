@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { createConfig, type Config } from "./config/env";
-import { createEventManager, type EventManager } from "./modules/system/event-manager";
+import { EventManager } from "./modules/system/event-manager";
 import { createLaunchState, type LaunchState } from "./modules/engines/process/launch-state";
 import {
   createLaunchFailureBudget,
@@ -9,7 +9,7 @@ import {
 } from "./modules/engines/process/launch-failure-budget";
 import { createProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
-import { createEngineCoordinator, type EngineCoordinator } from "./modules/engines/engine-coordinator";
+import { EngineCoordinator } from "./modules/engines/engine-coordinator";
 import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
 import { primaryLogPathFor } from "./core/log-files";
 import { DownloadStore } from "./modules/engines/downloads/download-store";
@@ -72,7 +72,7 @@ export const createAppContext = (): AppContext => {
   const inferenceRequestStore = new InferenceRequestStore(dbPath);
   const controllerSettingsStore = new ControllerSettingsStore(dbPath);
   const controllerRequestStore = new ControllerRequestStore(dbPath);
-  const eventManager = createEventManager();
+  const eventManager = new EventManager();
   const logger = createLogger(resolveLogLevel("info"), {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
     onLine: (line) => eventManager.publishLogLine("controller", line),
@@ -89,7 +89,7 @@ export const createAppContext = (): AppContext => {
   const processManager = createProcessManager(config, logger, eventManager);
   const downloadManager = new DownloadManager(config, downloadStore, eventManager, logger);
 
-  const engineService = createEngineCoordinator({
+  const engineService = new EngineCoordinator({
     config,
     eventManager,
     processManager,

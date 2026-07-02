@@ -26,7 +26,7 @@ interface OpenAIModelList {
 }
 import { buildModelInfo, discoverModelDirectories } from "./model-browser";
 import { notFound } from "../../core/errors";
-import { observeControllerFunction } from "../../core/function-observability";
+import { findObservedInferenceProcess } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../http/local-fetch";
 
@@ -45,11 +45,7 @@ function recipeMetadata(recipe: Recipe): Record<string, unknown> | undefined {
 export const registerModelsRoutes: RouteRegistrar = (app, context) => {
   app.get("/v1/models", async (ctx) => {
     const recipes = context.stores.recipeStore.list();
-    const current = await observeControllerFunction(
-      context,
-      "models.list.findInferenceProcess",
-      () => context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "models.list");
     let activeModelData: { data?: Array<{ max_model_len?: number }> } | null = null;
     if (current) {
       try {
@@ -136,11 +132,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
       throw notFound("Model not found");
     }
 
-    const current = await observeControllerFunction(
-      context,
-      "models.detail.findInferenceProcess",
-      () => context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "models.detail");
     let isActive = false;
     let maxModelLength = recipe.max_model_len;
     if (

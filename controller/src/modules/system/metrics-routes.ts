@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { observeControllerFunction } from "../../core/function-observability";
+import { findObservedInferenceProcess } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
@@ -30,11 +30,7 @@ const buildModelKeys = (modelId: string, modelPath: string | null | undefined): 
 };
 
 const buildCurrentMetrics = async (context: AppContext): Promise<Record<string, unknown>> => {
-  const current = await observeControllerFunction(
-    context,
-    "metrics.current.findInferenceProcess",
-    () => context.processManager.findInferenceProcess(context.config.inference_port)
-  );
+  const current = await findObservedInferenceProcess(context, "metrics.current");
   const gpus = getGpuInfo();
   const lifetimeData = context.stores.lifetimeMetricsStore.getAll();
   const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
@@ -200,9 +196,7 @@ app.get("/v1/metrics/vllm", async (ctx) => {
   app.post("/benchmark", async (ctx) => {
     const promptTokens = Number(ctx.req.query("prompt_tokens") ?? 1000);
     const maxTokens = Number(ctx.req.query("max_tokens") ?? 100);
-    const current = await observeControllerFunction(context, "benchmark.findInferenceProcess", () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "benchmark");
     if (!current) {
       return ctx.json({ error: "No model running" });
     }

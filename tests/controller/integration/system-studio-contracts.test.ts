@@ -121,18 +121,6 @@ describe("controller route contracts", () => {
           status: 200,
           success: 1,
         }),
-        expect.objectContaining({
-          method: "GET",
-          path: "/api/spec",
-          status: 200,
-          success: 1,
-        }),
-        expect.objectContaining({
-          method: "GET",
-          path: "/api/docs",
-          status: 200,
-          success: 1,
-        }),
       ]),
     );
 

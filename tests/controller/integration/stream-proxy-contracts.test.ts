@@ -247,7 +247,7 @@ describe("controller route contracts", () => {
 
   test("message normalizer maps reasoning aliases to reasoning_content", async () => {
     const { normalizeReasoningAndContentInMessage } =
-      await import("../../../controller/src/modules/proxy/reasoning-extractor");
+      await import("../../../controller/src/modules/proxy/reasoning");
     const message: Record<string, unknown> = {
       role: "assistant",
       content: "pong",

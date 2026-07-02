@@ -4,7 +4,7 @@ import { createToolCallStream } from "../../../controller/src/modules/proxy/tool
 import {
   createThinkRewriter,
   thinkingTagPrefixIsPartial,
-} from "../../../controller/src/modules/proxy/think-rewriter";
+} from "../../../controller/src/modules/proxy/reasoning";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

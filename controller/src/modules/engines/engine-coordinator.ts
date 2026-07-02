@@ -9,14 +9,17 @@ import type { Config } from "../../config/env";
 import type { ProcessManager } from "./process/process-manager";
 import type { RecipeStore } from "../models/recipes/recipe-store";
 import { LIFECYCLE_READY_TIMEOUT_MS } from "./configs";
-import type {
-  EngineService,
-  SetActiveRecipeResult,
-  SetActiveRecipeOptions,
-} from "./engine-service";
 import type { LaunchFailureBudget } from "./process/launch-failure-budget";
 import { formatLaunchFailureBudgetMessage } from "./process/launch-failure-budget";
 import { getEngineSpec } from "./engine-spec";
+
+export type SetActiveRecipeResult = { ok: true } | { ok: false; error: string };
+
+/** Options for setting the active recipe. */
+export interface SetActiveRecipeOptions {
+  signal?: AbortSignal;
+}
+
 interface CoordinatorDeps {
   config: Config;
   eventManager: EventManager;
@@ -24,7 +27,7 @@ interface CoordinatorDeps {
   recipeStore: RecipeStore;
   launchFailureBudget: LaunchFailureBudget;
 }
-export class EngineCoordinator implements EngineService {
+export class EngineCoordinator {
   private readonly switchLock = new AsyncLock();
   private activeLifecycleAbort: AbortController | null = null;
   private activeLaunchPid: number | null = null;
@@ -271,6 +274,3 @@ export class EngineCoordinator implements EngineService {
     return this.deps.processManager.findInferenceProcess(this.deps.config.inference_port);
   }
 }
-export const createEngineCoordinator = (deps: CoordinatorDeps): EngineCoordinator => {
-  return new EngineCoordinator(deps);
-};

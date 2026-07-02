@@ -2,11 +2,10 @@ import { createAppContext, getModelsDirectoryState } from "./app-context";
 import { createApp } from "./http/app";
 import { detectGpuMonitoringTool } from "./modules/system/platform/gpu";
 import { startMetricsCollector } from "./modules/system/metrics-collector";
+import { parseBooleanFlag } from "./core/validation";
 
-const metricsDisabled = (): boolean => {
-  const raw = process.env["LOCAL_STUDIO_DISABLE_METRICS"]?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-};
+const metricsDisabled = (): boolean =>
+  parseBooleanFlag(process.env["LOCAL_STUDIO_DISABLE_METRICS"]);
 
 const context = createAppContext();
 const app = createApp(context);

@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { observeControllerFunction } from "../../core/function-observability";
+import { findObservedInferenceProcess } from "../../core/function-observability";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
 import type { ProcessInfo } from "../models/types";
@@ -14,9 +14,7 @@ const withRunningModel =
     handler: (ctx: Context, current: ProcessInfo, body: Record<string, unknown>) => Promise<Response>
   ) =>
   async (ctx: Context): Promise<Response> => {
-    const current = await observeControllerFunction(context, observedName, () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, observedName);
     if (!current) {
       return ctx.json({ error: "No model running", ...emptyPayload });
     }
@@ -32,7 +30,7 @@ const withRunningModel =
 export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
   app.post(
     "/v1/tokenize",
-    withRunningModel(context, "tokenize.findInferenceProcess", { num_tokens: 0 }, async (ctx, _current, body) => {
+    withRunningModel(context, "tokenize", { num_tokens: 0 }, async (ctx, _current, body) => {
       try {
         const response = await fetchInference(context, "/tokenize", {
           method: "POST",
@@ -51,7 +49,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
 
   app.post(
     "/v1/detokenize",
-    withRunningModel(context, "detokenize.findInferenceProcess", { text: "" }, async (ctx, _current, body) => {
+    withRunningModel(context, "detokenize", { text: "" }, async (ctx, _current, body) => {
       try {
         const response = await fetchInference(context, "/detokenize", {
           method: "POST",
@@ -70,7 +68,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
 
   app.post(
     "/v1/count-tokens",
-    withRunningModel(context, "countTokens.findInferenceProcess", { num_tokens: 0 }, async (ctx, current, body) => {
+    withRunningModel(context, "countTokens", { num_tokens: 0 }, async (ctx, current, body) => {
       const text = typeof body["text"] === "string" ? body["text"] : "";
       const model =
         typeof body["model"] === "string" ? body["model"] : (current.served_model_name ?? "default");
@@ -96,7 +94,7 @@ export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
     "/v1/tokenize-chat-completions",
     withRunningModel(
       context,
-      "tokenizeChatCompletions.findInferenceProcess",
+      "tokenizeChatCompletions",
       { input_tokens: 0 },
       async (ctx, current, body) => {
         const messages = Array.isArray(body["messages"]) ? body["messages"] : [];

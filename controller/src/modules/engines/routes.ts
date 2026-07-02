@@ -353,13 +353,6 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     return ctx.json(config);
   });
 
-  app.get("/runtime/sglang/config", async (ctx) => {
-    const spec = getEngineSpec("sglang");
-    if (!spec.getConfigHelp) throw notFound("SGLang config help not available");
-    const config = await spec.getConfigHelp(context.config);
-    return ctx.json(config);
-  });
-
   app.get("/runtime/sglang", async (ctx) => {
     const current = await getObservedProcess("runtime.backend.sglang");
     const target = await getDefaultRuntimeTarget(context.config, "sglang", current);

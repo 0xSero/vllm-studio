@@ -122,15 +122,6 @@ describe("controller route contracts", () => {
       detail: "controller logs cannot be deleted via API",
     });
 
-    const eventStatsResponse = await app.request("/events/stats");
-    const eventStatsBody = await eventStatsResponse.json();
-    expect(eventStatsResponse.status).toBe(200);
-    expect(eventStatsBody).toEqual({
-      total_events_published: 0,
-      channels: {},
-      total_subscribers: 0,
-    });
-
     const eventsController = new AbortController();
     const eventsResponse = await app.request("/events", {
       signal: eventsController.signal,
@@ -213,12 +204,6 @@ describe("controller route contracts", () => {
           status: 400,
           success: 0,
         }),
-        expect.objectContaining({
-          method: "GET",
-          path: "/events/stats",
-          status: 200,
-          success: 1,
-        }),
       ]),
     );
 
@@ -249,7 +234,7 @@ describe("controller route contracts", () => {
   test("usage includes persisted controller route observability", async () => {
     const app = await createTestApp();
 
-    await app.request("/status");
+    await app.request("/gpus");
     await app.request("/v1/models");
     await app.request("/controllers/route/status?target=file:///etc/passwd");
     await app.request("/vram-calculator", {
@@ -279,7 +264,7 @@ describe("controller route contracts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           method: "GET",
-          path: "/status",
+          path: "/gpus",
           requests: 1,
         }),
         expect.objectContaining({
@@ -317,8 +302,8 @@ describe("controller route contracts", () => {
       ]),
     );
     expect(body.controller.function_calls.totals).toMatchObject({
-      total_calls: 4,
-      successful_calls: 4,
+      total_calls: 3,
+      successful_calls: 3,
       failed_calls: 0,
       success_rate: 100,
     });
@@ -330,12 +315,6 @@ describe("controller route contracts", () => {
     ).toBeGreaterThanOrEqual(0);
     expect(body.controller.function_calls.by_function).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          function_name: "status.findInferenceProcess",
-          calls: 1,
-          successful: 1,
-          failed: 0,
-        }),
         expect.objectContaining({
           function_name: "models.list.findInferenceProcess",
           calls: 1,
@@ -360,12 +339,6 @@ describe("controller route contracts", () => {
     const functionRows = readControllerFunctionCallRows();
     expect(functionRows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          function_name: "status.findInferenceProcess",
-          success: 1,
-          error_class: null,
-          error_message: null,
-        }),
         expect.objectContaining({
           function_name: "models.list.findInferenceProcess",
           success: 1,
@@ -402,7 +375,7 @@ describe("controller route contracts", () => {
     };
     const app = createApp(context);
 
-    await app.request("/status");
+    await app.request("/gpus");
 
     const response = await app.request("/usage");
     const body = await response.json();
@@ -425,7 +398,7 @@ describe("controller route contracts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           method: "GET",
-          path: "/status",
+          path: "/gpus",
           requests: 1,
           successful: 1,
           failed: 0,
@@ -433,12 +406,12 @@ describe("controller route contracts", () => {
       ]),
     );
     expect(body.controller.function_calls.totals).toMatchObject({
-      total_calls: 3,
-      successful_calls: 2,
+      total_calls: 2,
+      successful_calls: 1,
       failed_calls: 1,
     });
     expect(body.controller.function_calls.totals.success_rate).toBeCloseTo(
-      66.666,
+      50,
       2,
     );
     expect(body.controller.function_calls.recent_errors).toEqual(
@@ -454,12 +427,6 @@ describe("controller route contracts", () => {
     const functionRows = readControllerFunctionCallRows();
     expect(functionRows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          function_name: "status.findInferenceProcess",
-          success: 1,
-          error_class: null,
-          error_message: null,
-        }),
         expect.objectContaining({
           function_name: "usage.collectKnownModels",
           success: 1,
@@ -558,7 +525,7 @@ describe("controller route contracts", () => {
   test("controller observability persists normalized raw rows for every route action", async () => {
     const app = await createTestApp();
 
-    await app.request("/status?ignored=1", {
+    await app.request("/gpus?ignored=1", {
       headers: { "user-agent": "controller-integration-test/1.0" },
     });
     await app.request("/missing-route");
@@ -576,7 +543,7 @@ describe("controller route contracts", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]).toMatchObject({
       method: "GET",
-      path: "/status",
+      path: "/gpus",
       status: 200,
       success: 1,
       error_class: null,

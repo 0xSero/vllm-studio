@@ -6,7 +6,7 @@ import type { RouteRegistrar } from "../../http/route-registrar";
 import type { SystemConfigResponse } from "../models/types";
 import { badRequest, notFound } from "../../core/errors";
 import { parseJsonObjectBody } from "../../core/validation";
-import { observeControllerFunction } from "../../core/function-observability";
+import { findObservedInferenceProcess } from "../../core/function-observability";
 import { estimateWeightsSizeBytes } from "../models/model-browser";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
@@ -44,9 +44,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
   };
 
   app.get("/status", async (ctx) => {
-    const current = await observeControllerFunction(context, "status.findInferenceProcess", () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "status");
     return ctx.json({
       running: Boolean(current),
       process: current,
@@ -65,9 +63,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.get("/compat", async (ctx) => {
-    const known = await observeControllerFunction(context, "compat.findInferenceProcess", () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const known = await findObservedInferenceProcess(context, "compat");
     const runtime = await getSystemRuntimeInfo(context.config, known);
     const portOpen = await checkService(
       SYSTEM_SERVICE_CHECK_HOST,
@@ -217,9 +213,7 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
       description: "Controller service (Bun/Hono)",
     });
 
-    const current = await observeControllerFunction(context, "config.findInferenceProcess", () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "config");
     const inferenceStatus = current ? "running" : "stopped";
 
     services.push({

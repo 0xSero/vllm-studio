@@ -1,4 +1,3 @@
-import { Effect } from "effect";
 import type { AppContext } from "../app-context";
 
 function elapsedMs(start: number): number {
@@ -14,43 +13,41 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-export const observeControllerFunctionEffect = <T>(
-  context: AppContext,
-  functionName: string,
-  call: () => T | Promise<T>,
-): Effect.Effect<Awaited<T>, unknown> => {
-  const start = performance.now();
-  return Effect.tryPromise({
-    try: () => Promise.resolve(call()),
-    catch: (error) => error as unknown,
-  }).pipe(
-    Effect.tap(() =>
-      Effect.sync(() =>
-        context.stores.controllerRequestStore.recordFunctionCall({
-          function_name: functionName,
-          duration_ms: elapsedMs(start),
-          success: true,
-        }),
-      ),
-    ),
-    Effect.tapError((error) =>
-      Effect.sync(() =>
-        context.stores.controllerRequestStore.recordFunctionCall({
-          function_name: functionName,
-          duration_ms: elapsedMs(start),
-          success: false,
-          error_class: errorClass(error),
-          error_message: errorMessage(error),
-        }),
-      ),
-    ),
-  );
-};
-
 export async function observeControllerFunction<T>(
   context: AppContext,
   functionName: string,
   call: () => T | Promise<T>,
 ): Promise<T> {
-  return Effect.runPromise(observeControllerFunctionEffect(context, functionName, call));
+  const start = performance.now();
+  try {
+    const result = await call();
+    context.stores.controllerRequestStore.recordFunctionCall({
+      function_name: functionName,
+      duration_ms: elapsedMs(start),
+      success: true,
+    });
+    return result;
+  } catch (error) {
+    context.stores.controllerRequestStore.recordFunctionCall({
+      function_name: functionName,
+      duration_ms: elapsedMs(start),
+      success: false,
+      error_class: errorClass(error),
+      error_message: errorMessage(error),
+    });
+    throw error;
+  }
 }
+
+/**
+ * The most common observed call: locate the running inference process on the
+ * configured port. `label` prefixes the telemetry function name per call site
+ * (e.g. "status" -> "status.findInferenceProcess").
+ */
+export const findObservedInferenceProcess = (
+  context: AppContext,
+  label: string,
+): ReturnType<AppContext["processManager"]["findInferenceProcess"]> =>
+  observeControllerFunction(context, `${label}.findInferenceProcess`, () =>
+    context.processManager.findInferenceProcess(context.config.inference_port),
+  );

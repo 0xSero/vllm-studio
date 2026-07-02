@@ -25,7 +25,6 @@ export class Event {
 export class EventManager {
   private readonly subscribers = new Map<string, Set<AsyncQueue<Event>>>();
   private readonly lock = new AsyncLock();
-  private eventCount = 0;
   private latestMetrics: Record<string, unknown> = {};
 
   public async *subscribe(channel = "default", signal?: AbortSignal): AsyncIterable<Event> {
@@ -75,7 +74,6 @@ export class EventManager {
         return;
       }
 
-      this.eventCount += 1;
       const deadQueues: AsyncQueue<Event>[] = [];
 
       for (const queue of subscribers) {
@@ -133,20 +131,4 @@ export class EventManager {
     }
     await this.publish(new Event(CONTROLLER_EVENTS.LAUNCH_PROGRESS, payload));
   }
-
-  public getStats(): Record<string, unknown> {
-    const channels: Record<string, number> = {};
-    let totalSubscribers = 0;
-    for (const [channel, set] of this.subscribers.entries()) {
-      channels[channel] = set.size;
-      totalSubscribers += set.size;
-    }
-    return {
-      total_events_published: this.eventCount,
-      channels,
-      total_subscribers: totalSubscribers,
-    };
-  }
 }
-
-export const createEventManager = (): EventManager => new EventManager();

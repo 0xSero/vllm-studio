@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import { badRequest, notFound } from "../../core/errors";
-import { observeControllerFunction } from "../../core/function-observability";
+import { findObservedInferenceProcess } from "../../core/function-observability";
 import { streamAsyncStrings, buildSseHeaders, withSseHeartbeat } from "../../http/sse";
 import { CONTROLLER_EVENTS } from "../../../../shared/contracts/controller-events";
 import { Event } from "./event-manager";
@@ -108,9 +108,7 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
 
   app.get("/logs", async (ctx) => {
     maybeCleanup();
-    const current = await observeControllerFunction(context, "logs.findInferenceProcess", () =>
-      context.processManager.findInferenceProcess(context.config.inference_port)
-    );
+    const current = await findObservedInferenceProcess(context, "logs");
     const entries = listLogFiles(context.config.data_dir);
     type LogSessionRow = {
       id: string;
@@ -261,9 +259,5 @@ export const registerLogsRoutes: RouteRegistrar = (app, context) => {
         Connection: "keep-alive",
       }),
     });
-  });
-
-  app.get("/events/stats", async (ctx) => {
-    return ctx.json(context.eventManager.getStats());
   });
 };
