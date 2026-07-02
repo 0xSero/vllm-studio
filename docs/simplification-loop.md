@@ -61,8 +61,7 @@ gates green, commits, and updates this doc.
   dep entirely (only trivial usage remains + env.ts Schema + errors.ts TaggedError).
 - [SKIP] C19 `/api/docs` is user-facing: Server pane links to /api/proxy/api/docs (server-view.tsx:388). KEEP. `/api/docs` swagger UI + `@hono/swagger-ui` dep + openapi-spec.ts
   (255 lines) — /api/spec is proxied by frontend; verify what reads it.
-- [ ] C20 move runtime-target capability booleans onto EngineSpec (factory loops
-  generically).
+- [SKIP] C20 lateral shuffle: capability rules are env-sensitive (upgrade-cmd checks) and cohesive in the factory; moving to EngineSpec spreads env logic across spec files for ~0 line win. Same reasoning as the earlier runtime-targets split skip.
 - Previously skipped (do NOT re-propose): store merges, metrics throughputSamples
   unification, runtime-targets.ts split.
 
@@ -122,9 +121,8 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
 - [x] G2 (650f204e) daemon.sh {start|stop|status} replaces trio; README updated. daemon-*.sh ×3 → keep (README-documented) or collapse into one daemon.sh.
 - [x] G3 (f6b271d6) single root .prettierrc.json; controller reformatted (trailingComma all) + 16 drifted frontend files fixed. merge prettier configs (controller trailingComma es5 vs frontend all) →
   one root .prettierrc.json; NOTE reformats controller; do as isolated commit.
-- [ ] G4 frontend package.json scripts sprawl (30+) — consolidate check:* variants.
-- [ ] G5 docs/engine-refactor-plan.md + docs/archive/* are process notes not product
-  docs — relocate/prune once loops close.
+- [x] G4 (cd2eb9a9) cut start:next (SSE-buffering footgun) + analyze script + @next/bundle-analyzer devDep + next.config wrapper. check:* variants measured: each is a real named gate step, kept.
+- [x] G5 engine-refactor-plan.md archived to docs/archive/ next to its iteration log.
 - [x] G6 (650f204e) deleted — pinned nothing, CI installs in frontend/ only. root package-lock.json was an empty stub — verify nothing needs it.
 - [ ] cli/ dir on disk = stray node_modules only (untracked); frontend/frontend/ =
   April path-bug junk (untracked). ASK USER before rm.
@@ -135,6 +133,18 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
   batch committed (24b12fad).
 
 ## Iteration log
+
+- **I4 (2026-07-02)**: cd2eb9a9 (bundle-analyzer dep + start:next footgun cut),
+  34787a05 (unconsumed Docker pipeline: deploy-frontend.yml + 2 Dockerfiles +
+  2 dockerignores — nothing pulls the ghcr image; deploys are native), 419af980
+  (desktop bug-hunt fixes: process-exit listener leak per frontend restart,
+  writeEmbeddedServerPid orphan-on-throw, stale IpcRequestMap, migration-list
+  junk, issue-template labels aligned to curated scheme). docs archive move.
+  C20 SKIP (lateral shuffle). Bug-hunt agent cleared: desktop/dist ignored ok,
+  test/hook/contract references all resolve, security.yml legit. Root gate
+  green. Remaining actionable: U7 + U1/U4-U6/U8/U9 all BLOCKED-ON-USER;
+  cli//frontend-frontend junk dirs await user rm OK. Loop largely converged —
+  future iterations should hunt bugs/regressions rather than force cuts.
 
 - **I3 (2026-07-02)**: a171aca0 (Effect ceremony stripped from core helpers),
   5daf40db (Spinner primitive, 17 sites), f6b271d6 (root prettier config, one-time
