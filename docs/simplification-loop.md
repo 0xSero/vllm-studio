@@ -430,8 +430,27 @@ settings/config mandate). Result: ONE genuine cut, rest verified purposeful.
   consolidated (marginal, risks gate composition). daemon.sh/deploy-remote.sh
   are README-documented user helpers; frontend/scripts/test-*.ts run via glob.
 
+## SHARED-EXPORT AUDIT — I17
+
+Found the one dead-code class the mechanical gates can't see: knip runs
+per-workspace and its project scope is src/** + desktop/** — it NEVER scans
+shared/. So a shared/contracts export used by NEITHER workspace is invisible to
+both knip runs. Enumerated all 71 shared exports, cross-referenced controller/
+src + frontend/src + frontend/desktop + tests + shared/:
+- CUT (de-exported to module-private): VLLM_ONLY_FLAG_KEYS, normalizeEngineArgKey,
+  getForeignFlagKeys, isKnownVllmExtraArgKey — all referenced only inside
+  engine-args.ts, zero external use. commit caf894b2. Public contract API -4.
+- The other 67 shared exports are all consumed. No other dead shared surface.
+- desktop/** IS in frontend knip's project scope (no blind spot there).
+- Did NOT chase src/ exports-used-in-own-file (knip ignoreExportsUsedInFile:true
+  is a deliberate choice; de-exporting internally-used exports en masse is risky).
+
 ## Iteration log
 
+- **I17 (2026-07-02)**: shared-contract export audit — the one dead-code class
+  knip can't see (it never scans shared/). Cut 4 unused engine-args exports to
+  module-private; verified the other 67 are consumed. Genuine surface reduction,
+  gates green (375 tests, both typechecks, shared-contract check).
 - **I16 (2026-07-02)**: config/script audit (charter's settings/config mandate).
   ONE genuine cut: dead controller/.lintstagedrc.json. Verified all other config
   files + the 32 frontend scripts are wired/purposeful. Gates green. Loop remains
