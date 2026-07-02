@@ -166,6 +166,13 @@ export function createSessionRuntimeController(
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollEpoch = 0;
   const turnAcceptedAt = new Map<SessionId, number>();
+  // When the SSE delivered an authoritative `agent_end` for a session. The
+  // server's runtime list drops the just-finished runtime lazily, so for a few
+  // seconds after the turn ends the poll can still see it as active. Without a
+  // guard the poll's active branch re-promotes the session to "running",
+  // fighting the SSE's idle and oscillating status (visible flicker + SSE
+  // reopen churn). This stamp lets the active branch honor the finish grace.
+  const turnFinishedAt = new Map<SessionId, number>();
 
   // The set of session ids (runtime AND pi ids) the runtime reports as actively
   // working, refreshed every poll. The sidebar subscribes so a session running
@@ -334,6 +341,9 @@ export function createSessionRuntimeController(
     const assistantId = ensureAssistantId(sessionId);
 
     if (isAgentEndEvent(payload.event)) {
+      // Record the authoritative end-of-turn so the runtime poll won't
+      // resurrect "running" off a stale still-active list snapshot.
+      turnFinishedAt.set(sessionId, Date.now());
       // Flush pending deltas first, then settle the turn in ONE commit:
       // finalize tool blocks, stamp the cursor, and clear the live status
       // together.
@@ -376,6 +386,17 @@ export function createSessionRuntimeController(
     enqueueEvent(sessionId, assistantId, payload.event, payload.seq);
   };
 
+  // True while a session sits in its post-`agent_end` grace: the SSE already
+  // settled the turn to idle, but the server's runtime list can still report
+  // the finished runtime as active for a beat. A newer accepted turn supersedes
+  // the finish (genuine restart) and ends the grace early.
+  const withinFinishGrace = (sessionId: SessionId, fetchStartedAt: number): boolean => {
+    const finishedAt = turnFinishedAt.get(sessionId);
+    if (finishedAt === undefined || fetchStartedAt - finishedAt >= pollIdleGraceMs) return false;
+    const acceptedAt = turnAcceptedAt.get(sessionId);
+    return acceptedAt === undefined || acceptedAt <= finishedAt;
+  };
+
   // Reconcile the workspace sessions against one runtime-list snapshot. The
   // poll is the second leg of status arbitration next to the SSE attachments:
   // it promotes sessions whose runtime is active (including adopting a new
@@ -414,6 +435,15 @@ export function createSessionRuntimeController(
       const status = direct ?? piMatch?.status;
       if (!status) continue;
       if (status.active === true) {
+        // Post-finish grace (symmetric to the idle branch's accept grace): the
+        // SSE's `agent_end` is the authoritative end of a turn. For a few
+        // seconds after it, the server's runtime list can still report the
+        // just-finished runtime as active. Re-promoting to "running" off that
+        // stale snapshot fights the SSE's idle and oscillates status —
+        // flicker plus SSE reopen churn on every poll tick. Suppress the active
+        // branch inside the grace window UNLESS a newer turn was accepted after
+        // the finish (a genuine restart supersedes the finish and must recover).
+        if (withinFinishGrace(session.id, fetchStartedAt)) continue;
         const patch = patchRuntimeStatus(status);
         const nextRuntimeSessionId = piMatch?.runtimeSessionId ?? session.runtimeSessionId;
         // Adopting a different runtime id means the session is now served by a
@@ -619,6 +649,9 @@ export function createSessionRuntimeController(
     },
     noteTurnAccepted: (sessionId, assistantId, runtimeEventSeq) => {
       turnAcceptedAt.set(sessionId, Date.now());
+      // A new turn supersedes any prior finish; drop the stamp so its own
+      // eventual end owns the next grace window.
+      turnFinishedAt.delete(sessionId);
       // Rewind the gate to 0 only on a genuine runtime restart — when the
       // runtime's reported seq is now below what we've already received. On a
       // steady-state turn the seq keeps climbing, so an unconditional rewind
@@ -717,6 +750,7 @@ export function createSessionRuntimeController(
       // every live-target pin so a remount can't inherit a stale id.
       cursors.clear();
       turnAcceptedAt.clear();
+      turnFinishedAt.clear();
       streamContext.liveAssistantIds.clear();
     },
   };
