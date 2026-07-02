@@ -519,6 +519,22 @@ I19 actions taken:
 
 ## Iteration log
 
+- **PI-PARITY REFACTOR COMPLETE (2026-07-02)**: all five I19 gaps closed in
+  one day, commits 68019877..678d154d (12 commits, gates green throughout).
+  P1 workspace: shared/ = @local-studio/contracts, 51 deep imports gone.
+  P2 harness: all tests on bun (tsx + its pi-SDK landmine deleted),
+  ProcessRunner/FetchLike seams w/ exact-argv launch tests, pi-ai
+  registerFauxProvider mock-model harness, replay/live goldens.
+  P3 reducer: replay.ts deleted, replay = fold over reduceSessionEvent,
+  896-real-session parity sweep 0 drift. P4 identity: runtimeSessionId
+  eliminated (session.id + piSessionId; adoption = controller-internal
+  override map). P5 runtime: extracted to services/agent-runtime (one
+  globalThis registry) + optional :8081 sidecar with pass-through proxies
+  that flush SSE in Next standalone (verified live: 5s pings incremental,
+  real turn streamed). Pending user: deploy, push, live smoke, stale
+  worktree delete, and the pre-existing next-dev boot breakage (repros at
+  HEAD; turbopack paths mis-resolution + node:net in instrumentation.ts).
+
 - **SEMANTIC Phase 2 (2026-07-02)**: ONE streaming reducer landed. Deleted
   messages/replay.ts (273 lines); canonical replay is now `foldSessionEvents`,
   a fold over runtime/pi-event-applier.ts `reduceSessionEvent`. Assistant-
