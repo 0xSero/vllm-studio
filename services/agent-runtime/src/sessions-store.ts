@@ -2,11 +2,11 @@ import { createReadStream, existsSync, realpathSync, readdirSync, statSync } fro
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { resolveDataDir } from "@/lib/data-dir";
-import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { sessionArchiveState } from "@/features/agent/session-metadata-store";
-import type { SessionSummary } from "@/features/agent/session-summary";
-export type { SessionSummary } from "@/features/agent/session-summary";
+import { resolveDataDir } from "./data-dir";
+import { cleanSessionTitle } from "../../../shared/agent/session-title";
+import { sessionArchiveState } from "./session-metadata-store";
+import type { SessionSummary } from "../../../shared/agent/session-summary";
+export type { SessionSummary } from "../../../shared/agent/session-summary";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
 

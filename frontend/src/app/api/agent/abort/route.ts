@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { piRuntimeManager } from "@local-studio/agent-runtime/pi-runtime";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";

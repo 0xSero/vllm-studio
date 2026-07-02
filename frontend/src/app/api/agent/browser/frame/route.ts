@@ -7,7 +7,7 @@
 // survives a buffering proxy / Cloudflare for remote deploys. Polling keeps
 // the host's screencast alive; it auto-stops shortly after polling lapses.
 
-import { browserHost } from "@/features/agent/browser-host/browser-host";
+import { browserHost } from "@local-studio/agent-runtime/browser-host/browser-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

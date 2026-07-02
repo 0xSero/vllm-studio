@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveDataDir } from "@/lib/data-dir";
+import { resolveDataDir } from "./data-dir";
 
 // Serialize read-modify-write cycles per file so concurrent POSTs (e.g. an
 // agent plan autosave overlapping a user edit) can't both read v1 and drop one

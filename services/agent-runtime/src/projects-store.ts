@@ -1,8 +1,11 @@
 import path from "node:path";
-import { CHATS_PROJECT_ID } from "@/features/agent/projects/types";
-// Shared implementation lives under desktop/ because the desktop build
-// (tsc rootDir = desktop/) cannot import from src/.
-import { createProjectsStore, type ProjectEntry } from "../../../desktop/logic/projects-store-core";
+import { CHATS_PROJECT_ID } from "../../../shared/agent/project-ids";
+// Shared implementation lives under frontend/desktop/ because the desktop
+// build (tsc rootDir = desktop/) cannot import from frontend/src/.
+import {
+  createProjectsStore,
+  type ProjectEntry,
+} from "../../../frontend/desktop/logic/projects-store-core";
 
 export type { ProjectEntry };
 

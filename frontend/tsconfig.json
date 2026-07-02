@@ -23,6 +23,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
+      "@local-studio/agent-runtime": ["../services/agent-runtime/src/index.ts"],
+      "@local-studio/agent-runtime/*": ["../services/agent-runtime/src/*.ts"],
       "@local-studio/contracts/*": ["../shared/contracts/*.ts"]
     }
   },

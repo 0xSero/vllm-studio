@@ -23,8 +23,8 @@ import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { piRuntimeManager } from "../../../frontend/src/features/agent/pi-runtime";
-import type { PiAgentSession } from "../../../frontend/src/features/agent/pi-runtime-types";
+import { piRuntimeManager } from "../../../services/agent-runtime/src/pi-runtime";
+import type { PiAgentSession } from "../../../services/agent-runtime/src/pi-runtime-types";
 import {
   MOCK_MODEL_ID,
   registerMockModel,

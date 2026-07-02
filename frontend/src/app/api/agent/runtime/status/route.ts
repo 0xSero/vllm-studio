@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { piRuntimeManager } from "@local-studio/agent-runtime/pi-runtime";
 import { replayAfterCursor } from "../events/stream-order";
 
 export const runtime = "nodejs";

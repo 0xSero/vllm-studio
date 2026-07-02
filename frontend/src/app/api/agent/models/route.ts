@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   refreshPiModels,
   type PiControllerModelsRequest,
-} from "@/features/agent/pi-runtime-models";
+} from "@local-studio/agent-runtime/pi-runtime-models";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";

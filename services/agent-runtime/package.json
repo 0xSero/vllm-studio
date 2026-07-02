@@ -1,0 +1,17 @@
+{
+  "name": "@local-studio/agent-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Server-side pi agent runtime: SDK session manager, fs stores, and the CDP browser host. Consumed by the Next frontend as raw TypeScript via transpilePackages.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.78.1",
+    "@earendil-works/pi-coding-agent": "0.78.1",
+    "effect": "4.0.0-beta.90",
+    "ws": "8.21.0"
+  }
+}

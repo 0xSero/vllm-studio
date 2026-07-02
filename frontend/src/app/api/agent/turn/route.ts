@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { Effect } from "effect";
-import { listSessions } from "@/features/agent/sessions-store";
-import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { listSessions } from "@local-studio/agent-runtime/sessions-store";
+import { piRuntimeManager } from "@local-studio/agent-runtime/pi-runtime";
 import {
   parseAgentTurnRequest,
   type AgentImageInput,
@@ -9,7 +9,7 @@ import {
   type AgentTurnRequest,
 } from "@/features/agent/contracts";
 import { controlTargetHasActiveTurn } from "@/features/agent/runtime/selectors";
-import type { PiAgentSession, PiAgentStatus } from "@/features/agent/pi-runtime-types";
+import type { PiAgentSession, PiAgentStatus } from "@local-studio/agent-runtime/pi-runtime-types";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 

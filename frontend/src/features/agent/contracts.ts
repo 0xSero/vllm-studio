@@ -1,3 +1,6 @@
+import type { AgentImageInput } from "../../../../shared/agent/agent-image-input";
+
+export type { AgentImageInput };
 import {
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
@@ -110,11 +113,6 @@ export function parseTerminalRunRequest(input: unknown): ParseResult<TerminalRun
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
 export type AgentStreamingBehavior = "steer" | "followUp";
 
-export type AgentImageInput = {
-  type: "image";
-  data: string;
-  mimeType: string;
-};
 
 export type AgentTurnRequest = {
   sessionId: string;

@@ -4,7 +4,7 @@ import {
   listProjectsFromStore,
   removeProjectFromStore,
   type ProjectEntry,
-} from "@/features/agent/projects-store";
+} from "@local-studio/agent-runtime/projects-store";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";

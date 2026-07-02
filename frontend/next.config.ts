@@ -37,11 +37,31 @@ const nextConfig: NextConfig = {
     ],
   },
   // Ships raw .ts sources (no build step) — Next must transpile it.
-  transpilePackages: ["@local-studio/contracts"],
+  //
+  // @local-studio/agent-runtime also ships raw .ts (services/agent-runtime), so
+  // it cannot be externalized (Node can't execute TypeScript at runtime in the
+  // standalone server) — it is transpiled and bundled with the app. Long-lived
+  // runtime state survives dev HMR through the package's single globalThis
+  // registry (services/agent-runtime/src/instances.ts).
+  transpilePackages: ["@local-studio/contracts", "@local-studio/agent-runtime"],
+  // The package and shared/agent live outside frontend/, so their real paths
+  // don't have frontend/node_modules on the walk-up resolution path. Teach
+  // webpack to also look here for their external deps (effect, the pi SDK).
+  webpack: (config) => {
+    config.resolve.modules = [
+      ...(config.resolve.modules ?? ["node_modules"]),
+      path.join(__dirname, "node_modules"),
+    ];
+    return config;
+  },
   turbopack: {
     root: path.join(__dirname, ".."),
     resolveAlias: {
       tailwindcss: path.join(__dirname, "node_modules/tailwindcss"),
+      // Same out-of-root resolution fix as webpack's resolve.modules above:
+      // agent-runtime/shared sources import `effect`, which only exists in
+      // frontend/node_modules.
+      effect: path.join(__dirname, "node_modules/effect"),
     },
   },
   async redirects() {

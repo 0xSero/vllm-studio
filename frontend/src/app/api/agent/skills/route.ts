@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { discoverSkills } from "@/features/agent/skill-discovery";
+import { discoverSkills } from "@local-studio/agent-runtime/skill-discovery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

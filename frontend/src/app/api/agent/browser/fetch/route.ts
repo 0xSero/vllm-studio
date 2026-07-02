@@ -8,7 +8,7 @@
 // scripts/styles, and cap response size.
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchReadable } from "@/features/agent/browser-host/reader";
+import { fetchReadable } from "@local-studio/agent-runtime/browser-host/reader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

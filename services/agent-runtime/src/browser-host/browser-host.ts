@@ -6,7 +6,8 @@
 //
 // Server-only: imported from API routes, never from client components.
 
-import { delay } from "@/lib/async";
+import { getGlobalSingleton } from "../instances";
+import { delay } from "../async";
 import { chromeManager } from "./chrome";
 import { CLICK_SCRIPT, FILL_SCRIPT, SNAPSHOT_SCRIPT, type SnapshotResult } from "./dom-scripts";
 import {
@@ -444,6 +445,4 @@ function keyEvent(key: string): Record<string, unknown> {
   };
 }
 
-const globalForHost = globalThis as typeof globalThis & { __localStudioBrowserHost?: BrowserHost };
-export const browserHost = globalForHost.__localStudioBrowserHost ?? new BrowserHost();
-globalForHost.__localStudioBrowserHost = browserHost;
+export const browserHost = getGlobalSingleton("browserHost", () => new BrowserHost());

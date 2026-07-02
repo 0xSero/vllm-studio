@@ -1,4 +1,4 @@
-import type { ApiSettings } from "@/lib/services/settings-service";
+import type { ApiSettings } from "@local-studio/agent-runtime/settings-service";
 import { normalizeHttpUrl } from "@/lib/api/http";
 
 export type VoiceTargetKind = "controller-local" | "external-voice";

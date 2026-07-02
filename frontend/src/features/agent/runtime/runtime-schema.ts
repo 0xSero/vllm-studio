@@ -91,4 +91,6 @@ export function decodeRuntimeSessions(raw: unknown): RuntimeSessionSummary[] {
   return option._tag === "Some" ? [...(option.value.sessions ?? [])] : [];
 }
 
-export type RuntimeContextUsage = Schema.Schema.Type<typeof RuntimeContextUsageSchema>;
+// Canonical type lives in shared/agent/context-usage.ts (shared with the agent
+// runtime package); RuntimeContextUsageSchema above must stay in sync with it.
+export type { RuntimeContextUsage } from "../../../../../shared/agent/context-usage";

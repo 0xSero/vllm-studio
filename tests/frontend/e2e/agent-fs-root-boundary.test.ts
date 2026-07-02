@@ -18,7 +18,7 @@ import {
 import {
   addProjectToStore,
   removeProjectFromStore,
-} from "@/features/agent/projects-store";
+} from "@local-studio/agent-runtime/projects-store";
 
 async function rejectsWith(
   fn: () => unknown,

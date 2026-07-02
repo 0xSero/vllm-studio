@@ -1,7 +1,7 @@
 import { existsSync, promises as fs, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
-import { listProjectsFromStore } from "./projects-store";
+import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
 
 const IGNORE_DIRS = new Set([
   ".git",

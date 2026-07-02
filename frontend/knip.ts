@@ -19,9 +19,22 @@ const config = {
   },
   // Some tooling is used implicitly (CSS/postcss pipeline, git hooks), which knip can't reliably
   // infer from source imports. Keep this list small and intentional.
-  // @local-studio/contracts is a file:../shared symlink exporting raw .ts —
-  // knip cannot map its subpath imports back to the dependency entry.
-  ignoreDependencies: ["tailwindcss", "postcss", "@local-studio/contracts"],
+  // @local-studio/contracts and @local-studio/agent-runtime are file: symlinks
+  // exporting raw .ts — knip cannot map their subpath imports back to the
+  // dependency entries.
+  ignoreDependencies: [
+    "tailwindcss",
+    "postcss",
+    "@local-studio/contracts",
+    "@local-studio/agent-runtime",
+    // ws is imported only by @local-studio/agent-runtime sources (outside
+    // knip's project scope) but must stay in frontend deps: it is a
+    // serverExternalPackages entry resolved from frontend/node_modules at
+    // runtime, and @types/ws types those imports when tsc checks the package
+    // sources as part of the frontend program.
+    "ws",
+    "@types/ws",
+  ],
   ignoreExportsUsedInFile: true,
 };
 

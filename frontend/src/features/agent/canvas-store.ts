@@ -1,4 +1,4 @@
-import { createSessionScopedJsonStore } from "@/features/agent/session-json-store";
+import { createSessionScopedJsonStore } from "@local-studio/agent-runtime/session-json-store";
 import { isRecord } from "@/lib/guards";
 
 export type AgentCanvasDocument = {

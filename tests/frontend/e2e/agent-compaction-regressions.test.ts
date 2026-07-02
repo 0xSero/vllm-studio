@@ -6,7 +6,7 @@ import {
   normalizeSdkMessageTimestampsForCompactionBoundary,
   piEventIsSuccessfulCompaction,
   postCompactionUsageIsFresh,
-} from "@/features/agent/pi-runtime-compaction";
+} from "@local-studio/agent-runtime/pi-runtime-compaction";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
 import { runtimeContextUsage } from "@/features/agent/runtime/api";
 import { makePiEventApplierHarness, makeSession } from "./agent-fixtures";

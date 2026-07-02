@@ -10,8 +10,8 @@
 // a clear "Browser unavailable" error.
 
 import { NextRequest } from "next/server";
-import { browserHost } from "@/features/agent/browser-host/browser-host";
-import { fetchReadable } from "@/features/agent/browser-host/reader";
+import { browserHost } from "@local-studio/agent-runtime/browser-host/browser-host";
+import { fetchReadable } from "@local-studio/agent-runtime/browser-host/reader";
 import {
   sanitizeBrowserPaneUrl,
   sanitizePublicBrowserUrl,

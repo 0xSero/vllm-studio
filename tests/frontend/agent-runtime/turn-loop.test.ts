@@ -14,8 +14,8 @@ import {
   decodeRuntimeEventPayload,
   decodeRuntimeStatusResponse,
 } from "@/features/agent/runtime/runtime-schema";
-import { isAgentEndEvent } from "@/features/agent/pi-runtime-state";
-import type { LoggedPiEvent } from "@/features/agent/pi-runtime-types";
+import { isAgentEndEvent } from "@local-studio/agent-runtime/pi-runtime-state";
+import type { LoggedPiEvent } from "@local-studio/agent-runtime/pi-runtime-types";
 import {
   createTestRuntimeManager,
   type TestRuntimeHarness,

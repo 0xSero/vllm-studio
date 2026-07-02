@@ -2,21 +2,13 @@
  * Controller connection state: where the controller lives (env defaults +
  * browser-stored backend URL) and how we authenticate against it (API key).
  */
+import { pickFirstNonEmpty } from "../../../../shared/agent/backend-url";
 import { getControllerApiKey, normalizeControllerUrl } from "./controllers";
 
 // --- Env-derived defaults ---
 
 const LOCAL_BACKEND_FALLBACK = "http://localhost:8080";
 const CLIENT_PROXY_FALLBACK = "/api/proxy";
-
-const pickFirstNonEmpty = (...values: Array<string | undefined>): string | undefined => {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
 
 /**
  * Server-side API client base URL.
@@ -29,15 +21,10 @@ export const resolveApiServerBaseUrl = (): string =>
     process.env.LOCAL_STUDIO_BACKEND_URL,
   ) ?? LOCAL_BACKEND_FALLBACK;
 
-/**
- * Default backend URL shown in settings/config UIs on first run.
- */
-export const resolveSettingsDefaultBackendUrl = (): string =>
-  pickFirstNonEmpty(
-    process.env.BACKEND_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-  ) ?? LOCAL_BACKEND_FALLBACK;
+// resolveSettingsDefaultBackendUrl lives in shared/agent/backend-url.ts so the
+// agent runtime package's settings service can share it; re-exported here for
+// frontend callers.
+export { resolveSettingsDefaultBackendUrl } from "../../../../shared/agent/backend-url";
 
 /**
  * Client-side controller event stream base URL.

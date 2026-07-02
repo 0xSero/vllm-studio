@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolveDataDir } from "@/lib/data-dir";
-import { matchSource, readCapped, sortedRows } from "@/features/agent/discovery-core";
+import { resolveDataDir } from "@local-studio/agent-runtime/data-dir";
+import { matchSource, readCapped, sortedRows } from "@local-studio/agent-runtime/discovery-core";
 
 export type PromptTemplateRow = {
   id: string;

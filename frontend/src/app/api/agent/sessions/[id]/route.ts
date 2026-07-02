@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listSessions, loadSession } from "@/features/agent/sessions-store";
-import { setSessionArchived } from "@/features/agent/session-metadata-store";
+import { listSessions, loadSession } from "@local-studio/agent-runtime/sessions-store";
+import { setSessionArchived } from "@local-studio/agent-runtime/session-metadata-store";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 import { isRecord } from "@/lib/guards";
 

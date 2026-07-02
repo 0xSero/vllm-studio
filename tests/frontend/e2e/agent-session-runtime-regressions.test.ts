@@ -19,13 +19,10 @@ import {
   selectedContextPrompt,
 } from "@/features/agent/composer-context";
 import { parseAgentTurnCommandResult } from "@/features/agent/contracts";
-import { findRuntimeSessionForLookup } from "@/features/agent/pi-runtime-state";
-import { piStatusFromEvents } from "@/features/agent/pi-runtime-state";
-import {
-  inferVisionSupport,
-  modelsToPiModels,
-  normalizeOpenAIModels,
-} from "@/features/agent/models";
+import { findRuntimeSessionForLookup } from "@local-studio/agent-runtime/pi-runtime-state";
+import { piStatusFromEvents } from "@local-studio/agent-runtime/pi-runtime-state";
+import { inferVisionSupport, normalizeOpenAIModels } from "@/features/agent/models";
+import { modelsToPiModels } from "@local-studio/agent-runtime/pi-runtime-models";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
 import { runtimeStatusLooksActive, visibleUserTextFromPi } from "@/features/agent/messages/helpers";
 import {

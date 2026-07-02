@@ -10,7 +10,7 @@ import {
   browserHost,
   type KeyInput,
   type MouseInput,
-} from "@/features/agent/browser-host/browser-host";
+} from "@local-studio/agent-runtime/browser-host/browser-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

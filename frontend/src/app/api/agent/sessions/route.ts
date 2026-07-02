@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listSessions } from "@/features/agent/sessions-store";
+import { listSessions } from "@local-studio/agent-runtime/sessions-store";
 import { archiveQueryOptions, parseRelativeSince } from "./session-query";
 import { jsonError } from "@/app/api/_lib/route-helpers";
 

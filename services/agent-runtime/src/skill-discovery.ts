@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { matchSource, readCapped, sortedRows } from "@/features/agent/discovery-core";
+import { matchSource, readCapped, sortedRows } from "./discovery-core";
 
 export type SkillRow = {
   id: string;

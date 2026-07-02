@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptions,
-} from "../src/features/agent/pi-runtime-helpers";
+} from "@local-studio/agent-runtime/pi-runtime-helpers";
 
 const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
   Effect.tryPromise({ try: load, catch: (error) => error });

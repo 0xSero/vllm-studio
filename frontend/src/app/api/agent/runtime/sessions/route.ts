@@ -1,4 +1,4 @@
-import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { piRuntimeManager } from "@local-studio/agent-runtime/pi-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

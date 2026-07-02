@@ -1,3 +1,8 @@
+// piEventIsSuccessfulCompaction lives in shared/agent/pi-events.ts because the
+// frontend's client-side event pipeline needs it too; re-exported here so
+// runtime callers keep their import surface.
+export { piEventIsSuccessfulCompaction } from "../../../shared/agent/pi-events";
+
 export type RuntimeContextUsageLike = {
   tokens: number | null;
   contextWindow: number;
@@ -123,30 +128,6 @@ function sdkSessionMessages(session: SdkSessionLike | null | undefined): unknown
   return Array.isArray(stateMessages) ? stateMessages : null;
 }
 
-export function piEventIsSuccessfulCompaction(event: Record<string, unknown>): boolean {
-  const type = typeof event.type === "string" ? event.type.toLowerCase() : "";
-  if (!type.includes("compact") && !type.includes("compaction")) return false;
-  if (type.includes("start") || type.includes("begin")) return false;
-  if (
-    event.error ||
-    event.errorMessage ||
-    event.aborted ||
-    event.cancelled ||
-    event.canceled ||
-    event.failed
-  ) {
-    return false;
-  }
-  if (event.type === "compaction_end" && event.result == null) return false;
-  const result = event.result && typeof event.result === "object" ? event.result : null;
-  const status =
-    typeof event.status === "string"
-      ? event.status
-      : result && "status" in result && typeof result.status === "string"
-        ? result.status
-        : "";
-  return !/abort|cancel|error|fail/.test(status.toLowerCase());
-}
 
 function normalizeBranchTimestampsAndLatestCompactionMs(entries: unknown[]): number | null {
   let latest: number | null = null;

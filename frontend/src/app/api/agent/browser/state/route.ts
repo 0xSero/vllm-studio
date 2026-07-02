@@ -1,7 +1,7 @@
 // Current page state for the visible browser panel.
 // GET -> { ok: true, data: { url, title, canGoBack, canGoForward, loading } }
 
-import { browserHost } from "@/features/agent/browser-host/browser-host";
+import { browserHost } from "@local-studio/agent-runtime/browser-host/browser-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

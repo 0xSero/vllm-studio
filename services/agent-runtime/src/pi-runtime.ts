@@ -9,30 +9,31 @@ import {
   type AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
-import type { AgentImageInput } from "@/features/agent/contracts";
+import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
   runtimeOptionsFingerprint,
   resolveAgentCwdEffect,
   type RuntimeStartOptions,
-} from "@/features/agent/pi-runtime-helpers";
-import { refreshPiModels, resolvePiModelSelection } from "@/features/agent/pi-runtime-models";
-import { findRuntimeSessionForLookup, piStatusFromEvents } from "@/features/agent/pi-runtime-state";
+} from "./pi-runtime-helpers";
+import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
+import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import {
   compactionTokensBefore,
   contextUsageAwaitingFreshCompactionUsage,
   normalizeSdkMessageTimestampsForCompactionBoundary,
   piEventIsSuccessfulCompaction,
   postCompactionUsageIsFresh,
-} from "@/features/agent/pi-runtime-compaction";
-import { findSessionFile } from "@/features/agent/sessions-store";
+} from "./pi-runtime-compaction";
+import { findSessionFile } from "./sessions-store";
+import { getGlobalSingleton } from "./instances";
 import type {
   LoggedPiEvent,
   PiAgentSession,
   PiAgentStatus,
   PiContextUsage,
-} from "@/features/agent/pi-runtime-types";
+} from "./pi-runtime-types";
 
 type PiEvent = LoggedPiEvent["event"];
 
@@ -60,19 +61,11 @@ type PiResourceDiagnostic = {
   path?: string;
 };
 
-// Pinned on globalThis so Next.js dev — which can re-evaluate this module
-// independently for the turn route, the setup-checks route, and the cached
-// session manager — shares a single map. Resolve via globalThis on every read
-// to defeat closure-bound copies left behind by HMR.
-type DiagnosticsGlobal = typeof globalThis & {
-  __localStudioPiResourceDiagnostics?: Map<string, PiResourceDiagnostic[]>;
-};
+// Registered through the package's single global-instance registry so the
+// turn route, the setup-checks route, and the cached session manager — which
+// dev-mode bundling can evaluate independently — share a single map.
 function diagnosticsMap(): Map<string, PiResourceDiagnostic[]> {
-  const g = globalThis as DiagnosticsGlobal;
-  if (!g.__localStudioPiResourceDiagnostics) {
-    g.__localStudioPiResourceDiagnostics = new Map();
-  }
-  return g.__localStudioPiResourceDiagnostics;
+  return getGlobalSingleton("piResourceDiagnostics", () => new Map<string, PiResourceDiagnostic[]>());
 }
 
 export function piResourceDiagnostics(agentDir?: string): PiResourceDiagnostic[] {
@@ -492,10 +485,7 @@ class PiRuntimeManager {
   }
 }
 
-const globalForPi = globalThis as typeof globalThis & {
-  __localStudioPiRuntimeManager?: PiRuntimeManager;
-};
-
-export const piRuntimeManager = globalForPi.__localStudioPiRuntimeManager ?? new PiRuntimeManager();
-
-globalForPi.__localStudioPiRuntimeManager = piRuntimeManager;
+export const piRuntimeManager = getGlobalSingleton(
+  "piRuntimeManager",
+  () => new PiRuntimeManager(),
+);

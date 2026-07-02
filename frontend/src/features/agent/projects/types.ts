@@ -1,6 +1,10 @@
 export type ProjectId = string;
 
-export const CHATS_PROJECT_ID = "chats";
+// CHATS_PROJECT_ID lives in shared/agent/project-ids.ts so the agent runtime
+// package's projects store can share it; re-exported here for frontend callers.
+import { CHATS_PROJECT_ID } from "../../../../../shared/agent/project-ids";
+
+export { CHATS_PROJECT_ID };
 
 export type Project = {
   id: ProjectId;

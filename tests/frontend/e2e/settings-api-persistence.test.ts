@@ -15,7 +15,7 @@ process.env.LOCAL_STUDIO_DATA_DIR = dataDir;
 writeFileSync(path.join(dataDir, "api-settings.json"), "{}", "utf-8");
 
 async function loadApiSettings() {
-  return import("@/lib/services/settings-service");
+  return import("@local-studio/agent-runtime/settings-service");
 }
 
 async function loadVoiceTarget() {

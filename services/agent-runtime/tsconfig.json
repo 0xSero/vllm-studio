@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["esnext"],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": ["../../frontend/node_modules/@types"],
+    "paths": {
+      "effect": ["../../frontend/node_modules/effect"],
+      "ws": ["../../frontend/node_modules/ws"],
+      "@earendil-works/pi-ai": ["../../frontend/node_modules/@earendil-works/pi-ai"],
+      "@earendil-works/pi-coding-agent": [
+        "../../frontend/node_modules/@earendil-works/pi-coding-agent"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts", "../../shared/agent/**/*.ts"]
+}

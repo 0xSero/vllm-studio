@@ -11,6 +11,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getGlobalSingleton } from "../instances";
 
 const CHROME_LAUNCH_TIMEOUT_MS = 15_000;
 
@@ -168,20 +169,17 @@ class ChromeManager {
   }
 }
 
-const globalForChrome = globalThis as typeof globalThis & {
-  __localStudioChromeManager?: ChromeManager;
-  __localStudioChromeExitHook?: boolean;
-};
-
-export const chromeManager = globalForChrome.__localStudioChromeManager ?? new ChromeManager();
-globalForChrome.__localStudioChromeManager = chromeManager;
+export const chromeManager = getGlobalSingleton("chromeManager", () => new ChromeManager());
 
 // Kill the spawned Chromium when the server process exits, so a normal
 // shutdown / restart doesn't orphan a headless browser holding the fixed
-// profile-dir lock. Registered once (guarded), synchronous (safe in "exit").
-// Next's graceful SIGTERM/SIGINT handling calls process.exit, which fires this;
-// a raw SIGKILL can't be intercepted by anything.
-if (!globalForChrome.__localStudioChromeExitHook && typeof process !== "undefined") {
-  globalForChrome.__localStudioChromeExitHook = true;
-  process.on("exit", () => chromeManager.stop());
-}
+// profile-dir lock. Registered once (guarded through the package's global
+// singleton registry), synchronous (safe in "exit"). Next's graceful
+// SIGTERM/SIGINT handling calls process.exit, which fires this; a raw SIGKILL
+// can't be intercepted by anything.
+getGlobalSingleton("chromeExitHook", () => {
+  if (typeof process !== "undefined") {
+    process.on("exit", () => chromeManager.stop());
+  }
+  return true;
+});

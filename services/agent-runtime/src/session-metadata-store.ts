@@ -11,8 +11,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resolveDataDir } from "@/lib/data-dir";
-import { isRecord } from "@/lib/guards";
+import { resolveDataDir } from "./data-dir";
+import { isRecord } from "../../../shared/agent/guards";
 
 const SESSION_METADATA_FILENAME = "agent-session-metadata.json";
 const LOCK_STALE_MS = 10_000;

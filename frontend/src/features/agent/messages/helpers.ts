@@ -1,4 +1,10 @@
-import { piEventIsSuccessfulCompaction } from "@/features/agent/pi-runtime-compaction";
+import { piEventIsSuccessfulCompaction } from "../../../../../shared/agent/pi-events";
+import {
+  cleanSessionTitle,
+  isPlaceholderSessionTitle,
+} from "../../../../../shared/agent/session-title";
+
+export { cleanSessionTitle, isPlaceholderSessionTitle };
 import type {
   QueuedMessage,
   RuntimeLoggedEvent,
@@ -106,15 +112,6 @@ export function sessionTitleFromPrompt(text: string): string {
   return cleanSessionTitle(text.replace(/\s+/g, " ").trim().slice(0, 48)) || "New session";
 }
 
-export function isPlaceholderSessionTitle(value: string | null | undefined): boolean {
-  const normalized = value?.replace(/\s+/g, " ").trim();
-  return Boolean(normalized && /^(?:\.{3}|…)+$/.test(normalized));
-}
-
-export function cleanSessionTitle(value: string | null | undefined): string {
-  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
-  return normalized && !isPlaceholderSessionTitle(normalized) ? normalized : "";
-}
 
 export function visibleUserTextFromPi(text: string): string {
   const marker = "\n\nUser prompt:\n";

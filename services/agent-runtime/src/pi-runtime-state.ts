@@ -5,7 +5,7 @@ import type {
   LoggedPiEvent,
   PiAgentStatus,
   PiContextUsage,
-} from "@/features/agent/pi-runtime-types";
+} from "./pi-runtime-types";
 
 type RuntimeLookupEntry<TSession> = {
   sessionId: string;
@@ -54,6 +54,7 @@ export function piStatusFromEvents(input: {
   };
 }
 
-export function isAgentEndEvent(event: { type?: unknown } | null | undefined): boolean {
-  return event?.type === "agent_end";
-}
+// isAgentEndEvent lives in shared/agent/pi-events.ts because the frontend's
+// client-side event pipeline needs it too; re-exported here so runtime
+// callers keep their import surface.
+export { isAgentEndEvent } from "../../../shared/agent/pi-events";

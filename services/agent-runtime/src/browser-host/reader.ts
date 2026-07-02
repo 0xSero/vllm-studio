@@ -10,7 +10,7 @@
 import { lookup } from "node:dns/promises";
 import { request as httpRequest, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { sanitizePublicBrowserUrl } from "@/features/agent/sanitize-embedded-browser-url";
+import { sanitizePublicBrowserUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
 
 const MAX_BYTES = 512 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;

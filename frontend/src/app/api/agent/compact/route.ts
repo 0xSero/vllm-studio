@@ -7,7 +7,7 @@ import {
   sanitizeComposerSkills,
   selectedContextInstructions,
 } from "@/features/agent/composer-context";
-import { piRuntimeManager } from "@/features/agent/pi-runtime";
+import { piRuntimeManager } from "@local-studio/agent-runtime/pi-runtime";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 import { requireApiAccess } from "@/lib/auth/guard";
 

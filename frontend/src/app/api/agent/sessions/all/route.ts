@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { existsSync, statSync } from "node:fs";
-import { listProjectsFromStore } from "@/features/agent/projects-store";
-import { listSessions, type SessionSummary } from "@/features/agent/sessions-store";
-import { listArchivedSessionMetadata } from "@/features/agent/session-metadata-store";
+import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
+import { listSessions, type SessionSummary } from "@local-studio/agent-runtime/sessions-store";
+import { listArchivedSessionMetadata } from "@local-studio/agent-runtime/session-metadata-store";
 import { archiveQueryOptions, parseRelativeSince } from "../session-query";
 
 export const runtime = "nodejs";

@@ -1,6 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { AgentImageInput } from "@/features/agent/contracts";
-import type { RuntimeStartOptions } from "@/features/agent/pi-runtime-helpers";
+import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
+import type { RuntimeStartOptions } from "./pi-runtime-helpers";
 
 // Pi event surface seen by the rest of the app. Upstream consumers
 // (`sessions/engine.ts`, `pane-controller.ts`, etc.) duck-type on string event
@@ -19,7 +19,7 @@ export type LoggedPiEvent = {
 
 // Re-exported from the canonical Effect-schema-derived type in runtime-schema.ts
 // so all context-usage shapes resolve to one source of truth.
-export type { RuntimeContextUsage as PiContextUsage } from "@/features/agent/runtime/runtime-schema";
+export type { RuntimeContextUsage as PiContextUsage } from "../../../shared/agent/context-usage";
 
 export type PiAgentStatus = {
   running: boolean;
@@ -30,7 +30,7 @@ export type PiAgentStatus = {
   agentDir: string;
   eventSeq: number;
   lastError: string | null;
-  contextUsage: import("@/features/agent/runtime/runtime-schema").RuntimeContextUsage | null;
+  contextUsage: import("../../../shared/agent/context-usage").RuntimeContextUsage | null;
 };
 
 export interface PiAgentSession {

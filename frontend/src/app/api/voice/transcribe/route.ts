@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings } from "@/lib/services/settings-service";
+import { getApiSettings } from "@local-studio/agent-runtime/settings-service";
 import { resolveVoiceTarget } from "../voice-target";
 
 export async function POST(request: NextRequest) {

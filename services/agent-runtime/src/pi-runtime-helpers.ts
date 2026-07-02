@@ -3,7 +3,7 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
-import { listProjectsFromStore } from "@/features/agent/projects-store";
+import { listProjectsFromStore } from "./projects-store";
 
 export type RuntimeSkillRef = {
   id?: string;

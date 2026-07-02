@@ -2,15 +2,15 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { getApiSettings, type ApiSettings } from "@/lib/services/settings-service";
-import { resolveDataDir } from "@/lib/data-dir";
+import { getApiSettings, type ApiSettings } from "./settings-service";
+import { resolveDataDir } from "./data-dir";
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import {
   normalizeOpenAIModels,
-  modelsToPiModels,
   inferReasoningSupport,
   inferVisionSupport,
   type AgentModel,
-} from "@/features/agent/models";
+} from "../../../shared/agent/models";
 
 const PROVIDER_ID = "local-studio";
 const USER_PI_PREFIX = "user-pi-";
@@ -358,4 +358,56 @@ export async function refreshPiModels(
   const allModels = [...models, ...userPiModels];
   const writtenAgentDir = await writePiModelsConfig(controllerModels, userPiProviders);
   return { models: allModels, agentDir: writtenAgentDir };
+}
+// Moved here from the shared models module: only the runtime needs the
+// pi-model mapping, and the OpenAICompletionsCompat type must resolve against
+// the SDK install.
+function isDeepSeekReasoningModel(model: AgentModel): boolean {
+  const id = `${model.id} ${model.rawId ?? ""} ${model.name}`.toLowerCase();
+  return model.reasoning && id.includes("deepseek");
+}
+
+const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
+  supportsStore: false,
+  supportsDeveloperRole: false,
+  supportsReasoningEffort: false,
+  supportsStrictMode: false,
+  supportsUsageInStreaming: true,
+  maxTokensField: "max_tokens",
+};
+
+export function modelsToPiModels(models: AgentModel[]) {
+  return models.map((model) => {
+    const deepSeekReasoning = isDeepSeekReasoningModel(model);
+    return {
+      id: model.rawId ?? model.id,
+      name: model.name,
+      reasoning: model.reasoning,
+      input: model.vision ? ["text", "image"] : ["text"],
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...(deepSeekReasoning
+        ? {
+            thinkingLevelMap: {
+              off: null,
+              minimal: null,
+              low: "low",
+              medium: "medium",
+              high: "high",
+              xhigh: "max",
+            },
+          }
+        : {}),
+      compat: {
+        ...VLLM_OPENAI_COMPAT,
+        ...(deepSeekReasoning
+          ? {
+              thinkingFormat: "deepseek",
+              requiresReasoningContentOnAssistantMessages: true,
+            }
+          : {}),
+      },
+    };
+  });
 }
