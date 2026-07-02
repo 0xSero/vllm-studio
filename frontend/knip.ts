@@ -6,8 +6,11 @@ const config = {
     "desktop/preload.ts",
     "desktop/app-identity.ts",
     "desktop/resources/pi-extensions/*.ts",
+    // Unit tests run via `bun test scripts` — the npm script no longer names a
+    // file glob knip can pick entries from, so list them explicitly.
+    "scripts/*.test.ts",
   ],
-  project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
+  project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}", "scripts/*.{ts,tsx}"],
   ignore: [".next/**", "node_modules/**"],
   ignoreIssues: {
     // IpcRequestMap is unreferenced; desktop/ is outside the frontend cleanup scope,
@@ -16,7 +19,9 @@ const config = {
   },
   // Some tooling is used implicitly (CSS/postcss pipeline, git hooks), which knip can't reliably
   // infer from source imports. Keep this list small and intentional.
-  ignoreDependencies: ["tailwindcss", "postcss"],
+  // @local-studio/contracts is a file:../shared symlink exporting raw .ts —
+  // knip cannot map its subpath imports back to the dependency entry.
+  ignoreDependencies: ["tailwindcss", "postcss", "@local-studio/contracts"],
   ignoreExportsUsedInFile: true,
 };
 
