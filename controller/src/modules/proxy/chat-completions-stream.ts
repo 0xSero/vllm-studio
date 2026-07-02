@@ -4,7 +4,7 @@ import { buildSseHeaders } from "../../http/sse";
 import type { ProviderRouteConfig } from "../../services/provider-routing";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../engines/process/model-runtime-defaults";
-import { shouldBufferImplicitReasoningContent } from "./chat-reasoning-heuristics";
+import { shouldBufferImplicitReasoningContent } from "./reasoning";
 import { recordStreamingInferenceUsage } from "./inference-accounting";
 import { createToolCallStream } from "./tool-call-stream";
 

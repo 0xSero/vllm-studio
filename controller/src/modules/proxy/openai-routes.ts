@@ -13,9 +13,9 @@ import { normalizeChatMessageContentParts, normalizeToolRequest } from "./conten
 import {
   normalizeReasoningAndContentInMessage,
   normalizeToolCallsInMessage,
-} from "./reasoning-extractor";
+  exposeReasoningAsContentWhenEmpty,
+} from "./reasoning";
 import { recordNonStreamingInferenceUsage } from "./inference-accounting";
-import { exposeReasoningAsContentWhenEmpty } from "./chat-reasoning-heuristics";
 import {
   attachSessionUsage,
   createNonRunningModelWarner,

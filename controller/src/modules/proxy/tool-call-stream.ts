@@ -4,8 +4,12 @@ import {
   stripToolCallsFromContent,
   type ToolCall,
 } from "./tool-call-parser";
-import { REASONING_FIELDS, firstReasoningField } from "./reasoning-fields";
-import { createThinkRewriter, thinkingTagPrefixIsPartial } from "./think-rewriter";
+import {
+  REASONING_FIELDS,
+  firstReasoningField,
+  createThinkRewriter,
+  thinkingTagPrefixIsPartial,
+} from "./reasoning";
 
 export interface StreamUsage {
   prompt_tokens: number;
