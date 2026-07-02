@@ -15,7 +15,6 @@ import { ModelPerformanceTable } from "@/features/usage/model-performance-table"
 import { SecondaryMetrics } from "@/features/usage/secondary-metrics";
 import { useUsage, type UsageSource } from "@/features/usage/use-usage";
 import { formatNumber } from "@/lib/formatters";
-import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 
 const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
   { id: "provider", label: "Provider", sublabel: "this controller" },
@@ -65,11 +64,21 @@ export default function UsagePage() {
   if (pageStateRender) return <AppPage>{pageStateRender}</AppPage>;
   if (!stats) return null;
 
-  const safeStats = normalizeUsageStats(stats);
+  // `stats` is already normalized in useUsage; normalize is idempotent so a
+  // second per-render deep-walk is pure waste.
+  const safeStats = stats;
   const totals = safeStats.totals;
   const recent = safeStats.recent_activity;
   const tpr = safeStats.tokens_per_request;
-  const chartStats = { ...safeStats, daily: filteredDaily };
+  // When a single model is selected, `daily` is narrowed to that model but
+  // peak_days stays all-models — folding the all-model peak into the bar scale
+  // would collapse a low-traffic model's bars to slivers. Drop the peak for a
+  // filtered view; it's only meaningful across all models.
+  const chartStats = {
+    ...safeStats,
+    daily: filteredDaily,
+    ...(selectedModel === "all" ? {} : { peak_days: [] }),
+  };
 
   const handleTabChange = (next: UsageSource) => {
     setTab(next);

@@ -332,7 +332,6 @@ function LogsPanel({
   logRef: React.RefObject<HTMLDivElement | null>;
   hasLogContent: boolean;
   renderLogs: () => ReactNode;
-  docsSrcDoc: string;
 }) {
   return (
     <div className="min-h-0 p-4">

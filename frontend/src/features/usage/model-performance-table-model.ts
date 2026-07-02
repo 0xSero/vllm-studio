@@ -1,6 +1,6 @@
 import type { PeakMetrics } from "@/lib/types";
 
-export type SortField = "model" | "requests" | "tokens" | "success" | "latency" | "ttft" | "speed";
+export type SortField = "model" | "requests" | "tokens" | "latency" | "ttft" | "speed";
 export type SortDirection = "asc" | "desc";
 
 export interface ModelData {

@@ -6,8 +6,8 @@ import type { ModelInfo, ModelRecommendation } from "@/lib/types";
 import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useCopiedValue } from "@/hooks/use-copied-flag";
-import { RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
-import { extractProvider, extractQuantizations, normalizeModelId } from "@/features/discover/utils";
+import { extractProvider, normalizeModelId, RECENT_HF_MODEL_SORT } from "@/lib/huggingface";
+import { extractQuantizations } from "@/features/discover/utils";
 
 export function useDiscover() {
   const [localModels, setLocalModels] = useState<ModelInfo[]>([]);

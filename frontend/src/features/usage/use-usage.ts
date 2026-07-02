@@ -147,10 +147,6 @@ export function useUsage(source: UsageSource = "provider") {
           aVal = a.total_tokens;
           bVal = b.total_tokens;
           break;
-        case "success":
-          aVal = a.success_rate;
-          bVal = b.success_rate;
-          break;
         case "latency":
           aVal = a.avg_latency_ms;
           bVal = b.avg_latency_ms;

@@ -1,5 +1,6 @@
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
-import { extractProvider, extractQuantizations } from "../../utils";
+import { extractQuantizations } from "../../utils";
+import { extractProvider } from "@/lib/huggingface";
 
 export type ModelRowDownloadAction =
   | {
@@ -15,21 +16,17 @@ export type ModelRowDownloadAction =
 
 export interface ModelRowView {
   downloadAction: ModelRowDownloadAction;
-  hasVariants: boolean;
   modelUrl: string;
   provider: string;
   quantizations: string[];
   rowClasses: string;
-  variantLabel: string | null;
 }
 
 interface ModelRowViewInput {
   activeDownload: ModelDownload | null;
-  child: boolean;
   isLocal: boolean;
   isStarting: boolean;
   model: HuggingFaceModel;
-  variantCount: number;
 }
 
 /**
@@ -38,18 +35,12 @@ interface ModelRowViewInput {
  * @returns The display model used by the row renderer.
  */
 export function resolveModelRowView(input: ModelRowViewInput): ModelRowView {
-  const hasVariants = input.variantCount > 1;
   return {
     downloadAction: resolveDownloadAction(input),
-    hasVariants,
     modelUrl: `https://huggingface.co/${input.model.modelId}`,
     provider: extractProvider(input.model.modelId),
     quantizations: extractQuantizations(input.model.tags),
-    rowClasses: input.child
-      ? "bg-(--surface)/15 hover:bg-(--surface)/25 transition-colors"
-      : "hover:bg-(--surface)/30 transition-colors",
-    variantLabel:
-      !input.child && hasVariants ? `${input.variantCount} quantization variants` : null,
+    rowClasses: "hover:bg-(--surface)/30 transition-colors",
   };
 }
 

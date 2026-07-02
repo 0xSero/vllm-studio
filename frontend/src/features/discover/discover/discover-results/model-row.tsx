@@ -4,8 +4,6 @@ import { memo, useMemo } from "react";
 import {
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Download,
   DownloadCloud,
@@ -29,10 +27,6 @@ interface ModelRowProps {
   onStartDownload: (params: { model_id: string }) => Promise<void>;
   onPauseDownload: (downloadId: string) => Promise<void>;
   onResumeDownload: (downloadId: string) => Promise<void>;
-  variantCount?: number;
-  expanded?: boolean;
-  onToggleExpand?: () => void;
-  child?: boolean;
   onOpenModelCard?: () => void;
 }
 
@@ -46,23 +40,11 @@ export const ModelRow = memo(function ModelRow({
   onStartDownload,
   onPauseDownload,
   onResumeDownload,
-  variantCount = 1,
-  expanded = false,
-  onToggleExpand,
-  child = false,
   onOpenModelCard,
 }: ModelRowProps) {
   const view = useMemo(
-    () =>
-      resolveModelRowView({
-        activeDownload,
-        child,
-        isLocal,
-        isStarting,
-        model,
-        variantCount,
-      }),
-    [activeDownload, child, isLocal, isStarting, model, variantCount],
+    () => resolveModelRowView({ activeDownload, isLocal, isStarting, model }),
+    [activeDownload, isLocal, isStarting, model],
   );
 
   return (
@@ -72,26 +54,7 @@ export const ModelRow = memo(function ModelRow({
       interactive={Boolean(onOpenModelCard)}
     >
       <TCell className="px-4 py-3">
-        <div className={`flex items-center gap-2 ${child ? "pl-5" : ""}`}>
-          {view.hasVariants && !child && (
-            <Button
-              variant="icon"
-              size="sm"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleExpand?.();
-              }}
-              className="shrink-0"
-              title={expanded ? "Collapse variants" : "Expand variants"}
-            >
-              {expanded ? (
-                <ChevronDown className="h-3.5 w-3.5 text-(--dim)" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5 text-(--dim)" />
-              )}
-            </Button>
-          )}
+        <div className="flex items-center gap-2">
           <ModelLogo modelId={model.modelId} author={model.author} size="sm" />
           <div className="text-sm font-medium text-(--fg) truncate max-w-xs" title={model.modelId}>
             {model.modelId}
@@ -113,11 +76,6 @@ export const ModelRow = memo(function ModelRow({
             )}
           </Button>
         </div>
-        {view.variantLabel && (
-          <div className="text-[length:var(--fs-sm)] text-(--dim) mt-1 pl-7">
-            {view.variantLabel}
-          </div>
-        )}
       </TCell>
       <TCell className="px-4 py-3">
         <StatusPill tone="default" variant="badge">

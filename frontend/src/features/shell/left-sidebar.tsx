@@ -291,7 +291,6 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                     label={tab.label}
                     Icon={tab.icon}
                     active={isRouteActive(pathname, tab.href)}
-                    expanded={isExpanded}
                   />
                 ))}
                 <ProjectsNavSection expanded={isExpanded} />
@@ -462,13 +461,11 @@ function NavItemDesktop({
   label,
   Icon,
   active,
-  expanded,
 }: {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   active: boolean;
-  expanded: boolean;
 }) {
   return (
     <Link
@@ -491,13 +488,7 @@ function NavItemDesktop({
         className={`h-4 w-4 shrink-0 ${active ? "text-(--fg)/85" : "opacity-60"}`}
         strokeWidth={1.75}
       />
-      <span
-        className={`text-[length:var(--fs-lg)] whitespace-nowrap transition-opacity duration-100 ${
-          expanded ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        {label}
-      </span>
+      <span className="text-[length:var(--fs-lg)] whitespace-nowrap">{label}</span>
     </Link>
   );
 }

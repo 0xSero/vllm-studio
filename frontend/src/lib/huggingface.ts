@@ -149,10 +149,7 @@ export function quantizationLabels(model: Pick<HuggingFaceModel, "modelId" | "ta
   const labels = new Set<string>();
 
   for (const marker of QUANT_MARKERS) {
-    const pattern =
-      marker.startsWith("q") && marker.length === 2
-        ? new RegExp(`(^|[-_\\s])${marker}($|[-_\\s])`, "i")
-        : new RegExp(`(^|[-_\\s])${marker}($|[-_\\s])`, "i");
+    const pattern = new RegExp(`(^|[-_\\s])${marker}($|[-_\\s])`, "i");
     if (pattern.test(text)) labels.add(marker.toUpperCase());
   }
 
