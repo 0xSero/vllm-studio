@@ -126,13 +126,19 @@ export default proxy;
 // Configure which paths the middleware runs on
 export const config = {
   matcher: [
+    // Every /api/* request, unconditionally. This MUST come first and carry no
+    // extension exclusion: the privileged API routes are the token gate's whole
+    // point, and dynamic segments (/api/proxy/[...path], /api/agent/sessions/[id])
+    // let a caller append a `.png`-style suffix. If the static-asset exclusion
+    // below also covered /api, that suffix would skip the gate entirely.
+    "/api/:path*",
     /*
-     * Match all request paths except:
+     * All non-API paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder files
+     * - public folder files (icons/, image extensions)
      */
-    "/((?!_next/static|_next/image|favicon.ico|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/|_next/static|_next/image|favicon.ico|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -110,10 +110,20 @@ export async function loadGitState(cwd: string): Promise<GitState> {
   };
 }
 
+// git treats a leading-dash argument as an option, so a ref/branch like
+// `--upload-pack=…` would be interpreted as a flag even through execFile (which
+// only stops shell injection, not argument injection). Reject them.
+function assertNotOption(value: string, label: string): string {
+  if (value.startsWith("-")) throw new Error(`Invalid ${label}: must not start with "-"`);
+  return value;
+}
+
 export async function runGitAction(cwd: string, action: GitAction): Promise<GitState> {
   if (action.action === "init") await git(cwd, ["init"]);
-  if (action.action === "checkout") await git(cwd, ["switch", action.ref]);
-  if (action.action === "createBranch") await git(cwd, ["switch", "-c", action.branch]);
+  if (action.action === "checkout")
+    await git(cwd, ["switch", "--", assertNotOption(action.ref, "ref")]);
+  if (action.action === "createBranch")
+    await git(cwd, ["switch", "-c", assertNotOption(action.branch, "branch")]);
   if (action.action === "commit") {
     await git(cwd, ["add", "--", ...(action.paths.length ? action.paths : ["."])]);
     await git(cwd, ["commit", "-m", action.message]);

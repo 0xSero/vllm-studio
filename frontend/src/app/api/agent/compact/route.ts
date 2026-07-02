@@ -9,6 +9,7 @@ import {
 } from "@/features/agent/composer-context";
 import { piRuntimeManager } from "@/features/agent/pi-runtime";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ function compactInstructions(skills: ComposerSkillRef[], custom?: string): strin
 }
 
 export function POST(request: NextRequest): Promise<Response> {
+  const denied = requireApiAccess(request);
+  if (denied) return Promise.resolve(denied);
   return Effect.runPromise(compactRouteEffect(request));
 }
 

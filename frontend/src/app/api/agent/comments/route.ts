@@ -2,11 +2,14 @@ import { NextRequest } from "next/server";
 import path from "node:path";
 import { addComment, deleteComment, listComments } from "@/features/agent/comments-store";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
   const rel = request.nextUrl.searchParams.get("path")?.trim() ?? "";
   if (!cwd || !rel) {
@@ -23,6 +26,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   let body: { cwd?: string; path?: string; line?: number; body?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -48,6 +53,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
   const rel = request.nextUrl.searchParams.get("path")?.trim() ?? "";
   const id = request.nextUrl.searchParams.get("id")?.trim() ?? "";

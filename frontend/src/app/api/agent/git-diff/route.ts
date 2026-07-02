@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
 import { assertGitCwd, loadGitState, runGitAction } from "@/features/agent/git";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const { cwd, error } = assertGitCwd(request.nextUrl.searchParams.get("cwd"));
   if (error) return error;
   try {
@@ -16,6 +19,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const { cwd, error } = assertGitCwd(request.nextUrl.searchParams.get("cwd"));
   if (error) return error;
   try {
