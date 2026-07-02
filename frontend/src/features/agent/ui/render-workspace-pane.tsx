@@ -124,7 +124,6 @@ export function renderWorkspacePane({
     <ChatPane
       key={view.paneId}
       paneId={view.paneId}
-      runtimeSessionId={view.session?.runtimeSessionId ?? ""}
       modelId={view.modelId}
       modelName={view.model?.name ?? view.modelId ?? null}
       modelSupportsVision={view.model?.vision ?? false}

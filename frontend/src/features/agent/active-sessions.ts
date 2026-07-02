@@ -5,7 +5,13 @@ export type ActiveAgentSessionSnapshot = {
   cwd: string;
   paneId: string;
   tabId: string;
-  runtimeSessionId: string;
+  /**
+   * Legacy (read-only): the pre-alias runtime key persisted by older builds.
+   * Never written anymore — the session id IS the runtime key. Kept so an
+   * entry that was RUNNING under an rt-* key across the upgrade can seed the
+   * runtime controller's connection-key override once and reattach.
+   */
+  runtimeSessionId?: string;
   piSessionId: string | null;
   modelId?: string;
   title: string;
@@ -118,8 +124,10 @@ function applyIncomingSnapshot(
     ...session,
     unseen: nextUnseen(session, target.existing),
     piSessionId: preferNullable(session.piSessionId, target.existing?.piSessionId ?? null),
-    runtimeSessionId:
-      session.runtimeSessionId || target.existing?.runtimeSessionId || session.tabId,
+    // Legacy passthrough only: new snapshots never carry a runtime key.
+    ...(session.runtimeSessionId || target.existing?.runtimeSessionId
+      ? { runtimeSessionId: session.runtimeSessionId || target.existing?.runtimeSessionId }
+      : {}),
     startedAt: preferDefined(
       target.existing?.startedAt,
       preferDefined(session.startedAt, session.updatedAt),

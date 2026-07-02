@@ -68,7 +68,6 @@ function canRetrySession(tab: SessionTab | null, hasModel: boolean, running: boo
 
 type Props = {
   paneId: string;
-  runtimeSessionId: string;
   modelId: string;
   modelName: string | null;
   modelSupportsVision: boolean;
@@ -102,7 +101,6 @@ type Props = {
 };
 export function ChatPane({
   paneId,
-  runtimeSessionId,
   modelId,
   modelName,
   modelSupportsVision,
@@ -240,7 +238,6 @@ export function ChatPane({
   const engine = useSessionEngine({
     tabs,
     activeTabId,
-    runtimeSessionId,
     modelId,
     cwd,
     browserToolEnabled,
@@ -263,7 +260,6 @@ export function ChatPane({
       readingAttachments,
       resetComposerHeight,
       running: Boolean(running),
-      runtimeSessionId,
       setMention,
       setStickToBottom,
       tools,

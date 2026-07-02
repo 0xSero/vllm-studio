@@ -35,7 +35,6 @@ type UseChatPaneSendFlowOptions = {
   readingAttachments: boolean;
   resetComposerHeight: () => void;
   running: boolean;
-  runtimeSessionId: string;
   setMention: (mention: ComposerMention | null) => void;
   setStickToBottom: (stickToBottom: boolean) => void;
   tools: ToolsContextValue;
@@ -54,7 +53,6 @@ export function useChatPaneSendFlow({
   readingAttachments,
   resetComposerHeight,
   running,
-  runtimeSessionId,
   setMention,
   setStickToBottom,
   tools,
@@ -244,7 +242,8 @@ export function useChatPaneSendFlow({
       event.preventDefault();
       if (!activeTab) return Promise.resolve();
       const text = activeTab.input.trim();
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      // The session id is the opaque runtime key.
+      const runtime = activeTab.id;
       if (
         ((!text || isPlaceholderSessionTitle(text)) && attachments.length === 0) ||
         readingAttachments
@@ -290,7 +289,6 @@ export function useChatPaneSendFlow({
       readingAttachments,
       runGuardedSubmit,
       runtimeAcceptsControl,
-      runtimeSessionId,
       submitPrompt,
       updateTab,
     ],
@@ -304,7 +302,7 @@ export function useChatPaneSendFlow({
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
       return Promise.resolve();
     }
-    const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+    const runtime = activeTab.id;
     return Effect.runPromise(
       Effect.gen(function* () {
         const acceptsControl = yield* Effect.tryPromise({
@@ -337,7 +335,6 @@ export function useChatPaneSendFlow({
     queueAndSendControl,
     runGuardedSubmit,
     runtimeAcceptsControl,
-    runtimeSessionId,
     submitPrompt,
     updateTab,
   ]);
@@ -371,7 +368,7 @@ export function useChatPaneSendFlow({
       if (!activeTab) return Promise.resolve();
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
-      const runtime = activeTab.runtimeSessionId || runtimeSessionId;
+      const runtime = activeTab.id;
       removeQueued(queueId);
       return Effect.runPromise(
         Effect.gen(function* () {
@@ -390,7 +387,7 @@ export function useChatPaneSendFlow({
         }),
       );
     },
-    [activeTab, engine, removeQueued, runtimeSessionId, updateTab],
+    [activeTab, engine, removeQueued, updateTab],
   );
 
   const abortTurn = useCallback(() => {

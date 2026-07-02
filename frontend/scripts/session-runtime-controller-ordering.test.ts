@@ -25,7 +25,6 @@ test("new turn stream events target the optimistic assistant bubble despite stal
   ];
   let liveSession: Session = {
     id: sessionId,
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "Ordering test",
     messages: [

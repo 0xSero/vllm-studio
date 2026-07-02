@@ -87,7 +87,7 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
     diff: <LazyGitDiffPanel cwd={focusedCwd} />,
     plan: (
       <LazyPlanPanel
-        sessionId={props.focusedSession?.runtimeSessionId ?? null}
+        sessionId={props.focusedSession?.id ?? null}
         onOpenTaskSideChat={(todo) =>
           props.onOpenSideChat({
             title: todo.content || "Plan task",
@@ -143,7 +143,6 @@ function SideChatTab({
     <section className="flex min-h-0 flex-1 flex-col">
       <ChatPane
         paneId="computer-side-chat"
-        runtimeSessionId={sideChatSession.runtimeSessionId}
         modelId={modelId}
         modelName={activeModel?.name ?? modelId}
         modelSupportsVision={activeModel?.vision ?? false}

@@ -8,7 +8,6 @@ import type { Session } from "@/features/agent/runtime/types";
 function session(patch: Partial<Session> = {}): Session {
   return {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "Build a site",
     status: "running",

@@ -55,7 +55,6 @@ function foldLiveEvents(events: Record<string, unknown>[]): {
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: sessionId,
-    runtimeSessionId: "rt-live-fold",
     piSessionId: "pi-live-fold",
     title: "Live fold golden",
     messages: [{ id: "user-1", role: "user", text: "synthetic live prompt" }],

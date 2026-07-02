@@ -44,7 +44,6 @@ export type PromptStreamDeps = {
   cwd: string;
   modelId: string;
   onPiSessionIdChange?: (piSessionId: string) => void;
-  runtimeSessionId: string;
   selectionFor: (sessionId: SessionId) => ToolSelection;
   tabsRef: MutableRef<Session[]>;
   updateSession: UpdateSession;
@@ -105,7 +104,9 @@ function createPromptTurnContext(
     assistantId: newId("assistant"),
     browserEnabledForTurn: args.browserToolEnabled ?? deps.browserToolEnabled,
     promptTemplates,
-    runtime: selected.runtimeSessionId || deps.runtimeSessionId,
+    // The session id is the opaque runtime key the server addresses this
+    // session by.
+    runtime: selected.id,
     selected,
     sessionId,
     skills,
@@ -263,13 +264,6 @@ function mergeSkills(
   for (const skill of existing ?? []) byId.set(skill.id || skill.path || skill.name, skill);
   for (const skill of next) byId.set(skill.id || skill.path || skill.name, skill);
   return [...byId.values()];
-}
-
-export function resolveRuntimeSessionId(
-  session: Pick<Session, "runtimeSessionId"> | null | undefined,
-  fallbackRuntimeSessionId: string,
-): string {
-  return session?.runtimeSessionId || fallbackRuntimeSessionId;
 }
 
 export function runtimeIsActiveForPiSession(

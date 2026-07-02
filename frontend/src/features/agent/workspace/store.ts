@@ -32,6 +32,7 @@ type PersistedPaneState = {
     {
       tabs?: unknown[];
       activeTabId?: unknown;
+      /** Legacy pane-level runtime id written by older builds; ignored. */
       runtimeSessionId?: unknown;
     }
   >;
@@ -64,6 +65,8 @@ export function setupWarningFromPiCheck(
 
 type PersistedTabShape = Partial<Session> & {
   skills?: ComposerSkillRef[];
+  /** Legacy: pre-alias runtime key persisted by older builds. Read-only. */
+  runtimeSessionId?: unknown;
 };
 
 export type PersistedSessionMeta = Omit<Session, "messages" | "error"> & {
@@ -75,16 +78,13 @@ export function normalizePersistedTab(value: unknown): Session | null {
   const tab = value as PersistedTabShape;
   if (typeof tab.id !== "string") return null;
   const fallback = makeFreshTab();
+  // Strip the legacy runtime key from the spread; its value is surfaced via
+  // legacyRuntimeKeyFromPersistedTab for the controller's connection-key seed.
+  const { runtimeSessionId: _legacyRuntimeKey, ...persisted } = tab;
   return {
     ...fallback,
-    ...tab,
+    ...persisted,
     id: tab.id,
-    // The session-level runtime id is the durable one; legacy records missing
-    // it get a fresh mint via the fallback.
-    runtimeSessionId:
-      typeof tab.runtimeSessionId === "string" && tab.runtimeSessionId.trim()
-        ? tab.runtimeSessionId
-        : fallback.runtimeSessionId,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
     // The canonical session log is the transcript source of truth. Legacy
@@ -101,6 +101,19 @@ export function normalizePersistedTab(value: unknown): Session | null {
     lastEventSeq: typeof tab.lastEventSeq === "number" ? tab.lastEventSeq : undefined,
     usedSkills: Array.isArray(tab.usedSkills) ? (tab.usedSkills as ComposerSkillRef[]) : undefined,
   };
+}
+
+/**
+ * Legacy read: the pre-alias runtime key a persisted tab was running under, if
+ * any. Used once on hydration to seed the runtime controller's connection-key
+ * override so a session RUNNING across the upgrade reattaches to its rt-* key.
+ */
+export function legacyRuntimeKeyFromPersistedTab(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const tab = value as PersistedTabShape;
+  return typeof tab.runtimeSessionId === "string" && tab.runtimeSessionId.trim()
+    ? tab.runtimeSessionId.trim()
+    : null;
 }
 
 /**
@@ -127,6 +140,8 @@ export type RestoredPaneState = {
   panesById: Map<PaneId, PaneState>;
   sessions: Map<SessionId, Session>;
   selections: Map<SessionId, ToolSelection>;
+  /** Legacy pre-alias runtime keys, by session id (connection-key seeds). */
+  legacyRuntimeKeys: Map<SessionId, string>;
   focusedPaneId: PaneId;
 };
 
@@ -142,17 +157,23 @@ function parsePersistedPaneState(raw: string): Partial<PersistedPaneState> | nul
 function restoreTabsWithSelections(rawTabs: unknown[]): {
   tabs: Session[];
   selections: Map<SessionId, ToolSelection>;
+  legacyRuntimeKeys: Map<SessionId, string>;
 } {
   const tabs: Session[] = [];
   const selections = new Map<SessionId, ToolSelection>();
+  const legacyRuntimeKeys = new Map<SessionId, string>();
   for (const raw of rawTabs) {
     const session = normalizePersistedTab(raw);
     if (!session) continue;
     tabs.push(session);
     const selection = selectionFromPersistedTab(raw);
     if (selection) selections.set(session.id, selection);
+    const legacyRuntimeKey = legacyRuntimeKeyFromPersistedTab(raw);
+    if (legacyRuntimeKey && legacyRuntimeKey !== session.id) {
+      legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
+    }
   }
-  return { tabs: tabs.length > 0 ? tabs : [makeFreshTab()], selections };
+  return { tabs: tabs.length > 0 ? tabs : [makeFreshTab()], selections, legacyRuntimeKeys };
 }
 
 function activePersistedTabId(
@@ -184,6 +205,7 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
   const panesById = new Map<PaneId, PaneState>();
   const sessions = new Map<SessionId, Session>();
   const selections = new Map<SessionId, ToolSelection>();
+  const legacyRuntimeKeys = new Map<SessionId, string>();
 
   for (const paneId of leaves) {
     const pane = persistedPanes[paneId] ?? {};
@@ -194,6 +216,8 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     sessions.set(session.id, session);
     const selection = restored.selections.get(session.id);
     if (selection) selections.set(session.id, selection);
+    const legacyRuntimeKey = restored.legacyRuntimeKeys.get(session.id);
+    if (legacyRuntimeKey) legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
     // The persisted pane-level runtimeSessionId is ignored: the session's own
     // id is the durable runtime identity, so a crash/reload reattaches to the
     // still-running runtime instead of minting a fresh orphan.
@@ -205,6 +229,7 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     panesById,
     sessions,
     selections,
+    legacyRuntimeKeys,
     focusedPaneId: focusedPersistedPaneId(parsed.focusedPaneId, leaves),
   };
 }
@@ -220,7 +245,6 @@ export function sessionMetaForPersistence(
 ): PersistedSessionMeta {
   const base: PersistedSessionMeta = {
     id: tab.id,
-    runtimeSessionId: tab.runtimeSessionId,
     piSessionId: tab.piSessionId,
     projectId: tab.projectId,
     cwd: tab.cwd,
@@ -280,8 +304,11 @@ export function loadPersistedActiveAgentSessions(
           cwd: typeof entry.cwd === "string" ? entry.cwd : "",
           paneId: typeof entry.paneId === "string" ? entry.paneId : "",
           tabId: typeof entry.tabId === "string" ? entry.tabId : "",
-          runtimeSessionId:
-            typeof entry.runtimeSessionId === "string" ? entry.runtimeSessionId.trim() : "",
+          // Legacy read: pre-alias entries carried the runtime key their
+          // session was running under; kept so the upgrade seed can reattach.
+          ...(typeof entry.runtimeSessionId === "string" && entry.runtimeSessionId.trim()
+            ? { runtimeSessionId: entry.runtimeSessionId.trim() }
+            : {}),
           piSessionId: piSessionId || null,
           modelId: typeof entry.modelId === "string" ? entry.modelId : undefined,
           title:
@@ -302,8 +329,7 @@ export function loadPersistedActiveAgentSessions(
           !prefs[entry.piSessionId ?? ""]?.hidden &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId) &&
-          Boolean(entry.tabId) &&
-          Boolean(entry.runtimeSessionId),
+          Boolean(entry.tabId),
       );
   } catch {
     return [];

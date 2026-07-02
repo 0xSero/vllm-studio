@@ -42,7 +42,6 @@ function tabFromSnapshot(session: ActiveAgentSessionSnapshot): Session {
   return {
     ...fresh,
     id: session.tabId || fresh.id,
-    runtimeSessionId: session.runtimeSessionId || fresh.runtimeSessionId,
     piSessionId: session.piSessionId,
     projectId: session.projectId,
     cwd: session.cwd,

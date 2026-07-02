@@ -22,7 +22,6 @@ test("a mid-turn piSessionId adoption does not rewind the live cursor (no backlo
 
   let liveSession: Session = {
     id: sessionId,
-    runtimeSessionId: "rt-1",
     // First turn: pi id not assigned yet, nothing persisted.
     piSessionId: null,
     lastEventSeq: undefined,
@@ -108,7 +107,6 @@ test("a mid-turn piSessionId adoption does not rewind the live cursor (no backlo
 test("a piSessionId shared by two sessions does not let one runtime entry drive both", async () => {
   let sessionA: Session = {
     id: "tab-A",
-    runtimeSessionId: "rt-A",
     piSessionId: "pi-shared",
     title: "A",
     messages: [],
@@ -118,7 +116,6 @@ test("a piSessionId shared by two sessions does not let one runtime entry drive 
   };
   let sessionB: Session = {
     id: "tab-B",
-    runtimeSessionId: "rt-B",
     piSessionId: "pi-shared",
     title: "B",
     messages: [],
@@ -132,9 +129,9 @@ test("a piSessionId shared by two sessions does not let one runtime entry drive 
     idleReconnectMs: 0,
     pollIntervalMs: 1_000_000,
     api: {
-      // Only rt-A is actually running, serving pi-shared.
+      // Only tab-A's runtime is actually running, serving pi-shared.
       listRuntimeSessions: async () => [
-        { sessionId: "rt-A", status: { active: true, piSessionId: "pi-shared" } },
+        { sessionId: "tab-A", status: { active: true, piSessionId: "pi-shared" } },
       ],
       loadRuntimeStatus: async () => null,
       subscribeRuntimeEvents: () => ({ close: () => undefined }),
@@ -158,17 +155,17 @@ test("a piSessionId shared by two sessions does not let one runtime entry drive 
     assert.equal(
       sessionA.status,
       "running",
-      "the session that owns rt-A is promoted via the direct match",
+      "the session that owns the runtime is promoted via the direct match",
     );
     assert.equal(
       sessionB.status,
       "idle",
-      "the colliding pi-id session must NOT be promoted by rt-A's entry",
+      "the colliding pi-id session must NOT be promoted by tab-A's entry",
     );
     assert.equal(
-      sessionB.runtimeSessionId,
-      "rt-B",
-      "the colliding session must NOT be repointed to rt-A",
+      controller.connectionKey("tab-B"),
+      "tab-B",
+      "the colliding session must NOT be repointed to tab-A's runtime",
     );
   } finally {
     controller.closeAll();

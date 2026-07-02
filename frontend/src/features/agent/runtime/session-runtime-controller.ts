@@ -108,17 +108,29 @@ export type SessionRuntimeController = {
   /**
    * Reconcile every session against the runtime list right now, then restart
    * the steady poll. Called by the React binding when poll-relevant session
-   * identity (membership / runtime id / pi id / status) changes.
+   * identity (membership / pi id / status) changes.
    */
   pollNow(): void;
   /** Flush everything and close every SSE attachment (workspace unmount). */
   closeAll(): void;
+  /**
+   * The connection key a session is currently addressed by on the runtime API.
+   * Normally the session's own runtime key; after a restart adoption it is the
+   * controller-internal override recorded by the poll's pi-session match.
+   */
+  connectionKey(sessionId: SessionId): string;
+  /**
+   * Seed the connection-key override from a legacy persisted runtime id (a
+   * pre-alias `rt-*` value read once from old localStorage state), so a session
+   * that was RUNNING under that key across the upgrade reattaches to it.
+   */
+  seedConnectionKey(sessionId: SessionId, runtimeKey: string): void;
 };
 
 type Attachment = { key: string; close: () => void };
 
-function resumeConnectionKey(runtimeSessionId: string, piSessionId: string | null): string {
-  return `${runtimeSessionId}|${piSessionId ?? ""}`;
+function resumeConnectionKey(connectionKey: string, piSessionId: string | null): string {
+  return `${connectionKey}|${piSessionId ?? ""}`;
 }
 
 function patchRuntimeStatus(status: RuntimeStatus): Partial<Session> {
@@ -129,15 +141,9 @@ function patchRuntimeStatus(status: RuntimeStatus): Partial<Session> {
   };
 }
 
-function sameRuntimePatch(
-  session: Session,
-  patch: Partial<Session>,
-  status: string,
-  runtimeSessionId = session.runtimeSessionId,
-): boolean {
+function sameRuntimePatch(session: Session, patch: Partial<Session>, status: string): boolean {
   return (
     session.status === status &&
-    session.runtimeSessionId === runtimeSessionId &&
     (patch.piSessionId === undefined || session.piSessionId === patch.piSessionId) &&
     (patch.modelId === undefined || session.modelId === patch.modelId) &&
     (patch.contextUsage === undefined ||
@@ -168,6 +174,14 @@ export function createSessionRuntimeController(
   // fighting the SSE's idle and oscillating status (visible flicker + SSE
   // reopen churn). This stamp lets the active branch honor the finish grace.
   const turnFinishedAt = new Map<SessionId, number>();
+  // Ephemeral per-session connection-key overrides — reconnection plumbing, not
+  // session state. Set when the poll's pi-session match finds this session's
+  // runtime living under a DIFFERENT server key (a restart adoption, or a
+  // legacy pre-alias `rt-*` key seeded across an upgrade); every runtime API
+  // address for the session then uses the override instead of the session id.
+  const connectionKeyOverrides = new Map<SessionId, string>();
+  const connectionKeyFor = (session: Session): string =>
+    connectionKeyOverrides.get(session.id) ?? session.id;
 
   // The set of session ids (runtime AND pi ids) the runtime reports as actively
   // working, refreshed every poll. The sidebar subscribes so a session running
@@ -358,10 +372,44 @@ export function createSessionRuntimeController(
     return acceptedAt === undefined || acceptedAt <= finishedAt;
   };
 
+  // Restart adoption: the pi match found this session's runtime under a new
+  // server key. Record the connection-key override (controller-internal —
+  // reconnection plumbing, not session state), reset the cursor, and reopen an
+  // existing attachment under the new key.
+  const adoptConnectionKey = (
+    session: Session,
+    nextConnectionKey: string,
+    piSessionId: string | null,
+  ) => {
+    // Adopting a different server key means the session is now served by a
+    // fresh runtime whose event seq restarts from 0. The cursor is keyed by
+    // the stable sessionId and still holds the OLD runtime's seq, so a
+    // reconnect would resume "after <old seq>" and skip the new runtime's
+    // early events. Reset it (as noteTurnAccepted does on a restart) before
+    // the SSE reopens.
+    adoptCursor(session.id, undefined);
+    if (nextConnectionKey === session.id) {
+      connectionKeyOverrides.delete(session.id);
+    } else {
+      connectionKeyOverrides.set(session.id, nextConnectionKey);
+    }
+    // The override is controller-internal — no session state changes, so the
+    // React binding's reconcile will not fire. Reopen an existing attachment
+    // under the new key ourselves; openAttachment connects from the
+    // freshly-reset in-memory cursor. A session without an attachment
+    // (idle -> running promotion) is picked up by the binding's reconcile
+    // when the status commit lands.
+    const attachment = attachments.get(session.id);
+    if (attachment) {
+      attachment.close();
+      attachments.set(session.id, openAttachment(session.id, nextConnectionKey, piSessionId));
+    }
+  };
+
   // Reconcile the workspace sessions against one runtime-list snapshot. The
   // poll is the second leg of status arbitration next to the SSE attachments:
   // it promotes sessions whose runtime is active (including adopting a new
-  // runtimeSessionId via the pi-session match) and idles sessions the runtime
+  // connection key via the pi-session match) and idles sessions the runtime
   // no longer reports as active.
   const applyRuntimeList = (runtimeSessions: RuntimeSessionSummary[], fetchStartedAt: number) => {
     const byRuntime = new Map(runtimeSessions.map((entry) => [entry.sessionId, entry.status]));
@@ -370,7 +418,7 @@ export function createSessionRuntimeController(
         .filter((entry) => entry.status.piSessionId)
         .map((entry) => [
           entry.status.piSessionId!,
-          { runtimeSessionId: entry.sessionId, status: entry.status },
+          { serverKey: entry.sessionId, status: entry.status },
         ]),
     );
     const sessions = binding?.getSessions() ?? [];
@@ -388,7 +436,8 @@ export function createSessionRuntimeController(
       else seenPiIds.add(session.piSessionId);
     }
     for (const session of sessions) {
-      const direct = byRuntime.get(session.runtimeSessionId);
+      const connectionKey = connectionKeyFor(session);
+      const direct = byRuntime.get(connectionKey);
       const piMatch =
         session.piSessionId && !sharedPiIds.has(session.piSessionId)
           ? byPi.get(session.piSessionId)
@@ -406,56 +455,55 @@ export function createSessionRuntimeController(
         // the finish (a genuine restart supersedes the finish and must recover).
         if (withinFinishGrace(session.id, fetchStartedAt)) continue;
         const patch = patchRuntimeStatus(status);
-        const nextRuntimeSessionId = piMatch?.runtimeSessionId ?? session.runtimeSessionId;
-        // Adopting a different runtime id means the session is now served by a
-        // fresh runtime whose event seq restarts from 0. The cursor is keyed by
-        // the stable sessionId and still holds the OLD runtime's seq, so a
-        // reconnect would resume "after <old seq>" and skip the new runtime's
-        // early events. Reset it (as noteTurnAccepted does on a restart) before
-        // the store change triggers reconcile's SSE reopen.
-        if (nextRuntimeSessionId !== session.runtimeSessionId) {
-          adoptCursor(session.id, undefined);
+        const nextConnectionKey = piMatch?.serverKey ?? connectionKey;
+        if (nextConnectionKey !== connectionKey) {
+          adoptConnectionKey(
+            session,
+            nextConnectionKey,
+            status.piSessionId ?? session.piSessionId ?? null,
+          );
         }
         commit(session.id, (current) => {
-          if (sameRuntimePatch(current, patch, "running", nextRuntimeSessionId)) return current;
+          if (sameRuntimePatch(current, patch, "running")) return current;
           return {
             ...current,
-            ...(current.runtimeSessionId !== nextRuntimeSessionId
-              ? { runtimeSessionId: nextRuntimeSessionId }
-              : {}),
             ...patch,
             status: "running",
           };
         });
       } else if (session.status === "running") {
-        // Only a session the runtime once acknowledged (status "running") may be
-        // idled by the poll. A freshly-sent "starting" turn is not yet in the
-        // runtime list during prefill/TTFT; idling it here would hide the
-        // working indicator for several seconds until the first token lands.
-        // The prompt stream's own `finally` owns the starting->terminal
-        // transition, so the poll must not race it.
-        //
-        // Accept-vs-poll grace: a list snapshot fetched before — or shortly
-        // after — a `/turn` acceptance cannot speak for the new turn, so it
-        // may not idle the session either. Only the idle branch is suppressed;
-        // the active branch is the recovery path and must always apply.
-        const acceptedAt = turnAcceptedAt.get(session.id);
-        if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) continue;
-        const patch = patchRuntimeStatus(status);
-        commit(session.id, (current) => {
-          if (current.status !== "running") return current;
-          if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
-            return current;
-          }
-          return {
-            ...current,
-            ...patch,
-            status: "idle",
-            activeAssistantId: undefined,
-          };
-        });
+        idleFromRuntimeList(session, status, fetchStartedAt);
       }
     }
+  };
+
+  // Only a session the runtime once acknowledged (status "running") may be
+  // idled by the poll. A freshly-sent "starting" turn is not yet in the
+  // runtime list during prefill/TTFT; idling it here would hide the
+  // working indicator for several seconds until the first token lands.
+  // The prompt stream's own `finally` owns the starting->terminal
+  // transition, so the poll must not race it.
+  //
+  // Accept-vs-poll grace: a list snapshot fetched before — or shortly
+  // after — a `/turn` acceptance cannot speak for the new turn, so it
+  // may not idle the session either. Only the idle branch is suppressed;
+  // the active branch is the recovery path and must always apply.
+  const idleFromRuntimeList = (session: Session, status: RuntimeStatus, fetchStartedAt: number) => {
+    const acceptedAt = turnAcceptedAt.get(session.id);
+    if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) return;
+    const patch = patchRuntimeStatus(status);
+    commit(session.id, (current) => {
+      if (current.status !== "running") return current;
+      if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
+        return current;
+      }
+      return {
+        ...current,
+        ...patch,
+        status: "idle",
+        activeAssistantId: undefined,
+      };
+    });
   };
 
   const stopPoll = () => {
@@ -641,12 +689,12 @@ export function createSessionRuntimeController(
     reconcile: (sessions) => {
       const desired = new Map<
         SessionId,
-        { runtimeSessionId: string; piSessionId: string | null; lastEventSeq: number | undefined }
+        { connectionKey: string; piSessionId: string | null; lastEventSeq: number | undefined }
       >();
       for (const session of sessions) {
-        if (shouldSubscribeRuntimeEvents(session.status) && session.runtimeSessionId) {
+        if (shouldSubscribeRuntimeEvents(session.status)) {
           desired.set(session.id, {
-            runtimeSessionId: session.runtimeSessionId,
+            connectionKey: connectionKeyFor(session),
             piSessionId: session.piSessionId ?? null,
             lastEventSeq: session.lastEventSeq,
           });
@@ -655,7 +703,7 @@ export function createSessionRuntimeController(
 
       for (const [sessionId, attachment] of [...attachments]) {
         const want = desired.get(sessionId);
-        const key = want ? resumeConnectionKey(want.runtimeSessionId, want.piSessionId) : "";
+        const key = want ? resumeConnectionKey(want.connectionKey, want.piSessionId) : "";
         if (!want || attachment.key !== key) {
           attachment.close();
           attachments.delete(sessionId);
@@ -677,10 +725,7 @@ export function createSessionRuntimeController(
         if (!existing || (want.lastEventSeq ?? 0) > (existing.receivedSeq ?? 0)) {
           cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
         }
-        attachments.set(
-          sessionId,
-          openAttachment(sessionId, want.runtimeSessionId, want.piSessionId),
-        );
+        attachments.set(sessionId, openAttachment(sessionId, want.connectionKey, want.piSessionId));
       }
     },
     flush: (sessionId) => coalescer.flushNow(sessionId),
@@ -712,7 +757,15 @@ export function createSessionRuntimeController(
       cursors.clear();
       turnAcceptedAt.clear();
       turnFinishedAt.clear();
+      connectionKeyOverrides.clear();
       streamContext.liveAssistantIds.clear();
+    },
+    connectionKey: (sessionId) => connectionKeyOverrides.get(sessionId) ?? sessionId,
+    seedConnectionKey: (sessionId, runtimeKey) => {
+      // One-shot legacy seed: never clobber an override the poll already owns.
+      if (!runtimeKey || runtimeKey === sessionId) return;
+      if (connectionKeyOverrides.has(sessionId)) return;
+      connectionKeyOverrides.set(sessionId, runtimeKey);
     },
   };
 }

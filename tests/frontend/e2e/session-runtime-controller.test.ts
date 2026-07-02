@@ -332,7 +332,6 @@ function createControllerHarness(
 ): ControllerHarness {
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "New session",
     messages: [],
@@ -671,7 +670,6 @@ type PollHarness = {
 function pollSession(overrides: Partial<Session> = {}): Session {
   return {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "New session",
     messages: [],
@@ -715,37 +713,42 @@ function createPollHarness(initial: Session[]): PollHarness {
   };
 }
 
-test("poll promotes an active runtime to running and adopts its id via the pi match", async () => {
+test("poll promotes an active runtime to running and adopts its key via the pi match", async () => {
   const harness = createPollHarness([
-    pollSession({ status: "idle", runtimeSessionId: "rt-old", piSessionId: "pi-1" }),
+    pollSession({ status: "idle", piSessionId: "pi-1" }),
   ]);
   harness.controller.pollNow();
   assert.equal(harness.fetchCount(), 1);
 
-  await harness.resolveFetch(0, [
-    {
-      sessionId: "rt-new",
-      status: { active: true, piSessionId: "pi-1", modelId: "deepseek-v4-flash" },
-    },
-  ]);
+  try {
+    await harness.resolveFetch(0, [
+      {
+        sessionId: "rt-new",
+        status: { active: true, piSessionId: "pi-1", modelId: "deepseek-v4-flash" },
+      },
+    ]);
 
-  const session = harness.sessions()[0];
-  assert.equal(session.status, "running");
-  assert.equal(session.runtimeSessionId, "rt-new");
-  assert.equal(session.modelId, "deepseek-v4-flash");
-  harness.controller.closeAll();
-  harness.controller.unbind();
+    const session = harness.sessions()[0];
+    assert.equal(session.status, "running");
+    // Adoption is a controller-internal connection-key override now — session
+    // state no longer stores a runtime id repoint.
+    assert.equal(harness.controller.connectionKey(session.id), "rt-new");
+    assert.equal(session.modelId, "deepseek-v4-flash");
+  } finally {
+    harness.controller.closeAll();
+    harness.controller.unbind();
+  }
 });
 
 test("poll never idles a starting session; a running one it may settle", async () => {
   const harness = createPollHarness([
-    pollSession({ id: "s-starting", runtimeSessionId: "rt-a", status: "starting" }),
-    pollSession({ id: "s-running", runtimeSessionId: "rt-b", piSessionId: "pi-b" }),
+    pollSession({ id: "s-starting", status: "starting" }),
+    pollSession({ id: "s-running", piSessionId: "pi-b" }),
   ]);
   harness.controller.pollNow();
   await harness.resolveFetch(0, [
-    { sessionId: "rt-a", status: { active: false } },
-    { sessionId: "rt-b", status: { active: false } },
+    { sessionId: "s-starting", status: { active: false } },
+    { sessionId: "s-running", status: { active: false } },
   ]);
 
   // The optimistic "starting" phase is owned by the prompt stream — the
@@ -772,11 +775,11 @@ test("a stale in-flight poll snapshot is dropped after pollNow restarts the epoc
   harness.controller.pollNow(); // fetch 1 — fresher snapshot, runtime active
   assert.equal(harness.fetchCount(), 2);
 
-  await harness.resolveFetch(1, [{ sessionId: "rt-1", status: { active: true } }]);
+  await harness.resolveFetch(1, [{ sessionId: "s-1", status: { active: true } }]);
   assert.equal(harness.sessions()[0].status, "running");
 
   // The pre-restart snapshot must not idle the session it no longer speaks for.
-  await harness.resolveFetch(0, [{ sessionId: "rt-1", status: { active: false } }]);
+  await harness.resolveFetch(0, [{ sessionId: "s-1", status: { active: false } }]);
   assert.equal(harness.sessions()[0].status, "running");
   harness.controller.closeAll();
   harness.controller.unbind();
@@ -814,13 +817,13 @@ test("poll-idle is suppressed inside the accept grace window, allowed after it",
   // the new turn and must not idle the session.
   harness.controller.noteTurnAccepted("s-1");
   harness.controller.pollNow();
-  await harness.resolveFetch(0, [{ sessionId: "rt-1", status: { active: false } }]);
+  await harness.resolveFetch(0, [{ sessionId: "s-1", status: { active: false } }]);
   assert.equal(harness.sessions()[0].status, "running");
 
   // Two poll periods later the runtime list speaks for the turn again.
   jest.setSystemTime(12_000);
   harness.controller.pollNow();
-  await harness.resolveFetch(1, [{ sessionId: "rt-1", status: { active: false } }]);
+  await harness.resolveFetch(1, [{ sessionId: "s-1", status: { active: false } }]);
   assert.equal(harness.sessions()[0].status, "idle");
 
   harness.controller.closeAll();
@@ -838,7 +841,6 @@ test("poll-idle is suppressed inside the accept grace window, allowed after it",
 test("agent_end clears the mid-stream redirect so the next turn targets its own bubble", () => {
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [
@@ -927,7 +929,6 @@ test("agent_end clears the mid-stream redirect so the next turn targets its own 
 test("noteReplayHydrated drops the live-target pin so post-replay events hit the rebuilt bubble", () => {
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [

@@ -26,7 +26,6 @@ import type { ToolSelection } from "@/features/agent/tools/types";
 function makeSession(id: string, patch: Partial<Session> = {}): Session {
   return {
     id,
-    runtimeSessionId: `rt-${id}`,
     piSessionId: null,
     title: "New session",
     messages: [],
@@ -123,7 +122,6 @@ function makeEffectDeps(overrides: Partial<WorkspaceEffectDeps> = {}) {
 
 test("pane state round-trips durable session metadata and drops transcripts", () => {
   const rich = makeSession("s-rich", {
-    runtimeSessionId: "rt-rich",
     piSessionId: "pi-rich",
     title: "GPU planning",
     input: "draft text",
@@ -167,7 +165,6 @@ test("pane state round-trips durable session metadata and drops transcripts", ()
   assert.equal(loaded.workspace.focusedPaneId, "p-side");
   const restoredRich = loaded.workspace.sessions?.get("s-rich");
   assert.equal(restoredRich?.piSessionId, "pi-rich");
-  assert.equal(restoredRich?.runtimeSessionId, "rt-rich");
   assert.equal(restoredRich?.title, "GPU planning");
   assert.equal(restoredRich?.input, "draft text");
   assert.equal(restoredRich?.lastEventSeq, 17);
@@ -178,10 +175,10 @@ test("pane state round-trips durable session metadata and drops transcripts", ()
   assert.deepEqual(loaded.selections.get("s-rich"), selection);
 });
 
-test("restore uses the session's durable runtime id and ignores pane-level copies", () => {
-  // The session-level runtimeSessionId is the only runtime identity: a
-  // crash/reload reattaches to the still-running runtime instead of minting a
-  // fresh orphan (the old pane-level fresh-mint bug). Legacy persisted
+test("restore surfaces a legacy tab-level runtime key and ignores pane-level copies", () => {
+  // The session id IS the runtime key now. A pre-alias tab persisted with its
+  // own rt-* runtimeSessionId surfaces that key as a legacy connection-key
+  // seed (so a session RUNNING across the upgrade reattaches); legacy
   // pane-level ids are ignored on read.
   const tab = { id: "s-1", runtimeSessionId: "rt-tab-1", title: "T" };
   const persisted = (paneRuntime: string | undefined) =>
@@ -195,12 +192,12 @@ test("restore uses the session's durable runtime id and ignores pane-level copie
     });
 
   const restored = restorePersistedPaneState(persisted(undefined));
-  assert.equal(restored?.sessions.get("s-1")?.runtimeSessionId, "rt-tab-1");
+  assert.equal(restored?.legacyRuntimeKeys.get("s-1"), "rt-tab-1");
 
   const withLegacyPaneId = restorePersistedPaneState(persisted("rt-stale-pane"));
-  assert.equal(withLegacyPaneId?.sessions.get("s-1")?.runtimeSessionId, "rt-tab-1");
+  assert.equal(withLegacyPaneId?.legacyRuntimeKeys.get("s-1"), "rt-tab-1");
 
-  // A legacy tab missing its own runtime id gets a fresh mint, not a crash.
+  // A legacy tab missing its own runtime id needs no seed, and doesn't crash.
   const legacyTab = restorePersistedPaneState(
     JSON.stringify({
       version: 1,
@@ -209,7 +206,8 @@ test("restore uses the session's durable runtime id and ignores pane-level copie
       panes: { "p-1": { activeTabId: "s-legacy", tabs: [{ id: "s-legacy", title: "Old" }] } },
     }),
   );
-  assert.match(legacyTab?.sessions.get("s-legacy")?.runtimeSessionId ?? "", /^rt-/);
+  assert.equal(legacyTab?.sessions.get("s-legacy")?.id, "s-legacy");
+  assert.equal(legacyTab?.legacyRuntimeKeys.size, 0);
 });
 
 test("legacy PANE_LAYOUT_KEY fallback restores layout with fresh starters", () => {
@@ -234,7 +232,7 @@ test("legacy PANE_LAYOUT_KEY fallback restores layout with fresh starters", () =
     const session = loaded.workspace.sessions?.get(pane.sessionId);
     assert.equal(session?.piSessionId, null);
     assert.equal(session?.messages.length, 0);
-    assert.match(session?.runtimeSessionId ?? "", /^rt-/);
+    assert.match(session?.id ?? "", /^tab-/);
   }
 
   // Corrupt legacy data degrades to an empty workspace, not a crash.
@@ -260,7 +258,7 @@ test("legacy PANE_LAYOUT_KEY fallback restores layout with fresh starters", () =
 // ----- active sessions broadcast (effects.ts) -----
 
 test("active-session broadcasts persist before the event and dedup by content", () => {
-  const session = makeSession("s-live", { runtimeSessionId: "rt-live" });
+  const session = makeSession("s-live");
   const prev = makeState(session);
   const withPi = { ...session, piSessionId: "pi-live", title: "Live chat" };
   const next: WorkspaceState = {
@@ -302,13 +300,11 @@ test("active-session broadcasts persist before the event and dedup by content", 
 test("broadcasts surface running sessions that lost their pane as background entries", () => {
   const pane = makeSession("s-pane", {
     piSessionId: "pi-pane",
-    runtimeSessionId: "rt-pane",
     title: "Pane chat",
     startedAt: "2026-06-19T10:00:00.000Z",
   });
   const background = makeSession("s-bg", {
     piSessionId: "pi-bg",
-    runtimeSessionId: "rt-bg",
     status: "running",
     title: "Background chat",
     startedAt: "2026-06-19T09:00:00.000Z",
@@ -396,9 +392,9 @@ test("settled sessions outside a pane are not broadcast as background entries", 
   );
 });
 
-test("broadcasts skip loading placeholders, carry session runtime ids, and wait for hydration", () => {
+test("broadcasts skip loading placeholders and wait for hydration", () => {
   const loading = makeSession("s-loading", { piSessionId: "pi-x", status: "loading" });
-  const ready = makeSession("s-ready", { piSessionId: "pi-y", runtimeSessionId: "rt-ready" });
+  const ready = makeSession("s-ready", { piSessionId: "pi-y" });
   const base = makeState(ready);
   const next: WorkspaceState = {
     ...base,
@@ -428,13 +424,11 @@ test("broadcasts skip loading placeholders, carry session runtime ids, and wait 
     deps,
   );
   const detail = harness.fired.find((entry) => entry.type === ACTIVE_AGENT_SESSIONS_EVENT)
-    ?.detail as { sessions: { tabId: string; runtimeSessionId: string }[] };
+    ?.detail as { sessions: { tabId: string }[] };
   assert.deepEqual(
     detail.sessions.map((entry) => entry.tabId),
     ["s-ready"],
   );
-  // The broadcast carries the session's own runtime id.
-  assert.equal(detail.sessions[0]?.runtimeSessionId, "rt-ready");
 
   // Unhydrated workspaces never broadcast (placeholder titles must not
   // overwrite the snapshot store before replay completes).
@@ -498,7 +492,6 @@ test("url navigation latches hydration so late restores cannot clobber a fresh c
     project: null,
     newSession: true,
     paneId: "p-url",
-    runtimeSessionId: "rt-url",
     tab: fresh,
   });
   assert.equal(opened.hydrated, true);
@@ -522,7 +515,6 @@ test("url navigation latches hydration so late restores cannot clobber a fresh c
     project: null,
     newSession: true,
     paneId: "p-x",
-    runtimeSessionId: "rt-x",
     tab: makeFreshTab(),
   });
   assert.equal(deduped, unhydrated);
@@ -591,7 +583,7 @@ function makeReplayHarness(): ReplayHarness {
   const handles = new Set<string>();
   const replays: ReplayHarness["replays"] = [];
   const timers: TimerRecord[] = [];
-  const panesById = new Map<string, { sessionId: string; runtimeSessionId: string }>();
+  const panesById = new Map<string, { sessionId: string }>();
   const sessions = new Map<string, Session>();
   const queue = createSessionReplayQueue({
     getHandle: (paneId) =>
@@ -618,7 +610,7 @@ function makeReplayHarness(): ReplayHarness {
         panesById.delete(paneId);
         return;
       }
-      panesById.set(paneId, { sessionId: session.id, runtimeSessionId: "rt-pane" });
+      panesById.set(paneId, { sessionId: session.id });
       sessions.set(session.id, session);
     },
   };

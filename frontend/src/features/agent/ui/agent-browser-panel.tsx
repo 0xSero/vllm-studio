@@ -32,7 +32,7 @@ import { useTools } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
-import { makeFreshTab, newRuntimeId } from "@/features/agent/messages/helpers";
+import { makeFreshTab } from "@/features/agent/messages/helpers";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import {
   terminalOwnerLabel,
@@ -74,7 +74,6 @@ function createSideChatSession(
   const tab = makeFreshTab();
   return {
     ...tab,
-    runtimeSessionId: newRuntimeId(),
     title: "Side chat",
     cwd: focusedSession?.cwd ?? activeProject?.path,
     projectId: focusedSession?.projectId ?? activeProject?.id,

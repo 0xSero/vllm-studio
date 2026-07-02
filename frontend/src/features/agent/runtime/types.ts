@@ -19,7 +19,6 @@ export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done"
  */
 export type Session = {
   id: SessionId;
-  runtimeSessionId: string;
   piSessionId: string | null;
   projectId?: string;
   cwd?: string;

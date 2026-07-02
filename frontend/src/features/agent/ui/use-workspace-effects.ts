@@ -39,14 +39,25 @@ export function useWorkspaceHydrationEffects({
   useMountSubscription(() => {
     const params = currentSearchParams();
     const restoreWorkspace = shouldRestoreWorkspace(params);
-    const { workspace, selections } = restoreWorkspace
+    const { workspace, selections, legacyRuntimeKeys } = restoreWorkspace
       ? loadInitialFromStorage(window.localStorage)
-      : { workspace: {}, selections: new Map() };
+      : { workspace: {}, selections: new Map(), legacyRuntimeKeys: new Map() };
+    // Legacy upgrade seed: a session persisted while RUNNING under a pre-alias
+    // rt-* runtime key must reattach to that key, not the session id.
+    for (const [sessionId, runtimeKey] of legacyRuntimeKeys) {
+      sessionRuntimeController().seedConnectionKey(sessionId, runtimeKey);
+    }
     dispatch({ type: "hydrate", state: workspace, hydrated: !restoreWorkspace });
     if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
 
     if (projectsRef.current.loaded) {
       const snapshots = restoreWorkspace ? loadPersistedActiveAgentSessions() : [];
+      for (const snapshot of snapshots) {
+        // Same legacy seed for old active-session entries (see above).
+        if (snapshot.tabId && snapshot.runtimeSessionId) {
+          sessionRuntimeController().seedConnectionKey(snapshot.tabId, snapshot.runtimeSessionId);
+        }
+      }
       dispatch({
         type: "hydrateActiveSessions",
         snapshots,
@@ -79,16 +90,13 @@ type UseWorkspaceRuntimeSyncDeps = {
 function runtimeSubscriptionKey(sessions: Session[]): string {
   return sessions
     .filter((session) => shouldSubscribeRuntimeEvents(session.status))
-    .map((session) => `${session.id}:${session.runtimeSessionId}:${session.piSessionId ?? ""}`)
+    .map((session) => `${session.id}:${session.piSessionId ?? ""}`)
     .join("\n");
 }
 
 function runtimeRegistryKey(sessions: Session[]): string {
   return sessions
-    .map(
-      (session) =>
-        `${session.id}:${session.runtimeSessionId}:${session.piSessionId ?? ""}:${session.status}`,
-    )
+    .map((session) => `${session.id}:${session.piSessionId ?? ""}:${session.status}`)
     .join("\n");
 }
 
@@ -127,7 +135,7 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
 
   // Immediate runtime-list reconcile + steady poll restart whenever session
-  // identity (membership / runtime id / pi id / status) changes.
+  // identity (membership / pi id / status) changes.
   useMountSubscription(() => {
     sessionRuntimeController().pollNow();
   }, [registryKey]);

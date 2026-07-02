@@ -14,8 +14,8 @@ export type { GitSummary } from "@/features/agent/projects/types";
 
 /**
  * A pane is a layout slot pointing at one visible session — it carries no
- * session content. Runtime identity (`runtimeSessionId`) lives on the Session
- * only.
+ * session content. The session id is both the pane's pointer and the opaque
+ * runtime key the server addresses the session by.
  */
 export type PaneState = {
   sessionId: SessionId;

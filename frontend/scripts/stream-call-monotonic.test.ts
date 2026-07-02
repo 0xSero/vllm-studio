@@ -17,7 +17,6 @@ test("a lagging message_update snapshot does not shrink the streamed bubble (no 
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [
@@ -70,7 +69,6 @@ test("message_end applies the settled content even if marginally shorter", () =>
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [

@@ -219,7 +219,6 @@ function activeSessionSnapshot(
     cwd: tab.cwd ?? "",
     paneId,
     tabId: tab.id,
-    runtimeSessionId: tab.runtimeSessionId,
     piSessionId: tab.piSessionId,
     modelId: tab.modelId ?? state.selectedModel,
     title: cleanSessionTitle(tab.title) || (paneId ? "Current session" : "Background session"),
@@ -301,7 +300,7 @@ export function activeBroadcastSignature(state: WorkspaceState): string {
     parts.push(`P:${paneId}>${pane.sessionId}`);
   for (const tab of state.sessions.values()) {
     parts.push(
-      `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|${tab.runtimeSessionId}|` +
+      `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +
         `${tab.projectId ?? ""}|${tab.cwd ?? ""}|${tab.modelId ?? ""}|${tab.startedAt ?? ""}|` +
         `${tab.title ?? ""}|${tab.messages.length}|${tab.usedSkills?.length ?? 0}`,
     );

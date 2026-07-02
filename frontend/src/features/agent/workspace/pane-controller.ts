@@ -21,13 +21,7 @@ import type {
 } from "@/features/agent/workspace/types";
 
 function isSession(value: Session | undefined): value is Session {
-  return Boolean(
-    value &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    typeof value.runtimeSessionId === "string" &&
-    value.runtimeSessionId.length > 0,
-  );
+  return Boolean(value && typeof value.id === "string" && value.id.length > 0);
 }
 
 function replaySessionTitle(sessionTitle?: string, fallback = "Loading session"): string {
@@ -93,7 +87,9 @@ function replacePaneSession(
 
 function copySession(source: Session, fallback: Session | undefined): Session | null {
   if (!isSession(fallback)) return null;
-  return { ...source, id: fallback.id, runtimeSessionId: fallback.runtimeSessionId };
+  // The copy's fresh id is also its runtime key, so a fork never shares the
+  // source's runtime (the shared piSessionId is guarded by the controller).
+  return { ...source, id: fallback.id };
 }
 
 function splitPaneWithSession(

@@ -150,6 +150,9 @@ export type AgentTurnRuntimeStatus = {
 export type AgentTurnCommandResult = {
   type: "command";
   outcome: "accepted" | "queued" | "rejected";
+  // Wire field of the /turn response: the server echoes the opaque runtime key
+  // it resolved the command to. The client sends the session id as that key
+  // and does not read this back.
   runtimeSessionId: string;
   piSessionId?: string | null;
   active: boolean;

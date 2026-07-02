@@ -30,7 +30,6 @@ function makeHarness(opts: {
 }): Harness {
   let session: Session = {
     id: "tab-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     lastEventSeq: undefined,
     title: "Flicker test",

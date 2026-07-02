@@ -129,6 +129,7 @@ test("turn command result parser preserves runtime status", () => {
   const payload = parseAgentTurnCommandResult({
     type: "command",
     outcome: "accepted",
+    // Wire field of the /turn response (server echoes the opaque runtime key).
     runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     active: true,
@@ -147,7 +148,6 @@ test("turn command result parser preserves runtime status", () => {
 
 test("new chat url navigation replaces the focused chat with a fresh runtime", () => {
   const oldSession = makeSession("s-old", {
-    runtimeSessionId: "rt-old",
     piSessionId: "pi-old",
     title: "Old debugging chat",
     status: "running",
@@ -157,7 +157,6 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
     input: "draft stuck on old chat",
   });
   const freshSession = makeSession("s-fresh", {
-    runtimeSessionId: "rt-fresh",
     title: "New session",
   });
   const state: WorkspaceState = {
@@ -176,7 +175,7 @@ test("new chat url navigation replaces the focused chat with a fresh runtime", (
 
   const pane = next.panesById.get("p-main");
   assert.equal(pane?.sessionId, "s-fresh");
-  assert.equal(next.sessions.get("s-fresh")?.runtimeSessionId, "rt-fresh");
+  assert.equal(next.sessions.get("s-fresh")?.id, "s-fresh");
   // The previous chat was mid-turn (status: running). Starting a new chat must
   // NOT destroy it — it keeps streaming in the background and stays reachable
   // from the sidebar. (It is pruned later, once it settles.)
@@ -246,7 +245,6 @@ test("new chat replaces an empty starter with fresh identity", () => {
     next.panesById.get("p-main")?.sessionId ?? "",
   );
   assert.equal(active?.id, "s-fresh");
-  assert.equal(active?.runtimeSessionId, "rt-s-fresh");
   assert.equal(next.sessions.has("s-starter"), false);
   assert.equal(active?.title, "New session");
   assert.equal(active?.status, "idle");
@@ -385,7 +383,9 @@ test("agent session navigation restores running SDK sessions with runtime identi
   assert.equal(next.focusedPaneId, "p-main");
   assert.equal(restoredPane?.sessionId, "tab-deepseek");
   const restored = next.sessions.get("tab-deepseek");
-  assert.equal(restored?.runtimeSessionId, "rt-deepseek");
+  // The legacy snapshot runtime key is NOT copied onto the session — the
+  // session id is the runtime key; legacy keys only seed the controller's
+  // connection-key override (see use-workspace-effects).
   assert.equal(restored?.piSessionId, "pi-deepseek");
   assert.equal(restored?.modelId, "deepseek-v4-flash");
   assert.deepEqual(restored?.usedSkills, usedSkills);
@@ -403,7 +403,6 @@ test("unprojected active sessions hydrate with their cwd", () => {
         cwd: "/Users/sero/.local-studio",
         paneId: "p-main",
         tabId: "tab-default",
-        runtimeSessionId: "rt-default",
         piSessionId: "pi-default",
         modelId: "nemotron-3-ultra",
         title: "Default chat",
@@ -430,7 +429,6 @@ test("session replay into a starter adopts cwd and model metadata", () => {
     sessionId: "pi-replay",
     paneId: "p-replay",
     tab: makeSession("tab-replay", {
-      runtimeSessionId: "rt-replay",
       cwd: "/Users/sero/.local-studio",
       modelId: "nemotron-3-ultra",
       title: "Persisted replay",
@@ -795,7 +793,7 @@ test("forking a tab into a split pane copies session content with fresh identity
     sourcePaneId: "p-main",
     sourceTabId: "s-main",
     newPaneId: "p-fork",
-    tab: makeSession("s-fork", { runtimeSessionId: "rt-fork-session" }),
+    tab: makeSession("s-fork"),
   });
 
   assert.deepEqual(collectLeaves(forked.layout), ["p-main", "p-fork"]);
@@ -806,7 +804,6 @@ test("forking a tab into a split pane copies session content with fresh identity
   const source = forked.sessions.get("s-main");
   const copy = forked.sessions.get("s-fork");
   assert.equal(copy?.id, "s-fork");
-  assert.equal(copy?.runtimeSessionId, "rt-fork-session");
   assert.equal(copy?.piSessionId, "pi-source");
   assert.equal(copy?.projectId, source?.projectId);
   assert.equal(copy?.cwd, source?.cwd);
@@ -828,7 +825,7 @@ test("forking while already split replaces the sibling pane instead of adding a 
       sourcePaneId: "p-main",
       sourceTabId: "s-main",
       newPaneId: "p-side",
-      tab: makeSession("s-side", { runtimeSessionId: "rt-side-session" }),
+      tab: makeSession("s-side"),
     },
   );
 
@@ -837,8 +834,7 @@ test("forking while already split replaces the sibling pane instead of adding a 
     sourcePaneId: "p-side",
     sourceTabId: "s-side",
     newPaneId: "p-third",
-    runtimeSessionId: "rt-third-pane",
-    tab: makeSession("s-third", { runtimeSessionId: "rt-third-session" }),
+    tab: makeSession("s-third"),
   });
 
   assert.deepEqual(collectLeaves(forkedAgain.layout), ["p-main", "p-side"]);
@@ -846,10 +842,7 @@ test("forking while already split replaces the sibling pane instead of adding a 
   assert.equal(forkedAgain.panesById.has("p-third"), false);
   assert.equal(forkedAgain.panesById.get("p-main")?.sessionId, "s-third");
   assert.equal(forkedAgain.sessions.has("s-main"), false);
-  assert.equal(
-    forkedAgain.sessions.get("s-third")?.runtimeSessionId,
-    "rt-third-session",
-  );
+  assert.equal(forkedAgain.sessions.get("s-third")?.id, "s-third");
 });
 
 test("follow-up queue drains after agent end while steer messages stay out of the next turn", () => {
@@ -2182,7 +2175,6 @@ test("a tool-free final settled message appends its summary instead of being dro
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [
@@ -2263,7 +2255,6 @@ test("a steer echo clears the optimistic pending bubble and opens the reply bubb
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [
@@ -2304,7 +2295,6 @@ test("agent_end un-dims a steer that was never echoed", () => {
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [
@@ -2330,7 +2320,6 @@ test("a text-only live message_update after a tool-heavy turn keeps the tool blo
   const ctx: SessionStreamContext = { liveAssistantIds: new Map() };
   let session: Session = {
     id: "s-1",
-    runtimeSessionId: "rt-1",
     piSessionId: "pi-1",
     title: "t",
     messages: [

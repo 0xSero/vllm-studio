@@ -16,7 +16,6 @@ import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import {
-  resolveRuntimeSessionId,
   runtimeCanHydrateCanonicalSession,
   submitPromptTurn,
   type SubmitArgs,
@@ -31,8 +30,6 @@ export type UseSessionEngineDeps = {
   /** Latest `tabs` snapshot — engine reads via a ref so it doesn't restart on every frame. */
   tabs: Session[];
   activeTabId: SessionId;
-  /** Runtime session id used when a session doesn't carry its own. */
-  runtimeSessionId: string;
   modelId: string;
   cwd: string;
   browserToolEnabled: boolean;
@@ -71,7 +68,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const {
     tabs,
     activeTabId,
-    runtimeSessionId,
     modelId,
     cwd,
     browserToolEnabled,
@@ -163,7 +159,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           cwd,
           modelId,
           onPiSessionIdChange,
-          runtimeSessionId,
           selectionFor: selectionForRef.current,
           tabsRef,
           updateSession,
@@ -173,7 +168,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [
       activeTabId,
       modelId,
-      runtimeSessionId,
       cwd,
       browserToolEnabled,
       browserBackend,
@@ -187,8 +181,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     (sessionId: SessionId) =>
       Effect.runPromise(
         Effect.gen(function* () {
-          const session = tabsRef.current.find((tab) => tab.id === sessionId);
-          const runtime = resolveRuntimeSessionId(session, runtimeSessionId);
+          // Abort by the CONNECTION key (override-aware): after a server
+          // restart the session's runtime lives under a different server key,
+          // and /abort has no piSessionId fallback lookup.
+          const runtime = sessionRuntimeController().connectionKey(sessionId);
           yield* Effect.tryPromise({
             try: () => api.abortSession(runtime),
             catch: (error) => error,
@@ -212,7 +208,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           }));
         }),
       ),
-    [runtimeSessionId, updateSession],
+    [updateSession],
   );
 
   const loadAndReplay = useCallback(
@@ -249,10 +245,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           }).pipe(Effect.result);
           if (replayResult._tag === "Success") {
             const { events } = replayResult.success;
-            const runtimeId = resolveRuntimeSessionId(
-              tabsRef.current.find((tab) => tab.id === sessionId),
-              runtimeSessionId,
-            );
+            // Override-aware runtime key: after a server restart the session's
+            // runtime may live under an adopted server key.
+            const runtimeId = sessionRuntimeController().connectionKey(sessionId);
             const runtimeStatus = yield* Effect.tryPromise({
               try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
               catch: () => null,
@@ -295,10 +290,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             // session idle (which would drop the live stream — reconcile only
             // subscribes for live statuses): keep the seeded history, mark it running,
             // and reset the cursor so the reattached SSE replays the runtime backlog.
-            const runtimeId = resolveRuntimeSessionId(
-              tabsRef.current.find((tab) => tab.id === sessionId),
-              runtimeSessionId,
-            );
+            const runtimeId = sessionRuntimeController().connectionKey(sessionId);
             const runtimeStatus = yield* Effect.tryPromise({
               try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
               catch: () => null,
@@ -322,7 +314,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           }
         }),
       ),
-    [cwd, modelId, runtimeSessionId, updateSession],
+    [cwd, modelId, updateSession],
   );
 
   const compact = useCallback(
@@ -335,12 +327,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const result = yield* Effect.tryPromise({
             try: () =>
               api.compactSession({
-                sessionId: session.runtimeSessionId || runtimeSessionId,
+                sessionId: session.id,
                 modelId,
                 cwd: cwd.trim() || undefined,
                 piSessionId: session.piSessionId,
                 browserToolEnabled,
-                browserSessionId: session.runtimeSessionId || runtimeSessionId,
+                browserSessionId: session.id,
                 browserBackend,
                 canvasEnabled,
                 skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
@@ -379,7 +371,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       cwd,
       loadAndReplay,
       modelId,
-      runtimeSessionId,
       updateSession,
     ],
   );

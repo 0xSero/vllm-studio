@@ -28,10 +28,6 @@ export function newPaneId(): string {
   return `p-${Date.now().toString(36)}-${randomIdSegment(6)}`;
 }
 
-export function newRuntimeId(): string {
-  return `rt-${Date.now().toString(36)}-${randomIdSegment(6)}`;
-}
-
 export function nowLabel(): string {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(),
@@ -327,8 +323,10 @@ export function mergeCanonicalAndRuntimeEvents(
 
 export function makeFreshTab(): SessionTab {
   return {
+    // The session id doubles as the opaque runtime key the client sends to the
+    // server (ids are opaque server-side). Sessions persisted under a legacy
+    // rt-* runtime key reattach via the controller's connection-key seed.
     id: newId("tab"),
-    runtimeSessionId: newId("rt"),
     piSessionId: null,
     title: "New session",
     messages: [],

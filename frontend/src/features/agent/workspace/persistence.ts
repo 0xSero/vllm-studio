@@ -87,6 +87,11 @@ export type LoadedFromStorage = {
   workspace: Partial<WorkspaceState>;
   /** Per-session tool selections recovered from the persisted shape. */
   selections: Map<SessionId, ToolSelection>;
+  /**
+   * Legacy pre-alias runtime keys by session id, read once from old persisted
+   * state to seed the runtime controller's connection-key override.
+   */
+  legacyRuntimeKeys: Map<SessionId, string>;
 };
 
 export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromStorage {
@@ -95,13 +100,13 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   const rawState = readStorage(storage, PANE_STATE_KEY);
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
-    const { selections, ...workspace } = restoredState;
-    return { workspace, selections };
+    const { selections, legacyRuntimeKeys, ...workspace } = restoredState;
+    return { workspace, selections, legacyRuntimeKeys };
   }
 
   const rawLayout = readStorage(storage, PANE_LAYOUT_KEY);
   const restoredLayout = rawLayout ? restoreLegacyLayout(rawLayout) : null;
-  return { workspace: restoredLayout ?? {}, selections: new Map() };
+  return { workspace: restoredLayout ?? {}, selections: new Map(), legacyRuntimeKeys: new Map() };
 }
 
 export function writePaneState(
@@ -115,7 +120,6 @@ export function writePaneState(
     string,
     {
       activeTabId: string;
-      runtimeSessionId: string;
       tabs: ReturnType<typeof sessionMetaForPersistence>[];
     }
   > = {};
@@ -126,9 +130,6 @@ export function writePaneState(
       : [];
     panes[paneId] = {
       activeTabId: pane.sessionId,
-      // Denormalized for downgrade-compat with builds that read a pane-level
-      // runtime id; the read path uses the session's own id.
-      runtimeSessionId: session?.runtimeSessionId ?? "",
       tabs,
     };
   }

@@ -79,10 +79,9 @@ export type QueuedMessage = {
 };
 
 export type SessionTab = {
+  // Pane/client identity AND the opaque runtime key sent to the server. One
+  // per tab so tabs run independent agent sessions.
   id: string;
-  // In-memory Pi runtime key. One per tab so tabs can run independent agent
-  // sessions instead of sharing a pane-level runtime.
-  runtimeSessionId: string;
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).
   piSessionId: string | null;

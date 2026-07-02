@@ -135,7 +135,6 @@ export function foldSessionEvents(events: Record<string, unknown>[]): {
   const ctx: SessionStreamContext = { liveAssistantIds: new Map(), replay: true };
   let session: Session = {
     id: "replay",
-    runtimeSessionId: "",
     piSessionId: null,
     title: "",
     messages: [],

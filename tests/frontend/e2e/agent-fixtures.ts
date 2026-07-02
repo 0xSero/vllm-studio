@@ -8,7 +8,6 @@ import type { WorkspaceState } from "@/features/agent/workspace/types";
 export function makeSession(id: string, patch: Partial<Session> = {}): Session {
   return {
     id,
-    runtimeSessionId: `rt-${id}`,
     piSessionId: null,
     title: "New session",
     messages: [],
