@@ -6,7 +6,6 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "node scripts/start-standalone.mjs",
-    "start:next": "next start",
     "test": "tsx --test scripts/test-*.ts",
     "test:e2e": "tsx --test --test-force-exit ../tests/frontend/e2e/*.test.ts",
     "lint": "eslint",
@@ -14,7 +13,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "depcheck": "depcheck --ignores=\"@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,jscpd,knip,lint-staged,concurrently,electron-builder,madge,tsx\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
-    "analyze": "ANALYZE=true next build",
     "prepare": "cd .. && git rev-parse --git-dir >/dev/null 2>&1 && npm run setup:git-hooks || true",
     "postinstall": "node scripts/patch-pi-ai-openai-text-boundaries.mjs",
     "check:deadcode": "knip",
@@ -61,7 +59,6 @@
     "zustand": "4.5.7"
   },
   "devDependencies": {
-    "@next/bundle-analyzer": "16.2.7",
     "@tailwindcss/postcss": "4.1.18",
     "@types/node": "20.19.27",
     "@types/react": "19.2.7",
