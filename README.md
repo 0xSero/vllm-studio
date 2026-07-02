@@ -5,7 +5,7 @@ self-hosted LLM backends. One machine can launch models, watch GPU/runtime
 state, chat with OpenAI-compatible endpoints, and run agent sessions against
 local or remote controllers.
 
-It is built from three modules that share one controller API:
+It is built from two modules that share one controller API:
 
 - [`controller/`](controller/README.md) — Bun/Hono backend. Owns model lifecycle
   (launch, evict, recipes, downloads, runtime process coordination), an
@@ -153,7 +153,7 @@ Remote deployment is handled by `scripts/deploy-remote.sh`. Configure
 REMOTE_HOST=192.168.x.x
 REMOTE_USER=username
 REMOTE_PATH=/home/user/project
-REMOTE_URL=https://your-domain.example
+# Optional: REMOTE_SSH_KEY (defaults to ~/.ssh/id_ed25519)
 ```
 
 ```bash

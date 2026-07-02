@@ -6,11 +6,9 @@
 # Application-specific owners
 /controller/ @0xSero
 /frontend/ @0xSero
-/cli/ @0xSero
 
 # Configuration
 docker-compose.yml @0xSero
-config/ @0xSero
 
 # Documentation
 *.md @0xSero

@@ -6,13 +6,12 @@ touching anything, then obey it for every turn.
 ## What this is
 
 Local Studio — a local-first workstation for running, managing, and using
-self-hosted LLM backends. Three modules share one controller API:
+self-hosted LLM backends. Two modules share one controller API:
 
 - `controller/` — Bun/Hono backend (model lifecycle, OpenAI-compatible proxy,
   GPU/system state, SSE, downloads, settings).
 - `frontend/` — Next.js 16 + React 19 UI and the Electron desktop shell. Hosts
   `/agent` (Pi coding agent runtime), settings, usage, recipes, logs, setup.
-- `cli/` — Bun command-line client for a controller.
 
 One machine launches models, watches GPU/runtime state, chats with
 OpenAI-compatible endpoints, and runs agent sessions against local or remote
@@ -137,7 +136,7 @@ The pre-push hook (`.githooks/pre-push`) checks conventional commits and runs
 
 Never commit secrets. Put them in `.env.local` (gitignored). See `.env.example`
 for variable names. The deploy script reads `REMOTE_HOST`, `REMOTE_USER`,
-`REMOTE_PATH`, `REMOTE_URL` from `.env.local`.
+`REMOTE_PATH` (and optional `REMOTE_SSH_KEY`) from `.env.local`.
 
 ## Deployment
 
