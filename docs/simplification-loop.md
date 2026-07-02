@@ -354,8 +354,36 @@ doesn't amplify brute-force on a fixed path); #8 read-limiter headers (cosmetic)
 CLEARED: no SQL injection (all parameterized); timing-safe token compare; auth
 default-open only loopback/opt-in; port parsing guarded.
 
+## BUG HUNT LOG — round 8 (I13, Electron main process + settings/contracts)
+
+One-agent sweep of the desktop MAIN process + I personally audited shared
+contracts (engine-args strip logic sound, no change) and the settings-service.
+Commits a966b257 (settings), 421d9763 (desktop).
+
+Fixed:
+- settings-service saveApiSettings: non-atomic write; a crash truncates
+  api-settings.json and getApiSettings returns env defaults — silently WIPING
+  the persisted API key. Write-then-rename (chmod 0600 before rename).
+- desktop renderer crash left a permanent blank window (only logged) → guarded
+  auto-reload.
+- restartFrontendServer re-checks isAppStopping after the fork (shutdown race
+  re-armed the health monitor + resurrected the server).
+- PTY cap at 64 (fork-bomb defense from a compromised renderer); writePty guard;
+  cols/rows NaN clamp; boot-failure error dialog.
+
+Left (documented): #1 owner-keyed PTYs survive macOS window close = the
+persistent-terminal reattach design, not a clear bug; #6 per-handler sender
+validation is mitigated (webviews get no preload/bridge). CLEARED: open-external
+restricted to http/https; update feed refuses non-https/loopback; shared
+engine-args foreign-flag strip normalization consistent.
+
 ## Iteration log
 
+- **I13 (2026-07-02)**: bug-hunt round 8 (Electron main process). Fixed a
+  secret-wiping non-atomic settings write + 6 desktop issues (renderer-crash
+  recovery, restart/shutdown race, PTY fork-bomb cap + write/dim guards, boot
+  dialog). Verified shared contracts sound. Left 2 low-value (documented). All
+  gates green (127 integration + desktop build). See BUG HUNT LOG round 8.
 - **I12 (2026-07-02)**: bug-hunt round 7 (http middleware/stores/config). Fixed 2
   HIGH (running-model mis-ID served the wrong model; rate-limit IP-spoofing
   brute-force bypass + memory DoS) + config-truncation + recipe range clamps;
