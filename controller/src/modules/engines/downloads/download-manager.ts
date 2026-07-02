@@ -222,7 +222,14 @@ export class DownloadManager {
       return;
     }
     const controller = new AbortController();
-    this.active.set(id, { controller, running: true });
+    // Identity token for this run. pause() deletes the active entry and a
+    // following resume() starts a NEW run that overwrites it; this token lets a
+    // superseded old run detect it no longer owns the download and make zero
+    // state writes (otherwise its abort-driven catch clobbers the live run's
+    // status to "paused" and its finally deletes the live run's active entry).
+    const self = { controller, running: true };
+    this.active.set(id, self);
+    const stillOwner = (): boolean => this.active.get(id) === self;
 
     let current = {
       ...download,
@@ -249,6 +256,10 @@ export class DownloadManager {
         current = this.store.get(id) ?? current;
       }
 
+      // A newer run superseded this one (pause→resume): leave all state to it.
+      if (!stillOwner()) {
+        return;
+      }
       current = this.store.get(id) ?? current;
       if (current.status === "paused" || current.status === "canceled") {
         return;
@@ -262,6 +273,11 @@ export class DownloadManager {
       this.store.save(current);
       this.publishState(current, current.status);
     } catch (error) {
+      // If a newer run already took over, this run's abort must not rewrite the
+      // live download's status.
+      if (!stillOwner()) {
+        return;
+      }
       const latest = this.store.get(id) ?? current;
       if (controller.signal.aborted) {
         latest.status = latest.status === "canceled" ? "canceled" : "paused";
@@ -277,7 +293,11 @@ export class DownloadManager {
         this.logger.error("Download failed", { error: String(error), id });
       }
     } finally {
-      this.active.delete(id);
+      // Only clear the active entry if it is still ours — a newer run may have
+      // replaced it.
+      if (stillOwner()) {
+        this.active.delete(id);
+      }
     }
   }
 
