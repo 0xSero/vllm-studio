@@ -309,8 +309,30 @@ iframe sandboxes correct); untrusted hrefs neutralized by react-markdown;
 filesystem tree can't self-expand a symlink cycle. Controller GPU/platform
 parsing is robust (NaN guards, unit handling, N/A cases).
 
+## BUG HUNT + CUT LOG — round 6 (I11, usage/discover/logs/shell/lib)
+
+Docs audit: verified all READMEs/AGENTS.md accurate vs 38 commits of removals —
+ZERO drift, no GitBook site, no build output tracked. No change.
+
+One-agent sweep of the last feature views. Commit 24a2b9f6 (net -71 lines).
+This round found GENUINE dead code (unlike the I9 recipe traps):
+- BUG usage daily chart: single-model filter left peak_days all-models →
+  low-traffic model's bars collapsed to slivers. Drop peak for filtered view.
+- discover ModelRow: whole inline variant-expansion path unreachable (sole
+  caller never passes the props; variants go through the model card). ~40 lines.
+- discover/utils extractProvider dup'd lib; normalizeModelId pass-through → use lib.
+- usage: dead SortField 'success' case (no column); double normalizeUsageStats/render.
+- huggingface.ts identical-branch ternary; LogsPanel unread docsSrcDoc prop;
+  left-sidebar NavItemDesktop always-true 'expanded' prop.
+- SKIPPED #8 (download-progress dedup, ~4 lines): cross-feature/new-module
+  overhead ≈ savings.
+
 ## Iteration log
 
+- **I11 (2026-07-02)**: docs audit (zero drift, no change) + feature-views sweep.
+  Fixed the usage-chart peak-scale bug and removed genuine dead code across
+  usage/discover/logs/shell/lib — net -71 lines, a real cut (contrast I9's traps).
+  Skipped 1 marginal dedup. All gates green (127 integration + 227 e2e + build).
 - **I10 (2026-07-02)**: bug-hunt round 5 (agent view/rendering layer). Fixed 5
   real issues (timeline remount, attachment blob leak, plan timer leak, canvas
   memo, git-diff freeze) across 2 commits; deferred 1 cosmetic (highlight span
