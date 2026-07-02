@@ -1,7 +1,7 @@
 // Server-side API settings service: the single owner of reading, writing,
 // merging, and masking the persisted `<dataDir>/api-settings.json` file.
 
-import { chmod, readFile, writeFile } from "fs/promises";
+import { chmod, readFile, rename, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { resolveSettingsDefaultBackendUrl } from "@/lib/api/connection";
 import { resolveDataDir, resolveSettingsFilePath } from "@/lib/data-dir";
@@ -45,8 +45,13 @@ export async function saveApiSettings(settings: ApiSettings): Promise<void> {
   resolveDataDir();
   const settingsFile = resolveSettingsFilePath();
   const payload = JSON.stringify(settings, null, 2);
-  await writeFile(settingsFile, payload, "utf-8");
-  await chmod(settingsFile, 0o600).catch(() => undefined);
+  // Write-then-rename: a crash mid-write would truncate the file, and
+  // getApiSettings swallows the parse error and returns defaults — silently
+  // wiping the persisted API key and backend URL.
+  const tempFile = `${settingsFile}.tmp-${process.pid}`;
+  await writeFile(tempFile, payload, "utf-8");
+  await chmod(tempFile, 0o600).catch(() => undefined);
+  await rename(tempFile, settingsFile);
 }
 
 // Mask API key for display (show first 4 and last 4 chars)
