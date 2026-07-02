@@ -129,14 +129,17 @@ export function RecipeModal({
   const hasCommandOverride = editedCommand !== null || savedCommandOverride !== null;
 
   const handleCommandChange = (value: string) => {
-    setEditedCommand(value);
     const nextExtraArgs = { ...(recipe.extra_args ?? {}) };
-    if (value.trim() && value !== generatedCommand) {
+    const isOverride = Boolean(value.trim()) && value !== generatedCommand;
+    if (isOverride) {
       nextExtraArgs["launch_command"] = value;
     } else {
       delete nextExtraArgs["launch_command"];
       delete nextExtraArgs["custom_command"];
     }
+    // Clear editedCommand when the typed value matches the generated command, so
+    // hasCommandOverride doesn't stay true and show a false "override" badge.
+    setEditedCommand(isOverride ? value : null);
     applyRecipeChange({ ...recipe, extra_args: nextExtraArgs });
   };
 

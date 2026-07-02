@@ -73,7 +73,9 @@ export function RecipeModalTabGeneral({
             <Input
               type="number"
               value={recipe.port ?? 8000}
-              onChange={(e) => onChange({ ...recipe, port: Number(e.target.value) })}
+              onChange={(e) =>
+                onChange({ ...recipe, port: Number(e.target.value) || undefined })
+              }
             />
           </FormField>
         </div>

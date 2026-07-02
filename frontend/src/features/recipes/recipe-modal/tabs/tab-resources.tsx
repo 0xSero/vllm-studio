@@ -82,13 +82,12 @@ function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
             type="number"
             min={1}
             value={recipe.tp ?? recipe.tensor_parallel_size ?? 1}
-            onChange={(e) =>
-              onChange({
-                ...recipe,
-                tp: Number(e.target.value),
-                tensor_parallel_size: Number(e.target.value),
-              })
-            }
+            onChange={(e) => {
+              // Clearing the field yields Number("") === 0; a parallel size of 0
+              // is invalid and the controller schema doesn't reject it. Floor at 1.
+              const size = Math.max(1, Math.floor(Number(e.target.value) || 1));
+              onChange({ ...recipe, tp: size, tensor_parallel_size: size });
+            }}
           />
         </FormField>
         <FormField label="Pipeline Parallel">
@@ -96,13 +95,10 @@ function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
             type="number"
             min={1}
             value={recipe.pp ?? recipe.pipeline_parallel_size ?? 1}
-            onChange={(e) =>
-              onChange({
-                ...recipe,
-                pp: Number(e.target.value),
-                pipeline_parallel_size: Number(e.target.value),
-              })
-            }
+            onChange={(e) => {
+              const size = Math.max(1, Math.floor(Number(e.target.value) || 1));
+              onChange({ ...recipe, pp: size, pipeline_parallel_size: size });
+            }}
           />
         </FormField>
         {capabilities.parallelism === "full" ? (
@@ -145,7 +141,7 @@ function GpuSection({ recipe, onChange, capabilities }: SectionProps) {
         >
           <div className="flex items-center gap-3">
             <Slider
-              min={0}
+              min={0.05}
               max={1}
               step={0.05}
               value={gpuUtil}

@@ -66,7 +66,11 @@ const appendLlamacppArgsToCommand = (
     if (isInternalRecipeKey(key)) continue;
 
     const flag = `--${key.replace(/_/g, "-")}`;
-    if (args.some((entry) => entry.startsWith(flag))) continue;
+    // Match the flag as a whole token (bare, or immediately followed by its
+    // value after a space). A plain startsWith let a longer sibling flag
+    // (e.g. an existing "--rope-scaling linear") suppress a distinct shorter
+    // flag ("--rope-scale").
+    if (args.some((entry) => entry === flag || entry.startsWith(`${flag} `))) continue;
 
     if (value === true) {
       args.push(flag);

@@ -3,17 +3,9 @@
 import type { ReactNode } from "react";
 import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
 import type { LlamacppOption } from "@/features/recipes/llamacpp-options";
+import { coerceBoolean } from "@/features/recipes/coercion";
 
-function coerceBooleanValue(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const normalized = value.toLowerCase().trim();
-    if (["true", "1", "yes", "y"].includes(normalized)) return true;
-    if (["false", "0", "no", "n"].includes(normalized)) return false;
-  }
-  return false;
-}
+const coerceBooleanValue = (value: unknown): boolean => coerceBoolean(value) ?? false;
 
 /**
  * Renders an engine-native option grid (llama.cpp / MLX) from a declarative

@@ -1,6 +1,6 @@
 import type { ExtraArgType } from "./extra-arg-fields";
 
-const coerceBoolean = (value: unknown): boolean | undefined => {
+export const coerceBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
   if (typeof value === "string") {
