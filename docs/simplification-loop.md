@@ -159,8 +159,42 @@ Security (privileged Next API routes):
 - REVIEWED-BY-DESIGN: fs cwd = user-chosen project dir (local agent needs
   arbitrary dirs); now token-gated. SSRF/traversal/SSE-abort all checked clean.
 
+## BUG HUNT LOG — round 2 (I6, controller lifecycle + deps)
+
+Two-agent sweep 2026-07-02: controller launch/process lifecycle + a final
+dependency/config audit. Commits e90c65f6, 0b3f9d69, 8fa6fd30.
+
+Controller lifecycle (fixed):
+- HIGH stale install-lock never reclaimed after a crash → every install for
+  that backend stalled the full 30-min timeout then failed. Now reclaims when
+  the recorded pid is dead / file is torn. (install-lock.ts)
+- MED download pause→resume race: superseded old run's abort-catch clobbered
+  the live download to "paused" and deleted the new run's active entry → model
+  finished on disk but showed permanently paused. Ownership token now gates all
+  state writes. (download-manager.ts)
+- LOW AsyncLock double-release could free two waiters (idempotent now);
+  AsyncQueue.shift-after-close hung (rejects now); AsyncQueue.shift with an
+  already-aborted signal hung + leaked a resolver (found in prep, rejects now).
+  All covered by new src/core/async.test.ts (11 tests).
+- LOW engine-jobs map grew one entry per job forever → prune finished to 50.
+- REVIEWED-LOW (left, self-healing / would add surface): #5 coordinator ignores
+  post-timeout kill result (next scan corrects); #6 abort not threaded into the
+  ~3s launchModel spawn window (postLaunchAbort reaps it); #8 metrics collector
+  runs one trailing cycle after stop (loop still terminates).
+
+Dependency/config audit: repo confirmed clean — ZERO removable dependencies,
+zero dead documented env vars, all devDeps wired. Only nits were untracked local
+artifacts (controller/.lintstagedrc.json, a stale .tsbuildinfo) left in place,
+and 4 unused eslint boundary-element defs left as intentional layering docs.
+
 ## Iteration log
 
+- **I6 (2026-07-02)**: bug-hunt round 2. Fixed 1 HIGH (stale install-lock stall),
+  1 MED (download pause/resume clobber), and 4 LOW concurrency/leak issues across
+  3 commits; added the first controller core unit test (async primitives, 11
+  cases). Dependency sweep confirmed the repo has no removable deps/env/config.
+  All gates green (126 integration + 15 unit + frontend build). See BUG HUNT LOG
+  round 2 above.
 - **I5 (2026-07-02)**: post-convergence bug hunt (2 adversarial agents over the
   agent runtime + privileged API routes). 10 verified findings fixed across 2
   commits (10c42cbe runtime, 7e43d6e0 security) incl. a HIGH token-gate bypass
