@@ -377,8 +377,33 @@ validation is mitigated (webviews get no preload/bridge). CLEARED: open-external
 restricted to http/https; update feed refuses non-https/loopback; shared
 engine-args foreign-flag strip normalization consistent.
 
+## FULL-BRANCH VERIFICATION + BUG HUNT round 9 (I14)
+
+Ran the COMPLETE test matrix across all 46 commits: 375 tests green (controller
+21 unit + 127 integration; frontend 20 unit + 227 e2e), 0 clones, 0 unused
+deps/exports, no circular deps, all structure/contract gates pass. The whole
+loop's cumulative work is coherent and releasable. Net code delta ~line-neutral
+(the I3 prettier reformat is ~800 lines of format-neutral churn); real work =
+19 files + 8 routes + 2 workflows + 1 dep + 5 config/scripts removed, offset by
+~45 bug fixes with test coverage and defensive guards.
+
+Browser-host sweep (commit ee39801c) — the last complex unswept surface:
+- HIGH orphaned Chromium: stop() never called + no exit hook → every server
+  restart leaked a headless browser holding the profile lock. Guarded
+  process.on('exit') kills it.
+- MED freshPage recovery path leaked a CDP WebSocket per 'Not attached'
+  recovery (replaced page never closed). Close it first.
+- Verified #4 (poll double-subscribe) is a FALSE POSITIVE — subscribeFrames is
+  synchronous; #5 benign. CLEARED: no launch arg-injection, CDP calls time out
+  (10s), JSON.parse guarded.
+
 ## Iteration log
 
+- **I14 (2026-07-02)**: full-branch verification (375 tests green across 46
+  commits, all gates clean) + bug-hunt round 9 (server-side browser host).
+  Fixed HIGH orphaned-Chromium leak (no exit hook) + MED recovery-path CDP
+  WebSocket leak. Verified 1 agent finding was a false positive (sync subscribe).
+  Every subsystem now swept. All gates green.
 - **I13 (2026-07-02)**: bug-hunt round 8 (Electron main process). Fixed a
   secret-wiping non-atomic settings write + 6 desktop issues (renderer-crash
   recovery, restart/shutdown race, PTY fork-bomb cap + write/dim guards, boot
