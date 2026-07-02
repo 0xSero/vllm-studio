@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "node scripts/start-standalone.mjs",
     "test": "bun test scripts",
-    "test:e2e": "bun test ../tests/frontend/e2e",
+    "test:e2e": "bun test ../tests/frontend",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
