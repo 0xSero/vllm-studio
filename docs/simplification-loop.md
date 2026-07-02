@@ -327,8 +327,41 @@ This round found GENUINE dead code (unlike the I9 recipe traps):
 - SKIPPED #8 (download-progress dedup, ~4 lines): cross-feature/new-module
   overhead ≈ savings.
 
+## BUG HUNT LOG — round 7 (I12, http middleware / stores / config)
+
+One-agent sweep of the controller security/storage/config layer + I personally
+verified the frontend lib/api client core (retry/auth sound — mutations have
+server-side idempotency guards, no change). Commit f361cf62.
+
+Fixed:
+- HIGH isRecipeRunning mis-identified a running model: unconditional basename
+  fallback matched /a/Llama-3 vs /b/Llama-3; substring 'contains' matched
+  /models/llama inside /models/llama-3.1. Launching A while same-basename B ran
+  reported success and served B as A. Basename fallback now gated to when one
+  side lacks dir context; containment is path-segment-boundary aware. +6 tests.
+- HIGH rate-limit keyed on the client-appendable first X-Forwarded-For entry →
+  per-request rotation defeated the API-key brute-force defense + grew the store
+  unbounded. Prefer CF-Connecting-IP (unspoofable behind CF); hard-cap + evict
+  oldest; dedup the two cleanup blocks.
+- savePersistedConfig write-then-rename (crash mid-write truncated config →
+  silent reset of models_dir/providers/runtime targets).
+- recipe serializer clamps tp/pp/max_model_len/max_num_seqs>=1, port 1-65535,
+  gmu (0,1] (NaN previously vanished the recipe; negative reached the launch cmd).
+
+Left (documented): #4 share one SQLite handle (near-nil benefit single-threaded,
+busy_timeout covers it, refactor risk); #5 per-path rate bucket (intentional,
+doesn't amplify brute-force on a fixed path); #8 read-limiter headers (cosmetic).
+CLEARED: no SQL injection (all parameterized); timing-safe token compare; auth
+default-open only loopback/opt-in; port parsing guarded.
+
 ## Iteration log
 
+- **I12 (2026-07-02)**: bug-hunt round 7 (http middleware/stores/config). Fixed 2
+  HIGH (running-model mis-ID served the wrong model; rate-limit IP-spoofing
+  brute-force bypass + memory DoS) + config-truncation + recipe range clamps;
+  added recipe-matching.test.ts. Verified frontend api client sound. Left 3
+  low-value findings documented. All gates green (127 integration + 21 unit +
+  build). See BUG HUNT LOG round 7.
 - **I11 (2026-07-02)**: docs audit (zero drift, no change) + feature-views sweep.
   Fixed the usage-chart peak-scale bug and removed genuine dead code across
   usage/discover/logs/shell/lib — net -71 lines, a real cut (contrast I9's traps).
