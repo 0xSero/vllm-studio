@@ -50,13 +50,16 @@ export function makePiEventApplierHarness(
   const ctx: SessionStreamContext = {
     liveAssistantIds: new Map([[initialSession.id, assistantId]]),
   };
+  // The reducer resolves the target bubble internally (the liveAssistantIds
+  // pin above); the per-call assistant id stays in the signature so existing
+  // tests read like the controller's payload path.
   const apply = (
     sessionId: string,
-    targetAssistantId: string,
+    _targetAssistantId: string,
     event: Record<string, unknown>,
   ) => {
     if (sessionId !== session.id) return;
-    session = reduceSessionEvent(session, ctx, targetAssistantId, event);
+    session = reduceSessionEvent(session, ctx, event);
   };
   return { apply, session: () => session };
 }

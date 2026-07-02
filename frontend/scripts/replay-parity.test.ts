@@ -1,9 +1,8 @@
-// Golden characterization test for replaySessionEvents (messages/replay.ts).
+// Golden characterization test for canonical replay (foldSessionEvents, the
+// fold over runtime/pi-event-applier.ts reduceSessionEvent).
 //
-// This pins the CURRENT canonical-replay behavior so the one-reducer
-// consolidation (replay.ts deleted, replaced by a fold over
-// runtime/pi-event-applier.ts reduceSessionEvent) can be verified against a
-// fixed contract: the new fold must reproduce these goldens byte-for-byte
+// The goldens were recorded from the pre-consolidation replaySessionEvents
+// (messages/replay.ts, deleted); the fold must reproduce them byte-for-byte
 // through the same normalized projection (scripts/replay-projection.ts).
 //
 // Fixture provenance: scripts/fixtures/replay-canonical-session.jsonl is a
@@ -20,7 +19,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { replaySessionEvents } from "../src/features/agent/messages/replay";
+import { foldSessionEvents } from "../src/features/agent/runtime/pi-event-applier";
+import { usageFromEvent, type TokenStats } from "../src/features/agent/messages";
 import { projectReplayResult, type ProjectedReplay } from "./replay-projection";
 
 const fixturesDir = new URL("./fixtures/", import.meta.url).pathname;
@@ -35,12 +35,61 @@ function parseJsonl(raw: string): Record<string, unknown>[] {
 }
 
 function replayProjection(events: Record<string, unknown>[]): ProjectedReplay {
-  return projectReplayResult(replaySessionEvents(events));
+  return projectReplayResult(foldSessionEvents(events));
+}
+
+// The legacy tokenStats derivation deleted from engine.ts loadAndReplay: last
+// usage event AFTER the latest successful compaction boundary. The fold's
+// usage/compaction branches must agree with it over every canonical log so
+// the reducer can own tokenStats.
+function legacyTokenStats(events: Record<string, unknown>[]): TokenStats | null {
+  return (
+    [...events]
+      .slice(legacyLatestCompactionBoundaryIndex(events) + 1)
+      .reverse()
+      .map(usageFromEvent)
+      .find((stats): stats is TokenStats => Boolean(stats)) ?? null
+  );
+}
+
+function legacyLatestCompactionBoundaryIndex(events: Record<string, unknown>[]): number {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    const type = typeof event?.type === "string" ? event.type.toLowerCase() : "";
+    if (legacyIsSuccessfulCompactionBoundary(event, type)) return index;
+  }
+  return -1;
+}
+
+function legacyIsSuccessfulCompactionBoundary(
+  event: Record<string, unknown>,
+  type: string,
+): boolean {
+  if (!type.includes("compact") && !type.includes("compaction")) return false;
+  if (type.includes("start") || type.includes("begin")) return false;
+  if (
+    event.error ||
+    event.errorMessage ||
+    event.aborted ||
+    event.cancelled ||
+    event.canceled ||
+    event.failed
+  ) {
+    return false;
+  }
+  if (event.type === "compaction_end" && event.result == null) return false;
+  const status =
+    typeof event.status === "string"
+      ? event.status
+      : typeof (event.result as { status?: unknown } | undefined)?.status === "string"
+        ? (event.result as { status: string }).status
+        : "";
+  return !/abort|cancel|error|fail/.test(status.toLowerCase());
 }
 
 const stableJson = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
-test("replaySessionEvents over the sanitized canonical fixture matches the checked-in golden", () => {
+test("foldSessionEvents over the sanitized canonical fixture matches the checked-in golden", () => {
   const events = parseJsonl(readFileSync(join(fixturesDir, "replay-canonical-session.jsonl"), "utf8"));
   const projection = replayProjection(events);
 
@@ -49,6 +98,11 @@ test("replaySessionEvents over the sanitized canonical fixture matches the check
   }
   const golden = JSON.parse(readFileSync(goldenPath, "utf8")) as ProjectedReplay;
   assert.deepEqual(projection, golden);
+});
+
+test("fold tokenStats equals the legacy loadAndReplay scan over the fixture", () => {
+  const events = parseJsonl(readFileSync(join(fixturesDir, "replay-canonical-session.jsonl"), "utf8"));
+  assert.deepEqual(foldSessionEvents(events).tokenStats ?? null, legacyTokenStats(events));
 });
 
 test("replay projection is deterministic across runs (no wall-clock leakage)", () => {
@@ -80,7 +134,7 @@ function collectJsonlFiles(dir: string): string[] {
 }
 
 test(
-  "replaySessionEvents parity sweep over $PI_PARITY_SESSIONS_DIR",
+  "foldSessionEvents parity sweep over $PI_PARITY_SESSIONS_DIR",
   { skip: !paritySessionsDir },
   () => {
     if (!paritySessionsDir) return;
@@ -113,6 +167,13 @@ test(
         projection: ProjectedReplay;
       };
       assert.deepEqual(projection, saved.projection, `replay parity drift for ${file}`);
+      // tokenStats is not part of the recorded projections (they predate the
+      // fold owning it), so assert it against the legacy scan directly.
+      assert.deepEqual(
+        foldSessionEvents(events).tokenStats ?? null,
+        legacyTokenStats(events),
+        `tokenStats drift for ${file}`,
+      );
       compared += 1;
     }
     // eslint-disable-next-line no-console

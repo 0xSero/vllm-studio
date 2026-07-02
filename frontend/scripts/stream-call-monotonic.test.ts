@@ -30,7 +30,7 @@ test("a lagging message_update snapshot does not shrink the streamed bubble (no 
     activeAssistantId: "a1",
   };
   const ev = (event: Record<string, unknown>) => {
-    session = reduceSessionEvent(session, ctx, "a1", event);
+    session = reduceSessionEvent(session, ctx, event);
   };
   const text = () => session.messages.find((m) => m.id === "a1")?.text ?? "";
 
@@ -83,7 +83,7 @@ test("message_end applies the settled content even if marginally shorter", () =>
     activeAssistantId: "a1",
   };
   const ev = (event: Record<string, unknown>) => {
-    session = reduceSessionEvent(session, ctx, "a1", event);
+    session = reduceSessionEvent(session, ctx, event);
   };
   ev({ type: "message_start", message: { role: "assistant", content: [] } });
   ev({

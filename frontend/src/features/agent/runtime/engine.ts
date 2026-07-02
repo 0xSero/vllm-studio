@@ -4,11 +4,9 @@ import {
   finalizeRunningToolBlocks,
   mergeCanonicalAndRuntimeEvents,
   replayCursorAfterRuntimeHydration,
-  replaySessionEvents,
   runtimeStatusAcceptsControl,
-  type TokenStats,
-  usageFromEvent,
 } from "@/features/agent/messages";
+import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -269,12 +267,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               title,
               startedAt,
               modelId: replayModelId,
-            } = replaySessionEvents(replayEvents);
-            const tokenStats = [...replayEvents]
-              .slice(latestCompactionBoundaryIndex(replayEvents) + 1)
-              .reverse()
-              .map(usageFromEvent)
-              .find((stats): stats is TokenStats => Boolean(stats));
+              tokenStats,
+            } = foldSessionEvents(replayEvents);
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
@@ -402,36 +396,4 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     }),
     [submitPrompt, sendControl, loadRuntimeStatusCb, abortTurn, loadAndReplay, compact],
   );
-}
-
-function latestCompactionBoundaryIndex(events: Record<string, unknown>[]): number {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    const type = typeof event?.type === "string" ? event.type.toLowerCase() : "";
-    if (isSuccessfulCompactionBoundary(event, type)) return index;
-  }
-  return -1;
-}
-
-function isSuccessfulCompactionBoundary(event: Record<string, unknown>, type: string): boolean {
-  if (!type.includes("compact") && !type.includes("compaction")) return false;
-  if (type.includes("start") || type.includes("begin")) return false;
-  if (
-    event.error ||
-    event.errorMessage ||
-    event.aborted ||
-    event.cancelled ||
-    event.canceled ||
-    event.failed
-  ) {
-    return false;
-  }
-  if (event.type === "compaction_end" && event.result == null) return false;
-  const status =
-    typeof event.status === "string"
-      ? event.status
-      : typeof (event.result as { status?: unknown } | undefined)?.status === "string"
-        ? (event.result as { status: string }).status
-        : "";
-  return !/abort|cancel|error|fail/.test(status.toLowerCase());
 }

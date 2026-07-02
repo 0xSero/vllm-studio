@@ -7,7 +7,9 @@ import {
   finalizeRunningToolBlocks,
   mergeExistingToolState,
   messageTextFromBlocks,
+  piSessionIdFromEvent,
   toolCallSnapshotFromUpdate,
+  upsertTool,
   usefulToolArgsText,
   type AssistantBlock,
   type ChatMessage,
@@ -16,6 +18,7 @@ import {
   nowLabel,
   reconcileQueueWithPiEvent,
   removeDeliveredQueuedMessage,
+  sessionTitleFromPrompt,
   usageFromEvent,
   visibleUserTextFromPi,
 } from "@/features/agent/messages";
@@ -30,22 +33,31 @@ export type SessionStreamContext = {
   // assistant bubble, later events in the same tick must find that id here
   // rather than on the (possibly stale) session snapshot.
   liveAssistantIds: Map<SessionId, string>;
+  // Canonical-replay mode (foldSessionEvents). Replay renders one bubble per
+  // settled assistant `message` — matching the on-disk log — and never adopts
+  // a previous turn's bubble, while the live stream accumulates a whole turn
+  // into one bubble. This grouping divergence is deliberate; the flag only
+  // switches assistant-bubble targeting and the settled-`message` apply, every
+  // other branch is shared.
+  replay?: boolean;
 };
 
 /**
- * Pure live-event reducer: fold one runtime pi event into a session. The only
- * side channel is `ctx.liveAssistantIds` (see above). Callers dispatch the
- * returned session in a single state commit.
+ * Pure event reducer: fold one pi event — live runtime or canonical log — into
+ * a session. The only side channel is `ctx.liveAssistantIds` (see above).
+ * Callers dispatch the returned session in a single state commit.
  */
 export function reduceSessionEvent(
   session: Session,
   ctx: SessionStreamContext,
-  assistantId: string,
   event: Record<string, unknown>,
 ): Session {
   if (event.type === "queue_update") {
     return { ...session, queue: reconcileQueueWithPiEvent(session.queue ?? [], event) };
   }
+
+  const afterHeader = reduceSessionHeaderEvent(session, event);
+  if (afterHeader) return afterHeader;
 
   const afterUserMessage = reduceUserMessageEvent(session, ctx, event);
   if (afterUserMessage) return afterUserMessage;
@@ -58,11 +70,12 @@ export function reduceSessionEvent(
   const usage = usageFromEvent(event);
   if (usage) next = { ...next, tokenStats: usage };
 
-  const targetId = ctx.liveAssistantIds.get(session.id) ?? assistantId;
+  const afterToolResult = reduceToolResultMessageEvent(next, ctx, event);
+  if (afterToolResult) return afterToolResult;
 
   // Assistant message lifecycle -> rebuild blocks from accumulated per-call
   // snapshots (NOT from token deltas). This owns message_start/update/end.
-  const afterSnapshot = reduceAssistantSnapshotEvent(next, targetId, event);
+  const afterSnapshot = reduceAssistantSnapshotEvent(next, ctx, event);
   if (afterSnapshot) return afterSnapshot;
 
   // Turn finished: settle any still-"running" tool badges and drop the
@@ -70,7 +83,12 @@ export function reduceSessionEvent(
   // pending — once the turn is over there is no further echo coming, so a
   // delivered-or-not steer must read as normal rather than stuck dimmed.
   if (isAgentEndEvent(event)) {
-    const settled = patchAssistantMessage(next, targetId, (msg) => ({
+    // Canonical replay ignores turn boundaries: the settled log already
+    // carries final tool statuses (toolResult messages), so finalizing here
+    // would invent state the log doesn't have — and must not open a bubble.
+    if (ctx.replay) return next;
+    const target = resolveAssistantTarget(next, ctx);
+    const settled = patchAssistantMessage(target.session, target.targetId, (msg) => ({
       ...msg,
       blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
       streamCalls: undefined,
@@ -78,22 +96,190 @@ export function reduceSessionEvent(
     return clearPendingUserMessages(settled);
   }
 
-  const afterFinalMessage = reduceFinalAssistantMessageEvent(next, targetId, event);
+  const afterFinalMessage = reduceFinalAssistantMessageEvent(next, ctx, event);
   if (afterFinalMessage) return afterFinalMessage;
 
   if (!assistantPiEventAffectsBlocks(event)) return next;
-  traceAgentReasoning("pi-event-applier.before", { sessionId: session.id, assistantId, event });
-  return patchAssistantMessage(next, targetId, (msg) => {
+  const target = resolveAssistantTarget(next, ctx);
+  traceAgentReasoning("pi-event-applier.before", {
+    sessionId: session.id,
+    assistantId: target.targetId,
+    event,
+  });
+  return patchAssistantMessage(target.session, target.targetId, (msg) => {
     const blocks = applyAssistantPiEventToBlocks(msg.blocks ?? [], event);
     traceAgentReasoning("pi-event-applier.after", {
       sessionId: session.id,
-      assistantId,
+      assistantId: target.targetId,
       event,
       beforeBlocks: msg.blocks ?? [],
       afterBlocks: blocks,
     });
     return blocks ? { ...msg, blocks } : msg;
   });
+}
+
+/**
+ * Canonical replay is a fold over the live reducer: reduce every logged event
+ * into an empty session skeleton and project out the transcript fields.
+ * `tokenStats` falls out of the reducer's usage/compaction branches (last
+ * usage after the latest successful compaction boundary).
+ */
+export function foldSessionEvents(events: Record<string, unknown>[]): {
+  messages: ChatMessage[];
+  title: string | null;
+  startedAt: string | null;
+  modelId: string | null;
+  tokenStats: Session["tokenStats"];
+} {
+  const ctx: SessionStreamContext = { liveAssistantIds: new Map(), replay: true };
+  let session: Session = {
+    id: "replay",
+    runtimeSessionId: "",
+    piSessionId: null,
+    title: "",
+    messages: [],
+    status: "idle",
+    error: "",
+    input: "",
+  };
+  for (const event of events) session = reduceSessionEvent(session, ctx, event);
+  return {
+    messages: session.messages,
+    title: session.title || null,
+    startedAt: session.startedAt ?? null,
+    modelId: session.modelId ?? null,
+    tokenStats: session.tokenStats,
+  };
+}
+
+// Resolve (or create) the assistant bubble an event should land on — the
+// controller's former external `ensureAssistantId`, expressed as part of the
+// fold. The liveAssistantIds pin wins (React-commit lag bridge), then a
+// still-valid activeAssistantId, then — live only — the transcript's last
+// assistant bubble (reload-mid-turn reattach); otherwise a new bubble opens
+// and becomes the active target. Canonical replay never adopts the last
+// bubble: a settled log renders one bubble per settled message.
+function resolveAssistantTarget(
+  session: Session,
+  ctx: SessionStreamContext,
+): { session: Session; targetId: string } {
+  const pinned = ctx.liveAssistantIds.get(session.id);
+  const active =
+    session.activeAssistantId &&
+    session.messages.some((message) => message.id === session.activeAssistantId)
+      ? session.activeAssistantId
+      : undefined;
+  const existing =
+    pinned ??
+    active ??
+    (ctx.replay
+      ? undefined
+      : [...session.messages].reverse().find((message) => message.role === "assistant")?.id);
+  if (existing) {
+    return {
+      targetId: existing,
+      session:
+        session.activeAssistantId === existing
+          ? session
+          : { ...session, activeAssistantId: existing },
+    };
+  }
+  const targetId = newId("assistant");
+  return {
+    targetId,
+    session: {
+      ...session,
+      activeAssistantId: targetId,
+      messages: [
+        ...session.messages,
+        { id: targetId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
+      ],
+    },
+  };
+}
+
+// Canonical `session` header and `model_change` entries carry session
+// metadata, not transcript content.
+function reduceSessionHeaderEvent(
+  session: Session,
+  event: Record<string, unknown>,
+): Session | null {
+  if (event.type === "session") {
+    let next = session;
+    if (!next.startedAt && typeof event.timestamp === "string") {
+      next = { ...next, startedAt: event.timestamp };
+    }
+    const modelId = [event.modelId, event.model, event.model_id].find(
+      (value): value is string => typeof value === "string",
+    );
+    if (!next.modelId && modelId) next = { ...next, modelId };
+    const piSessionId = piSessionIdFromEvent(event);
+    if (!next.piSessionId && piSessionId) next = { ...next, piSessionId };
+    return next;
+  }
+  if (event.type === "model_change") {
+    const modelId =
+      typeof event.model === "string"
+        ? event.model
+        : typeof event.modelId === "string"
+          ? event.modelId
+          : null;
+    if (!modelId || session.modelId === modelId) return session;
+    return { ...session, modelId };
+  }
+  return null;
+}
+
+// Canonical settled tool result: attach it to the bubble that owns the tool
+// call (scan back through the transcript), falling back to the current target
+// bubble. Live tool results arrive as tool_execution_* events, so this fires
+// on replayed/hydrated logs.
+function reduceToolResultMessageEvent(
+  session: Session,
+  ctx: SessionStreamContext,
+  event: Record<string, unknown>,
+): Session | null {
+  if (event.type !== "message" && event.type !== "message_end") return null;
+  const msg = asRecord(event.message);
+  if (msg?.role !== "toolResult") return null;
+  const toolCallId =
+    (typeof msg.toolCallId === "string" && msg.toolCallId) || String(event.toolCallId || "");
+  if (!toolCallId) return session;
+  const owner = assistantWithTool(session.messages, toolCallId);
+  const target = owner ? { session, targetId: owner } : resolveAssistantTarget(session, ctx);
+  const resultText = messageText(msg.content as string | Record<string, unknown>[] | undefined);
+  const isError = Boolean(msg.isError);
+  return patchAssistantMessage(target.session, target.targetId, (current) => ({
+    ...current,
+    blocks: upsertTool(
+      current.blocks ?? [],
+      toolCallId,
+      (existing) => ({
+        ...existing,
+        status: isError ? "error" : "done",
+        text: resultText || existing.text,
+      }),
+      () => ({
+        kind: "tool",
+        id: toolCallId,
+        name: (typeof msg.toolName === "string" && msg.toolName) || "tool",
+        status: isError ? "error" : "done",
+        text: resultText,
+      }),
+    ),
+  }));
+}
+
+function assistantWithTool(messages: ChatMessage[], toolCallId: string): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const hasTool = (message.blocks ?? []).some(
+      (block) => block.kind === "tool" && block.id === toolCallId,
+    );
+    if (message.role === "assistant" && hasTool) return message.id;
+  }
+  return null;
 }
 
 function patchAssistantMessage(
@@ -118,13 +304,20 @@ function patchAssistantMessage(
 // rebuilds via mergeExistingToolState.
 function reduceAssistantSnapshotEvent(
   session: Session,
-  targetId: string,
+  ctx: SessionStreamContext,
   event: Record<string, unknown>,
 ): Session | null {
   const type = event.type;
   if (type !== "message_start" && type !== "message_update" && type !== "message_end") return null;
+  // On canonical replay a `message_end` is a settled message, not a streaming
+  // frame: it closes the target bubble like `message` does (the settled branch
+  // below), so the next settled message opens a fresh bubble.
+  if (ctx.replay && type === "message_end") return null;
   const message = asRecord(event.message);
   if (message?.role !== "assistant") return null;
+  const target = resolveAssistantTarget(session, ctx);
+  session = target.session;
+  const targetId = target.targetId;
   const content = assistantSnapshotContent(event, message);
 
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
@@ -146,7 +339,7 @@ function reduceAssistantSnapshotEvent(
     // toolcall_* ones. Without this, the model's closing text-only summary after
     // a tool-heavy turn rebuilds blocks from a tool-free snapshot and
     // mergeExistingToolState silently drops the completed tools (they vanish from
-    // the bubble). Mirrors the replay path, which preserves them unconditionally.
+    // the bubble).
     blocks = preserveMissingToolBlocks(blocks, existingBlocks);
     // A call that ended (errored or aborted) won't execute its declared tools —
     // settle them so they don't show a perpetual "running" badge. An error marks
@@ -306,10 +499,29 @@ function reduceUserMessageEvent(
   ctx: SessionStreamContext,
   event: Record<string, unknown>,
 ): Session | null {
-  if (event.type !== "message_start" && event.type !== "message_end") return null;
+  const isCanonical = event.type === "message";
+  if (!isCanonical && event.type !== "message_start" && event.type !== "message_end") return null;
   const msg = event.message as { role?: string; content?: string | Record<string, unknown>[] };
   if (msg?.role !== "user") return null;
   const text = visibleUserTextFromPi(messageText(msg.content));
+
+  // A canonical settled user message (replayed log / runtime hydration burst):
+  // append it verbatim, close the previous turn's bubble, and derive the
+  // session title from the first prompt. It must NOT open an optimistic
+  // assistant bubble or touch liveAssistantIds — those are streaming-echo
+  // concerns (the branches below).
+  if (isCanonical) {
+    let next = session.activeAssistantId ? { ...session, activeAssistantId: undefined } : session;
+    if (!text) return next;
+    if (!next.title) next = { ...next, title: sessionTitleFromPrompt(text) };
+    return {
+      ...next,
+      messages: [
+        ...next.messages,
+        { id: newId("user"), role: "user", text, timestamp: nowLabel() },
+      ],
+    };
+  }
   if (!text) return session;
   const queue = removeDeliveredQueuedMessage(session.queue ?? [], text);
 
@@ -377,20 +589,41 @@ function clearPendingUserMessages(session: Session): Session {
 
 function reduceFinalAssistantMessageEvent(
   session: Session,
-  targetId: string,
+  ctx: SessionStreamContext,
   event: Record<string, unknown>,
 ): Session | null {
-  // `message_end` is owned by the snapshot path; this only handles the canonical
-  // `message` event shape (replayed/settled messages).
-  if (event.type !== "message") return null;
+  // Live `message_end` is owned by the snapshot path; this handles the
+  // canonical `message` shape (replayed/settled messages) — plus `message_end`
+  // on canonical replay, where it is a settled message too.
+  if (event.type !== "message" && !(ctx.replay && event.type === "message_end")) return null;
   const msg = asRecord(event.message);
   if (msg?.role !== "assistant") return null;
   const content = finalMessageContent(msg.content);
   const stopReason = typeof msg.stopReason === "string" ? msg.stopReason : undefined;
+
+  if (ctx.replay) {
+    // Canonical replay grouping: a settled `message` fills the still-open
+    // bubble when one exists (streamed reattach / tool-result fallback) and
+    // otherwise renders as its own bubble; either way it closes the target so
+    // the NEXT settled message opens a fresh one — one bubble per settled
+    // message, matching the on-disk log.
+    const blocks = blocksFromMessageContent(content, { stopReason });
+    const text = messageTextFromBlocks(blocks);
+    const target = resolveAssistantTarget(session, ctx);
+    const patched = patchAssistantMessage(target.session, target.targetId, (current) => ({
+      ...current,
+      text,
+      blocks,
+    }));
+    ctx.liveAssistantIds.delete(session.id);
+    return { ...patched, activeAssistantId: undefined };
+  }
+
   const errorMessage = assistantFailureText(msg, stopReason);
   const blocks = blocksFromMessageContent(content, { stopReason, errorMessage });
   const text = messageTextFromBlocks(blocks);
-  let next = patchAssistantMessage(session, targetId, (current) =>
+  const target = resolveAssistantTarget(session, ctx);
+  let next = patchAssistantMessage(target.session, target.targetId, (current) =>
     reconcileFinalAssistantMessage(current, text, blocks),
   );
   if (errorMessage) next = { ...next, error: errorMessage };

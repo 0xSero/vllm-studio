@@ -238,7 +238,7 @@ const asRecordPart = (value: unknown): PiContentPart =>
 // tool block in its "running" shape. Tool *results* (status done/error,
 // resultText) and the most complete argument text arrive on separate events, so
 // they must be carried over from the previous blocks by stable tool id. Shared
-// by the live snapshot reducer, the final-message reconcile, and replay.
+// by the snapshot reducer and the final-message reconcile.
 // ---------------------------------------------------------------------------
 
 export function usefulToolArgsText(value: string | undefined): string {

@@ -1,9 +1,9 @@
 // Shared normalized projection used by the replay/live-fold golden tests.
 //
 // The one-reducer consolidation (messages/replay.ts folded into
-// runtime/pi-event-applier.ts reduceSessionEvent) will be verified by running
-// the OLD and NEW paths through this SAME projection and comparing outputs —
-// so the projection deliberately depends only on OUTPUT SHAPES (roles, texts,
+// runtime/pi-event-applier.ts reduceSessionEvent) was verified by running the
+// OLD and NEW paths through this SAME projection and comparing outputs — so
+// the projection deliberately depends only on OUTPUT SHAPES (roles, texts,
 // block kinds/names/statuses), never on generated ids, wall-clock timestamps,
 // or internal function identities.
 import type { AssistantBlock, ChatMessage } from "../src/features/agent/messages/types";

@@ -29,12 +29,12 @@ import {
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
 import { runtimeStatusLooksActive, visibleUserTextFromPi } from "@/features/agent/messages/helpers";
 import {
+  foldSessionEvents,
   reduceSessionEvent,
   type SessionStreamContext,
 } from "@/features/agent/runtime/pi-event-applier";
 import type { Session } from "@/features/agent/runtime/types";
 import { blocksFromTurnSnapshots } from "@/features/agent/messages/message-content";
-import { replaySessionEvents } from "@/features/agent/messages/replay";
 import { drainQueueAfterAgentEnd } from "@/features/agent/messages/helpers";
 import {
   createEffectTextDeltaCoalescer as createTextDeltaCoalescer,
@@ -1020,7 +1020,7 @@ test("incremental text deltas never drop a repeated leading word (no mid-line lo
   assert.equal(blocks?.[0]?.text, "Total sales\nTotal = 9");
 });
 
-test("replaySessionEvents reattaching a streaming table preserves every pipe and newline", () => {
+test("foldSessionEvents reattaching a streaming table preserves every pipe and newline", () => {
   // Replay (reload/navigate onto a still-streaming turn) routes runtime-log
   // message_update events through appendDelta, the only path that reaches the
   // formerly-buggy code. The reattached table must be byte-identical.
@@ -1032,7 +1032,7 @@ test("replaySessionEvents reattaching a streaming table preserves every pipe and
     assistantMessageEvent: { type: "text_delta", delta },
   }));
 
-  const { messages } = replaySessionEvents(events);
+  const { messages } = foldSessionEvents(events);
   const assistant = messages.find((message) => message.role === "assistant");
   const textBlock = assistant?.blocks?.find((block) => block.kind === "text");
   assert.equal(textBlock?.text, table);
@@ -1055,13 +1055,13 @@ test("replay rebuilds a streaming table from message snapshots, matching its set
     message: { role: "assistant", content: [{ type: "text", text: accumulated }] },
   }));
 
-  const reattached = replaySessionEvents(streamingEvents);
+  const reattached = foldSessionEvents(streamingEvents);
   const reattachedText = reattached.messages
     .find((message) => message.role === "assistant")
     ?.blocks?.find((block) => block.kind === "text")?.text;
   assert.equal(reattachedText, table, "reattached streaming table must be lossless");
 
-  const settled = replaySessionEvents([
+  const settled = foldSessionEvents([
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: table }] } },
   ]);
   const settledText = settled.messages
@@ -1073,7 +1073,7 @@ test("replay rebuilds a streaming table from message snapshots, matching its set
 test("text delta coalescer preserves alternating text and reasoning order", () => {
   const applied: Record<string, unknown>[] = [];
   const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: (_sessionId, _assistantId, event) => {
+    applyPiEvent: (_sessionId, event) => {
       applied.push(event);
     },
     scheduleFrame: () => ({ cancel: () => {} }),
@@ -1086,17 +1086,14 @@ test("text delta coalescer preserves alternating text and reasoning order", () =
 
   coalescer.enqueuePiEvent(
     "s-main",
-    "a-main",
     event("text_delta", "Visible A."),
   );
   coalescer.enqueuePiEvent(
     "s-main",
-    "a-main",
     event("reasoning_delta", "Thinking B."),
   );
   coalescer.enqueuePiEvent(
     "s-main",
-    "a-main",
     event("text_delta", "Visible C."),
   );
   coalescer.flushNow("s-main");
@@ -1746,7 +1743,7 @@ test("tool_execution_start collapses pending narration with tool activity", () =
 });
 
 test("replayed tool-use narration renders as reasoning, not visible answer text", () => {
-  const { messages } = replaySessionEvents([
+  const { messages } = foldSessionEvents([
     {
       type: "message",
       message: {
@@ -1783,7 +1780,7 @@ test("replayed tool-use narration renders as reasoning, not visible answer text"
 });
 
 test("replay patches streamed assistant final messages instead of duplicating them", () => {
-  const { messages } = replaySessionEvents([
+  const { messages } = foldSessionEvents([
     {
       type: "message",
       message: {
@@ -2198,7 +2195,7 @@ test("a tool-free final settled message appends its summary instead of being dro
     activeAssistantId: "a1",
   };
   const ev = (event: Record<string, unknown>) => {
-    session = reduceSessionEvent(session, ctx, "a1", event);
+    session = reduceSessionEvent(session, ctx, event);
   };
 
   // A tool call settles into the bubble, then its result.
@@ -2280,7 +2277,7 @@ test("a steer echo clears the optimistic pending bubble and opens the reply bubb
     activeAssistantId: "a1",
   };
 
-  session = reduceSessionEvent(session, ctx, "a1", {
+  session = reduceSessionEvent(session, ctx, {
     type: "message_start",
     message: { role: "user", content: [{ type: "text", text: "actually, do it differently" }] },
   });
@@ -2320,7 +2317,7 @@ test("agent_end un-dims a steer that was never echoed", () => {
     activeAssistantId: "a1",
   };
 
-  session = reduceSessionEvent(session, ctx, "a1", { type: "agent_end" });
+  session = reduceSessionEvent(session, ctx, { type: "agent_end" });
   assert.equal(session.messages.find((m) => m.id === "steer1")?.pending, false);
 });
 
@@ -2346,7 +2343,7 @@ test("a text-only live message_update after a tool-heavy turn keeps the tool blo
     activeAssistantId: "a1",
   };
   const ev = (event: Record<string, unknown>) => {
-    session = reduceSessionEvent(session, ctx, "a1", event);
+    session = reduceSessionEvent(session, ctx, event);
   };
 
   // Tool runs live, created from a tool_execution_start event (never enters streamCalls).

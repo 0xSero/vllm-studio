@@ -13,17 +13,11 @@ import { Effect, Fiber } from "effect";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 
-type ApplyPiEvent = (
-  sessionId: SessionId,
-  assistantId: string,
-  event: Record<string, unknown>,
-  seq?: number,
-) => void;
+type ApplyPiEvent = (sessionId: SessionId, event: Record<string, unknown>, seq?: number) => void;
 
 export type TextDeltaCoalescer = {
   enqueuePiEvent: (
     sessionId: SessionId,
-    assistantId: string,
     event: Record<string, unknown>,
     options?: { flushNow?: boolean; seq?: number },
   ) => boolean;
@@ -38,7 +32,6 @@ export type TextDeltaCoalescer = {
 type TextDeltaSnapshot = { kind: "text" | "thinking"; delta: string };
 
 type PendingSnapshot = {
-  assistantId: string;
   event: Record<string, unknown>;
   seq: number | undefined;
 };
@@ -79,7 +72,7 @@ export function createEffectTextDeltaCoalescer({
   };
 
   const applyPending = (sessionId: SessionId, snapshot: PendingSnapshot): void => {
-    applyPiEvent(sessionId, snapshot.assistantId, snapshot.event, snapshot.seq);
+    applyPiEvent(sessionId, snapshot.event, snapshot.seq);
   };
 
   const cancelFlush = (slot: SessionSlot): void => {
@@ -129,13 +122,11 @@ export function createEffectTextDeltaCoalescer({
 
   const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (
     sessionId,
-    assistantId,
     event,
     options = {},
   ) => {
     if (event.type !== "message_update") return false;
     const slot = getSlot(sessionId);
-    if (slot.pending && slot.pending.assistantId !== assistantId) flushNow(sessionId);
     const normalizedEvent = normalizeDeltaEvent(event);
     const incomingDelta = textDeltaFromPiEvent(normalizedEvent);
     const current = slot.pending;
@@ -152,13 +143,11 @@ export function createEffectTextDeltaCoalescer({
         ? mergeTextDeltaEvent(normalizedEvent, existingDelta.delta + incomingDelta.delta)
         : normalizedEvent;
     slot.pending = {
-      assistantId,
       event: nextEvent,
       seq: options.seq ?? carried?.seq,
     };
     traceAgentReasoning("coalescer.snapshot", {
       sessionId,
-      assistantId,
       type: normalizedEvent.type,
     });
     if (options.flushNow) {

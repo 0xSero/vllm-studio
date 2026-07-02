@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { replaySessionEvents } from "@/features/agent/messages/replay";
+import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 
 // Resilience harness: a long, realistic multi-turn session — tool calls,
 // reasoning, narration, a markdown table split across content parts, periodic
@@ -74,7 +74,7 @@ function buildLongSession(turns: number): Ev[] {
 
 test("a long multi-turn session replays into a well-formed transcript (no lost content, no orphans)", () => {
   const TURNS = 40;
-  const { messages } = replaySessionEvents(buildLongSession(TURNS));
+  const { messages } = foldSessionEvents(buildLongSession(TURNS));
 
   const users = messages.filter((m) => m.role === "user");
   const assistants = messages.filter((m) => m.role === "assistant");
@@ -111,7 +111,7 @@ test("a long multi-turn session replays into a well-formed transcript (no lost c
 });
 
 test("a split markdown table replays as one coalesced text block inside a long session", () => {
-  const { messages } = replaySessionEvents(buildLongSession(14));
+  const { messages } = foldSessionEvents(buildLongSession(14));
   // turn 7 and 14 are table turns. Find an assistant bubble whose text holds the
   // whole table (header + body) in a SINGLE text block.
   const tableBubble = messages.find(
@@ -126,7 +126,7 @@ test("interspersed compaction boundaries do not drop or corrupt the replayed tra
   // 30 turns with a compaction every 10th turn. Compaction events must not eat
   // visible history on replay (the canonical log keeps every settled message).
   const TURNS = 30;
-  const { messages } = replaySessionEvents(buildLongSession(TURNS));
+  const { messages } = foldSessionEvents(buildLongSession(TURNS));
   const allText = messages.map((m) => m.text ?? "").join("\n");
   // Content from BEFORE, AROUND, and AFTER every compaction boundary is intact.
   for (let i = 1; i <= TURNS; i += 1) {
@@ -143,4 +143,4 @@ test("interspersed compaction boundaries do not drop or corrupt the replayed tra
 // here — exact-duplicate suppression on reconnect is owned upstream by
 // mergeCanonicalAndRuntimeEvents (canonical+runtime merge) and by the controller's
 // acceptRuntimeSeq gate (covered by test-session-runtime-controller-reconnect.ts).
-// replaySessionEvents only sees the already-deduped, merged log.
+// foldSessionEvents only sees the already-deduped, merged log.

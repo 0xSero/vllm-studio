@@ -38,9 +38,9 @@ function appendToTextLikeBlock(
   if (!delta) return blocks;
   // pi emits text/thinking deltas as pure INCREMENTAL tokens (verified against
   // pi-agent-core's agent loop: every text_delta carries only the new token).
-  // The three callers — the live fall-through, the replay reducer, and the tool
-  // bridge — all forward those incremental deltas, so the correct, lossless rule
-  // is to append verbatim.
+  // Both callers — reduceSessionEvent's fall-through (live and canonical fold)
+  // and the tool bridge — forward those incremental deltas, so the correct,
+  // lossless rule is to append verbatim.
   //
   // We deliberately do NOT try to detect a "cumulative snapshot" or "replay
   // restart" by string-prefix matching. That guess is mathematically ambiguous

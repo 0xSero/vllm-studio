@@ -9,12 +9,7 @@
 // with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentEndEvent } from "@/features/agent/pi-runtime-state";
-import {
-  drainQueueAfterAgentEnd,
-  newId,
-  nowLabel,
-  piSessionIdFromEvent,
-} from "@/features/agent/messages";
+import { drainQueueAfterAgentEnd, piSessionIdFromEvent } from "@/features/agent/messages";
 import {
   listRuntimeSessions,
   loadRuntimeStatus,
@@ -234,13 +229,12 @@ export function createSessionRuntimeController(
 
   const applyEvent = (
     sessionId: SessionId,
-    assistantId: string,
     event: Record<string, unknown>,
     seq?: number,
     decorate: (session: Session) => Session = (session) => session,
   ) => {
     commit(sessionId, (session) =>
-      decorate(stampSeq(reduceSessionEvent(session, streamContext, assistantId, event), seq)),
+      decorate(stampSeq(reduceSessionEvent(session, streamContext, event), seq)),
     );
     cursors.set(
       sessionId,
@@ -258,14 +252,13 @@ export function createSessionRuntimeController(
 
   const enqueueEvent = (
     sessionId: SessionId,
-    assistantId: string,
     event: Record<string, unknown>,
     seq: number | undefined,
   ) => {
-    if (coalescer.enqueuePiEvent(sessionId, assistantId, event, { seq })) return;
+    if (coalescer.enqueuePiEvent(sessionId, event, { seq })) return;
     // Non-delta events flush any pending merge first so ordering is preserved.
     coalescer.flushNow(sessionId);
-    applyEvent(sessionId, assistantId, event, seq);
+    applyEvent(sessionId, event, seq);
   };
 
   // Receive gate: advance receivedSeq immediately (dedup + reconnect cursor);
@@ -284,38 +277,6 @@ export function createSessionRuntimeController(
     commit(sessionId, (session) =>
       session.lastEventSeq === committedSeq ? session : { ...session, lastEventSeq: committedSeq },
     );
-  };
-
-  // Resolve (or create) the assistant bubble that live events should target.
-  const ensureAssistantId = (sessionId: SessionId): string => {
-    const liveAssistantId = streamContext.liveAssistantIds.get(sessionId);
-    if (liveAssistantId) return liveAssistantId;
-
-    const current = getSession(sessionId);
-    const existing =
-      (current?.activeAssistantId &&
-        current.messages.some((message) => message.id === current.activeAssistantId) &&
-        current.activeAssistantId) ||
-      [...(current?.messages ?? [])].reverse().find((message) => message.role === "assistant")?.id;
-    if (existing) {
-      commit(sessionId, (session) =>
-        session.activeAssistantId === existing
-          ? session
-          : { ...session, activeAssistantId: existing },
-      );
-      return existing;
-    }
-
-    const assistantId = newId("assistant");
-    commit(sessionId, (session) => ({
-      ...session,
-      activeAssistantId: assistantId,
-      messages: [
-        ...session.messages,
-        { id: assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-      ],
-    }));
-    return assistantId;
   };
 
   const applyStatusPayload = (
@@ -338,7 +299,6 @@ export function createSessionRuntimeController(
   ) => {
     const eventId = piSessionIdFromEvent(payload.event);
     if (!acceptSeq(sessionId, payload.seq)) return;
-    const assistantId = ensureAssistantId(sessionId);
 
     if (isAgentEndEvent(payload.event)) {
       // Record the authoritative end-of-turn so the runtime poll won't
@@ -348,7 +308,7 @@ export function createSessionRuntimeController(
       // finalize tool blocks, stamp the cursor, and clear the live status
       // together.
       coalescer.flushNow(sessionId);
-      applyEvent(sessionId, assistantId, payload.event, payload.seq, (session) => ({
+      applyEvent(sessionId, payload.event, payload.seq, (session) => ({
         ...session,
         piSessionId: eventId || session.piSessionId,
         status: "idle",
@@ -371,19 +331,20 @@ export function createSessionRuntimeController(
       return;
     }
 
+    // Status-only commit: promote to running and adopt the pi session id. The
+    // assistant bubble itself is resolved inside reduceSessionEvent when the
+    // event's effects commit (targeting lives in the reducer now), so this
+    // leaves activeAssistantId to the reducer.
     commit(sessionId, (session) =>
-      session.status === "running" &&
-      session.activeAssistantId === assistantId &&
-      (!eventId || session.piSessionId === eventId)
+      session.status === "running" && (!eventId || session.piSessionId === eventId)
         ? session
         : {
             ...session,
             piSessionId: eventId || session.piSessionId,
             status: "running",
-            activeAssistantId: assistantId,
           },
     );
-    enqueueEvent(sessionId, assistantId, payload.event, payload.seq);
+    enqueueEvent(sessionId, payload.event, payload.seq);
   };
 
   // True while a session sits in its post-`agent_end` grace: the SSE already
@@ -672,8 +633,8 @@ export function createSessionRuntimeController(
       // Replay mints fresh ids for every message, so any in-flight live-target
       // pin now points at a bubble that no longer exists. Drop it or post-replay
       // events would land on a dead id (silently discarded) while the seq cursor
-      // still advances — the reopen-mid-turn content-drop. ensureAssistantId then
-      // falls back to the rebuilt transcript's own bubble.
+      // still advances — the reopen-mid-turn content-drop. The reducer's target
+      // resolution then falls back to the rebuilt transcript's own bubble.
       streamContext.liveAssistantIds.delete(sessionId);
       adoptCursor(sessionId, committedSeq);
     },

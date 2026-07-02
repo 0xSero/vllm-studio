@@ -1,16 +1,14 @@
-// Golden characterization test for the CURRENT live event path:
+// Golden characterization test for the live event path:
 // runtime/pi-event-applier.ts reduceSessionEvent folded over a realistic
 // live-shaped LoggedPiEvent turn, invoked exactly the way
-// session-runtime-controller.ts invokes it today (external ensureAssistantId
-// targeting + the shared SessionStreamContext.liveAssistantIds map, with the
-// map cleared after agent_end).
+// session-runtime-controller.ts invokes it (assistant-bubble targeting lives
+// INSIDE the reducer; the shared SessionStreamContext.liveAssistantIds map is
+// cleared after agent_end).
 //
-// This pins the live-fold output so the one-reducer consolidation can (a)
-// replace the canonical replay with a fold over this same reducer and (b)
-// move assistant-bubble targeting INSIDE the reducer — in both cases this
-// golden must stay byte-identical through the shared projection
-// (scripts/replay-projection.ts). No internal function identities are
-// asserted, only output shapes.
+// This golden was recorded BEFORE the one-reducer consolidation (external
+// ensureAssistantId targeting) and must stay byte-identical through the
+// shared projection (scripts/replay-projection.ts) now that targeting is
+// internal. No internal function identities are asserted, only output shapes.
 //
 // Event shapes mirror pi's runtime stream (message_start/update/end with full
 // accumulated snapshots + assistantMessageEvent deltas, tool_execution_*,
@@ -43,14 +41,11 @@ type LiveFoldGolden = {
   activeAssistantCleared: boolean;
 };
 
-let idCounter = 0;
-const testId = (prefix: string) => `${prefix}-${(idCounter += 1)}`;
-
-// Fold a live event sequence the way the controller does today: resolve the
-// target assistant bubble OUTSIDE the reducer (liveAssistantIds override →
-// activeAssistantId → last assistant message → open a new bubble), then hand
-// reduceSessionEvent one event at a time, dropping the liveAssistantIds
-// redirect once the turn ends (mirrors applyPiPayload + ensureAssistantId in
+// Fold a live event sequence the way the controller does: hand
+// reduceSessionEvent one event at a time (it resolves the target assistant
+// bubble internally: liveAssistantIds override → activeAssistantId → last
+// assistant message → open a new bubble), dropping the liveAssistantIds
+// redirect once the turn ends (mirrors applyPiPayload in
 // session-runtime-controller.ts).
 function foldLiveEvents(events: Record<string, unknown>[]): {
   session: Session;
@@ -70,35 +65,10 @@ function foldLiveEvents(events: Record<string, unknown>[]): {
   };
   let activeAssistantCleared = false;
 
-  const ensureAssistantId = (): string => {
-    const liveAssistantId = ctx.liveAssistantIds.get(sessionId);
-    if (liveAssistantId) return liveAssistantId;
-    const existing =
-      (session.activeAssistantId &&
-        session.messages.some((message) => message.id === session.activeAssistantId) &&
-        session.activeAssistantId) ||
-      [...session.messages].reverse().find((message) => message.role === "assistant")?.id;
-    if (existing) {
-      session = { ...session, activeAssistantId: existing };
-      return existing;
-    }
-    const assistantId = testId("assistant");
-    session = {
-      ...session,
-      activeAssistantId: assistantId,
-      messages: [
-        ...session.messages,
-        { id: assistantId, role: "assistant", text: "", blocks: [] },
-      ],
-    };
-    return assistantId;
-  };
-
   for (const event of events) {
-    const assistantId = ensureAssistantId();
     if (event.type === "agent_end") {
       session = {
-        ...reduceSessionEvent(session, ctx, assistantId, event),
+        ...reduceSessionEvent(session, ctx, event),
         status: "idle",
         activeAssistantId: undefined,
       };
@@ -106,7 +76,7 @@ function foldLiveEvents(events: Record<string, unknown>[]): {
       ctx.liveAssistantIds.delete(sessionId);
       continue;
     }
-    session = reduceSessionEvent(session, ctx, assistantId, event);
+    session = reduceSessionEvent(session, ctx, event);
   }
   return { session, activeAssistantCleared };
 }
@@ -225,7 +195,6 @@ function liveToolTurnEvents(): Record<string, unknown>[] {
 }
 
 function liveFoldProjection(): LiveFoldGolden {
-  idCounter = 0;
   const { session, activeAssistantCleared } = foldLiveEvents(liveToolTurnEvents());
   return {
     messages: projectMessages(session.messages),
@@ -250,7 +219,6 @@ test("live fold is deterministic across runs (no wall-clock leakage)", () => {
 });
 
 test("live fold settles all tool badges and clears the target bubble's streamCalls at agent_end", () => {
-  idCounter = 0;
   const { session } = foldLiveEvents(liveToolTurnEvents());
   for (const message of session.messages) {
     for (const block of message.blocks ?? []) {

@@ -519,6 +519,23 @@ I19 actions taken:
 
 ## Iteration log
 
+- **SEMANTIC Phase 2 (2026-07-02)**: ONE streaming reducer landed. Deleted
+  messages/replay.ts (273 lines); canonical replay is now `foldSessionEvents`,
+  a fold over runtime/pi-event-applier.ts `reduceSessionEvent`. Assistant-
+  bubble targeting moved INSIDE the reducer (`resolveAssistantTarget`:
+  liveAssistantIds pin → valid activeAssistantId → live-only last-bubble
+  fallback → open new); the controller's external `ensureAssistantId` and the
+  coalescer's per-bubble assistantId plumbing are gone. Canonical-only shapes
+  (settled user/toolResult `message`, `session` header, `model_change`) are now
+  reducer branches; the F3 bubble-grouping divergence (per-settled-message on
+  replay vs per-turn live) is preserved behind a `ctx.replay` flag, including
+  replay's message_end-as-settled rule. engine.loadAndReplay's manual
+  tokenStats compaction scan deleted — the reducer's usage/compaction branches
+  own it, proven equal over every real log. Verified bit-exact: fixture golden
+  + live-fold golden unchanged, PI_PARITY sweep 896 real sessions zero drift
+  (transcripts AND tokenStats), 29 script + 236 e2e tests green, knip/jscpd/
+  depcheck clean.
+
 - **I19 (2026-07-02)**: pi-parity audit (user-requested deep comparison of
   earendil-works/pi vs this repo) folded into the loop. One genuine cut:
   eslint-plugin-boundaries removed (provably inert; validator covers layering).

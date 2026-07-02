@@ -19,7 +19,7 @@ import {
   mergeCanonicalAndRuntimeEvents,
   replayCursorAfterRuntimeHydration,
 } from "@/features/agent/messages/helpers";
-import { replaySessionEvents } from "@/features/agent/messages/replay";
+import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 import type { RuntimeLoggedEvent } from "@/features/agent/messages";
 import type {
   RuntimeEventPayload,
@@ -182,10 +182,10 @@ test("merge without runtime events returns the canonical log untouched", () => {
   assert.deepEqual(mergeCanonicalAndRuntimeEvents(canonical), canonical);
 });
 
-// ----- batch replay over the golden event log (session/replay.ts) -----
+// ----- batch replay over the golden event log (runtime/pi-event-applier.ts foldSessionEvents) -----
 
 test("golden event log replays to the expected transcript", () => {
-  const { messages, title, startedAt, modelId } = replaySessionEvents(fixture.canonical);
+  const { messages, title, startedAt, modelId } = foldSessionEvents(fixture.canonical);
 
   assert.equal(title, "Summarize the GPU fleet");
   assert.equal(startedAt, "2026-06-09T10:00:00.000Z");
@@ -252,13 +252,13 @@ test("coalescer concatenates same-kind deltas including standalone newlines", ()
   const applied: Record<string, unknown>[] = [];
   const frames = frameHarness();
   const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: (_sessionId, _assistantId, event) => applied.push(event),
+    applyPiEvent: (_sessionId, event) => applied.push(event),
     scheduleFrame: frames.schedule,
   });
 
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "Row 1"));
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "\n"));
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "Row 2"));
+  coalescer.enqueuePiEvent("s-1", deltaEvent("text_delta", "Row 1"));
+  coalescer.enqueuePiEvent("s-1", deltaEvent("text_delta", "\n"));
+  coalescer.enqueuePiEvent("s-1", deltaEvent("text_delta", "Row 2"));
   assert.equal(applied.length, 0);
 
   frames.runAll();
@@ -272,11 +272,11 @@ test("coalescer flushNow applies pending once and a stale frame is harmless", ()
   const applied: Record<string, unknown>[] = [];
   const frames = frameHarness();
   const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: (_sessionId, _assistantId, event) => applied.push(event),
+    applyPiEvent: (_sessionId, event) => applied.push(event),
     scheduleFrame: frames.schedule,
   });
 
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "Hello"));
+  coalescer.enqueuePiEvent("s-1", deltaEvent("text_delta", "Hello"));
   coalescer.flushNow("s-1");
   assert.equal(applied.length, 1);
   assert.equal(frames.cancelled, 1);
@@ -292,36 +292,22 @@ test("coalescer discard drops a session's pending deltas without applying them",
   const applied: Record<string, unknown>[] = [];
   const frames = frameHarness();
   const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: (_sessionId, _assistantId, event) => applied.push(event),
+    applyPiEvent: (_sessionId, event) => applied.push(event),
     scheduleFrame: frames.schedule,
   });
 
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "lost"));
+  coalescer.enqueuePiEvent("s-1", deltaEvent("text_delta", "lost"));
   coalescer.discard("s-1");
   frames.runAll();
   assert.equal(applied.length, 0);
   assert.equal(frames.cancelled, 1);
 });
 
-test("coalescer flushes pending work when the assistant id changes", () => {
-  const applied: { assistantId: string; event: Record<string, unknown> }[] = [];
-  const frames = frameHarness();
-  const coalescer = createTextDeltaCoalescer({
-    applyPiEvent: (_sessionId, assistantId, event) => applied.push({ assistantId, event }),
-    scheduleFrame: frames.schedule,
-  });
-
-  coalescer.enqueuePiEvent("s-1", "a-1", deltaEvent("text_delta", "first"));
-  coalescer.enqueuePiEvent("s-1", "a-2", deltaEvent("text_delta", "second"));
-
-  assert.equal(applied.length, 1);
-  assert.equal(applied[0]?.assistantId, "a-1");
-  assert.equal(appliedDelta(applied[0].event), "first");
-
-  frames.runAll();
-  assert.equal(applied.length, 2);
-  assert.equal(applied[1]?.assistantId, "a-2");
-});
+// NOTE: the coalescer no longer tracks a per-bubble assistant id — targeting
+// resolves inside reduceSessionEvent at apply time, and every target-changing
+// event (a user echo, a settled message, agent_end) is a non-delta that the
+// controller flushes ahead of (see "agent_end clears the mid-stream redirect"
+// below for the end-to-end ordering guarantee).
 
 // ----- live attachment lifecycle (session-runtime-controller.ts) -----
 
