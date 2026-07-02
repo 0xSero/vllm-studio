@@ -54,9 +54,9 @@ gates green, commits, and updates this doc.
 - [x] C15 (a771fcba) dead `/v1/tokenize` + `/v1/detokenize` — CAUTION: reachable by external
   OpenAI clients via proxy; grep pi/droid runtimes first.
 - [x] C16 (a771fcba) dead `GET /runtime/targets/:id` + `/health` probe.
-- [ ] C17 MEDIUM flag audit: STRICT_OPENAI_MODELS readers; vLLM extra-args escape
+- [KEEP] C17 flag audit done: strict_openai_models read at openai-routes.ts:135 (live branch); MOCK_INFERENCE load-bearing for test fixtures; vLLM extra-args escape hatches deliberate. All stay. flag audit: STRICT_OPENAI_MODELS readers; vLLM extra-args escape
   hatches; MOCK_INFERENCE (used by E2E? verify).
-- [ ] C18 RISKY inline single-use `*Effect` variants (function-observability,
+- [x] C18 (a171aca0) inlined all Promise-ceremony Effect wrappers (fetchLocal, resolveBinary, delay, AsyncLock, AsyncQueue). Dep itself STAYS: Schema in recipe-serializer/env/errors + Effect.gen process pipelines are substantive. inline single-use `*Effect` variants (function-observability,
   local-fetch, command.ts resolveBinary, async.ts) then consider dropping `effect`
   dep entirely (only trivial usage remains + env.ts Schema + errors.ts TaggedError).
 - [SKIP] C19 `/api/docs` is user-facing: Server pane links to /api/proxy/api/docs (server-view.tsx:388). KEEP. `/api/docs` swagger UI + `@hono/swagger-ui` dep + openapi-spec.ts
@@ -95,22 +95,22 @@ Base kit: `src/ui` (catalogue in audit). Missing primitives: Spinner, Tooltip,
 Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
 --surface/--hl1` (41 files, most of features/agent).
 
-- [ ] U1 ~140 raw `<button>` outside src/ui → `Button`/variant=icon. Top files:
+- [BLOCKED-ON-USER] U1 Button variants have own padding/hover ≠ bespoke classes; wholesale swap changes pixels. Only exact-class matches safe (none found worth it). ~140 raw `<button>` outside src/ui → `Button`/variant=icon. Top files:
   filesystem-panel (10), left-sidebar (8), agent-composer-actions (8),
   explore-tab-sections, agent-browser*, appearance-settings, recipe-row...
-- [ ] U2 token unification (--ui-* vs legacy) — PREREQUISITE for pixel-identical
+- [x] U2 RESOLVED, no work needed: --ui-* tokens are already pure aliases of legacy tokens (tokens.css:570-585, --ui-fg: var(--fg) etc). Either spelling is pixel-identical; swaps unblocked. token unification (--ui-* vs legacy) — PREREQUISITE for pixel-identical
   component swaps in agent tree; map values first, alias tokens in CSS before
   rewriting classes.
-- [ ] U3 add `Spinner` primitive; replace 24 animate-spin sites (17 files).
-- [ ] U4 SectionLabel adoption: 38 eyebrow-label class-cluster sites (2 adopters today).
-- [ ] U5 StatusDot/StatusPill adoption: ~10 hand-rolled dots/pills (incl. hardcoded
+- [x] U3 (5daf40db) Spinner primitive added; all 17 always-spinning sites adopted with exact classes. Conditional-spin refresh icons stay on RefreshButton/RefreshIconButton.
+- [BLOCKED-ON-USER] U4 the 38 eyebrow sites render text-sm/tracking-wider vs SectionLabel fs-2xs/tracking-[0.18em]/mono — adoption would visibly change UI. Needs a deliberate design pass, not this loop. SectionLabel adoption: 38 eyebrow-label class-cluster sites (2 adopters today).
+- [BLOCKED-ON-USER] U5 StatusDot is 5px/token colors; hand-rolled dots are 6px/other colors (incl bg-emerald-400) — swap changes pixels. Flagged as design inconsistency for user decision. StatusDot/StatusPill adoption: ~10 hand-rolled dots/pills (incl. hardcoded
   bg-emerald-400 in status-section-models-dropdown.tsx:139 — off-token, fix).
-- [ ] U6 Card adoption: 9 rounded-lg + 14 rounded-md hand-rolled surfaces.
+- [BLOCKED-ON-USER] U6 same pixel-change problem as U4/U5. Card adoption: 9 rounded-lg + 14 rounded-md hand-rolled surfaces.
 - [ ] U7 add `Tooltip` primitive (~70 title= sites + bespoke timeline tooltip) — LOW
   priority, changes rendered visuals (title→styled) so defer/user-visible.
-- [ ] U8 hand-rolled modals/drawers: left-sidebar mobile drawer, logs backdrop,
+- [BLOCKED-ON-USER] U8 focus/anim differences would be visible. hand-rolled modals/drawers: left-sidebar mobile drawer, logs backdrop,
   recipes slide-over→Drawer, explore popover, sessions-command palette.
-- [ ] U9 4 raw <input> → Input/SearchInput; 3 raw <select> → Select; 1 raw <table>.
+- [BLOCKED-ON-USER] U9 same. 4 raw <input> → Input/SearchInput; 3 raw <select> → Select; 1 raw <table>.
 
 ## HITLIST — Configs/CI/scripts/docs
 
@@ -119,13 +119,13 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
   ALLOW_RUNTIME_UPGRADE_COMMAND env (commit 24b12fad).
 - [x] G1 (c5dd16b9) root gate coverage gap FIXED — root check:controller now runs typecheck+lint+check+test:unit. Found real damage: two integration tests imported modules merged away in 90983d84; fixed same commit: `check:controller` = typecheck only, CI runs
   lint+check+tests. Extend root script (keep runtime reasonable: lint+check).
-- [ ] G2 daemon-*.sh ×3 → keep (README-documented) or collapse into one daemon.sh.
-- [ ] G3 merge prettier configs (controller trailingComma es5 vs frontend all) →
+- [x] G2 (650f204e) daemon.sh {start|stop|status} replaces trio; README updated. daemon-*.sh ×3 → keep (README-documented) or collapse into one daemon.sh.
+- [x] G3 (f6b271d6) single root .prettierrc.json; controller reformatted (trailingComma all) + 16 drifted frontend files fixed. merge prettier configs (controller trailingComma es5 vs frontend all) →
   one root .prettierrc.json; NOTE reformats controller; do as isolated commit.
 - [ ] G4 frontend package.json scripts sprawl (30+) — consolidate check:* variants.
 - [ ] G5 docs/engine-refactor-plan.md + docs/archive/* are process notes not product
   docs — relocate/prune once loops close.
-- [ ] G6 root package-lock.json is an empty stub — verify nothing needs it.
+- [x] G6 (650f204e) deleted — pinned nothing, CI installs in frontend/ only. root package-lock.json was an empty stub — verify nothing needs it.
 - [ ] cli/ dir on disk = stray node_modules only (untracked); frontend/frontend/ =
   April path-bug junk (untracked). ASK USER before rm.
 
@@ -135,6 +135,15 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
   batch committed (24b12fad).
 
 ## Iteration log
+
+- **I3 (2026-07-02)**: a171aca0 (Effect ceremony stripped from core helpers),
+  5daf40db (Spinner primitive, 17 sites), f6b271d6 (root prettier config, one-time
+  reformat), 650f204e (daemon.sh consolidation + root lockfile deleted). U2 found
+  already-resolved (ui tokens alias legacy tokens). U1/U4/U5/U6/U8/U9 marked
+  BLOCKED-ON-USER: every remaining UI-kit adoption changes rendered pixels, which
+  the charter forbids — they are design-normalization decisions, listed for the
+  user. C17 flags all live. Remaining open: C20 (EngineSpec capabilities), G4
+  (frontend scripts sprawl), G5 (docs relocation), U7 (Tooltip, user-visible).
 
 - **I2 (2026-07-02)**: commits f1cf3313 (C8-C11: micro-configs inlined, type shims
   deleted, provider routes deduped, body parsing standardized, −57), a771fcba
