@@ -84,11 +84,41 @@ test("committed cursor lags received and reconnect resumes from received", () =>
 
 // ----- replay cursor after navigation hydration (session/helpers.ts) -----
 
-test("replay hydration reattaches from the runtime cursor only when the runtime is active", () => {
-  assert.equal(replayCursorAfterRuntimeHydration(true, 42), 42);
-  assert.equal(replayCursorAfterRuntimeHydration(true, undefined), undefined);
-  assert.equal(replayCursorAfterRuntimeHydration(false, 42), undefined);
-  assert.equal(replayCursorAfterRuntimeHydration(false, undefined), undefined);
+test("replay hydration reattaches from the runtime cursor when the runtime matches the pi session", () => {
+  const pi = "pi-1";
+  // Matched runtime seeds the cursor regardless of activity — an idle matched
+  // runtime still holds the full event backlog, and starting at seq 0 would
+  // replay the whole history on top of the hydrated transcript (the
+  // reopened-old-session double-history bug).
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: true, piSessionId: pi, eventSeq: 42 }, pi),
+    42,
+  );
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: false, piSessionId: pi, eventSeq: 42 }, pi),
+    42,
+  );
+  // Active runtime that has not reported a pi session id keeps the historical
+  // behavior of being treated as this session's runtime.
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: true, piSessionId: null, eventSeq: 42 }, pi),
+    42,
+  );
+  // An idle unclaimed runtime or a runtime on a different pi session is not
+  // provably ours — do not adopt its cursor.
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: false, piSessionId: null, eventSeq: 42 }, pi),
+    undefined,
+  );
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: true, piSessionId: "pi-2", eventSeq: 42 }, pi),
+    undefined,
+  );
+  assert.equal(
+    replayCursorAfterRuntimeHydration({ active: true, piSessionId: pi, eventSeq: undefined }, pi),
+    undefined,
+  );
+  assert.equal(replayCursorAfterRuntimeHydration(null, pi), undefined);
 });
 
 // ----- canonical + runtime merge (session/helpers.ts) -----
@@ -289,6 +319,7 @@ test("coalescer flushes pending work when the assistant id changes", () => {
 
 type ControllerHarness = {
   session: () => Session;
+  patchSession: (patch: (session: Session) => Session) => void;
   subscribeCalls: { after: number; piSessionId: string | null | undefined }[];
   order: string[];
   frames: FrameHarness;
@@ -302,6 +333,7 @@ function createControllerHarness(
   options: {
     lastEventSeq?: number;
     status?: RuntimeStatus | null;
+    sessionStatus?: Session["status"];
   } = {},
 ): ControllerHarness {
   let session: Session = {
@@ -310,7 +342,7 @@ function createControllerHarness(
     piSessionId: "pi-1",
     title: "New session",
     messages: [],
-    status: "running",
+    status: options.sessionStatus ?? "running",
     error: "",
     input: "",
     lastEventSeq: options.lastEventSeq,
@@ -349,6 +381,9 @@ function createControllerHarness(
 
   return {
     session: () => session,
+    patchSession: (patch) => {
+      session = patch(session);
+    },
     subscribeCalls,
     order,
     frames,
@@ -389,6 +424,29 @@ test("controller reconnects from the highest received seq, not the configured st
   assert.deepEqual(
     harness.subscribeCalls.map((call) => call.after),
     [0, 5],
+  );
+  harness.close();
+});
+
+test("reopened old session attaches from the hydrated runtime cursor, not seq 0", () => {
+  // Regression: reopening an old session hydrates the full transcript from the
+  // canonical log while the idle runtime still holds its whole event backlog.
+  // If replay hydration does not seed the cursor, the first SSE subscribe asks
+  // for `after=0` and the server replays the entire backlog on top of the
+  // rendered history — the double-transcript bug.
+  const harness = createControllerHarness({ sessionStatus: "idle" });
+  assert.equal(harness.subscribeCalls.length, 0);
+
+  // loadAndReplay finished: canonical rendered, matched idle runtime at seq 42.
+  harness.controller.noteReplayHydrated("s-1", 42);
+
+  // The user prompts; the session goes live and reconcile opens the SSE.
+  harness.patchSession((session) => ({ ...session, status: "running" }));
+  harness.controller.reconcile([harness.session()]);
+
+  assert.deepEqual(
+    harness.subscribeCalls.map((call) => call.after),
+    [42],
   );
   harness.close();
 });

@@ -258,10 +258,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               .reverse()
               .map(usageFromEvent)
               .find((stats): stats is TokenStats => Boolean(stats));
-            const replaySeq = replayCursorAfterRuntimeHydration(
-              runtimeActive,
-              runtimeStatus?.eventSeq,
-            );
+            const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
               // Canonical wins when it has content; an empty replay keeps whatever we
