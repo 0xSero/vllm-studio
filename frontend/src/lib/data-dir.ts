@@ -20,6 +20,10 @@ const LEGACY_APP_DATA_DIR = ["v", "LLM Studio"].join("");
 const LEGACY_APP_DATA_SLUG = ["v", "llm-studio-app"].join("");
 
 let cachedDataDir: string | null = null;
+// The env value the cache was computed from: LOCAL_STUDIO_DATA_DIR never
+// changes mid-process in production, but single-process test runners flip it
+// between files — a blind cache would pin every file to the first dir.
+let cachedDataDirEnv: string | undefined;
 let migrated = false;
 
 function legacyDataDirCandidates(): string[] {
@@ -40,9 +44,9 @@ function legacyDataDirCandidates(): string[] {
 }
 
 export function resolveDataDir(): string {
-  if (cachedDataDir) return cachedDataDir;
-
   const envDir = process.env.LOCAL_STUDIO_DATA_DIR?.trim();
+  if (cachedDataDir && cachedDataDirEnv === envDir) return cachedDataDir;
+
   const dir = envDir && envDir.length > 0 ? envDir : path.join(homedir(), ".local-studio");
 
   mkdirSync(dir, { recursive: true });
@@ -53,6 +57,7 @@ export function resolveDataDir(): string {
   }
 
   cachedDataDir = dir;
+  cachedDataDirEnv = envDir;
   migrateLegacySettings(dir);
   return dir;
 }

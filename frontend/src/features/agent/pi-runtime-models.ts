@@ -16,7 +16,9 @@ const PROVIDER_ID = "local-studio";
 const USER_PI_PREFIX = "user-pi-";
 
 function userPiAgentDir(): string {
-  return path.join(homedir(), ".pi", "agent");
+  // Prefer $HOME over os.homedir(): Node keeps them in sync but Bun's
+  // homedir() ignores the env var, which breaks HOME-based test isolation.
+  return path.join(process.env["HOME"] ?? homedir(), ".pi", "agent");
 }
 
 function userPiModelsPath(): string {

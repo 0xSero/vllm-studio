@@ -5,7 +5,15 @@
 // consolidation can refactor against a fixed contract instead of live users.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import test, { afterEach } from "node:test";
+// Fake timers: node:test's t.mock.timers is not implemented by bun's shim, so
+// the timer-driven tests below use bun:test's jest clock instead.
+import { jest } from "bun:test";
+
+afterEach(() => {
+  jest.useRealTimers();
+  jest.setSystemTime(); // reset any pinned Date.now
+});
 
 import {
   mergeCanonicalAndRuntimeEvents,
@@ -411,15 +419,15 @@ function partialDeltaEvent(delta: string, full: string): Record<string, unknown>
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-test("controller reconnects from the highest received seq, not the configured start", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("controller reconnects from the highest received seq, not the configured start", async () => {
+  jest.useFakeTimers();
   const harness = createControllerHarness({ status: { active: true } });
 
   harness.emit({ type: "pi", seq: 5, event: partialDeltaEvent("a", "a") });
   harness.emit({ type: "pi", seq: 3, event: partialDeltaEvent("b", "b") });
   harness.fail();
   await settle();
-  t.mock.timers.tick(1_000);
+  jest.advanceTimersByTime(1_000);
 
   assert.deepEqual(
     harness.subscribeCalls.map((call) => call.after),
@@ -494,8 +502,8 @@ test("closing attachments flushes pending coalesced deltas before the transport"
   assert.ok(flushedAt < closedAt, `flush must precede transport close: ${harness.order.join(",")}`);
 });
 
-test("inconclusive liveness probe reconnects and never idles the session", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("inconclusive liveness probe reconnects and never idles the session", async () => {
+  jest.useFakeTimers();
   const harness = createControllerHarness({ status: null });
 
   harness.fail();
@@ -503,7 +511,7 @@ test("inconclusive liveness probe reconnects and never idles the session", async
   assert.equal(harness.session().status, "running");
   assert.equal(harness.order.includes("idle-patch"), false);
 
-  t.mock.timers.tick(1_000);
+  jest.advanceTimersByTime(1_000);
   assert.equal(harness.subscribeCalls.length, 2);
   harness.close();
 });
@@ -541,8 +549,8 @@ test("done status payloads settle the session idle and keep the pi session id", 
 
 // ----- received/committed cursor split (step 6 behavior guards) -----
 
-test("reconnect mid-coalesce replays nothing and commits the merged text exactly once", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("reconnect mid-coalesce replays nothing and commits the merged text exactly once", async () => {
+  jest.useFakeTimers();
   const harness = createControllerHarness({ status: { active: true } });
 
   // Three deltas received, none flushed (no frame has run).
@@ -556,7 +564,7 @@ test("reconnect mid-coalesce replays nothing and commits the merged text exactly
   // Transport error: must resubscribe AFTER the highest RECEIVED seq.
   harness.fail();
   await settle();
-  t.mock.timers.tick(1_000);
+  jest.advanceTimersByTime(1_000);
   assert.deepEqual(
     harness.subscribeCalls.map((call) => call.after),
     [0, 3],
@@ -788,32 +796,32 @@ test("a stale in-flight poll snapshot is dropped after pollNow restarts the epoc
   harness.controller.unbind();
 });
 
-test("poll keeps firing on its interval and stops on unbind", async (t) => {
-  t.mock.timers.enable({ apis: ["setInterval"] });
+test("poll keeps firing on its interval and stops on unbind", async () => {
+  jest.useFakeTimers();
   const harness = createPollHarness([pollSession()]);
   harness.controller.pollNow();
   assert.equal(harness.fetchCount(), 1);
 
-  t.mock.timers.tick(5_000);
+  jest.advanceTimersByTime(5_000);
   assert.equal(harness.fetchCount(), 2);
 
   harness.controller.unbind();
-  t.mock.timers.tick(15_000);
+  jest.advanceTimersByTime(15_000);
   assert.equal(harness.fetchCount(), 2);
   harness.controller.closeAll();
 });
 
-test("pollNow with no sessions does not start a poll", async (t) => {
-  t.mock.timers.enable({ apis: ["setInterval"] });
+test("pollNow with no sessions does not start a poll", async () => {
+  jest.useFakeTimers();
   const harness = createPollHarness([]);
   harness.controller.pollNow();
-  t.mock.timers.tick(15_000);
+  jest.advanceTimersByTime(15_000);
   assert.equal(harness.fetchCount(), 0);
   harness.controller.unbind();
 });
 
-test("poll-idle is suppressed inside the accept grace window, allowed after it", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: 1_000 });
+test("poll-idle is suppressed inside the accept grace window, allowed after it", async () => {
+  jest.setSystemTime(1_000);
   const harness = createPollHarness([pollSession({ status: "running" })]);
 
   // /turn was just accepted; a snapshot fetched moments later may still lag
@@ -824,7 +832,7 @@ test("poll-idle is suppressed inside the accept grace window, allowed after it",
   assert.equal(harness.sessions()[0].status, "running");
 
   // Two poll periods later the runtime list speaks for the turn again.
-  t.mock.timers.setTime(12_000);
+  jest.setSystemTime(12_000);
   harness.controller.pollNow();
   await harness.resolveFetch(1, [{ sessionId: "rt-1", status: { active: false } }]);
   assert.equal(harness.sessions()[0].status, "idle");

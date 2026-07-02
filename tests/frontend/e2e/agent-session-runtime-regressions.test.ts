@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { convertMessages } from "../../../frontend/node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js";
+// Clean subpath export — resolvable now that the suite runs under bun (tsx
+// could not load pi-ai and forced a deep node_modules dist import here).
+import { convertMessages } from "@earendil-works/pi-ai/openai-completions";
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,

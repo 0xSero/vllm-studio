@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../frontend/src/*"],
+      "@local-studio/contracts/*": ["../../shared/contracts/*.ts"],
+      "@earendil-works/pi-ai/openai-completions": [
+        "../../frontend/node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js"
+      ]
+    }
+  },
+  "include": ["**/*.ts"]
+}
