@@ -29,44 +29,6 @@ const withRunningModel =
 
 export const registerTokenizationRoutes: RouteRegistrar = (app, context) => {
   app.post(
-    "/v1/tokenize",
-    withRunningModel(context, "tokenize", { num_tokens: 0 }, async (ctx, _current, body) => {
-      try {
-        const response = await fetchInference(context, "/tokenize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.status === 200) {
-          return ctx.json(await response.json());
-        }
-        return ctx.json({ error: `Tokenization failed: ${response.status}`, num_tokens: 0 });
-      } catch (error) {
-        return ctx.json({ error: String(error), num_tokens: 0 });
-      }
-    })
-  );
-
-  app.post(
-    "/v1/detokenize",
-    withRunningModel(context, "detokenize", { text: "" }, async (ctx, _current, body) => {
-      try {
-        const response = await fetchInference(context, "/detokenize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.status === 200) {
-          return ctx.json(await response.json());
-        }
-        return ctx.json({ error: `Detokenization failed: ${response.status}`, text: "" });
-      } catch (error) {
-        return ctx.json({ error: String(error), text: "" });
-      }
-    })
-  );
-
-  app.post(
     "/v1/count-tokens",
     withRunningModel(context, "countTokens", { num_tokens: 0 }, async (ctx, current, body) => {
       const text = typeof body["text"] === "string" ? body["text"] : "";

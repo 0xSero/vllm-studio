@@ -13,7 +13,6 @@ import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
 import { getEngineSpec } from "./engine-spec";
 import {
   getDefaultRuntimeTarget,
-  getRuntimeTarget,
   getRuntimeTargets,
   runtimeTargetToBackendInfo,
   selectRuntimeTarget,
@@ -287,25 +286,11 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     return ctx.json({ targets });
   });
 
-  app.get("/runtime/targets/:targetId", async (ctx) => {
-    const current = await getObservedProcess("runtime.target");
-    const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
-    if (!target) throw notFound("Runtime target not found");
-    return ctx.json({ target });
-  });
-
   app.post("/runtime/targets/:targetId/select", async (ctx) => {
     const current = await getObservedProcess("runtime.target.select");
     const target = await selectRuntimeTarget(context.config, ctx.req.param("targetId"), current);
     if (!target) throw notFound("Runtime target not found");
     return ctx.json({ target });
-  });
-
-  app.get("/runtime/targets/:targetId/health", async (ctx) => {
-    const current = await getObservedProcess("runtime.target.health");
-    const target = await getRuntimeTarget(context.config, ctx.req.param("targetId"), current);
-    if (!target) throw notFound("Runtime target not found");
-    return ctx.json({ health: target.health });
   });
 
   app.post("/runtime/jobs", async (ctx) => {

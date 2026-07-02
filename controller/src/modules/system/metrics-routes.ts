@@ -171,28 +171,6 @@ app.get("/v1/metrics/vllm", async (ctx) => {
     return ctx.json({ metrics: context.stores.peakMetricsStore.getAll() });
   });
 
-  app.get("/lifetime-metrics", async (ctx) => {
-    const data = context.stores.lifetimeMetricsStore.getAll();
-    const uptimeHours = (data["uptime_seconds"] ?? 0) / 3600;
-    const energyKwh = (data["energy_wh"] ?? 0) / 1000;
-    const tokens = data["tokens_total"] ?? 0;
-    const kwhPerMillion = tokens > 0 ? energyKwh / (tokens / 1_000_000) : 0;
-    const gpus = getGpuInfo();
-    const currentPower = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
-
-    return ctx.json({
-      tokens_total: Math.floor(data["tokens_total"] ?? 0),
-      requests_total: Math.floor(data["requests_total"] ?? 0),
-      energy_wh: data["energy_wh"] ?? 0,
-      energy_kwh: energyKwh,
-      uptime_seconds: data["uptime_seconds"] ?? 0,
-      uptime_hours: uptimeHours,
-      first_started_at: data["first_started_at"] ?? 0,
-      kwh_per_million_tokens: kwhPerMillion,
-      current_power_watts: currentPower,
-    });
-  });
-
   app.post("/benchmark", async (ctx) => {
     const promptTokens = Number(ctx.req.query("prompt_tokens") ?? 1000);
     const maxTokens = Number(ctx.req.query("max_tokens") ?? 100);

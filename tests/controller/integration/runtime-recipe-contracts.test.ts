@@ -352,7 +352,8 @@ describe("controller route contracts", () => {
     expect(Array.isArray(runtimeTargetsBody.targets)).toBe(true);
 
     const missingTargetResponse = await app.request(
-      "/runtime/targets/missing-target",
+      "/runtime/targets/missing-target/select",
+      { method: "POST" },
     );
     const missingTargetBody = await missingTargetResponse.json();
     expect(missingTargetResponse.status).toBe(404);
@@ -431,8 +432,8 @@ describe("controller route contracts", () => {
           status: 200,
         }),
         expect.objectContaining({
-          method: "GET",
-          path: "/runtime/targets/missing-target",
+          method: "POST",
+          path: "/runtime/targets/missing-target/select",
           status: 404,
           success: 0,
         }),
@@ -454,7 +455,7 @@ describe("controller route contracts", () => {
           error_message: null,
         }),
         expect.objectContaining({
-          function_name: "runtime.target.getCurrentProcess",
+          function_name: "runtime.target.select.getCurrentProcess",
           success: 1,
           error_class: null,
           error_message: null,
@@ -585,23 +586,6 @@ describe("controller route contracts", () => {
     if (!mlxTarget) throw new Error("Expected configured MLX runtime target");
 
     const targetId = String(target.id);
-    const targetResponse = await app.request(`/runtime/targets/${targetId}`);
-    const targetBody = await targetResponse.json();
-    expect(targetResponse.status).toBe(200);
-    expect(targetBody.target).toMatchObject({
-      id: targetId,
-      backend: "llamacpp",
-      binaryPath: llamaBin,
-      health: { status: "ok" },
-    });
-
-    const healthResponse = await app.request(
-      `/runtime/targets/${targetId}/health`,
-    );
-    const healthBody = await healthResponse.json();
-    expect(healthResponse.status).toBe(200);
-    expect(healthBody).toEqual({ health: { status: "ok" } });
-
     const selectResponse = await app.request(
       `/runtime/targets/${targetId}/select`,
       {
@@ -645,18 +629,6 @@ describe("controller route contracts", () => {
           success: 1,
         }),
         expect.objectContaining({
-          method: "GET",
-          path: `/runtime/targets/${targetId}`,
-          status: 200,
-          success: 1,
-        }),
-        expect.objectContaining({
-          method: "GET",
-          path: `/runtime/targets/${targetId}/health`,
-          status: 200,
-          success: 1,
-        }),
-        expect.objectContaining({
           method: "POST",
           path: `/runtime/targets/${targetId}/select`,
           status: 200,
@@ -680,13 +652,7 @@ describe("controller route contracts", () => {
           error_message: null,
         }),
         expect.objectContaining({
-          function_name: "runtime.target.getCurrentProcess",
-          success: 1,
-          error_class: null,
-          error_message: null,
-        }),
-        expect.objectContaining({
-          function_name: "runtime.target.health.getCurrentProcess",
+          function_name: "runtime.target.select.getCurrentProcess",
           success: 1,
           error_class: null,
           error_message: null,

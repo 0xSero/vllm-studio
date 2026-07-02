@@ -45,16 +45,6 @@ describe("controller route contracts", () => {
     expect(missingPeakResponse.status).toBe(200);
     expect(missingPeakBody).toEqual({ error: "No metrics for this model" });
 
-    const lifetimeResponse = await app.request("/lifetime-metrics");
-    const lifetimeBody = await lifetimeResponse.json();
-    expect(lifetimeResponse.status).toBe(200);
-    expect(lifetimeBody).toMatchObject({
-      tokens_total: 0,
-      requests_total: 0,
-      energy_wh: 0,
-      current_power_watts: 0,
-    });
-
     const benchmarkResponse = await app.request(
       "/benchmark?prompt_tokens=20&max_tokens=4",
       { method: "POST" },
@@ -159,12 +149,6 @@ describe("controller route contracts", () => {
         expect.objectContaining({
           method: "GET",
           path: "/peak-metrics",
-          status: 200,
-          success: 1,
-        }),
-        expect.objectContaining({
-          method: "GET",
-          path: "/lifetime-metrics",
           status: 200,
           success: 1,
         }),
