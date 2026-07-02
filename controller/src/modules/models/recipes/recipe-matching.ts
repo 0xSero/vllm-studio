@@ -8,6 +8,12 @@ export interface RecipeMatchOptions {
 
 const normalizeModelPath = (path: string): string => path.replace(/\/+$/, "");
 
+// True when `ancestor` equals `descendant` or is a parent directory of it, using
+// path-segment boundaries. A plain substring check would treat `/models/llama`
+// as matching `/models/llama-3.1-8b` — a different model — so use a "/" boundary.
+const isPathPrefix = (ancestor: string, descendant: string): boolean =>
+  descendant === ancestor || descendant.startsWith(`${ancestor}/`);
+
 /**
  * Determine whether a running process matches a given recipe.
  * Matching order:
@@ -46,14 +52,22 @@ export const isRecipeRunning = (
   }
 
   if (options.allowEitherPathContains) {
-    if (recipePath.includes(currentPath) || currentPath.includes(recipePath)) {
+    if (isPathPrefix(currentPath, recipePath) || isPathPrefix(recipePath, currentPath)) {
       return true;
     }
   } else if (options.allowCurrentContainsRecipePath) {
-    if (currentPath.includes(recipePath)) {
+    if (isPathPrefix(recipePath, currentPath)) {
       return true;
     }
   }
 
-  return basename(recipePath) === basename(currentPath);
+  // Basename fallback ONLY when one side lacks directory context (e.g. the
+  // running process reports just a filename). Comparing basenames of two full
+  // paths with different parents would falsely match distinct models that
+  // happen to share a filename (/a/model.gguf vs /b/model.gguf), reporting a
+  // launch as already-running and silently serving the wrong model.
+  if (!recipePath.includes("/") || !currentPath.includes("/")) {
+    return basename(recipePath) === basename(currentPath);
+  }
+  return false;
 };

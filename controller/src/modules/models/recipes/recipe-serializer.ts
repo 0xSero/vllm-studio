@@ -6,8 +6,23 @@ const integerSchema = Schema.Number.check(Schema.isInt());
 
 const nullableStringSchema = Schema.Union([Schema.Null, Schema.String]);
 
-const coerceNumber = (value: unknown, fallback: number): number =>
-  value === undefined ? fallback : Number(value);
+// Defense-in-depth range checks: the editor floors these, but a recipe can also
+// arrive via the API / DB. A NaN previously failed schema validation and made
+// the whole recipe silently vanish; a negative/zero passed straight into the
+// engine launch command. Clamp to a valid value instead.
+const coercePositiveInt = (value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER): number => {
+  if (value === undefined) return fallback;
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+};
+
+const clampFraction = (value: unknown, fallback: number): number => {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(1, Math.max(0.01, parsed));
+};
 
 const coerceNullableNumber = (value: unknown): number | null =>
   value === undefined || value === null ? null : Number(value);
@@ -147,12 +162,12 @@ export const parseRecipe = (raw: unknown): Recipe => {
     ...normalized,
     backend: normalized["backend"] ?? "vllm",
     env_vars: normalized["env_vars"] ?? null,
-    tensor_parallel_size: coerceNumber(normalized["tensor_parallel_size"], 1),
-    pipeline_parallel_size: coerceNumber(normalized["pipeline_parallel_size"], 1),
-    max_model_len: coerceNumber(normalized["max_model_len"], 32768),
-    gpu_memory_utilization: coerceNumber(normalized["gpu_memory_utilization"], 0.9),
+    tensor_parallel_size: coercePositiveInt(normalized["tensor_parallel_size"], 1),
+    pipeline_parallel_size: coercePositiveInt(normalized["pipeline_parallel_size"], 1),
+    max_model_len: coercePositiveInt(normalized["max_model_len"], 32768),
+    gpu_memory_utilization: clampFraction(normalized["gpu_memory_utilization"], 0.9),
     kv_cache_dtype: normalized["kv_cache_dtype"] ?? "auto",
-    max_num_seqs: coerceNumber(normalized["max_num_seqs"], 256),
+    max_num_seqs: coercePositiveInt(normalized["max_num_seqs"], 256),
     trust_remote_code: coerceBoolean(
       normalized["trust_remote_code"],
       process.env["LOCAL_STUDIO_DEFAULT_TRUST_REMOTE_CODE"] !== "false",
@@ -163,7 +178,7 @@ export const parseRecipe = (raw: unknown): Recipe => {
     quantization: normalized["quantization"] ?? null,
     dtype: normalized["dtype"] ?? null,
     host: normalized["host"] ?? "0.0.0.0",
-    port: coerceNumber(normalized["port"], 8000),
+    port: coercePositiveInt(normalized["port"], 8000, 65535),
     served_model_name: normalized["served_model_name"] ?? null,
     python_path: normalized["python_path"] ?? null,
     extra_args: normalized["extra_args"] ?? {},

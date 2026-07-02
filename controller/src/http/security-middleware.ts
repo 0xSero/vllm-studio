@@ -43,12 +43,41 @@ function isPublicRequest(method: string, path: string): boolean {
 }
 
 function getClientIpFromRequestHeaders(header: (name: string) => string | undefined): string {
+  // Prefer CF-Connecting-IP: behind Cloudflare (the deployment) it is set by
+  // the edge and is NOT client-controllable. X-Forwarded-For's leading entries
+  // ARE client-appendable, so keying the rate limiter on the first XFF entry let
+  // an attacker rotate it per request and never fill a bucket. Fall back to
+  // x-real-ip, then the LAST XFF hop (added by the nearest proxy) — never the
+  // first — and only when no trustworthy header is present.
+  const cf = header("cf-connecting-ip")?.trim();
+  if (cf) return cf;
+  const real = header("x-real-ip")?.trim();
+  if (real) return real;
   const forwarded = header("x-forwarded-for")
     ?.split(",")
     .map((value) => value.trim())
-    .find((value) => value.length > 0);
-  const direct = header("cf-connecting-ip") ?? header("x-real-ip");
-  return forwarded ?? direct ?? "unknown";
+    .filter((value) => value.length > 0);
+  if (forwarded && forwarded.length > 0) return forwarded[forwarded.length - 1]!;
+  return "unknown";
+}
+
+const RATE_LIMIT_STORE_CAP = 10_000;
+
+// Bound a rate-limit store: drop expired entries, then — if a flood of still-live
+// entries keeps it over the cap — evict oldest-inserted until under it, so the
+// map can't grow without bound (memory DoS).
+function pruneRateLimitStore(store: Map<string, MutatingRateLimitEntry>, now: number): void {
+  if (store.size <= RATE_LIMIT_STORE_CAP) return;
+  for (const [key, entry] of store) {
+    if (entry.resetAt <= now) store.delete(key);
+  }
+  if (store.size > RATE_LIMIT_STORE_CAP) {
+    let toEvict = store.size - RATE_LIMIT_STORE_CAP;
+    for (const key of store.keys()) {
+      store.delete(key);
+      if (--toEvict <= 0) break;
+    }
+  }
 }
 
 function extractAuthToken(header: (name: string) => string | undefined): string | null {
@@ -141,13 +170,7 @@ export function createMutatingRateLimitMiddleware(
       return ctx.json({ detail: "Rate limit exceeded" }, { status: 429 });
     }
 
-    if (mutatingRateLimitStore.size > 10_000) {
-      for (const [storedKey, storedEntry] of mutatingRateLimitStore) {
-        if (storedEntry.resetAt <= now) {
-          mutatingRateLimitStore.delete(storedKey);
-        }
-      }
-    }
+    pruneRateLimitStore(mutatingRateLimitStore, now);
 
     return next();
   };
@@ -187,13 +210,7 @@ export function createReadRateLimitMiddleware(
       return ctx.json({ detail: "Rate limit exceeded" }, { status: 429 });
     }
 
-    if (readRateLimitStore.size > 10_000) {
-      for (const [storedKey, storedEntry] of readRateLimitStore) {
-        if (storedEntry.resetAt <= now) {
-          readRateLimitStore.delete(storedKey);
-        }
-      }
-    }
+    pruneRateLimitStore(readRateLimitStore, now);
 
     return next();
   };
