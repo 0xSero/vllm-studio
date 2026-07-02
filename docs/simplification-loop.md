@@ -187,8 +187,45 @@ zero dead documented env vars, all devDeps wired. Only nits were untracked local
 artifacts (controller/.lintstagedrc.json, a stale .tsbuildinfo) left in place,
 and 4 unused eslint boundary-element defs left as intentional layering docs.
 
+## BUG HUNT LOG — round 3 (I7, proxy + realtime/desktop)
+
+Two-agent sweep 2026-07-02: controller proxy non-streaming paths + frontend
+realtime/dashboard/desktop-IPC. I personally audited the SSE-framing streaming
+path. Commits 96be3721 (proxy), 4be401f9 (frontend).
+
+Controller proxy (fixed):
+- reasoning normalizer DUPLICATED reasoning when a model emitted it both inline
+  (<think>) and in reasoning_content; now dedups segments.
+- same normalizer clobbered multi-part ARRAY content to "" (data loss); now only
+  rewrites string content.
+- attachSessionUsage missed nested completion_tokens_details.reasoning_tokens
+  (echoed 0); non-streaming path recorded an inference row for zero-token/error
+  responses (now gated like streaming).
+- tool-call stream: decoder never flushed on stream end → a multibyte char split
+  across the final chunk was dropped. Fixed + regression test.
+- NOT changed (load-bearing, documented): non-streaming upstream timeout (would
+  truncate long generations, violates the no-truncation directive; client
+  forwards its abort); tool-array sort (prefix-cache stability); repeat-content
+  collapse.
+
+Frontend realtime/desktop (fixed):
+- HIGH cross-host API-key leak: controller quick-switch set the target key but
+  never cleared it when the target had none → previous controller's key sent to
+  a different host (incl. on the SSE ?api_key=). Both flows now clear.
+- PTY boot leak: unmount during pty.open leaked pty-data/pty-exit ipcRenderer
+  listeners + an owned shell per aborted boot; re-check disposed after open.
+- useModelLifecycle now refetches recipes on controller switch (was stale).
+- controller-matrix store diffs before emit (was re-rendering all consumers /5s).
+- LOW left: snapshotsByController growth (bounded by controllers visited).
+
 ## Iteration log
 
+- **I7 (2026-07-02)**: bug-hunt round 3 (proxy + realtime/desktop, 2 agents +
+  personal SSE-framing audit). Fixed 1 HIGH (cross-host key leak), 1 HIGH-noted
+  left (upstream timeout, conflicts with no-truncation), and 8 MED/LOW proxy +
+  frontend correctness/leak issues across 2 commits; added a multibyte-split
+  streaming regression test. All gates green (127 integration + 227 e2e + build).
+  See BUG HUNT LOG round 3.
 - **I6 (2026-07-02)**: bug-hunt round 2. Fixed 1 HIGH (stale install-lock stall),
   1 MED (download pause/resume clobber), and 4 LOW concurrency/leak issues across
   3 commits; added the first controller core unit test (async primitives, 11
