@@ -23,19 +23,19 @@ gates green, commits, and updates this doc.
 
 ## HITLIST — Controller (from audit)
 
-- [ ] **C1 BUG unbounded telemetry growth**: observability middleware writes a row
+- [x] **C1 BUG unbounded telemetry growth** (ffc1baa9): observability middleware writes a row
   per request (`http/observability-middleware.ts:32`, `core/function-observability.ts`,
   `stores/controller-request-store.ts`) with no retention and no skip-list; polling
   floods DB forever. Fix: reuse app.ts:63 skip-set + add retention prune. SAFE.
-- [ ] C2 dead route `/events/stats` (`system/logs-routes.ts:266`) — no caller. SAFE.
-- [ ] C3 dead route `/runtime/sglang/config` (`engines/routes.ts:356`) — frontend only
+- [x] C2 (c5dd16b9) dead route `/events/stats` (`system/logs-routes.ts:266`) — no caller. SAFE.
+- [x] C3 (c5dd16b9) dead route `/runtime/sglang/config` (`engines/routes.ts:356`) — frontend only
   fetches vllm/llamacpp configs. SAFE.
-- [ ] C4 collapse single-impl `EngineService` interface (`engines/engine-service.ts`,
+- [x] C4 (c5dd16b9) collapse single-impl `EngineService` interface (`engines/engine-service.ts`,
   26 lines) into EngineCoordinator. SAFE.
-- [ ] C5 dedupe 10× `findInferenceProcess` observability wrapper (system/routes,
+- [x] C5 (c5dd16b9) dedupe 10× `findInferenceProcess` observability wrapper (system/routes,
   metrics-routes, logs-routes, models/routes, tokenization-routes) → one helper. SAFE.
-- [ ] C6 remove `create*` one-line factory wrappers (createEngineCoordinator etc.). SAFE.
-- [ ] C7 `main.ts` metricsDisabled() duplicates `parseBooleanFlag` (validation.ts:41). SAFE.
+- [x] C6 (c5dd16b9) remove (createEngineCoordinator/createEventManager; other create* are real closure factories, kept) `create*` one-line factory wrappers (createEngineCoordinator etc.). SAFE.
+- [x] C7 (c5dd16b9) `main.ts` metricsDisabled() duplicates `parseBooleanFlag` (validation.ts:41). SAFE.
 - [ ] C8 inline tiny per-module `configs.ts` constant files (audio 7, proxy 6, system 5,
   models 15, engines 20 lines); keep studio/configs.ts. SAFE.
 - [ ] C9 delete `modules/shared/{system,recipe}-types.ts` re-export shims → import
@@ -68,13 +68,13 @@ gates green, commits, and updates this doc.
 
 ## HITLIST — Frontend (from audit; knip/depcheck/jscpd all clean already)
 
-- [ ] **F1 BUG copy-toast timer leak ×5**: setTimeout(setCopied) with no cleanup in
+- [x] **F1 BUG copy-toast timer leak ×5** (a9e60da7, hooks/use-copied-flag.ts): setTimeout(setCopied) with no cleanup in
   copyable-path-chip.tsx:26, assistant-markdown.tsx:61, user-message-block.tsx:92,
   assistant-message-actions.tsx:41, use-discover.ts:106 → one useCopiedFlag() hook
   (NB: eslint bans raw useEffect; follow useMountSubscription pattern). SAFE.
-- [ ] F2 move `ui/model-page.tsx` (7 exports) → features/recipes/recipes-content/
+- [x] F2 (a9e60da7) move `ui/model-page.tsx` (7 exports) → features/recipes/recipes-content/
   (all 6 consumers there); drop ui/index.ts:112-121. SAFE.
-- [ ] F3 move `ui/settings.tsx` (8 exports) → features/settings/ (all 4 consumers
+- [x] F3 (a9e60da7) move (as features/settings/settings-ui.tsx; setup + recipes cross-feature consumers exist and are boundary-legal) `ui/settings.tsx` (8 exports) → features/settings/ (all 4 consumers
   there); drop ui/index.ts:95-110. SAFE.
 - [ ] F4 fold 7-line `features/agent/messages/index.ts` barrel — CHECK
   scripts/validate-barrel-dir-siblings.mjs convention first.
@@ -117,7 +117,7 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
 - [x] Delete no-op pr-review.yml; fix labels.yml external URL; CODEOWNERS stale
   paths; README/AGENTS "three modules" + REMOTE_URL; dead
   ALLOW_RUNTIME_UPGRADE_COMMAND env (commit 24b12fad).
-- [ ] G1 root gate coverage gap: `check:controller` = typecheck only, CI runs
+- [x] G1 (c5dd16b9) root gate coverage gap FIXED — root check:controller now runs typecheck+lint+check+test:unit. Found real damage: two integration tests imported modules merged away in 90983d84; fixed same commit: `check:controller` = typecheck only, CI runs
   lint+check+tests. Extend root script (keep runtime reasonable: lint+check).
 - [ ] G2 daemon-*.sh ×3 → keep (README-documented) or collapse into one daemon.sh.
 - [ ] G3 merge prettier configs (controller trailingComma es5 vs frontend all) →
@@ -135,6 +135,13 @@ Dropdown/Popover. Two token systems: `--ui-*` (12 files) vs legacy `--fg/--dim/
   batch committed (24b12fad).
 
 ## Iteration log
+
+- **I1 wrap (2026-07-02)**: commits 24b12fad (CI/docs), ffc1baa9 (telemetry bug+docs),
+  c5dd16b9 (controller cuts −127, gate hardened, broken test imports fixed),
+  a9e60da7 (frontend timer-leak fix + adapter moves −39). All gates green incl.
+  129 integration tests. Next up: C8-C11 safe controller items, F4-F6, then
+  C12-C17 verify-then-cut routes/flags, U-track (start with U3 Spinner + U5 dots,
+  token map for U2), G2-G4.
 
 - **I1 (2026-07-02)**: baseline 727 files / 94.4k TS lines. Audits merged into
   hitlists above. Root-caused frontend/frontend junk to April-era relative-path
