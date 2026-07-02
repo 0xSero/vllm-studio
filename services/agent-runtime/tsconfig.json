@@ -15,6 +15,8 @@
     "paths": {
       "effect": ["../../frontend/node_modules/effect"],
       "ws": ["../../frontend/node_modules/ws"],
+      "hono": ["../../frontend/node_modules/hono"],
+      "@hono/node-server": ["../../frontend/node_modules/@hono/node-server"],
       "@earendil-works/pi-ai": ["../../frontend/node_modules/@earendil-works/pi-ai"],
       "@earendil-works/pi-coding-agent": [
         "../../frontend/node_modules/@earendil-works/pi-coding-agent"

@@ -34,6 +34,12 @@ const config = {
     // sources as part of the frontend program.
     "ws",
     "@types/ws",
+    // hono + @hono/node-server are imported only by the agent-runtime
+    // package's standalone server (services/agent-runtime/src/server.ts,
+    // outside knip's project scope) but must live in frontend deps so the
+    // services/node_modules -> frontend/node_modules bridge resolves them.
+    "hono",
+    "@hono/node-server",
   ],
   ignoreExportsUsedInFile: true,
 };

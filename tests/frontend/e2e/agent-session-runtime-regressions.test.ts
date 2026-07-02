@@ -12,7 +12,7 @@ import {
   initialRuntimeStatusPhase,
   replayAfterCursor,
   shouldSendTrailingIdleStatus,
-} from "@/app/api/agent/runtime/events/stream-order";
+} from "@local-studio/agent-runtime/http/stream-order";
 import {
   detectComposerMention,
   selectedContextInstructions,

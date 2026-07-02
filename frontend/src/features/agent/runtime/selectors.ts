@@ -35,8 +35,6 @@ export function referencedSessionIds(state: WorkspaceState): Set<SessionId> {
   return ids;
 }
 
-export function controlTargetHasActiveTurn(
-  status: { active?: boolean; running?: boolean } | null | undefined,
-): boolean {
-  return status?.active === true;
-}
+// Moved to shared/agent/agent-turn.ts so the agent runtime package's /turn
+// handler can share it; re-exported here for frontend callers.
+export { controlTargetHasActiveTurn } from "../../../../../shared/agent/agent-turn";

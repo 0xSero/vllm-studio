@@ -1,19 +1,17 @@
-export type ComposerSkillRef = {
-  id: string;
-  name: string;
-  source?: string;
-  path?: string;
-  instructions?: string;
-};
-
-export type ComposerPromptTemplateRef = {
-  id: string;
-  name: string;
-  source?: string;
-  path?: string;
-  description?: string;
-  argumentHint?: string;
-};
+// Skill/prompt-template refs, their sanitizers, and the selected-context
+// prompt builders moved to shared/agent/composer-refs.ts so the agent runtime
+// package's HTTP handlers (turn + compact) can share them; re-exported here
+// for frontend callers. Mention detection and list filtering stay client-side.
+export {
+  sanitizeComposerSkills,
+  sanitizeComposerPromptTemplates,
+  selectedContextPrompt,
+  selectedContextInstructions,
+} from "../../../../shared/agent/composer-refs";
+export type {
+  ComposerSkillRef,
+  ComposerPromptTemplateRef,
+} from "../../../../shared/agent/composer-refs";
 
 export type ComposerMention = {
   kind: "file" | "skill" | "promptTemplate";
@@ -21,44 +19,6 @@ export type ComposerMention = {
   start: number;
   end: number;
 };
-
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-export function sanitizeComposerSkills(value: unknown): ComposerSkillRef[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): ComposerSkillRef[] => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
-    const skill: ComposerSkillRef = {
-      id: stringField(record, "id") ?? "",
-      name: stringField(record, "name") ?? "",
-      source: stringField(record, "source"),
-      path: stringField(record, "path"),
-      instructions: stringField(record, "instructions"),
-    };
-    return skill.name || skill.id || skill.path ? [skill] : [];
-  });
-}
-
-export function sanitizeComposerPromptTemplates(value: unknown): ComposerPromptTemplateRef[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): ComposerPromptTemplateRef[] => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
-    const template: ComposerPromptTemplateRef = {
-      id: stringField(record, "id") ?? "",
-      name: stringField(record, "name") ?? "",
-      source: stringField(record, "source"),
-      path: stringField(record, "path"),
-      description: stringField(record, "description"),
-      argumentHint: stringField(record, "argumentHint"),
-    };
-    return template.name || template.id || template.path ? [template] : [];
-  });
-}
 
 export function detectComposerMention(value: string, caret = value.length): ComposerMention | null {
   const safeCaret = Math.max(0, Math.min(caret, value.length));
@@ -94,32 +54,6 @@ export function consumeComposerMention(value: string, mention: ComposerMention):
   if (!before) return after;
   if (!after) return before;
   return `${before} ${after}`;
-}
-
-export function selectedContextPrompt(text: string, skills: ComposerSkillRef[] = []): string {
-  const lines = selectedContextLines(skills);
-  if (!lines.length) return text;
-  return [`Composer context:\n${lines.join("\n")}`, "User prompt:", text].join("\n\n");
-}
-
-export function selectedContextInstructions(skills: ComposerSkillRef[] = []): string | undefined {
-  const lines = selectedContextLines(skills);
-  if (!lines.length) return undefined;
-  return ["Preserve this selected composer context after compaction.", ...lines].join("\n");
-}
-
-function selectedContextLines(skills: ComposerSkillRef[] = []): string[] {
-  return selectedSkillContextLines(skills);
-}
-
-function selectedSkillContextLines(skills: ComposerSkillRef[] = []): string[] {
-  if (!skills.length) return [];
-  return ["Loaded skills:", ...skills.map(skillContextLine)];
-}
-
-function skillContextLine(skill: ComposerSkillRef): string {
-  const label = `$${skill.name}${skill.path ? ` (${skill.path})` : ""}`;
-  return skill.instructions ? `${label}\n${skill.instructions}` : label;
 }
 
 function searchableText(row: {

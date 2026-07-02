@@ -1,21 +1,10 @@
-// Current page state for the visible browser panel.
-// GET -> { ok: true, data: { url, title, canGoBack, canGoForward, loading } }
-
-import { browserHost } from "@local-studio/agent-runtime/browser-host/browser-host";
+import { NextRequest } from "next/server";
+import { handleBrowserState } from "@local-studio/agent-runtime/http/browser-handlers";
+import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
-  }
-  try {
-    return Response.json({ ok: true, data: await browserHost.getState() });
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "getState failed",
-    });
-  }
+export async function GET(request: NextRequest): Promise<Response> {
+  return (await proxyToAgentRuntime(request)) ?? handleBrowserState();
 }

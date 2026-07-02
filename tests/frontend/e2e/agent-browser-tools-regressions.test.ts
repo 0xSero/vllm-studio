@@ -5,9 +5,7 @@ import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 
 declare global {
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
-    | ((
-        hostname: string,
-      ) => Promise<(string | { address: string; family: 4 | 6 })[]>)
+    | ((hostname: string) => Promise<(string | { address: string; family: 4 | 6 })[]>)
     | undefined;
   var __LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST:
     | ((
@@ -79,18 +77,13 @@ test("desktop browser reader fetch renders public markdown and rejects private u
   let requestCount = 0;
   const connectedAddresses: string[] = [];
   process.env.LOCAL_STUDIO_DATA_DIR = "/tmp/local-studio-desktop-test";
-  globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = async (
-    hostname,
-  ) =>
+  globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = async (hostname) =>
     hostname === "private-dns.test"
       ? ["127.0.0.1"]
       : hostname === "mapped-private.test"
         ? ["::ffff:127.0.0.1"]
         : ["93.184.216.34"];
-  globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = async (
-    url,
-    address,
-  ) => {
+  globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = async (url, address) => {
     requestCount += 1;
     connectedAddresses.push(address.address);
     if (url.includes("redirect.test")) {
@@ -122,11 +115,11 @@ test("desktop browser reader fetch renders public markdown and rejects private u
   };
   try {
     const { GET } = await import("@/app/api/agent/browser/fetch/route");
-    const response = await GET({
-      nextUrl: new URL(
+    const response = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fexample.com%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const body = (await response.json()) as {
       markdown?: string;
       title?: string;
@@ -135,11 +128,11 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     assert.equal(body.title, "Reader Works");
     assert.match(body.markdown ?? "", /Reader Works/);
 
-    const htmlResponse = await GET({
-      nextUrl: new URL(
+    const htmlResponse = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fhtml.test%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const htmlBody = (await htmlResponse.json()) as {
       text?: string;
       title?: string;
@@ -149,49 +142,45 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     assert.match(htmlBody.text ?? "", /Hello/);
     assert.doesNotMatch(htmlBody.text ?? "", /bad\(\)/);
 
-    const rejected = await GET({
-      nextUrl: new URL(
+    const rejected = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=http%3A%2F%2Flocalhost%3A3000%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const rejectedBody = (await rejected.json()) as { error?: string };
     assert.equal(rejected.status, 400);
     assert.match(rejectedBody.error ?? "", /public http\/https/);
 
-    const redirectRejected = await GET({
-      nextUrl: new URL(
+    const redirectRejected = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fredirect.test%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const redirectBody = (await redirectRejected.json()) as { error?: string };
     assert.equal(redirectRejected.status, 502);
     assert.match(redirectBody.error ?? "", /Redirect rejected/);
 
-    const dnsRejected = await GET({
-      nextUrl: new URL(
+    const dnsRejected = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fprivate-dns.test%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const dnsBody = (await dnsRejected.json()) as { error?: string };
     assert.equal(dnsRejected.status, 502);
     assert.match(dnsBody.error ?? "", /Resolved host rejected/);
 
-    const mappedDnsRejected = await GET({
-      nextUrl: new URL(
+    const mappedDnsRejected = await GET(
+      new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fmapped-private.test%2F",
-      ),
-    } as never);
+      ) as never,
+    );
     const mappedDnsBody = (await mappedDnsRejected.json()) as {
       error?: string;
     };
     assert.equal(mappedDnsRejected.status, 502);
     assert.match(mappedDnsBody.error ?? "", /Resolved host rejected/);
     assert.equal(requestCount, 3);
-    assert.deepEqual(connectedAddresses, [
-      "93.184.216.34",
-      "93.184.216.34",
-      "93.184.216.34",
-    ]);
+    assert.deepEqual(connectedAddresses, ["93.184.216.34", "93.184.216.34", "93.184.216.34"]);
   } finally {
     delete globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST;
     delete globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST;
@@ -199,4 +188,3 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     else process.env.LOCAL_STUDIO_DATA_DIR = previousDataDir;
   }
 });
-

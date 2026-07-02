@@ -15,6 +15,13 @@
 #   Native on host (needs nvidia-smi + host process visibility):
 #     controller (bun)  :8080   Model lifecycle, GPU stats, chat, recipes
 #     frontend (next)   :3000   Web UI
+#     agent-runtime     :8081   Standalone pi agent runtime sidecar (node,
+#                               user systemd unit local-studio-agent-runtime).
+#                               The frontend proxies its runtime/browser routes
+#                               here via LOCAL_STUDIO_AGENT_RUNTIME_URL=
+#                               http://127.0.0.1:8081 (exported by
+#                               restart_frontend below) — required so SSE
+#                               flushes through Next's standalone server.
 #
 #   Managed separately:
 #     vLLM / SGLang     :8000   Inference (launched via controller or manually)
@@ -31,6 +38,7 @@
 #   ./scripts/deploy-remote.sh              Deploy everything
 #   ./scripts/deploy-remote.sh controller   Controller only
 #   ./scripts/deploy-remote.sh frontend     Frontend only
+#   ./scripts/deploy-remote.sh agent-runtime  Agent-runtime sidecar only
 #   ./scripts/deploy-remote.sh infra        Restart Docker infra
 #   ./scripts/deploy-remote.sh status       Check what's running (no changes)
 
@@ -142,6 +150,24 @@ sync_shared() {
   ok "shared/ → remote"
 }
 
+sync_services() {
+  step "Syncing services (agent-runtime)"
+  # services/node_modules is a symlink bridge to frontend/node_modules
+  # (recreated by frontend postinstall); rsync must not follow or delete it.
+  rsync -az --delete \
+    --exclude 'node_modules' \
+    --exclude 'dist' \
+    --exclude '*.test.ts' \
+    -e "ssh $SSH_OPTS" \
+    services/agent-runtime/ "$REMOTE:$REMOTE_DIR/services/agent-runtime/" 2>&1 |
+    grep -v 'cannot delete non-empty directory' || true
+  remote "mkdir -p $REMOTE_DIR_SHELL/scripts/systemd"
+  rsync -az -e "ssh $SSH_OPTS" \
+    scripts/systemd/local-studio-agent-runtime.service \
+    "$REMOTE:$REMOTE_DIR/scripts/systemd/"
+  ok "services/agent-runtime → remote"
+}
+
 sync_config() {
   step "Syncing infra config"
   remote "rm -rf $REMOTE_DIR_SHELL/config"
@@ -155,6 +181,7 @@ sync_all() {
   sync_controller
   sync_frontend
   sync_shared
+  sync_services
   sync_config
 }
 
@@ -194,7 +221,49 @@ build_frontend_local() {
   ok ".next/ → remote"
 }
 
+# Build the agent-runtime sidecar on the remote. tsc + node resolve through
+# services/node_modules -> frontend/node_modules (created by the frontend
+# postinstall), so install_frontend must have run at least once before this.
+build_agent_runtime() {
+  step "Building agent-runtime (tsc → dist/)"
+  remote "cd $REMOTE_DIR_SHELL/services/agent-runtime && npm run build >/tmp/agent-runtime-build.log 2>&1" ||
+    { remote "tail -20 /tmp/agent-runtime-build.log" || true; return 1; }
+  ok "services/agent-runtime/dist"
+}
+
 # ─── Restart ──────────────────────────────────────────────────────────────
+
+# Restart the agent-runtime sidecar via its user systemd unit. Installs/updates
+# the unit from scripts/systemd/local-studio-agent-runtime.service, filling the
+# @APP_DIR@ and @NODE@ placeholders with the remote project path and node
+# binary. Health check: GET http://127.0.0.1:8081/health.
+restart_agent_runtime() {
+  step "Restarting agent-runtime on :8081 (systemd user unit)"
+  remote bash -s -- "$REMOTE_DIR" <<'REMOTE'
+set -euo pipefail
+remote_dir=$1
+node_bin=$(command -v node || true)
+if [[ -z "$node_bin" ]]; then
+  echo "node not found on remote PATH" >&2
+  exit 1
+fi
+mkdir -p ~/.config/systemd/user
+sed -e "s|@APP_DIR@|$remote_dir|g" -e "s|@NODE@|$node_bin|g" \
+  "$remote_dir/scripts/systemd/local-studio-agent-runtime.service" \
+  > ~/.config/systemd/user/local-studio-agent-runtime.service
+systemctl --user daemon-reload
+systemctl --user enable --now local-studio-agent-runtime.service >/dev/null 2>&1 || true
+systemctl --user restart local-studio-agent-runtime.service
+REMOTE
+  wait_port 8081 agent-runtime 15 || return 1
+  if remote "curl -sf -m 3 http://127.0.0.1:8081/health >/dev/null"; then
+    ok "agent-runtime :8081 healthy"
+  else
+    fail "agent-runtime :8081 /health failed"
+    remote "journalctl --user -u local-studio-agent-runtime -n 20 --no-pager" 2>/dev/null || true
+    return 1
+  fi
+}
 
 restart_controller() {
   step "Restarting controller on :8080"
@@ -271,6 +340,11 @@ pkill -f "next dev" 2>/dev/null || true
 fuser -k 3000/tcp >/dev/null 2>&1 || true
 sleep 1
 export BACKEND_URL=http://localhost:8080
+# Documented env line (Phase 5b): point the frontend's runtime/browser routes
+# at the agent-runtime sidecar so they proxy pass-through — the only mode in
+# which SSE flushes through Next's standalone server. Remove to fall back to
+# the in-process runtime (SSE will buffer under standalone).
+export LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081
 # Use the standalone start (package.json "start"); "next start" breaks SSE streaming.
 nohup node scripts/start-standalone.mjs > /tmp/frontend-stdout.log 2>&1 &
 REMOTE
@@ -319,6 +393,7 @@ probe() {
 }
 
 probe "controller"      http://localhost:8080/health    8080
+probe "agent-runtime"   http://localhost:8081/health    8081
 probe "frontend"        http://localhost:3000            3000
 probe "frontend→proxy"  http://localhost:3000/api/proxy/health 3000
 probe "vllm"            http://localhost:8000/v1/models  8000
@@ -369,6 +444,9 @@ case "${1:-}" in
   frontend)
     sync_frontend; install_frontend; build_frontend_local; restart_frontend
     echo ""; show_status ;;
+  agent-runtime)
+    sync_shared; sync_services; build_agent_runtime; restart_agent_runtime
+    echo ""; show_status ;;
   infra)
     sync_config; start_infra ;;
   status)
@@ -377,9 +455,11 @@ case "${1:-}" in
     sync_all
     install_controller; install_frontend
     start_infra
-    restart_controller; build_frontend_local; restart_frontend
+    restart_controller
+    build_agent_runtime; restart_agent_runtime
+    build_frontend_local; restart_frontend
     echo ""; show_status ;;
   *)
-    echo "Usage: $(basename "$0") [all|controller|frontend|infra|status]"
+    echo "Usage: $(basename "$0") [all|controller|frontend|agent-runtime|infra|status]"
     exit 1 ;;
 esac
