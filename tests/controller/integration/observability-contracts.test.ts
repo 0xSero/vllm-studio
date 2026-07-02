@@ -220,7 +220,7 @@ describe("controller route contracts", () => {
 
     await app.request("/gpus");
     await app.request("/v1/models");
-    await app.request("/controllers/route/status?target=file:///etc/passwd");
+    await app.request("/missing-route");
     await app.request("/vram-calculator", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -258,7 +258,7 @@ describe("controller route contracts", () => {
         }),
         expect.objectContaining({
           method: "GET",
-          path: "/controllers/route/status",
+          path: "/missing-route",
           requests: 1,
           failed: 1,
         }),
@@ -273,15 +273,16 @@ describe("controller route contracts", () => {
     expect(body.controller.by_status).toEqual(
       expect.arrayContaining([
         { status: 200, requests: 2 },
-        { status: 400, requests: 2 },
+        { status: 400, requests: 1 },
+        { status: 404, requests: 1 },
       ]),
     );
     expect(body.controller.recent_errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ path: "/vram-calculator", status: 400 }),
         expect.objectContaining({
-          path: "/controllers/route/status",
-          status: 400,
+          path: "/missing-route",
+          status: 404,
         }),
       ]),
     );

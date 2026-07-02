@@ -240,16 +240,5 @@ export const createOpenApiSpec = (context: AppContext): Record<string, unknown> 
         },
       },
     },
-    "/lifetime-metrics": {
-      get: {
-        summary: "Lifetime metrics",
-        description: "Get cumulative token/request/energy counters used by the CLI dashboard",
-        responses: {
-          "200": {
-            description: "Lifetime metrics payload",
-          },
-        },
-      },
-    },
   },
 });
