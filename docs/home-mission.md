@@ -98,6 +98,20 @@ compatible) → registry-compatible + reproducible.
 7. E2E verify headless with `npx -y @modelcontextprotocol/server-everything`
    + ssh-remote against spark-2822; then a live pi turn calling a connector tool.
 
+## Status snapshot (2026-07-03 late)
+- W1 onboarding presets — DONE, Spark-verified E2E (task #1 complete).
+- W2 controller deploy — DONE, Spark-verified E2E (task #2 complete).
+- W3 connectors — DONE, live pi-turn verified (task #3 complete).
+- W4 polish — IN PROGRESS: wizard preset-primary + mono metadata done;
+  owed = rendered visual QA of setup/deploy/connectors via launchable app.
+- W5 /site — page DONE; owed = real installer assets on GitHub release +
+  wire per-asset download links + optional site deploy.
+- desktop:dist arm64 build running in background (bg id b521lxvka) → will
+  produce dmg/zip in frontend/dist-installers for the release.
+- Homelab backend currently serves **glm-5.2** (not deepseek-v4-flash) — the
+  remote preset's model id is a config value, fine, but live chat tests must
+  target whatever model is actually launched.
+
 ## Rules
 - Gates green before every commit (`npm run check` etc. per repo convention).
 - Never wipe data; never kill the pop-os controller (kills live model).

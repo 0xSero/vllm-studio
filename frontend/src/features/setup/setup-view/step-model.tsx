@@ -30,12 +30,12 @@ function PresetCard({
           {isRemote ? "remote" : (preset.backend ?? "local")}
         </span>
       </div>
-      <div className="text-xs text-(--dim)">{preset.model_id ?? preset.remote?.model}</div>
+      <div className="font-mono text-[11px] text-(--dim)">{preset.model_id ?? preset.remote?.model}</div>
       <p className="text-xs text-(--dim) mt-2">{preset.description}</p>
       {!isRemote && (
         <>
-          <div className="flex items-center gap-2 text-xs text-(--dim) mt-3">
-            <span>{preset.size_gb ? `${preset.size_gb} GB download` : "-"}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-[0.08em] text-(--dim) mt-3">
+            <span>{preset.size_gb ? `${preset.size_gb} GB` : "—"}</span>
             {preset.min_vram_gb ? (
               <>
                 <span>·</span>
@@ -45,7 +45,7 @@ function PresetCard({
             {preset.fits === false && (
               <>
                 <span>·</span>
-                <span className="text-(--err)">may not fit this machine</span>
+                <span className="text-(--err)">tight fit</span>
               </>
             )}
           </div>
