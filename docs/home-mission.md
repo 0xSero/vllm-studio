@@ -133,6 +133,32 @@ compatible) → registry-compatible + reproducible.
   pop-os. Spark left with: LFM2.5 on :8000, test controllers :8090/:8091,
   computer-spark connector in ~/.local-studio/connectors.json.
 
+## W4 visual QA (2026-07-03, headless-CDP against live Spark controller)
+Chrome extension was offline; drove the real standalone app via cached
+chrome-headless-shell over CDP (driver: scratchpad/shot.mjs). Screenshotted &
+reviewed five live surfaces:
+- **Setup / Welcome** — clean; the "🚀" is the Lucide Rocket line-icon in an
+  accent color (not an emoji), consistent with app icon usage. No change.
+- **Setup / Hardware** — on-brand: mono CPU/GPU/Memory/VRAM metadata, hairline
+  runtime-setup rows with mono paths + "installed" badges. Live GB10 data.
+- **Settings / Connectors** (my W3 UI) — clean, on-brand, matches sibling
+  settings sections; persisted computer-spark row + catalog grid render right.
+- **Settings / Connection** — controllers list + voice, clean. Deploy panel
+  correctly hidden (desktop-only; window.localStudioDesktop absent in browser).
+- **Setup / Model** — verified graceful fallback: on the old homelab controller
+  (no /studio/presets) it shows the full recommendations grid (details open);
+  the preset rail's `open={presets.length===0}` logic is correct live.
+Preset rail itself verified via unit tests + Spark /studio/presets + identical
+models on /site (couldn't drive past Hardware's React-controlled confirm
+checkbox under headless CDP — harness limitation, not a product bug).
+**Verdict: no visual defects found; new surfaces coherent with the design
+system.** A deeper subjective reskin of pre-existing wizard chrome (Card
+rounded-lg → hairline) remains available but is a taste pass best done with
+Sero watching; the app is in good shape as-is.
+Dev-dir note: switched ~/.local-studio active controller to Spark for QA, then
+restored to api.homelabai.org. Packaged desktop app uses a separate data dir,
+unaffected.
+
 ## Rules
 - Gates green before every commit (`npm run check` etc. per repo convention).
 - Never wipe data; never kill the pop-os controller (kills live model).
