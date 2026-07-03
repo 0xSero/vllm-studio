@@ -19,13 +19,6 @@ import {
 } from "./pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
-import {
-  compactionTokensBefore,
-  contextUsageAwaitingFreshCompactionUsage,
-  normalizeSdkMessageTimestampsForCompactionBoundary,
-  piEventIsSuccessfulCompaction,
-  postCompactionUsageIsFresh,
-} from "./pi-runtime-compaction";
 import { findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import type {
@@ -80,9 +73,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private eventSeq = 0;
   private eventLog: LoggedPiEvent[] = [];
   private activePromptCount = 0;
-  private awaitingPostCompactionUsage = false;
-  private postCompactionTokensBefore: number | null = null;
-  private warnedCompactionBoundaryShape = false;
   private lastError: string | null = null;
   private currentFingerprint = "";
   private currentPiSessionId: string | null = null;
@@ -116,9 +106,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.eventSeq = 0;
         this.eventLog = [];
         this.activePromptCount = 0;
-        this.awaitingPostCompactionUsage = false;
-        this.postCompactionTokensBefore = null;
-        this.warnedCompactionBoundaryShape = false;
         this.lastError = null;
 
         const { models, agentDir } = yield* Effect.tryPromise({
@@ -225,7 +212,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
-        this.normalizeCompactionBoundary(runtime.session);
       }.bind(this),
     );
   }
@@ -244,7 +230,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] },
   ): Effect.Effect<void, unknown> {
     const session = this.requireSession();
-    this.normalizeCompactionBoundary(session);
     const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
     this.on("loggedEvent", listener);
     this.activePromptCount += 1;
@@ -302,16 +287,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (this.activePromptCount > 0) {
       return Effect.fail(new Error("Cannot compact while the agent is running."));
     }
-    return Effect.gen(
-      function* (this: PiSdkSession) {
-        const result = yield* Effect.tryPromise({
-          try: () => this.requireSession().compact(customInstructions),
-          catch: (error) => error,
-        });
-        this.markCompactionAcknowledged(result);
-        return result;
-      }.bind(this),
-    );
+    return Effect.tryPromise({
+      try: () => this.requireSession().compact(customInstructions),
+      catch: (error) => error,
+    });
   }
 
   abort(): Promise<void> {
@@ -362,7 +341,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   /**
    * Snapshot the SDK-computed context usage for the active session. Returns
    * `null` when the runtime isn't started yet or the SDK has no usage data
-   * (e.g. before the first assistant message).
+   * (e.g. before the first assistant message). Post-compaction staleness is
+   * the SDK's job: `getContextUsage()` reports `tokens: null` until an
+   * assistant responded after the latest compaction boundary
+   * (tests/frontend/agent-runtime/compaction.test.ts pins this contract).
    */
   private computeContextUsage() {
     const session = this.runtime?.session;
@@ -371,7 +353,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (!usage) return null;
     const settings = session.settingsManager.getCompactionSettings();
     const tokens = typeof usage.tokens === "number" ? usage.tokens : null;
-    const normalized = {
+    return {
       tokens,
       contextWindow: usage.contextWindow,
       percent: typeof usage.percent === "number" ? usage.percent : null,
@@ -380,15 +362,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           ? shouldCompact(tokens, usage.contextWindow, settings)
           : false,
     };
-    if (this.awaitingPostCompactionUsage) {
-      if (postCompactionUsageIsFresh(normalized, this.postCompactionTokensBefore)) {
-        this.awaitingPostCompactionUsage = false;
-        this.postCompactionTokensBefore = null;
-        return normalized;
-      }
-      return contextUsageAwaitingFreshCompactionUsage(usage);
-    }
-    return normalized;
   }
 
   getEventsAfter(seq: number): LoggedPiEvent[] {
@@ -410,9 +383,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
       this.currentPiSessionId = this.runtime.session.sessionId;
     }
-    if (piEventIsSuccessfulCompaction(event as Record<string, unknown>)) {
-      this.markCompactionAcknowledged(event);
-    }
     const logged: LoggedPiEvent = {
       seq: ++this.eventSeq,
       event: event as PiEvent,
@@ -422,23 +392,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
     this.emit("loggedEvent", logged);
     this.emit("event", event);
-  }
-
-  private markCompactionAcknowledged(source?: unknown): void {
-    this.awaitingPostCompactionUsage = true;
-    this.postCompactionTokensBefore =
-      compactionTokensBefore(source) ?? this.postCompactionTokensBefore;
-    this.normalizeCompactionBoundary(this.runtime?.session);
-  }
-
-  private normalizeCompactionBoundary(session: unknown): void {
-    const normalized = normalizeSdkMessageTimestampsForCompactionBoundary(session);
-    if (!normalized && !this.warnedCompactionBoundaryShape) {
-      this.warnedCompactionBoundaryShape = true;
-      console.warn(
-        "[Local Studio] Pi SDK compaction boundary guard could not inspect session messages; stale post-compaction usage may reappear after an SDK shape change.",
-      );
-    }
   }
 }
 
