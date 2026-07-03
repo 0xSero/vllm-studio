@@ -60,6 +60,7 @@ Guiding question at every step: **how can I make this a home for people?**
 | 2026-07-03 | W2 DONE: install-controller.sh + desktop IPC + settings deploy panel — 7e4fdfaf. Verified live twice on Spark (:8090 ls-deploy-test, :8091 ls-deploy-test2, both systemd units healthy & remotely reachable). UI panel visual QA queued with W4 | done |
 | 2026-07-03 | Spark state: LFM2.5 live :8000 (lfm2-5 recipe, main controller :8080); test controllers :8090/:8091 (throwaway dirs ls-deploy-test*, NOT deleted per no-wipe rule) | note |
 | 2026-07-03 | W3 CORE DONE — 03f4b02d: MCP client (verified vs server-everything), ssh-remote server (verified vs Spark), connectors.json service+pool, pi bridge extension, API routes, Connectors settings section w/ verified catalog (github/google/gmail/x/computer npm pkgs all exist). Remaining: live pi-turn E2E (frontend rebuild in flight), visual QA w/ W4 | in flight |
+| 2026-07-03 | W3 E2E VERIFIED: real pi turn (glm-5.2 — NOTE homelab currently serves glm-5.2 not deepseek-v4-flash) called computer_spark_run_command → bridge → pooled MCP → ssh-remote → Spark; agent reported "spark-2822/aarch64" verbatim. computer-spark connector left configured in ~/.local-studio/connectors.json (genuinely useful). /api/agent/sessions replay for the fresh session returned empty events — pre-existing replay nuance, investigate separately | done |
 
 ## W3 design (decided 2026-07-03, implement exactly this)
 Connector = MCP server entry. Schema mirrors de-facto mcp.json (Claude/Cursor
