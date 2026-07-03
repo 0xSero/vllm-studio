@@ -23,7 +23,7 @@ import type {
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { useProjects } from "@/features/agent/projects/context";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsRef } from "@/features/agent/tools/context";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import {
   CONTROLLERS_STORAGE_KEY,
@@ -166,12 +166,12 @@ function api(): WorkspaceEffectDeps["api"] {
 export function useWorkspace(): UseWorkspaceResult {
   const projects = useProjects();
   const projectsRef = useRef(projects);
-  const tools = useTools();
-  const toolsRef = useRef(tools);
+  // Tools are only read imperatively (inside event handlers), so subscribe via
+  // the non-rendering ref: workspace state must not re-render on tools churn.
+  const toolsRef = useToolsRef();
   useMountSubscription(() => {
     projectsRef.current = projects;
-    toolsRef.current = tools;
-  }, [projects, tools]);
+  }, [projects]);
   const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());

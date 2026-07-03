@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import { ExternalLink } from "@/ui/icon-registry";
 import { highlightFenced } from "@/features/agent/highlight-cache";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsActions } from "@/features/agent/tools/context";
 import { CopyablePathChip } from "@/features/agent/ui/copyable-path-chip";
 
 const FILE_REF_PATTERN =
@@ -289,10 +289,12 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
 }
 
 function AssistantMarkdownInner({ text }: { text: string }) {
-  const tools = useTools();
+  // Actions-only subscription: tools state churn (browser typing, canvas
+  // streaming, selections) never re-renders frozen markdown blocks.
+  const tools = useToolsActions();
   const normalizedText = useMemo(() => normalizeLooseMarkdownEmphasis(text), [text]);
-  // Stable `components` map: only changes when any of the four tool callbacks
-  // it captures changes identity (they're useCallback-stable in ToolsProvider).
+  // Stable `components` map: only changes when any of the tool callbacks it
+  // captures changes identity (they're useCallback-stable in ToolsProvider).
   const componentsWithAppLinks = useMemo<Components>(
     () =>
       buildComponentsWithAppLinks({

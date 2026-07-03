@@ -11,7 +11,7 @@ import {
   SquarePen,
 } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolSelections, useToolsActions } from "@/features/agent/tools/context";
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";
 import { FileViewer } from "@/features/agent/ui/filesystem-file-viewer";
 import { RenderedPreview, previewKindForOpenFile } from "@/features/agent/ui/filesystem-preview";
@@ -41,7 +41,8 @@ export function FilesystemPanel({ cwd }: Props) {
   const [dirLoading, setDirLoading] = useState<Set<string>>(new Set());
   const [fileListOpen, setFileListOpen] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
-  const tools = useTools();
+  const { fileOpenRequest } = useToolSelections();
+  const { requestContextAttach } = useToolsActions();
   const fontSize = useAppStore((s) => s.fileViewerFontSize);
   const setFontSize = useAppStore((s) => s.setFileViewerFontSize);
   const lastOpenFileByProject = useAppStore((s) => s.lastOpenFileByProject);
@@ -51,7 +52,7 @@ export function FilesystemPanel({ cwd }: Props) {
     cwd,
     relPath,
     openFile,
-    fileOpenRequest: tools.fileOpenRequest,
+    fileOpenRequest,
     lastOpenFileByProject,
     cwdRef,
     setRelPath,
@@ -192,12 +193,12 @@ export function FilesystemPanel({ cwd }: Props) {
     if (!openFile || comments.length === 0) return;
     const ordered = [...comments].sort((a, b) => a.line - b.line);
     const body = ordered.map((comment) => `- Line ${comment.line}: ${comment.body}`).join("\n");
-    tools.requestContextAttach({
+    requestContextAttach({
       label: `${openFile.split("/").pop() ?? openFile} · comments`,
       path: openFile,
       content: `Comments on ${openFile}:\n${body}`,
     });
-  }, [comments, openFile, tools]);
+  }, [comments, openFile, requestContextAttach]);
   if (!cwd) {
     return (
       <div className="flex h-full items-center justify-center text-center text-[length:var(--fs-sm)] text-(--dim)">

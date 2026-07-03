@@ -3,15 +3,16 @@
 import { useMemo, useState } from "react";
 import { Code2 } from "@/ui/icon-registry";
 
-import { useTools } from "@/features/agent/tools/context";
+import { useComputerTools, useToolsActions } from "@/features/agent/tools/context";
 import { RenderedPreview, detectPreviewKind } from "@/features/agent/ui/filesystem-preview";
 
 // The canvas is a shared human↔model buffer. It can hold Markdown, HTML, or
 // JSX, so by default we render it (kind inferred from the content) and offer an
 // explicit Edit toggle to drop back to the raw textarea.
 export function CanvasPanel() {
-  const tools = useTools();
-  const text = tools.computer.canvasText;
+  const computer = useComputerTools();
+  const { toggleCanvas, setCanvasText } = useToolsActions();
+  const text = computer.canvasText;
   const [editing, setEditing] = useState(false);
   const hasContent = text.trim().length > 0;
   // detectPreviewKind runs several regex scans over the whole buffer; memoize so
@@ -55,19 +56,19 @@ export function CanvasPanel() {
         ) : null}
         <button
           type="button"
-          onClick={tools.toggleCanvas}
+          onClick={toggleCanvas}
           className={`h-6 rounded px-2 text-[length:var(--fs-sm)] ${
-            tools.computer.canvasEnabled
+            computer.canvasEnabled
               ? "bg-(--accent)/15 text-(--accent)/75"
               : "bg-(--surface) text-(--dim)/75 hover:text-(--fg)/75"
           }`}
           title={
-            tools.computer.canvasEnabled
+            computer.canvasEnabled
               ? "Canvas shared with the model"
               : "Share the canvas with the model"
           }
         >
-          {tools.computer.canvasEnabled ? "On" : "Off"}
+          {computer.canvasEnabled ? "On" : "Off"}
         </button>
       </div>
       {showPreview ? (
@@ -75,7 +76,7 @@ export function CanvasPanel() {
       ) : (
         <textarea
           value={text}
-          onChange={(event) => tools.setCanvasText(event.target.value)}
+          onChange={(event) => setCanvasText(event.target.value)}
           placeholder="Scratch notes, live plan, links, state, Markdown, HTML, or JSX — anything the model should keep in view..."
           className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-[length:var(--fs-md)] leading-6 text-(--fg) outline-none placeholder:text-(--dim)"
           spellCheck={false}

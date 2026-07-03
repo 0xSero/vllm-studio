@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Context,
   type ReactNode,
 } from "react";
 import { Effect } from "effect";
@@ -40,17 +41,16 @@ import {
   writeComputerTabs,
   writeComputerWidth,
 } from "@/features/agent/tools/persistence";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { syncCanvasEffect, useCanvasEffects } from "@/features/agent/tools/canvas-effects";
 import { useToolsCatalogueEffects } from "@/features/agent/tools/catalogue-effects";
 
-export type ToolsContextValue = {
-  browser: BrowserState;
-  computer: ComputerState;
-  fileOpenRequest: FileOpenRequest | null;
-  contextAttachRequest: ContextAttachRequest | null;
-  skillCatalogue: ComposerSkillRef[];
-  promptTemplateCatalogue: ComposerPromptTemplateRef[];
-  selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
+// The tools surface is provided as four narrow contexts (actions / computer /
+// browser / selections) so a state change in one slice never re-renders
+// consumers of the others — e.g. typing in the browser URL bar must not churn
+// every assistant-markdown block. `useTools()` composes all four for the
+// pass-through consumers whose downstream prop contracts take the full value.
+type ToolsActions = {
   setBrowserEnabled: (enabled: boolean) => void;
   setBrowserBackend: (backend: BrowserBackend) => void;
   toggleBrowserBackend: () => void;
@@ -77,7 +77,27 @@ export type ToolsContextValue = {
   hydrateSelections: (entries: Iterable<[SessionId, ToolSelection]>) => void;
 };
 
-const ToolsContext = createContext<ToolsContextValue | null>(null);
+type ToolSelectionsValue = {
+  fileOpenRequest: FileOpenRequest | null;
+  contextAttachRequest: ContextAttachRequest | null;
+  skillCatalogue: ComposerSkillRef[];
+  promptTemplateCatalogue: ComposerPromptTemplateRef[];
+  selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
+};
+
+export type ToolsContextValue = ToolsActions &
+  ToolSelectionsValue & {
+    browser: BrowserState;
+    computer: ComputerState;
+  };
+
+const ToolsActionsContext = createContext<ToolsActions | null>(null);
+const ComputerToolsContext = createContext<ComputerState | null>(null);
+const BrowserToolsContext = createContext<BrowserState | null>(null);
+const ToolSelectionsContext = createContext<ToolSelectionsValue | null>(null);
+// Stable ref to the composed value for imperative (event-time) readers that
+// must not re-render on tools churn — see `useToolsRef`.
+const ToolsRefContext = createContext<{ current: ToolsContextValue } | null>(null);
 
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
@@ -384,15 +404,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     if (changed) setSelectionVersion((v) => v + 1);
   }, []);
 
-  const value = useMemo<ToolsContextValue>(
+  // Every callback above is useCallback-stable except toggleComputerOpen
+  // (depends on computer.open), so this value only changes identity when the
+  // panel opens/closes — action-only consumers stay untouched by state churn.
+  const actions = useMemo<ToolsActions>(
     () => ({
-      browser,
-      computer,
-      fileOpenRequest,
-      contextAttachRequest,
-      skillCatalogue,
-      promptTemplateCatalogue,
-      selectionFor,
       setBrowserEnabled,
       setBrowserBackend,
       toggleBrowserBackend,
@@ -415,13 +431,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       hydrateSelections,
     }),
     [
-      browser,
-      computer,
-      fileOpenRequest,
-      contextAttachRequest,
-      skillCatalogue,
-      promptTemplateCatalogue,
-      selectionFor,
       setBrowserEnabled,
       setBrowserBackend,
       toggleBrowserBackend,
@@ -445,13 +454,89 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <ToolsContext.Provider value={value}>{children}</ToolsContext.Provider>;
+  const selections = useMemo<ToolSelectionsValue>(
+    () => ({
+      fileOpenRequest,
+      contextAttachRequest,
+      skillCatalogue,
+      promptTemplateCatalogue,
+      selectionFor,
+    }),
+    [fileOpenRequest, contextAttachRequest, skillCatalogue, promptTemplateCatalogue, selectionFor],
+  );
+
+  // Latest-value ref for imperative readers (use-workspace's event handlers).
+  // Refreshed post-render, which is always before any event-time read.
+  const value = useMemo<ToolsContextValue>(
+    () => ({ browser, computer, ...selections, ...actions }),
+    [browser, computer, selections, actions],
+  );
+  const valueRef = useRef(value);
+  useMountSubscription(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  return (
+    <ToolsActionsContext.Provider value={actions}>
+      <ComputerToolsContext.Provider value={computer}>
+        <BrowserToolsContext.Provider value={browser}>
+          <ToolSelectionsContext.Provider value={selections}>
+            <ToolsRefContext.Provider value={valueRef}>{children}</ToolsRefContext.Provider>
+          </ToolSelectionsContext.Provider>
+        </BrowserToolsContext.Provider>
+      </ComputerToolsContext.Provider>
+    </ToolsActionsContext.Provider>
+  );
 }
 
-export function useTools(): ToolsContextValue {
-  const value = useContext(ToolsContext);
-  if (!value) throw new Error("useTools must be used within a ToolsProvider");
+function useToolsSlice<T>(context: Context<T | null>, hook: string): T {
+  const value = useContext(context);
+  if (value === null) throw new Error(`${hook} must be used within a ToolsProvider`);
   return value;
+}
+
+/** Stable tool callbacks only — never re-renders consumers on tools state churn. */
+export function useToolsActions(): ToolsActions {
+  return useToolsSlice(ToolsActionsContext, "useToolsActions");
+}
+
+/** Computer panel state (open/tab/tabs/width/canvas). */
+export function useComputerTools(): ComputerState {
+  return useToolsSlice(ComputerToolsContext, "useComputerTools");
+}
+
+/** Browser pane state (enabled/backend/url/input). */
+export function useBrowserTools(): BrowserState {
+  return useToolsSlice(BrowserToolsContext, "useBrowserTools");
+}
+
+/** Per-session skill/template selections, catalogues, and open/attach requests. */
+export function useToolSelections(): ToolSelectionsValue {
+  return useToolsSlice(ToolSelectionsContext, "useToolSelections");
+}
+
+/**
+ * Ref to the full composed tools value for imperative event-time reads. Unlike
+ * `useTools()`, subscribing components never re-render when tools state moves.
+ */
+export function useToolsRef(): { current: ToolsContextValue } {
+  return useToolsSlice(ToolsRefContext, "useToolsRef");
+}
+
+/**
+ * Composed compatibility view over all four tool contexts. Re-renders on any
+ * tools state change, so prefer the narrow hooks; this exists for consumers
+ * that hand the full value to prop contracts typed as `ToolsContextValue`.
+ */
+export function useTools(): ToolsContextValue {
+  const actions = useToolsActions();
+  const computer = useComputerTools();
+  const browser = useBrowserTools();
+  const selections = useToolSelections();
+  return useMemo(
+    () => ({ browser, computer, ...selections, ...actions }),
+    [browser, computer, selections, actions],
+  );
 }
 
 export type {

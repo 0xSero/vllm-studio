@@ -4,7 +4,11 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "@/ui";
 import { Code2 } from "@/ui/icon-registry";
 import { formatTokenCount } from "@/features/agent/messages";
-import { useTools } from "@/features/agent/tools/context";
+import {
+  useBrowserTools,
+  useComputerTools,
+  useToolsActions,
+} from "@/features/agent/tools/context";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -36,7 +40,7 @@ export function ComputerStatusPanel({
   gitSummary?: GitSummary | null;
   onCompactSession?: () => Promise<void>;
 }) {
-  const tools = useTools();
+  const browser = useBrowserTools();
   const [compacting, setCompacting] = useState(false);
   const totals = useMemo(() => summarizeSessions(sessions), [sessions]);
   const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
@@ -94,8 +98,8 @@ export function ComputerStatusPanel({
             activeProject,
             focusedSession,
             gitSummary ?? null,
-            tools.browser.enabled,
-            tools.browser.url,
+            browser.enabled,
+            browser.url,
           )}
         />
       </StatusSection>
@@ -279,7 +283,8 @@ function SessionSummary({
 }
 
 function CanvasPeek() {
-  const tools = useTools();
+  const computer = useComputerTools();
+  const { setComputerTab, toggleCanvas } = useToolsActions();
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
       <div className="flex h-8 items-center gap-2">
@@ -287,25 +292,25 @@ function CanvasPeek() {
         <span className="font-medium text-(--fg)">Canvas</span>
         <button
           type="button"
-          onClick={() => tools.setComputerTab("canvas")}
+          onClick={() => setComputerTab("canvas")}
           className="ml-auto h-6 rounded px-2 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         >
           Open
         </button>
         <button
           type="button"
-          onClick={tools.toggleCanvas}
+          onClick={toggleCanvas}
           className={`h-6 rounded px-2 text-[length:var(--fs-sm)] ${
-            tools.computer.canvasEnabled
+            computer.canvasEnabled
               ? "bg-(--accent)/15 text-(--accent)"
               : "bg-(--bg) text-(--dim) hover:text-(--fg)"
           }`}
         >
-          {tools.computer.canvasEnabled ? "On" : "Off"}
+          {computer.canvasEnabled ? "On" : "Off"}
         </button>
       </div>
       <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[length:var(--fs-sm)] leading-5 text-(--dim)">
-        {tools.computer.canvasText.trim() || "No canvas notes yet."}
+        {computer.canvasText.trim() || "No canvas notes yet."}
       </div>
     </div>
   );
