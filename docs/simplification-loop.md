@@ -519,6 +519,22 @@ I19 actions taken:
 
 ## Iteration log
 
+- **SECOND WAVE + I20 FIXES (2026-07-02/03)**: commits 40107252..c708866c.
+  next-dev boot fixed (turbopack absolute resolveAlias unsupported;
+  node:net edge-compile — both pre-existing). engine.acceptsControl
+  consolidation + @shared/agent alias (16 deep imports). Tools god-context
+  split into 5 scoped contexts (assistant-markdown/app-root re-render
+  churn eliminated; zero pixels). SDK compaction adoption: pi-runtime-
+  compaction.ts deleted (−263 LOC; timestamp quirk absent in 0.78.1 per
+  915-session scan; old freshness heuristic had a reproduced stuck-
+  'unknown' bug; pin test written green against old code first). All I20
+  findings fixed: HIGH wizard waitReady timeout, canceled-download
+  dead-end, HF/model-card request races, 35-min zombie poller, empty
+  recipe id (schema isNonEmpty), URL encoding, localStorage throw,
+  fast-poll-forever, marketing dead code. Scout verdict recorded: old
+  plan step 3 ("engine owns the turn") was already ~done — chat-pane is
+  425 LOC and all turn ops route through the engine.
+
 - **PI-PARITY REFACTOR COMPLETE (2026-07-02)**: all five I19 gaps closed in
   one day, commits 68019877..678d154d (12 commits, gates green throughout).
   P1 workspace: shared/ = @local-studio/contracts, 51 deep imports gone.
