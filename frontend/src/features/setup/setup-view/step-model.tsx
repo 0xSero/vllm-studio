@@ -136,39 +136,43 @@ export function StepModel({
         </Card>
       )}
 
-      <Card padding="lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm text-(--dim) uppercase tracking-wider">Recommended</div>
-            <h2 className="text-lg font-medium">Pick a starter model</h2>
+      {recommendations.length > 0 && (
+        <details className="group" open={presets.length === 0}>
+          <summary className="flex cursor-pointer items-center justify-between list-none">
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm text-(--dim) uppercase tracking-wider">
+                {presets.length > 0 ? "More models" : "Recommended"}
+              </span>
+              <span className="text-xs text-(--dim)">{recommendations.length} for your hardware</span>
+            </div>
+            <span className="text-xs text-(--dim)">
+              Detected VRAM: {maxVram ? `${maxVram.toFixed(1)} GB` : "CPU"}
+            </span>
+          </summary>
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            {recommendations.map((model) => (
+              <Card key={model.id} padding="md">
+                <div className="text-sm font-medium">{model.name}</div>
+                <div className="text-xs text-(--dim)">{model.id}</div>
+                <p className="text-xs text-(--dim) mt-2">{model.description}</p>
+                <div className="flex items-center gap-2 text-xs text-(--dim) mt-3">
+                  <span>{model.size_gb ?? "-"} GB</span>
+                  <span>·</span>
+                  <span>{model.min_vram_gb ?? "-"} GB VRAM</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => beginDownload(model.id)}
+                  className="mt-3"
+                  icon={<DownloadCloud className="h-3.5 w-3.5" />}
+                >
+                  Download
+                </Button>
+              </Card>
+            ))}
           </div>
-          <div className="text-xs text-(--dim)">
-            Detected VRAM: {maxVram ? `${maxVram.toFixed(1)} GB` : "CPU"}
-          </div>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4 mt-4">
-          {recommendations.map((model) => (
-            <Card key={model.id} padding="md">
-              <div className="text-sm font-medium">{model.name}</div>
-              <div className="text-xs text-(--dim)">{model.id}</div>
-              <p className="text-xs text-(--dim) mt-2">{model.description}</p>
-              <div className="flex items-center gap-2 text-xs text-(--dim) mt-3">
-                <span>{model.size_gb ?? "-"} GB</span>
-                <span>·</span>
-                <span>{model.min_vram_gb ?? "-"} GB VRAM</span>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => beginDownload(model.id)}
-                className="mt-3"
-                icon={<DownloadCloud className="h-3.5 w-3.5" />}
-              >
-                Download
-              </Button>
-            </Card>
-          ))}
-        </div>
-      </Card>
+        </details>
+      )}
 
       <Card padding="lg">
         <div className="text-sm text-(--dim) uppercase tracking-wider">Manual</div>
