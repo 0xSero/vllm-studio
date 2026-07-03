@@ -57,6 +57,8 @@ Guiding question at every step: **how can I make this a home for people?**
 | 2026-07-03 | W1 VERIFIED E2E on Spark: managed llama.cpp CUDA build OK → lfm2-5 recipe → launch → real completion (clean content + reasoning_content). Remote provider create/delete verified. LFM2.5 left running on :8000 | done |
 | 2026-07-03 | W5: /site committed (444 lines, self-contained, amber instrument sheet, OS-aware download) | done, assets pending |
 | 2026-07-03 | W1 residue: wizard visual walkthrough in browser (do with W4 polish pass) | todo |
+| 2026-07-03 | W2 DONE: install-controller.sh + desktop IPC + settings deploy panel — 7e4fdfaf. Verified live twice on Spark (:8090 ls-deploy-test, :8091 ls-deploy-test2, both systemd units healthy & remotely reachable). UI panel visual QA queued with W4 | done |
+| 2026-07-03 | Spark state: LFM2.5 live :8000 (lfm2-5 recipe, main controller :8080); test controllers :8090/:8091 (throwaway dirs ls-deploy-test*, NOT deleted per no-wipe rule) | note |
 
 ## Rules
 - Gates green before every commit (`npm run check` etc. per repo convention).
