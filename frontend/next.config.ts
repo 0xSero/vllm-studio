@@ -47,22 +47,32 @@ const nextConfig: NextConfig = {
   // The package and shared/agent live outside frontend/, so their real paths
   // don't have frontend/node_modules on the walk-up resolution path. Teach
   // webpack to also look here for their external deps (effect, the pi SDK).
-  webpack: (config) => {
+  webpack: (config, { nextRuntime }) => {
     config.resolve.modules = [
       ...(config.resolve.modules ?? ["node_modules"]),
       path.join(__dirname, "node_modules"),
     ];
+    // instrumentation.ts is compiled for the edge runtime too. Its node-only
+    // half (instrumentation-node.ts, node:net) is behind a NEXT_RUNTIME gate,
+    // but dev builds don't dead-code-eliminate the gated dynamic import, so
+    // the edge compile still tries to read the node: scheme and fails
+    // (UnhandledSchemeError). Stub it out for edge — the gate keeps it from
+    // ever executing there.
+    if (nextRuntime === "edge") {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "node:net": false,
+      };
+    }
     return config;
   },
+  // No resolveAlias here: turbopack rejects absolute alias targets ("server
+  // relative imports are not implemented yet"), and none is needed — the
+  // services/node_modules → frontend/node_modules symlink (postinstall
+  // link-services-node-modules.mjs) puts effect/the pi SDK on the walk-up
+  // path for the out-of-root agent-runtime sources.
   turbopack: {
     root: path.join(__dirname, ".."),
-    resolveAlias: {
-      tailwindcss: path.join(__dirname, "node_modules/tailwindcss"),
-      // Same out-of-root resolution fix as webpack's resolve.modules above:
-      // agent-runtime/shared sources import `effect`, which only exists in
-      // frontend/node_modules.
-      effect: path.join(__dirname, "node_modules/effect"),
-    },
   },
   async redirects() {
     return [
