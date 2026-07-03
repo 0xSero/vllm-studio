@@ -139,6 +139,23 @@ export interface ModelRecommendation {
   tags: string[];
 }
 
+export interface StarterPreset {
+  id: string;
+  name: string;
+  description: string;
+  kind: "download" | "remote";
+  tags: string[];
+  size_gb: number | null;
+  min_vram_gb: number | null;
+  model_id?: string;
+  allow_patterns?: string[];
+  backend?: "vllm" | "llamacpp";
+  gguf_file?: string;
+  recipe_overrides?: Record<string, unknown>;
+  remote?: { base_url: string; model: string };
+  fits?: boolean;
+}
+
 export interface HuggingFaceModel {
   _id: string;
   modelId: string;

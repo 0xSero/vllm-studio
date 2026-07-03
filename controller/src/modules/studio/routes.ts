@@ -17,7 +17,7 @@ import { registerStudioProviderRoutes } from "./provider-routes";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
-import { STUDIO_MODEL_RECOMMENDATIONS } from "./configs";
+import { STUDIO_MODEL_RECOMMENDATIONS, STUDIO_STARTER_PRESETS } from "./configs";
 import {
   getPersistedConfigPath,
   loadPersistedConfig,
@@ -254,6 +254,16 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
       return model.min_vram_gb <= maxVramGb;
     });
     return ctx.json({ recommendations, max_vram_gb: maxVramGb });
+  });
+
+  app.get("/studio/presets", async (ctx) => {
+    const gpus = getGpuInfo();
+    const maxVramGb = deriveRecommendationVramGb(gpus);
+    const presets = STUDIO_STARTER_PRESETS.map((preset) => ({
+      ...preset,
+      fits: preset.min_vram_gb === null || maxVramGb === 0 || preset.min_vram_gb <= maxVramGb,
+    }));
+    return ctx.json({ presets, max_vram_gb: maxVramGb });
   });
 
   app.post("/studio/models/delete", async (ctx) => {

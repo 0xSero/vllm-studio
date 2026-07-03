@@ -3,6 +3,7 @@ import type {
   EngineJob,
   ModelInfo,
   ModelRecommendation,
+  StarterPreset,
   StorageInfo,
   StudioDiagnostics,
   StudioSettings,
@@ -74,6 +75,11 @@ export function createStudioApi(core: ApiCore) {
       recommendations: ModelRecommendation[];
       max_vram_gb: number;
     }> => core.request("/studio/recommendations"),
+
+    getStarterPresets: (): Promise<{
+      presets: StarterPreset[];
+      max_vram_gb: number;
+    }> => core.request("/studio/presets"),
 
     getDownloads: (): Promise<{ downloads: ModelDownload[] }> => core.request("/studio/downloads"),
 

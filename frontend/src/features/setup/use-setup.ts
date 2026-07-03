@@ -10,6 +10,7 @@ import type {
   EngineJob,
   ModelRecommendation,
   RuntimeTarget,
+  StarterPreset,
   StudioDiagnostics,
   StudioSettings,
 } from "@/lib/types";
@@ -39,6 +40,11 @@ export function useSetup() {
   const [modelsDir, setModelsDir] = useState("");
   const [diagnostics, setDiagnostics] = useState<StudioDiagnostics | null>(null);
   const [recommendations, setRecommendations] = useState<ModelRecommendation[]>([]);
+  const [presets, setPresets] = useState<StarterPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<StarterPreset | null>(null);
+  const [remoteApiKey, setRemoteApiKey] = useState("");
+  const [connectingRemote, setConnectingRemote] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const [runtimeTargets, setRuntimeTargets] = useState<RuntimeTarget[]>([]);
   const [runtimeJobs, setRuntimeJobs] = useState<EngineJob[]>([]);
   const [maxVram, setMaxVram] = useState(0);
@@ -91,13 +97,22 @@ export function useSetup() {
     return Effect.runPromise(
       Effect.gen(function* () {
         const warnings = [...initialWarnings];
-        const [recommendationsResult, targetResult, jobResult] = yield* Effect.all([
+        const [recommendationsResult, presetsResult, targetResult, jobResult] = yield* Effect.all([
           Effect.result(
             withSetupTimeoutEffect(api.getModelRecommendations(), "model recommendations"),
           ),
+          Effect.result(withSetupTimeoutEffect(api.getStarterPresets(), "starter presets")),
           Effect.result(withSetupTimeoutEffect(api.getRuntimeTargets(), "runtime targets")),
           Effect.result(withSetupTimeoutEffect(api.getRuntimeJobs(), "runtime jobs")),
         ] as const);
+
+        if (Result.isSuccess(presetsResult)) {
+          setPresets(presetsResult.success.presets || []);
+        } else {
+          // Older controllers don't serve /studio/presets; the wizard still
+          // works through recommendations, so degrade without a warning.
+          setPresets([]);
+        }
 
         if (Result.isSuccess(recommendationsResult)) {
           setRecommendations(recommendationsResult.success.recommendations || []);
@@ -274,14 +289,20 @@ export function useSetup() {
   );
 
   const beginDownload = useCallback(
-    (modelId: string) => {
+    (modelId: string, preset?: StarterPreset) => {
       if (!modelId) return Promise.resolve();
       setSelectedModel(modelId);
+      setSelectedPreset(preset ?? null);
       setLaunchError(null);
       setCreatedRecipeId(null);
       resetBenchmark();
       return Effect.runPromise(
-        requestEffect(() => downloadsState.startDownload({ model_id: modelId })).pipe(
+        requestEffect(() =>
+          downloadsState.startDownload({
+            model_id: modelId,
+            ...(preset?.allow_patterns?.length ? { allow_patterns: preset.allow_patterns } : {}),
+          }),
+        ).pipe(
           Effect.map(() => setStep(3)),
           Effect.catch((err) =>
             Effect.sync(() =>
@@ -292,6 +313,63 @@ export function useSetup() {
       );
     },
     [downloadsState, resetBenchmark],
+  );
+
+  const beginPresetSetup = useCallback(
+    (preset: StarterPreset) => {
+      if (preset.kind === "download" && preset.model_id) {
+        return beginDownload(preset.model_id, preset);
+      }
+      return Promise.resolve();
+    },
+    [beginDownload],
+  );
+
+  const connectRemotePreset = useCallback(
+    (preset: StarterPreset) => {
+      if (preset.kind !== "remote" || !preset.remote) return Promise.resolve();
+      const apiKey = remoteApiKey.trim();
+      if (!apiKey) {
+        setRemoteError("An API key is required to connect.");
+        return Promise.resolve();
+      }
+      setConnectingRemote(true);
+      setRemoteError(null);
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          const existing = yield* requestEffect(() => api.getProviders()).pipe(
+            Effect.catch(() => Effect.succeed({ providers: [] })),
+          );
+          const alreadyThere = existing.providers.some((provider) => provider.id === preset.id);
+          if (alreadyThere) {
+            yield* requestEffect(() =>
+              api.updateProvider(preset.id, { api_key: apiKey, enabled: true }),
+            );
+          } else {
+            yield* requestEffect(() =>
+              api.createProvider({
+                id: preset.id,
+                name: preset.name,
+                base_url: preset.remote!.base_url,
+                api_key: apiKey,
+              }),
+            );
+          }
+          try {
+            localStorage.setItem("local-studio-setup-complete", "true");
+          } catch {}
+          router.push("/chat?new=1");
+        }).pipe(
+          Effect.catch((err) =>
+            Effect.sync(() =>
+              setRemoteError(err instanceof Error ? err.message : "Failed to connect provider"),
+            ),
+          ),
+          Effect.ensuring(Effect.sync(() => setConnectingRemote(false))),
+        ),
+      );
+    },
+    [remoteApiKey, router],
   );
 
   const submitManualModel = useCallback(() => {
@@ -320,7 +398,7 @@ export function useSetup() {
           const existing = yield* requestEffect(() => api.getRecipes()).pipe(
             Effect.catch(() => Effect.succeed({ recipes: [] })),
           );
-          const recipe = buildStarterRecipe(activeDownload, existing.recipes);
+          const recipe = buildStarterRecipe(activeDownload, existing.recipes, selectedPreset);
           yield* requestEffect(() => api.createRecipe(recipe));
           recipeId = recipe.id;
           setCreatedRecipeId(recipe.id);
@@ -349,7 +427,7 @@ export function useSetup() {
         Effect.ensuring(Effect.sync(() => setConfiguringRecipe(false))),
       ),
     );
-  }, [activeDownload, createdRecipeId, resetBenchmark]);
+  }, [activeDownload, createdRecipeId, resetBenchmark, selectedPreset]);
 
   const openChat = useCallback(() => {
     localStorage.setItem("local-studio-setup-complete", "true");
@@ -377,6 +455,14 @@ export function useSetup() {
     setModelsDir,
     diagnostics,
     recommendations,
+    presets,
+    selectedPreset,
+    beginPresetSetup,
+    remoteApiKey,
+    setRemoteApiKey,
+    connectingRemote,
+    remoteError,
+    connectRemotePreset,
     runtimeTargets,
     runtimeJobs,
     maxVram,

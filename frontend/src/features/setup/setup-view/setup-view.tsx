@@ -8,6 +8,7 @@ import type {
   ModelDownload,
   ModelRecommendation,
   RuntimeTarget,
+  StarterPreset,
   StudioDiagnostics,
   StudioSettings,
 } from "@/lib/types";
@@ -37,6 +38,13 @@ interface SetupViewProps {
   setModelsDir: (value: string) => void;
   diagnostics: StudioDiagnostics | null;
   recommendations: ModelRecommendation[];
+  presets: StarterPreset[];
+  beginPresetSetup: (preset: StarterPreset) => void;
+  remoteApiKey: string;
+  setRemoteApiKey: (value: string) => void;
+  connectingRemote: boolean;
+  remoteError: string | null;
+  connectRemotePreset: (preset: StarterPreset) => void;
   runtimeTargets: RuntimeTarget[];
   runtimeJobs: EngineJob[];
   maxVram: number;
@@ -82,6 +90,13 @@ export function SetupView({
   setModelsDir,
   diagnostics,
   recommendations,
+  presets,
+  beginPresetSetup,
+  remoteApiKey,
+  setRemoteApiKey,
+  connectingRemote,
+  remoteError,
+  connectRemotePreset,
   runtimeTargets,
   runtimeJobs,
   maxVram,
@@ -179,6 +194,13 @@ export function SetupView({
         {!loading && step === 2 && (
           <StepModel
             recommendations={recommendations}
+            presets={presets}
+            beginPresetSetup={beginPresetSetup}
+            remoteApiKey={remoteApiKey}
+            setRemoteApiKey={setRemoteApiKey}
+            connectingRemote={connectingRemote}
+            remoteError={remoteError}
+            connectRemotePreset={connectRemotePreset}
             maxVram={maxVram}
             manualModelId={manualModelId}
             setManualModelId={setManualModelId}
