@@ -11,6 +11,7 @@ import type {
 } from "@local-studio/contracts/system";
 import { detectBackend, listProcesses } from "../process/process-utilities";
 import { makeRuntimeTarget } from "./runtime-target-factory";
+import { managedLlamaServerPath } from "./managed-llamacpp";
 import {
   compareVersions,
   parseCommandBinary,
@@ -285,7 +286,9 @@ const collectLlamacppTargets = async (
   );
   for (const target of running) addTarget(targets, target);
 
-  for (const candidate of unique([config.llama_bin])) {
+  const managedBinary = managedLlamaServerPath(config);
+  const managedCandidate = existsSync(managedBinary) ? managedBinary : undefined;
+  for (const candidate of unique([config.llama_bin, managedCandidate])) {
     const probe = await probeBinaryRuntime(candidate);
     addTarget(
       targets,

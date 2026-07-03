@@ -393,6 +393,30 @@ export function useSetup() {
 
     return Effect.runPromise(
       Effect.gen(function* () {
+        // Presets that need an engine the box doesn't have yet install it here,
+        // so "Download → Launch" stays one flow with no manual runtime step.
+        if (selectedPreset?.backend === "llamacpp") {
+          const targetPayload = yield* requestEffect(() => api.getRuntimeTargets()).pipe(
+            Effect.catch(() => Effect.succeed({ targets: [] as RuntimeTarget[] })),
+          );
+          const installed = targetPayload.targets.some(
+            (target) => target.backend === "llamacpp" && target.installed,
+          );
+          if (!installed) {
+            const { job } = yield* requestEffect(() =>
+              api.createRuntimeJob({ backend: "llamacpp", type: "install" }),
+            );
+            setRuntimeJobs((current) => [
+              job,
+              ...current.filter((candidate) => candidate.id !== job.id),
+            ]);
+            const finalJob = yield* finishRuntimeJobEffect(job.id, setRuntimeJobs);
+            if (finalJob.status === "error") {
+              return yield* Effect.fail(new Error(describeFailedEngineJob(finalJob)));
+            }
+          }
+        }
+
         let recipeId = createdRecipeId;
         if (!recipeId) {
           const existing = yield* requestEffect(() => api.getRecipes()).pipe(
@@ -427,7 +451,7 @@ export function useSetup() {
         Effect.ensuring(Effect.sync(() => setConfiguringRecipe(false))),
       ),
     );
-  }, [activeDownload, createdRecipeId, resetBenchmark, selectedPreset]);
+  }, [activeDownload, createdRecipeId, resetBenchmark, selectedPreset, setRuntimeJobs]);
 
   const openChat = useCallback(() => {
     localStorage.setItem("local-studio-setup-complete", "true");

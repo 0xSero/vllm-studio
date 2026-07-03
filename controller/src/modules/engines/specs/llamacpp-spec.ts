@@ -22,6 +22,7 @@ import {
   LLAMACPP_UPGRADE_ENV,
   runEnvironmentUpgradeCommand,
 } from "../runtimes/upgrade-config";
+import { installManagedLlamacpp } from "../runtimes/managed-llamacpp";
 
 export const buildLlamacppRecipeArguments = (recipe: Recipe): string[] => {
   const command: string[] = [];
@@ -92,16 +93,10 @@ const getConfigHelp = async (config: Config): Promise<ConfigHelpResult> => {
 
 const installLlamacpp = async (options: InstallOptions): Promise<RuntimeUpgradeResult> => {
   const command = getUpgradeCommandFromEnvironment(LLAMACPP_UPGRADE_ENV);
-  if (!command) {
-    return {
-      success: false,
-      version: null,
-      output: null,
-      error: `No llama.cpp upgrade command configured. Set ${LLAMACPP_UPGRADE_ENV}.`,
-      used_command: null,
-    };
+  if (command) {
+    return runEnvironmentUpgradeCommand(command, options.onSpawn);
   }
-  return runEnvironmentUpgradeCommand(command, options.onSpawn);
+  return installManagedLlamacpp(options);
 };
 
 export const llamacppSpec: EngineSpec = {

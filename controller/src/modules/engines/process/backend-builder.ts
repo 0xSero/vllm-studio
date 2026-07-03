@@ -11,6 +11,7 @@ import {
 import type { Logger } from "../../../core/logger";
 import { resolveBinary } from "../../../core/command";
 import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
+import { managedLlamaServerPath } from "../runtimes/managed-llamacpp";
 import { getEngineSpec } from "../engine-spec";
 
 export const normalizeJsonArgument = (value: unknown): unknown => {
@@ -406,7 +407,8 @@ export const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
     }
     throw new Error(`Invalid llama_bin: executable "${override}" was not found`);
   }
-  return resolveBinary("llama-server") ?? "llama-server";
+  const managed = managedLlamaServerPath(config);
+  return resolveBinary("llama-server") ?? (existsSync(managed) ? managed : "llama-server");
 };
 export const appendLlamacppArguments = (
   command: string[],
