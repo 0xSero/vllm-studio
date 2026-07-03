@@ -31,15 +31,16 @@
       GPUs from one screen. Your hardware, your weights, your desk.</p>
       <div class="hero-actions">
         <!--
-          Direct per-asset links will be wired when installer assets are published.
-          Canonical pattern:
-            https://github.com/sybil-solutions/local-studio/releases/latest/download/<asset>
-          e.g. .../releases/latest/download/LocalStudio.dmg
-               .../releases/latest/download/LocalStudio-Setup.exe
-               .../releases/latest/download/LocalStudio.AppImage
+          Direct per-asset links use the releases/latest/download/<asset> pattern.
+          Assets are named for stability across versions:
+            Local-Studio-arm64.dmg        (macOS, Apple silicon — built & signed)
+            Local-Studio-Setup.exe        (Windows — not built yet)
+            Local-Studio.AppImage         (Linux — not built yet)
+          The macOS button links direct; other platforms fall back to the
+          releases page until their installers ship.
         -->
         <a id="download-primary" class="btn btn-primary"
-           href="https://github.com/sybil-solutions/local-studio/releases/latest">Download Local Studio</a>
+           href="https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg">Download for macOS</a>
         <a class="btn-quiet" href="https://github.com/sybil-solutions/local-studio/releases">all releases</a>
       </div>
       <p id="download-alt" class="hero-alt"></p>
@@ -50,20 +51,20 @@
     <div class="wrap">
       <h2 class="legend rule-legend">DOWNLOAD</h2>
       <div class="dl-grid">
-        <a class="dl-row" data-os="mac" href="https://github.com/sybil-solutions/local-studio/releases/latest">
+        <a class="dl-row" data-os="mac" href="https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg">
           <span class="dl-os">macOS</span>
-          <span class="dl-meta">.dmg · Apple silicon &amp; Intel</span>
+          <span class="dl-meta">.dmg · Apple silicon</span>
           <span class="dl-go">get →</span>
         </a>
-        <a class="dl-row" data-os="win" href="https://github.com/sybil-solutions/local-studio/releases/latest">
+        <a class="dl-row" data-os="win" href="https://github.com/sybil-solutions/local-studio/releases">
           <span class="dl-os">Windows</span>
-          <span class="dl-meta">.exe · x64 installer</span>
-          <span class="dl-go">get →</span>
+          <span class="dl-meta">.exe · x64 · soon</span>
+          <span class="dl-go">releases →</span>
         </a>
-        <a class="dl-row" data-os="linux" href="https://github.com/sybil-solutions/local-studio/releases/latest">
+        <a class="dl-row" data-os="linux" href="https://github.com/sybil-solutions/local-studio/releases">
           <span class="dl-os">Linux</span>
-          <span class="dl-meta">.AppImage · x64, no install</span>
-          <span class="dl-go">get →</span>
+          <span class="dl-meta">.AppImage · x64 · soon</span>
+          <span class="dl-go">releases →</span>
         </a>
       </div>
     </div>

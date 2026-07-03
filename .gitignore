@@ -85,3 +85,6 @@ scripts/*.local.sh
 # Sensitive data - do not commit specific IPs or domains
 # Use environment variables or config files instead
 refactory/
+release-staging/
+frontend/dist-desktop/
+frontend/dist-installers/
