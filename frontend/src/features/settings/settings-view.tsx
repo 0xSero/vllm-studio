@@ -7,12 +7,14 @@ import {
   GraduationCap,
   type LucideIcon,
   Paintbrush,
+  Plug,
   ServerCog,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
+import { ConnectorsSection } from "./connectors-section";
 import {
   ArchivedChatsSettings,
   SetupChecksSettings,
@@ -44,6 +46,7 @@ const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 const SECTIONS: SettingsSectionDef[] = [
   ["connection", "Connection", "Controller URL, API key, voice defaults.", Cable],
   ["system", "System", "Runtime targets, services, storage, hardware.", Cpu],
+  ["connectors", "Connectors", "MCP servers: accounts, services, your machines.", Plug],
   ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
   ["archive", "Archived chats", "Pi sessions kept out of normal chat lists.", Archive],
   [
@@ -147,6 +150,7 @@ export function SettingsView({
           />
         </div>
       ) : null}
+      {activeSection === "connectors" ? <ConnectorsSection /> : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
       {activeSection === "skills" ? <SkillsSettings /> : null}
