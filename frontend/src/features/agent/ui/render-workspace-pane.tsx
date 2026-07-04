@@ -2,14 +2,15 @@
 
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { TerminalPane } from "@/features/agent/ui/terminal-pane";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type {
   AgentModel,
+  ChatPaneState,
   PaneId,
-  PaneState,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { activeSession } from "@/features/agent/runtime/selectors";
@@ -28,7 +29,7 @@ export type WorkspacePaneRenderContext = {
 
 type WorkspacePaneView = {
   paneId: PaneId;
-  pane: PaneState;
+  pane: ChatPaneState;
   session: ReturnType<typeof activeSession>;
   sessionList: NonNullable<ReturnType<typeof activeSession>>[];
   project: Project | null;
@@ -81,7 +82,7 @@ function selectWorkspacePaneView(
   projects: ProjectsContextValue,
 ): WorkspacePaneView | null {
   const pane = state.panesById.get(paneId);
-  if (!pane) return null;
+  if (!pane || pane.kind === "terminal") return null;
   const session = activeSession(state, paneId);
   const project = projects.resolveProject(session);
   const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
@@ -112,6 +113,19 @@ export function renderWorkspacePane({
   handles,
   compact = false,
 }: WorkspacePaneRenderContext) {
+  const pane = state.panesById.get(paneId);
+  if (pane?.kind === "terminal") {
+    return (
+      <TerminalPane
+        key={paneId}
+        paneId={paneId}
+        pane={pane}
+        canClose={collectLeaves(state.layout).length > 1}
+        onFocus={() => dispatch({ type: "focusPane", paneId })}
+        onClose={() => handles.closePane(paneId)}
+      />
+    );
+  }
   const view = selectWorkspacePaneView(paneId, state, projects);
   if (!view) return null;
   const browserPanelOpen =
@@ -165,6 +179,7 @@ export function renderWorkspacePane({
       onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
       onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
       onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
+      onOpenTerminal={() => handles.openTerminalPane(view.paneId)}
       rightPanelOpen={tools.computer.open}
       onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}

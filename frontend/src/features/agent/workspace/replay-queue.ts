@@ -1,4 +1,5 @@
 import type { Session, SessionsMap } from "@/features/agent/runtime/types";
+import { paneSessionId } from "@/features/agent/runtime/selectors";
 import type { PaneId, PaneState } from "@/features/agent/workspace/types";
 
 type PaneReplayHandle = {
@@ -49,8 +50,8 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     if (!handle) return;
     // Guard runs at DRAIN time, not queue time: the pane's session can be
     // swapped between the two (see isFreshStarter above).
-    const pane = deps.getState().panesById.get(paneId);
-    const current = pane ? deps.getState().sessions.get(pane.sessionId) : undefined;
+    const sessionId = paneSessionId(deps.getState().panesById.get(paneId));
+    const current = sessionId ? deps.getState().sessions.get(sessionId) : undefined;
     if (!current || isFreshStarter(current)) {
       pending.delete(paneId);
       return;

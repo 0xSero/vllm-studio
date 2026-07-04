@@ -94,6 +94,7 @@ type Props = {
   onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
   onForkSession?: () => void;
+  onOpenTerminal?: () => void;
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
@@ -127,6 +128,7 @@ export function ChatPane({
   onRenameSession,
   onClose,
   onForkSession,
+  onOpenTerminal,
   rightPanelOpen,
   onToggleRightPanel,
   onRegisterHandle,
@@ -327,6 +329,7 @@ export function ChatPane({
           onTogglePinned={togglePinnedSession}
           onRename={renameActiveSession}
           onFork={onForkSession}
+          onOpenTerminal={onOpenTerminal}
           onExport={exportSession}
           onClose={onClose}
           onToggleRightPanel={onToggleRightPanel}

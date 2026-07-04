@@ -12,6 +12,7 @@ import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   PaneId,
   PaneState,
+  TerminalPaneState,
   WorkspaceLayout,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
@@ -23,20 +24,41 @@ export const SESSION_PREFS_KEY = "local-studio.agent.sessionPrefs";
 
 export type WorkspaceStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+type PersistedPaneRecord = {
+  tabs?: unknown[];
+  activeTabId?: unknown;
+  /** Legacy pane-level runtime id written by older builds; ignored. */
+  runtimeSessionId?: unknown;
+  kind?: unknown;
+  mountKey?: unknown;
+  cwd?: unknown;
+  title?: unknown;
+  ownerSessionId?: unknown;
+  ownerPiSessionId?: unknown;
+};
+
 type PersistedPaneState = {
   version: 1;
   layout: WorkspaceLayout;
   focusedPaneId: PaneId;
-  panes: Record<
-    string,
-    {
-      tabs?: unknown[];
-      activeTabId?: unknown;
-      /** Legacy pane-level runtime id written by older builds; ignored. */
-      runtimeSessionId?: unknown;
-    }
-  >;
+  panes: Record<string, PersistedPaneRecord>;
 };
+
+export type PersistedPaneEntry =
+  | TerminalPaneState
+  | { activeTabId: string; tabs: PersistedSessionMeta[] };
+
+function terminalPaneFromPersisted(pane: PersistedPaneRecord): TerminalPaneState | null {
+  if (pane.kind !== "terminal" || typeof pane.mountKey !== "string") return null;
+  return {
+    kind: "terminal",
+    mountKey: pane.mountKey,
+    cwd: typeof pane.cwd === "string" ? pane.cwd : null,
+    title: typeof pane.title === "string" ? pane.title : "Terminal",
+    ownerSessionId: typeof pane.ownerSessionId === "string" ? pane.ownerSessionId : null,
+    ownerPiSessionId: typeof pane.ownerPiSessionId === "string" ? pane.ownerPiSessionId : null,
+  };
+}
 
 export function createInitialState(): WorkspaceState {
   const session = makeFreshTab();
@@ -209,6 +231,11 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
 
   for (const paneId of leaves) {
     const pane = persistedPanes[paneId] ?? {};
+    const terminalPane = terminalPaneFromPersisted(pane);
+    if (terminalPane) {
+      panesById.set(paneId, terminalPane);
+      continue;
+    }
     const rawTabs = Array.isArray(pane.tabs) ? pane.tabs : [];
     const restored = restoreTabsWithSelections(rawTabs);
     const activeSessionId = activePersistedTabId(pane, restored.tabs);

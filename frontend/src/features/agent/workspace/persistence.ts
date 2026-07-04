@@ -18,6 +18,7 @@ import {
   PANE_STATE_KEY,
   persistActiveAgentSessions,
   restorePersistedPaneState,
+  type PersistedPaneEntry,
   sessionMetaForPersistence,
   type WorkspaceStorage,
 } from "@/features/agent/workspace/store";
@@ -114,23 +115,25 @@ export function writePaneState(
   state: WorkspaceState,
   selectionFor: (sessionId: SessionId) => ToolSelection | null = () => null,
 ): void {
-  // Denormalize on write for back-compat with the old persisted pane tabs
-  // format. The runtime model keeps one visible session per pane.
-  const panes: Record<
-    string,
-    {
-      activeTabId: string;
-      tabs: ReturnType<typeof sessionMetaForPersistence>[];
-    }
-  > = {};
+  const panes: Record<string, PersistedPaneEntry> = {};
   for (const [paneId, pane] of state.panesById.entries()) {
+    if (pane.kind === "terminal") {
+      panes[paneId] = {
+        kind: "terminal",
+        mountKey: pane.mountKey,
+        cwd: pane.cwd,
+        title: pane.title,
+        ownerSessionId: pane.ownerSessionId,
+        ownerPiSessionId: pane.ownerPiSessionId,
+      };
+      continue;
+    }
     const session = state.sessions.get(pane.sessionId);
-    const tabs = session
-      ? [sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined)]
-      : [];
     panes[paneId] = {
       activeTabId: pane.sessionId,
-      tabs,
+      tabs: session
+        ? [sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined)]
+        : [],
     };
   }
   setStorage(

@@ -12,14 +12,21 @@ export type WorkspaceLayout = Layout;
 
 export type { GitSummary } from "@/features/agent/projects/types";
 
-/**
- * A pane is a layout slot pointing at one visible session — it carries no
- * session content. The session id is both the pane's pointer and the opaque
- * runtime key the server addresses the session by.
- */
-export type PaneState = {
+export type ChatPaneState = {
+  kind?: "chat";
   sessionId: SessionId;
 };
+
+export type TerminalPaneState = {
+  kind: "terminal";
+  mountKey: string;
+  cwd: string | null;
+  title: string;
+  ownerSessionId: SessionId | null;
+  ownerPiSessionId: string | null;
+};
+
+export type PaneState = ChatPaneState | TerminalPaneState;
 
 export type WorkspaceState = {
   /** Flat collection of all sessions referenced by any pane. */
@@ -81,9 +88,7 @@ export type WorkspaceAction =
       tab: Session;
     }
   | { type: "closePane"; paneId: PaneId }
-  /**
-   * Replace the visible session of a pane and write it into the flat sessions map.
-   */
+  | { type: "openTerminalPane"; sourcePaneId: PaneId; newPaneId: PaneId }
   | { type: "setPaneSession"; paneId: PaneId; session: Session }
   | {
       type: "patchSession";

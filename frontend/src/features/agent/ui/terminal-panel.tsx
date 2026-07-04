@@ -59,6 +59,10 @@ function getPtyBridge(): PtyBridge | null {
   return bridge ?? null;
 }
 
+export function closeTerminalOwner(ownerKey: string): void {
+  void getPtyBridge()?.closeOwner(ownerKey);
+}
+
 type TerminalRefs = {
   term: XTerm | null;
   fit: FitAddon | null;

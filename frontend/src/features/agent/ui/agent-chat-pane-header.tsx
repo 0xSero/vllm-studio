@@ -23,6 +23,7 @@ export function AgentChatPaneHeader({
   onTogglePinned,
   onRename,
   onFork,
+  onOpenTerminal,
   onExport,
   onClose,
   onToggleRightPanel,
@@ -36,6 +37,7 @@ export function AgentChatPaneHeader({
   onTogglePinned: () => void;
   onRename: (title: string) => void;
   onFork?: () => void;
+  onOpenTerminal?: () => void;
   onExport?: () => void;
   onClose?: () => void;
   onToggleRightPanel: () => void;
@@ -127,6 +129,15 @@ export function AgentChatPaneHeader({
               }}
             >
               Fork
+            </HeaderMenuItem>
+            <HeaderMenuItem
+              disabled={!onOpenTerminal}
+              onClick={() => {
+                onOpenTerminal?.();
+                setOpen(false);
+              }}
+            >
+              New terminal
             </HeaderMenuItem>
             <HeaderMenuItem
               disabled={!canExport || !onExport}

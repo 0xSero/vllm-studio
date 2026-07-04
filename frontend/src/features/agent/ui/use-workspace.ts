@@ -10,6 +10,7 @@ import {
   type SessionReplayQueue,
 } from "@/features/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
+import { closeTerminalOwner } from "@/features/agent/ui/terminal-panel";
 import {
   runWorkspaceEffect,
   type WorkspaceDispatch,
@@ -53,6 +54,7 @@ export type WorkspaceHandles = {
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
+  openTerminalPane: (paneId: PaneId) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
   compactFocusedSession: () => Promise<void>;
   runBrowserCommand: (
@@ -82,6 +84,26 @@ export type UseWorkspaceResult = {
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
 };
+
+export type UseWorkspaceOptions = {
+  /** Isolated throwaway workspace (quick panel): starts from a fresh session
+   * instead of restoring the persisted workspace, and keeps all persistence
+   * writes in memory so it never clobbers the main window's saved state. */
+  ephemeral?: boolean;
+};
+
+function createMemoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> {
+  const entries = new Map<string, string>();
+  return {
+    getItem: (key) => entries.get(key) ?? null,
+    setItem: (key, value) => {
+      entries.set(key, value);
+    },
+    removeItem: (key) => {
+      entries.delete(key);
+    },
+  };
+}
 
 function createWorkspaceWindow(source: Window): WorkspaceWindow {
   return {
@@ -163,7 +185,7 @@ function api(): WorkspaceEffectDeps["api"] {
   };
 }
 
-export function useWorkspace(): UseWorkspaceResult {
+export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): UseWorkspaceResult {
   const projects = useProjects();
   const projectsRef = useRef(projects);
   // Tools are only read imperatively (inside event handlers), so subscribe via
@@ -193,16 +215,18 @@ export function useWorkspace(): UseWorkspaceResult {
   );
 
   const controller = useMemo(() => {
+    const ephemeralStorage = ephemeral ? createMemoryStorage() : null;
     const makeDeps = (workspaceDispatch: WorkspaceDispatch): WorkspaceEffectDeps | null => {
       if (typeof window === "undefined") return null;
       return {
-        storage: window.localStorage,
+        storage: ephemeralStorage ?? window.localStorage,
         window: createWorkspaceWindow(window),
         api: api(),
         dispatch: workspaceDispatch,
         queueReplay: queueSessionReplay,
         findProjectById: (id) => projectsRef.current.findById(id),
         selectionFor: (id) => toolsRef.current.selectionFor(id),
+        closeTerminalOwner,
       };
     };
 
@@ -250,7 +274,7 @@ export function useWorkspace(): UseWorkspaceResult {
       });
     };
     return { dispatch: workspaceDispatch, runBrowserCommand };
-  }, [queueSessionReplay]);
+  }, [queueSessionReplay, ephemeral]);
 
   const { dispatch, runBrowserCommand } = controller;
 
@@ -323,6 +347,8 @@ export function useWorkspace(): UseWorkspaceResult {
           newPaneId: newPaneId(),
           tab: makeFreshTab(),
         }),
+      openTerminalPane: (paneId: PaneId) =>
+        dispatch({ type: "openTerminalPane", sourcePaneId: paneId, newPaneId: newPaneId() }),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
@@ -422,7 +448,7 @@ export function useWorkspace(): UseWorkspaceResult {
     [dispatch, getReplayQueue, runBrowserCommand],
   );
 
-  useWorkspaceHydrationEffects({ dispatch, projectsRef, toolsRef });
+  useWorkspaceHydrationEffects({ dispatch, projectsRef, toolsRef, skipRestore: ephemeral });
   useWorkspaceRuntimeSync({ dispatch, sessions: [...state.sessions.values()] });
 
   return { state, dispatch, handles };

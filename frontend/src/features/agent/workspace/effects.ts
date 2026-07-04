@@ -1,7 +1,7 @@
 import type { ActiveAgentSessionSnapshot } from "@/features/agent/active-sessions";
 import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { findPaneByPiSessionId } from "@/features/agent/runtime/selectors";
+import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
@@ -60,6 +60,7 @@ export type WorkspaceEffectDeps = {
   findProjectById?: (id: string) => Project | null;
   /** Resolve a session's tool selection from the tools context. */
   selectionFor?: (sessionId: SessionId) => ToolSelection;
+  closeTerminalOwner?: (mountKey: string) => void;
 };
 
 const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
@@ -71,6 +72,7 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "renameTab",
   "splitTab",
   "closePane",
+  "openTerminalPane",
   "hydrateActiveSessions",
   "urlNavRequested",
 ]);
@@ -239,7 +241,8 @@ function computeActiveSessionBroadcast(
   const out: ActiveAgentSessionSnapshot[] = [];
   const inPane = new Set<SessionId>();
   for (const [paneId, pane] of state.panesById.entries()) {
-    const tab = state.sessions.get(pane.sessionId);
+    const sessionId = paneSessionId(pane);
+    const tab = sessionId ? state.sessions.get(sessionId) : undefined;
     if (!tab) continue;
     inPane.add(tab.id);
     if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
@@ -297,7 +300,7 @@ export function activeBroadcastSignature(state: WorkspaceState): string {
   if (!state.hydrated) return " unhydrated";
   const parts: string[] = [`m:${state.selectedModel ?? ""}`, `f:${state.focusedPaneId ?? ""}`];
   for (const [paneId, pane] of state.panesById.entries())
-    parts.push(`P:${paneId}>${pane.sessionId}`);
+    parts.push(`P:${paneId}>${pane.kind === "terminal" ? pane.mountKey : pane.sessionId}`);
   for (const tab of state.sessions.values()) {
     parts.push(
       `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +
@@ -395,15 +398,17 @@ function paneMetadataKey(
 ): string {
   const panes: Record<string, unknown> = {};
   for (const [paneId, pane] of state.panesById.entries()) {
-    panes[paneId] = {
-      sessionId: pane.sessionId,
-      tab: state.sessions.get(pane.sessionId)
-        ? sessionMetaForPersistence(
-            state.sessions.get(pane.sessionId)!,
-            selectionFor?.(pane.sessionId) ?? undefined,
-          )
-        : null,
-    };
+    const sessionId = paneSessionId(pane);
+    const session = sessionId ? state.sessions.get(sessionId) : undefined;
+    panes[paneId] =
+      pane.kind === "terminal"
+        ? { terminal: pane.mountKey }
+        : {
+            sessionId: pane.sessionId,
+            tab: session
+              ? sessionMetaForPersistence(session, selectionFor?.(pane.sessionId) ?? undefined)
+              : null,
+          };
   }
   return JSON.stringify({
     layout: state.layout,
@@ -453,6 +458,23 @@ function persistSettledTranscripts(
   }
 }
 
+function closeRemovedTerminalPanes(
+  prevState: WorkspaceState,
+  nextState: WorkspaceState,
+  deps: WorkspaceEffectDeps,
+): void {
+  if (!deps.closeTerminalOwner || prevState.panesById === nextState.panesById) return;
+  const surviving = new Set<string>();
+  for (const pane of nextState.panesById.values()) {
+    if (pane.kind === "terminal") surviving.add(pane.mountKey);
+  }
+  for (const pane of prevState.panesById.values()) {
+    if (pane.kind === "terminal" && !surviving.has(pane.mountKey)) {
+      deps.closeTerminalOwner(pane.mountKey);
+    }
+  }
+}
+
 export function runWorkspaceEffect(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -461,6 +483,7 @@ export function runWorkspaceEffect(
 ): void {
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
+  closeRemovedTerminalPanes(prevState, nextState, deps);
 
   if (action.type === "hydrate") {
     runInitialApiEffects(nextState, deps);
