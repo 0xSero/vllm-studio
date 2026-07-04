@@ -291,7 +291,9 @@ function useActiveCanvasSessionEffects({
 }
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
-  const { state, dispatch, handles } = useWorkspace();
+  // The quick panel is a throwaway surface: fresh session each time, never
+  // restoring (or overwriting) the main window's persisted workspace.
+  const { state, dispatch, handles } = useWorkspace({ ephemeral: Boolean(compact) });
   return (
     <AgentWorkspaceShell state={state} dispatch={dispatch} handles={handles} compact={compact} />
   );

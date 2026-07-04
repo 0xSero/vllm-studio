@@ -31,14 +31,17 @@ export function useWorkspaceHydrationEffects({
   dispatch,
   projectsRef,
   toolsRef,
+  skipRestore = false,
 }: {
   dispatch: WorkspaceDispatch;
   projectsRef: RefObject<ProjectsContextValue>;
   toolsRef: RefObject<ToolsContextValue>;
+  /** Ephemeral workspaces (quick panel) always start fresh. */
+  skipRestore?: boolean;
 }): void {
   useMountSubscription(() => {
     const params = currentSearchParams();
-    const restoreWorkspace = shouldRestoreWorkspace(params);
+    const restoreWorkspace = !skipRestore && shouldRestoreWorkspace(params);
     const { workspace, selections, legacyRuntimeKeys } = restoreWorkspace
       ? loadInitialFromStorage(window.localStorage)
       : { workspace: {}, selections: new Map(), legacyRuntimeKeys: new Map() };
@@ -72,7 +75,7 @@ export function useWorkspaceHydrationEffects({
       workspaceCommands().unbind();
       unsubscribe();
     };
-  }, [dispatch, projectsRef, toolsRef]);
+  }, [dispatch, projectsRef, toolsRef, skipRestore]);
 }
 
 type UseWorkspaceRuntimeSyncDeps = {
