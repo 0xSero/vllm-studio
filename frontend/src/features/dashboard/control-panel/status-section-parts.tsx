@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Info, Moon, Square, Sun } from "@/ui/icon-registry";
+import { Moon, Square, Sun } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/features/dashboard/model-stop-confirm";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
@@ -212,10 +212,8 @@ export function StatusMetricStrip({
   compactMetrics: CompactMetricView[];
   metricColumns: MetricColumnView[];
 }) {
-  // Mirrors the usage page's header strip exactly: six even columns of mono
-  // stats separated by hairline rules, values at a fixed type size.
   return (
-    <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--border)/40 pb-5 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 border-b border-(--border)/40 pb-5 sm:grid-cols-3 lg:grid-cols-6">
       {metricColumns.map((metric) => (
         <MetricCell
           key={metric.label}
@@ -233,8 +231,6 @@ export function StatusMetricStrip({
   );
 }
 
-/* One cell shape for all six stats, identical to the usage page's HeaderStat:
-   mono 2xs label, fixed 2xl mono value, optional mono detail line. */
 function MetricCell({
   label,
   value,
@@ -249,10 +245,8 @@ function MetricCell({
   detailTitle?: string;
 }) {
   return (
-    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
-        {label}
-      </dt>
+    <div className="min-w-0 overflow-hidden">
+      <dt className="truncate text-[length:var(--fs-xs)] text-(--dim)">{label}</dt>
       <dd className="mt-1 flex min-w-0 items-baseline gap-1 font-mono text-[length:var(--fs-2xl)] leading-none tabular-nums text-(--fg)">
         <span className="truncate" title={value}>
           {value}
@@ -262,16 +256,11 @@ function MetricCell({
         ) : null}
       </dd>
       {detail ? (
-        <dd className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)">
-          <span className="truncate">{detail}</span>
-          {detailTitle ? (
-            <Info
-              className="h-3 w-3 shrink-0 text-(--dim)/70 hover:text-(--fg)"
-              aria-label={detailTitle}
-            >
-              <title>{detailTitle}</title>
-            </Info>
-          ) : null}
+        <dd
+          className="mt-1 min-w-0 truncate font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/75"
+          title={detailTitle}
+        >
+          {detail}
         </dd>
       ) : null}
     </div>

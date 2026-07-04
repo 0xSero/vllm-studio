@@ -178,7 +178,7 @@ function compactMetricViews(
   perf: ReturnType<typeof resolvePerformanceMetrics>,
 ): CompactMetricView[] {
   return [
-    { label: "Req", value: `${perf.sessions}/${perf.peakReq || perf.sessions}` },
+    { label: "Requests", value: `${perf.sessions}/${perf.peakReq || perf.sessions}` },
     { label: "VRAM", value: ratioMetric(perf.totalMemUsed, perf.vramCapacity, "G", 1) },
     { label: "Power", value: ratioMetric(perf.totalPower, perf.powerLimit, "W") },
   ];

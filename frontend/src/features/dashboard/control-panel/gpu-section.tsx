@@ -63,15 +63,15 @@ export function GpuSection({ gpus }: GpuSectionProps) {
         className="group flex w-full items-center gap-4 text-left"
         aria-expanded={expanded}
       >
-        <div className="flex min-w-0 shrink-0 items-baseline gap-2">
-          <span className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="shrink-0 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
             GPUs
           </span>
-          <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
+          <span className="shrink-0 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
             {sortedGpus.length}
           </span>
           {gpuModelLabel ? (
-            <span className="hidden truncate text-[length:var(--fs-xs)] text-(--dim)/60 md:inline">
+            <span className="hidden max-w-[14rem] truncate text-[length:var(--fs-xs)] text-(--dim)/60 md:inline">
               {gpuModelLabel}
             </span>
           ) : null}
