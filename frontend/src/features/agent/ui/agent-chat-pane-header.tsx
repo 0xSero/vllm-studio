@@ -1,15 +1,13 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { PanelRightClose, PanelRightOpen } from "@/ui/icon-registry";
+import { PanelRightClose, PanelRightOpen, TerminalSquare } from "@/ui/icon-registry";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 
-/* Codex elevated popover: translucent surface over backdrop blur, hairline
-   border, soft shadow — themed, so it works in both light and dark. */
 const CHAT_HEADER_MENU_CLASS =
   "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-lg border border-(--border) bg-(--surface-2)/95 p-1 text-xs text-(--fg) opacity-100 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md";
 
@@ -48,8 +46,6 @@ export function AgentChatPaneHeader({
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
   const reasoningVisible = useReasoningVisible();
-  // When the left sidebar is collapsed, the fixed "expand sidebar" button sits
-  // over the top-left corner. Pad the header so the title never renders under it.
   const sidebarCollapsed = useAppStore((s) => !s.desktopSidebarPinnedOpen);
   const RightPanelIcon = rightPanelOpen ? PanelRightClose : PanelRightOpen;
   const startRename = () => {
@@ -174,6 +170,19 @@ export function AgentChatPaneHeader({
             title="Close pane"
           >
             <CloseIcon className="h-3 w-3 pointer-events-none" />
+          </button>
+        ) : null}
+        {onOpenTerminal ? (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onOpenTerminal}
+            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            title="Open terminal"
+            aria-label="Open terminal"
+          >
+            <TerminalSquare className="pointer-events-none h-3.5 w-3.5" />
           </button>
         ) : null}
         <button

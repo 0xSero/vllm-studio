@@ -122,8 +122,10 @@ export function renderWorkspacePane({
         paneId={paneId}
         pane={pane}
         canClose={collectLeaves(state.layout).length > 1 || canRestoreTerminalOwner(state, paneId)}
+        rightPanelOpen={tools.computer.open}
         onFocus={() => dispatch({ type: "focusPane", paneId })}
         onClose={() => handles.closePane(paneId)}
+        onToggleRightPanel={tools.toggleComputerOpen}
       />
     );
   }

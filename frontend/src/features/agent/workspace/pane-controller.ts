@@ -145,7 +145,7 @@ export function setWorkspaceSplitRatio(
 }
 
 function chatTargetPaneId(state: WorkspaceState): PaneId {
-  if (paneSessionId(state.panesById.get(state.focusedPaneId))) return state.focusedPaneId;
+  if (state.panesById.has(state.focusedPaneId)) return state.focusedPaneId;
   for (const paneId of collectLeaves(state.layout)) {
     if (paneSessionId(state.panesById.get(paneId))) return paneId;
   }
