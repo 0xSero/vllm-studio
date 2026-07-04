@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   AppPage,
+  PageContainer,
   PageState,
   RefreshButton,
   SegmentedControl,
@@ -64,20 +65,14 @@ export default function UsagePage() {
   if (pageStateRender) return <AppPage>{pageStateRender}</AppPage>;
   if (!stats) return null;
 
-  // `stats` is already normalized in useUsage; normalize is idempotent so a
-  // second per-render deep-walk is pure waste.
-  const safeStats = stats;
-  const totals = safeStats.totals;
-  const recent = safeStats.recent_activity;
-  const tpr = safeStats.tokens_per_request;
-  // When a single model is selected, `daily` is narrowed to that model but
-  // peak_days stays all-models — folding the all-model peak into the bar scale
-  // would collapse a low-traffic model's bars to slivers. Drop the peak for a
-  // filtered view; it's only meaningful across all models.
+  const totals = stats.totals;
+  const recent = stats.recent_activity;
+  const tpr = stats.tokens_per_request;
+  const allModelsSelected = selectedModel === "all";
   const chartStats = {
-    ...safeStats,
+    ...stats,
     daily: filteredDaily,
-    ...(selectedModel === "all" ? {} : { peak_days: [] }),
+    ...(allModelsSelected ? {} : { peak_days: [] }),
   };
 
   const handleTabChange = (next: UsageSource) => {
@@ -87,7 +82,7 @@ export default function UsagePage() {
 
   return (
     <AppPage>
-      <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 2xl:px-10">
+      <PageContainer width="md" className="2xl:px-10">
         <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--border)/35 pb-2">
           <span className="mr-1 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--dim)">
             source
@@ -193,8 +188,8 @@ export default function UsagePage() {
           toggleRow={toggleRow}
         />
 
-        {SecondaryMetrics(safeStats)}
-      </div>
+        {SecondaryMetrics(stats)}
+      </PageContainer>
     </AppPage>
   );
 }

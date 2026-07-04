@@ -2,8 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { ChevronDown, Folder, RefreshCw, Search as SearchIcon } from "@/ui/icon-registry";
-import { Table, THead, TBody, TRow, TH, TCell } from "@/ui";
+import { ChevronDown, Folder, Search as SearchIcon } from "@/ui/icon-registry";
+import {
+  AppPage,
+  PageContainer,
+  PageHeader,
+  RefreshButton,
+  Table,
+  THead,
+  TBody,
+  TRow,
+  TH,
+  TCell,
+} from "@/ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { safeJson } from "@/features/agent/safe-json";
@@ -99,8 +110,6 @@ export default function AgentSessionsPage() {
     return sorted;
   }, [sessions, query, projectFilter, statusFilter, activeByPiId, sortField, sortDir]);
 
-  // Counts surfaced in the header chips so the user can see at a glance what
-  // is happening across every project.
   const summary = useMemo(() => {
     const total = sessions?.length ?? 0;
     const visible = rows.length;
@@ -119,45 +128,32 @@ export default function AgentSessionsPage() {
   }
 
   return (
-    <div className="min-h-full bg-(--bg) text-(--fg)">
-      <div className="mx-auto max-w-[1280px] px-6 py-8">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <div className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
-              Agent
-            </div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sessions</h1>
-            <p className="mt-1 text-[length:var(--fs-base)] text-(--dim)">
-              Every conversation with the agent across every project. Search, filter, and jump into
-              any one of them.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <SummaryChip
-              label="Sessions"
-              value={
-                summary.visible === summary.total
-                  ? summary.total
-                  : `${summary.visible}/${summary.total}`
-              }
-            />
-            <SummaryChip
-              label="Running"
-              value={summary.runningCount}
-              accent={summary.runningCount > 0}
-            />
-            <SummaryChip label="Projects" value={summary.projectsCount} />
-            <button
-              type="button"
-              onClick={() => void reload()}
-              className="inline-flex h-8 items-center gap-2 rounded-md bg-(--surface) px-3 text-[length:var(--fs-md)] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
-              title="Refresh"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
+    <AppPage>
+      <PageContainer width="md">
+        <PageHeader
+          eyebrow="Agent"
+          title="Sessions"
+          description="Every conversation with the agent across every project. Search, filter, and jump into any one of them."
+          actions={
+            <>
+              <SummaryChip
+                label="Sessions"
+                value={
+                  summary.visible === summary.total
+                    ? summary.total
+                    : `${summary.visible}/${summary.total}`
+                }
+              />
+              <SummaryChip
+                label="Running"
+                value={summary.runningCount}
+                accent={summary.runningCount > 0}
+              />
+              <SummaryChip label="Projects" value={summary.projectsCount} />
+              <RefreshButton onRefresh={() => void reload()} loading={loading} />
+            </>
+          }
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-9 min-w-[280px] flex-1 items-center gap-2 rounded-md bg-(--surface) px-3">
@@ -289,8 +285,8 @@ export default function AgentSessionsPage() {
             )}
           </TBody>
         </Table>
-      </div>
-    </div>
+      </PageContainer>
+    </AppPage>
   );
 }
 

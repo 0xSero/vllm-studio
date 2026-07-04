@@ -1,12 +1,17 @@
 "use client";
 
 import {
+  Alert,
   AppPage,
   Button,
+  Card,
   Input,
+  PageContainer,
+  PageHeader,
   PageState,
   RefreshButton,
   Select,
+  StatusPill,
   Table,
   TBody,
   TCell,
@@ -15,6 +20,22 @@ import {
   TRow,
 } from "@/ui";
 import { useEnvironments } from "@/features/environments/use-environments";
+import type { EnvironmentWithStatus } from "@/lib/types";
+
+function EnvironmentStatus({ environment }: { environment: EnvironmentWithStatus }) {
+  return (
+    <div className="flex items-center gap-2">
+      <StatusPill tone={environment.running ? "good" : "default"}>
+        {environment.running ? "running" : "stopped"}
+      </StatusPill>
+      {!environment.imagePulled && !environment.running ? (
+        <StatusPill tone="warning" variant="badge">
+          image not pulled
+        </StatusPill>
+      ) : null}
+    </div>
+  );
+}
 
 export default function EnvironmentsPage() {
   const {
@@ -46,32 +67,24 @@ export default function EnvironmentsPage() {
 
   return (
     <AppPage>
-      <div className="mx-auto w-full max-w-[64rem] px-4 py-4 sm:px-6 sm:py-6">
-        <div className="flex items-center justify-between gap-3 border-b border-(--border)/40 pb-3">
-          <div>
-            <h1 className="text-[length:var(--fs-2xl)] font-semibold text-(--fg)">Environments</h1>
-            <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
-              Every docker-capable recipe is seeded here as a container pinned to an official vLLM,
-              SGLang, or llama.cpp image. Adjust the version, then start it.
-            </p>
-          </div>
-          <RefreshButton onRefresh={loadAll} loading={loading} />
-        </div>
+      <PageContainer width="sm">
+        <PageHeader
+          title="Environments"
+          description="Every docker-capable recipe is seeded here as a container pinned to an official vLLM, SGLang, or llama.cpp image. Adjust the version, then start it."
+          actions={<RefreshButton onRefresh={loadAll} loading={loading} />}
+        />
 
         {error ? (
-          <div className="mt-3 rounded-md border border-(--err)/30 bg-(--err)/10 px-3 py-2 text-[length:var(--fs-sm)] text-(--err)">
+          <Alert variant="error" className="mb-5">
             {error}
-          </div>
+          </Alert>
         ) : null}
 
-        <section className="mt-5 rounded-[var(--ui-radius)] border border-(--ui-border) p-4">
-          <h2 className="text-[length:var(--fs-md)] font-medium text-(--fg)">
-            Additional environment
-          </h2>
-          <p className="mt-1 text-[length:var(--fs-xs)] text-(--dim)">
-            Pair an existing recipe with a different engine or image version.
-          </p>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Card
+          title="Additional environment"
+          description="Pair an existing recipe with a different engine or image version."
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Input
               label="Name"
               value={form.name}
@@ -113,7 +126,7 @@ export default function EnvironmentsPage() {
           >
             {creating ? "Creating…" : "Create environment"}
           </Button>
-        </section>
+        </Card>
 
         <section className="mt-5">
           <Table>
@@ -129,7 +142,7 @@ export default function EnvironmentsPage() {
             <TBody>
               {environments.length === 0 ? (
                 <TRow>
-                  <TCell colSpan={5} className="py-6 text-center text-(--dim)">
+                  <TCell colSpan={5} className="py-6 text-center text-(--ui-muted)">
                     No environments yet — add a vLLM, SGLang, or llama.cpp recipe and they are
                     seeded automatically.
                   </TCell>
@@ -144,18 +157,11 @@ export default function EnvironmentsPage() {
                         {environment.engineId} {environment.version}
                         {environment.variant ? `-${environment.variant}` : ""}
                       </TCell>
-                      <TCell className="font-mono text-[length:var(--fs-xs)] text-(--dim)">
+                      <TCell className="font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
                         {environment.image}
                       </TCell>
                       <TCell>
-                        <span className={environment.running ? "text-(--ok)" : "text-(--dim)"}>
-                          {environment.running ? "running" : "stopped"}
-                        </span>
-                        {!environment.imagePulled && !environment.running ? (
-                          <span className="ml-2 text-[length:var(--fs-xs)] text-(--warn)">
-                            image not pulled
-                          </span>
-                        ) : null}
+                        <EnvironmentStatus environment={environment} />
                       </TCell>
                       <TCell align="right">
                         <div className="flex justify-end gap-2">
@@ -203,7 +209,7 @@ export default function EnvironmentsPage() {
             </TBody>
           </Table>
         </section>
-      </div>
+      </PageContainer>
     </AppPage>
   );
 }

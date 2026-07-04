@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "@/ui/icon-registry";
-import { Alert, AppPage, Button, Card, Spinner } from "@/ui";
+import { Alert, AppPage, Button, Card, PageContainer, PageHeader, Spinner } from "@/ui";
 import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
 import type {
   EngineJob,
@@ -132,16 +132,16 @@ export function SetupView({
 }: SetupViewProps) {
   return (
     <AppPage className="min-h-screen">
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="text-sm text-(--dim) uppercase tracking-wider">Setup Wizard</div>
-            <h1 className="text-2xl font-semibold">Local Studio Desktop</h1>
-          </div>
-          <Button variant="secondary" size="sm" onClick={skipSetup}>
-            Skip for now
-          </Button>
-        </div>
+      <PageContainer width="sm">
+        <PageHeader
+          eyebrow="Setup Wizard"
+          title="Local Studio Desktop"
+          actions={
+            <Button variant="secondary" size="sm" onClick={skipSetup}>
+              Skip for now
+            </Button>
+          }
+        />
 
         <div className="flex items-center gap-3 mb-8">
           <SetupStepper step={step} />
@@ -244,12 +244,11 @@ export function SetupView({
             openDashboard={openDashboard}
           />
         )}
-      </div>
+      </PageContainer>
     </AppPage>
   );
 }
 
-/** Failed runtime jobs report a headline plus a multi-line command-output tail. */
 function SetupErrorBody({ error }: { error: string }) {
   const [headline, ...rest] = error.split("\n");
   const detail = rest.join("\n").trim();
