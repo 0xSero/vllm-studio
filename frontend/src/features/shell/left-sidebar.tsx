@@ -280,7 +280,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   </span>
                 </button>
 
-                <div className="mb-1 mt-4 px-2.5 text-[length:var(--fs-sm)] font-normal text-(--dim)/85">
+                <div className="mb-1 mt-5 px-2.5 text-[length:var(--fs-md)] font-normal text-(--dim)">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
