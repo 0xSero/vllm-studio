@@ -1,4 +1,3 @@
-// Primitives
 export { Button } from "./button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./button";
 
@@ -6,7 +5,6 @@ export { MarkdownContent } from "./markdown-content";
 export { RightDetailPanel } from "./right-detail-panel";
 export type { RightDetailPanelProps } from "./right-detail-panel";
 
-// Form Controls
 export { Input } from "./input";
 export type { InputProps } from "./input";
 
@@ -27,7 +25,6 @@ export { FormSection, CheckboxRow } from "./form-layout";
 export { SearchInput } from "./search-input";
 export type { SearchInputProps } from "./search-input";
 
-// Compound Components
 export { UiModal, UiModalHeader } from "./modal";
 export type { UiModalProps, UiModalHeaderProps } from "./modal";
 
@@ -40,14 +37,12 @@ export type { CardProps, CardPadding } from "./card";
 export { Alert } from "./alert";
 export type { AlertProps, AlertVariant } from "./alert";
 
-// Migrated from components/shared/
 export { PageState } from "./page-state";
 export type { PageStateProps } from "./page-state";
 
 export { RefreshButton } from "./refresh-button";
 export type { RefreshButtonProps } from "./refresh-button";
 
-// Table
 export { Table, THead, TBody, TRow, TH, SortableTH, TCell } from "./table";
 export type {
   TableProps,
@@ -59,9 +54,8 @@ export type {
   TCellProps,
 } from "./table";
 
-// Shared app/page composition
-export { AppPage, PageHeader, SectionNav, RefreshIconButton } from "./page";
-export type { SectionNavItem } from "./page";
+export { AppPage, PageContainer, PageHeader, SectionNav, RefreshIconButton } from "./page";
+export type { SectionNavItem, PageWidth } from "./page";
 
 export {
   ListGroup,
@@ -79,7 +73,6 @@ export { SegmentedControl } from "./segmented-control";
 export type { SegmentedItem } from "./segmented-control";
 export { ColorField } from "./color-field";
 
-// Display primitives
 export { ProgressBar } from "./progress-bar";
 export { Stat } from "./stat";
 export { SectionLabel } from "./section-label";
@@ -93,5 +86,4 @@ export type { UiTone, StatusPillVariant } from "./status";
 export { ModelLogo } from "./model-logo";
 export { HuggingFaceModelCardPanel } from "./huggingface-model-card";
 
-// Icons (also importable directly from "@/ui/icons").
 export { SitegeistIcon, PanelIcon } from "./icons";

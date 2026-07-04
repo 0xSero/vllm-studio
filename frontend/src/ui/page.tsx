@@ -24,14 +24,47 @@ export function AppPage({ children, className }: { children: ReactNode; classNam
   );
 }
 
+export type PageWidth = "sm" | "md" | "lg" | "xl";
+
+const pageWidthClasses: Record<PageWidth, string> = {
+  sm: "max-w-[64rem]",
+  md: "max-w-[86rem]",
+  lg: "max-w-[92rem]",
+  xl: "max-w-[118rem]",
+};
+
+export function PageContainer({
+  width = "md",
+  children,
+  className,
+}: {
+  width?: PageWidth;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "mx-auto w-full px-4 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-6",
+        pageWidthClasses[width],
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function PageHeader({
   eyebrow,
   title,
+  description,
   status,
   actions,
 }: {
   eyebrow?: string;
   title: ReactNode;
+  description?: ReactNode;
   status?: ReactNode;
   actions?: ReactNode;
 }) {
@@ -46,6 +79,9 @@ export function PageHeader({
         <h2 className="mt-1 truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
           {title}
         </h2>
+        {description ? (
+          <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{description}</p>
+        ) : null}
       </div>
       {(actions ?? status) ? (
         <div className="flex shrink-0 items-center gap-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
