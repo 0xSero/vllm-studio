@@ -25,6 +25,15 @@ controllers. See README.md for the system outline and architecture diagrams.
 - Prefer momentum over permission. Make a decision, record it, keep moving.
 - Never print, log, commit, or otherwise expose credentials.
 - Never bypass git hooks with `--no-verify`.
+- **Always rebuild the installed desktop app after shipping frontend work.** Any
+  turn that lands a feature or bug fix touching `frontend/` MUST finish by
+  rebuilding and reinstalling the canonical Electron app — the desktop bundles
+  its own frontend, so uninstalled changes are invisible to the user. Run the
+  full reinstall in "Desktop reinstall" below (`desktop:dist` → `rm -rf` +
+  `ditto` into `/Applications/Local Studio.app` → relaunch) and confirm
+  `GET /api/desktop-health` returns 200 before yielding. Do not make the user
+  ask. Skip only for controller-only or docs-only changes that never touch
+  `frontend/`, or when the user explicitly says not to.
 
 ## Code standards (non-negotiable)
 
