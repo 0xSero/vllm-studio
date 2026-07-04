@@ -32,3 +32,28 @@ export function terminalOwnerLabel(owner: TerminalOwner, index: number): string 
   if (title) return title;
   return owner.kind === "project" ? "Project terminal" : `Terminal ${index + 1}`;
 }
+
+export type TerminalFocus = {
+  id: string;
+  piSessionId?: string | null;
+  projectId?: string | null;
+};
+
+export function isTerminalOwnerVisible(
+  owner: TerminalOwner,
+  focusedSession: TerminalFocus | null,
+  activeProjectId: string | null,
+): boolean {
+  if (focusedSession) {
+    if (owner.piSessionId != null && owner.piSessionId === (focusedSession.piSessionId ?? null)) {
+      return true;
+    }
+    if (owner.sessionId === focusedSession.id) return true;
+    return (
+      owner.sessionId == null &&
+      owner.piSessionId == null &&
+      (owner.projectId ?? null) === (focusedSession.projectId ?? null)
+    );
+  }
+  return owner.projectId == null || owner.projectId === activeProjectId;
+}

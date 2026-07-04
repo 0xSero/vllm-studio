@@ -165,18 +165,15 @@ export function selectPersistentTerminalOwner(ownerKey: string): void {
 }
 
 export function removePersistentTerminalOwner(ownerKey: string): TerminalOwner | null {
-  const key = ownerKey.trim();
-  const removed = terminalState.owners.find((owner) => owner.mountKey === key) ?? null;
-  if (!removed) return null;
-  const owners = terminalState.owners.filter((owner) => owner.mountKey !== key);
-  setTerminalState({ owners, activeOwnerKey: activeKeyFor(owners, terminalState.activeOwnerKey) });
-  return removed;
+  return removePersistentTerminalOwners([ownerKey.trim()])[0] ?? null;
 }
 
-export function clearPersistentTerminalOwners(): TerminalOwner[] {
-  if (terminalState.owners.length === 0) return [];
-  const removed = terminalState.owners;
-  setTerminalState({ owners: [], activeOwnerKey: null });
+export function removePersistentTerminalOwners(ownerKeys: readonly string[]): TerminalOwner[] {
+  const keys = new Set(ownerKeys);
+  const removed = terminalState.owners.filter((owner) => keys.has(owner.mountKey));
+  if (removed.length === 0) return [];
+  const owners = terminalState.owners.filter((owner) => !keys.has(owner.mountKey));
+  setTerminalState({ owners, activeOwnerKey: activeKeyFor(owners, terminalState.activeOwnerKey) });
   return removed;
 }
 
@@ -192,23 +189,17 @@ function subscribeTerminalOwners(listener: () => void): () => void {
 export function usePersistentTerminalOwners(
   active: boolean,
   owner: TerminalOwner | null,
+  isVisible: (owner: TerminalOwner) => boolean,
 ): TerminalOwnersSnapshot {
   const subscribe = useCallback(
     (notify: () => void) => {
       const unsubscribe = subscribeTerminalOwners(notify);
-      if (active && owner) {
-        const activeOwnerExists =
-          terminalState.activeOwnerKey &&
-          terminalState.owners.some(
-            (terminal) => terminal.mountKey === terminalState.activeOwnerKey,
-          );
-        if (!activeOwnerExists) {
-          queueMicrotask(() => rememberTerminalOwner(owner, { select: true }));
-        }
+      if (active && owner && !terminalState.owners.some(isVisible)) {
+        queueMicrotask(() => rememberTerminalOwner(owner, { select: true }));
       }
       return unsubscribe;
     },
-    [active, owner],
+    [active, owner, isVisible],
   );
 
   return useSyncExternalStore(subscribe, getTerminalOwnersSnapshot, getTerminalOwnersSnapshot);

@@ -16,9 +16,9 @@ import {
 } from "@/ui/icon-registry";
 import { CloseIcon } from "@/ui/icons";
 import {
-  clearPersistentTerminalOwners,
   rememberPersistentTerminalOwner,
   removePersistentTerminalOwner,
+  removePersistentTerminalOwners,
   selectPersistentTerminalOwner,
   usePersistentTerminalOwners,
   type TerminalOwnersSnapshot,
@@ -35,6 +35,7 @@ import type { Session } from "@/features/agent/runtime/types";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import {
+  isTerminalOwnerVisible,
   terminalOwnerLabel,
   uniqueTerminalKeys,
   type TerminalOwner,
@@ -120,8 +121,8 @@ function terminalBridge() {
   ).localStudioDesktop?.terminal;
 }
 
-function closePersistedTerminalOwners() {
-  const closedOwners = clearPersistentTerminalOwners();
+function closePersistedTerminalOwners(owners: readonly TerminalOwner[]) {
+  const closedOwners = removePersistentTerminalOwners(owners.map((owner) => owner.mountKey));
   const bridge = terminalBridge();
   for (const owner of closedOwners) void bridge?.closeOwner?.(owner.mountKey);
 }
@@ -151,10 +152,23 @@ export function AgentBrowserPanel({
     () => terminalOwnerFor(activeProject, focusedSession),
     [activeProject, focusedSession],
   );
+  const isOwnerVisible = useCallback(
+    (owner: TerminalOwner) =>
+      isTerminalOwnerVisible(owner, focusedSession, activeProject?.id ?? null),
+    [activeProject, focusedSession],
+  );
   const terminalState = usePersistentTerminalOwners(
     tools.computer.open && tools.computer.tab === "terminal",
     terminalOwner,
+    isOwnerVisible,
   );
+  const visibleTerminalState = useMemo<TerminalOwnersSnapshot>(() => {
+    const owners = terminalState.owners.filter(isOwnerVisible);
+    const activeOwnerKey = owners.some((owner) => owner.mountKey === terminalState.activeOwnerKey)
+      ? terminalState.activeOwnerKey
+      : (owners[0]?.mountKey ?? null);
+    return { owners, activeOwnerKey };
+  }, [isOwnerVisible, terminalState]);
   const openTerminalForFocusedSession = useCallback(() => {
     if (terminalOwner) rememberPersistentTerminalOwner(terminalOwner, { select: true });
     tools.setComputerTab("terminal");
@@ -169,21 +183,21 @@ export function AgentBrowserPanel({
   const closeTerminalOwner = useCallback(
     (ownerKey: string) => {
       closePersistedTerminalOwner(ownerKey);
-      if (terminalState.owners.length <= 1) tools.closeComputerTab("terminal");
+      if (visibleTerminalState.owners.length <= 1) tools.closeComputerTab("terminal");
     },
-    [terminalState.owners.length, tools],
+    [visibleTerminalState.owners.length, tools],
   );
   const handleComputerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.metaKey || event.ctrlKey) || !event.altKey) return;
       const index = Number(event.key) - 1;
       if (!Number.isInteger(index) || index < 0) return;
-      const owner = terminalState.owners[index];
+      const owner = visibleTerminalState.owners[index];
       if (!owner) return;
       event.preventDefault();
       selectTerminalOwner(owner.mountKey);
     },
-    [selectTerminalOwner, terminalState.owners],
+    [selectTerminalOwner, visibleTerminalState.owners],
   );
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, focusedSession?.cwd ?? activeProject?.path ?? "");
@@ -246,11 +260,11 @@ export function AgentBrowserPanel({
         return;
       }
       if (closing === "terminal") {
-        closePersistedTerminalOwners();
+        closePersistedTerminalOwners(visibleTerminalState.owners);
       }
       tools.closeComputerTab(closing);
     },
-    [closeSideChat, tools],
+    [closeSideChat, tools, visibleTerminalState.owners],
   );
   return (
     <aside
@@ -270,7 +284,7 @@ export function AgentBrowserPanel({
       <ComputerHeader
         tab={tools.computer.tab}
         openTabs={tools.computer.tabs}
-        terminalState={terminalState}
+        terminalState={visibleTerminalState}
         onSelectTab={tools.setComputerTab}
         onOpenCurrentTerminal={openTerminalForFocusedSession}
         onSelectTerminalOwner={selectTerminalOwner}
@@ -301,7 +315,7 @@ export function AgentBrowserPanel({
 
       <PersistentTerminals
         active={tools.computer.open && tools.computer.tab === "terminal"}
-        activeOwnerKey={terminalState.activeOwnerKey}
+        activeOwnerKey={visibleTerminalState.activeOwnerKey}
         terminals={terminalState.owners}
       />
     </aside>
