@@ -4,17 +4,21 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
+import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const MAX_RENDERED_LINES = 20_000;
 
 export function useLogs() {
-  const [sessions, setSessions] = useState<LogSession[]>([]);
+  // Stale-while-revalidate: paint the last-loaded session list instantly on
+  // navigation while the fresh fetch runs in the background.
+  const cachedSessions = readPageCache<LogSession[]>("logs:sessions");
+  const [sessions, setSessions] = useState<LogSession[]>(() => cachedSessions ?? []);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   const [contentFilter, setContentFilter] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedSessions === null);
   const [loadingContent, setLoadingContent] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -25,6 +29,7 @@ export function useLogs() {
   const loadSessions = useCallback(async () => {
     try {
       const data = await api.getLogSessions();
+      writePageCache("logs:sessions", data.sessions || []);
       setSessions(data.sessions || []);
       if (data.sessions?.length > 0 && !selectedSession) setSelectedSession(data.sessions[0].id);
     } catch (e) {

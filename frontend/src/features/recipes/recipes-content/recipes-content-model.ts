@@ -5,6 +5,7 @@ import api from "@/lib/api/client";
 import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
+import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { delay } from "@/lib/async";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
@@ -17,9 +18,12 @@ export type RecipesContentTab = "recipes" | "explore" | "downloads";
 
 export function useRecipesContentModel() {
   const [tab, setTab] = useState<RecipesContentTab>("recipes");
-  const [loading, setLoading] = useState(true);
+  // Stale-while-revalidate: paint the last-loaded recipe list instantly on
+  // navigation while the fresh fetch runs in the background.
+  const cachedRecipes = readPageCache<RecipeWithStatus[]>("recipes:list");
+  const [loading, setLoading] = useState(cachedRecipes === null);
   const [refreshing, setRefreshing] = useState(false);
-  const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
+  const [recipes, setRecipes] = useState<RecipeWithStatus[]>(() => cachedRecipes ?? []);
   const [filter, setFilter] = useState("");
   const [pinnedRecipes, setPinnedRecipes] = useState<Set<string>>(new Set());
   const [recipeMenuOpen, setRecipeMenuOpen] = useState<string | null>(null);
@@ -31,7 +35,9 @@ export function useRecipesContentModel() {
   const [modalRecipe, setModalRecipe] = useState<RecipeEditor | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>(
+    () => readPageCache<ModelInfo[]>("recipes:models") ?? [],
+  );
 
   const { launchProgress } = useRealtimeStatusStore();
 
@@ -62,6 +68,8 @@ export function useRecipesContentModel() {
         api.getModels().catch(() => ({ models: [] as ModelInfo[] })),
       ]);
       const recipesList = recipesData.recipes || [];
+      writePageCache("recipes:list", recipesList);
+      writePageCache("recipes:models", modelsData.models || []);
       setRecipes(recipesList);
       const running = recipesList.find((r) => r.status === "running")?.id || null;
       setRunningRecipeId(running);

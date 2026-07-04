@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import api from "@/lib/api/client";
 import type { EnvironmentEngineId, EnvironmentWithStatus, RecipeWithStatus } from "@/lib/types";
+import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const ENGINE_OPTIONS: Array<{ value: EnvironmentEngineId; label: string }> = [
@@ -28,8 +29,14 @@ const emptyForm = (): EnvironmentFormState => ({
 });
 
 export function useEnvironments() {
-  const [environments, setEnvironments] = useState<EnvironmentWithStatus[]>([]);
-  const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
+  // Stale-while-revalidate: paint the last-loaded lists instantly on
+  // navigation, refresh in the background (controller calls can take seconds).
+  const [environments, setEnvironments] = useState<EnvironmentWithStatus[]>(
+    () => readPageCache<EnvironmentWithStatus[]>("environments:list") ?? [],
+  );
+  const [recipes, setRecipes] = useState<RecipeWithStatus[]>(
+    () => readPageCache<RecipeWithStatus[]>("environments:recipes") ?? [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<EnvironmentFormState>(emptyForm());
@@ -43,6 +50,8 @@ export function useEnvironments() {
         api.getEnvironments(),
         api.getRecipes(),
       ]);
+      writePageCache("environments:list", environmentsData.environments);
+      writePageCache("environments:recipes", recipesData.recipes);
       setEnvironments(environmentsData.environments);
       setRecipes(recipesData.recipes);
     } catch (loadError) {

@@ -14,6 +14,7 @@ import {
   setStoredBackendUrl,
 } from "@/lib/api/connection";
 import { normalizeControllerUrl } from "@/lib/api/controllers";
+import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
@@ -47,8 +48,14 @@ const mergeApiSettings = (server?: Partial<ApiConnectionSettings>): ApiConnectio
 };
 
 export function useSettings() {
-  const [data, setData] = useState<ConfigData | null>(null);
-  const [compatibilityReport, setCompatibilityReport] = useState<CompatibilityReport | null>(null);
+  // Stale-while-revalidate: seed from the last-loaded config so navigating to
+  // Settings paints instantly while the controller fetch refreshes it.
+  const [data, setData] = useState<ConfigData | null>(() =>
+    readPageCache<ConfigData>("settings:config"),
+  );
+  const [compatibilityReport, setCompatibilityReport] = useState<CompatibilityReport | null>(() =>
+    readPageCache<CompatibilityReport>("settings:compat"),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -151,6 +158,8 @@ export function useSettings() {
       const configData = configResult.value;
       const compatibility =
         compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null;
+      writePageCache("settings:config", configData);
+      if (compatibility) writePageCache("settings:compat", compatibility);
       setData(configData);
       setCompatibilityReport(compatibility);
       setBackendOnline(true);

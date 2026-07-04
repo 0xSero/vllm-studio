@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { PeakMetrics, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
+import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 import type { SortDirection, SortField } from "@/features/usage/model-performance-table-model";
@@ -17,8 +18,15 @@ function normalizePeakNumber(value: unknown): number | null {
 export type UsageSource = "provider" | "pi-sessions";
 
 export function useUsage(source: UsageSource = "provider") {
-  const [stats, setStats] = useState<UsageStats | null>(null);
-  const [peakMetrics, setPeakMetrics] = useState<Map<string, PeakMetrics>>(new Map());
+  // Stale-while-revalidate: the controller round-trip can take seconds, so
+  // seed from the last-loaded data and refresh in the background instead of
+  // blanking the page behind a spinner on every navigation.
+  const [stats, setStats] = useState<UsageStats | null>(() =>
+    readPageCache<UsageStats>(`usage:stats:${source}`),
+  );
+  const [peakMetrics, setPeakMetrics] = useState<Map<string, PeakMetrics>>(
+    () => readPageCache<Map<string, PeakMetrics>>("usage:peaks") ?? new Map(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -36,7 +44,9 @@ export function useUsage(source: UsageSource = "provider") {
         fetchUsage,
         api.getPeakMetrics().catch(() => ({ metrics: [] })),
       ]);
-      setStats(normalizeUsageStats(usageData));
+      const normalized = normalizeUsageStats(usageData);
+      writePageCache(`usage:stats:${source}`, normalized);
+      setStats(normalized);
 
       if (Array.isArray(peakResult.metrics)) {
         const metricsMap = new Map<string, PeakMetrics>();
@@ -57,6 +67,7 @@ export function useUsage(source: UsageSource = "provider") {
             total_requests: normalizePeakNumber(metric.total_requests) ?? 0,
           });
         }
+        writePageCache("usage:peaks", metricsMap);
         setPeakMetrics(metricsMap);
       }
     } catch (e) {
