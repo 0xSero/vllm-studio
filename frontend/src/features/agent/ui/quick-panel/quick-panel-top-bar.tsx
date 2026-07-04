@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
+import { ExternalLink } from "@/ui/icon-registry";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -28,17 +29,26 @@ export function QuickPanelTopBar({
   hasThread: boolean;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2 py-1">
-      <QuickProjectPicker projects={projects} />
+    // The bar doubles as the frameless window's drag handle; interactive
+    // children opt back out so clicks don't start a window drag.
+    <div
+      className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-(--border)/70 px-2 [-webkit-app-region:drag]"
+      onDoubleClick={(event) => event.preventDefault()}
+    >
+      <div className="[-webkit-app-region:no-drag]">
+        <QuickProjectPicker projects={projects} />
+      </div>
       {hasThread && projectId ? (
         <button
           type="button"
           onClick={() =>
             void getQuickPanelBridge()?.focusMainAndNavigate(projectId, sessionId ?? undefined)
           }
-          className="shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          title="Open in Local Studio"
+          aria-label="Open in Local Studio"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--dim) transition-colors [-webkit-app-region:no-drag] hover:bg-(--hover) hover:text-(--fg)"
         >
-          Open in Local Studio
+          <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>
       ) : null}
     </div>
