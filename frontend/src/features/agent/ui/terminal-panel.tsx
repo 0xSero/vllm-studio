@@ -88,7 +88,6 @@ type PtyBootOptions = {
   ownerKey: string;
 };
 
-/** Resolve the Geist Mono font stack from the container's computed styles. */
 function resolveTerminalFont(cssVar: (name: string) => string): string {
   const resolved = cssVar("--font-geist-mono") || "";
   return (
@@ -97,7 +96,6 @@ function resolveTerminalFont(cssVar: (name: string) => string): string {
   );
 }
 
-/** Build the xterm theme object from the ZCode `--color-terminal-*` palette. */
 function buildTerminalTheme(cssVar: (name: string) => string): Record<string, string> {
   const v = (name: string, fallback: string) => cssVar(name) || fallback;
   return {
@@ -127,7 +125,6 @@ function buildTerminalTheme(cssVar: (name: string) => string): Record<string, st
 
 type ITerminalLoadable = { loadAddon(addon: unknown): void };
 
-/** Load the optional web-links addon, routing clicks through the desktop opener. */
 function loadWebLinksAddon(
   term: ITerminalLoadable,
   webLinksModule: {
@@ -146,9 +143,7 @@ function loadWebLinksAddon(
         else window.open(uri, "_blank", "noopener");
       }),
     );
-  } catch {
-    // optional addon — silently skip
-  }
+  } catch {}
 }
 
 function useTerminalPanelEffects({
@@ -271,11 +266,6 @@ async function bootPty({
     );
   });
   const { id, replay } = await pty.open({ cwd: cwd ?? undefined, cols, rows, ownerKey });
-  // The panel may have unmounted while pty.open was in flight. The outer effect
-  // cleanup already ran (with cleanupTerminal still null, so it disposed
-  // nothing), so tear down the listeners we registered before the await here —
-  // otherwise every aborted boot permanently leaks a pty-data + pty-exit
-  // ipcRenderer listener and wires observers to a dead element.
   if (refs.disposed) {
     dataDisposer();
     exitDisposer();
@@ -301,32 +291,9 @@ async function bootPty({
     try {
       fit.fit();
       void pty.resize(id, term.cols, term.rows);
-    } catch {
-      // ignore
-    }
+    } catch {}
   });
   resizeObserver.observe(element);
-  term.attachCustomKeyEventHandler((event) => {
-    if (event.type !== "keydown") return true;
-    const meta = event.metaKey || event.ctrlKey;
-    if (meta && (event.key === "c" || event.key === "C")) {
-      const selection = term.getSelection();
-      if (selection) {
-        navigator.clipboard?.writeText(selection).catch(() => undefined);
-        return false;
-      }
-    }
-    if (meta && (event.key === "v" || event.key === "V")) {
-      navigator.clipboard
-        ?.readText()
-        .then((text) => {
-          if (text) void pty.write(id, text);
-        })
-        .catch(() => undefined);
-      return false;
-    }
-    return true;
-  });
   return () => {
     dataDisposer();
     exitDisposer();
