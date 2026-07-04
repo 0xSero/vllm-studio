@@ -15,6 +15,7 @@ type ListSessionsOptions = {
   ids?: string[];
   includeArchived?: boolean;
   archivedOnly?: boolean;
+  limit?: number;
 };
 
 type NormalizedListSessionsOptions = {
@@ -224,25 +225,51 @@ async function readListCandidate(
   }
 }
 
+function listCandidateFiles(cwd: string): Array<{ dir: string; filename: string; mtimeMs: number }> {
+  const candidates: Array<{ dir: string; filename: string; mtimeMs: number }> = [];
+  for (const dir of sessionsDirsForCwd(cwd)) {
+    if (!existsSync(dir)) continue;
+    for (const filename of readdirSync(dir)) {
+      if (!filename.endsWith(".jsonl")) continue;
+      try {
+        candidates.push({ dir, filename, mtimeMs: statSync(path.join(dir, filename)).mtimeMs });
+      } catch {
+        continue;
+      }
+    }
+  }
+  return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+function limitSatisfied(
+  summariesById: Map<string, SessionSummary>,
+  limit: number | undefined,
+  nextMtimeMs: number,
+): boolean {
+  if (!limit || summariesById.size < limit) return false;
+  const startTimes = [...summariesById.values()]
+    .map(summaryStartTime)
+    .sort((a, b) => b - a);
+  return nextMtimeMs < startTimes[limit - 1];
+}
+
 export async function listSessions(
   cwd: string,
   options: ListSessionsOptions = {},
 ): Promise<SessionSummary[]> {
   const summariesById = new Map<string, SessionSummary>();
   const normalizedOptions = normalizeListOptions(options);
-  for (const dir of sessionsDirsForCwd(cwd)) {
-    if (!existsSync(dir)) continue;
-    for (const filename of readdirSync(dir)) {
-      const summary = await readListCandidate(dir, filename, normalizedOptions);
-      const existing = summary ? summariesById.get(summary.id) : null;
-      if (summary && (!existing || summary.updatedAt > existing.updatedAt)) {
-        summariesById.set(summary.id, summary);
-      }
+  for (const candidate of listCandidateFiles(cwd)) {
+    if (limitSatisfied(summariesById, options.limit, candidate.mtimeMs)) break;
+    const summary = await readListCandidate(candidate.dir, candidate.filename, normalizedOptions);
+    const existing = summary ? summariesById.get(summary.id) : null;
+    if (summary && (!existing || summary.updatedAt > existing.updatedAt)) {
+      summariesById.set(summary.id, summary);
     }
   }
   const summaries = [...summariesById.values()];
   summaries.sort((a, b) => summaryStartTime(b) - summaryStartTime(a));
-  return summaries;
+  return options.limit && options.limit > 0 ? summaries.slice(0, options.limit) : summaries;
 }
 
 export function findSessionFile(cwd: string, sessionId: string): string | null {

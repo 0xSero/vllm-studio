@@ -27,6 +27,8 @@ import {
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
 
+const SESSIONS_PAGE_SIZE = 5;
+
 /**
  * The set of session ids the runtime currently reports as actively working —
  * including sessions running in the BACKGROUND (not open in any pane). Lets the
@@ -175,6 +177,7 @@ export function ProjectSessions({
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(SESSIONS_PAGE_SIZE);
   const activeRuntimeIds = useActiveRuntimeIds();
   const unseenFinishedIds = useUnseenFinishedIds();
   const projectActiveSessions = useMemo(
@@ -194,7 +197,7 @@ export function ProjectSessions({
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d`,
+        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + 1}`,
         { cache: "no-store" },
       );
       const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
@@ -204,7 +207,7 @@ export function ProjectSessions({
     } finally {
       setLoading(false);
     }
-  }, [project.path]);
+  }, [project.path, visibleLimit]);
 
   useProjectSessionsReloadEffect(reload);
 
@@ -276,6 +279,8 @@ export function ProjectSessions({
     rows.sort((a, b) => b.sortAt - a.sortAt);
     return rows;
   }, [visibleActiveSessions, recent, historyStartByPiId]);
+  const visibleRows = orderedRows.slice(0, visibleLimit);
+  const hasMore = orderedRows.length > visibleLimit || (sessions?.length ?? 0) > visibleLimit;
 
   return (
     <div className="ml-[17px] flex flex-col border-l border-(--border) pl-1">
@@ -284,7 +289,7 @@ export function ProjectSessions({
       ) : orderedRows.length === 0 ? (
         <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
       ) : (
-        orderedRows.map((row) =>
+        visibleRows.map((row) =>
           row.kind === "active" ? (
             <ActiveSessionRow
               key={row.key}
@@ -304,6 +309,15 @@ export function ProjectSessions({
           ),
         )
       )}
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={() => setVisibleLimit((value) => value + SESSIONS_PAGE_SIZE)}
+          className="flex h-6.5 items-center rounded-md pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim)/80 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/80"
+        >
+          Show more
+        </button>
+      ) : null}
     </div>
   );
 }

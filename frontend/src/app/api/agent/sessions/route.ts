@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
   const cwdParam = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
   const sinceParam = request.nextUrl.searchParams.get("since");
   const idsParam = request.nextUrl.searchParams.get("ids");
+  const limitParam = request.nextUrl.searchParams.get("limit");
+  const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
   const since = parseRelativeSince(sinceParam);
   const ids = idsParam
     ? idsParam
@@ -20,6 +22,9 @@ export async function GET(request: NextRequest) {
         .filter(Boolean)
     : undefined;
   if (!cwdParam) return jsonError("cwd is required");
+  if (limitParam && (limit === undefined || !Number.isInteger(limit) || limit <= 0)) {
+    return jsonError("limit must be a positive integer");
+  }
   if (sinceParam && !since) {
     return jsonError("since must use a relative value like 7d");
   }
@@ -31,6 +36,7 @@ export async function GET(request: NextRequest) {
   }
   const sessions = await listSessions(cwdParam, {
     ...(since ? { since } : {}),
+    ...(limit ? { limit } : {}),
     ids,
     ...archiveQueryOptions(request.nextUrl.searchParams),
   });
