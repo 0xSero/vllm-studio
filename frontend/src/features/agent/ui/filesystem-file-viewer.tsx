@@ -88,9 +88,6 @@ export function FileViewer({
   const highlightedLines = useMemo(() => {
     const lang = languageForPath(filePath);
     if (!lang) return null;
-    // Shared curated highlight.js core (a dozen languages); languages outside
-    // the set degrade to escaped plain text rather than pulling the full
-    // ~190-language package (≈1 MB) into the bundle.
     return highlightFenced(lang, lines.join("\n")).split("\n");
   }, [filePath, lines]);
   const commentsByLine = useMemo(() => {

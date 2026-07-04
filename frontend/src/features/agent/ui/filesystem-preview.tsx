@@ -86,8 +86,6 @@ function previewKindForPath(path: string): PreviewKind | null {
   return null;
 }
 
-// Infer a renderable kind from raw content (no file path available, e.g. the
-// canvas buffer). Markdown is the default since most freeform notes are prose.
 export function detectPreviewKind(content: string): PreviewKind {
   const trimmed = content.trimStart();
   const hasMarkup = /<[A-Za-z]/.test(content);

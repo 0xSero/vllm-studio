@@ -19,8 +19,6 @@ import { Breadcrumb, TreeFileList } from "@/features/agent/ui/filesystem-tree";
 import { useFilesystemPanelEffects } from "@/features/agent/ui/filesystem-panel-effects";
 
 type Props = { cwd: string | null };
-// The file browser intentionally keeps navigation, preview, comments, and edit
-// state together so a selected file behaves as one pane.
 // eslint-disable-next-line complexity
 export function FilesystemPanel({ cwd }: Props) {
   const [relPath, setRelPath] = useState("");
@@ -193,9 +191,7 @@ export function FilesystemPanel({ cwd }: Props) {
         });
         const payload = (await response.json()) as { comment?: FileComment; error?: string };
         if (payload.comment) setComments((current) => [...current, payload.comment!]);
-      } catch {
-        // best-effort; comment store errors surface server-side
-      }
+      } catch {}
       requestContextAttach({
         label: `${openFile.split("/").pop() ?? openFile} · L${line}`,
         path: openFile,
@@ -213,9 +209,7 @@ export function FilesystemPanel({ cwd }: Props) {
           `/api/agent/comments?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}&id=${encodeURIComponent(id)}`,
           { method: "DELETE" },
         );
-      } catch {
-        // best-effort
-      }
+      } catch {}
     },
     [cwd, openFile],
   );
