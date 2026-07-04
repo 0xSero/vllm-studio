@@ -46,7 +46,9 @@ export function StatusHeader({
   recipes?: RecipeWithStatus[];
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    // Stacks on phone widths: the five header actions would otherwise crush
+    // the status line and model name into overlapping slivers.
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1">
         <StatusLine
           backend={backend}
@@ -136,7 +138,7 @@ function StatusHeaderActions({
   recipes?: RecipeWithStatus[];
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <HeaderThemeToggle />
       <HeaderStopButton running={isRunning} />
       {recipes && onLaunch ? (
