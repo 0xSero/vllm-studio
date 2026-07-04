@@ -13,8 +13,8 @@ export const DESKTOP_CONFIG = {
   userDataDir: app.getPath("userData"),
   quickPanel: {
     hotkey: process.env.LOCAL_STUDIO_DESKTOP_QUICK_PANEL_HOTKEY ?? "CommandOrControl+,",
-    homeWindow: { width: 520, height: 340 },
-    threadWindow: { width: 560, height: 640 },
+    homeWindow: { width: 520, height: 520 },
+    threadWindow: { width: 560, height: 860 },
     topInsetPx: 96,
   },
 };

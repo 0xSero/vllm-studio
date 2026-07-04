@@ -11,8 +11,6 @@ import { hardenWebContents } from "./security";
 let panel: BrowserWindow | null = null;
 let isThreadMode = false;
 let persistSizeTimer: NodeJS.Timeout | null = null;
-// Where the user last dragged the panel. While set, mode changes and re-shows
-// anchor to this spot instead of snapping back to the screen-top center.
 let userMovedPanel = false;
 let applyingBounds = false;
 
@@ -28,18 +26,17 @@ function currentModeSize(): PanelSize {
 
 function centeredTopBounds(size: PanelSize): Rectangle {
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const inset = DESKTOP_CONFIG.quickPanel.topInsetPx;
   const width = Math.min(size.width, workArea.width);
-  const height = Math.min(size.height, workArea.height);
+  const height = Math.min(size.height, workArea.height - inset);
   return {
     x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: workArea.y + DESKTOP_CONFIG.quickPanel.topInsetPx,
+    y: workArea.y + inset,
     width,
     height,
   };
 }
 
-/** Bounds for `size` that respect the user's dragged position: keep the
- * panel's current top edge and horizontal center, clamped to its display. */
 function anchoredBounds(window: BrowserWindow, size: PanelSize): Rectangle {
   if (!userMovedPanel) return centeredTopBounds(size);
   const current = window.getBounds();
@@ -92,15 +89,11 @@ function createQuickPanelWindow(appUrl: string): BrowserWindow {
   });
 
   hardenWebContents(window, new URL(appUrl).origin);
-  window.on("blur", () => hideQuickPanel());
   window.on("moved", () => {
     if (applyingBounds) return;
     userMovedPanel = true;
   });
   window.on("resize", () => {
-    // Remember the user's thread-mode size across restarts. Debounced so we
-    // only persist once per drag, and guarded so programmatic home/thread
-    // transitions don't overwrite the remembered size.
     if (applyingBounds || !isThreadMode || !window.isResizable()) return;
     if (persistSizeTimer) clearTimeout(persistSizeTimer);
     persistSizeTimer = setTimeout(() => {
@@ -148,9 +141,6 @@ export function hideQuickPanel(): void {
   }
 }
 
-/** Reload the panel page so the next open starts from a fresh composer.
- * Called on explicit dismiss / open-in-app — NOT on blur-hide, so briefly
- * switching apps doesn't discard an in-progress quick thread. */
 export function resetQuickPanel(): void {
   if (!panel || panel.isDestroyed()) return;
   panel.webContents.reload();
@@ -161,7 +151,6 @@ export function resizeQuickPanelToThread(): void {
   applyBounds(panel, anchoredBounds(panel, threadWindowSize()));
   panel.setResizable(true);
   panel.setMinimumSize(QUICK_PANEL_MIN_THREAD_SIZE.width, QUICK_PANEL_MIN_THREAD_SIZE.height);
-  // Flip mode last so the transition's own resize event isn't persisted.
   isThreadMode = true;
 }
 
