@@ -73,6 +73,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
         LOCAL_STUDIO_CANVAS_SKILL_PATH: process.env.LOCAL_STUDIO_CANVAS_SKILL_PATH,
         LOCAL_STUDIO_PLAN_SKILL_PATH: process.env.LOCAL_STUDIO_PLAN_SKILL_PATH,
         LOCAL_STUDIO_SITEGEIST_RELAY_ENV_PATH: process.env.LOCAL_STUDIO_SITEGEIST_RELAY_ENV_PATH,
+        LOCAL_STUDIO_DATA_DIR: process.env.LOCAL_STUDIO_DATA_DIR,
       };
       Object.assign(process.env, {
         LOCAL_STUDIO_TIMEOUT_EXTENSION_PATH: timeoutExtension,
@@ -86,6 +87,7 @@ test("buildAgentSessionOptions resolves SDK extensions, skills, and env injectio
         LOCAL_STUDIO_CANVAS_SKILL_PATH: canvasSkill,
         LOCAL_STUDIO_PLAN_SKILL_PATH: planSkill,
         LOCAL_STUDIO_SITEGEIST_RELAY_ENV_PATH: relayEnv,
+        LOCAL_STUDIO_DATA_DIR: root,
       });
 
       yield* Effect.gen(function* () {
