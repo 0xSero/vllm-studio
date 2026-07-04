@@ -48,6 +48,7 @@ export function FilesystemPanel({ cwd }: Props) {
   const lastOpenFileByProject = useAppStore((s) => s.lastOpenFileByProject);
   const setLastOpenFileByProject = useAppStore((s) => s.setLastOpenFileByProject);
   const cwdRef = useRef(cwd);
+  const pendingEditRef = useRef<{ caret: number; insert: string | null } | null>(null);
   useFilesystemPanelEffects({
     cwd,
     relPath,
@@ -127,6 +128,30 @@ export function FilesystemPanel({ cwd }: Props) {
   const lines = useMemo(() => fileContent.split("\n"), [fileContent]);
   const previewKind = useMemo(() => previewKindForOpenFile(openFile), [openFile]);
   const dirty = draftContent !== fileContent;
+  const enterEditMode = useCallback(
+    (line: number | null, insert: string | null) => {
+      pendingEditRef.current = {
+        caret: line === null ? 0 : lines.slice(0, line).join("\n").length,
+        insert: line === null ? null : insert,
+      };
+      setViewMode("edit");
+    },
+    [lines],
+  );
+  const focusEditor = useCallback((node: HTMLTextAreaElement | null) => {
+    if (!node) return;
+    node.focus();
+    const pending = pendingEditRef.current;
+    pendingEditRef.current = null;
+    if (!pending) return;
+    const caret = Math.min(pending.caret, node.value.length);
+    if (pending.insert) {
+      node.setRangeText(pending.insert, caret, caret, "end");
+      setDraftContent(node.value);
+    } else {
+      node.setSelectionRange(caret, caret);
+    }
+  }, []);
   const saveFile = useCallback(async () => {
     if (!cwd || !openFile || fileTruncated) return;
     setSavingFile(true);
@@ -171,8 +196,13 @@ export function FilesystemPanel({ cwd }: Props) {
       } catch {
         // best-effort; comment store errors surface server-side
       }
+      requestContextAttach({
+        label: `${openFile.split("/").pop() ?? openFile} · L${line}`,
+        path: openFile,
+        content: `Comment on ${openFile} line ${line}: ${body.trim()}`,
+      });
     },
-    [cwd, openFile],
+    [cwd, openFile, requestContextAttach],
   );
   const removeComment = useCallback(
     async (id: string) => {
@@ -382,6 +412,7 @@ export function FilesystemPanel({ cwd }: Props) {
             ) : null}
             {viewMode === "edit" ? (
               <textarea
+                ref={focusEditor}
                 value={draftContent}
                 onChange={(event) => setDraftContent(event.target.value)}
                 spellCheck={false}
@@ -399,6 +430,7 @@ export function FilesystemPanel({ cwd }: Props) {
                 comments={comments}
                 onAddComment={addComment}
                 onRemoveComment={removeComment}
+                onRequestEdit={enterEditMode}
               />
             )}
           </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { MessageSquarePlus, Minus } from "@/ui/icon-registry";
 import { highlightFenced } from "@/features/agent/highlight-cache";
@@ -72,6 +72,7 @@ export function FileViewer({
   comments,
   onAddComment,
   onRemoveComment,
+  onRequestEdit,
 }: {
   filePath: string;
   lines: string[];
@@ -79,9 +80,11 @@ export function FileViewer({
   comments: FileComment[];
   onAddComment: (line: number, body: string) => void;
   onRemoveComment: (id: string) => void;
+  onRequestEdit: (line: number | null, insert: string | null) => void;
 }) {
   const [composingLine, setComposingLine] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
+  const lastLineRef = useRef<number | null>(null);
   const highlightedLines = useMemo(() => {
     const lang = languageForPath(filePath);
     if (!lang) return null;
@@ -109,6 +112,23 @@ export function FileViewer({
     },
     [draft, onAddComment],
   );
+  const handleDoubleClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target instanceof Element && !event.target.closest("textarea, button"))
+        onRequestEdit(lastLineRef.current, null);
+    },
+    [onRequestEdit],
+  );
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!(event.target instanceof Element) || event.target.closest("textarea, button")) return;
+      const printable = event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (!printable && event.key !== "Enter") return;
+      event.preventDefault();
+      onRequestEdit(lastLineRef.current, printable ? event.key : null);
+    },
+    [onRequestEdit],
+  );
   const renderLine = useCallback(
     (index: number) => {
       const lineNumber = index + 1;
@@ -118,7 +138,12 @@ export function FileViewer({
       const composing = composingLine === lineNumber;
       return (
         <div className="group flex flex-col">
-          <div className="flex items-start gap-1 px-1 hover:bg-(--color-surface-hover)">
+          <div
+            className="flex items-start gap-1 px-1 hover:bg-(--color-surface-hover)"
+            onMouseEnter={() => {
+              lastLineRef.current = lineNumber;
+            }}
+          >
             <span
               className="w-8 shrink-0 select-none text-right font-mono text-(--dim)/70"
               style={{ fontSize: fontSize - 2, lineHeight: `${lineHeight}px` }}
@@ -186,7 +211,7 @@ export function FileViewer({
                     setDraft("");
                   }
                 }}
-                placeholder="Add a comment… (⌘↵ to save)"
+                placeholder="Comment to model… (⌘↵ to send)"
                 className="w-full resize-none rounded-md border border-(--border) bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
                 rows={2}
               />
@@ -206,7 +231,7 @@ export function FileViewer({
                   onClick={() => submitDraft(lineNumber)}
                   className="rounded-md bg-(--fg) px-2 py-0.5 text-[length:var(--fs-xs)] text-(--bg) hover:opacity-85"
                 >
-                  Comment
+                  Comment to model
                 </button>
               </div>
             </div>
@@ -228,7 +253,12 @@ export function FileViewer({
   );
   if (lines.length < 2000) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto py-0.5">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-auto py-0.5 outline-none"
+        tabIndex={0}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+      >
         {lines.map((_, index) => (
           <div key={index}>{renderLine(index)}</div>
         ))}
@@ -237,7 +267,10 @@ export function FileViewer({
   }
   return (
     <Virtuoso
-      className="min-h-0 flex-1"
+      className="min-h-0 flex-1 outline-none"
+      tabIndex={0}
+      onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
       totalCount={lines.length}
       itemContent={(index) => renderLine(index)}
     />
