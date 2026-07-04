@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   useCallback,
   useRef,
@@ -23,14 +23,11 @@ import {
   Menu,
   PanelLeftOpen,
   Square,
-  SquarePen,
   X,
 } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useProjects } from "@/features/agent/projects/context";
-import { isChatsProject } from "@/features/agent/projects/types";
 import { ProjectsNavSection } from "@/features/agent/ui/projects-nav-section";
 import { SessionsCommand } from "@/features/agent/ui/sessions-command";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
@@ -84,8 +81,6 @@ function isRouteActive(pathname: string, href: string): boolean {
 
 export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const chatsProjectId = useProjects().projects.find(isChatsProject)?.id ?? null;
   const { desktopSidebarPinnedOpen, setDesktopSidebarPinnedOpen, sidebarWidth, setSidebarWidth } =
     useAppStore(
       useShallow((s) => ({
@@ -221,7 +216,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         >
           {isExpanded ? (
             <>
-              <div className="sticky top-0 z-50 flex h-10 shrink-0 items-center gap-1 border-b border-(--border)/35 bg-(--sidebar-bg) px-1.5">
+              <div className="sticky top-0 z-50 flex h-10 shrink-0 items-center gap-1 bg-(--sidebar-bg) px-1.5">
                 <button
                   onClick={() => setDesktopSidebarPinnedOpen(false)}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
@@ -249,25 +244,6 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
               </div>
 
               <nav className="flex-1 min-h-0 flex flex-col px-3 py-0.5 overflow-y-auto overflow-x-hidden">
-                {chatsProjectId ? (
-                  <Link
-                    href={`/agent?project=${encodeURIComponent(chatsProjectId)}&new=1`}
-                    onClick={(event) => {
-                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                      event.preventDefault();
-                      router.push(
-                        `/agent?project=${encodeURIComponent(chatsProjectId)}&new=${Date.now().toString(36)}`,
-                      );
-                    }}
-                    className="mb-0.5 flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-(--fg)/90 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)"
-                    title="New chat"
-                  >
-                    <SquarePen className="h-4 w-4 shrink-0 opacity-60" strokeWidth={1.5} />
-                    <span className="flex-1 truncate text-left text-[length:var(--fs-lg)] font-normal">
-                      New chat
-                    </span>
-                  </Link>
-                ) : null}
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
