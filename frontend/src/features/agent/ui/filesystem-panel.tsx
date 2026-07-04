@@ -2,10 +2,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Code,
+  FolderTree,
   Monitor,
   Minus,
   MessageSquarePlus,
-  PanelRightOpen,
   Plus,
   Save,
   SquarePen,
@@ -263,21 +263,20 @@ export function FilesystemPanel({ cwd }: Props) {
           </div>
         </div>
       ) : null}
-      {!fileListOpen ? (
-        <button
-          type="button"
-          onClick={() => setFileListOpen(true)}
-          className="absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded-md border border-(--border) bg-(--color-input) text-(--fg) shadow-[0_4px_16px_rgba(0,0,0,0.35)] hover:bg-(--hover)"
-          title="Show file list"
-          aria-label="Show file list"
-        >
-          <PanelRightOpen className="h-3.5 w-3.5" />
-        </button>
-      ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
         {!openFile ? (
-          <div className="flex h-full items-center justify-center text-[length:var(--fs-sm)] text-(--dim)">
-            Select a file to view.
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-[length:var(--fs-sm)] text-(--dim)">
+            <span>Select a file to view.</span>
+            {!fileListOpen ? (
+              <button
+                type="button"
+                onClick={() => setFileListOpen(true)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+                Show files
+              </button>
+            ) : null}
           </div>
         ) : fileTruncated ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-[length:var(--fs-sm)] text-(--dim)">
@@ -290,10 +289,7 @@ export function FilesystemPanel({ cwd }: Props) {
           </div>
         ) : (
           <>
-            {/* Toolbar: file name + view toggle + font size */}
-            <div
-              className={`flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border)/80 bg-(--color-header) px-2 ${fileListOpen ? "" : "pr-10"}`}
-            >
+            <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border)/80 bg-(--color-header) px-2">
               <div className="min-w-0 flex-1 truncate font-mono text-[length:var(--fs-sm)] text-(--dim)">
                 {openFile}
               </div>
@@ -366,6 +362,17 @@ export function FilesystemPanel({ cwd }: Props) {
                     <Plus className="h-3 w-3" />
                   </button>
                 </div>
+                {!fileListOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setFileListOpen(true)}
+                    className="ml-1 inline-flex h-6 items-center gap-1 rounded-md border border-(--border)/80 bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                    title="Show file list"
+                    aria-label="Show file list"
+                  >
+                    <FolderTree className="h-3 w-3" />
+                  </button>
+                ) : null}
               </div>
             </div>
             {saveError ? (
