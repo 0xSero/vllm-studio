@@ -176,6 +176,21 @@ function WorkspacePaneContent({
   compact?: boolean;
 }) {
   if (showEmptyState) return <ProjectEmptyState />;
+  if (compact) {
+    return (
+      <div className="min-h-0 flex-1">
+        {renderWorkspacePane({
+          paneId: state.focusedPaneId,
+          state,
+          projects,
+          tools,
+          dispatch,
+          handles,
+          compact,
+        })}
+      </div>
+    );
+  }
   return (
     <div className="min-h-0 flex-1">
       <PaneGrid
