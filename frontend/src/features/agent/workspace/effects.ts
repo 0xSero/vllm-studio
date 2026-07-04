@@ -459,10 +459,12 @@ function persistSettledTranscripts(
 }
 
 function closeRemovedTerminalPanes(
+  action: WorkspaceAction,
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
+  if (action.type !== "closePane") return;
   if (!deps.closeTerminalOwner || prevState.panesById === nextState.panesById) return;
   const surviving = new Set<string>();
   for (const pane of nextState.panesById.values()) {
@@ -483,7 +485,7 @@ export function runWorkspaceEffect(
 ): void {
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
-  closeRemovedTerminalPanes(prevState, nextState, deps);
+  closeRemovedTerminalPanes(action, prevState, nextState, deps);
 
   if (action.type === "hydrate") {
     runInitialApiEffects(nextState, deps);

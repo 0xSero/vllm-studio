@@ -10,6 +10,12 @@ const TerminalPanel = dynamic(
   { ssr: false },
 );
 
+export function preloadTerminalPanel(): void {
+  void import("@/features/agent/ui/terminal-panel");
+  void import("@xterm/xterm");
+  void import("@xterm/addon-fit");
+}
+
 export function TerminalPane({
   paneId,
   pane,

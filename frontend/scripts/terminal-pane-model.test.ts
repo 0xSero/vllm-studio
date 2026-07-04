@@ -301,6 +301,19 @@ test("restoring the owner via closePane triggers closeTerminalOwner exactly once
   assert.deepEqual(closed, [`pane-session:${session.id}`]);
 });
 
+test("closing a terminal leaf in a split triggers closeTerminalOwner exactly once with its mountKey", () => {
+  const a = chatSession({ piSessionId: "pi-a" });
+  const b = chatSession({ piSessionId: "pi-b" });
+  const prev = openTerminalPane(twoChatPaneState(a, b), { sourcePaneId: "p-a" });
+  const next = closePane(prev, { paneId: "p-a" });
+  const { deps, closed } = effectDeps();
+
+  runWorkspaceEffect({ type: "closePane", paneId: "p-a" }, prev, next, deps);
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-b"]);
+  assert.deepEqual(closed, [`pane-session:${a.id}`]);
+});
+
 test("opening a terminal and unrelated dispatches never trigger closeTerminalOwner", () => {
   const session = chatSession({ cwd: "/repo/demo", piSessionId: "pi-owner" });
   const prev = stateWithChatPane(session);
@@ -351,7 +364,39 @@ test("url ?new=1 replaces a focused single-leaf terminal with the fresh chat tab
     next,
     deps,
   );
-  assert.deepEqual(closed, [`pane-session:${original.id}`]);
+  assert.deepEqual(closed, []);
+});
+
+test("url session replay replacing a focused terminal keeps the PTY owner alive", () => {
+  const original = chatSession({ cwd: "/repo/orig", piSessionId: "pi-original" });
+  const withTerminal = openTerminalPane(stateWithChatPane(original), { sourcePaneId: "p-init" });
+  const replayTab = chatSession();
+
+  const next = applyUrlNavigation(withTerminal, {
+    key: "nav-replay-keep",
+    project: null,
+    sessionId: "pi-replay",
+    tab: replayTab,
+  });
+
+  assert.equal(asChat(next.panesById.get("p-init")).sessionId, replayTab.id);
+  assert.equal(next.sessions.get(replayTab.id)?.piSessionId, "pi-replay");
+
+  const { deps, closed } = effectDeps();
+  runWorkspaceEffect(
+    {
+      type: "urlNavRequested",
+      key: "nav-replay-keep",
+      project: null,
+      sessionId: "pi-replay",
+      paneId: "p-init",
+      tab: replayTab,
+    },
+    withTerminal,
+    next,
+    deps,
+  );
+  assert.deepEqual(closed, []);
 });
 
 test("writePaneState/restorePersistedPaneState round-trips a single-leaf terminal workspace", () => {

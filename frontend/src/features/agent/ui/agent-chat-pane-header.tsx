@@ -7,6 +7,7 @@ import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
+import { preloadTerminalPanel } from "@/features/agent/ui/terminal-pane";
 
 const CHAT_HEADER_MENU_CLASS =
   "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-lg border border-(--border) bg-(--surface-2)/95 p-1 text-xs text-(--fg) opacity-100 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md";
@@ -177,6 +178,8 @@ export function AgentChatPaneHeader({
             type="button"
             onPointerDown={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
+            onMouseEnter={preloadTerminalPanel}
+            onFocus={preloadTerminalPanel}
             onClick={onOpenTerminal}
             className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
             title="Open terminal"
