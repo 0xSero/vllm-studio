@@ -226,8 +226,12 @@ export function DailyUsageChart({
 
       <div className="overflow-x-auto border-b border-(--border)/40 pb-3">
         <div className="grid min-w-full auto-cols-fr grid-flow-col gap-1 sm:gap-1.5">
-          {chartBuckets.map((bucket) => {
+          {chartBuckets.map((bucket, index) => {
             const dayItems = dailyByModel.size > 0 ? buildBucketItems(bucket) : [];
+            // Thin the axis labels when buckets outnumber the space for them —
+            // 48 daily columns can't each carry a date without smearing.
+            const labelStride = Math.ceil(chartBuckets.length / 8);
+            const showLabel = index % labelStride === 0;
 
             return (
               <div
@@ -293,14 +297,18 @@ export function DailyUsageChart({
                       })()}
                 </div>
                 <div
-                  className="w-full truncate text-center font-mono text-[length:var(--fs-xs)] text-(--dim)"
+                  className="w-full overflow-visible whitespace-nowrap text-center font-mono text-[length:var(--fs-xs)] text-(--dim)"
                   title={bucket.label}
                 >
-                  {bucket.shortLabel}
+                  {showLabel ? bucket.shortLabel : null}
                 </div>
                 <div className="flex h-9 flex-col items-center justify-start font-mono text-[length:var(--fs-2xs)] leading-tight tabular-nums text-(--dim)/60">
-                  <span>{formatNumber(bucket.requests)}</span>
-                  <span>req</span>
+                  {showLabel ? (
+                    <>
+                      <span>{formatNumber(bucket.requests)}</span>
+                      <span>req</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
             );
