@@ -51,6 +51,7 @@
     "highlight.js": "11.11.1",
     "hono": "4.6.12",
     "lucide-react": "0.561.0",
+    "mermaid": "^11.16.0",
     "next": "16.2.7",
     "react": "19.2.1",
     "react-dom": "19.2.1",

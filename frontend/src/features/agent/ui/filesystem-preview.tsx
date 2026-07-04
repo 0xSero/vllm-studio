@@ -1,7 +1,83 @@
 "use client";
 
+import { useRef, useState } from "react";
+import type { Mermaid } from "mermaid";
 import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import type { PreviewKind } from "@/features/agent/filesystem-types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+
+type MarkdownSegment =
+  | { kind: "text"; text: string }
+  | { kind: "mermaid"; code: string; fence: string };
+
+let mermaidLoader: Promise<Mermaid> | null = null;
+let mermaidRenderSeq = 0;
+
+function loadMermaid(): Promise<Mermaid> {
+  mermaidLoader ??= import("mermaid").then(({ default: mermaid }) => {
+    mermaid.initialize({ startOnLoad: false, theme: "dark" });
+    return mermaid;
+  });
+  return mermaidLoader;
+}
+
+function splitMermaidSegments(text: string): MarkdownSegment[] {
+  const segments: MarkdownSegment[] = [];
+  const pattern = /^[ \t]*```mermaid[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gm;
+  let cursor = 0;
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    if (match.index > cursor) {
+      segments.push({ kind: "text", text: text.slice(cursor, match.index) });
+    }
+    segments.push({ kind: "mermaid", code: match[1] ?? "", fence: match[0] });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length || segments.length === 0) {
+    segments.push({ kind: "text", text: text.slice(cursor) });
+  }
+  return segments;
+}
+
+function MermaidBlock({ code, fence }: { code: string; fence: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+  useMountSubscription(() => {
+    let cancelled = false;
+    const renderId = `fs-preview-mermaid-${++mermaidRenderSeq}`;
+    void loadMermaid()
+      .then((mermaid) => mermaid.render(renderId, code))
+      .then(({ svg }) => {
+        if (!cancelled && containerRef.current) containerRef.current.innerHTML = svg;
+      })
+      .catch(() => {
+        document.getElementById(`d${renderId}`)?.remove();
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+  if (failed) return <AssistantMarkdown text={fence} />;
+  return <div ref={containerRef} className="my-3 overflow-x-auto" />;
+}
+
+function MarkdownWithMermaid({ text }: { text: string }) {
+  return (
+    <>
+      {splitMermaidSegments(text).map((segment, index) =>
+        segment.kind === "mermaid" ? (
+          <MermaidBlock
+            key={`${index}-${segment.code}`}
+            code={segment.code}
+            fence={segment.fence}
+          />
+        ) : (
+          <AssistantMarkdown key={index} text={segment.text} />
+        ),
+      )}
+    </>
+  );
+}
 
 function previewKindForPath(path: string): PreviewKind | null {
   if (/\.(html?|svg)$/i.test(path)) return "html";
@@ -67,7 +143,7 @@ export function RenderedPreview({ content, kind }: { content: string; kind: Prev
   if (kind === "md") {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">
-        <AssistantMarkdown text={content} />
+        <MarkdownWithMermaid text={content} />
       </div>
     );
   }
