@@ -4,7 +4,7 @@ import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Play, Square } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui";
-import { ModelButton, ModelRow, ModelStatus, ModelValue, type ModelStatusTone } from "./model-page";
+import { ModelButton, ModelRow, ModelStatus, type ModelStatusTone } from "./model-page";
 import { modelIdFromPath } from "@/lib/huggingface";
 import { engineNodeStyle, formatBackendLabel } from "@/features/recipes/recipe-labels";
 
@@ -55,7 +55,6 @@ export const RecipeRow = memo(function RecipeRow({
   );
   const handleEdit = useCallback(() => onEdit(recipe), [onEdit, recipe]);
   const handleAttachAgents = useCallback(() => {
-    // Close the overflow menu before opening the dialog.
     onToggleMenu(recipe.id);
     onAttachAgents(recipe);
   }, [onAttachAgents, onToggleMenu, recipe]);
@@ -87,13 +86,22 @@ export const RecipeRow = memo(function RecipeRow({
       value={
         <div className="flex items-center gap-2">
           <span
+            title={`Inference engine: ${engine}`}
             className={`inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[length:var(--fs-2xs)] font-medium ${engineStyle.bg} ${engineStyle.fg}`}
           >
             {engine}
           </span>
-          <ModelValue mono>{parallelism}</ModelValue>
+          <span
+            title={`Splits the model across GPUs: ${tp} tensor-parallel × ${pp} pipeline-parallel`}
+            className="truncate font-mono text-[length:var(--fs-md)] text-(--ui-fg)"
+          >
+            {parallelism}
+          </span>
           {quant ? (
-            <span className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)">
+            <span
+              title={`Quantization: weights compressed to ${quant} for lower memory use`}
+              className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)"
+            >
               {quant}
             </span>
           ) : null}
