@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StatusPill } from "@/ui";
 import {
   SettingsFactRows,
@@ -233,6 +234,14 @@ function HardwareSettingsGroup({ data }: { data: ConfigData | null }) {
     <SettingsGroup
       title="Hardware"
       description="Runtime platform and GPU inventory from compatibility/config probes."
+      actions={
+        <Link
+          href="/configure"
+          className="text-[length:var(--fs-sm)] text-(--ui-accent) hover:underline"
+        >
+          Manage rig & devices
+        </Link>
+      }
     >
       <SettingsFactRows
         rows={[
