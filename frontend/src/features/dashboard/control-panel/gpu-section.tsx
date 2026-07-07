@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GPU, Metrics, ProcessInfo } from "@/lib/types";
-import { toGB, toGBFromMB } from "@/lib/formatters";
+import { toGBFromMB } from "@/lib/formatters";
 
 interface GpuSectionProps {
   metrics: Metrics | null;
@@ -114,7 +114,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
       {expanded ? (
         <div className="mt-3 space-y-1">
           {sortedGpus.map((gpu) => (
-            <GpuRow key={gpu.id ?? gpu.index} gpu={gpu} />
+            <GpuRow key={gpu.id ?? gpu.index} gpu={gpu} showName={names.size > 1} />
           ))}
         </div>
       ) : null}
@@ -133,7 +133,7 @@ function Aggregate({ label, value }: { label: string; value: string }) {
   );
 }
 
-function GpuRow({ gpu }: { gpu: GPU }) {
+function GpuRow({ gpu, showName }: { gpu: GPU; showName: boolean }) {
   const memUsed = gpuMemoryUsed(gpu);
   const memTotal = gpuMemoryTotal(gpu);
   const temp = gpu.temp_c;
@@ -148,6 +148,11 @@ function GpuRow({ gpu }: { gpu: GPU }) {
       <span className="w-8 shrink-0 text-(--fg)/85" title={gpu.name}>
         G{label}
       </span>
+      {showName ? (
+        <span className="hidden w-32 shrink-0 truncate text-(--dim)/70 md:inline" title={gpu.name}>
+          {gpu.name.replace(/^NVIDIA\s+/, "")}
+        </span>
+      ) : null}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="h-[2px] flex-1 overflow-hidden rounded-[var(--rad-2xs)] bg-(--dim)/15">
           <div className="h-full bg-(--fg)/45" style={{ width: `${memPct}%` }} />
