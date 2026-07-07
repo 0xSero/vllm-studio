@@ -36,9 +36,11 @@ export function ModelsSection({ state }: { state: ConfigureState }) {
               </p>
             </div>
             {recipe.status === "running" ? <StatusPill tone="good">running</StatusPill> : null}
-            <RowValue mono dim truncate>
-              {recipe.model_path}
-            </RowValue>
+            <div className="hidden min-w-0 max-w-[45%] shrink sm:block">
+              <RowValue mono dim truncate>
+                {recipe.model_path}
+              </RowValue>
+            </div>
           </div>
         ))}
         {state.recipes.length === 0 ? (

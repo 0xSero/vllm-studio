@@ -122,7 +122,7 @@ export function NodeFormModal({
   return (
     <UiModal isOpen onClose={onClose} maxWidth="max-w-2xl">
       <UiModalHeader title={title} onClose={onClose} />
-      <div className="space-y-4 p-4">
+      <div className="max-h-[78dvh] space-y-4 overflow-y-auto p-4">
         <FormField label="Hardware type">
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {RIG_HARDWARE_TYPES.map((type) => (
