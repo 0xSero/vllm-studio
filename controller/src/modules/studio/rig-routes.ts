@@ -65,12 +65,14 @@ const parseAccelerators = (value: unknown, current: RigAccelerator[]): RigAccele
     if (!Number.isInteger(count) || count < 1) {
       throw badRequest("accelerator count must be a positive integer");
     }
-    const memoryGb = record["memory_gb"] == null ? null : Number(record["memory_gb"]);
+    const rawMemoryGb = record["memory_gb"];
+    const memoryGb = rawMemoryGb === null || rawMemoryGb === undefined ? null : Number(rawMemoryGb);
     if (memoryGb !== null && (!Number.isFinite(memoryGb) || memoryGb <= 0)) {
       throw badRequest("accelerator memory_gb must be a positive number");
     }
+    const rawBandwidth = record["memory_bandwidth_gbs"];
     const bandwidth =
-      record["memory_bandwidth_gbs"] == null ? null : Number(record["memory_bandwidth_gbs"]);
+      rawBandwidth === null || rawBandwidth === undefined ? null : Number(rawBandwidth);
     if (bandwidth !== null && (!Number.isFinite(bandwidth) || bandwidth <= 0)) {
       throw badRequest("accelerator memory_bandwidth_gbs must be a positive number");
     }
