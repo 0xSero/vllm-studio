@@ -3,19 +3,18 @@
 import { RIG_HARDWARE_TYPE_LABELS, RIG_NODE_ROLE_LABELS } from "@local-studio/contracts/rigs";
 import { Button, StatusPill } from "@/ui";
 import { SquarePen, Trash2 } from "@/ui/icon-registry";
-import type { RigNode } from "@/lib/types";
+import { cx } from "@/ui/utils";
+import type { RigAccelerator, RigNode } from "@/lib/types";
 import { HardwareArt } from "./hardware-art";
 import { InlineRename } from "./inline-rename";
 
-const acceleratorSummary = (node: RigNode): string | null => {
-  if (node.accelerators.length === 0) return null;
-  return node.accelerators
-    .map((accelerator) => {
-      const memory = accelerator.memory_gb ? ` · ${accelerator.memory_gb} GB` : "";
-      const prefix = accelerator.count > 1 ? `${accelerator.count}x ` : "";
-      return `${prefix}${accelerator.name}${memory}`;
-    })
-    .join(", ");
+const acceleratorLine = (accelerator: RigAccelerator): string => {
+  const memory = accelerator.memory_gb ? ` · ${accelerator.memory_gb} GB` : "";
+  const memoryType = accelerator.memory_type ? ` ${accelerator.memory_type}` : "";
+  const bandwidth = accelerator.memory_bandwidth_gbs
+    ? ` · ${accelerator.memory_bandwidth_gbs} GB/s`
+    : "";
+  return `${accelerator.count}× ${accelerator.name}${memory}${memoryType}${bandwidth}`;
 };
 
 export function RigNodeCard({
@@ -31,47 +30,75 @@ export function RigNodeCard({
   onEdit: () => void;
   onDelete?: () => void;
 }) {
-  const accelerators = acceleratorSummary(node);
-  const facts = [
-    node.address ?? node.hostname,
-    node.memory_gb ? `${node.memory_gb} GB RAM` : null,
-    node.cpu_model,
-  ].filter(Boolean);
+  const isHead = node.role === "head";
+  const endpoint = [node.hostname, node.address].filter(
+    (value, index, all) => value && all.indexOf(value) === index,
+  );
 
   return (
-    <div className="flex gap-3 rounded-xl border border-(--ui-border) bg-(--ui-surface) p-3">
-      <div className="flex w-28 shrink-0 items-center justify-center rounded-lg bg-(--ui-bg) py-1">
-        <HardwareArt type={node.hardware_type} className="h-16 w-full opacity-80" />
+    <div
+      className={cx(
+        "group relative flex gap-4 rounded-xl border bg-(--ui-surface) p-4 transition-colors",
+        isHead ? "border-(--ui-accent)/35" : "border-(--ui-border) hover:border-(--ui-separator)",
+      )}
+    >
+      <div
+        className={cx(
+          "flex h-24 w-32 shrink-0 items-center justify-center rounded-lg",
+          isHead
+            ? "bg-gradient-to-b from-(--ui-accent)/12 to-(--ui-bg) ring-1 ring-(--ui-accent)/20"
+            : "bg-(--ui-bg)",
+        )}
+      >
+        <HardwareArt type={node.hardware_type} className="h-18 w-full opacity-90" />
       </div>
-      <div className="min-w-0 flex-1">
+
+      <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <InlineRename
             value={node.name}
             label={`device ${node.name}`}
             onRename={onRename}
-            textClassName="text-[length:var(--fs-lg)] font-medium text-(--ui-fg)"
+            textClassName="font-mono text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)"
           />
-          <StatusPill tone={node.role === "head" ? "info" : "default"}>
+          <StatusPill tone={isHead ? "info" : "default"}>
             {RIG_NODE_ROLE_LABELS[node.role]}
           </StatusPill>
           {isLocal ? <StatusPill tone="good">This machine</StatusPill> : null}
         </div>
-        <p className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
+
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
           {RIG_HARDWARE_TYPE_LABELS[node.hardware_type]}
-          {facts.length ? ` · ${facts.join(" · ")}` : ""}
+          {endpoint.length ? <span className="font-mono"> · {endpoint.join(" · ")}</span> : null}
         </p>
-        {accelerators ? (
-          <p className="mt-1 truncate text-[length:var(--fs-sm)] text-(--ui-fg)/80">
-            {accelerators}
+
+        {node.accelerators.map((accelerator) => (
+          <p
+            key={accelerator.name}
+            className="truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)/90"
+          >
+            {acceleratorLine(accelerator)}
           </p>
-        ) : null}
+        ))}
+
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)/80">
+          {[
+            node.memory_gb ? `${node.memory_gb} GB RAM` : null,
+            node.cpu_model && node.cpu_model !== "unknown" ? node.cpu_model : null,
+            node.cpu_cores ? `${node.cpu_cores} cores` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || " "}
+        </p>
+
         {node.notes ? (
-          <p className="mt-1 line-clamp-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+          <p className="line-clamp-2 border-t border-(--ui-separator)/60 pt-1.5 text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
             {node.notes}
           </p>
         ) : null}
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
+
+      <div className="absolute right-3 top-3 flex gap-1 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         <Button
           variant="icon"
           size="sm"

@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ListGroup, RowValue, StatusPill, EmptySafeNotice } from "@/ui";
+import { ListGroup, ModelLogo, RowValue, StatusPill, EmptySafeNotice } from "@/ui";
 import { ExternalLink } from "@/ui/icon-registry";
+import { modelIdFromPath } from "@/lib/huggingface";
 import type { RecipeWithStatus } from "@/lib/types";
 import type { ConfigureState } from "./use-configure";
 import { InlineRename } from "./inline-rename";
 
-const recipeFacts = (recipe: RecipeWithStatus): string => {
-  const parts = [recipe.backend, recipe.served_model_name].filter(Boolean);
-  return parts.join(" · ");
-};
+const recipeFacts = (recipe: RecipeWithStatus): string =>
+  [recipe.backend, recipe.served_model_name].filter(Boolean).join(" · ");
 
 export function ModelsSection({ state }: { state: ConfigureState }) {
   return (
@@ -24,12 +23,13 @@ export function ModelsSection({ state }: { state: ConfigureState }) {
             key={recipe.id}
             className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-(--ui-hover)/35"
           >
+            <ModelLogo modelId={modelIdFromPath(recipe.model_path)} size="sm" />
             <div className="min-w-0 flex-1">
               <InlineRename
                 value={recipe.name}
                 label={`model ${recipe.name}`}
                 onRename={(name) => state.renameRecipe(recipe, name)}
-                textClassName="text-[length:var(--fs-base)] text-(--ui-fg)"
+                textClassName="text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
               />
               <p className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
                 {recipeFacts(recipe)}
