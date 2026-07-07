@@ -44,7 +44,7 @@ export function RigNodeCard({
         <HardwareArt type={node.hardware_type} className="h-16 w-full opacity-80" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <InlineRename
             value={node.name}
             label={`device ${node.name}`}
