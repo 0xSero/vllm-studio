@@ -23,6 +23,7 @@ import {
   PanelLeftOpen,
   Square,
   X,
+  Wrench,
 } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
@@ -47,6 +48,7 @@ const tabs = [
   { href: "/", label: "Status", icon: Gauge },
   { href: "/usage", label: "Usage", icon: Microchip },
   { href: "/recipes", label: "Models", icon: HardDrive },
+  { href: "/configure", label: "Configure", icon: Wrench },
   { href: "/server", label: "Server", icon: Globe },
 ];
 
