@@ -52,6 +52,13 @@ const contractNames = [
   "StudioDiagnostics",
   "ControllerUsageStats",
   "UsageStats",
+  "RigHardwareType",
+  "RigNodeRole",
+  "RigNodeSource",
+  "RigAccelerator",
+  "RigNode",
+  "Rig",
+  "RigsPayload",
 ];
 const allowedFiles = new Set([
   "shared/contracts/recipes.ts",
@@ -60,6 +67,7 @@ const allowedFiles = new Set([
   "shared/contracts/observability.ts",
   "shared/contracts/usage.ts",
   "shared/contracts/environments.ts",
+  "shared/contracts/rigs.ts",
   "controller/src/modules/shared/recipe-types.ts",
   "controller/src/modules/shared/system-types.ts",
   "frontend/src/lib/types.ts",

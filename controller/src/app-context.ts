@@ -21,6 +21,7 @@ import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
+import { RigStore } from "./stores/rig-store";
 
 export interface AppContext {
   config: Config;
@@ -39,6 +40,7 @@ export interface AppContext {
     inferenceRequestStore: InferenceRequestStore;
     controllerSettingsStore: ControllerSettingsStore;
     controllerRequestStore: ControllerRequestStore;
+    rigStore: RigStore;
   };
 }
 
@@ -72,6 +74,7 @@ export const createAppContext = (): AppContext => {
   const inferenceRequestStore = new InferenceRequestStore(dbPath);
   const controllerSettingsStore = new ControllerSettingsStore(dbPath);
   const controllerRequestStore = new ControllerRequestStore(dbPath);
+  const rigStore = new RigStore(dbPath);
   const eventManager = new EventManager();
   const logger = createLogger(resolveLogLevel("info"), {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
@@ -116,6 +119,7 @@ export const createAppContext = (): AppContext => {
       inferenceRequestStore,
       controllerSettingsStore,
       controllerRequestStore,
+      rigStore,
     },
   } satisfies AppContext;
 

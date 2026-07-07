@@ -14,6 +14,7 @@ import { badRequest, notFound } from "../../core/errors";
 import { parseJsonObjectBody } from "../../core/validation";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import { registerStudioProviderRoutes } from "./provider-routes";
+import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
@@ -326,4 +327,5 @@ export const registerStudioRoutes: RouteRegistrar = (app, context) => {
   });
 
   registerStudioProviderRoutes(app, context);
+  registerStudioRigRoutes(app, context);
 };
