@@ -367,6 +367,31 @@ export function loadPersistedActiveAgentSessions(
   }
 }
 
+export function persistedActiveSessionFor(
+  piSessionId: string | null,
+): ActiveAgentSessionSnapshot | null {
+  if (!piSessionId) return null;
+  return (
+    loadPersistedActiveAgentSessions().find((session) => session.piSessionId === piSessionId) ??
+    null
+  );
+}
+
+export function replayTabForPersisted(persisted: ActiveAgentSessionSnapshot | null): Session {
+  const tab = makeFreshTab();
+  if (!persisted) return tab;
+  return {
+    ...tab,
+    id: persisted.tabId || tab.id,
+    piSessionId: persisted.piSessionId,
+    projectId: persisted.projectId,
+    cwd: persisted.cwd,
+    modelId: persisted.modelId,
+    title: persisted.title || tab.title,
+    startedAt: persisted.startedAt ?? persisted.updatedAt,
+  };
+}
+
 // One id per app instance (window), minted lazily on the first client-side
 // write. Stamped onto every entry this instance persists so the merge can
 // authoritatively replace its own entries (dropping closed sessions) while

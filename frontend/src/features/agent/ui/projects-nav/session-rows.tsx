@@ -23,6 +23,7 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
+import { useProjects } from "@/features/agent/projects/context";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import { Terminal } from "@/ui/icon-registry";
 import {
@@ -346,6 +347,7 @@ export function ActiveSessionRow({
   session: ActiveAgentSession;
   pref: SessionPref;
 }) {
+  const projects = useProjects();
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isFocused = session.focused === true;
@@ -363,7 +365,14 @@ export function ActiveSessionRow({
           ? `/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.piSessionId)}`
           : undefined
       }
-      onOpen={() => workspaceCommands().focusSession(session.paneId, session.tabId)}
+      onOpen={() => {
+        if (!session.piSessionId) {
+          workspaceCommands().focusSession(session.paneId, session.tabId);
+          return;
+        }
+        projects.selectProject(project);
+        workspaceCommands().openSession(project, session.piSessionId, label);
+      }}
       onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
       onRenameCommit={(trimmed) =>
         workspaceCommands().renameSession(
@@ -395,6 +404,7 @@ export function SessionRow({
   isRunning?: boolean;
   unseen?: boolean;
 }) {
+  const projects = useProjects();
   const label =
     cleanSessionTitle(pref.title) ||
     cleanSessionTitle(session.firstUserMessage) ||
@@ -412,6 +422,10 @@ export function SessionRow({
       renameRowClass="flex h-6.5 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
+      onOpen={() => {
+        projects.selectProject(project);
+        workspaceCommands().openSession(project, session.id, label);
+      }}
       onArchive={() => {
         void setSessionArchive(session.id, project, label, true)
           .then(() => patchSessionPref(session.id, { hidden: undefined }))

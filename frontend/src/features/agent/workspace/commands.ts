@@ -1,5 +1,7 @@
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import type { Project } from "@/features/agent/projects/types";
+import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { persistedActiveSessionFor, replayTabForPersisted } from "@/features/agent/workspace/store";
 import type { PaneId, SessionId, WorkspaceAction } from "@/features/agent/workspace/types";
 
 export type WorkspaceCommands = {
@@ -10,6 +12,7 @@ export type WorkspaceCommands = {
   renameSession(paneId: PaneId, tabId: SessionId, title: string): void;
   newChat(project?: Project | null): void;
   openTerminal(project?: Project | null): void;
+  openSession(project: Project | null, piSessionId: string, sessionTitle?: string): void;
 };
 
 function createWorkspaceCommands(): WorkspaceCommands {
@@ -47,6 +50,33 @@ function createWorkspaceCommands(): WorkspaceCommands {
         type: "openProjectTerminal",
         cwd: project?.path ?? null,
         newPaneId: newPaneId(),
+      });
+    },
+    openSession: (project, piSessionId, sessionTitle) => {
+      if (!dispatch) return;
+      const persisted = persistedActiveSessionFor(piSessionId);
+      const tab = persisted
+        ? replayTabForPersisted(persisted)
+        : {
+            ...makeFreshTab(),
+            piSessionId,
+            projectId: project?.id,
+            cwd: project?.path,
+            ...(sessionTitle ? { title: sessionTitle } : {}),
+          };
+      if (persisted?.runtimeSessionId) {
+        sessionRuntimeController().seedConnectionKey(tab.id, persisted.runtimeSessionId);
+      }
+      dispatch({
+        type: "urlNavRequested",
+        key: `cmd-session-${piSessionId}-${Date.now().toString(36)}`,
+        project: project ?? null,
+        sessionId: piSessionId,
+        ...(sessionTitle ? { sessionTitle } : {}),
+        newSession: false,
+        split: false,
+        paneId: newPaneId(),
+        tab,
       });
     },
   };
