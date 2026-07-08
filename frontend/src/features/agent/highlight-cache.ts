@@ -10,6 +10,7 @@ import rust from "highlight.js/lib/languages/rust";
 import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import yaml from "highlight.js/lib/languages/yaml";
+import xml from "highlight.js/lib/languages/xml";
 
 const MAX_CACHE_ENTRIES = 256;
 
@@ -76,6 +77,7 @@ function ensureLanguagesRegistered(): void {
   hljs.registerLanguage("markdown", markdown);
   hljs.registerAliases(["md"], { languageName: "markdown" });
   hljs.registerLanguage("diff", diff);
+  hljs.registerLanguage("xml", xml);
   registered = true;
 }
 
