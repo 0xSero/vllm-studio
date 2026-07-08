@@ -56,17 +56,20 @@ export function ModelLogo({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const imageKey = `${modelId}\u0000${author ?? ""}`;
+  const [imageState, setImageState] = useState({ imageKey, loaded: false, failed: false });
+  if (imageState.imageKey !== imageKey) setImageState({ imageKey, loaded: false, failed: false });
   const dimensions = size === "lg" ? "h-11 w-11" : size === "sm" ? "h-7 w-7" : "h-9 w-9";
   const textSize = size === "lg" ? "text-[length:var(--fs-md)]" : "text-[length:var(--fs-xs)]";
   const title = label || modelId;
   const fallbackClass = PALETTE[hashString(title) % PALETTE.length];
-  const showImage = isHubModelId(modelId) && !failed;
+  const requestImage = isHubModelId(modelId) && !imageState.failed;
+  const showImage = requestImage && imageState.loaded;
 
   return (
     <span
       className={cx(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border font-mono font-medium tracking-[0.04em]",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border font-mono font-medium tracking-[0.04em]",
         showImage ? "border-(--ui-border) bg-(--ui-surface) text-(--ui-muted)" : fallbackClass,
         dimensions,
         textSize,
@@ -74,17 +77,28 @@ export function ModelLogo({
       )}
       title={title}
     >
-      {showImage ? (
+      {requestImage ? (
         <img
           src={hfAvatarUrl(modelId, author)}
           alt=""
-          className="h-full w-full object-cover"
+          className={cx(
+            "absolute inset-0 h-full w-full object-cover",
+            showImage ? "" : "opacity-0",
+          )}
           loading="lazy"
-          onError={() => setFailed(true)}
+          onLoad={() =>
+            setImageState((state) =>
+              state.imageKey === imageKey ? { ...state, loaded: true } : state,
+            )
+          }
+          onError={() =>
+            setImageState((state) =>
+              state.imageKey === imageKey ? { ...state, failed: true } : state,
+            )
+          }
         />
-      ) : (
-        <span>{initialsFor(modelId, author, label)}</span>
-      )}
+      ) : null}
+      {showImage ? null : <span>{initialsFor(modelId, author, label)}</span>}
     </span>
   );
 }
