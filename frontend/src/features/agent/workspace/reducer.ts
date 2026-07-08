@@ -18,6 +18,7 @@ import {
   focusPaneSession,
   openSessionPayloadInPane,
   openProjectTerminal,
+  splitTerminalPane,
   openTerminalPane,
   patchActiveTab,
   setPaneSession,
@@ -175,6 +176,12 @@ function reducePaneLayoutAction(
       });
     case "openProjectTerminal":
       return openProjectTerminal(state, { cwd: action.cwd, newPaneId: action.newPaneId });
+    case "splitTerminalPane":
+      return splitTerminalPane(state, {
+        sourcePaneId: action.sourcePaneId,
+        newPaneId: action.newPaneId,
+        direction: action.direction,
+      });
     default:
       return null;
   }

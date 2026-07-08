@@ -55,6 +55,7 @@ export type WorkspaceHandles = {
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
   openTerminalPane: (paneId?: PaneId) => void;
+  splitTerminal: (paneId: PaneId, direction: "vertical" | "horizontal") => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
   compactFocusedSession: () => Promise<void>;
   runBrowserCommand: (
@@ -327,6 +328,13 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         }),
       openTerminalPane: (paneId?: PaneId) =>
         dispatch({ type: "openTerminalPane", ...(paneId ? { sourcePaneId: paneId } : {}) }),
+      splitTerminal: (paneId: PaneId, direction: "vertical" | "horizontal") =>
+        dispatch({
+          type: "splitTerminalPane",
+          sourcePaneId: paneId,
+          newPaneId: newPaneId(),
+          direction,
+        }),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);

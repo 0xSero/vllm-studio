@@ -113,6 +113,19 @@ function requestWorkspaceUrlNavigation({
     paneId: newPaneId(),
     tab,
   });
+  consumeOneShotNavParams();
+}
+
+function consumeOneShotNavParams(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const param of ["new", "terminal", "split", "open"]) {
+    if (!url.searchParams.has(param)) continue;
+    url.searchParams.delete(param);
+    changed = true;
+  }
+  if (changed) window.history.replaceState(window.history.state, "", url);
 }
 
 export function useAgentWorkspaceNavigationEffects({

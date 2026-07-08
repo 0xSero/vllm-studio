@@ -145,9 +145,11 @@ export function setWorkspaceSplitRatio(
 }
 
 function chatTargetPaneId(state: WorkspaceState): PaneId {
-  if (state.panesById.has(state.focusedPaneId)) return state.focusedPaneId;
+  const focused = state.panesById.get(state.focusedPaneId);
+  if (focused && focused.kind !== "terminal") return state.focusedPaneId;
   for (const paneId of collectLeaves(state.layout)) {
-    if (paneSessionId(state.panesById.get(paneId))) return paneId;
+    const pane = state.panesById.get(paneId);
+    if (pane?.kind !== "terminal" && paneSessionId(pane)) return paneId;
   }
   return state.focusedPaneId;
 }
@@ -166,16 +168,14 @@ function openNewSessionInFocusedPane(
     cwd: payload.project?.path,
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
-  // Reuse the focused pane only when it's an empty starter chat — the composer
-  // is already there, so scoping it to the project is a real, visible change.
-  // Otherwise (a pane with a live/older chat, or a terminal) open a fresh split
-  // pane so a NEW surface is guaranteed to appear; if the layout is already
-  // split (2 panes), replace the focused pane in place instead of nesting a 3rd.
   const activeId = paneSessionId(pane);
   const active = activeId ? state.sessions.get(activeId) : undefined;
   const focusedIsEmptyStarter =
     pane.kind !== "terminal" && Boolean(active) && isEmptyStarterSession(active!);
-  if (focusedIsEmptyStarter || collectLeaves(state.layout).length >= 2) {
+  if (
+    pane.kind !== "terminal" &&
+    (focusedIsEmptyStarter || collectLeaves(state.layout).length >= 2)
+  ) {
     return replacePaneSession(state, targetPaneId, session);
   }
   return (
@@ -183,7 +183,7 @@ function openNewSessionInFocusedPane(
       sourcePaneId: targetPaneId,
       session,
       newPaneId: payload.newPaneId,
-    }) ?? replacePaneSession(state, targetPaneId, session)
+    }) ?? (pane.kind === "terminal" ? state : replacePaneSession(state, targetPaneId, session))
   );
 }
 
@@ -433,6 +433,29 @@ export function openProjectTerminal(
     ...state,
     panesById: nextPanes,
     layout: splitLeaf(state.layout, focusedId, payload.newPaneId, "vertical", "b"),
+    focusedPaneId: payload.newPaneId,
+  };
+}
+
+export function splitTerminalPane(
+  state: WorkspaceState,
+  payload: { sourcePaneId: PaneId; newPaneId: PaneId; direction: "vertical" | "horizontal" },
+): WorkspaceState {
+  const source = state.panesById.get(payload.sourcePaneId);
+  if (source?.kind !== "terminal") return state;
+  if (!validPaneId(payload.newPaneId) || !leafExists(state, payload.sourcePaneId)) return state;
+  const nextPanes = new Map(state.panesById);
+  nextPanes.set(payload.newPaneId, projectTerminalPane(`pane:${payload.newPaneId}`, source.cwd));
+  return {
+    ...state,
+    panesById: nextPanes,
+    layout: splitLeaf(
+      state.layout,
+      payload.sourcePaneId,
+      payload.newPaneId,
+      payload.direction,
+      "b",
+    ),
     focusedPaneId: payload.newPaneId,
   };
 }

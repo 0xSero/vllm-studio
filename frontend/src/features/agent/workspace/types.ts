@@ -98,6 +98,12 @@ export type WorkspaceAction =
   | { type: "closePane"; paneId: PaneId }
   | { type: "openTerminalPane"; sourcePaneId?: PaneId }
   | { type: "openProjectTerminal"; cwd: string | null; newPaneId: PaneId }
+  | {
+      type: "splitTerminalPane";
+      sourcePaneId: PaneId;
+      newPaneId: PaneId;
+      direction: "vertical" | "horizontal";
+    }
   | { type: "setPaneSession"; paneId: PaneId; session: Session }
   | {
       type: "patchSession";

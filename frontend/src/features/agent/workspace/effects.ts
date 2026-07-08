@@ -74,6 +74,7 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "closePane",
   "openTerminalPane",
   "openProjectTerminal",
+  "splitTerminalPane",
   "hydrateActiveSessions",
   "urlNavRequested",
 ]);
