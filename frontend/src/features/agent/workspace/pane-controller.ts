@@ -400,6 +400,43 @@ export function openTerminalPane(
   return { ...setPane(state, payload.sourcePaneId, pane), focusedPaneId: payload.sourcePaneId };
 }
 
+function projectTerminalPane(mountKey: string, cwd: string | null): TerminalPaneState {
+  return {
+    kind: "terminal",
+    mountKey,
+    cwd,
+    title: "Terminal",
+    ownerSessionId: null,
+    ownerPiSessionId: null,
+  };
+}
+
+export function openProjectTerminal(
+  state: WorkspaceState,
+  payload: { cwd: string | null; newPaneId: PaneId },
+): WorkspaceState {
+  const focusedId = state.focusedPaneId;
+  if (!leafExists(state, focusedId)) return state;
+  const focused = state.panesById.get(focusedId);
+  const activeId = paneSessionId(focused);
+  const active = activeId ? state.sessions.get(activeId) : undefined;
+  if (focused && focused.kind !== "terminal" && active && isEmptyStarterSession(active)) {
+    return pruneOrphanSessions({
+      ...setPane(state, focusedId, projectTerminalPane(`pane:${focusedId}`, payload.cwd)),
+      focusedPaneId: focusedId,
+    });
+  }
+  if (!validPaneId(payload.newPaneId)) return state;
+  const nextPanes = new Map(state.panesById);
+  nextPanes.set(payload.newPaneId, projectTerminalPane(`pane:${payload.newPaneId}`, payload.cwd));
+  return {
+    ...state,
+    panesById: nextPanes,
+    layout: splitLeaf(state.layout, focusedId, payload.newPaneId, "vertical", "b"),
+    focusedPaneId: payload.newPaneId,
+  };
+}
+
 export function setPaneSession(
   state: WorkspaceState,
   payload: { paneId: PaneId; session: Session },
@@ -426,6 +463,13 @@ export function applyUrlNavigation(
   const marked: WorkspaceState = { ...state, lastHandledNavKey: payload.key };
   const { paneId, tab, sessionTitle } = payload;
   const project = payload.project ?? undefined;
+  if (payload.terminal) {
+    if (!payload.paneId) return marked;
+    return openProjectTerminal(marked, {
+      cwd: payload.project?.path ?? null,
+      newPaneId: payload.paneId,
+    });
+  }
   if (payload.newSession && !payload.sessionId) {
     return openNewSessionInFocusedPane(marked, { project, tab, newPaneId: payload.paneId });
   }
@@ -476,4 +520,5 @@ type UrlNavigationPayload = SessionPayload & {
   newSession?: boolean;
   split?: boolean;
   paneId?: PaneId;
+  terminal?: boolean;
 };

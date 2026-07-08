@@ -109,14 +109,10 @@ function requestWorkspaceUrlNavigation({
     ...(sessionTitle ? { sessionTitle } : {}),
     newSession: newParam !== null,
     split: splitParam === "1",
+    terminal: terminalParam !== null,
     paneId: newPaneId(),
     tab,
   });
-  // Unbound "New terminal" fallback: `terminal=1` (paired with `new`) scopes the
-  // focused pane above, then converts it to a terminal inheriting the project cwd.
-  if (terminalParam) {
-    dispatch({ type: "openTerminalPane" });
-  }
 }
 
 export function useAgentWorkspaceNavigationEffects({

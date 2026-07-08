@@ -17,6 +17,7 @@ import {
   focusPane,
   focusPaneSession,
   openSessionPayloadInPane,
+  openProjectTerminal,
   openTerminalPane,
   patchActiveTab,
   setPaneSession,
@@ -172,6 +173,8 @@ function reducePaneLayoutAction(
       return openTerminalPane(state, {
         sourcePaneId: action.sourcePaneId ?? state.focusedPaneId,
       });
+    case "openProjectTerminal":
+      return openProjectTerminal(state, { cwd: action.cwd, newPaneId: action.newPaneId });
     default:
       return null;
   }
@@ -237,6 +240,7 @@ function reduceSessionEditAction(
         sessionTitle: action.sessionTitle,
         newSession: action.newSession,
         split: action.split,
+        terminal: action.terminal,
         paneId: action.paneId,
         tab: action.tab,
       });

@@ -24,11 +24,6 @@ export type WorkspaceCommands = {
    * fall back to URL navigation when unbound.
    */
   newChat(project?: Project | null): void;
-  /**
-   * Open a terminal pane scoped to `project`. Scopes/creates a chat surface
-   * first (same visibility guarantee as newChat), then converts the resulting
-   * focused pane into a terminal so its cwd inherits the project path.
-   */
   openTerminal(project?: Project | null): void;
 };
 
@@ -63,20 +58,11 @@ function createWorkspaceCommands(): WorkspaceCommands {
       });
     },
     openTerminal: (project) => {
-      if (!dispatch) return;
-      // Scope/create a chat surface first so the terminal we convert next
-      // inherits the project cwd and lands on a guaranteed-visible pane.
-      dispatch({
-        type: "urlNavRequested",
-        key: `cmd-term-${Date.now().toString(36)}`,
-        project: project ?? null,
-        sessionId: null,
-        newSession: true,
-        split: false,
-        paneId: newPaneId(),
-        tab: makeFreshTab(),
+      dispatch?.({
+        type: "openProjectTerminal",
+        cwd: project?.path ?? null,
+        newPaneId: newPaneId(),
       });
-      dispatch({ type: "openTerminalPane" });
     },
   };
 }

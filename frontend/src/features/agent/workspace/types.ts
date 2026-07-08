@@ -97,6 +97,7 @@ export type WorkspaceAction =
     }
   | { type: "closePane"; paneId: PaneId }
   | { type: "openTerminalPane"; sourcePaneId?: PaneId }
+  | { type: "openProjectTerminal"; cwd: string | null; newPaneId: PaneId }
   | { type: "setPaneSession"; paneId: PaneId; session: Session }
   | {
       type: "patchSession";
@@ -114,6 +115,7 @@ export type WorkspaceAction =
       newSession?: boolean;
       split?: boolean;
       paneId: PaneId;
+      terminal?: boolean;
       tab: Session;
     }
   | {
