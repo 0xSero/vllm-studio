@@ -1,10 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { type TerminalOwner } from "@/features/agent/terminal-owners";
 import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
 
-// Keep terminal panels mounted per session once opened so each session keeps its
-// own PTY and scrollback while the user navigates elsewhere.
 export function PersistentTerminals({
   active,
   activeOwnerKey,
@@ -14,10 +13,15 @@ export function PersistentTerminals({
   activeOwnerKey: string | null;
   terminals: TerminalOwner[];
 }) {
-  if (!terminals.length) return null;
+  const [openedKeys, setOpenedKeys] = useState<ReadonlySet<string>>(new Set());
+  if (active && activeOwnerKey && !openedKeys.has(activeOwnerKey)) {
+    setOpenedKeys(new Set(openedKeys).add(activeOwnerKey));
+  }
+  const opened = terminals.filter((terminal) => openedKeys.has(terminal.mountKey));
+  if (!opened.length) return null;
   return (
     <>
-      {terminals.map((terminal) => {
+      {opened.map((terminal) => {
         const visible = Boolean(active && activeOwnerKey === terminal.mountKey);
         return (
           <div
