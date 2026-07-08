@@ -1,18 +1,3 @@
-// A bounded, crash-survivable copy of each session's rendered transcript.
-//
-// The canonical pi session JSONL remains the source of truth: on a normal
-// reload `loadAndReplay` rebuilds the transcript from it. But that recovery has
-// several single points of failure (the JSONL never being written for an
-// in-flight first turn, a cwd/piSessionId mismatch, a read error), and when any
-// of them trips the restored session renders EMPTY — the user's "if a session
-// crashes the history disappears" report.
-//
-// This module keeps a last-known transcript per pi session in localStorage so a
-// restore has something to show even when canonical replay fails or returns
-// nothing. It is deliberately a FALLBACK cache, not a second source of truth:
-// canonical content always wins when it loads, and the cache is bounded hard so
-// it can never grow into the localStorage budget owned by pane/session state.
-
 import type {
   AssistantBlock,
   ChatMessage,
@@ -20,39 +5,29 @@ import type {
 } from "@/features/agent/messages/types";
 import { isRecord } from "@/lib/guards";
 
-// Structurally identical to WorkspaceStorage; declared locally so this fallback
-// cache stays dependency-free of the workspace layer (both effects and the
-// runtime engine consume it).
 type TranscriptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export const TRANSCRIPT_CACHE_KEY = "local-studio.agent.transcripts.v1";
+export const TRANSCRIPT_CACHE_PREFIX = "local-studio.agent.transcript.v2.";
+const LEGACY_TRANSCRIPT_CACHE_KEY = "local-studio.agent.transcripts.v1";
 
-// Sizes are approximated by JSON string length (char count) — a cheap,
-// deterministic proxy that keeps us comfortably under the ~5MB localStorage
-// budget without measuring real UTF-8 bytes.
 const MAX_MESSAGES_PER_SESSION = 200;
 const MAX_CHARS_PER_SESSION = 512 * 1024;
 const MAX_SESSIONS = 24;
-const MAX_TOTAL_CHARS = 3 * 1024 * 1024;
 const MAX_BLOCK_TEXT = 16 * 1024;
 
 export type CachedTranscript = {
-  messages: ChatMessage[];
-  title?: string;
+  version: 2;
   updatedAt: number;
+  title?: string;
+  messages: ChatMessage[];
 };
-
-export type TranscriptCache = {
-  version: 1;
-  sessions: Record<string, CachedTranscript>;
-};
-
-function emptyCache(): TranscriptCache {
-  return { version: 1, sessions: {} };
-}
 
 function defaultStorage(): TranscriptStorage | null {
   return typeof window === "undefined" ? null : window.localStorage;
+}
+
+function sessionKey(piSessionId: string): string {
+  return `${TRANSCRIPT_CACHE_PREFIX}${piSessionId}`;
 }
 
 function truncateText(text: string | undefined): string | undefined {
@@ -72,8 +47,6 @@ function sanitizeBlock(block: AssistantBlock): AssistantBlock {
   return { ...block, text: truncateText(block.text) ?? "" };
 }
 
-// Keep attachment metadata (so the chip still renders) but drop the heavy
-// inline body — canonical replay restores the real content when it loads.
 function stripAttachmentBody(attachment: ChatMessageAttachment): ChatMessageAttachment {
   return {
     id: attachment.id,
@@ -87,8 +60,6 @@ function stripAttachmentBody(attachment: ChatMessageAttachment): ChatMessageAtta
   };
 }
 
-// Drop transient streaming fields (streamCalls/pending are never persisted) and
-// bound the heavy ones so a single huge tool dump can't blow the budget.
 function sanitizeMessage(message: ChatMessage): ChatMessage {
   const clean: ChatMessage = {
     id: message.id,
@@ -104,98 +75,72 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
 
 export function boundMessagesForCache(messages: ChatMessage[]): ChatMessage[] {
   let kept = messages.slice(-MAX_MESSAGES_PER_SESSION).map(sanitizeMessage);
-  // Drop oldest until the serialized session fits, but always keep at least the
-  // most recent message.
   while (kept.length > 1 && JSON.stringify(kept).length > MAX_CHARS_PER_SESSION) {
     kept = kept.slice(1);
   }
   return kept;
 }
 
-// Cap session count (most-recent wins) and total size, evicting least-recent.
-function evict(cache: TranscriptCache): TranscriptCache {
-  const ordered = Object.entries(cache.sessions).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
-  const sessions: Record<string, CachedTranscript> = {};
-  let total = 0;
-  for (const [piSessionId, entry] of ordered.slice(0, MAX_SESSIONS)) {
-    const size = JSON.stringify(entry).length;
-    if (total + size > MAX_TOTAL_CHARS && Object.keys(sessions).length > 0) break;
-    sessions[piSessionId] = entry;
-    total += size;
-  }
-  return { version: 1, sessions };
-}
-
-export function putTranscript(
-  cache: TranscriptCache,
-  piSessionId: string,
-  messages: ChatMessage[],
-  title: string | undefined,
-  now: number,
-): TranscriptCache {
-  const bounded = boundMessagesForCache(messages);
-  if (bounded.length === 0) return cache;
-  return evict({
-    version: 1,
-    sessions: {
-      ...cache.sessions,
-      [piSessionId]: { messages: bounded, ...(title ? { title } : {}), updatedAt: now },
-    },
-  });
-}
-
-export function parseTranscriptCache(raw: string | null): TranscriptCache {
-  if (!raw) return emptyCache();
+function parseCachedTranscript(raw: string | null): CachedTranscript | null {
+  if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.sessions)) {
-      return emptyCache();
-    }
-    return parsed as unknown as TranscriptCache;
+    if (!isRecord(parsed) || parsed.version !== 2 || !Array.isArray(parsed.messages)) return null;
+    return parsed as unknown as CachedTranscript;
   } catch {
-    return emptyCache();
+    return null;
   }
 }
 
-function readCache(storage: TranscriptStorage): TranscriptCache {
+function cacheKeys(storage: TranscriptStorage): string[] {
+  const local = storage as Partial<Storage>;
+  if (typeof local.length !== "number" || typeof local.key !== "function") return [];
+  const keys: string[] = [];
+  for (let index = 0; index < local.length; index += 1) {
+    const key = local.key(index);
+    if (key?.startsWith(TRANSCRIPT_CACHE_PREFIX)) keys.push(key);
+  }
+  return keys;
+}
+
+function evictStaleSessions(storage: TranscriptStorage, keepKey: string): void {
+  const keys = cacheKeys(storage);
+  if (keys.length <= MAX_SESSIONS) return;
+  const dated = keys
+    .filter((key) => key !== keepKey)
+    .map((key) => {
+      const entry = parseCachedTranscript(storage.getItem(key));
+      return { key, updatedAt: entry?.updatedAt ?? 0 };
+    })
+    .sort((a, b) => a.updatedAt - b.updatedAt);
+  for (const { key } of dated.slice(0, keys.length - MAX_SESSIONS)) {
+    storage.removeItem(key);
+  }
+}
+
+export function purgeLegacyTranscriptCache(
+  storage: TranscriptStorage | null = defaultStorage(),
+): void {
   try {
-    return parseTranscriptCache(storage.getItem(TRANSCRIPT_CACHE_KEY));
+    storage?.removeItem(LEGACY_TRANSCRIPT_CACHE_KEY);
   } catch {
-    return emptyCache();
+    return;
   }
 }
 
-function persist(storage: TranscriptStorage, cache: TranscriptCache): void {
-  try {
-    storage.setItem(TRANSCRIPT_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Quota/private-mode failure: shed the older half and try once more so the
-    // freshest transcripts still survive.
-    const ordered = Object.entries(cache.sessions)
-      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
-      .slice(0, Math.max(1, Math.floor(MAX_SESSIONS / 2)));
-    try {
-      storage.setItem(
-        TRANSCRIPT_CACHE_KEY,
-        JSON.stringify({ version: 1, sessions: Object.fromEntries(ordered) }),
-      );
-    } catch {
-      // Give up — the in-memory transcript and canonical JSONL remain.
-    }
-  }
-}
-
-/** Last-known transcript for a pi session, or null when nothing is cached. */
 export function readTranscriptSnapshot(
   piSessionId: string | null | undefined,
   storage: TranscriptStorage | null = defaultStorage(),
 ): ChatMessage[] | null {
   if (!storage || !piSessionId) return null;
-  const entry = readCache(storage).sessions[piSessionId];
-  return entry && entry.messages.length > 0 ? entry.messages : null;
+  try {
+    const entry = parseCachedTranscript(storage.getItem(sessionKey(piSessionId)));
+    return entry && entry.messages.length > 0 ? entry.messages : null;
+  } catch {
+    return null;
+  }
 }
 
-/** Record a session's transcript as the crash-recovery fallback for its pi id. */
 export function writeTranscriptSnapshot(
   piSessionId: string | null | undefined,
   messages: ChatMessage[],
@@ -204,5 +149,24 @@ export function writeTranscriptSnapshot(
   now: number = Date.now(),
 ): void {
   if (!storage || !piSessionId || messages.length === 0) return;
-  persist(storage, putTranscript(readCache(storage), piSessionId, messages, title, now));
+  const key = sessionKey(piSessionId);
+  const entry: CachedTranscript = {
+    version: 2,
+    updatedAt: now,
+    ...(title ? { title } : {}),
+    messages: boundMessagesForCache(messages),
+  };
+  try {
+    storage.setItem(key, JSON.stringify(entry));
+    evictStaleSessions(storage, key);
+  } catch {
+    try {
+      for (const stale of cacheKeys(storage)) {
+        if (stale !== key) storage.removeItem(stale);
+      }
+      storage.setItem(key, JSON.stringify(entry));
+    } catch {
+      return;
+    }
+  }
 }

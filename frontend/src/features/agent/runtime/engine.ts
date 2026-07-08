@@ -20,8 +20,9 @@ import {
   submitPromptTurn,
   type SubmitArgs,
 } from "@/features/agent/runtime/prompt-stream";
-import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
+
+import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -226,20 +227,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     (piSessionId: string, sessionId: SessionId) =>
       Effect.runPromise(
         Effect.gen(function* () {
-          // Seed from the crash-recovery cache first so prior history shows
-          // instantly and survives a canonical replay that errors, comes back
-          // empty, or can't run at all (no cwd). Canonical content replaces it
-          // below when it loads.
           const cachedMessages = readTranscriptSnapshot(piSessionId);
           const seedCached = (session: Session) =>
             session.messages.length === 0 && cachedMessages
               ? { ...session, messages: cachedMessages }
               : session;
           if (!cwd) {
-            // No cwd yet — we can't hydrate canonical history, but we can still show
-            // the cached transcript. Make sure the session isn't left in a permanent
-            // "loading" state (which blocks the composer's send button) just because
-            // the snapshot reducer optimistically tagged it as loading on hydration.
             updateSession(sessionId, (session) =>
               seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
             );
@@ -294,7 +287,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               // own title would be the tail slice's first user message, not the
               // session's first prompt.
               modelId:
-                session.modelId || meta?.modelId || replayModelId || runtimeStatus?.modelId || modelId,
+                session.modelId ||
+                meta?.modelId ||
+                replayModelId ||
+                runtimeStatus?.modelId ||
+                modelId,
               title: meta?.title ?? title ?? session.title,
               startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
               tokenStats: tokenStats ?? undefined,
@@ -303,7 +300,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               activeAssistantId: undefined,
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: messages.length > 0 ? cursor : session.historyCursor ?? null,
+              historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
               error: "",
             }));
             // Reattach the live stream from the hydrated cursor so EventSource
@@ -421,15 +418,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           ),
         ),
       ),
-    [
-      browserToolEnabled,
-      browserBackend,
-      canvasEnabled,
-      cwd,
-      loadAndReplay,
-      modelId,
-      updateSession,
-    ],
+    [browserToolEnabled, browserBackend, canvasEnabled, cwd, loadAndReplay, modelId, updateSession],
   );
 
   const acceptsControl = useCallback(

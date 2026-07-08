@@ -26,6 +26,7 @@ import { makeFreshTab } from "@/features/agent/messages/helpers";
 
 const SESSIONS_COLLAPSED_KEY = "local-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "local-studio.agent.sessionsCollapsedCleaned";
+const LEGACY_TRANSCRIPT_CACHE_KEY = "local-studio.agent.transcripts.v1";
 
 function readStorage(storage: WorkspaceStorage, key: string): string | null {
   try {
@@ -80,8 +81,7 @@ function migrateStorage(storage: WorkspaceStorage): void {
     removeStorage(storage, SESSIONS_COLLAPSED_KEY);
     setStorage(storage, SESSIONS_COLLAPSED_CLEANED_KEY, "1");
   }
-  // Tool storage migrations are owned by features/agent/tools/persistence.ts
-  // (`migrateToolStorage`) — ToolsProvider runs them on mount.
+  removeStorage(storage, LEGACY_TRANSCRIPT_CACHE_KEY);
 }
 
 export type LoadedFromStorage = {

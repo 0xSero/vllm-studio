@@ -21,6 +21,8 @@ const EXCLUDED_DURABLE_KEYS = new Set([
   "local-studio.agent.activeSessions.snapshot",
 ]);
 
+const EXCLUDED_DURABLE_PREFIXES = ["local-studio.agent.transcript."];
+
 let saveTimer: number | null = null;
 
 function bridge(): DesktopUiPreferencesBridge | null {
@@ -36,6 +38,7 @@ function bridge(): DesktopUiPreferencesBridge | null {
 
 function isDurableUiPreferenceKey(key: string): boolean {
   if (EXCLUDED_DURABLE_KEYS.has(key)) return false;
+  if (EXCLUDED_DURABLE_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
   return (
     DURABLE_EXACT_KEYS.has(key) || DURABLE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
   );
