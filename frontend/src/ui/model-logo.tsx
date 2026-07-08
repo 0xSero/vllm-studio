@@ -43,6 +43,50 @@ const initialsFor = (modelId: string, author?: string | null, label?: string): s
 const isHubModelId = (modelId: string): boolean =>
   /^[\w.-]+\/[\w.-]+$/.test(modelId) && !modelId.startsWith("/");
 
+const GENERIC_OWNERS = new Set(["models", "model", "data", "weights", "home", "mnt", "srv"]);
+
+const OWNER_KEYWORDS: Array<[RegExp, string]> = [
+  [/deepseek/i, "deepseek-ai"],
+  [/\bglm|zai|chatglm/i, "zai-org"],
+  [/qwen|qwq|qvq/i, "Qwen"],
+  [/minimax/i, "MiniMaxAI"],
+  [/kimi|moonshot/i, "moonshotai"],
+  [/nemotron/i, "nvidia"],
+  [/gemma/i, "google"],
+  [/mimo/i, "XiaomiMiMo"],
+  [/\blfm/i, "LiquidAI"],
+  [/hunyuan|\bhy\d/i, "tencent"],
+  [/stepfun|\bstep-?\d/i, "stepfun-ai"],
+  [/llama/i, "meta-llama"],
+  [/mistral|mixtral|magistral|devstral/i, "mistralai"],
+  [/\bphi-?\d/i, "microsoft"],
+  [/gpt-oss|whisper/i, "openai"],
+  [/command-?r|\baya\b/i, "CohereLabs"],
+  [/granite/i, "ibm-granite"],
+  [/smollm|smolvlm|starcoder/i, "HuggingFaceTB"],
+  [/internlm|intern-?vl/i, "internlm"],
+  [/yi-|\byi\b/i, "01-ai"],
+  [/falcon/i, "tiiuae"],
+  [/seed-?oss|doubao/i, "ByteDance-Seed"],
+  [/ernie/i, "baidu"],
+  [/olmo|molmo|tulu/i, "allenai"],
+  [/exaone/i, "LGAI-EXAONE"],
+];
+
+const avatarOwnerFor = (modelId: string, author?: string | null, label?: string): string | null => {
+  const explicit = author?.trim();
+  if (explicit && !GENERIC_OWNERS.has(explicit.toLowerCase())) return explicit;
+  if (isHubModelId(modelId)) {
+    const owner = modelId.split("/")[0];
+    if (!GENERIC_OWNERS.has(owner.toLowerCase())) return owner;
+  }
+  const haystack = `${label ?? ""} ${modelId}`;
+  for (const [pattern, owner] of OWNER_KEYWORDS) {
+    if (pattern.test(haystack)) return owner;
+  }
+  return null;
+};
+
 export function ModelLogo({
   modelId,
   author,
@@ -56,14 +100,15 @@ export function ModelLogo({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const imageKey = `${modelId}\u0000${author ?? ""}`;
+  const owner = avatarOwnerFor(modelId, author, label);
+  const imageKey = `${modelId}\u0000${owner ?? ""}`;
   const [imageState, setImageState] = useState({ imageKey, loaded: false, failed: false });
   if (imageState.imageKey !== imageKey) setImageState({ imageKey, loaded: false, failed: false });
   const dimensions = size === "lg" ? "h-11 w-11" : size === "sm" ? "h-7 w-7" : "h-9 w-9";
   const textSize = size === "lg" ? "text-[length:var(--fs-md)]" : "text-[length:var(--fs-xs)]";
   const title = label || modelId;
   const fallbackClass = PALETTE[hashString(title) % PALETTE.length];
-  const requestImage = isHubModelId(modelId) && !imageState.failed;
+  const requestImage = Boolean(owner) && !imageState.failed;
   const showImage = requestImage && imageState.loaded;
 
   return (
@@ -79,7 +124,7 @@ export function ModelLogo({
     >
       {requestImage ? (
         <img
-          src={hfAvatarUrl(modelId, author)}
+          src={hfAvatarUrl(modelId, owner)}
           alt=""
           className={cx(
             "absolute inset-0 h-full w-full object-cover",
