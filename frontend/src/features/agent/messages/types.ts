@@ -5,6 +5,7 @@ import type { ComposerSkillRef } from "@/features/agent/composer-context";
 // workspace calls this directly from event/click handlers so the control flow
 // is auditable in one place.
 export type ChatPaneHandle = {
+  sessionId: string;
   loadAndReplay: (piSessionId: string) => Promise<void>;
   compact: () => Promise<void>;
 };

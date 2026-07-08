@@ -3,6 +3,7 @@ import { paneSessionId } from "@/features/agent/runtime/selectors";
 import type { PaneId, PaneState } from "@/features/agent/workspace/types";
 
 type PaneReplayHandle = {
+  sessionId: string;
   loadAndReplay: (piSessionId: string) => Promise<void> | void;
 };
 
@@ -44,18 +45,18 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     const pendingSessionId = pending.get(paneId);
     if (!pendingSessionId) return;
     const handle = deps.getHandle(paneId);
-    // No handle yet: leave the entry pending — notifyHandleRegistered drains
-    // it the moment the pane mounts. (This replaced a 50ms x100 polling loop;
-    // registration is the only wake-up needed.)
     if (!handle) return;
-    // Guard runs at DRAIN time, not queue time: the pane's session can be
-    // swapped between the two (see isFreshStarter above).
     const sessionId = paneSessionId(deps.getState().panesById.get(paneId));
     const current = sessionId ? deps.getState().sessions.get(sessionId) : undefined;
     if (!current || isFreshStarter(current)) {
       pending.delete(paneId);
       return;
     }
+    if (current.piSessionId && current.piSessionId !== pendingSessionId) {
+      pending.delete(paneId);
+      return;
+    }
+    if (handle.sessionId !== current.id) return;
     pending.delete(paneId);
     void handle.loadAndReplay(pendingSessionId);
   };

@@ -76,8 +76,8 @@ export function useChatPaneRuntimeHandle({
     );
   }, [activeTab, compacting, engine, modelId, running]);
   const handle = useMemo<ChatPaneHandle>(
-    () => ({ loadAndReplay, compact: compactSession }),
-    [compactSession, loadAndReplay],
+    () => ({ sessionId: activeTabId, loadAndReplay, compact: compactSession }),
+    [activeTabId, compactSession, loadAndReplay],
   );
   useMountSubscription(() => {
     if (!onRegisterHandle) return;
