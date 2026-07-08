@@ -73,18 +73,27 @@ const OWNER_KEYWORDS: Array<[RegExp, string]> = [
   [/exaone/i, "LGAI-EXAONE"],
 ];
 
-const avatarOwnerFor = (modelId: string, author?: string | null, label?: string): string | null => {
-  const explicit = author?.trim();
-  if (explicit && !GENERIC_OWNERS.has(explicit.toLowerCase())) return explicit;
-  if (isHubModelId(modelId)) {
-    const owner = modelId.split("/")[0];
-    if (!GENERIC_OWNERS.has(owner.toLowerCase())) return owner;
-  }
+const avatarOwnerCandidates = (
+  modelId: string,
+  author?: string | null,
+  label?: string,
+): string[] => {
+  const candidates: string[] = [];
+  const push = (owner: string | undefined | null) => {
+    const trimmed = owner?.trim();
+    if (!trimmed || GENERIC_OWNERS.has(trimmed.toLowerCase())) return;
+    if (!candidates.includes(trimmed)) candidates.push(trimmed);
+  };
+  push(author);
+  if (isHubModelId(modelId)) push(modelId.split("/")[0]);
   const haystack = `${label ?? ""} ${modelId}`;
   for (const [pattern, owner] of OWNER_KEYWORDS) {
-    if (pattern.test(haystack)) return owner;
+    if (pattern.test(haystack)) {
+      push(owner);
+      break;
+    }
   }
-  return null;
+  return candidates;
 };
 
 export function ModelLogo({
@@ -100,15 +109,16 @@ export function ModelLogo({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const owner = avatarOwnerFor(modelId, author, label);
-  const imageKey = `${modelId}\u0000${owner ?? ""}`;
-  const [imageState, setImageState] = useState({ imageKey, loaded: false, failed: false });
-  if (imageState.imageKey !== imageKey) setImageState({ imageKey, loaded: false, failed: false });
+  const candidates = avatarOwnerCandidates(modelId, author, label);
+  const imageKey = `${modelId}\u0000${candidates.join(",")}`;
+  const [imageState, setImageState] = useState({ imageKey, index: 0, loaded: false });
+  if (imageState.imageKey !== imageKey) setImageState({ imageKey, index: 0, loaded: false });
   const dimensions = size === "lg" ? "h-11 w-11" : size === "sm" ? "h-7 w-7" : "h-9 w-9";
   const textSize = size === "lg" ? "text-[length:var(--fs-md)]" : "text-[length:var(--fs-xs)]";
   const title = label || modelId;
   const fallbackClass = PALETTE[hashString(title) % PALETTE.length];
-  const requestImage = Boolean(owner) && !imageState.failed;
+  const owner = candidates[imageState.index];
+  const requestImage = owner !== undefined;
   const showImage = requestImage && imageState.loaded;
 
   return (
@@ -138,7 +148,9 @@ export function ModelLogo({
           }
           onError={() =>
             setImageState((state) =>
-              state.imageKey === imageKey ? { ...state, failed: true } : state,
+              state.imageKey === imageKey
+                ? { ...state, index: state.index + 1, loaded: false }
+                : state,
             )
           }
         />
