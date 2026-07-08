@@ -1,6 +1,12 @@
-export type LocalAgentId = "pi" | "opencode" | "droid" | "hermes";
+export type LocalAgentId = "pi" | "opencode" | "droid" | "hermes" | "omp";
 
-export const LOCAL_AGENT_IDS: readonly LocalAgentId[] = ["pi", "opencode", "droid", "hermes"];
+export const LOCAL_AGENT_IDS: readonly LocalAgentId[] = [
+  "pi",
+  "opencode",
+  "droid",
+  "hermes",
+  "omp",
+];
 
 export interface LocalAgentTarget {
   agent: LocalAgentId;
@@ -30,6 +36,11 @@ export interface AttachModelInput {
 
 export type AttachAction = "created-file" | "added" | "updated";
 
+export interface AttachExtraUpdate {
+  configPath: string;
+  backupPath?: string;
+}
+
 export interface AttachResult {
   agent: LocalAgentId;
   ok: boolean;
@@ -37,4 +48,5 @@ export interface AttachResult {
   backupPath?: string;
   action?: AttachAction;
   error?: string;
+  extraUpdates?: AttachExtraUpdate[];
 }

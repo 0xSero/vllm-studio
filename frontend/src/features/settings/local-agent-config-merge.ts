@@ -59,6 +59,15 @@ export function mergePiConfig(config: JsonRecord, model: LocalAgentModel): Attac
   return "added";
 }
 
+export function providerKeyForBaseUrl(config: JsonRecord, baseUrl: string): string | null {
+  const providers = config["providers"];
+  if (!isRecord(providers)) return null;
+  for (const [key, provider] of Object.entries(providers)) {
+    if (isRecord(provider) && sameBaseUrl(provider["baseUrl"], baseUrl)) return key;
+  }
+  return null;
+}
+
 export function mergeOpencodeConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
   if (!isRecord(config["provider"])) config["provider"] = {};
   const providers = config["provider"] as JsonRecord;

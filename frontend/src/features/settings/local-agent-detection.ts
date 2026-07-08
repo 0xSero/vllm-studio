@@ -13,6 +13,20 @@ export const piConfigPath = (home: string): string =>
 export const droidConfigPath = (home: string): string =>
   path.join(home, ".factory", "settings.json");
 export const hermesConfigPath = (home: string): string => path.join(home, ".hermes", "config.yaml");
+export const ompSettingsPath = (home: string): string =>
+  path.join(home, ".omp", "agent", "config.yml");
+
+export const ompConfigCandidatePaths = (home: string): { yml: string; json: string } => ({
+  yml: path.join(home, ".omp", "agent", "models.yml"),
+  json: path.join(home, ".omp", "agent", "models.json"),
+});
+
+export async function resolveOmpConfigPath(home: string): Promise<string> {
+  const { yml, json } = ompConfigCandidatePaths(home);
+  if (await pathExists(yml)) return yml;
+  if (await pathExists(json)) return json;
+  return yml;
+}
 
 export const opencodeCandidatePaths = (home: string): { xdg: string; dot: string } => ({
   xdg: path.join(home, ".config", "opencode", "opencode.json"),
@@ -80,6 +94,16 @@ export async function detectLocalAgents(home: string): Promise<LocalAgentTarget[
     targets.push({
       agent: "hermes",
       label: "hermes",
+      configPath,
+      exists: await pathExists(configPath),
+    });
+  }
+
+  if (await pathExists(path.join(home, ".omp"))) {
+    const configPath = await resolveOmpConfigPath(home);
+    targets.push({
+      agent: "omp",
+      label: "omp (Oh My Pi)",
       configPath,
       exists: await pathExists(configPath),
     });

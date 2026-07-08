@@ -78,7 +78,7 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
           <p className="text-sm text-(--ui-muted)">Detecting local agents…</p>
         ) : agents.length === 0 ? (
           <p className="text-sm text-(--ui-muted)">
-            No local agents detected (looked for pi, opencode, droid, and hermes config
+            No local agents detected (looked for pi, opencode, droid, hermes, and omp config
             directories).
           </p>
         ) : (
@@ -112,6 +112,14 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
                     backup: {result.backupPath}
                   </div>
                 ) : null}
+                {result.ok
+                  ? result.extraUpdates?.map((update) => (
+                      <div key={update.configPath} className="mt-0.5 font-mono text-(--ui-muted)">
+                        also updated: {update.configPath}
+                        {update.backupPath ? ` (backup: ${update.backupPath})` : ""}
+                      </div>
+                    ))
+                  : null}
                 {!result.ok && result.error ? (
                   <div className="mt-0.5 text-(--ui-danger)">{result.error}</div>
                 ) : null}

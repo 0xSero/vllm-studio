@@ -6,6 +6,7 @@
  * in the file and backing the file up before the first modification.
  */
 import path from "node:path";
+import { isRecord } from "@/lib/guards";
 import {
   backupExistingFile,
   existingFileMode,
@@ -21,17 +22,21 @@ import {
   mergeHermesConfig,
   mergeOpencodeConfig,
   mergePiConfig,
+  providerKeyForBaseUrl,
 } from "./local-agent-config-merge";
 import {
   detectLocalAgents,
   droidConfigPath,
   hermesConfigPath,
+  ompSettingsPath,
   opencodeCandidatePaths,
   piConfigPath,
+  resolveOmpConfigPath,
   resolveOpencodeConfigPath,
 } from "./local-agent-detection";
 import type {
   AttachAction,
+  AttachExtraUpdate,
   AttachModelInput,
   AttachResult,
   LocalAgentId,
@@ -83,6 +88,16 @@ async function planFor(
       format: "yaml",
       emptyConfig: () => ({ custom_models: [] }),
       merge: mergeHermesConfig,
+    };
+  }
+  if (agent === "omp") {
+    const configPath = await resolveOmpConfigPath(home);
+    return {
+      configPath,
+      detected: await pathExists(path.join(home, ".omp")),
+      format: configPath.endsWith(".json") ? "json" : "yaml",
+      emptyConfig: () => ({ providers: {} }),
+      merge: mergePiConfig,
     };
   }
   return {
@@ -140,7 +155,39 @@ async function attachToAgent(
   }
 
   const action: AttachAction = file.exists ? mergeAction : "created-file";
-  return { agent, ok: true, configPath, backupPath, action };
+  const extraUpdates =
+    agent === "omp" ? await enableOmpModel(home, model, config).catch(() => undefined) : undefined;
+  return {
+    agent,
+    ok: true,
+    configPath,
+    backupPath,
+    action,
+    ...(extraUpdates ? { extraUpdates } : {}),
+  };
+}
+
+async function enableOmpModel(
+  home: string,
+  model: LocalAgentModel,
+  mergedConfig: JsonRecord,
+): Promise<AttachExtraUpdate[] | undefined> {
+  const providerKey = providerKeyForBaseUrl(mergedConfig, model.baseUrl);
+  if (!providerKey) return undefined;
+  const settingsPath = ompSettingsPath(home);
+  const settings = await readYamlFile(settingsPath);
+  if (settings.error || !settings.exists || !settings.document) return undefined;
+  const doc = settings.document.toJS() as JsonRecord | undefined;
+  if (!isRecord(doc)) return undefined;
+  const enabled = doc["enabledModels"];
+  if (!Array.isArray(enabled) || enabled.length === 0) return undefined;
+  const selector = `${providerKey}/${model.modelId}`;
+  if (enabled.includes(selector)) return undefined;
+  enabled.push(selector);
+  const backupPath = await backupExistingFile(settingsPath);
+  const mode = (await existingFileMode(settingsPath)) ?? 0o600;
+  await writeYamlAtomic(settingsPath, doc, mode);
+  return [{ configPath: settingsPath, backupPath }];
 }
 
 export async function attachModelToAgents(input: AttachModelInput): Promise<AttachResult[]> {
