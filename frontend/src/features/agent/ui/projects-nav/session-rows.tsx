@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -18,7 +19,7 @@ import {
   type SessionPref,
   type SessionPrefs,
 } from "@/features/agent/messages/prefs";
-import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
@@ -437,7 +438,7 @@ export function SessionRow({
 }
 
 const NEW_CHAT_MENU_CLASS =
-  "absolute right-0 top-6 isolate z-[999] min-w-[164px] rounded-lg border border-(--color-popover-border) bg-(--color-popover) p-1 shadow-[0_8px_28px_rgba(0,0,0,0.45)]";
+  "fixed z-[999] min-w-[164px] -translate-x-full rounded-lg border border-(--color-popover-border) bg-(--color-popover) p-1 shadow-[0_8px_28px_rgba(0,0,0,0.45)]";
 
 export function NewChatPlusButton({
   projectId,
@@ -447,19 +448,37 @@ export function NewChatPlusButton({
   onNavigateStart,
 }: {
   projectId: string;
-  /** Full project entry — enables direct workspace commands when on /agent. */
   project?: ProjectEntry;
   label: string;
   className: string;
   onNavigateStart?: () => void;
 }) {
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const menuOpen = menuPos !== null;
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setMenuPos(null), []);
 
-  // On /agent the workspace is bound, so open directly (guaranteed-visible new
-  // surface). Elsewhere fall back to URL navigation the mount effect handles.
+  useMountSubscription(() => {
+    if (!menuOpen || typeof document === "undefined") return;
+    const onDocMouseDown = (event: globalThis.MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (anchorRef.current?.contains(target) || popRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    const onScrollOrResize = () => closeMenu();
+    document.addEventListener("mousedown", onDocMouseDown);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [menuOpen, closeMenu]);
+
   const openNewChat = () => {
     onNavigateStart?.();
     if (project && workspaceCommands().isBound()) {
@@ -481,21 +500,26 @@ export function NewChatPlusButton({
   const runItem = (action: () => void) => (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    setMenuOpen(false);
+    closeMenu();
     action();
   };
 
   return (
-    <div ref={menuRef} className="relative flex items-center justify-center leading-none">
+    <div ref={anchorRef} className="relative flex items-center justify-center leading-none">
       <button
         type="button"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          setMenuOpen((value) => !value);
+          if (menuOpen) {
+            closeMenu();
+            return;
+          }
+          const rect = event.currentTarget.getBoundingClientRect();
+          setMenuPos({ top: rect.bottom + 4, left: rect.right });
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") setMenuOpen(false);
+          if (event.key === "Escape") closeMenu();
         }}
         className={`${className} ${menuOpen ? "opacity-100" : ""}`}
         aria-label={label}
@@ -505,22 +529,27 @@ export function NewChatPlusButton({
       >
         <PlusIcon className="block h-3.5 w-3.5" />
       </button>
-      {menuOpen ? (
-        <div
-          className={NEW_CHAT_MENU_CLASS}
-          role="menu"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setMenuOpen(false);
-          }}
-        >
-          <NewChatMenuItem Icon={ChatIcon} onClick={runItem(openNewChat)}>
-            New chat
-          </NewChatMenuItem>
-          <NewChatMenuItem Icon={Terminal} onClick={runItem(openNewTerminal)}>
-            New terminal
-          </NewChatMenuItem>
-        </div>
-      ) : null}
+      {menuPos
+        ? createPortal(
+            <div
+              ref={popRef}
+              className={NEW_CHAT_MENU_CLASS}
+              style={{ top: menuPos.top, left: menuPos.left }}
+              role="menu"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") closeMenu();
+              }}
+            >
+              <NewChatMenuItem Icon={ChatIcon} onClick={runItem(openNewChat)}>
+                New chat
+              </NewChatMenuItem>
+              <NewChatMenuItem Icon={Terminal} onClick={runItem(openNewTerminal)}>
+                New terminal
+              </NewChatMenuItem>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
