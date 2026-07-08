@@ -10,6 +10,7 @@ import {
   Paintbrush,
   Plug,
   ServerCog,
+  Terminal,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
@@ -23,6 +24,7 @@ import {
 } from "./agent-settings-sections";
 import { AppearanceSettings } from "./appearance-settings";
 import { QuickPanelSettings } from "./quick-panel-settings";
+import { TerminalSettings } from "./terminal-settings";
 import { EnginesSection } from "./engines-section";
 import { ServicesSettings, SystemSettings } from "./system-settings-section";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -52,6 +54,7 @@ const SECTIONS: SettingsSectionDef[] = [
   ["connectors", "Connectors", "MCP servers: accounts, services, your machines.", Plug],
   ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
   ["desktop", "Desktop", "Quick panel hotkey and desktop app behavior.", Keyboard],
+  ["terminal", "Terminal", "Terminal shortcuts and text size.", Terminal],
   ["archive", "Archived chats", "Pi sessions kept out of normal chat lists.", Archive],
   [
     "skills",
@@ -163,6 +166,7 @@ export function SettingsView({
       {activeSection === "connectors" ? <ConnectorsSection /> : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
       {activeSection === "desktop" ? <QuickPanelSettings /> : null}
+      {activeSection === "terminal" ? <TerminalSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
       {activeSection === "skills" ? <SkillsSettings /> : null}
       {activeSection === "setup" ? <SetupChecksSettings /> : null}

@@ -3,20 +3,66 @@
 import { useRef, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import type { SearchAddon } from "@xterm/addon-search";
 import type { TerminalRunResult } from "@/features/agent/contracts";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import {
+  bumpTerminalFontSize,
+  getTerminalFontSize,
+  getTerminalKeybinds,
+  matchTerminalAction,
+  resetTerminalFontSize,
+  subscribeTerminalStore,
+  type TerminalAction,
+} from "@/lib/terminal-keybinds";
 
-export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
+export type TerminalSearchDirection = "next" | "previous";
+
+export type TerminalControl = {
+  search: (term: string, direction: TerminalSearchDirection) => void;
+  clearSearch: () => void;
+  focus: () => void;
+};
+
+export type TerminalPanelActions = {
+  onRequestClose?: () => void;
+  onSplit?: (direction: "vertical" | "horizontal") => void;
+  onNewTerminal?: () => void;
+  onToggleSearch?: () => void;
+};
+
+export function TerminalPanel({
+  cwd,
+  ownerKey,
+  actions,
+  controlRef,
+}: {
+  cwd: string | null;
+  ownerKey: string;
+  actions?: TerminalPanelActions;
+  controlRef?: RefObject<TerminalControl | null>;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<TerminalPanelActions>({});
   const stateRef = useRef<TerminalRefs>({
     term: null,
     fit: null,
+    search: null,
+    applyResize: null,
     input: "",
     running: false,
     disposed: false,
   });
 
-  useTerminalPanelEffects({ containerRef, cwd, ownerKey, stateRef });
+  useTerminalPanelEffects({
+    containerRef,
+    cwd,
+    ownerKey,
+    stateRef,
+    actions,
+    actionsRef,
+    controlRef,
+  });
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-(--color-terminal-bg)">
@@ -66,6 +112,8 @@ export function closeTerminalOwner(ownerKey: string): void {
 type TerminalRefs = {
   term: XTerm | null;
   fit: FitAddon | null;
+  search: SearchAddon | null;
+  applyResize: (() => void) | null;
   input: string;
   running: boolean;
   disposed: boolean;
@@ -146,17 +194,78 @@ function loadWebLinksAddon(
   } catch {}
 }
 
+function runTerminalAction(
+  action: TerminalAction,
+  refs: TerminalRefs,
+  actions: TerminalPanelActions,
+): void {
+  const dispatch: Record<TerminalAction, () => void> = {
+    newTerminal: () => actions.onNewTerminal?.(),
+    closeTerminal: () => actions.onRequestClose?.(),
+    splitRight: () => actions.onSplit?.("vertical"),
+    splitDown: () => actions.onSplit?.("horizontal"),
+    searchTerminal: () => actions.onToggleSearch?.(),
+    clearTerminal: () => refs.term?.clear(),
+    fontSizeUp: () => bumpTerminalFontSize(1),
+    fontSizeDown: () => bumpTerminalFontSize(-1),
+    fontSizeReset: () => resetTerminalFontSize(),
+  };
+  dispatch[action]();
+}
+
+function terminalKeyHandler(
+  stateRef: RefObject<TerminalRefs>,
+  actionsRef: RefObject<TerminalPanelActions>,
+): (event: KeyboardEvent) => boolean {
+  return (event) => {
+    if (event.type !== "keydown") return true;
+    const action = matchTerminalAction(event, getTerminalKeybinds());
+    if (!action) return true;
+    event.preventDefault();
+    event.stopPropagation();
+    runTerminalAction(action, stateRef.current, actionsRef.current);
+    return false;
+  };
+}
+
+function terminalControl(refs: TerminalRefs): TerminalControl {
+  return {
+    search: (term, direction) => {
+      const search = refs.search;
+      if (!search) return;
+      if (!term) {
+        search.clearDecorations();
+        return;
+      }
+      if (direction === "previous") search.findPrevious(term);
+      else search.findNext(term, { incremental: true });
+    },
+    clearSearch: () => refs.search?.clearDecorations(),
+    focus: () => refs.term?.focus(),
+  };
+}
+
 function useTerminalPanelEffects({
   containerRef,
   cwd,
   ownerKey,
   stateRef,
+  actions,
+  actionsRef,
+  controlRef,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   cwd: string | null;
   ownerKey: string;
   stateRef: RefObject<TerminalRefs>;
+  actions?: TerminalPanelActions;
+  actionsRef: RefObject<TerminalPanelActions>;
+  controlRef?: RefObject<TerminalControl | null>;
 }): void {
+  useMountSubscription(() => {
+    actionsRef.current = actions ?? {};
+  }, [actionsRef, actions]);
+
   useMountSubscription(() => {
     const refs = stateRef.current;
     refs.disposed = false;
@@ -167,9 +276,10 @@ function useTerminalPanelEffects({
     async function boot() {
       const element = containerRef.current;
       if (!element) return;
-      const [{ Terminal }, { FitAddon }, webLinksModule] = await Promise.all([
+      const [{ Terminal }, { FitAddon }, { SearchAddon }, webLinksModule] = await Promise.all([
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
+        import("@xterm/addon-search"),
         import("@xterm/addon-web-links").catch(() => null),
       ]);
       if (refs.disposed) return;
@@ -184,17 +294,22 @@ function useTerminalPanelEffects({
         macOptionIsMeta: true,
         rightClickSelectsWord: true,
         fontFamily,
-        fontSize: 12,
+        fontSize: getTerminalFontSize(),
         lineHeight: 1.0,
         theme: buildTerminalTheme(cssVar),
       });
       const fit = new FitAddon();
+      const search = new SearchAddon();
       term.loadAddon(fit);
+      term.loadAddon(search);
       loadWebLinksAddon(term, webLinksModule);
+      term.attachCustomKeyEventHandler(terminalKeyHandler(stateRef, actionsRef));
       term.open(element);
       fit.fit();
       refs.term = term;
       refs.fit = fit;
+      refs.search = search;
+      if (controlRef) controlRef.current = terminalControl(refs);
 
       const pty = getPtyBridge();
       let useFallback = !pty;
@@ -228,8 +343,22 @@ function useTerminalPanelEffects({
       refs.term?.dispose();
       refs.term = null;
       refs.fit = null;
+      refs.search = null;
+      refs.applyResize = null;
+      if (controlRef) controlRef.current = null;
     };
-  }, [containerRef, cwd, ownerKey, stateRef]);
+  }, [containerRef, cwd, ownerKey, stateRef, actionsRef, controlRef]);
+
+  useMountSubscription(
+    () =>
+      subscribeTerminalStore(() => {
+        const term = stateRef.current.term;
+        if (!term) return;
+        term.options.fontSize = getTerminalFontSize();
+        stateRef.current.applyResize?.();
+      }),
+    [stateRef],
+  );
 }
 
 async function bootPty({
@@ -286,13 +415,14 @@ async function bootPty({
   const dataSub = term.onData((data) => {
     void pty.write(id, data);
   });
-  const resizeObserver = new ResizeObserver(() => {
+  refs.applyResize = () => {
     if (refs.disposed) return;
     try {
       fit.fit();
       void pty.resize(id, term.cols, term.rows);
     } catch {}
-  });
+  };
+  const resizeObserver = new ResizeObserver(() => refs.applyResize?.());
   resizeObserver.observe(element);
   return () => {
     dataDisposer();
@@ -312,9 +442,9 @@ function bootFallback(
   const session: FallbackSession = { input: "", running: false, cwd, previousCwd: null };
   writeIntro(term, session.cwd);
   const dataSub = term.onData((data) => handleTerminalData(data, refs, term, session));
-  const resizeObserver = new ResizeObserver(() => refs.fit?.fit());
+  refs.applyResize = () => fit.fit();
+  const resizeObserver = new ResizeObserver(() => refs.applyResize?.());
   resizeObserver.observe(element);
-  void fit;
   return () => {
     dataSub.dispose();
     resizeObserver.disconnect();

@@ -125,17 +125,14 @@ export function renderWorkspacePane({
         rightPanelOpen={tools.computer.open}
         onFocus={() => dispatch({ type: "focusPane", paneId })}
         onClose={() => handles.closePane(paneId)}
+        onSplit={(direction) => handles.splitTerminal(paneId, direction)}
+        onNewTerminal={() => handles.splitTerminal(paneId, "vertical")}
         onToggleRightPanel={tools.toggleComputerOpen}
       />
     );
   }
   const view = selectWorkspacePaneView(paneId, state, projects);
   if (!view) return null;
-  const browserPanelOpen =
-    view.isFocused &&
-    tools.browser.enabled &&
-    tools.computer.open &&
-    tools.computer.tab === "browser";
 
   return (
     <ChatPane
@@ -159,17 +156,17 @@ export function renderWorkspacePane({
           loading={state.modelsLoading}
         />
       }
-      browserToolEnabled={browserPanelOpen}
+      browserToolEnabled={tools.browser.enabled}
       browserBackend={tools.browser.backend}
       onToggleBrowserBackend={tools.toggleBrowserBackend}
       onToggleBrowserTool={() => {
-        if (browserPanelOpen) {
-          tools.closeComputerTab("browser");
+        if (tools.browser.enabled) {
           tools.setBrowserEnabled(false);
+          tools.closeComputerTab("browser");
           return;
         }
-        tools.setComputerTab("browser");
         tools.setBrowserEnabled(true);
+        tools.setComputerTab("browser");
       }}
       canvasEnabled={view.isFocused && tools.computer.canvasEnabled}
       onToggleCanvas={tools.toggleCanvas}
