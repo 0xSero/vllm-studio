@@ -97,6 +97,23 @@ export function splitLeafWithinLimits(
   return cols <= MAX_LAYOUT_COLS && rows <= MAX_LAYOUT_ROWS ? next : null;
 }
 
+export function clampLayoutToLimits(
+  layout: Layout,
+  dropFirst: (paneId: PaneId) => boolean,
+): Layout {
+  let next = layout;
+  for (;;) {
+    const { cols, rows } = layoutGridSize(next);
+    if (cols <= MAX_LAYOUT_COLS && rows <= MAX_LAYOUT_ROWS) return next;
+    const leaves = collectLeaves(next);
+    const victim = [...leaves].reverse().find(dropFirst);
+    if (!victim) return next;
+    const pruned = removeLeaf(next, victim);
+    if (!pruned) return next;
+    next = pruned;
+  }
+}
+
 // Update the ratio of a split given a delta in pixels along its drag axis.
 export function setSplitRatio(layout: Layout, splitPath: number[], ratio: number): Layout {
   if (splitPath.length === 0 || layout.kind !== "split") return layout;

@@ -1,5 +1,5 @@
 import { isRecord } from "@/lib/guards";
-import { collectLeaves } from "@/features/agent/workspace/layout";
+import { clampLayoutToLimits, collectLeaves } from "@/features/agent/workspace/layout";
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
@@ -220,11 +220,14 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
   const parsed = parsePersistedPaneState(raw);
   if (!parsed) return null;
 
-  const layout = parsed.layout as WorkspaceLayout;
+  const persistedPanes = parsed.panes && typeof parsed.panes === "object" ? parsed.panes : {};
+  const layout = clampLayoutToLimits(
+    parsed.layout as WorkspaceLayout,
+    (paneId) => persistedPanes[paneId]?.kind === "terminal",
+  );
   const leaves = collectLeaves(layout);
   if (leaves.length === 0) return null;
 
-  const persistedPanes = parsed.panes && typeof parsed.panes === "object" ? parsed.panes : {};
   const panesById = new Map<PaneId, PaneState>();
   const sessions = new Map<SessionId, Session>();
   const selections = new Map<SessionId, ToolSelection>();
