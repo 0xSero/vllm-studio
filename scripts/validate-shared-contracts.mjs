@@ -5,6 +5,10 @@ import { join, relative, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const contractNames = [
   "Backend",
+  "ServeRuntimeKind",
+  "ServeRuntime",
+  "Serve",
+  "ServePayload",
   "RecipeBase",
   "RecipePayload",
   "DownloadStatus",

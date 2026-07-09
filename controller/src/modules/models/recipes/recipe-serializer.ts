@@ -6,6 +6,40 @@ const integerSchema = Schema.Number.check(Schema.isInt());
 
 const nullableStringSchema = Schema.Union([Schema.Null, Schema.String]);
 
+const serveRuntimeSchema = Schema.Struct({
+  kind: Schema.Literals(["managed_venv", "system", "docker", "binary"]),
+  ref: Schema.String.check(Schema.isNonEmpty()),
+  label: Schema.optional(Schema.String),
+});
+
+const stringValue = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const defaultRuntime = (backend: unknown): Record<string, unknown> => {
+  const runtimeReference = stringValue(backend) ?? "vllm";
+  return runtimeReference === "llamacpp"
+    ? { kind: "binary", ref: "llama-server" }
+    : { kind: "managed_venv", ref: runtimeReference };
+};
+
+const normalizedRuntime = (
+  data: Record<string, unknown>,
+  extraArguments: Record<string, unknown>,
+): Record<string, unknown> => {
+  const runtime = data["runtime"];
+  if (runtime && typeof runtime === "object" && !Array.isArray(runtime)) {
+    const record = { ...(runtime as Record<string, unknown>) };
+    if (record["kind"] === "venv") record["kind"] = "managed_venv";
+    return record;
+  }
+  const dockerImage =
+    stringValue(extraArguments["docker_image"]) ?? stringValue(extraArguments["docker-image"]);
+  if (dockerImage) return { kind: "docker", ref: dockerImage };
+  const pythonPath = stringValue(data["python_path"]);
+  if (pythonPath) return { kind: "system", ref: pythonPath };
+  return defaultRuntime(data["backend"]);
+};
+
 // Defense-in-depth range checks: the editor floors these, but a recipe can also
 // arrive via the API / DB. A NaN previously failed schema validation and made
 // the whole recipe silently vanish; a negative/zero passed straight into the
@@ -47,6 +81,10 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
     delete data["engine"];
   }
 
+  data["runtime"] = normalizedRuntime(data, extraArguments);
+  delete extraArguments["docker_image"];
+  delete extraArguments["docker-image"];
+
   if (data["tensor_parallel_size"] === undefined && data["tp"] !== undefined) {
     data["tensor_parallel_size"] = data["tp"];
   }
@@ -80,6 +118,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
     "name",
     "model_path",
     "backend",
+    "runtime",
     "env_vars",
     "tensor_parallel_size",
     "pipeline_parallel_size",
@@ -125,6 +164,7 @@ export const recipeSchema = Schema.Struct({
   name: Schema.String,
   model_path: Schema.String,
   backend: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx"]),
+  runtime: serveRuntimeSchema,
   env_vars: Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.String)]),
   tensor_parallel_size: integerSchema,
   pipeline_parallel_size: integerSchema,

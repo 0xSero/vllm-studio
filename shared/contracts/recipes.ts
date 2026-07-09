@@ -1,5 +1,13 @@
 export type Backend = "vllm" | "sglang" | "llamacpp" | "mlx";
 
+export type ServeRuntimeKind = "managed_venv" | "system" | "docker" | "binary";
+
+export interface ServeRuntime {
+  kind: ServeRuntimeKind;
+  ref: string;
+  label?: string | undefined;
+}
+
 /**
  * Canonical recipe shape as sent over the wire.
  */
@@ -8,6 +16,7 @@ export interface RecipeBase {
   name: string;
   model_path: string;
   backend: Backend;
+  runtime: ServeRuntime;
   env_vars: Record<string, string> | null;
   tensor_parallel_size: number;
   pipeline_parallel_size: number;
@@ -37,6 +46,9 @@ export interface RecipeBase {
  */
 export type RecipePayload = Pick<RecipeBase, "id" | "name" | "model_path"> &
   Partial<Omit<RecipeBase, "id" | "name" | "model_path">>;
+
+export type Serve = RecipeBase;
+export type ServePayload = RecipePayload;
 
 export type DownloadStatus =
   | "queued"
