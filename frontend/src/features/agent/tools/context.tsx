@@ -10,6 +10,7 @@ import {
   type Context,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { Effect } from "effect";
 import type {
   ComposerPromptTemplateRef,
@@ -122,6 +123,8 @@ function buildInitialComputer(): ComputerState {
 }
 
 export function ToolsProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const catalogueEnabled = pathname === "/agent" || pathname === "/quick";
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
@@ -138,6 +141,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const activeCanvasSessionRef = useRef<SessionId | null>(null);
   const [activeCanvasSessionId, setActiveCanvasSessionIdState] = useState<SessionId | null>(null);
   useToolsCatalogueEffects({
+    enabled: catalogueEnabled,
     onLoaded: ({ skills, promptTemplates }) => {
       setSkillCatalogue(skills);
       setPromptTemplateCatalogue(promptTemplates);

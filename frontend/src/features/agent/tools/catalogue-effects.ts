@@ -37,15 +37,20 @@ function loadToolsCatalogueEffect(): Effect.Effect<{
 }
 
 type UseToolsCatalogueEffectsOptions = {
+  enabled: boolean;
   onLoaded: (payload: {
     skills: ComposerSkillRef[];
     promptTemplates: ComposerPromptTemplateRef[];
   }) => void;
 };
 
-export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsOptions): void {
+export function useToolsCatalogueEffects({
+  enabled,
+  onLoaded,
+}: UseToolsCatalogueEffectsOptions): void {
   const onLoadedRef = useRef(onLoaded);
   useMountSubscription(() => {
+    if (!enabled) return;
     let cancelled = false;
     void Effect.runPromise(
       loadToolsCatalogueEffect().pipe(
@@ -57,5 +62,5 @@ export function useToolsCatalogueEffects({ onLoaded }: UseToolsCatalogueEffectsO
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 }

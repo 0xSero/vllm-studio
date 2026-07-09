@@ -197,7 +197,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
       router.push(
         `/agent?project=${encodeURIComponent(session.projectId)}${
           session.piSessionId ? `&session=${encodeURIComponent(session.piSessionId)}` : ""
-        }`,
+        }&replace=1`,
       );
       onClose();
       return;
@@ -205,7 +205,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
     const session = filtered[index - destinationFiltered.length - liveFiltered.length];
     if (!session) return;
     router.push(
-      `/agent?project=${encodeURIComponent(session.projectId)}&session=${encodeURIComponent(session.id)}`,
+      `/agent?project=${encodeURIComponent(session.projectId)}&session=${encodeURIComponent(session.id)}&replace=1`,
     );
     onClose();
   }

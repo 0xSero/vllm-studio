@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -28,8 +29,6 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { ProjectsNavSection } from "@/features/agent/ui/projects-nav-section";
-import { SessionsCommand } from "@/features/agent/ui/sessions-command";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
 
 type ActiveSessionDetail = {
@@ -55,6 +54,21 @@ const tabs = [
 const SIDEBAR_MIN_WIDTH = 188;
 const SIDEBAR_MAX_WIDTH = 320;
 const SIDEBAR_DEFAULT_WIDTH = 224;
+
+const ProjectsNavSection = dynamic(
+  () => import("@/features/agent/ui/projects-nav-section").then((mod) => mod.ProjectsNavSection),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="px-2 py-1 text-[length:var(--fs-md)] text-(--dim)">Loading projects...</div>
+    ),
+  },
+);
+
+const SessionsCommand = dynamic(
+  () => import("@/features/agent/ui/sessions-command").then((mod) => mod.SessionsCommand),
+  { ssr: false },
+);
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
