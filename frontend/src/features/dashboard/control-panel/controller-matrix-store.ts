@@ -19,6 +19,7 @@ import {
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_REQUEST = { timeout: 4_000, retries: 0 } as const;
+const PRESERVED_FAILURE_POLLS = 3;
 
 export type ControllerSnapshot = SavedController & {
   index: number;
@@ -43,6 +44,7 @@ const listeners = new Set<() => void>();
 let started = false;
 let pollFiber: Fiber.Fiber<void, unknown> | null = null;
 let pollSeq = 0;
+const pollFailures = new Map<string, number>();
 
 function sameUrl(a: string, b: string): boolean {
   return normalizeControllerUrl(a) === normalizeControllerUrl(b);
@@ -78,6 +80,31 @@ function pendingRow(controller: SavedController, index: number): ControllerSnaps
     modelName: null,
     online: false,
     running: false,
+  });
+}
+
+export function controllerSnapshotAfterFailure({
+  authRequired,
+  controller,
+  failureStreak,
+  index,
+  previous,
+}: {
+  authRequired: boolean;
+  controller: SavedController;
+  failureStreak: number;
+  index: number;
+  previous?: ControllerSnapshot;
+}): ControllerSnapshot {
+  const preserveOnline =
+    !authRequired && Boolean(previous?.online) && failureStreak <= PRESERVED_FAILURE_POLLS;
+  return row({
+    authRequired,
+    controller,
+    index,
+    modelName: previous?.modelName ?? null,
+    online: preserveOnline,
+    running: preserveOnline && Boolean(previous?.running),
   });
 }
 
@@ -157,6 +184,7 @@ async function pollController(
   });
   try {
     const status = await api.getStatus(POLL_REQUEST);
+    pollFailures.delete(controller.url);
     return row({
       authRequired: false,
       controller,
@@ -167,13 +195,16 @@ async function pollController(
     });
   } catch (error) {
     const auth = isAuthRequiredError(error);
-    return row({
+    const failures = auth
+      ? PRESERVED_FAILURE_POLLS + 1
+      : (pollFailures.get(controller.url) ?? 0) + 1;
+    pollFailures.set(controller.url, failures);
+    return controllerSnapshotAfterFailure({
       authRequired: auth,
       controller,
+      failureStreak: failures,
       index,
-      modelName: null,
-      online: false,
-      running: false,
+      previous: snapshot.rows.find((candidate) => sameUrl(candidate.url, controller.url)),
     });
   }
 }

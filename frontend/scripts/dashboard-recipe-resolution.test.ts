@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProcessInfo, RecipeWithStatus } from "../src/lib/types";
-import { resolveDashboardRecipe } from "../src/features/dashboard/use-dashboard-recipes";
+import {
+  resolveDashboardLogs,
+  resolveDashboardRecipe,
+} from "../src/features/dashboard/use-dashboard-recipes";
 
 const process: ProcessInfo = {
   pid: 1,
@@ -54,4 +57,14 @@ test("active process keeps the cached Serve while controller rows settle", () =>
 test("no active process clears the dashboard selection", () => {
   const previous = recipe("previous", "running");
   assert.equal(resolveDashboardRecipe(null, [previous], previous), null);
+});
+
+test("active process keeps visible logs through an empty refresh", () => {
+  assert.deepEqual(resolveDashboardLogs(["ready"], "1|vllm|active|/models/active", process, []), [
+    "ready",
+  ]);
+});
+
+test("a different process does not inherit stale logs", () => {
+  assert.deepEqual(resolveDashboardLogs(["old"], "2|vllm|old|/models/old", process, null), []);
 });

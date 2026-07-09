@@ -83,6 +83,17 @@ export function resolveDashboardRecipe(
   return recipes.find((recipe) => recipe.status === "running") ?? previous;
 }
 
+export function resolveDashboardLogs(
+  previous: string[],
+  previousProcessKey: string,
+  process: ProcessInfo | null,
+  next: string[] | null,
+): string[] {
+  const sameProcess = Boolean(process && previousProcessKey === processKey(process));
+  if (sameProcess && previous.length > 0 && (!next || next.length === 0)) return previous;
+  return next ?? [];
+}
+
 function selectTargetLogSession(
   sessions: LogSessionSummary[],
   runningRecipe: RecipeWithStatus | null,
@@ -137,9 +148,11 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   const processRef = useRef(currentProcess);
   const recipeRef = useRef(currentRecipe);
   const recipesRef = useRef(recipes);
+  const logsRef = useRef(logs);
   processRef.current = currentProcess;
   recipeRef.current = currentRecipe;
   recipesRef.current = recipes;
+  logsRef.current = logs;
   const activeProcessKey = processKey(currentProcess);
 
   const applyCachedState = useCallback((key: string) => {
@@ -162,9 +175,7 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
       if (list.length === 0) return [];
       const targetSession = selectTargetLogSession(list, runningRecipe, process);
       if (!targetSession) return [];
-      const logData = await client
-        .getLogs(targetSession.id, limit, FAST_LOG_REQUEST)
-        .catch(() => ({ logs: [] }));
+      const logData = await client.getLogs(targetSession.id, limit, FAST_LOG_REQUEST);
       return logData.logs || [];
     },
     [],
@@ -186,10 +197,17 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
         const key = processKey(process);
         lastRecipe = resolved && key ? resolved : null;
         lastRecipeProcessKey = resolved && key ? key : "";
-        const nextLogs = await refreshLogs(client, resolved, process);
+        const nextLogs = await refreshLogs(client, resolved, process).catch(() => null);
         if (controllerKey() !== targetKey) return;
-        setLogs(nextLogs);
-        cacheState(targetKey, process, list, resolved, nextLogs);
+        const cached = cachedState(targetKey);
+        const resolvedLogs = resolveDashboardLogs(
+          cached?.logs ?? logsRef.current,
+          cached?.processKey ?? "",
+          process,
+          nextLogs,
+        );
+        setLogs(resolvedLogs);
+        cacheState(targetKey, process, list, resolved, resolvedLogs);
       } catch (e) {
         console.error("Failed to load recipes:", e);
       } finally {
@@ -230,10 +248,17 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     const client = apiForController(targetKey);
     const poll = async () => {
       if (cancelled) return;
-      const nextLogs = await refreshLogs(client, recipeRef.current, process).catch(() => []);
+      const nextLogs = await refreshLogs(client, recipeRef.current, process).catch(() => null);
       if (cancelled || controllerKey() !== targetKey) return;
-      setLogs(nextLogs);
-      cacheState(targetKey, process, recipesRef.current, recipeRef.current, nextLogs);
+      const cached = cachedState(targetKey);
+      const resolvedLogs = resolveDashboardLogs(
+        cached?.logs ?? logsRef.current,
+        cached?.processKey ?? "",
+        process,
+        nextLogs,
+      );
+      setLogs(resolvedLogs);
+      cacheState(targetKey, process, recipesRef.current, recipeRef.current, resolvedLogs);
     };
     void poll();
     const timer = effectInterval(() => void poll(), 4000);
