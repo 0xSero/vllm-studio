@@ -27,7 +27,7 @@ type Props = {
 const TEMPLATE_ROWS = [
   {
     label: "vLLM default",
-    description: "CUDA-first OpenAI-compatible launch recipe.",
+    description: "CUDA-first OpenAI-compatible Serve.",
     value: "backend vLLM · tp/pp 1/1",
     status: "template",
   },
@@ -66,13 +66,13 @@ export function RecipesTable({
   const launchDisabledReason = launching
     ? "A launch is already in progress."
     : runningRecipeId
-      ? "Stop the running model before launching another recipe."
+      ? "Stop the running model before launching another Serve."
       : null;
 
   return (
     <ModelSection
-      title="Launch recipes"
-      description="Configured controller launch rows."
+      title="Saved Serves"
+      description="Launch-ready model, runtime, and configuration combinations."
       actions={
         <ModelStatus tone={recipes.length ? "good" : loading ? "info" : "default"}>
           {recipes.length ? `${recipes.length} rows` : loading ? "syncing" : "defaults"}
@@ -82,8 +82,8 @@ export function RecipesTable({
       {loading ? (
         <ModelRow
           label="Controller sync"
-          description="Recipe requests are still in flight; stable defaults stay visible below."
-          value={<ModelValue dim>Loading controller recipe rows…</ModelValue>}
+          description="Serve requests are still in flight; stable defaults stay visible below."
+          value={<ModelValue dim>Loading controller Serves…</ModelValue>}
           status={<ModelStatus tone="info">syncing</ModelStatus>}
         />
       ) : null}

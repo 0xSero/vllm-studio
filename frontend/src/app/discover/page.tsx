@@ -1,1 +1,5 @@
-export { default } from "@/features/discover/discover-page";
+import { permanentRedirect } from "next/navigation";
+
+export default function DiscoverRedirect() {
+  permanentRedirect("/recipes");
+}

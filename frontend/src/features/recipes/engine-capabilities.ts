@@ -44,9 +44,6 @@ export interface EngineCapabilities {
   toolCalling: boolean;
   reasoning: boolean;
   chatTemplates: boolean;
-
-  // Environment tab
-  pythonPath: boolean;
 }
 
 const VLLM: EngineCapabilities = {
@@ -71,7 +68,6 @@ const VLLM: EngineCapabilities = {
   toolCalling: true,
   reasoning: true,
   chatTemplates: true,
-  pythonPath: true,
 };
 
 const SGLANG: EngineCapabilities = { ...VLLM, backend: "sglang" };
@@ -98,7 +94,6 @@ const LLAMACPP: EngineCapabilities = {
   toolCalling: false,
   reasoning: false,
   chatTemplates: false,
-  pythonPath: false,
 };
 
 const MLX: EngineCapabilities = {
@@ -123,7 +118,6 @@ const MLX: EngineCapabilities = {
   toolCalling: false,
   reasoning: false,
   chatTemplates: false,
-  pythonPath: true,
 };
 
 const CAPABILITIES: Record<Backend, EngineCapabilities> = {

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Compass, Download, HardDrive } from "@/ui/icon-registry";
-import type { ModelInfo, RecipeWithStatus } from "@/lib/types";
+import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { SettingsLayout } from "@/features/settings/settings-ui";
 import type { RecipesContentTab } from "./recipes-content-model";
@@ -31,9 +31,11 @@ type Props = {
   runningRecipeName: string | null;
   launchProgressMessage: string | null;
   availableModels: ModelInfo[];
+  runtimeTargets: RuntimeTarget[];
   sortedRecipes: RecipeWithStatus[];
   onRefresh: () => void;
   onNewRecipe: () => void;
+  onCreateServeFromDownload: (download: ModelDownload) => void;
   onSaveRecipe: () => void;
   onCloseRecipeModal: () => void;
   onCancelDelete: () => void;
@@ -49,15 +51,15 @@ const MODEL_SECTIONS: Array<{
   icon: ReactNode;
 }> = [
   {
-    id: "explore",
-    label: "Search Models",
-    description: "Base model search first; derivatives expand under the selected family.",
+    id: "get",
+    label: "Get",
+    description: "Find the right model, check hardware fit, and download its weights.",
     icon: <Compass className="h-3.5 w-3.5" />,
   },
   {
-    id: "recipes",
-    label: "Current Running Models",
-    description: "Local launch recipes, running state, and engine actions.",
+    id: "serves",
+    label: "Serves",
+    description: "Saved model, runtime, and configuration combinations ready to launch.",
     icon: <HardDrive className="h-3.5 w-3.5" />,
   },
   {
@@ -87,9 +89,11 @@ export function RecipesContentView(props: Props) {
     runningRecipeName,
     launchProgressMessage,
     availableModels,
+    runtimeTargets,
     sortedRecipes,
     onRefresh,
     onNewRecipe,
+    onCreateServeFromDownload,
     onSaveRecipe,
     onCloseRecipeModal,
     onCancelDelete,
@@ -117,7 +121,7 @@ export function RecipesContentView(props: Props) {
         onSelectSection={setTab}
         refreshLabel="Refresh models"
       >
-        {tab === "recipes" ? (
+        {tab === "serves" ? (
           <RecipesTab
             loading={loading}
             filter={filter}
@@ -131,10 +135,10 @@ export function RecipesContentView(props: Props) {
             onNewRecipe={onNewRecipe}
             table={table}
           />
-        ) : tab === "explore" ? (
+        ) : tab === "get" ? (
           <ExploreTab />
         ) : (
-          <DownloadsTab />
+          <DownloadsTab onCreateServe={onCreateServeFromDownload} />
         )}
       </SettingsLayout>
 
@@ -153,6 +157,7 @@ export function RecipesContentView(props: Props) {
             onChange={setModalRecipe}
             saving={saving}
             availableModels={availableModels}
+            runtimeTargets={runtimeTargets}
             recipes={recipes}
           />
         </div>

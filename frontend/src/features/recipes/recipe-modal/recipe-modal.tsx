@@ -8,7 +8,7 @@ import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import { modelIdFromPath } from "@/lib/huggingface";
-import type { Backend, ModelInfo, Recipe, RecipeWithStatus } from "@/lib/types";
+import type { Backend, ModelInfo, Recipe, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ENGINE_LABEL, getEngineCapabilities } from "@/features/recipes/engine-capabilities";
 import { engineNodeStyle } from "@/features/recipes/recipe-labels";
@@ -20,9 +20,28 @@ import {
 import { getExtraArgValueForKey, setExtraArgValueForKey } from "@/features/recipes/extra-args";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
+import { defaultRuntimeForBackend } from "@/features/recipes/serve-runtime-options";
 import { RecipeModalTabBar } from "./recipe-modal-tab-bar";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 import { RecipeModalTabContent } from "./tabs/tab-content";
+
+function useRuntimeInstallation(backend: Backend) {
+  const [installing, setInstalling] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const install = useCallback(async () => {
+    setInstalling(true);
+    setMessage(null);
+    try {
+      const result = await api.createRuntimeJob({ backend, type: "install" });
+      setMessage(result.job.message || `${ENGINE_LABEL[backend]} installation started`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Runtime installation failed");
+    } finally {
+      setInstalling(false);
+    }
+  }, [backend]);
+  return { installing, message, install };
+}
 
 export function RecipeModal({
   recipe,
@@ -31,6 +50,7 @@ export function RecipeModal({
   onChange,
   saving,
   availableModels,
+  runtimeTargets,
   recipes,
 }: {
   recipe: RecipeEditor;
@@ -39,6 +59,7 @@ export function RecipeModal({
   onChange: (recipe: RecipeEditor) => void;
   saving: boolean;
   availableModels: ModelInfo[];
+  runtimeTargets: RuntimeTarget[];
   recipes: RecipeWithStatus[];
 }) {
   const [activeTab, setActiveTab] = useState<RecipeModalTabId>("general");
@@ -62,6 +83,7 @@ export function RecipeModal({
   } | null>(null);
 
   const backend = recipe.backend ?? "vllm";
+  const runtimeInstallation = useRuntimeInstallation(backend);
   const capabilities = useMemo(() => getEngineCapabilities(backend), [backend]);
   const isLlamacpp = backend === "llamacpp";
   const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
@@ -228,7 +250,7 @@ export function RecipeModal({
   return (
     <Drawer width={880}>
       <DrawerHeader
-        title={recipe.id ? recipe.name || "Edit recipe" : "New recipe"}
+        title={recipe.id ? recipe.name || "Edit Serve" : "New Serve"}
         badge={
           <span
             className={`inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[length:var(--fs-2xs)] font-medium ${engineStyle.bg} ${engineStyle.fg}`}
@@ -251,7 +273,14 @@ export function RecipeModal({
             recipe={recipe}
             backend={backend}
             commandOverridden={hasCommandOverride}
-            onBackendChange={(next) => applyRecipeChange({ ...recipe, backend: next })}
+            onBackendChange={(next) =>
+              applyRecipeChange({
+                ...recipe,
+                backend: next,
+                runtime: defaultRuntimeForBackend(next),
+                python_path: null,
+              })
+            }
           />
           <RecipeModalTabContent
             activeTab={safeActiveTab}
@@ -262,7 +291,14 @@ export function RecipeModal({
               getExtraArgValueForKey: getExtraArgValueForKeyLocal,
               setExtraArgValueForKey: setExtraArgValueForKeyLocal,
             }}
-            general={{ availableModels, modelServedNames }}
+            general={{
+              availableModels,
+              modelServedNames,
+              runtimeTargets,
+              installingRuntime: runtimeInstallation.installing,
+              runtimeInstallMessage: runtimeInstallation.message,
+              onInstallRuntime: runtimeInstallation.install,
+            }}
             environment={{
               envVarEntries,
               onAddEnvVar: handleAddEnvVar,
@@ -289,38 +325,65 @@ export function RecipeModal({
         </div>
       </DrawerBody>
 
-      <DrawerFooter
-        status={
-          <>
-            {recipe.id ? `Editing ${recipe.name}` : "Creating new recipe"}
-            {extraArgsError && (
-              <span className="ml-3 text-(--ui-danger)">Extra args has errors</span>
-            )}
-            {recipeSourceError && (
-              <span className="ml-3 text-(--ui-danger)">Recipe JSON has errors</span>
-            )}
-          </>
-        }
-      >
-        <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={onSave}
-          disabled={
-            saving ||
-            !!extraArgsError ||
-            !!recipeSourceError ||
-            !(recipe.name ?? "").trim() ||
-            !(recipe.model_path ?? "").trim()
-          }
-          icon={saving ? <Spinner size="xs" variant="refresh" /> : <Save className="h-3 w-3" />}
-        >
-          {saving ? "Saving..." : "Save recipe"}
-        </Button>
-      </DrawerFooter>
+      <RecipeModalFooter
+        recipe={recipe}
+        saving={saving}
+        extraArgsError={extraArgsError}
+        recipeSourceError={recipeSourceError}
+        onClose={onClose}
+        onSave={onSave}
+      />
     </Drawer>
+  );
+}
+
+function RecipeModalFooter({
+  recipe,
+  saving,
+  extraArgsError,
+  recipeSourceError,
+  onClose,
+  onSave,
+}: {
+  recipe: RecipeEditor;
+  saving: boolean;
+  extraArgsError: string | null;
+  recipeSourceError: string | null;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const invalid =
+    Boolean(extraArgsError) ||
+    Boolean(recipeSourceError) ||
+    !recipe.name.trim() ||
+    !recipe.model_path.trim() ||
+    !recipe.runtime?.ref.trim();
+  return (
+    <DrawerFooter
+      status={
+        <>
+          {recipe.id ? `Editing ${recipe.name}` : "Creating a Serve"}
+          {extraArgsError ? (
+            <span className="ml-3 text-(--ui-danger)">Extra args has errors</span>
+          ) : null}
+          {recipeSourceError ? (
+            <span className="ml-3 text-(--ui-danger)">Serve JSON has errors</span>
+          ) : null}
+        </>
+      }
+    >
+      <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        onClick={onSave}
+        disabled={saving || invalid}
+        icon={saving ? <Spinner size="xs" variant="refresh" /> : <Save className="h-3 w-3" />}
+      >
+        {saving ? "Saving..." : "Save Serve"}
+      </Button>
+    </DrawerFooter>
   );
 }
 

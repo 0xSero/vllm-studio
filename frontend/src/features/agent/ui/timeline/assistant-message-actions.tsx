@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Copy, GitFork } from "@/ui/icon-registry";
-import { useCopiedFlag } from "@/hooks/use-copied-flag";
+import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 
 export function AssistantActionButton({
   label,

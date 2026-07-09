@@ -97,7 +97,7 @@ function mobilePageTitle(pathname: string): string {
 
 function isRouteActive(pathname: string, href: string): boolean {
   if (href === "/") {
-    return pathname === "/" || pathname === "/discover";
+    return pathname === "/";
   }
   if (href === "/settings") {
     return pathname.startsWith("/settings");

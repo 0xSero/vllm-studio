@@ -36,7 +36,9 @@ export function useRecipesDerived({
         recipe.name.toLowerCase().includes(filterLower) ||
         recipe.model_path.toLowerCase().includes(filterLower) ||
         (recipe.served_model_name?.toLowerCase().includes(filterLower) ?? false) ||
-        recipe.backend.toLowerCase().includes(filterLower)
+        recipe.backend.toLowerCase().includes(filterLower) ||
+        (recipe.runtime?.kind.toLowerCase().includes(filterLower) ?? false) ||
+        (recipe.runtime?.ref.toLowerCase().includes(filterLower) ?? false)
       );
     });
   }, [filterLower, recipes]);

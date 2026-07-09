@@ -3,11 +3,13 @@ import type { RecipeEditor } from "./recipe-editor";
 import { coerceValue } from "./coercion";
 import { EXTRA_ARG_FIELDS } from "./extra-arg-fields";
 import { extractThinkingBudget, getExtraArgValue } from "./extra-args";
+import { defaultRuntimeForBackend } from "./serve-runtime-options";
 
 export const normalizeRecipeForEditor = (recipe: Recipe): RecipeEditor => {
   const extraArgs = { ...(recipe.extra_args ?? {}) } as Record<string, unknown>;
   const normalized: RecipeEditor = {
     ...recipe,
+    runtime: recipe.runtime ?? defaultRuntimeForBackend(recipe.backend ?? "vllm"),
     extra_args: extraArgs,
   };
 

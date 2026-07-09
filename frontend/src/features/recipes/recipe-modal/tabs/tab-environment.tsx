@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, Plus, Terminal, Trash2, Variable } from "@/ui/icon-registry";
+import { Code, Plus, Trash2, Variable } from "@/ui/icon-registry";
 import { Button, Card, FormSection, Input, Textarea } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import type { EngineCapabilities } from "@/features/recipes/engine-capabilities";
@@ -36,18 +36,6 @@ export function RecipeModalTabEnvironment({
 
   return (
     <div className="space-y-6">
-      {capabilities.pythonPath ? (
-        <FormSection icon={<Terminal className="h-4 w-4" />} title="Runtime">
-          <Input
-            label="Python Path"
-            type="text"
-            value={recipe.python_path || ""}
-            onChange={(e) => onChange({ ...recipe, python_path: e.target.value || undefined })}
-            placeholder="/usr/bin/python or venv/bin/python"
-          />
-        </FormSection>
-      ) : null}
-
       {isLlamacpp ? (
         <p className="text-xs text-(--ui-muted)">
           llama.cpp uses the configured server binary. Set{" "}

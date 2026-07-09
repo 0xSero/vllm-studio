@@ -15,6 +15,10 @@ export type {
   ModelInfo,
   RecipeBase,
   RecipePayload,
+  Serve,
+  ServePayload,
+  ServeRuntime,
+  ServeRuntimeKind,
   StorageInfo,
 } from "@local-studio/contracts/recipes";
 

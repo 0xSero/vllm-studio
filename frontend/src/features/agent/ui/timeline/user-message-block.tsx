@@ -1,5 +1,5 @@
 import { Copy } from "@/ui/icon-registry";
-import { useCopiedFlag } from "@/hooks/use-copied-flag";
+import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import type { ChatMessage, ChatMessageAttachment } from "@/features/agent/messages";
 import { AssistantActionButton } from "@/features/agent/ui/timeline/assistant-message-actions";
 

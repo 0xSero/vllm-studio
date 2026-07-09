@@ -14,7 +14,7 @@ import { formatBytes } from "@/lib/formatters";
 import { ModelLogo } from "@/ui/model-logo";
 import { ModelButton, ModelRow, ModelStatus, type ModelStatusTone } from "./model-page";
 import { extractProvider } from "@/lib/huggingface";
-import { extractQuantizations } from "@/features/discover/utils";
+import { extractQuantizations } from "@/features/recipes/model-quantizations";
 import type { ModelFit } from "./hardware-profile";
 
 function ExploreVramCell({

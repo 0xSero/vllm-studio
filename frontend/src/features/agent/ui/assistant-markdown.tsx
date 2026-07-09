@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Children, isValidElement, memo, useCallback, useMemo, type ReactNode } from "react";
-import { useCopiedFlag } from "@/hooks/use-copied-flag";
+import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ExternalLink } from "@/ui/icon-registry";

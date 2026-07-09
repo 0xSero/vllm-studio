@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { GPU, HuggingFaceModel, ModelRecommendation } from "@/lib/types";
-import { useHuggingFaceModelSearch } from "@/hooks/use-huggingface-model-search";
+import { useHuggingFaceModelSearch } from "@/features/recipes/use-huggingface-model-search";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   engagementTier,

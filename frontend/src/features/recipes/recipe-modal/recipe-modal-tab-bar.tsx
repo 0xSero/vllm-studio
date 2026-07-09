@@ -4,7 +4,7 @@ import { Tabs } from "@/ui";
 import type { RecipeModalTabId } from "./tabs/tab-id";
 
 const TAB_LABELS: Record<RecipeModalTabId, string> = {
-  general: "General",
+  general: "Pipeline",
   model: "Model",
   resources: "Resources",
   performance: "Performance",

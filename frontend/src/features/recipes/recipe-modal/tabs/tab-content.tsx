@@ -1,6 +1,6 @@
 "use client";
 
-import type { ModelInfo } from "@/lib/types";
+import type { ModelInfo, RuntimeTarget } from "@/lib/types";
 import type { RecipeModalTabId } from "./tab-id";
 import type { RecipeModalTabProps } from "./tab-props";
 import { RecipeModalTabCommand } from "./tab-command";
@@ -14,6 +14,10 @@ import { RecipeModalTabResources } from "./tab-resources";
 export type RecipeModalGeneralProps = {
   availableModels: ModelInfo[];
   modelServedNames: Record<string, string>;
+  runtimeTargets: RuntimeTarget[];
+  installingRuntime: boolean;
+  runtimeInstallMessage: string | null;
+  onInstallRuntime: () => void;
 };
 
 export type RecipeModalEnvironmentProps = {

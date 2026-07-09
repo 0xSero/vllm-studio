@@ -49,11 +49,12 @@ const activeDetailsFor = (
   if (!recipe) {
     return [
       { label: "state", value: loading ? "syncing" : "idle" },
-      { label: "recipes", value: recipeCount || "defaults" },
+      { label: "serves", value: recipeCount || "defaults" },
     ];
   }
   return [
     { label: "backend", value: recipe.backend },
+    { label: "runtime", value: recipe.runtime?.label ?? recipe.runtime?.kind ?? "legacy" },
     { label: "context", value: contextLabel(recipe) },
     { label: "parallel", value: parallelismLabel(recipe) },
     { label: "served", value: recipe.served_model_name ?? recipe.name },
@@ -74,15 +75,15 @@ export function RecipesTab({
   table,
 }: Props) {
   const activeRecipe = activeRecipeFor(recipes, runningRecipeId);
-  const activeTitle = runningRecipeName ?? activeRecipe?.name ?? "No active model";
-  const activeSubtitle = activeRecipe?.model_path ?? "Controller has no loaded recipe.";
+  const activeTitle = runningRecipeName ?? activeRecipe?.name ?? "No active Serve";
+  const activeSubtitle = activeRecipe?.model_path ?? "This controller is ready for a Serve.";
   const activeDetails = activeDetailsFor(activeRecipe, loading, sortedRecipes.length);
 
   return (
     <div className="space-y-6">
       <ModelSection
-        title="Models"
-        description="Search, launch, and stop controller recipes."
+        title="Serves"
+        description="Each Serve binds model weights, a real runtime, and launch configuration."
         actions={
           <ModelStatus tone={runningRecipeId ? "good" : loading ? "info" : "default"}>
             {runningRecipeId ? "running" : loading ? "syncing" : "ready"}
@@ -90,15 +91,15 @@ export function RecipesTab({
         }
       >
         <ModelRow
-          label="Search recipes"
-          description="Name, path, or served model."
+          label="Search Serves"
+          description="Name, model path, runtime, or API model name."
           control={
             <div className="relative">
               <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--dim)" />
               <ModelInput
                 value={filter}
                 onChange={setFilter}
-                placeholder="Search recipes, paths, served names"
+                placeholder="Search Serves, weights, runtimes"
                 className="pl-7"
               />
             </div>
@@ -107,7 +108,7 @@ export function RecipesTab({
           actions={
             <ModelButton onClick={onNewRecipe} tone="primary">
               <Plus className="h-3 w-3" />
-              New
+              New Serve
             </ModelButton>
           }
         />

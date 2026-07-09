@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, X } from "@/ui/icon-registry";
+import { Pause, Play, Plus, X } from "@/ui/icon-registry";
 import { useDownloads } from "@/hooks/use-downloads";
 import { formatBytes } from "@/lib/formatters";
 import type { ModelDownload } from "@/lib/types";
@@ -29,7 +29,11 @@ export function downloadCompletedText(
   return `done ${download.completed_at || download.updated_at}`;
 }
 
-export function DownloadsTab() {
+export function DownloadsTab({
+  onCreateServe,
+}: {
+  onCreateServe: (download: ModelDownload) => void;
+}) {
   const { downloads, error, pauseDownload, resumeDownload, cancelDownload } = useDownloads();
   return (
     <ModelSection
@@ -92,6 +96,12 @@ export function DownloadsTab() {
                   {download.status !== "completed" && download.status !== "canceled" ? (
                     <ModelButton tone="danger" onClick={() => void cancelDownload(download.id)}>
                       <X className="h-3 w-3" />
+                    </ModelButton>
+                  ) : null}
+                  {download.status === "completed" ? (
+                    <ModelButton tone="primary" onClick={() => onCreateServe(download)}>
+                      <Plus className="h-3 w-3" />
+                      Create Serve
                     </ModelButton>
                   ) : null}
                 </>

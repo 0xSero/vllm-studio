@@ -74,9 +74,12 @@ export const RecipeRow = memo(function RecipeRow({
   const description = `${modelName} · ${context}`;
   const engine = formatBackendLabel(recipe.backend);
   const engineStyle = engineNodeStyle(recipe.backend);
-  const launchTitle = launchDisabledReason ?? "Launch recipe";
+  const launchTitle = launchDisabledReason ?? "Launch Serve";
   const parallelism = `tp/pp ${tp}/${pp}`;
   const quant = recipe.quantization?.trim();
+  const runtime =
+    recipe.runtime?.label ??
+    (recipe.runtime ? `${recipe.runtime.kind}:${recipe.runtime.ref}` : "legacy runtime");
 
   return (
     <ModelRow
@@ -96,6 +99,16 @@ export const RecipeRow = memo(function RecipeRow({
             className="truncate font-mono text-[length:var(--fs-md)] text-(--ui-fg)"
           >
             {parallelism}
+          </span>
+          <span
+            title={
+              recipe.runtime
+                ? `Launch runtime: ${recipe.runtime.kind} · ${recipe.runtime.ref}`
+                : "Runtime will be migrated when this Serve is edited"
+            }
+            className="max-w-40 truncate rounded bg-(--surface-2) px-1.5 py-0.5 font-mono text-[length:var(--fs-2xs)] text-(--dim)"
+          >
+            {runtime}
           </span>
           {quant ? (
             <span
@@ -148,7 +161,7 @@ export const RecipeRow = memo(function RecipeRow({
                   title={`Open delete confirmation for ${recipe.name}`}
                   className="w-full border-t border-(--color-card-border) px-3 py-2 text-left text-[length:var(--fs-md)] text-(--color-destructive) hover:bg-(--color-destructive)/10"
                 >
-                  Delete recipe...
+                  Delete Serve…
                 </button>
               </div>
             ) : null}

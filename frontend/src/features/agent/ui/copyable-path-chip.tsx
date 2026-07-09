@@ -2,7 +2,7 @@
 
 import { useCallback, type ReactNode } from "react";
 import { Copy, FileText } from "@/ui/icon-registry";
-import { useCopiedFlag } from "@/hooks/use-copied-flag";
+import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 
 /**
  * A file-path reference chip: an "open" affordance plus a copy-to-clipboard
