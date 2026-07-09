@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../../../config/env";
 import { resolveBinary } from "../../../core/command";
@@ -14,11 +13,10 @@ import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import {
   CONTAINER_VLLM_BIN,
   appendVllmExtraArguments,
-  getDockerImage,
   getExtraArgument,
-  getVllmPythonPath,
   wrapVllmInDocker,
 } from "../process/backend-builder";
+import { managedVenvPython } from "../runtimes/managed-venv";
 import {
   getDefaultReasoningParser,
   getDefaultToolCallParser,
@@ -75,33 +73,40 @@ export const buildVllmRecipeArguments = (recipe: Recipe): string[] => {
   return appendVllmExtraArguments(command, recipe.extra_args);
 };
 
-const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
-  const dockerImage = getDockerImage(recipe);
-  const pythonPath = getVllmPythonPath(recipe, config.data_dir);
-  let command: string[];
-  let usesServe = false;
-  if (dockerImage) {
-    command = [CONTAINER_VLLM_BIN, "serve"];
-    usesServe = true;
-  } else if (pythonPath) {
-    const vllmBin = join(dirname(pythonPath), "vllm");
-    if (existsSync(vllmBin)) {
-      command = [vllmBin, "serve"];
-      usesServe = true;
-    } else {
-      const systemVllm = resolveBinary("vllm");
-      if (systemVllm) {
-        command = [systemVllm, "serve"];
-        usesServe = true;
-      } else {
-        command = [pythonPath, "-m", "vllm.entrypoints.openai.api_server"];
-      }
-    }
-  } else {
-    const resolvedVllm = resolveBinary("vllm");
-    command = [resolvedVllm ?? "vllm", "serve"];
-    usesServe = true;
+const pythonCommand = (pythonPath: string): { command: string[]; usesServe: boolean } => {
+  const python = resolveBinary(pythonPath);
+  if (!python) throw new Error(`vLLM Python runtime was not found at ${pythonPath}`);
+  const vllmBinary = resolveBinary(join(dirname(python), "vllm"));
+  return vllmBinary
+    ? { command: [vllmBinary, "serve"], usesServe: true }
+    : {
+        command: [python, "-m", "vllm.entrypoints.openai.api_server"],
+        usesServe: false,
+      };
+};
+
+const binaryCommand = (reference: string): { command: string[]; usesServe: boolean } => {
+  const binary = resolveBinary(reference);
+  if (!binary) throw new Error(`vLLM runtime was not found at ${reference}`);
+  return { command: [binary, "serve"], usesServe: true };
+};
+
+const hostCommand = (recipe: Recipe, config: Config): { command: string[]; usesServe: boolean } => {
+  if (recipe.runtime.kind === "managed_venv") {
+    return pythonCommand(managedVenvPython(config, "vllm"));
   }
+  const reference = recipe.runtime.ref;
+  if (recipe.runtime.kind === "system" && /(^|[/\\])python(?:3(?:\.\d+)?)?$/u.test(reference)) {
+    return pythonCommand(reference);
+  }
+  return binaryCommand(reference);
+};
+
+export const buildVllmCommand = (recipe: Recipe, config: Config): string[] => {
+  const dockerImage = recipe.runtime.kind === "docker" ? recipe.runtime.ref : null;
+  const { command, usesServe } = dockerImage
+    ? { command: [CONTAINER_VLLM_BIN, "serve"], usesServe: true }
+    : hostCommand(recipe, config);
   if (usesServe) {
     command.push(recipe.model_path);
   } else {

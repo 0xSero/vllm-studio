@@ -4,7 +4,7 @@ import type { Recipe } from "../../models/types";
 import type { Backend } from "@local-studio/contracts/recipes";
 import { detectEngineFromArguments } from "../engine-spec";
 import { extractFlag as extractFlagUtility } from "../argument-utilities";
-import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
+import { isManagedPythonBackend, managedVenvPython } from "../runtimes/managed-venv";
 import type { Config } from "../../../config/env";
 
 export { extractFlagUtility as extractFlag };
@@ -145,11 +145,19 @@ export const buildEnvironment = (
 };
 
 function resolveVenvBinForRecipe(recipe: Recipe, dataDirectory?: string): string | null {
-  const python =
-    recipe.python_path && recipe.python_path.trim()
-      ? recipe.python_path
-      : resolveVllmRecipePythonPath(recipe.python_path, dataDirectory);
-  if (python) return dirname(python);
+  if (
+    recipe.runtime.kind === "managed_venv" &&
+    dataDirectory &&
+    isManagedPythonBackend(recipe.backend)
+  ) {
+    return dirname(managedVenvPython({ data_dir: dataDirectory }, recipe.backend));
+  }
+  if (
+    (recipe.runtime.kind === "system" || recipe.runtime.kind === "binary") &&
+    recipe.runtime.ref.includes("/")
+  ) {
+    return dirname(recipe.runtime.ref);
+  }
   return null;
 }
 

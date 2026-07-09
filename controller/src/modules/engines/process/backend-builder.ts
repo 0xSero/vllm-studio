@@ -10,7 +10,6 @@ import {
 } from "@local-studio/contracts/engine-args";
 import type { Logger } from "../../../core/logger";
 import { resolveBinary } from "../../../core/command";
-import { resolveVllmRecipePythonPath } from "../runtimes/vllm-python-path";
 import { managedLlamaServerPath } from "../runtimes/managed-llamacpp";
 import { getEngineSpec } from "../engine-spec";
 
@@ -55,12 +54,6 @@ export const getPythonPath = (recipe: Recipe): string | undefined => {
     }
   }
   return undefined;
-};
-export const getVllmPythonPath = (
-  recipe: Recipe,
-  dataDirectory?: string | null,
-): string | undefined => {
-  return resolveVllmRecipePythonPath(recipe.python_path, dataDirectory) ?? undefined;
 };
 export const appendExtraArguments = (
   command: string[],
@@ -257,14 +250,6 @@ const DOCKER_JIT_MOUNT = "/cache/jit";
  */
 const DOCKER_ENV_SKIP_KEYS = new Set(["NCCL_GRAPH_DUMP_FILE", "VLLM_B12X_MLA_EXTEND_MAX_CHUNKS"]);
 
-/** Read the pinned Docker image for a recipe, if any (`extra_args.docker_image`). */
-export const getDockerImage = (recipe: Recipe): string | null => {
-  const value =
-    getExtraArgument(recipe.extra_args, "docker_image") ??
-    getExtraArgument(recipe.extra_args, "docker-image");
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-};
-
 export const sanitizeDockerName = (value: string): string => {
   const cleaned = value.replace(/[^a-zA-Z0-9_.-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "");
   return cleaned.length > 0 ? cleaned : "recipe";
@@ -353,12 +338,6 @@ export const buildDockerRunArguments = ({
   return flags;
 };
 
-/**
- * Wrap a vLLM `serve` invocation so it runs inside a pinned Docker image
- * (`extra_args.docker_image`). Used for forked vLLM builds (e.g. voipmonitor
- * B12X) that cannot be installed into the host venv. A per-recipe named
- * volume persists the JIT compile cache across restarts.
- */
 export const wrapVllmInDocker = (recipe: Recipe, image: string, inner: string[]): string[] => {
   const jitVolume = `local-studio-jit-${sanitizeDockerName(recipe.id)}`;
   return buildDockerRunArguments({

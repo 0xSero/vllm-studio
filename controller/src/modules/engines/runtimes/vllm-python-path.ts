@@ -32,13 +32,3 @@ export const resolveVllmPythonPath = (dataDirectory?: string | null): string | n
   }
   return null;
 };
-
-export const resolveVllmRecipePythonPath = (
-  recipePythonPath: string | null | undefined,
-  dataDirectory?: string | null,
-): string | null => {
-  if (recipePythonPath && existsSync(recipePythonPath)) {
-    return recipePythonPath;
-  }
-  return resolveVllmPythonPath(dataDirectory);
-};
