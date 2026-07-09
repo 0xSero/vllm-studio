@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createApiClient } from "@/lib/api/create-api-client";
 import { BACKEND_URL_CHANGED_EVENT, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
@@ -27,6 +27,17 @@ type DashboardRecipesCache = {
 };
 
 type DashboardApi = ReturnType<typeof createApiClient>;
+
+type LogSessionSummary = {
+  id: string;
+  recipe_id?: string;
+  status: string;
+  backend?: string;
+  model_path?: string;
+  model?: string;
+  started_at?: string;
+  created_at?: string;
+};
 
 const cacheByController = new Map<string, DashboardRecipesCache>();
 
@@ -63,6 +74,56 @@ function cachedState(key: string): DashboardRecipesCache | null {
   return cacheByController.get(key) ?? null;
 }
 
+export function resolveDashboardRecipe(
+  process: ProcessInfo | null,
+  recipes: RecipeWithStatus[],
+  previous: RecipeWithStatus | null,
+): RecipeWithStatus | null {
+  if (!process) return null;
+  return recipes.find((recipe) => recipe.status === "running") ?? previous;
+}
+
+function selectTargetLogSession(
+  sessions: LogSessionSummary[],
+  runningRecipe: RecipeWithStatus | null,
+  process: ProcessInfo | null,
+): LogSessionSummary | null {
+  if (sessions.length === 0) return null;
+  const timestamp = (session: LogSessionSummary) =>
+    Date.parse(session.started_at || session.created_at || "") || 0;
+  const sorted = [...sessions].sort((left, right) => timestamp(right) - timestamp(left));
+  const running = sorted.filter((session) => session.status === "running");
+
+  if (process) {
+    const matches = (session: LogSessionSummary) => {
+      if (session.model_path && process.model_path) {
+        return session.model_path === process.model_path;
+      }
+      if (session.model && process.served_model_name) {
+        return session.model === process.served_model_name;
+      }
+      return session.backend === process.backend;
+    };
+    const byProcess = running.find(matches) || sorted.find(matches);
+    if (byProcess) return byProcess;
+
+    const servedModel = process.served_model_name?.toLowerCase();
+    if (servedModel) {
+      const byName = sorted.find((session) => session.id.toLowerCase().includes(servedModel));
+      if (byName) return byName;
+    }
+  }
+
+  if (runningRecipe) {
+    const byRecipe =
+      running.find((session) => session.recipe_id === runningRecipe.id) ||
+      sorted.find((session) => session.recipe_id === runningRecipe.id);
+    if (byRecipe) return byRecipe;
+  }
+
+  return running[0] || sorted[0] || null;
+}
+
 export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   const initialCache = cachedState(controllerKey());
   const [recipes, setRecipes] = useState<RecipeWithStatus[]>(() => initialCache?.recipes ?? []);
@@ -73,6 +134,13 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
   );
   const [logs, setLogs] = useState<string[]>(() => initialCache?.logs ?? []);
   const [loading, setLoading] = useState(!initialCache);
+  const processRef = useRef(currentProcess);
+  const recipeRef = useRef(currentRecipe);
+  const recipesRef = useRef(recipes);
+  processRef.current = currentProcess;
+  recipeRef.current = currentRecipe;
+  recipesRef.current = recipes;
+  const activeProcessKey = processKey(currentProcess);
 
   const applyCachedState = useCallback((key: string) => {
     const cached = cachedState(key);
@@ -82,142 +150,90 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
     setLoading(!cached);
   }, []);
 
-  const selectTargetLogSession = useCallback(
-    (
-      sessions: Array<{
-        id: string;
-        recipe_id?: string;
-        status: string;
-        backend?: string;
-        model_path?: string;
-        model?: string;
-        started_at?: string;
-        created_at?: string;
-      }>,
-      runningRecipe: RecipeWithStatus | null,
-    ) => {
-      if (sessions.length === 0) return null;
-
-      // Sort newest-first so we always prefer the most recently started session.
-      const ts = (s: { started_at?: string; created_at?: string }) =>
-        Date.parse(s.started_at || s.created_at || "") || 0;
-      const sorted = [...sessions].sort((a, b) => ts(b) - ts(a));
-      const running = sorted.filter((s) => s.status === "running");
-
-      if (currentProcess) {
-        const matches = (session: (typeof sorted)[number]) => {
-          if (session.model_path && currentProcess.model_path) {
-            return session.model_path === currentProcess.model_path;
-          }
-          if (session.model && currentProcess.served_model_name) {
-            return session.model === currentProcess.served_model_name;
-          }
-          return session.backend === currentProcess.backend;
-        };
-        const byProcess = running.find(matches) || sorted.find(matches);
-        if (byProcess) return byProcess;
-
-        const servedModel = currentProcess.served_model_name?.toLowerCase();
-        if (servedModel) {
-          const byName = sorted.find((session) =>
-            (session.id ?? "").toLowerCase().includes(servedModel),
-          );
-          if (byName) return byName;
-        }
-      }
-
-      if (runningRecipe) {
-        const byRecipe =
-          running.find((s) => s.recipe_id === runningRecipe.id) ||
-          sorted.find((s) => s.recipe_id === runningRecipe.id);
-        if (byRecipe) return byRecipe;
-      }
-
-      // Fall back to newest running, then newest of any status.
-      return running[0] || sorted[0];
-    },
-    [currentProcess],
-  );
-
   const refreshLogs = useCallback(
-    async (client: DashboardApi, runningRecipe: RecipeWithStatus | null, limit = 220) => {
+    async (
+      client: DashboardApi,
+      runningRecipe: RecipeWithStatus | null,
+      process: ProcessInfo | null,
+      limit = 220,
+    ) => {
       const sessions = await client.getLogSessions(FAST_LOG_REQUEST);
       const list = sessions.sessions || [];
       if (list.length === 0) return [];
-      const targetSession = selectTargetLogSession(list, runningRecipe);
+      const targetSession = selectTargetLogSession(list, runningRecipe, process);
       if (!targetSession) return [];
       const logData = await client
         .getLogs(targetSession.id, limit, FAST_LOG_REQUEST)
         .catch(() => ({ logs: [] }));
       return logData.logs || [];
     },
-    [selectTargetLogSession],
+    [],
   );
 
   const reload = useCallback(
     async (targetKey = controllerKey()) => {
       const client = apiForController(targetKey);
+      const process = processRef.current;
       try {
         const data = await client.getRecipes();
         if (controllerKey() !== targetKey) return;
         const list = data.recipes || [];
         setRecipes(list);
 
-        const running = currentProcess
-          ? list.find((r: RecipeWithStatus) => r.status === "running") || null
-          : null;
-        const resolved = running ?? (currentProcess ? currentRecipe : null);
+        const cachedRecipe = cachedState(targetKey)?.currentRecipe ?? recipeRef.current;
+        const resolved = resolveDashboardRecipe(process, list, cachedRecipe);
         setCurrentRecipe(resolved);
-        const key = processKey(currentProcess);
+        const key = processKey(process);
         lastRecipe = resolved && key ? resolved : null;
         lastRecipeProcessKey = resolved && key ? key : "";
-        const nextLogs = await refreshLogs(client, resolved);
+        const nextLogs = await refreshLogs(client, resolved, process);
         if (controllerKey() !== targetKey) return;
         setLogs(nextLogs);
-        cacheState(targetKey, currentProcess, list, resolved, nextLogs);
+        cacheState(targetKey, process, list, resolved, nextLogs);
       } catch (e) {
         console.error("Failed to load recipes:", e);
       } finally {
         if (controllerKey() === targetKey) setLoading(false);
       }
     },
-    [currentProcess, currentRecipe, refreshLogs],
+    [refreshLogs],
   );
 
   useMountSubscription(() => {
     void reload();
   }, [reload]);
   useMountSubscription(() => {
-    const handler = () => {
+    const handler: EventListener = () => {
       void reload();
     };
-    window.addEventListener("vllm:recipe-event", handler as EventListener);
+    window.addEventListener("vllm:recipe-event", handler);
     return () => {
-      window.removeEventListener("vllm:recipe-event", handler as EventListener);
+      window.removeEventListener("vllm:recipe-event", handler);
     };
   }, [reload]);
   useMountSubscription(() => {
-    const handler = () => {
+    const handler: EventListener = () => {
       const key = controllerKey();
       applyCachedState(key);
       void reload(key);
     };
-    window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
     return () => {
-      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler as EventListener);
+      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
     };
   }, [applyCachedState, reload]);
   useMountSubscription(() => {
-    if (!currentProcess) return;
+    const process = processRef.current;
+    if (!process) return;
     let cancelled = false;
     const targetKey = controllerKey();
     const client = apiForController(targetKey);
     const poll = async () => {
       if (cancelled) return;
-      const nextLogs = await refreshLogs(client, currentRecipe).catch(() => []);
+      const nextLogs = await refreshLogs(client, recipeRef.current, process).catch(() => []);
       if (cancelled || controllerKey() !== targetKey) return;
       setLogs(nextLogs);
-      cacheState(targetKey, currentProcess, recipes, currentRecipe, nextLogs);
+      cacheState(targetKey, process, recipesRef.current, recipeRef.current, nextLogs);
     };
     void poll();
     const timer = effectInterval(() => void poll(), 4000);
@@ -225,7 +241,7 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
       cancelled = true;
       timer.cancel();
     };
-  }, [currentProcess, currentRecipe, recipes, refreshLogs]);
+  }, [activeProcessKey, refreshLogs]);
 
   return { recipes, currentRecipe, logs, loading, reload };
 }
