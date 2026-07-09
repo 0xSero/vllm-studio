@@ -19,8 +19,10 @@ import {
 } from "../src/features/agent/workspace/pane-controller";
 import { reducer } from "../src/features/agent/workspace/reducer";
 import {
+  ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY,
   PANE_STATE_KEY,
   createInitialState,
+  loadPersistedActiveAgentSessions,
   restorePersistedPaneState,
   type WorkspaceStorage,
 } from "../src/features/agent/workspace/store";
@@ -599,7 +601,7 @@ test("url replay of a session already open in the sibling pane focuses it and ke
   assert.ok(next.sessions.has(b.id));
 });
 
-test("terminal panes broadcast as kind:'terminal' active-session rows keyed by mountKey", () => {
+test("terminal panes register terminal owners without broadcasting project session rows", () => {
   const chat = chatSession({ cwd: "/repo/proj", piSessionId: "pi-live", projectId: "proj-1" });
   const base: WorkspaceState = { ...stateWithChatPane(chat), hydrated: true };
   const action = {
@@ -611,7 +613,7 @@ test("terminal panes broadcast as kind:'terminal' active-session rows keyed by m
   const next = reducer(base, action);
 
   const broadcasts: unknown[] = [];
-  const { deps } = effectDeps();
+  const { deps, remembered } = effectDeps();
   runWorkspaceEffect(action, base, next, {
     ...deps,
     window: {
@@ -629,10 +631,52 @@ test("terminal panes broadcast as kind:'terminal' active-session rows keyed by m
         typeof detail === "object" && detail !== null && "sessions" in detail,
     ) ?? assert.fail("no active-sessions broadcast fired")
   ).sessions;
-  const terminalRow = sessions.find((row) => row.kind === "terminal");
-  assert.ok(terminalRow, "terminal pane missing from broadcast");
-  assert.equal(terminalRow.mountKey, "pane:p-term");
-  assert.equal(terminalRow.tabId, "pane:p-term");
-  assert.equal(terminalRow.projectId, "proj-1");
-  assert.equal(terminalRow.focused, true);
+  assert.equal(
+    sessions.some((row) => row.kind === "terminal"),
+    false,
+  );
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0]?.piSessionId, "pi-live");
+  assert.deepEqual(
+    remembered.map((owner) => owner.mountKey),
+    ["pane:p-term"],
+  );
+  assert.ok(remembered[0]?.matchKeys.includes("pane:p-term"));
+  assert.ok(remembered[0]?.matchKeys.includes("project:proj-1"));
+});
+
+test("legacy terminal active-session snapshots are ignored when loading project rows", () => {
+  const { storage } = fakeStorage();
+  storage.setItem(
+    ACTIVE_AGENT_SESSIONS_SNAPSHOT_KEY,
+    JSON.stringify([
+      {
+        kind: "terminal",
+        mountKey: "pane:p-old",
+        projectId: "proj-1",
+        cwd: "/repo/proj",
+        paneId: "p-old",
+        tabId: "pane:p-old",
+        piSessionId: null,
+        title: "Terminal",
+        status: "idle",
+        updatedAt: "2026-07-09T00:00:00.000Z",
+      },
+      {
+        projectId: "proj-1",
+        cwd: "/repo/proj",
+        paneId: "p-chat",
+        tabId: "tab-chat",
+        piSessionId: "pi-chat",
+        title: "Chat",
+        status: "idle",
+        updatedAt: "2026-07-09T00:00:00.000Z",
+      },
+    ]),
+  );
+
+  const sessions = loadPersistedActiveAgentSessions(storage);
+
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0]?.piSessionId, "pi-chat");
 });

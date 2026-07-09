@@ -337,9 +337,7 @@ export function loadPersistedActiveAgentSessions(
         const isTerminal = entry.kind === "terminal";
         return {
           ...(isTerminal ? { kind: "terminal" as const } : {}),
-          ...(isTerminal && typeof entry.mountKey === "string"
-            ? { mountKey: entry.mountKey }
-            : {}),
+          ...(isTerminal && typeof entry.mountKey === "string" ? { mountKey: entry.mountKey } : {}),
           projectId: typeof entry.projectId === "string" ? entry.projectId : "",
           cwd: typeof entry.cwd === "string" ? entry.cwd : "",
           paneId: typeof entry.paneId === "string" ? entry.paneId : "",
@@ -366,6 +364,7 @@ export function loadPersistedActiveAgentSessions(
       })
       .filter(
         (entry) =>
+          entry.kind !== "terminal" &&
           !prefs[entry.piSessionId ?? ""]?.hidden &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId) &&

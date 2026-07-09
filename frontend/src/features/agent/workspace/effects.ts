@@ -248,22 +248,6 @@ function computeActiveSessionBroadcast(
   const inPane = new Set<SessionId>();
   for (const [paneId, pane] of state.panesById.entries()) {
     if (pane.kind === "terminal") {
-      // Terminals are sidebar rows too: tabId doubles as the PTY mountKey so
-      // clicking the row can focus or recreate (reattach) the pane.
-      out.push({
-        kind: "terminal",
-        mountKey: pane.mountKey,
-        projectId: pane.projectId ?? "",
-        cwd: pane.cwd ?? "",
-        paneId,
-        tabId: pane.mountKey,
-        piSessionId: null,
-        title: pane.title,
-        status: "idle",
-        focused: paneId === state.focusedPaneId,
-        startedAt: pane.createdAt,
-        updatedAt: pane.createdAt ?? new Date().toISOString(),
-      });
       continue;
     }
     const sessionId = paneSessionId(pane);
@@ -524,6 +508,26 @@ function terminalOwnerFromPane(pane: TerminalPaneState): TerminalOwner {
   };
 }
 
+function terminalOwnerKey(state: WorkspaceState): string {
+  const keys: string[] = [];
+  for (const pane of state.panesById.values()) {
+    if (pane.kind === "terminal") keys.push(pane.mountKey);
+  }
+  return keys.sort().join("\n");
+}
+
+function rememberCurrentTerminalPanes(
+  prevState: WorkspaceState,
+  nextState: WorkspaceState,
+  deps: WorkspaceEffectDeps,
+): void {
+  if (!deps.rememberTerminalOwner) return;
+  if (terminalOwnerKey(prevState) === terminalOwnerKey(nextState)) return;
+  for (const pane of nextState.panesById.values()) {
+    if (pane.kind === "terminal") deps.rememberTerminalOwner(terminalOwnerFromPane(pane));
+  }
+}
+
 function rememberDetachedTerminalPanes(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -551,6 +555,7 @@ export function runWorkspaceEffect(
 ): void {
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
+  rememberCurrentTerminalPanes(prevState, nextState, deps);
   rememberDetachedTerminalPanes(action, prevState, nextState, deps);
   closeRemovedTerminalPanes(action, prevState, nextState, deps);
 
