@@ -2,7 +2,7 @@
 
 import { Plus, Search, Square } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
-import { ModelLogo } from "@/ui";
+import { ModelLogo } from "@/ui/model-logo";
 import {
   ModelActiveSummary,
   ModelButton,

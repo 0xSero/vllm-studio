@@ -1,9 +1,6 @@
 export { Button } from "./button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./button";
 
-export { RightDetailPanel } from "./right-detail-panel";
-export type { RightDetailPanelProps } from "./right-detail-panel";
-
 export { Input } from "./input";
 export type { InputProps } from "./input";
 
@@ -81,7 +78,5 @@ export type { SpinnerSize } from "./spinner";
 
 export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";
-
-export { ModelLogo } from "./model-logo";
 
 export { SitegeistIcon, PanelIcon } from "./icons";

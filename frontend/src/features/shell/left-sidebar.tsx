@@ -30,6 +30,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
+import { requestIdleWork } from "@/lib/idle-work";
 
 type ActiveSessionDetail = {
   projectId: string;
@@ -114,15 +115,6 @@ function routeHidesAppSidebar(pathname: string): boolean {
     pathname.startsWith("/landing") ||
     pathname.startsWith("/docs")
   );
-}
-
-function requestIdleWork(callback: () => void): () => void {
-  if (typeof window.requestIdleCallback === "function") {
-    const handle = window.requestIdleCallback(callback, { timeout: 1200 });
-    return () => window.cancelIdleCallback(handle);
-  }
-  const handle = window.setTimeout(callback, 400);
-  return () => window.clearTimeout(handle);
 }
 
 function ProjectsNavPlaceholder() {

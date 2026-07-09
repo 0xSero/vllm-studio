@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Save } from "@/ui/icon-registry";
-import { Button, ModelLogo, SegmentedControl, StatusPill, type SegmentedItem, Spinner } from "@/ui";
+import { Button, SegmentedControl, StatusPill, type SegmentedItem, Spinner } from "@/ui";
+import { ModelLogo } from "@/ui/model-logo";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/ui/drawer";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";

@@ -1,25 +1,45 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useControllerEvents } from "@/hooks/use-controller-events";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { initAppStoreListeners } from "@/store";
 import { ProjectsProvider } from "@/features/agent/projects/context";
 import { ToolsProvider } from "@/features/agent/tools/context";
+import { requestIdleWork } from "@/lib/idle-work";
 
-function GlobalListeners() {
-  useControllerEvents();
+type GlobalListenersComponent = ComponentType;
+
+let globalListenersPromise: Promise<GlobalListenersComponent> | null = null;
+
+function loadGlobalListeners(): Promise<GlobalListenersComponent> {
+  globalListenersPromise ??= import("./global-listeners").then((mod) => mod.GlobalListeners);
+  return globalListenersPromise;
+}
+
+function LazyGlobalListeners() {
+  const [GlobalListeners, setGlobalListeners] = useState<GlobalListenersComponent | null>(null);
+
   useMountSubscription(() => {
-    initAppStoreListeners();
-  }, []);
-  return null;
+    if (GlobalListeners) return;
+    let cancelled = false;
+    const cancelIdle = requestIdleWork(() => {
+      void loadGlobalListeners().then((Component) => {
+        if (!cancelled) setGlobalListeners(() => Component);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
+  }, [GlobalListeners]);
+
+  return GlobalListeners ? <GlobalListeners /> : null;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ProjectsProvider>
       <ToolsProvider>
-        <GlobalListeners />
+        <LazyGlobalListeners />
         {children}
       </ToolsProvider>
     </ProjectsProvider>

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ListGroup, ModelLogo, RowValue, StatusPill, EmptySafeNotice } from "@/ui";
+import { ListGroup, RowValue, StatusPill, EmptySafeNotice } from "@/ui";
+import { ModelLogo } from "@/ui/model-logo";
 import { ExternalLink } from "@/ui/icon-registry";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { RecipeWithStatus } from "@/lib/types";

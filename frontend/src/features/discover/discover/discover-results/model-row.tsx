@@ -12,7 +12,8 @@ import {
   Pause,
   Play,
 } from "@/ui/icon-registry";
-import { Button, ModelLogo, StatusPill, TCell, TRow } from "@/ui";
+import { Button, StatusPill, TCell, TRow } from "@/ui";
+import { ModelLogo } from "@/ui/model-logo";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatNumber } from "@/lib/formatters";
 import { resolveModelRowView, type ModelRowDownloadAction } from "./model-row-model";

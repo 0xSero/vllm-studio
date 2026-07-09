@@ -1,7 +1,8 @@
 "use client";
 
 import { Info, Network, Server } from "@/ui/icon-registry";
-import { FormField, FormSection, Input, ModelLogo, Select } from "@/ui";
+import { FormField, FormSection, Input, Select } from "@/ui";
+import { ModelLogo } from "@/ui/model-logo";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { ModelInfo } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
@@ -73,9 +74,7 @@ export function RecipeModalTabGeneral({
             <Input
               type="number"
               value={recipe.port ?? 8000}
-              onChange={(e) =>
-                onChange({ ...recipe, port: Number(e.target.value) || undefined })
-              }
+              onChange={(e) => onChange({ ...recipe, port: Number(e.target.value) || undefined })}
             />
           </FormField>
         </div>
