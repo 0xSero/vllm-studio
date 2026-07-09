@@ -12,6 +12,13 @@ export type WorkspaceCommands = {
   renameSession(paneId: PaneId, tabId: SessionId, title: string): void;
   newChat(project?: Project | null): void;
   openTerminal(project?: Project | null): void;
+  /** Focus the pane holding this terminal, or recreate it (PTY reattach). */
+  focusTerminal(terminal: {
+    mountKey: string;
+    cwd?: string | null;
+    title?: string;
+    projectId?: string | null;
+  }): void;
   openSession(project: Project | null, piSessionId: string, sessionTitle?: string): void;
 };
 
@@ -49,6 +56,17 @@ function createWorkspaceCommands(): WorkspaceCommands {
       dispatch?.({
         type: "openProjectTerminal",
         cwd: project?.path ?? null,
+        newPaneId: newPaneId(),
+        projectId: project?.id ?? null,
+      });
+    },
+    focusTerminal: (terminal) => {
+      dispatch?.({
+        type: "focusTerminalPane",
+        mountKey: terminal.mountKey,
+        cwd: terminal.cwd ?? null,
+        title: terminal.title,
+        projectId: terminal.projectId ?? null,
         newPaneId: newPaneId(),
       });
     },

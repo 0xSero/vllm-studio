@@ -117,9 +117,14 @@ function splitPaneWithSession(
   };
 }
 
+// A chat looking for a pane to take over must never claim a terminal leaf —
+// replacing one silently kills the user's shell view (the PTY survives but
+// nothing references its mountKey anymore).
 function siblingPaneId(state: WorkspaceState, sourcePaneId: PaneId): PaneId | null {
   const leaves = collectLeaves(state.layout);
-  return leaves.find((id) => id !== sourcePaneId) ?? null;
+  return (
+    leaves.find((id) => id !== sourcePaneId && state.panesById.get(id)?.kind !== "terminal") ?? null
+  );
 }
 
 function openSessionAdjacentToFocusedPane(
@@ -199,6 +204,25 @@ function replaySessionInFocusedPane(
   const targetPaneId = chatTargetPaneId(state);
   const pane = state.panesById.get(targetPaneId);
   if (!pane) return state;
+  if (pane.kind === "terminal") {
+    // Every leaf is a terminal (chatTargetPaneId fell through). Opening the
+    // chat here would overwrite the terminal — the "Back clobbers my shell"
+    // bug. Split a fresh chat pane beside it instead; if the grid is full,
+    // leave the terminal alone.
+    if (!isSession(payload.tab)) return state;
+    const session: Session = {
+      ...payload.tab,
+      piSessionId: payload.piSessionId,
+      title: replaySessionTitle(payload.sessionTitle),
+    };
+    return (
+      splitPaneWithSession(state, {
+        sourcePaneId: targetPaneId,
+        session,
+        newPaneId: payload.newPaneId,
+      }) ?? state
+    );
+  }
   const activeId = paneSessionId(pane);
   const active = activeId ? (state.sessions.get(activeId) ?? null) : null;
   const targetSession = active && isEmptyStarterSession(active) ? active : null;
@@ -398,47 +422,98 @@ export function openTerminalPane(
     title: "Terminal",
     ownerSessionId: session?.id ?? null,
     ownerPiSessionId: session?.piSessionId ?? null,
+    projectId: session?.projectId ?? null,
+    createdAt: new Date().toISOString(),
   };
   return { ...setPane(state, payload.sourcePaneId, pane), focusedPaneId: payload.sourcePaneId };
 }
 
-function projectTerminalPane(mountKey: string, cwd: string | null): TerminalPaneState {
+function projectTerminalPane(
+  mountKey: string,
+  cwd: string | null,
+  projectId: string | null | undefined,
+  title = "Terminal",
+): TerminalPaneState {
   return {
     kind: "terminal",
     mountKey,
     cwd,
-    title: "Terminal",
+    title,
     ownerSessionId: null,
     ownerPiSessionId: null,
+    projectId: projectId ?? null,
+    createdAt: new Date().toISOString(),
   };
 }
 
-export function openProjectTerminal(
+// Place a terminal pane: convert the focused empty-starter chat in place, or
+// split a new leaf off the focused pane. Returns null when the grid is full.
+function placeTerminalPane(
   state: WorkspaceState,
-  payload: { cwd: string | null; newPaneId: PaneId },
-): WorkspaceState {
+  newPaneId: PaneId,
+  makePane: (paneId: PaneId) => TerminalPaneState,
+): WorkspaceState | null {
   const focusedId = state.focusedPaneId;
-  if (!leafExists(state, focusedId)) return state;
+  if (!leafExists(state, focusedId)) return null;
   const focused = state.panesById.get(focusedId);
   const activeId = paneSessionId(focused);
   const active = activeId ? state.sessions.get(activeId) : undefined;
   if (focused && focused.kind !== "terminal" && active && isEmptyStarterSession(active)) {
     return pruneOrphanSessions({
-      ...setPane(state, focusedId, projectTerminalPane(`pane:${focusedId}`, payload.cwd)),
+      ...setPane(state, focusedId, makePane(focusedId)),
       focusedPaneId: focusedId,
     });
   }
-  if (!validPaneId(payload.newPaneId)) return state;
-  const layout = splitLeafWithinLimits(state.layout, focusedId, payload.newPaneId, "vertical", "b");
-  if (!layout) return state;
+  if (!validPaneId(newPaneId)) return null;
+  const layout = splitLeafWithinLimits(state.layout, focusedId, newPaneId, "vertical", "b");
+  if (!layout) return null;
   const nextPanes = new Map(state.panesById);
-  nextPanes.set(payload.newPaneId, projectTerminalPane(`pane:${payload.newPaneId}`, payload.cwd));
+  nextPanes.set(newPaneId, makePane(newPaneId));
   return {
     ...state,
     panesById: nextPanes,
     layout,
-    focusedPaneId: payload.newPaneId,
+    focusedPaneId: newPaneId,
   };
+}
+
+export function openProjectTerminal(
+  state: WorkspaceState,
+  payload: { cwd: string | null; newPaneId: PaneId; projectId?: string | null },
+): WorkspaceState {
+  return (
+    placeTerminalPane(state, payload.newPaneId, (paneId) =>
+      projectTerminalPane(`pane:${paneId}`, payload.cwd, payload.projectId),
+    ) ?? state
+  );
+}
+
+/**
+ * Focus the terminal pane holding `mountKey`; if no pane references it anymore
+ * (lost on navigation), recreate one with the SAME mountKey — the Electron PTY
+ * manager keeps owner-keyed shells alive and reattaches with replay.
+ */
+export function focusTerminalPane(
+  state: WorkspaceState,
+  payload: {
+    mountKey: string;
+    cwd: string | null;
+    title?: string;
+    projectId?: string | null;
+    newPaneId: PaneId;
+  },
+): WorkspaceState {
+  for (const paneId of collectLeaves(state.layout)) {
+    const pane = state.panesById.get(paneId);
+    if (pane?.kind === "terminal" && pane.mountKey === payload.mountKey) {
+      return { ...state, focusedPaneId: paneId };
+    }
+  }
+  return (
+    placeTerminalPane(state, payload.newPaneId, () =>
+      projectTerminalPane(payload.mountKey, payload.cwd, payload.projectId, payload.title),
+    ) ?? state
+  );
 }
 
 export function splitTerminalPane(
@@ -457,7 +532,10 @@ export function splitTerminalPane(
   );
   if (!layout) return state;
   const nextPanes = new Map(state.panesById);
-  nextPanes.set(payload.newPaneId, projectTerminalPane(`pane:${payload.newPaneId}`, source.cwd));
+  nextPanes.set(
+    payload.newPaneId,
+    projectTerminalPane(`pane:${payload.newPaneId}`, source.cwd, source.projectId),
+  );
   return {
     ...state,
     panesById: nextPanes,
@@ -488,15 +566,26 @@ export function applyUrlNavigation(
   payload: UrlNavigationPayload,
 ): WorkspaceState {
   if (state.lastHandledNavKey === payload.key) return state;
-  if (!payload.project && !payload.sessionId && !payload.newSession) return state;
+  if (!payload.project && !payload.sessionId && !payload.newSession && !payload.terminal) {
+    return state;
+  }
   const marked: WorkspaceState = { ...state, lastHandledNavKey: payload.key };
   const { paneId, tab, sessionTitle } = payload;
   const project = payload.project ?? undefined;
   if (payload.terminal) {
     if (!payload.paneId) return marked;
+    if (payload.terminalMountKey) {
+      return focusTerminalPane(marked, {
+        mountKey: payload.terminalMountKey,
+        cwd: payload.project?.path ?? null,
+        projectId: payload.project?.id ?? null,
+        newPaneId: payload.paneId,
+      });
+    }
     return openProjectTerminal(marked, {
       cwd: payload.project?.path ?? null,
       newPaneId: payload.paneId,
+      projectId: payload.project?.id ?? null,
     });
   }
   if (payload.newSession && !payload.sessionId) {
@@ -515,6 +604,7 @@ export function applyUrlNavigation(
       piSessionId: payload.sessionId,
       sessionTitle,
       tab,
+      newPaneId: paneId,
     });
   }
   return marked;
@@ -523,7 +613,12 @@ export function applyUrlNavigation(
 type SessionPayload = { tab?: Session };
 
 type OpenNewSessionPayload = SessionPayload & { project?: Project; newPaneId?: PaneId };
-type ReplaySessionPayload = SessionPayload & { piSessionId: string; sessionTitle?: string };
+type ReplaySessionPayload = SessionPayload & {
+  piSessionId: string;
+  sessionTitle?: string;
+  /** Pane id for the split fallback when the only leaves are terminals. */
+  newPaneId?: PaneId;
+};
 type ReplaySessionInSplitPayload = ReplaySessionPayload & { paneId?: PaneId };
 type OpenSessionPayloadInPanePayload = SessionPayload & {
   paneId: PaneId;
@@ -550,4 +645,5 @@ type UrlNavigationPayload = SessionPayload & {
   split?: boolean;
   paneId?: PaneId;
   terminal?: boolean;
+  terminalMountKey?: string;
 };

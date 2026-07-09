@@ -35,6 +35,8 @@ type PersistedPaneRecord = {
   title?: unknown;
   ownerSessionId?: unknown;
   ownerPiSessionId?: unknown;
+  projectId?: unknown;
+  createdAt?: unknown;
 };
 
 type PersistedPaneState = {
@@ -57,6 +59,8 @@ function terminalPaneFromPersisted(pane: PersistedPaneRecord): TerminalPaneState
     title: typeof pane.title === "string" ? pane.title : "Terminal",
     ownerSessionId: typeof pane.ownerSessionId === "string" ? pane.ownerSessionId : null,
     ownerPiSessionId: typeof pane.ownerPiSessionId === "string" ? pane.ownerPiSessionId : null,
+    projectId: typeof pane.projectId === "string" ? pane.projectId : null,
+    createdAt: typeof pane.createdAt === "string" ? pane.createdAt : undefined,
   };
 }
 
@@ -330,7 +334,12 @@ export function loadPersistedActiveAgentSessions(
       .filter(isRecord)
       .map((entry): ActiveAgentSessionSnapshot => {
         const piSessionId = typeof entry.piSessionId === "string" ? entry.piSessionId.trim() : null;
+        const isTerminal = entry.kind === "terminal";
         return {
+          ...(isTerminal ? { kind: "terminal" as const } : {}),
+          ...(isTerminal && typeof entry.mountKey === "string"
+            ? { mountKey: entry.mountKey }
+            : {}),
           projectId: typeof entry.projectId === "string" ? entry.projectId : "",
           cwd: typeof entry.cwd === "string" ? entry.cwd : "",
           paneId: typeof entry.paneId === "string" ? entry.paneId : "",
@@ -344,7 +353,7 @@ export function loadPersistedActiveAgentSessions(
           modelId: typeof entry.modelId === "string" ? entry.modelId : undefined,
           title:
             cleanSessionTitle(typeof entry.title === "string" ? entry.title : null) ||
-            "Loading session",
+            (isTerminal ? "Terminal" : "Loading session"),
           status: typeof entry.status === "string" ? entry.status : "idle",
           focused: entry.focused === true,
           startedAt: typeof entry.startedAt === "string" ? entry.startedAt : undefined,

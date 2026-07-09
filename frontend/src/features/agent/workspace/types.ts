@@ -24,6 +24,10 @@ export type TerminalPaneState = {
   title: string;
   ownerSessionId: SessionId | null;
   ownerPiSessionId: string | null;
+  /** Project the terminal belongs to — groups it under a sidebar project row. */
+  projectId?: string | null;
+  /** When the terminal pane was first created (sidebar row ordering). */
+  createdAt?: string;
 };
 
 export type PaneState = ChatPaneState | TerminalPaneState;
@@ -97,7 +101,20 @@ export type WorkspaceAction =
     }
   | { type: "closePane"; paneId: PaneId }
   | { type: "openTerminalPane"; sourcePaneId?: PaneId }
-  | { type: "openProjectTerminal"; cwd: string | null; newPaneId: PaneId }
+  | {
+      type: "openProjectTerminal";
+      cwd: string | null;
+      newPaneId: PaneId;
+      projectId?: string | null;
+    }
+  | {
+      type: "focusTerminalPane";
+      mountKey: string;
+      cwd: string | null;
+      title?: string;
+      projectId?: string | null;
+      newPaneId: PaneId;
+    }
   | {
       type: "splitTerminalPane";
       sourcePaneId: PaneId;
@@ -122,6 +139,8 @@ export type WorkspaceAction =
       split?: boolean;
       paneId: PaneId;
       terminal?: boolean;
+      /** Reattach target: focus/recreate the terminal pane with this mountKey. */
+      terminalMountKey?: string;
       tab: Session;
     }
   | {

@@ -312,21 +312,19 @@ function useTerminalPanelEffects({
       if (controlRef) controlRef.current = terminalControl(refs);
 
       const pty = getPtyBridge();
-      let useFallback = !pty;
       if (pty) {
-        const status = await pty.status().catch(() => ({ available: false, reason: "ipc error" }));
-        if (!status.available) {
-          term.writeln(`\x1b[33mPTY unavailable: ${status.reason ?? "unknown"}\x1b[0m`);
+        // Open directly — a failed open carries the unavailability reason, so
+        // the old pre-flight status() round trip was pure added latency.
+        try {
+          cleanupTerminal = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "unknown";
+          term.writeln(`\x1b[33mPTY unavailable: ${reason}\x1b[0m`);
           term.writeln("\x1b[33mFalling back to non-interactive shell.\x1b[0m");
-          useFallback = true;
+          cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
         }
       } else {
         term.writeln("\x1b[33mNo desktop PTY bridge — using web fallback (no TUI).\x1b[0m");
-      }
-
-      if (!useFallback && pty) {
-        cleanupTerminal = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey });
-      } else {
         cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
       }
 

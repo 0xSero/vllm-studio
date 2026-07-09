@@ -16,6 +16,7 @@ import {
   closePane,
   focusPane,
   focusPaneSession,
+  focusTerminalPane,
   openSessionPayloadInPane,
   openProjectTerminal,
   splitTerminalPane,
@@ -82,8 +83,14 @@ function hydrateSessionSnapshots(
 
   const restorable = snapshots.filter(
     (session) =>
-      (!session.projectId && Boolean(session.cwd)) ||
-      projects.some((project) => project.id === session.projectId || project.path === session.cwd),
+      // Terminal rows are pane-state, not chat sessions — the durable
+      // pane-state restore owns them; rebuilding one here would fabricate a
+      // chat session out of a PTY mountKey.
+      session.kind !== "terminal" &&
+      ((!session.projectId && Boolean(session.cwd)) ||
+        projects.some(
+          (project) => project.id === session.projectId || project.path === session.cwd,
+        )),
   );
   if (restorable.length === 0) return { ...state, hydrated: true };
 
@@ -175,7 +182,19 @@ function reducePaneLayoutAction(
         sourcePaneId: action.sourcePaneId ?? state.focusedPaneId,
       });
     case "openProjectTerminal":
-      return openProjectTerminal(state, { cwd: action.cwd, newPaneId: action.newPaneId });
+      return openProjectTerminal(state, {
+        cwd: action.cwd,
+        newPaneId: action.newPaneId,
+        projectId: action.projectId,
+      });
+    case "focusTerminalPane":
+      return focusTerminalPane(state, {
+        mountKey: action.mountKey,
+        cwd: action.cwd,
+        title: action.title,
+        projectId: action.projectId,
+        newPaneId: action.newPaneId,
+      });
     case "splitTerminalPane":
       return splitTerminalPane(state, {
         sourcePaneId: action.sourcePaneId,
@@ -248,6 +267,7 @@ function reduceSessionEditAction(
         newSession: action.newSession,
         split: action.split,
         terminal: action.terminal,
+        terminalMountKey: action.terminalMountKey,
         paneId: action.paneId,
         tab: action.tab,
       });

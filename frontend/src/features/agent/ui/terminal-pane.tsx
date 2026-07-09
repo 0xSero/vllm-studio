@@ -30,6 +30,7 @@ export function preloadTerminalPanel(): void {
   void import("@xterm/xterm");
   void import("@xterm/addon-fit");
   void import("@xterm/addon-search");
+  void import("@xterm/addon-web-links").catch(() => null);
 }
 
 function HeaderButton({

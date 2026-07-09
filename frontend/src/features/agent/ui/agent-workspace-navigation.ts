@@ -92,6 +92,9 @@ function requestWorkspaceUrlNavigation({
     newSession: newParam !== null,
     split: splitParam === "1",
     terminal: terminalParam !== null,
+    // `terminal=1` opens a fresh terminal; any other value is a PTY mountKey
+    // to focus/reattach (sidebar terminal rows when the workspace is unbound).
+    ...(terminalParam && terminalParam !== "1" ? { terminalMountKey: terminalParam } : {}),
     paneId: newPaneId(),
     tab,
   });

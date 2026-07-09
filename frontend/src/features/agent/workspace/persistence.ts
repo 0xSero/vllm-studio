@@ -127,6 +127,8 @@ export function writePaneState(
         title: pane.title,
         ownerSessionId: pane.ownerSessionId,
         ownerPiSessionId: pane.ownerPiSessionId,
+        projectId: pane.projectId ?? null,
+        createdAt: pane.createdAt,
       };
       continue;
     }

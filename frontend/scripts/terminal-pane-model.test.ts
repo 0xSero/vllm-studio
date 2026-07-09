@@ -368,7 +368,7 @@ test("url ?new=1 splits a fresh chat beside a focused single-leaf terminal", () 
   assert.deepEqual(closed, []);
 });
 
-test("url session replay replacing a focused terminal keeps the PTY owner alive", () => {
+test("url session replay splits beside a focused terminal instead of clobbering it", () => {
   const original = chatSession({ cwd: "/repo/orig", piSessionId: "pi-original" });
   const withTerminal = openTerminalPane(stateWithChatPane(original), { sourcePaneId: "p-init" });
   const replayTab = chatSession();
@@ -377,11 +377,15 @@ test("url session replay replacing a focused terminal keeps the PTY owner alive"
     key: "nav-replay-keep",
     project: null,
     sessionId: "pi-replay",
+    paneId: "p-replay",
     tab: replayTab,
   });
 
-  assert.equal(asChat(next.panesById.get("p-init")).sessionId, replayTab.id);
+  // The terminal pane survives untouched; the chat opens in the split pane.
+  assert.equal(next.panesById.get("p-init")?.kind, "terminal");
+  assert.equal(asChat(next.panesById.get("p-replay")).sessionId, replayTab.id);
   assert.equal(next.sessions.get(replayTab.id)?.piSessionId, "pi-replay");
+  assert.equal(next.focusedPaneId, "p-replay");
 
   const { deps, closed } = effectDeps();
   runWorkspaceEffect(
@@ -390,7 +394,7 @@ test("url session replay replacing a focused terminal keeps the PTY owner alive"
       key: "nav-replay-keep",
       project: null,
       sessionId: "pi-replay",
-      paneId: "p-init",
+      paneId: "p-replay",
       tab: replayTab,
     },
     withTerminal,
@@ -515,4 +519,47 @@ test("url replay of a session already open in the sibling pane focuses it and ke
   assert.equal(asChat(next.panesById.get("p-b")).sessionId, b.id);
   assert.ok(next.sessions.has(a.id));
   assert.ok(next.sessions.has(b.id));
+});
+
+test("terminal panes broadcast as kind:'terminal' active-session rows keyed by mountKey", () => {
+  const chat = chatSession({ cwd: "/repo/proj", piSessionId: "pi-live", projectId: "proj-1" });
+  const base: WorkspaceState = { ...stateWithChatPane(chat), hydrated: true };
+  const action = {
+    type: "openProjectTerminal",
+    cwd: "/repo/proj",
+    newPaneId: "p-term",
+    projectId: "proj-1",
+  } as const;
+  const next = reducer(base, action);
+
+  const broadcasts: unknown[] = [];
+  const { deps } = effectDeps();
+  runWorkspaceEffect(
+    action,
+    base,
+    next,
+    {
+      ...deps,
+      window: {
+        ...deps.window,
+        dispatchEvent: (event: Event) => {
+          if ("detail" in event) broadcasts.push((event as CustomEvent).detail);
+          return true;
+        },
+      },
+    },
+  );
+
+  const sessions = (
+    broadcasts.find(
+      (detail): detail is { sessions: Array<Record<string, unknown>> } =>
+        typeof detail === "object" && detail !== null && "sessions" in detail,
+    ) ?? assert.fail("no active-sessions broadcast fired")
+  ).sessions;
+  const terminalRow = sessions.find((row) => row.kind === "terminal");
+  assert.ok(terminalRow, "terminal pane missing from broadcast");
+  assert.equal(terminalRow.mountKey, "pane:p-term");
+  assert.equal(terminalRow.tabId, "pane:p-term");
+  assert.equal(terminalRow.projectId, "proj-1");
+  assert.equal(terminalRow.focused, true);
 });

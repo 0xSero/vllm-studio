@@ -22,6 +22,7 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
+import { preloadTerminalPanel } from "@/features/agent/ui/terminal-pane";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { useProjects } from "@/features/agent/projects/context";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
@@ -302,7 +303,9 @@ export function ProjectSessions({
         <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
       ) : (
         visibleRows.map((row) =>
-          row.kind === "active" ? (
+          row.kind === "active" && row.active.kind === "terminal" ? (
+            <TerminalSessionRow key={row.key} project={project} session={row.active} />
+          ) : row.kind === "active" ? (
             <ActiveSessionRow
               key={row.key}
               project={project}
@@ -388,6 +391,67 @@ export function ActiveSessionRow({
       canDoubleClickRename
       renameInputClass="text-[length:var(--fs-xs)]"
     />
+  );
+}
+
+function terminalRowLabel(session: ActiveAgentSession): string {
+  const title = cleanSessionTitle(session.title) || "Terminal";
+  if (title !== "Terminal" || !session.cwd) return title;
+  const basename = session.cwd.replace(/\/+$/, "").split("/").pop();
+  return basename ? `Terminal — ${basename}` : title;
+}
+
+/**
+ * A live workspace terminal pane, listed alongside chat sessions. Clicking
+ * focuses its pane; if the pane was lost (navigation), the same mountKey
+ * recreates it and reattaches the still-running PTY with replay.
+ */
+export function TerminalSessionRow({
+  project,
+  session,
+}: {
+  project: ProjectEntry;
+  session: ActiveAgentSession;
+}) {
+  const router = useRouter();
+  const projects = useProjects();
+  const mountKey = session.mountKey ?? session.tabId;
+  const label = terminalRowLabel(session);
+  const isFocused = session.focused === true;
+  const open = () => {
+    preloadTerminalPanel();
+    if (workspaceCommands().isBound()) {
+      projects.selectProject(project);
+      workspaceCommands().focusTerminal({
+        mountKey,
+        cwd: session.cwd || project.path,
+        title: cleanSessionTitle(session.title) || "Terminal",
+        projectId: project.id,
+      });
+      return;
+    }
+    router.push(
+      `/agent?project=${encodeURIComponent(project.id)}&terminal=${encodeURIComponent(mountKey)}`,
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={open}
+      onMouseEnter={preloadTerminalPanel}
+      title={session.cwd || label}
+      className={`group relative flex h-6.5 items-center gap-1.5 rounded-md pl-3 pr-2 text-left transition-colors ${
+        isFocused
+          ? "bg-(--color-surface-hover) text-(--fg)"
+          : "text-(--fg)/72 hover:bg-(--color-surface-hover) hover:text-(--fg)/95"
+      }`}
+    >
+      <Terminal className="h-3 w-3 shrink-0 opacity-55" />
+      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-md)]">{label}</span>
+      <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)/70">
+        {relativeAge(session.startedAt ?? session.updatedAt)}
+      </span>
+    </button>
   );
 }
 
@@ -531,6 +595,9 @@ export function NewChatPlusButton({
           }
           const rect = event.currentTarget.getBoundingClientRect();
           setMenuPos({ top: rect.bottom + 4, left: rect.right });
+          // Warm the xterm chunks while the menu is open so "New terminal"
+          // doesn't pay the dynamic-import cost on click.
+          preloadTerminalPanel();
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") closeMenu();

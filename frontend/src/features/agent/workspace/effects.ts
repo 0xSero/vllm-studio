@@ -74,6 +74,7 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "closePane",
   "openTerminalPane",
   "openProjectTerminal",
+  "focusTerminalPane",
   "splitTerminalPane",
   "hydrateActiveSessions",
   "urlNavRequested",
@@ -243,6 +244,25 @@ function computeActiveSessionBroadcast(
   const out: ActiveAgentSessionSnapshot[] = [];
   const inPane = new Set<SessionId>();
   for (const [paneId, pane] of state.panesById.entries()) {
+    if (pane.kind === "terminal") {
+      // Terminals are sidebar rows too: tabId doubles as the PTY mountKey so
+      // clicking the row can focus or recreate (reattach) the pane.
+      out.push({
+        kind: "terminal",
+        mountKey: pane.mountKey,
+        projectId: pane.projectId ?? "",
+        cwd: pane.cwd ?? "",
+        paneId,
+        tabId: pane.mountKey,
+        piSessionId: null,
+        title: pane.title,
+        status: "idle",
+        focused: paneId === state.focusedPaneId,
+        startedAt: pane.createdAt,
+        updatedAt: pane.createdAt ?? new Date().toISOString(),
+      });
+      continue;
+    }
     const sessionId = paneSessionId(pane);
     const tab = sessionId ? state.sessions.get(sessionId) : undefined;
     if (!tab) continue;
@@ -302,7 +322,13 @@ export function activeBroadcastSignature(state: WorkspaceState): string {
   if (!state.hydrated) return " unhydrated";
   const parts: string[] = [`m:${state.selectedModel ?? ""}`, `f:${state.focusedPaneId ?? ""}`];
   for (const [paneId, pane] of state.panesById.entries())
-    parts.push(`P:${paneId}>${pane.kind === "terminal" ? pane.mountKey : pane.sessionId}`);
+    parts.push(
+      `P:${paneId}>${
+        pane.kind === "terminal"
+          ? `${pane.mountKey}|${pane.title}|${pane.projectId ?? ""}|${pane.cwd ?? ""}`
+          : pane.sessionId
+      }`,
+    );
   for (const tab of state.sessions.values()) {
     parts.push(
       `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +

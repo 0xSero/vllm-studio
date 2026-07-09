@@ -12,6 +12,7 @@ import {
 } from "../src/features/agent/workspace/layout";
 import {
   applyUrlNavigation,
+  focusTerminalPane,
   openProjectTerminal,
   splitTerminalPane,
 } from "../src/features/agent/workspace/pane-controller";
@@ -533,4 +534,94 @@ test("restorePersistedPaneState keeps every chat leaf when only chats exceed the
   for (const paneId of ["c1", "c2", "c3", "c4"]) {
     assert.notEqual(restored.panesById.get(paneId)?.kind, "terminal");
   }
+});
+
+test("openProjectTerminal stamps the owning project onto the pane", () => {
+  const state = createInitialState();
+  const next = openProjectTerminal(state, {
+    cwd: "/repo/proj",
+    newPaneId: "p-unused",
+    projectId: "proj-1",
+  });
+  const term = asTerminal(next.panesById.get(next.focusedPaneId));
+  assert.equal(term.projectId, "proj-1");
+  assert.ok(term.createdAt);
+});
+
+test("focusTerminalPane focuses the existing pane holding the mountKey", () => {
+  const chat = chatSession({ piSessionId: "pi-a", messages: [] });
+  const base = stateWithChatPane(chat);
+  const withTerminal = openProjectTerminal(base, {
+    cwd: "/repo/proj",
+    newPaneId: "p-term",
+    projectId: "proj-1",
+  });
+  const focusedElsewhere = { ...withTerminal, focusedPaneId: "p-init" };
+
+  const next = focusTerminalPane(focusedElsewhere, {
+    mountKey: "pane:p-term",
+    cwd: "/repo/proj",
+    projectId: "proj-1",
+    newPaneId: "p-new",
+  });
+
+  assert.equal(next.focusedPaneId, "p-term");
+  assert.equal(next.panesById.has("p-new"), false);
+});
+
+test("focusTerminalPane recreates a lost terminal pane with the SAME mountKey so the PTY reattaches", () => {
+  const state = createInitialState(); // single empty starter chat pane
+  const next = focusTerminalPane(state, {
+    mountKey: "pane:p-lost",
+    cwd: "/repo/proj",
+    title: "Terminal",
+    projectId: "proj-1",
+    newPaneId: "p-new",
+  });
+
+  const term = asTerminal(next.panesById.get(next.focusedPaneId));
+  // The mountKey is preserved verbatim — it is the PTY owner key.
+  assert.equal(term.mountKey, "pane:p-lost");
+  assert.equal(term.projectId, "proj-1");
+});
+
+test("urlNavRequested with a terminal mountKey reattaches instead of opening a fresh terminal", () => {
+  const state = createInitialState();
+  const next = applyUrlNavigation(state, {
+    key: "nav-term-key",
+    project: project(),
+    terminal: true,
+    terminalMountKey: "pane:p-earlier",
+    paneId: "p-nav",
+    tab: chatSession(),
+  });
+
+  const term = asTerminal(next.panesById.get(next.focusedPaneId));
+  assert.equal(term.mountKey, "pane:p-earlier");
+  assert.equal(term.projectId, "proj-1");
+  assert.equal(next.lastHandledNavKey, "nav-term-key");
+});
+
+test("urlNavRequested session replay onto a terminal-only workspace splits and keeps the terminal", () => {
+  const state = createInitialState();
+  const withTerminal = openProjectTerminal(state, {
+    cwd: "/repo/proj",
+    newPaneId: "p-unused",
+    projectId: "proj-1",
+  });
+  const terminalPaneId = withTerminal.focusedPaneId;
+  const tab = chatSession();
+
+  const next = applyUrlNavigation(withTerminal, {
+    key: "nav-replay-split",
+    project: project(),
+    sessionId: "pi-replay",
+    paneId: "p-chat",
+    tab,
+  });
+
+  assert.equal(next.panesById.get(terminalPaneId)?.kind, "terminal");
+  const chat = next.panesById.get("p-chat");
+  assert.ok(chat && chat.kind !== "terminal");
+  assert.equal(next.sessions.get(tab.id)?.piSessionId, "pi-replay");
 });
