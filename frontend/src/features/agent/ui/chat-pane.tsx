@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
@@ -27,13 +28,17 @@ import { useSessionEngine } from "@/features/agent/runtime/engine";
 import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
-import { Timeline } from "@/features/agent/ui/timeline/timeline";
 import { CloseIcon, ReloadIcon } from "@/ui/icons";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,
 } from "@/features/agent/messages/export-markdown";
 export type { ChatPaneHandle, SessionTab };
+
+const Timeline = dynamic(
+  () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
+  { ssr: false, loading: () => <TimelineFallback /> },
+);
 
 const FINALIZATION_RETRY_ERROR_RE =
   /Model did not produce a valid final response\.?\s+Retrying finalization/i;
@@ -59,11 +64,28 @@ function visibleSessionError(error?: string): string {
     : value;
 }
 
-/** A failed turn can be retried when a model is set, nothing is running, and
- * there's a prior user message (or restored draft) to resend. */
 function canRetrySession(tab: SessionTab | null, hasModel: boolean, running: boolean): boolean {
   if (!tab || !hasModel || running) return false;
   return tab.messages.some((message) => message.role === "user") || Boolean(tab.input.trim());
+}
+
+function EmptyPromptTimeline() {
+  return (
+    <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
+      <div className="agent-thread-shell mx-auto flex flex-1">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
+            A dream is something you build for yourself.
+          </p>
+          <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineFallback() {
+  return <div className="flex min-h-0 flex-1 bg-(--agent-bg)" />;
 }
 
 type Props = {
@@ -369,17 +391,20 @@ export function ChatPane({
         </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-        <Timeline
-          key={activeTab?.id ?? "empty"}
-          stickToBottom={stickToBottom}
-          onStickToBottomChange={setStickToBottom}
-          messages={activeTab?.messages ?? []}
-          running={Boolean(running)}
-          onForkSession={onForkSession}
-          emptyPrompt={Boolean(showEmptyPrompt)}
-          hasEarlier={activeTab?.historyCursor != null}
-          onLoadEarlier={loadEarlierHistory}
-        />
+        {showEmptyPrompt ? (
+          <EmptyPromptTimeline />
+        ) : (
+          <Timeline
+            key={activeTab?.id ?? "empty"}
+            stickToBottom={stickToBottom}
+            onStickToBottomChange={setStickToBottom}
+            messages={activeTab?.messages ?? []}
+            running={Boolean(running)}
+            onForkSession={onForkSession}
+            hasEarlier={activeTab?.historyCursor != null}
+            onLoadEarlier={loadEarlierHistory}
+          />
+        )}
       </div>
       <AgentComposerFrame
         attachments={attachments}
