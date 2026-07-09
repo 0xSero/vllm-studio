@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { browserRoutes } from "./perf-routes.mjs";
 
 const defaultChromePaths = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -22,20 +23,7 @@ if (!chromePath) {
 
 const baseUrl = (process.env.LOCAL_STUDIO_PERF_URL || "http://127.0.0.1:3000").replace(/\/+$/, "");
 const routeTimeoutMs = Math.max(5_000, Number.parseInt(process.env.LOCAL_STUDIO_PERF_BROWSER_TIMEOUT_MS || "15000", 10));
-
-const routes = [
-  { path: "/", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/agent", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/settings", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/recipes", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/logs", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/download", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/server", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/usage", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/configure", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/discover", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-  { path: "/quick", dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24 },
-];
+const routes = browserRoutes();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,7 +71,8 @@ async function debugPortFor(userDataDir) {
   const activePortPath = join(userDataDir, "DevToolsActivePort");
   for (let attempt = 0; attempt < 100; attempt += 1) {
     try {
-      return readFileSync(activePortPath, "utf8").split("\n")[0]?.trim();
+      const port = readFileSync(activePortPath, "utf8").split("\n")[0]?.trim();
+      if (/^\d+$/u.test(port ?? "")) return port;
     } catch {}
     await sleep(50);
   }
@@ -123,6 +112,7 @@ async function pageMetrics(page) {
         scripts: resources.filter((entry) => entry.initiatorType === "script").length,
         css: resources.filter((entry) => entry.initiatorType === "link" || entry.name.endsWith(".css")).length,
         nodes: document.getElementsByTagName("*").length,
+        textChars: document.body ? document.body.innerText.trim().length : 0,
       };
     })()`,
   });
@@ -137,6 +127,7 @@ async function pageMetrics(page) {
     scripts: value.scripts,
     css: value.css,
     nodes: value.nodes,
+    textChars: value.textChars,
     heapMiB: (metric.JSHeapUsedSize || 0) / 1024 / 1024,
     taskMs: (metric.TaskDuration || 0) * 1000,
   };
@@ -175,7 +166,7 @@ async function routeResult(route) {
   } finally {
     child.kill("SIGTERM");
     await sleep(100);
-    rmSync(userDataDir, { recursive: true, force: true });
+    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 }
 
@@ -189,6 +180,7 @@ function violations(result) {
   if (result.fcpMs > result.budget.fcpMs) out.push(`fcp ${result.fcpMs.toFixed(1)}ms > ${result.budget.fcpMs}ms`);
   if (result.taskMs > result.budget.taskMs) out.push(`task ${result.taskMs.toFixed(1)}ms > ${result.budget.taskMs}ms`);
   if (result.nodes > result.budget.nodes) out.push(`nodes ${result.nodes} > ${result.budget.nodes}`);
+  if (result.textChars < result.budget.textChars) out.push(`text ${result.textChars} < ${result.budget.textChars}`);
   if (result.heapMiB > result.budget.heapMiB) {
     out.push(`heap ${result.heapMiB.toFixed(1)}MiB > ${result.budget.heapMiB}MiB`);
   }
@@ -196,16 +188,18 @@ function violations(result) {
 }
 
 console.log(`Local Studio browser perf audit: ${baseUrl}`);
-console.log("route          dcl    load     fcp    task    heap nodes res scripts css");
+console.log("route              dcl    load     fcp    task    heap nodes  text res scripts css");
 const failures = [];
 for (const route of routes) {
   const result = await Promise.race([
-    routeResult(route),
+    routeResult(route).catch((error) => {
+      throw new Error(`${route.path}: ${error instanceof Error ? error.message : String(error)}`);
+    }),
     timeoutAfter(routeTimeoutMs, `${route.path} timed out after ${routeTimeoutMs}ms`),
   ]);
   const bad = violations(result);
   console.log(
-    `${result.path.padEnd(10)} ${formatNumber(result.dclMs)}ms ${formatNumber(result.loadMs)}ms ${formatNumber(result.fcpMs)}ms ${formatNumber(result.taskMs)}ms ${formatNumber(result.heapMiB)}MiB ${String(result.nodes).padStart(5, " ")} ${String(result.resources).padStart(3, " ")} ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`,
+    `${result.path.padEnd(16)} ${formatNumber(result.dclMs)}ms ${formatNumber(result.loadMs)}ms ${formatNumber(result.fcpMs)}ms ${formatNumber(result.taskMs)}ms ${formatNumber(result.heapMiB)}MiB ${String(result.nodes).padStart(5, " ")} ${String(result.textChars).padStart(5, " ")} ${String(result.resources).padStart(3, " ")} ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`,
   );
   if (bad.length > 0) failures.push(`${result.path}: ${bad.join(", ")}`);
 }

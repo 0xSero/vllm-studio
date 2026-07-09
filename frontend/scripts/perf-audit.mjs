@@ -1,21 +1,9 @@
 import { performance } from "node:perf_hooks";
+import { httpRoutes } from "./perf-routes.mjs";
 
 const baseUrl = (process.env.LOCAL_STUDIO_PERF_URL || "http://127.0.0.1:3000").replace(/\/+$/, "");
 const runs = Math.max(3, Number.parseInt(process.env.LOCAL_STUDIO_PERF_RUNS || "8", 10));
-
-const routes = [
-  { path: "/", medianMs: 50, p90Ms: 150, assetKiB: 1050 },
-  { path: "/agent", medianMs: 50, p90Ms: 150, assetKiB: 1250 },
-  { path: "/settings", medianMs: 50, p90Ms: 150, assetKiB: 1100 },
-  { path: "/recipes", medianMs: 50, p90Ms: 150, assetKiB: 1100 },
-  { path: "/logs", medianMs: 50, p90Ms: 150, assetKiB: 1000 },
-  { path: "/download", medianMs: 50, p90Ms: 150, assetKiB: 900 },
-  { path: "/server", medianMs: 50, p90Ms: 150, assetKiB: 1000 },
-  { path: "/usage", medianMs: 50, p90Ms: 150, assetKiB: 1000 },
-  { path: "/configure", medianMs: 50, p90Ms: 150, assetKiB: 1000 },
-  { path: "/discover", medianMs: 50, p90Ms: 150, assetKiB: 1000 },
-  { path: "/quick", medianMs: 50, p90Ms: 150, assetKiB: 1250 },
-];
+const routes = httpRoutes();
 
 const assetSizeCache = new Map();
 
@@ -91,12 +79,12 @@ for (const route of routes) {
 }
 
 console.log(`Local Studio perf audit: ${baseUrl} (${runs} runs per route)`);
-console.log("route        median     p90  assets scripts css");
+console.log("route            median     p90  assets scripts css");
 const failures = [];
 for (const result of results) {
   const bad = violations(result);
   console.log(
-    `${result.path.padEnd(10)} ${formatNumber(result.medianMs)}ms ${formatNumber(result.p90Ms)}ms ${formatNumber(result.assetKiB)}KiB ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`,
+    `${result.path.padEnd(16)} ${formatNumber(result.medianMs)}ms ${formatNumber(result.p90Ms)}ms ${formatNumber(result.assetKiB)}KiB ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`,
   );
   if (bad.length > 0) failures.push(`${result.path}: ${bad.join(", ")}`);
 }
