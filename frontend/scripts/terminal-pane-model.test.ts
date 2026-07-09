@@ -331,7 +331,7 @@ test("opening a terminal and unrelated dispatches never trigger closeTerminalOwn
   assert.deepEqual(focus.closed, []);
 });
 
-test("url ?new=1 replaces a focused single-leaf terminal with the fresh chat tab", () => {
+test("url ?new=1 splits a fresh chat beside a focused single-leaf terminal", () => {
   const original = chatSession({ cwd: "/repo/orig", piSessionId: "pi-original" });
   const withTerminal = openTerminalPane(stateWithChatPane(original), { sourcePaneId: "p-init" });
   assert.equal(withTerminal.focusedPaneId, "p-init");
@@ -342,13 +342,14 @@ test("url ?new=1 replaces a focused single-leaf terminal with the fresh chat tab
     project: null,
     newSession: true,
     tab: fresh,
+    paneId: "p-new",
   });
 
-  assert.deepEqual(collectLeaves(next.layout), ["p-init"]);
-  assert.equal(asChat(next.panesById.get("p-init")).sessionId, fresh.id);
-  assert.equal(next.focusedPaneId, "p-init");
+  assert.deepEqual(collectLeaves(next.layout), ["p-init", "p-new"]);
+  asTerminal(next.panesById.get("p-init"));
+  assert.equal(asChat(next.panesById.get("p-new")).sessionId, fresh.id);
+  assert.equal(next.focusedPaneId, "p-new");
   assert.ok(next.sessions.has(fresh.id));
-  assert.equal(next.sessions.has(original.id), false);
 
   const { deps, closed } = effectDeps();
   runWorkspaceEffect(
@@ -357,7 +358,7 @@ test("url ?new=1 replaces a focused single-leaf terminal with the fresh chat tab
       key: "nav-new-1",
       project: null,
       newSession: true,
-      paneId: "p-init",
+      paneId: "p-new",
       tab: fresh,
     },
     withTerminal,
@@ -451,7 +452,7 @@ test("legacy chat-only persisted payloads still restore as chat panes", () => {
   assert.equal(session.title, "Old chat");
 });
 
-test("url ?new=1 replaces a focused terminal pane even when a sibling chat pane exists", () => {
+test("url ?new keeps a focused terminal pane and opens the chat in the sibling pane", () => {
   const a = chatSession({ piSessionId: "pi-a" });
   const b = chatSession({ piSessionId: "pi-b" });
   const withTerminal = openTerminalPane(twoChatPaneState(a, b), { sourcePaneId: "p-a" });
@@ -466,15 +467,14 @@ test("url ?new=1 replaces a focused terminal pane even when a sibling chat pane 
   });
 
   assert.deepEqual(collectLeaves(next.layout), ["p-a", "p-b"]);
-  assert.equal(asChat(next.panesById.get("p-a")).sessionId, fresh.id);
-  assert.equal(asChat(next.panesById.get("p-b")).sessionId, b.id);
-  assert.equal(next.focusedPaneId, "p-a");
+  asTerminal(next.panesById.get("p-a"));
+  assert.equal(asChat(next.panesById.get("p-b")).sessionId, fresh.id);
+  assert.equal(next.focusedPaneId, "p-b");
   assert.ok(next.sessions.has(fresh.id));
-  assert.ok(next.sessions.has(b.id));
-  assert.equal(next.sessions.has(a.id), false);
+  assert.equal(next.sessions.has(b.id), false);
 });
 
-test("url session replay lands in the focused terminal pane instead of the sibling chat pane", () => {
+test("url session replay keeps a focused terminal pane and lands in the sibling chat pane", () => {
   const a = chatSession({ piSessionId: "pi-a" });
   const b = chatSession({ piSessionId: "pi-b" });
   const withTerminal = openTerminalPane(twoChatPaneState(a, b), { sourcePaneId: "p-a" });
@@ -488,12 +488,11 @@ test("url session replay lands in the focused terminal pane instead of the sibli
   });
 
   assert.deepEqual(collectLeaves(next.layout), ["p-a", "p-b"]);
-  assert.equal(asChat(next.panesById.get("p-a")).sessionId, replayTab.id);
+  asTerminal(next.panesById.get("p-a"));
+  assert.equal(asChat(next.panesById.get("p-b")).sessionId, replayTab.id);
   assert.equal(next.sessions.get(replayTab.id)?.piSessionId, "pi-replay");
-  assert.equal(asChat(next.panesById.get("p-b")).sessionId, b.id);
-  assert.equal(next.sessions.get(b.id)?.piSessionId, "pi-b");
-  assert.equal(next.focusedPaneId, "p-a");
-  assert.equal(next.sessions.has(a.id), false);
+  assert.equal(next.focusedPaneId, "p-b");
+  assert.equal(next.sessions.has(b.id), false);
 });
 
 test("url replay of a session already open in the sibling pane focuses it and keeps the terminal", () => {
