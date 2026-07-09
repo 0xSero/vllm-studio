@@ -1,13 +1,17 @@
-// Minimal MCP client: enough protocol to list and call tools on a connector.
-// Speaks newline-delimited JSON-RPC over stdio (official SDK transport) and
-// plain JSON POST for streamable-http servers. Deliberately dependency-free.
-
 import { spawn, type ChildProcess } from "child_process";
+
+export interface McpToolAnnotations {
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+  readOnlyHint?: boolean;
+}
 
 export interface McpToolInfo {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  annotations?: McpToolAnnotations;
 }
 
 export interface McpConnection {
@@ -21,6 +25,7 @@ export interface StdioTarget {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  cwd?: string;
 }
 
 export interface HttpTarget {
@@ -57,6 +62,7 @@ class StdioMcpConnection implements McpConnection {
     this.child = spawn(target.command, target.args ?? [], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...(target.env ?? {}) },
+      ...(target.cwd ? { cwd: target.cwd } : {}),
     });
     this.child.stdout?.on("data", (chunk: Buffer) => this.onData(chunk));
     this.child.stderr?.on("data", (chunk: Buffer) => {
@@ -92,10 +98,7 @@ class StdioMcpConnection implements McpConnection {
           if (message.error) entry.reject(new Error(message.error.message));
           else entry.resolve(message.result);
         }
-        // Server-initiated requests/notifications are ignored; tools-only client.
-      } catch {
-        // Non-JSON line on stdout (some servers log there) — skip it.
-      }
+      } catch {}
     }
   }
 
@@ -212,9 +215,7 @@ class HttpMcpConnection implements McpConnection {
     return this.request("tools/call", { name, arguments: args });
   }
 
-  close(): void {
-    // HTTP connections are stateless per request; nothing to tear down.
-  }
+  close(): void {}
 }
 
 export const connectMcp = (target: McpTarget): McpConnection =>

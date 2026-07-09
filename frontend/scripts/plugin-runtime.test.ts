@@ -1,0 +1,152 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { Effect } from "effect";
+import {
+  callConnectorTool,
+  closePooledConnection,
+  ConnectorToolDeniedError,
+  listConnectorTools,
+} from "../../services/agent-runtime/src/connector-pool";
+import {
+  connectorsRevisionSync,
+  listConnectors,
+  upsertConnector,
+} from "../../services/agent-runtime/src/connectors-service";
+import {
+  listPluginRuntimeViews,
+  setPluginEnabled,
+} from "../../services/agent-runtime/src/plugin-runtime";
+
+const fakeServer = `
+import readline from "node:readline";
+const input = readline.createInterface({ input: process.stdin });
+for await (const line of input) {
+  const message = JSON.parse(line);
+  if (typeof message.id !== "number") continue;
+  let result = {};
+  if (message.method === "initialize") {
+    result = { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } };
+  }
+  if (message.method === "tools/list") {
+    result = { tools: [
+      { name: "inspect", inputSchema: { type: "object" }, annotations: { readOnlyHint: true } },
+      { name: "mutate", inputSchema: { type: "object" }, annotations: { readOnlyHint: false } }
+    ] };
+  }
+  if (message.method === "tools/call") {
+    result = { content: [{ type: "text", text: JSON.stringify({ tool: message.params.name, cwd: process.cwd() }) }] };
+  }
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
+}
+`;
+
+async function createPlugin(root: string, name: string, mcpPath = "./.mcp.json") {
+  const bundle = path.join(root, name, "1.0.0");
+  await mkdir(path.join(bundle, ".codex-plugin"), { recursive: true });
+  await writeFile(
+    path.join(bundle, ".codex-plugin", "plugin.json"),
+    JSON.stringify({
+      name,
+      version: "1.0.0",
+      mcpServers: mcpPath,
+      interface: { displayName: name === "computer-use" ? "Computer Use" : name },
+    }),
+  );
+  return bundle;
+}
+
+test("plugin runtime activates only declared read-only tools and refreshes connector state", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "local-studio-plugin-runtime-"));
+  const dataDir = path.join(root, "data");
+  const pluginRoot = path.join(root, "plugins");
+  const previousDataDir = process.env.LOCAL_STUDIO_DATA_DIR;
+  process.env.LOCAL_STUDIO_DATA_DIR = dataDir;
+  context.after(async () => {
+    closePooledConnection("plugin-computer-use-computer-use");
+    if (previousDataDir === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
+    else process.env.LOCAL_STUDIO_DATA_DIR = previousDataDir;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const bundle = await createPlugin(pluginRoot, "computer-use");
+  await writeFile(path.join(bundle, "server.mjs"), fakeServer);
+  await writeFile(
+    path.join(bundle, ".mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        "computer-use": {
+          command: process.execPath,
+          args: ["./server.mjs"],
+          cwd: ".",
+        },
+      },
+    }),
+  );
+  const sources = [{ label: "Test", dir: pluginRoot, priority: 1 }];
+
+  const initial = await Effect.runPromise(listPluginRuntimeViews(sources));
+  assert.equal(initial[0]?.tools.state, "available");
+  const initialRevision = connectorsRevisionSync();
+
+  const activated = await Effect.runPromise(setPluginEnabled("computer-use", true, sources));
+  assert.equal(activated.plugins[0]?.tools.state, "enabled");
+  assert.equal(activated.plugins[0]?.tools.allowedToolCount, 1);
+  assert.notEqual(connectorsRevisionSync(), initialRevision);
+
+  const connector = (await listConnectors())[0];
+  assert.equal(connector?.cwd, await realpath(bundle));
+  assert.deepEqual(connector?.allowTools, ["inspect"]);
+  assert.deepEqual(connector?.origin, {
+    kind: "plugin",
+    id: "computer-use",
+    version: "1.0.0",
+    binding: "computer-use",
+  });
+
+  await upsertConnector({
+    id: "plugin-computer-use-computer-use",
+    name: "Computer Use",
+    transport: "stdio",
+    command: process.execPath,
+    args: [path.join(bundle, "server.mjs")],
+    enabled: true,
+  });
+  const roundTripped = (await listConnectors())[0];
+  assert.equal(roundTripped?.cwd, await realpath(bundle));
+  assert.deepEqual(roundTripped?.allowTools, ["inspect"]);
+  assert.equal(roundTripped?.origin?.id, "computer-use");
+
+  const tools = await listConnectorTools("plugin-computer-use-computer-use");
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["inspect"],
+  );
+  await assert.rejects(
+    () => callConnectorTool("plugin-computer-use-computer-use", "mutate", {}),
+    ConnectorToolDeniedError,
+  );
+  const result = await callConnectorTool("plugin-computer-use-computer-use", "inspect", {});
+  assert.match(JSON.stringify(result), /tool.*inspect/);
+
+  const deactivated = await Effect.runPromise(setPluginEnabled("computer-use", false, sources));
+  assert.equal(deactivated.plugins[0]?.tools.state, "disabled");
+  assert.equal((await listConnectors())[0]?.enabled, false);
+});
+
+test("plugin runtime rejects manifest paths that escape the bundle", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "local-studio-plugin-escape-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const bundle = await createPlugin(root, "unsafe", "../escape.json");
+  await writeFile(
+    path.join(path.dirname(bundle), "escape.json"),
+    JSON.stringify({ mcpServers: {} }),
+  );
+  const plugins = await Effect.runPromise(
+    listPluginRuntimeViews([{ label: "Test", dir: root, priority: 1 }]),
+  );
+  assert.equal(plugins[0]?.tools.state, "invalid");
+  assert.match(plugins[0]?.tools.reason ?? "", /escapes its bundle/);
+});

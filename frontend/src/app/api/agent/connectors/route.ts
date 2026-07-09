@@ -38,8 +38,10 @@ export async function POST(request: NextRequest) {
     ...(body.command ? { command: body.command } : {}),
     ...(body.args ? { args: body.args } : {}),
     ...(body.env ? { env: body.env } : {}),
+    ...(body.cwd ? { cwd: body.cwd } : {}),
     ...(body.url ? { url: body.url } : {}),
     ...(body.headers ? { headers: body.headers } : {}),
+    ...(body.allowTools ? { allowTools: body.allowTools } : {}),
     enabled: body.enabled ?? true,
   };
   const connectors = await upsertConnector(connector);

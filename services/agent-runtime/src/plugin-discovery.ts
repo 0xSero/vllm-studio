@@ -22,7 +22,7 @@ const PluginManifestSchema = Schema.Struct({
   interface: Schema.optional(PluginInterfaceSchema),
 });
 
-type PluginManifest = typeof PluginManifestSchema.Type;
+export type PluginManifest = typeof PluginManifestSchema.Type;
 
 export type PluginSource = {
   label: string;
@@ -47,8 +47,14 @@ export type PluginView = {
   };
 };
 
-type DiscoveredPlugin = {
+export type PluginBundle = {
   plugin: PluginView;
+  manifest: PluginManifest;
+  rootDir: string;
+};
+
+type DiscoveredPlugin = {
+  bundle: PluginBundle;
   priority: number;
 };
 
@@ -109,7 +115,10 @@ async function manifestInDirectory(
   try {
     const raw = await readFile(path.join(dir, ".codex-plugin", "plugin.json"), "utf8");
     const manifest = Schema.decodeUnknownSync(PluginManifestSchema)(JSON.parse(raw));
-    return { plugin: pluginView(manifest, source.label), priority: source.priority };
+    return {
+      bundle: { plugin: pluginView(manifest, source.label), manifest, rootDir: dir },
+      priority: source.priority,
+    };
   } catch {
     return null;
   }
@@ -148,15 +157,15 @@ function preferredPlugin(
 ): DiscoveredPlugin {
   if (!current || candidate.priority > current.priority) return candidate;
   if (candidate.priority < current.priority) return current;
-  return compareVersions(candidate.plugin.version, current.plugin.version) > 0
+  return compareVersions(candidate.bundle.plugin.version, current.bundle.plugin.version) > 0
     ? candidate
     : current;
 }
 
-export function discoverPlugins(
+export function discoverPluginBundles(
   sources: PluginSource[] = defaultPluginSources(),
   maxDepth = 5,
-): Effect.Effect<PluginView[], PluginDiscoveryError> {
+): Effect.Effect<PluginBundle[], PluginDiscoveryError> {
   return Effect.tryPromise({
     try: async () => {
       const discovered = (
@@ -165,14 +174,23 @@ export function discoverPlugins(
       const plugins = new Map<string, DiscoveredPlugin>();
       for (const candidate of discovered) {
         plugins.set(
-          candidate.plugin.name,
-          preferredPlugin(plugins.get(candidate.plugin.name), candidate),
+          candidate.bundle.plugin.name,
+          preferredPlugin(plugins.get(candidate.bundle.plugin.name), candidate),
         );
       }
       return [...plugins.values()]
-        .map(({ plugin }) => plugin)
-        .sort((left, right) => left.displayName.localeCompare(right.displayName));
+        .map(({ bundle }) => bundle)
+        .sort((left, right) => left.plugin.displayName.localeCompare(right.plugin.displayName));
     },
     catch: (error) => new PluginDiscoveryError(String(error)),
   });
+}
+
+export function discoverPlugins(
+  sources: PluginSource[] = defaultPluginSources(),
+  maxDepth = 5,
+): Effect.Effect<PluginView[], PluginDiscoveryError> {
+  return discoverPluginBundles(sources, maxDepth).pipe(
+    Effect.map((bundles) => bundles.map(({ plugin }) => plugin)),
+  );
 }

@@ -1,10 +1,9 @@
-// Shared pool of live MCP connections keyed by connector id, so stdio servers
-// (often `npx …`) spawn once per process instead of once per tool call.
-
 import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
 
 const pool = new Map<string, McpConnection>();
+
+export class ConnectorToolDeniedError extends Error {}
 
 const toTarget = (connector: ConnectorConfig) =>
   connector.transport === "stdio"
@@ -13,6 +12,7 @@ const toTarget = (connector: ConnectorConfig) =>
         command: connector.command ?? "",
         args: connector.args ?? [],
         env: connector.env ?? {},
+        ...(connector.cwd ? { cwd: connector.cwd } : {}),
       }
     : {
         transport: "http" as const,
@@ -20,12 +20,30 @@ const toTarget = (connector: ConnectorConfig) =>
         headers: connector.headers ?? {},
       };
 
-export async function getPooledConnection(connectorId: string): Promise<McpConnection> {
-  const existing = pool.get(connectorId);
-  if (existing) return existing;
+async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
   if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
+  return connector;
+}
+
+function allowedTools(connector: ConnectorConfig, tools: McpToolInfo[]): McpToolInfo[] {
+  if (!connector.allowTools) return tools;
+  const allow = new Set(connector.allowTools);
+  return tools.filter((tool) => allow.has(tool.name));
+}
+
+function assertToolAllowed(connector: ConnectorConfig, tool: string): void {
+  if (!connector.allowTools || connector.allowTools.includes(tool)) return;
+  throw new ConnectorToolDeniedError(
+    `Tool "${tool}" is not allowed for connector "${connector.id}"`,
+  );
+}
+
+export async function getPooledConnection(connectorId: string): Promise<McpConnection> {
+  const existing = pool.get(connectorId);
+  if (existing) return existing;
+  const connector = await enabledConnector(connectorId);
   const connection = connectMcp(toTarget(connector));
   pool.set(connectorId, connection);
   return connection;
@@ -33,13 +51,37 @@ export async function getPooledConnection(connectorId: string): Promise<McpConne
 
 export function closePooledConnection(connectorId: string): void {
   const connection = pool.get(connectorId);
-  if (connection) {
-    pool.delete(connectorId);
-    connection.close();
+  if (!connection) return;
+  pool.delete(connectorId);
+  connection.close();
+}
+
+export async function listConnectorTools(connectorId: string): Promise<McpToolInfo[]> {
+  const connector = await enabledConnector(connectorId);
+  try {
+    const connection = await getPooledConnection(connectorId);
+    return allowedTools(connector, await connection.listTools());
+  } catch (error) {
+    closePooledConnection(connectorId);
+    throw error;
   }
 }
 
-/** One-shot connection for connectivity tests; never pooled. */
+export async function callConnectorTool(
+  connectorId: string,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const connector = await enabledConnector(connectorId);
+  assertToolAllowed(connector, tool);
+  try {
+    return await (await getPooledConnection(connectorId)).callTool(tool, args);
+  } catch (error) {
+    closePooledConnection(connectorId);
+    throw error;
+  }
+}
+
 export async function probeConnector(
   connector: ConnectorConfig,
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {

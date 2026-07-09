@@ -51,7 +51,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 ) {
   const isIcon = variant === "icon";
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors";
+    "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-[transform,color,background-color,border-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:translate-y-px";
   const vClass = variantClasses[variant];
   const sClass = isIcon ? iconSizeClasses[size] : sizeClasses[size];
 

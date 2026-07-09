@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { Effect } from "effect";
-import { discoverPlugins } from "@local-studio/agent-runtime/plugin-discovery";
+import { listPluginRuntimeViews } from "@local-studio/agent-runtime/plugin-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const plugins = await Effect.runPromise(discoverPlugins());
+  const plugins = await Effect.runPromise(listPluginRuntimeViews());
   return NextResponse.json({ plugins });
 }

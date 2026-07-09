@@ -54,7 +54,6 @@ export function IntegrationsPage() {
       sections={SECTIONS}
       activeSection={activeSection}
       title="Integrations"
-      status="local capabilities"
       loading={false}
       onReload={() => setRevision((value) => value + 1)}
       onSelectSection={selectSection}

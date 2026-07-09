@@ -25,7 +25,7 @@ type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
   sections: SettingsSectionDef<Id>[];
   activeSection: Id;
   title: string;
-  status: string;
+  status?: ReactNode;
   loading: boolean;
   onReload: () => void;
   onSelectSection: (section: Id) => void;
@@ -53,7 +53,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   loading,
   onReload,
   onSelectSection,
-  eyebrow = title,
+  eyebrow,
   refreshLabel = `Refresh ${title.toLowerCase()}`,
   children,
 }: LayoutProps<Id>) {
@@ -63,7 +63,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
     <AppPage>
       <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10 lg:py-8 2xl:px-10">
         <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="mb-4 hidden items-start justify-between gap-3 lg:flex">
             <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">
               {title}
             </h1>
@@ -77,7 +77,16 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
           />
         </aside>
         <section className="min-w-0 pb-10">
-          <PageHeader eyebrow={eyebrow} title={activeLabel} status={status} />
+          <PageHeader
+            eyebrow={eyebrow}
+            title={activeLabel}
+            status={status}
+            actions={
+              <span className="lg:hidden">
+                <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
+              </span>
+            }
+          />
           <div className="space-y-0">{children}</div>
         </section>
       </div>
@@ -212,7 +221,7 @@ export function SettingsButton({
       title={title}
       aria-label={ariaLabel}
       className={cx(
-        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[length:var(--fs-sm)] font-normal transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[length:var(--fs-sm)] font-normal transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:translate-y-px disabled:pointer-events-none disabled:opacity-45",
         classes,
       )}
     >

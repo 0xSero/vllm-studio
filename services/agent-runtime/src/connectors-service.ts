@@ -1,11 +1,14 @@
-// Connector registry: the single owner of `<dataDir>/connectors.json`.
-// A connector is an MCP server entry (mcp.json-compatible shape), so any
-// server from the public MCP ecosystem drops in unchanged.
-
 import { chmod, readFile, rename, writeFile } from "fs/promises";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { resolveDataDir } from "./data-dir";
+
+export interface ConnectorOrigin {
+  kind: string;
+  id: string;
+  version?: string;
+  binding?: string;
+}
 
 export interface ConnectorConfig {
   id: string;
@@ -14,8 +17,11 @@ export interface ConnectorConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  cwd?: string;
   url?: string;
   headers?: Record<string, string>;
+  allowTools?: string[];
+  origin?: ConnectorOrigin;
   enabled: boolean;
 }
 
@@ -26,7 +32,6 @@ export interface ConnectorView extends Omit<ConnectorConfig, "env" | "headers"> 
 }
 
 const MASK = "••••••••";
-/** Env/header keys that carry secrets and are masked in views. */
 const SECRET_KEY_PATTERN = /token|key|secret|password|auth/i;
 
 export function resolveConnectorsFilePath(): string {
@@ -62,17 +67,25 @@ export async function saveConnectors(connectors: ConnectorConfig[]): Promise<voi
 }
 
 export async function upsertConnector(connector: ConnectorConfig): Promise<ConnectorConfig[]> {
+  return upsertConnectors([connector]);
+}
+
+export async function upsertConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
   const connectors = await listConnectors();
-  const index = connectors.findIndex((entry) => entry.id === connector.id);
-  const existing = index === -1 ? null : connectors[index];
-  // Masked secret values round-tripped from the UI mean "keep what's stored".
-  const merged: ConnectorConfig = {
-    ...connector,
-    env: mergeSecrets(connector.env, existing?.env),
-    headers: mergeSecrets(connector.headers, existing?.headers),
-  };
-  if (index === -1) connectors.push(merged);
-  else connectors[index] = merged;
+  for (const connector of incoming) {
+    const index = connectors.findIndex((entry) => entry.id === connector.id);
+    const existing = index === -1 ? null : connectors[index];
+    const merged: ConnectorConfig = {
+      ...connector,
+      env: mergeSecrets(connector.env, existing?.env),
+      headers: mergeSecrets(connector.headers, existing?.headers),
+      cwd: connector.cwd ?? existing?.cwd,
+      allowTools: connector.allowTools ?? existing?.allowTools,
+      origin: connector.origin ?? existing?.origin,
+    };
+    if (index === -1) connectors.push(merged);
+    else connectors[index] = merged;
+  }
   await saveConnectors(connectors);
   return connectors;
 }
@@ -123,7 +136,6 @@ export async function enabledConnectors(): Promise<ConnectorConfig[]> {
   return (await listConnectors()).filter((connector) => connector.enabled);
 }
 
-/** Sync check used during session assembly (which is a sync path). */
 export function hasEnabledConnectorsSync(): boolean {
   const file = resolveConnectorsFilePath();
   if (!existsSync(file)) return false;
@@ -134,5 +146,15 @@ export function hasEnabledConnectorsSync(): boolean {
     return Boolean(parsed.connectors?.some((connector) => connector.enabled));
   } catch {
     return false;
+  }
+}
+
+export function connectorsRevisionSync(): string {
+  const file = resolveConnectorsFilePath();
+  try {
+    const info = statSync(file);
+    return `${info.mtimeMs}:${info.size}`;
+  } catch {
+    return "none";
   }
 }

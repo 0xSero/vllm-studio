@@ -21,6 +21,7 @@ import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
+import { connectorsRevisionSync } from "./connectors-service";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -41,24 +42,21 @@ function runtimeFingerprint(
     cwd,
     piSessionId: piSessionId ?? "",
     options: runtimeOptionsFingerprint(options),
+    connectors: connectorsRevisionSync(),
   });
 }
 
-/** Resource diagnostics gathered at session-creation time. Stored at module
- * scope so the setup-checks API route can surface extension load failures
- * without holding a runtime handle. */
 type PiResourceDiagnostic = {
   type: "info" | "warning" | "error";
   message: string;
-  /** Extension/skill path the diagnostic relates to, when available. */
   path?: string;
 };
 
-// Registered through the package's single global-instance registry so the
-// turn route, the setup-checks route, and the cached session manager — which
-// dev-mode bundling can evaluate independently — share a single map.
 function diagnosticsMap(): Map<string, PiResourceDiagnostic[]> {
-  return getGlobalSingleton("piResourceDiagnostics", () => new Map<string, PiResourceDiagnostic[]>());
+  return getGlobalSingleton(
+    "piResourceDiagnostics",
+    () => new Map<string, PiResourceDiagnostic[]>(),
+  );
 }
 
 export function piResourceDiagnostics(agentDir?: string): PiResourceDiagnostic[] {
@@ -338,14 +336,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     });
   }
 
-  /**
-   * Snapshot the SDK-computed context usage for the active session. Returns
-   * `null` when the runtime isn't started yet or the SDK has no usage data
-   * (e.g. before the first assistant message). Post-compaction staleness is
-   * the SDK's job: `getContextUsage()` reports `tokens: null` until an
-   * assistant responded after the latest compaction boundary
-   * (tests/frontend/agent-runtime/compaction.test.ts pins this contract).
-   */
   private computeContextUsage() {
     const session = this.runtime?.session;
     if (!session) return null;
