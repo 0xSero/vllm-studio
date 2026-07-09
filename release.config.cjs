@@ -17,6 +17,7 @@ module.exports = {
           { type: "refactor", release: "patch" },
           { type: "micro", release: "patch" },
           { type: "release", release: "patch" },
+          { type: "test", release: "patch" },
           { breaking: true, release: "major" },
         ],
       },
