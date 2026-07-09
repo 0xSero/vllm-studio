@@ -72,7 +72,7 @@ function resolveShell(): { shell: string; args: string[] } {
     return { shell: process.env.COMSPEC || "cmd.exe", args: [] };
   }
   const shell = process.env.SHELL || "/bin/zsh";
-  return { shell, args: ["-l"] };
+  return { shell, args: [] };
 }
 
 function safeCwd(input: string | undefined | null): string {
