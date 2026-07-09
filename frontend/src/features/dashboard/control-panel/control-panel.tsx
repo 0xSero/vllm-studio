@@ -1,8 +1,6 @@
 "use client";
 
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
-import { Button } from "@/ui";
-import { CommandCenterOverview } from "../command-center-overview";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
 import {
@@ -22,39 +20,26 @@ export function ControlPanel(props: DashboardLayoutProps) {
   const { currentProcess, currentRecipe, metrics, gpus, recipes } = props;
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] px-1 pt-2">
+    <div className="mx-auto w-full max-w-[86rem] px-1 pt-2">
       <ControllerMatrix />
-      <CommandCenterOverview
-        connected={props.isConnected}
+      <StatusSection
         currentProcess={currentProcess}
+        currentRecipe={currentRecipe}
+        metrics={metrics}
         gpus={gpus}
+        isConnected={props.isConnected}
+        isStatusLoading={props.isStatusLoading}
+        platformKind={props.platformKind}
+        inferencePort={props.inferencePort}
+        onNavigateLogs={props.onNavigateLogs}
+        onBenchmark={props.onBenchmark}
+        benchmarking={props.benchmarking}
         recipes={recipes}
-        runtimeSummary={props.runtimeSummary}
-        services={props.services}
+        lifecycleStatus={props.lifecycleStatus}
+        onLaunch={props.onLaunch}
+        onNewRecipe={props.onNewRecipe}
+        onViewAll={props.onViewAll}
       />
-      <section className="mt-4 rounded-lg border border-(--ui-border) bg-(--ui-bg)">
-        <div className="border-b border-(--ui-border) px-4 py-3 font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--ui-muted)">
-          Active Serve
-        </div>
-        <StatusSection
-          currentProcess={currentProcess}
-          currentRecipe={currentRecipe}
-          metrics={metrics}
-          gpus={gpus}
-          isConnected={props.isConnected}
-          isStatusLoading={props.isStatusLoading}
-          platformKind={props.platformKind}
-          inferencePort={props.inferencePort}
-          onNavigateLogs={props.onNavigateLogs}
-          onBenchmark={props.onBenchmark}
-          benchmarking={props.benchmarking}
-          recipes={recipes}
-          lifecycleStatus={props.lifecycleStatus}
-          onLaunch={props.onLaunch}
-          onNewRecipe={props.onNewRecipe}
-          onViewAll={props.onViewAll}
-        />
-      </section>
       <GpuSection metrics={metrics} gpus={gpus} currentProcess={currentProcess} />
       <ActivityStrip {...props} />
     </div>
@@ -129,20 +114,18 @@ function ControllerTab({
   );
 }
 
-function ActivityStrip({ logs, onNavigateLogs }: DashboardLayoutProps) {
-  const tail = logs.length > 0 ? logs.slice(-8) : [];
+function ActivityStrip({ logs }: DashboardLayoutProps) {
+  const tail = logs.length > 0 ? logs.slice(-120) : [];
 
   return (
     <section className="border-t border-(--border)/40 px-2 pt-4 pb-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
-          Recent activity
+          Controller logs
         </div>
-        <Button size="sm" variant="secondary" onClick={onNavigateLogs}>
-          All logs
-        </Button>
+        <div className="text-[length:var(--fs-xs)] text-(--dim)/70">{tail.length} lines</div>
       </div>
-      <div className="min-h-28 overflow-hidden rounded-lg border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
+      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
         {tail.length > 0 ? (
           tail.map((line, index) => (
             <div key={`${index}-${line}`} className="truncate">

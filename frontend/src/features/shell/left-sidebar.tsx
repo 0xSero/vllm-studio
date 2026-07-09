@@ -54,11 +54,11 @@ type SessionsCommandComponent = ComponentType<{
 type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 const tabs = [
-  { href: "/", label: "Home", icon: Gauge },
-  { href: "/usage", label: "Activity", icon: Microchip },
+  { href: "/", label: "Status", icon: Gauge },
+  { href: "/usage", label: "Usage", icon: Microchip },
   { href: "/recipes", label: "Models", icon: HardDrive },
-  { href: "/configure", label: "Hardware", icon: Wrench },
-  { href: "/server", label: "System", icon: Globe },
+  { href: "/configure", label: "Configure", icon: Wrench },
+  { href: "/server", label: "Server", icon: Globe },
 ];
 
 const SIDEBAR_MIN_WIDTH = 188;
