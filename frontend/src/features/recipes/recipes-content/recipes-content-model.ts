@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/api/client";
 import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
@@ -15,8 +16,12 @@ import { useRecipesDerived } from "./use-recipes-derived";
 
 export type RecipesContentTab = "get" | "serves" | "downloads";
 
+const requestedTab = (value: string | null): RecipesContentTab =>
+  value === "serves" || value === "downloads" ? value : "get";
+
 export function useRecipesContentModel() {
-  const [tab, setTab] = useState<RecipesContentTab>("get");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<RecipesContentTab>(() => requestedTab(searchParams.get("tab")));
   // Stale-while-revalidate: paint the last-loaded recipe list instantly on
   // navigation while the fresh fetch runs in the background.
   const cachedRecipes = readPageCache<RecipeWithStatus[]>("recipes:list");
@@ -101,6 +106,12 @@ export function useRecipesContentModel() {
     setModalRecipe(normalizeRecipeForEditor({ ...DEFAULT_RECIPE }));
     setModalOpen(true);
   }, []);
+
+  useMountSubscription(() => {
+    if (searchParams.get("new") !== "1") return;
+    setTab("serves");
+    handleNewRecipe();
+  }, [handleNewRecipe, searchParams]);
 
   const handleCreateServeFromDownload = useCallback((download: ModelDownload) => {
     const modelName = download.model_id.split("/").filter(Boolean).at(-1) ?? download.model_id;
