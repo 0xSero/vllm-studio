@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runBrowserPanelCommand } from "@/features/agent/browser/command";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 
 declare global {
@@ -22,48 +21,9 @@ declare global {
     | undefined;
 }
 
-test("browser navigate primes the URL while the browser surface is mounting", async () => {
-  let browserUrl = "";
-  let browserInput = "";
-
-  const result = await runBrowserPanelCommand(
-    "navigate",
-    { url: "https://example.com/docs" },
-    {
-      browser: null,
-      currentUrl: "",
-      isElectron: true,
-      setBrowserUrl: (url, input) => {
-        browserUrl = url;
-        browserInput = input ?? "";
-      },
-    },
-  );
-
-  assert.equal(result.ok, true);
-  assert.equal(browserUrl, "https://example.com/docs");
-  assert.equal(browserInput, "https://example.com/docs");
-  assert.equal((result.data as { pending?: boolean }).pending, true);
-});
-
-test("browser navigate opens the agent's own localhost dev servers but not the LAN", async () => {
-  const navigate = (url: string) =>
-    runBrowserPanelCommand(
-      "navigate",
-      { url },
-      { browser: null, currentUrl: "", isElectron: true, setBrowserUrl: () => undefined },
-    );
-
-  // The pane exists to preview dev servers the agent just started — loopback
-  // must work, or "build the app and open it" is dead on arrival.
-  assert.equal((await navigate("http://localhost:8765/index.html")).ok, true);
-  assert.equal((await navigate("http://127.0.0.1:3005")).ok, true);
-
-  // Other private/LAN hosts stay blocked — the agent drives this browser; don't
-  // hand it the local network.
-  assert.equal((await navigate("http://192.168.1.50:8080")).ok, false);
-  assert.equal((await navigate("http://10.0.0.5")).ok, false);
-});
+// The webview command surface (runBrowserPanelCommand) was removed with the
+// move to the server-side CDP browser; private-URL guarding is covered by the
+// reader fetch route test below.
 
 test("free-text browser searches avoid Google webview refresh loops", () => {
   assert.equal(

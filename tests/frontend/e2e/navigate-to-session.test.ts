@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
-import test, { afterEach, beforeEach } from "node:test";
+import test, { afterEach } from "node:test";
 
 import {
   hrefWithOpenNonce,
   navigateToSessionHref,
 } from "@/features/agent/ui/projects-nav/helpers";
 
-// Regression coverage for the sidebar session-switch fix (b59040c3). Next 16's
-// App Router silently no-ops a `router.push` to the same `/agent` route when
-// only `session`/`open` searchParams change, so clicking a session did nothing.
-// `navigateToSessionHref` soft-pushes, then verifies the URL actually moved and
-// hard-navigates as a fallback. These tests pin that contract.
+// Regression coverage for sidebar session navigation. The old
+// `window.location.assign` hard-navigation fallback was deliberately removed
+// (it caused full page reloads — "black pane for seconds"); session clicks are
+// soft router pushes only. These tests pin that contract.
 
 type FakeWindow = {
   location: { search: string; assign(href: string): void };
@@ -52,33 +51,17 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
 });
 
-test("always issues the soft router.push first", () => {
+test("issues exactly one soft router.push", () => {
   installFakeWindow("?session=old");
   const router = makeRouter();
   navigateToSessionHref(router, "/agent?session=target");
   assert.deepEqual(router.pushed, ["/agent?session=target"]);
 });
 
-test("hard-navigates when the soft push did not move to the target session", () => {
+test("never hard-navigates, even when the URL did not move", () => {
   const win = installFakeWindow("?session=old"); // URL never moved
   const router = makeRouter();
   navigateToSessionHref(router, "/agent?session=target");
-  flushTimers(win);
-  assert.deepEqual(win.__assigned, ["/agent?session=target"]);
-});
-
-test("does NOT hard-navigate when the soft push already reached the target", () => {
-  const win = installFakeWindow("?session=target"); // soft push succeeded
-  const router = makeRouter();
-  navigateToSessionHref(router, "/agent?session=target");
-  flushTimers(win);
-  assert.deepEqual(win.__assigned, []);
-});
-
-test("skips the verify/fallback entirely when the href has no session param", () => {
-  const win = installFakeWindow("?session=old");
-  const router = makeRouter();
-  navigateToSessionHref(router, "/agent?open=abc");
   assert.equal(win.__pendingTimers.length, 0);
   flushTimers(win);
   assert.deepEqual(win.__assigned, []);

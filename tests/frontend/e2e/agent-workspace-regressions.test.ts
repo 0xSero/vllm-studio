@@ -588,7 +588,12 @@ function makeReplayHarness(): ReplayHarness {
   const queue = createSessionReplayQueue({
     getHandle: (paneId) =>
       handles.has(paneId)
-        ? { loadAndReplay: (piSessionId: string) => void replays.push({ paneId, piSessionId }) }
+        ? {
+            // Real ChatPaneHandles carry the session they were mounted for; the
+            // drain guard refuses handles whose session no longer matches.
+            sessionId: panesById.get(paneId)?.sessionId ?? "",
+            loadAndReplay: (piSessionId: string) => void replays.push({ paneId, piSessionId }),
+          }
         : undefined,
     getState: () => ({ panesById, sessions }),
     setTimeout: (handler, delay) => void timers.push({ handler, delay }),
@@ -658,7 +663,9 @@ test("replays onto restored loading sessions fire exactly once when the handle r
 test("replay queue is last-wins per pane and immediate when the handle exists", () => {
   const harness = makeReplayHarness();
   harness.setHandle("p-1", true);
-  harness.setSession("p-1", makeSession("s-a", { piSessionId: "pi-a", status: "loading" }));
+  // Loading session not yet bound to a canonical id — a bound session would
+  // (correctly) reject a replay for a different piSessionId.
+  harness.setSession("p-1", makeSession("s-a", { status: "loading" }));
 
   harness.queue.queue("p-1", "pi-a");
   harness.queue.queue("p-1", "pi-b");
