@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createConfig } from "../../../controller/src/config/env";
 import { createLogger } from "../../../controller/src/core/logger";
@@ -9,19 +10,26 @@ import { registerControllerTestLifecycle, tempDir } from "./fixtures";
 
 registerControllerTestLifecycle();
 
-// These tests script the process boundary (FakeProcessRunner) instead of
-// spawning real engines, so the full launch path — argv construction, spawn,
-// early-exit detection, log-tail capture, docker pre-cleanup — runs for real
-// on any dev/CI machine. launchModel's 3s launch-then-verify delay is real
-// time, hence the per-test timeouts.
-
 const LAUNCH_TIMEOUT_MS = 10_000;
 
-const vllmRecipe = (id: string, extraArguments: Record<string, unknown> = {}): Recipe => ({
+const testVllmBinary = (): string => {
+  const binary = join(tempDir, "bin", "vllm");
+  mkdirSync(join(tempDir, "bin"), { recursive: true });
+  writeFileSync(binary, "");
+  chmodSync(binary, 0o755);
+  return binary;
+};
+
+const vllmRecipe = (
+  id: string,
+  runtime: Recipe["runtime"] = { kind: "system", ref: testVllmBinary() },
+  extraArguments: Record<string, unknown> = {},
+): Recipe => ({
   id,
   name: id,
   model_path: join(tempDir, "models", "test-model"),
   backend: "vllm",
+  runtime,
   env_vars: null,
   tensor_parallel_size: 1,
   pipeline_parallel_size: 1,
@@ -46,12 +54,23 @@ const vllmRecipe = (id: string, extraArguments: Record<string, unknown> = {}): R
 
 const createManager = (runner: FakeProcessRunner) => {
   const config = createConfig();
-  return { config, manager: createProcessManager(config, createLogger("error"), undefined, runner) };
+  return {
+    config,
+    manager: createProcessManager(config, createLogger("error"), undefined, runner),
+  };
+};
+
+const onlySpawn = (runner: FakeProcessRunner) => {
+  const spawns = runner.spawns();
+  expect(spawns).toHaveLength(1);
+  const spawn = spawns[0];
+  if (!spawn) throw new Error("Expected one process spawn");
+  return spawn;
 };
 
 describe("process manager launch/stop via the process seam", () => {
   test(
-    "launchModel spawns the exact vLLM serve argv, reports the pid, and stop succeeds",
+    "launchModel spawns the selected vLLM runtime argv, reports the pid, and stops",
     async () => {
       const runner = new FakeProcessRunner();
       const { config, manager } = createManager(runner);
@@ -63,13 +82,9 @@ describe("process manager launch/stop via the process seam", () => {
       expect(result.pid).toBe(42_001);
       expect(result.log_file).toBe(join(config.data_dir, "logs", "vllm_vllm-argv.log"));
 
-      const spawns = runner.spawns();
-      expect(spawns).toHaveLength(1);
-      // No managed venv exists in the temp data dir, so the entry is the
-      // system `vllm` binary (resolved path when present, bare name otherwise).
-      expect(spawns[0]!.command.split("/").at(-1)).toBe("vllm");
-      // THE regression guard: the full constructed launch argv.
-      expect(spawns[0]!.args).toEqual([
+      const spawn = onlySpawn(runner);
+      expect(spawn.command.split("/").at(-1)).toBe("vllm");
+      expect(spawn.args).toEqual([
         "serve",
         recipe.model_path,
         "--host",
@@ -85,42 +100,36 @@ describe("process manager launch/stop via the process seam", () => {
         "--max-num-seqs",
         "8",
       ]);
-
-      // Pre-launch orphan sweep consults the process table through the seam.
       expect(
         runner.invocations.some(
           (invocation) => invocation.kind === "runSync" && invocation.command === "ps",
         ),
       ).toBe(true);
-
-      // The fake pid does not exist on the host, so the stop path's
-      // pidExists() guard short-circuits to success without signalling anyone.
-      await expect(manager.killProcess(result.pid!, false)).resolves.toBe(true);
+      if (result.pid === null) throw new Error("Expected launched process pid");
+      await expect(manager.killProcess(result.pid, false)).resolves.toBe(true);
     },
     LAUNCH_TIMEOUT_MS,
   );
 
   test(
-    "docker-backed recipes remove the stale container and spawn the exact docker run argv",
+    "docker runtime removes the stale container and spawns the exact docker argv",
     async () => {
       const runner = new FakeProcessRunner();
       const { config, manager } = createManager(runner);
-      const recipe = vllmRecipe("vllm-docker", { docker_image: "vllm/vllm-custom:test" });
+      const image = "vllm/vllm-custom:test";
+      const recipe = vllmRecipe("vllm-docker", { kind: "docker", ref: image });
 
       const result = await manager.launchModel(recipe);
       expect(result.success).toBe(true);
-
-      // Stale-container pre-cleanup goes through the sync seam.
       expect(runner.invocations).toContainEqual({
         kind: "runSync",
         command: "docker",
         args: ["rm", "-f", "local-studio-vllm-docker"],
       });
 
-      const spawns = runner.spawns();
-      expect(spawns).toHaveLength(1);
-      expect(spawns[0]!.command).toBe("docker");
-      expect(spawns[0]!.args).toEqual([
+      const spawn = onlySpawn(runner);
+      expect(spawn.command).toBe("docker");
+      expect(spawn.args).toEqual([
         "run",
         "--rm",
         "--name",
@@ -150,7 +159,7 @@ describe("process manager launch/stop via the process seam", () => {
         `${recipe.model_path}:${recipe.model_path}:ro`,
         "-v",
         "local-studio-jit-vllm-docker:/cache/jit",
-        "vllm/vllm-custom:test",
+        image,
         "/opt/venv/bin/vllm",
         "serve",
         recipe.model_path,
@@ -172,7 +181,7 @@ describe("process manager launch/stop via the process seam", () => {
   );
 
   test(
-    "a fast-failing launch surfaces the exit code and the captured output tail",
+    "a fast-failing launch surfaces the exit code and captured output",
     async () => {
       const runner = new FakeProcessRunner().onSpawn("vllm", {
         exitCode: 2,
@@ -192,7 +201,7 @@ describe("process manager launch/stop via the process seam", () => {
   );
 
   test(
-    "a spawn error (missing binary) is surfaced as a failed launch",
+    "a spawn error is surfaced as a failed launch",
     async () => {
       const runner = new FakeProcessRunner().onSpawn("vllm", {
         spawnError: "spawn vllm ENOENT",

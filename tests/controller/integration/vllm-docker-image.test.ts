@@ -1,16 +1,20 @@
 import { describe, expect, it } from "bun:test";
-
-import { getEngineSpec } from "../../../controller/src/modules/engines/engine-spec";
-import { getDockerImage } from "../../../controller/src/modules/engines/process/backend-builder";
 import type { Config } from "../../../controller/src/config/env";
+import { getEngineSpec } from "../../../controller/src/modules/engines/engine-spec";
+import { parseRecipe } from "../../../controller/src/modules/models/recipes/recipe-serializer";
 import type { Recipe } from "../../../controller/src/modules/models/types";
 
-const baseRecipe = (extra: Record<string, unknown>, env: Record<string, string> = {}): Recipe =>
-  ({
+const baseRecipe = (
+  runtime: Recipe["runtime"],
+  extra: Record<string, unknown>,
+  env: Record<string, string> = {},
+): Recipe =>
+  parseRecipe({
     id: "glm-5.2",
     name: "GLM-5.2",
     model_path: "/mnt/llm_models/GLM-5.2-504B",
     backend: "vllm",
+    runtime,
     host: "0.0.0.0",
     port: 8000,
     served_model_name: "glm-5.2",
@@ -28,63 +32,79 @@ const baseRecipe = (extra: Record<string, unknown>, env: Record<string, string> 
     python_path: null,
     env_vars: env,
     extra_args: extra,
-  }) as unknown as Recipe;
+  });
 
-const config = { data_dir: "/tmp/local-studio-test" } as Config;
+const config: Config = {
+  host: "127.0.0.1",
+  port: 8080,
+  inference_host: "127.0.0.1",
+  inference_port: 8000,
+  data_dir: "/tmp/local-studio-test",
+  db_path: "/tmp/local-studio-test/controller.db",
+  models_dir: "/models",
+  strict_openai_models: false,
+  providers: [],
+};
 
 const buildVllmCommand = (recipe: Recipe): string[] =>
   getEngineSpec("vllm").buildCommand(recipe, config);
 
-const pairIndex = (cmd: string[], flag: string, value: string): number => {
-  for (let i = 0; i < cmd.length - 1; i += 1) {
-    if (cmd[i] === flag && cmd[i + 1] === value) return i;
+const pairIndex = (command: string[], flag: string, value: string): number => {
+  for (let index = 0; index < command.length - 1; index += 1) {
+    if (command[index] === flag && command[index + 1] === value) return index;
   }
   return -1;
 };
 
-describe("vLLM docker_image wrapping", () => {
-  const IMAGE = "voipmonitor/vllm:eldritch-enlightenment-cu132";
+describe("vLLM Docker runtime", () => {
+  const image = "voipmonitor/vllm:eldritch-enlightenment-cu132";
 
-  it("reads docker_image from extra_args (snake or kebab)", () => {
-    expect(getDockerImage(baseRecipe({ docker_image: IMAGE }))).toBe(IMAGE);
-    expect(getDockerImage(baseRecipe({ "docker-image": IMAGE }))).toBe(IMAGE);
-    expect(getDockerImage(baseRecipe({}))).toBeNull();
-  });
-
-  it("wraps the serve command in `docker run` with host networking and GPUs", () => {
-    const cmd = buildVllmCommand(baseRecipe({ docker_image: IMAGE, "moe-backend": "b12x" }));
-    expect(cmd[0]).toBe("docker");
-    expect(cmd[1]).toBe("run");
-    expect(pairIndex(cmd, "--network", "host")).toBeGreaterThanOrEqual(0);
-    expect(cmd).toContain("--gpus");
-    expect(cmd).toContain(IMAGE);
-    // inner command runs the in-container vLLM binary after the image
-    const imageIdx = cmd.indexOf(IMAGE);
-    expect(cmd[imageIdx + 1]).toBe("/opt/venv/bin/vllm");
-    expect(cmd[imageIdx + 2]).toBe("serve");
-    expect(cmd).toContain("--moe-backend");
-    expect(pairIndex(cmd, "--moe-backend", "b12x")).toBeGreaterThanOrEqual(0);
-    // model is bind-mounted read-only at the same path
+  it("wraps the Serve in the exact selected image", () => {
+    const command = buildVllmCommand(
+      baseRecipe({ kind: "docker", ref: image }, { "moe-backend": "b12x" }),
+    );
+    expect(command[0]).toBe("docker");
+    expect(command[1]).toBe("run");
+    expect(pairIndex(command, "--network", "host")).toBeGreaterThanOrEqual(0);
+    expect(command).toContain("--gpus");
+    expect(command).toContain(image);
+    const imageIndex = command.indexOf(image);
+    expect(command[imageIndex + 1]).toBe("/opt/venv/bin/vllm");
+    expect(command[imageIndex + 2]).toBe("serve");
+    expect(pairIndex(command, "--moe-backend", "b12x")).toBeGreaterThanOrEqual(0);
     expect(
-      pairIndex(cmd, "-v", "/mnt/llm_models/GLM-5.2-504B:/mnt/llm_models/GLM-5.2-504B:ro"),
+      pairIndex(command, "-v", "/mnt/llm_models/GLM-5.2-504B:/mnt/llm_models/GLM-5.2-504B:ro"),
     ).toBeGreaterThanOrEqual(0);
   });
 
-  it("forwards NCCL_GRAPH_FILE but skips NCCL_GRAPH_DUMP_FILE", () => {
-    const cmd = buildVllmCommand(
+  it("forwards NCCL_GRAPH_FILE and skips NCCL_GRAPH_DUMP_FILE", () => {
+    const command = buildVllmCommand(
       baseRecipe(
-        { docker_image: IMAGE },
+        { kind: "docker", ref: image },
+        {},
         { NCCL_GRAPH_FILE: "/dev/null", NCCL_GRAPH_DUMP_FILE: "/tmp/x", NCCL_P2P_DISABLE: "1" },
       ),
     );
-    expect(pairIndex(cmd, "-e", "NCCL_GRAPH_FILE=/dev/null")).toBeGreaterThanOrEqual(0);
-    expect(pairIndex(cmd, "-e", "NCCL_P2P_DISABLE=1")).toBeGreaterThanOrEqual(0);
-    expect(pairIndex(cmd, "-e", "NCCL_GRAPH_DUMP_FILE=/tmp/x")).toBe(-1);
+    expect(pairIndex(command, "-e", "NCCL_GRAPH_FILE=/dev/null")).toBeGreaterThanOrEqual(0);
+    expect(pairIndex(command, "-e", "NCCL_P2P_DISABLE=1")).toBeGreaterThanOrEqual(0);
+    expect(pairIndex(command, "-e", "NCCL_GRAPH_DUMP_FILE=/tmp/x")).toBe(-1);
   });
 
-  it("builds a native command (no docker) when docker_image is absent", () => {
-    const cmd = buildVllmCommand(baseRecipe({ "moe-backend": "b12x" }));
-    expect(cmd[0]).not.toBe("docker");
-    expect(cmd).toContain("serve");
+  it("migrates a legacy docker image into the first-class runtime", () => {
+    const recipe = parseRecipe({
+      id: "legacy",
+      name: "Legacy",
+      model_path: "/models/legacy",
+      extra_args: { docker_image: image },
+    });
+    expect(recipe.runtime).toEqual({ kind: "docker", ref: image });
+  });
+
+  it("builds a host command when the selected runtime is a binary", () => {
+    const command = buildVllmCommand(
+      baseRecipe({ kind: "system", ref: process.execPath }, { "moe-backend": "b12x" }),
+    );
+    expect(command[0]).not.toBe("docker");
+    expect(command).toContain("serve");
   });
 });
