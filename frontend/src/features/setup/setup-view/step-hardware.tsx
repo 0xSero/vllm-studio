@@ -90,7 +90,7 @@ export function StepHardware({
           checked={hardwareConfirmed}
           onChange={setHardwareConfirmed}
           className="rounded-lg border border-(--ui-border) bg-(--ui-surface)/40 px-4 py-3"
-          label="I confirmed this hardware summary matches the device I am onboarding, and I want Local Studio to continue using these detected capabilities."
+          label="This is the controller I want Local Studio to configure."
           labelClassName="font-normal"
         />
         <div className="flex items-center gap-3">
@@ -99,7 +99,7 @@ export function StepHardware({
             disabled={!hardwareConfirmed || upgrading}
             icon={<ChevronRight className="h-4 w-4" />}
           >
-            Continue
+            Choose a model
           </Button>
         </div>
       </Card>

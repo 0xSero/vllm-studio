@@ -1,7 +1,14 @@
 import type { ModelDownload } from "@/lib/types";
 import { formatBytes } from "@/lib/formatters";
 
-export const setupSteps = ["Welcome", "Hardware", "Model", "Download", "Launch", "Benchmark"];
+export const setupSteps = [
+  { label: "Controller", description: "Choose where this machine keeps model weights." },
+  { label: "Hardware", description: "Confirm the rig and prepare its inference runtimes." },
+  { label: "Model", description: "Pick weights that fit this controller." },
+  { label: "Download", description: "Transfer and validate the model files." },
+  { label: "Serve", description: "Bind model, runtime, and launch configuration." },
+  { label: "Verify", description: "Benchmark the API and open your workbench." },
+] as const;
 
 export { formatBytes };
 

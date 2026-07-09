@@ -8,13 +8,28 @@ const download = (modelId: string, targetDir: string): ModelDownload =>
   ({
     id: "dl-1",
     model_id: modelId,
+    revision: null,
     target_dir: targetDir,
     status: "completed",
-  }) as ModelDownload;
+    source: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    completed_at: "2026-01-01T00:00:00Z",
+    total_bytes: 1,
+    downloaded_bytes: 1,
+    speed_bytes_per_second: 0,
+    files: [],
+    error: null,
+  }) satisfies ModelDownload;
 
-test("no preset keeps the legacy vllm starter shape", () => {
+test("no preset creates an explicit managed vllm Serve", () => {
   const recipe = buildStarterRecipe(download("Qwen/Qwen3-8B", "/models/Qwen/Qwen3-8B"), []);
   assert.equal(recipe.backend, "vllm");
+  assert.deepEqual(recipe.runtime, {
+    kind: "managed_venv",
+    ref: "vllm",
+    label: "Managed vLLM",
+  });
   assert.equal(recipe.model_path, "/models/Qwen/Qwen3-8B");
   assert.equal(recipe.id, "qwen3-8b");
 });
@@ -37,7 +52,7 @@ test("vllm preset applies overrides", () => {
     },
   };
   const recipe = buildStarterRecipe(
-    download(preset.model_id!, "/models/nvidia/Qwen3.6-35B-A3B-NVFP4"),
+    download(preset.model_id ?? "", "/models/nvidia/Qwen3.6-35B-A3B-NVFP4"),
     [],
     preset,
   );
@@ -64,11 +79,16 @@ test("llamacpp preset points model_path at the gguf file", () => {
     recipe_overrides: { served_model_name: "lfm2.5" },
   };
   const recipe = buildStarterRecipe(
-    download(preset.model_id!, "/models/LiquidAI/LFM2.5-8B-A1B-GGUF/"),
+    download(preset.model_id ?? "", "/models/LiquidAI/LFM2.5-8B-A1B-GGUF/"),
     [],
     preset,
   );
   assert.equal(recipe.backend, "llamacpp");
+  assert.deepEqual(recipe.runtime, {
+    kind: "binary",
+    ref: "llama-server",
+    label: "Managed llama.cpp",
+  });
   assert.equal(recipe.model_path, "/models/LiquidAI/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q4_K_M.gguf");
   assert.equal(recipe.served_model_name, "lfm2.5");
 });
@@ -86,6 +106,10 @@ test("preset ids dedupe against existing recipes", () => {
     backend: "llamacpp",
     gguf_file: "LFM2.5-8B-A1B-Q4_K_M.gguf",
   };
-  const recipe = buildStarterRecipe(download(preset.model_id!, "/models/x"), [{ id: "lfm2-5" }], preset);
+  const recipe = buildStarterRecipe(
+    download(preset.model_id ?? "", "/models/x"),
+    [{ id: "lfm2-5" }],
+    preset,
+  );
   assert.equal(recipe.id, "lfm2-5-1");
 });

@@ -115,12 +115,12 @@ export function StepDownload({
           {activeDownload?.status === "completed" ? (
             <>
               <CheckCircle2 className="h-4 w-4 text-(--hl2)" />
-              Model ready. Continue to configure the starter recipe and launch it.
+              Weights are ready. Continue to bind a runtime and create the Serve.
             </>
           ) : (
             <>
               <HardDrive className="h-4 w-4 text-(--dim)" />
-              Downloading to {modelsDir}
+              Controller destination: {modelsDir}
             </>
           )}
         </div>
@@ -129,7 +129,7 @@ export function StepDownload({
           disabled={activeDownload?.status !== "completed"}
           icon={<ChevronRight className="h-4 w-4" />}
         >
-          Continue to Launch
+          Configure Serve
         </Button>
       </Card>
 

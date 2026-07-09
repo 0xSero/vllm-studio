@@ -33,11 +33,11 @@ export function StepWelcome({
     <Card padding="lg" className="space-y-5">
       <div className="flex items-center gap-3">
         <Rocket className="h-5 w-5 text-(--hl1)" />
-        <h2 className="text-lg font-medium">Welcome to Local Studio</h2>
+        <h2 className="text-lg font-medium">Choose your controller storage</h2>
       </div>
       <p className="text-sm text-(--dim)">
-        This desktop wizard configures the active controller. Model files, runtime checks, and
-        downloads happen on that controller, while this Mac stays the control surface.
+        The active controller owns model weights, runtimes, and launches. This desktop stays the
+        control surface, even when the controller is another machine.
       </p>
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--ui-border) bg-(--ui-hover)/30 px-3 py-2 text-sm">
         <span className="text-(--dim)">Setup target</span>
@@ -45,7 +45,7 @@ export function StepWelcome({
       </div>
       <div>
         <Input
-          label="Controller models directory"
+          label="Model weights directory"
           value={modelsDir}
           onChange={(event) => setModelsDir(event.target.value)}
           placeholder="/mnt/llm_models"
@@ -60,7 +60,7 @@ export function StepWelcome({
           disabled={savingSettings}
           icon={savingSettings ? <Spinner /> : <ChevronRight className="h-4 w-4" />}
         >
-          Continue
+          Inspect hardware
         </Button>
       </div>
     </Card>

@@ -30,7 +30,9 @@ function PresetCard({
           {isRemote ? "remote" : (preset.backend ?? "local")}
         </span>
       </div>
-      <div className="font-mono text-[11px] text-(--dim)">{preset.model_id ?? preset.remote?.model}</div>
+      <div className="font-mono text-[11px] text-(--dim)">
+        {preset.model_id ?? preset.remote?.model}
+      </div>
       <p className="text-xs text-(--dim) mt-2">{preset.description}</p>
       {!isRemote && (
         <>
@@ -117,8 +119,8 @@ export function StepModel({
     <div className="space-y-6">
       {presets.length > 0 && (
         <Card padding="lg">
-          <div className="text-sm text-(--dim) uppercase tracking-wider">Start here</div>
-          <h2 className="text-lg font-medium">Three ways to your first chat</h2>
+          <div className="text-sm text-(--dim) uppercase tracking-wider">Recommended paths</div>
+          <h2 className="text-lg font-medium">Choose a starting point</h2>
           <div className="grid md:grid-cols-3 gap-4 mt-4">
             {presets.map((preset) => (
               <PresetCard
@@ -143,7 +145,9 @@ export function StepModel({
               <span className="text-sm text-(--dim) uppercase tracking-wider">
                 {presets.length > 0 ? "More models" : "Recommended"}
               </span>
-              <span className="text-xs text-(--dim)">{recommendations.length} for your hardware</span>
+              <span className="text-xs text-(--dim)">
+                {recommendations.length} for your hardware
+              </span>
             </div>
             <span className="text-xs text-(--dim)">
               Detected VRAM: {maxVram ? `${maxVram.toFixed(1)} GB` : "CPU"}
@@ -175,8 +179,8 @@ export function StepModel({
       )}
 
       <Card padding="lg">
-        <div className="text-sm text-(--dim) uppercase tracking-wider">Manual</div>
-        <h3 className="text-lg font-medium">Download by model ID</h3>
+        <div className="text-sm text-(--dim) uppercase tracking-wider">Hugging Face</div>
+        <h3 className="text-lg font-medium">Use an exact model ID</h3>
         <div className="flex flex-col sm:flex-row gap-3 mt-3">
           <div className="flex-1">
             <Input

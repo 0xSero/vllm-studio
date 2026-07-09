@@ -39,6 +39,7 @@ interface SetupViewProps {
   diagnostics: StudioDiagnostics | null;
   recommendations: ModelRecommendation[];
   presets: StarterPreset[];
+  selectedPreset: StarterPreset | null;
   beginPresetSetup: (preset: StarterPreset) => void;
   remoteApiKey: string;
   setRemoteApiKey: (value: string) => void;
@@ -91,6 +92,7 @@ export function SetupView({
   diagnostics,
   recommendations,
   presets,
+  selectedPreset,
   beginPresetSetup,
   remoteApiKey,
   setRemoteApiKey,
@@ -132,118 +134,124 @@ export function SetupView({
 }: SetupViewProps) {
   return (
     <AppPage className="min-h-screen">
-      <PageContainer width="sm">
+      <PageContainer width="lg">
         <PageHeader
-          eyebrow="Setup Wizard"
-          title="Local Studio Desktop"
+          eyebrow="Local Studio onboarding"
+          title="Build your local AI station"
+          description="One guided path from controller hardware to a verified Serve and working agent."
           actions={
             <Button variant="secondary" size="sm" onClick={skipSetup}>
               Skip for now
             </Button>
           }
         />
-
-        <div className="flex items-center gap-3 mb-8">
+        <div className="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <SetupStepper step={step} />
+          <div className="min-w-0">
+            {loading ? (
+              <Card padding="lg" className="flex items-center gap-3">
+                <Spinner size="lg" className="text-(--dim)" />
+                <span className="text-sm text-(--dim)">Inspecting the active controller…</span>
+              </Card>
+            ) : null}
+
+            {error ? (
+              <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
+                <SetupErrorBody error={error} />
+              </Alert>
+            ) : null}
+
+            {loadWarning && !error ? (
+              <Alert
+                variant="warning"
+                icon={<AlertTriangle className="h-4 w-4" />}
+                className="mb-6"
+              >
+                {loadWarning}
+              </Alert>
+            ) : null}
+
+            {!loading && step === 0 ? (
+              <StepWelcome
+                modelsDir={modelsDir}
+                setModelsDir={setModelsDir}
+                settings={settings}
+                diagnostics={diagnostics}
+                saveSettings={saveSettings}
+                savingSettings={savingSettings}
+              />
+            ) : null}
+
+            {!loading && step === 1 ? (
+              <StepHardware
+                diagnostics={diagnostics}
+                runtimeTargets={runtimeTargets}
+                runtimeJobs={runtimeJobs}
+                installRuntime={installRuntime}
+                updateRuntimeTarget={updateRuntimeTarget}
+                upgrading={upgrading}
+                hardwareConfirmed={hardwareConfirmed}
+                setHardwareConfirmed={setHardwareConfirmed}
+                continueFromHardware={continueFromHardware}
+              />
+            ) : null}
+
+            {!loading && step === 2 ? (
+              <StepModel
+                recommendations={recommendations}
+                presets={presets}
+                beginPresetSetup={beginPresetSetup}
+                remoteApiKey={remoteApiKey}
+                setRemoteApiKey={setRemoteApiKey}
+                connectingRemote={connectingRemote}
+                remoteError={remoteError}
+                connectRemotePreset={connectRemotePreset}
+                maxVram={maxVram}
+                manualModelId={manualModelId}
+                setManualModelId={setManualModelId}
+                beginDownload={beginDownload}
+                submitManualModel={submitManualModel}
+                setStep={setStep}
+              />
+            ) : null}
+
+            {!loading && step === 3 ? (
+              <StepDownload
+                selectedModel={selectedModel}
+                modelsDir={modelsDir}
+                downloads={downloads}
+                activeDownload={activeDownload}
+                pauseDownload={pauseDownload}
+                resumeDownload={resumeDownload}
+                cancelDownload={cancelDownload}
+                continueToLaunch={() => setStep(4)}
+                backToModels={() => setStep(2)}
+              />
+            ) : null}
+
+            {!loading && step === 4 ? (
+              <StepLaunch
+                backend={selectedPreset?.backend ?? "vllm"}
+                selectedModel={selectedModel}
+                createdRecipeId={createdRecipeId}
+                configuringRecipe={configuringRecipe}
+                launchError={launchError}
+                configureAndLaunch={configureAndLaunch}
+              />
+            ) : null}
+
+            {!loading && step === 5 ? (
+              <StepBenchmark
+                benchmarking={benchmarking}
+                benchmarkResult={benchmarkResult}
+                benchmarkError={benchmarkError}
+                runSetupBenchmark={runSetupBenchmark}
+                openChat={openChat}
+                openDashboard={openDashboard}
+              />
+            ) : null}
+          </div>
         </div>
-
-        {loading && (
-          <Card padding="lg" className="flex items-center gap-3">
-            <Spinner size="lg" className="text-(--dim)" />
-            <span className="text-sm text-(--dim)">Preparing your setup...</span>
-          </Card>
-        )}
-
-        {error && (
-          <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
-            <SetupErrorBody error={error} />
-          </Alert>
-        )}
-
-        {loadWarning && !error && (
-          <Alert variant="warning" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
-            {loadWarning}
-          </Alert>
-        )}
-
-        {!loading && step === 0 && (
-          <StepWelcome
-            modelsDir={modelsDir}
-            setModelsDir={setModelsDir}
-            settings={settings}
-            diagnostics={diagnostics}
-            saveSettings={saveSettings}
-            savingSettings={savingSettings}
-          />
-        )}
-
-        {!loading && step === 1 && (
-          <StepHardware
-            diagnostics={diagnostics}
-            runtimeTargets={runtimeTargets}
-            runtimeJobs={runtimeJobs}
-            installRuntime={installRuntime}
-            updateRuntimeTarget={updateRuntimeTarget}
-            upgrading={upgrading}
-            hardwareConfirmed={hardwareConfirmed}
-            setHardwareConfirmed={setHardwareConfirmed}
-            continueFromHardware={continueFromHardware}
-          />
-        )}
-
-        {!loading && step === 2 && (
-          <StepModel
-            recommendations={recommendations}
-            presets={presets}
-            beginPresetSetup={beginPresetSetup}
-            remoteApiKey={remoteApiKey}
-            setRemoteApiKey={setRemoteApiKey}
-            connectingRemote={connectingRemote}
-            remoteError={remoteError}
-            connectRemotePreset={connectRemotePreset}
-            maxVram={maxVram}
-            manualModelId={manualModelId}
-            setManualModelId={setManualModelId}
-            beginDownload={beginDownload}
-            submitManualModel={submitManualModel}
-            setStep={setStep}
-          />
-        )}
-
-        {!loading && step === 3 && (
-          <StepDownload
-            selectedModel={selectedModel}
-            modelsDir={modelsDir}
-            downloads={downloads}
-            activeDownload={activeDownload}
-            pauseDownload={pauseDownload}
-            resumeDownload={resumeDownload}
-            cancelDownload={cancelDownload}
-            continueToLaunch={() => setStep(4)}
-            backToModels={() => setStep(2)}
-          />
-        )}
-
-        {!loading && step === 4 && (
-          <StepLaunch
-            selectedModel={selectedModel}
-            createdRecipeId={createdRecipeId}
-            configuringRecipe={configuringRecipe}
-            launchError={launchError}
-            configureAndLaunch={configureAndLaunch}
-          />
-        )}
-
-        {!loading && step === 5 && (
-          <StepBenchmark
-            benchmarking={benchmarking}
-            benchmarkResult={benchmarkResult}
-            benchmarkError={benchmarkError}
-            runSetupBenchmark={runSetupBenchmark}
-            openChat={openChat}
-            openDashboard={openDashboard}
-          />
-        )}
       </PageContainer>
     </AppPage>
   );

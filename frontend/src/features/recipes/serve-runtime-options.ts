@@ -1,5 +1,12 @@
 import type { Backend, RuntimeTarget, ServeRuntime, ServeRuntimeKind } from "@/lib/types";
+import {
+  defaultRuntimeForBackend,
+  isManagedServeRuntimeTarget,
+  runtimeId,
+} from "@/lib/serve-runtime";
 import { ENGINE_LABEL } from "./engine-capabilities";
+
+export { defaultRuntimeForBackend, runtimeId } from "@/lib/serve-runtime";
 
 export interface ServeRuntimeOption {
   id: string;
@@ -10,21 +17,6 @@ export interface ServeRuntimeOption {
   canInstall: boolean;
   version: string | null;
 }
-
-export const runtimeId = (runtime: ServeRuntime): string => `${runtime.kind}:${runtime.ref}`;
-
-export const defaultRuntimeForBackend = (backend: Backend): ServeRuntime =>
-  backend === "llamacpp"
-    ? { kind: "binary", ref: "llama-server", label: "Managed llama.cpp" }
-    : {
-        kind: "managed_venv",
-        ref: backend,
-        label: `Managed ${ENGINE_LABEL[backend]}`,
-      };
-
-const managedTarget = (backend: Backend, target: RuntimeTarget): boolean =>
-  target.kind === "venv" &&
-  Boolean(target.pythonPath?.includes(`/runtime/venvs/${backend}-latest/`));
 
 const targetReference = (target: RuntimeTarget): string | null => {
   if (target.kind === "docker") return target.dockerImage ?? null;
@@ -62,9 +54,7 @@ export const runtimeOptionsFor = (
   targets: RuntimeTarget[],
 ): ServeRuntimeOption[] => {
   const defaultRuntime = defaultRuntimeForBackend(backend);
-  const managed = targets.find(
-    (target) => target.backend === backend && managedTarget(backend, target),
-  );
+  const managed = targets.find((target) => isManagedServeRuntimeTarget(backend, target));
   const options: ServeRuntimeOption[] = [
     {
       id: runtimeId(defaultRuntime),
@@ -78,7 +68,7 @@ export const runtimeOptionsFor = (
   ];
   const seen = new Set(options.map((option) => option.id));
   for (const target of targets) {
-    if (target.backend !== backend || managedTarget(backend, target)) continue;
+    if (target.backend !== backend || isManagedServeRuntimeTarget(backend, target)) continue;
     const option = optionFromTarget(target);
     if (!option || seen.has(option.id)) continue;
     seen.add(option.id);

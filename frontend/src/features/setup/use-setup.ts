@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 import { useDownloads } from "@/hooks/use-downloads";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { isManagedServeRuntimeTarget } from "@/lib/serve-runtime";
 import { describeFailedEngineJob } from "@/features/settings/runtime-targets";
 import { buildStarterRecipe } from "./setup-helpers";
 import {
@@ -29,6 +30,12 @@ import {
 import { useSetupBenchmark } from "./use-setup-benchmark";
 
 type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
+
+const markSetupComplete = (): void => {
+  try {
+    localStorage.setItem("local-studio-setup-complete", "true");
+  } catch {}
+};
 
 export function useSetup() {
   const router = useRouter();
@@ -60,9 +67,6 @@ export function useSetup() {
   const { benchmarking, benchmarkResult, benchmarkError, runSetupBenchmark, resetBenchmark } =
     useSetupBenchmark();
 
-  // Long-lived Effect fibers started from this hook (runtime installs poll for
-  // up to 35 minutes) are interrupted when the setup page unmounts, instead of
-  // polling on and setting state against an unmounted hook.
   const [lifecycle] = useState(() => ({ abort: new AbortController() }));
   useMountSubscription(() => {
     lifecycle.abort = new AbortController();
@@ -108,11 +112,7 @@ export function useSetup() {
 
         if (Result.isSuccess(presetsResult)) {
           setPresets(presetsResult.success.presets || []);
-        } else {
-          // Older controllers don't serve /studio/presets; the wizard still
-          // works through recommendations, so degrade without a warning.
-          setPresets([]);
-        }
+        } else setPresets([]);
 
         if (Result.isSuccess(recommendationsResult)) {
           setRecommendations(recommendationsResult.success.recommendations || []);
@@ -243,8 +243,6 @@ export function useSetup() {
             job,
             ...current.filter((candidate) => candidate.id !== job.id),
           ]);
-          // Run the poll loop in this fiber (not behind a nested runPromise)
-          // so the unmount abort actually interrupts it.
           const finalJob = yield* finishRuntimeJobEffect(job.id, setRuntimeJobs);
           if (finalJob.status === "error") {
             setError(describeFailedEngineJob(finalJob));
@@ -265,10 +263,7 @@ export function useSetup() {
           ),
         ),
         { signal: lifecycle.abort.signal },
-      ).catch(() => {
-        // Rejection here means the fiber was interrupted by unmount (real
-        // failures were already surfaced through setError above).
-      });
+      ).catch(() => undefined);
     },
     [lifecycle, refreshRuntimeState],
   );
@@ -327,7 +322,8 @@ export function useSetup() {
 
   const connectRemotePreset = useCallback(
     (preset: StarterPreset) => {
-      if (preset.kind !== "remote" || !preset.remote) return Promise.resolve();
+      const remote = preset.remote;
+      if (preset.kind !== "remote" || !remote) return Promise.resolve();
       const apiKey = remoteApiKey.trim();
       if (!apiKey) {
         setRemoteError("An API key is required to connect.");
@@ -350,15 +346,13 @@ export function useSetup() {
               api.createProvider({
                 id: preset.id,
                 name: preset.name,
-                base_url: preset.remote!.base_url,
+                base_url: remote.base_url,
                 api_key: apiKey,
               }),
             );
           }
-          try {
-            localStorage.setItem("local-studio-setup-complete", "true");
-          } catch {}
-          router.push("/chat?new=1");
+          markSetupComplete();
+          router.push("/agent?new=1");
         }).pipe(
           Effect.catch((err) =>
             Effect.sync(() =>
@@ -393,27 +387,26 @@ export function useSetup() {
 
     return Effect.runPromise(
       Effect.gen(function* () {
-        // Presets that need an engine the box doesn't have yet install it here,
-        // so "Download → Launch" stays one flow with no manual runtime step.
-        if (selectedPreset?.backend === "llamacpp") {
-          const targetPayload = yield* requestEffect(() => api.getRuntimeTargets()).pipe(
-            Effect.catch(() => Effect.succeed({ targets: [] as RuntimeTarget[] })),
+        const backend = selectedPreset?.backend ?? "vllm";
+        const targetPayload = yield* requestEffect(() => api.getRuntimeTargets()).pipe(
+          Effect.catch(() => Effect.succeed({ targets: [] satisfies RuntimeTarget[] })),
+        );
+        const runtimeInstalled = targetPayload.targets.some((target) =>
+          backend === "llamacpp"
+            ? target.backend === backend && target.installed
+            : isManagedServeRuntimeTarget(backend, target) && target.installed,
+        );
+        if (!runtimeInstalled) {
+          const { job } = yield* requestEffect(() =>
+            api.createRuntimeJob({ backend, type: "install" }),
           );
-          const installed = targetPayload.targets.some(
-            (target) => target.backend === "llamacpp" && target.installed,
-          );
-          if (!installed) {
-            const { job } = yield* requestEffect(() =>
-              api.createRuntimeJob({ backend: "llamacpp", type: "install" }),
-            );
-            setRuntimeJobs((current) => [
-              job,
-              ...current.filter((candidate) => candidate.id !== job.id),
-            ]);
-            const finalJob = yield* finishRuntimeJobEffect(job.id, setRuntimeJobs);
-            if (finalJob.status === "error") {
-              return yield* Effect.fail(new Error(describeFailedEngineJob(finalJob)));
-            }
+          setRuntimeJobs((current) => [
+            job,
+            ...current.filter((candidate) => candidate.id !== job.id),
+          ]);
+          const finalJob = yield* finishRuntimeJobEffect(job.id, setRuntimeJobs);
+          if (finalJob.status === "error") {
+            return yield* Effect.fail(new Error(describeFailedEngineJob(finalJob)));
           }
         }
 
@@ -436,11 +429,7 @@ export function useSetup() {
           );
         }
 
-        // localStorage can throw (private mode, quota); the launch already
-        // succeeded at this point, so never let that surface as a launch error.
-        try {
-          localStorage.setItem("local-studio-setup-complete", "true");
-        } catch {}
+        markSetupComplete();
         setStep(5);
       }).pipe(
         Effect.catch((err) =>
@@ -454,17 +443,17 @@ export function useSetup() {
   }, [activeDownload, createdRecipeId, resetBenchmark, selectedPreset, setRuntimeJobs]);
 
   const openChat = useCallback(() => {
-    localStorage.setItem("local-studio-setup-complete", "true");
-    router.push("/chat?new=1");
+    markSetupComplete();
+    router.push("/agent?new=1");
   }, [router]);
 
   const openDashboard = useCallback(() => {
-    localStorage.setItem("local-studio-setup-complete", "true");
+    markSetupComplete();
     router.push("/");
   }, [router]);
 
   const skipSetup = useCallback(() => {
-    localStorage.setItem("local-studio-setup-complete", "true");
+    markSetupComplete();
     router.push("/");
   }, [router]);
 

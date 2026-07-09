@@ -1,4 +1,5 @@
 import type { ModelDownload, Recipe, RecipeWithStatus, StarterPreset } from "@/lib/types";
+import { defaultRuntimeForBackend } from "@/lib/serve-runtime";
 
 const normalizeId = (value: string): string =>
   value
@@ -28,9 +29,9 @@ export function buildStarterRecipe(
     : normalizeId(download.model_id.split("/").pop() ?? download.model_id);
   const recipeId = dedupeRecipeId(recipeBase, existingRecipes);
 
-  // llama.cpp serves a single weights file, not the download directory.
+  const backend = preset?.backend ?? "vllm";
   const modelPath =
-    preset?.backend === "llamacpp" && preset.gguf_file
+    backend === "llamacpp" && preset?.gguf_file
       ? `${download.target_dir.replace(/\/+$/, "")}/${preset.gguf_file}`
       : download.target_dir;
 
@@ -38,7 +39,8 @@ export function buildStarterRecipe(
     id: recipeId,
     name: preset?.name ?? download.model_id,
     model_path: modelPath,
-    backend: preset?.backend ?? "vllm",
+    backend,
+    runtime: defaultRuntimeForBackend(backend),
     served_model_name: download.model_id,
     trust_remote_code: true,
     dtype: "auto",

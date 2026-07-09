@@ -33,11 +33,11 @@ export function StepBenchmark({
       <Card padding="lg" className="space-y-4">
         <div className="flex items-center gap-3">
           <Activity className="h-5 w-5 text-(--hl1)" />
-          <h2 className="text-lg font-medium">Benchmark the Running Model</h2>
+          <h2 className="text-lg font-medium">Verify the full serving path</h2>
         </div>
         <p className="text-sm text-(--dim)">
-          The model is ready. Run one explicit benchmark pass to confirm the device can serve real
-          traffic before you drop into chat.
+          The Serve is online. Run one real request through its OpenAI-compatible API before opening
+          the workbench.
         </p>
         <Button
           onClick={runSetupBenchmark}
@@ -70,14 +70,14 @@ export function StepBenchmark({
       {hasAttemptedBenchmark && (
         <Card padding="lg" className="flex flex-wrap items-center gap-3">
           <Button onClick={openChat} icon={<MessageCircle className="h-4 w-4" />}>
-            Open Chat
+            Open Workbench
           </Button>
           <Button
             variant="secondary"
             onClick={openDashboard}
             icon={<LayoutDashboard className="h-4 w-4" />}
           >
-            Open Dashboard
+            Open Home
           </Button>
         </Card>
       )}
