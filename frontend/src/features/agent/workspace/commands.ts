@@ -48,6 +48,7 @@ function createWorkspaceCommands(): WorkspaceCommands {
         sessionId: null,
         newSession: true,
         split: false,
+        replaceWorkspace: true,
         paneId: newPaneId(),
         tab: makeFreshTab(),
       });
@@ -58,6 +59,7 @@ function createWorkspaceCommands(): WorkspaceCommands {
         cwd: project?.path ?? null,
         newPaneId: newPaneId(),
         projectId: project?.id ?? null,
+        replaceWorkspace: true,
       });
     },
     focusTerminal: (terminal) => {

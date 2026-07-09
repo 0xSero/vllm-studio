@@ -106,6 +106,7 @@ export type WorkspaceAction =
       cwd: string | null;
       newPaneId: PaneId;
       projectId?: string | null;
+      replaceWorkspace?: boolean;
     }
   | {
       type: "focusTerminalPane";

@@ -534,7 +534,10 @@ function rememberDetachedTerminalPanes(
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  if (action.type !== "urlNavRequested" || action.replaceWorkspace !== true) return;
+  const replaceWorkspace =
+    (action.type === "urlNavRequested" || action.type === "openProjectTerminal") &&
+    action.replaceWorkspace === true;
+  if (!replaceWorkspace) return;
   if (!deps.rememberTerminalOwner || prevState.panesById === nextState.panesById) return;
   const surviving = new Set<string>();
   for (const pane of nextState.panesById.values()) {

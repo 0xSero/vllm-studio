@@ -204,6 +204,9 @@ function openNewSessionInFocusedPane(
     cwd: payload.project?.path,
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
+  if (payload.replaceWorkspace) {
+    return replaceWorkspaceSession(state, payload.newPaneId ?? targetPaneId, session);
+  }
   const activeId = paneSessionId(pane);
   const active = activeId ? state.sessions.get(activeId) : undefined;
   const focusedIsEmptyStarter =
@@ -520,11 +523,32 @@ function placeTerminalPane(
 
 export function openProjectTerminal(
   state: WorkspaceState,
-  payload: { cwd: string | null; newPaneId: PaneId; projectId?: string | null },
+  payload: {
+    cwd: string | null;
+    newPaneId: PaneId;
+    projectId?: string | null;
+    replaceWorkspace?: boolean;
+  },
 ): WorkspaceState {
+  const mountKey = payload.projectId ? `project:${payload.projectId}` : `pane:${payload.newPaneId}`;
+  if (payload.replaceWorkspace) {
+    if (!validPaneId(payload.newPaneId)) return state;
+    return pruneOrphanSessions({
+      ...state,
+      layout: { kind: "leaf", paneId: payload.newPaneId },
+      panesById: new Map([
+        [payload.newPaneId, projectTerminalPane(mountKey, payload.cwd, payload.projectId)],
+      ]),
+      focusedPaneId: payload.newPaneId,
+    });
+  }
   return (
     placeTerminalPane(state, payload.newPaneId, (paneId) =>
-      projectTerminalPane(`pane:${paneId}`, payload.cwd, payload.projectId),
+      projectTerminalPane(
+        payload.projectId ? mountKey : `pane:${paneId}`,
+        payload.cwd,
+        payload.projectId,
+      ),
     ) ?? state
   );
 }
@@ -627,10 +651,16 @@ export function applyUrlNavigation(
       cwd: payload.project?.path ?? null,
       newPaneId: payload.paneId,
       projectId: payload.project?.id ?? null,
+      replaceWorkspace: payload.replaceWorkspace,
     });
   }
   if (payload.newSession && !payload.sessionId) {
-    return openNewSessionInFocusedPane(marked, { project, tab, newPaneId: payload.paneId });
+    return openNewSessionInFocusedPane(marked, {
+      project,
+      tab,
+      newPaneId: payload.paneId,
+      replaceWorkspace: payload.replaceWorkspace,
+    });
   }
   if (payload.sessionId && payload.split) {
     return replaySessionInSplitPane(marked, {
@@ -654,7 +684,11 @@ export function applyUrlNavigation(
 
 type SessionPayload = { tab?: Session };
 
-type OpenNewSessionPayload = SessionPayload & { project?: Project; newPaneId?: PaneId };
+type OpenNewSessionPayload = SessionPayload & {
+  project?: Project;
+  newPaneId?: PaneId;
+  replaceWorkspace?: boolean;
+};
 type ReplaySessionPayload = SessionPayload & {
   piSessionId: string;
   sessionTitle?: string;

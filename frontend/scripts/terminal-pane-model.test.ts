@@ -379,6 +379,25 @@ test("url ?new=1 splits a fresh chat beside a focused single-leaf terminal", () 
   assert.deepEqual(closed, []);
 });
 
+test("sidebar new chat replaces terminal panes with one fresh chat", () => {
+  const original = chatSession({ cwd: "/repo/orig", piSessionId: "pi-original" });
+  const withTerminal = openTerminalPane(stateWithChatPane(original), { sourcePaneId: "p-init" });
+  const fresh = chatSession();
+
+  const next = applyUrlNavigation(withTerminal, {
+    key: "nav-new-replace",
+    project: null,
+    newSession: true,
+    replaceWorkspace: true,
+    tab: fresh,
+    paneId: "p-new",
+  });
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-new"]);
+  assert.equal(asChat(next.panesById.get("p-new")).sessionId, fresh.id);
+  assert.equal(next.focusedPaneId, "p-new");
+});
+
 test("url session replay splits beside a focused terminal instead of clobbering it", () => {
   const original = chatSession({ cwd: "/repo/orig", piSessionId: "pi-original" });
   const withTerminal = openTerminalPane(stateWithChatPane(original), { sourcePaneId: "p-init" });
@@ -661,9 +680,8 @@ test("terminal panes register terminal owners without broadcasting project sessi
   assert.equal(sessions[0]?.piSessionId, "pi-live");
   assert.deepEqual(
     remembered.map((owner) => owner.mountKey),
-    ["pane:p-term"],
+    ["project:proj-1"],
   );
-  assert.ok(remembered[0]?.matchKeys.includes("pane:p-term"));
   assert.ok(remembered[0]?.matchKeys.includes("project:proj-1"));
 });
 

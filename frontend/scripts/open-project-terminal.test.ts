@@ -94,6 +94,25 @@ test("openProjectTerminal splits a focused non-empty chat pane into a new termin
   assert.equal(next.sessions.get(session.id), session);
 });
 
+test("openProjectTerminal replaces the workspace for a sidebar terminal command", () => {
+  const session = chatSession({ cwd: "/repo/orig", piSessionId: "pi-live" });
+  const state = stateWithChatPane(session);
+
+  const next = openProjectTerminal(state, {
+    cwd: "/repo/bar",
+    newPaneId: "p-term",
+    projectId: "proj-1",
+    replaceWorkspace: true,
+  });
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-term"]);
+  const term = asTerminal(next.panesById.get("p-term"));
+  assert.equal(term.mountKey, "project:proj-1");
+  assert.equal(term.cwd, "/repo/bar");
+  assert.equal(next.focusedPaneId, "p-term");
+  assert.equal(next.sessions.has(session.id), false);
+});
+
 test("openProjectTerminal is a no-op when the focused pane is not a layout leaf", () => {
   const session = chatSession({ piSessionId: "pi-live" });
   const state: WorkspaceState = { ...stateWithChatPane(session), focusedPaneId: "p-ghost" };
@@ -559,7 +578,7 @@ test("focusTerminalPane focuses the existing pane holding the mountKey", () => {
   const focusedElsewhere = { ...withTerminal, focusedPaneId: "p-init" };
 
   const next = focusTerminalPane(focusedElsewhere, {
-    mountKey: "pane:p-term",
+    mountKey: "project:proj-1",
     cwd: "/repo/proj",
     projectId: "proj-1",
     newPaneId: "p-new",

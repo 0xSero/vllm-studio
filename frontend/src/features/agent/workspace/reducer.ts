@@ -186,6 +186,7 @@ function reducePaneLayoutAction(
         cwd: action.cwd,
         newPaneId: action.newPaneId,
         projectId: action.projectId,
+        replaceWorkspace: action.replaceWorkspace,
       });
     case "focusTerminalPane":
       return focusTerminalPane(state, {

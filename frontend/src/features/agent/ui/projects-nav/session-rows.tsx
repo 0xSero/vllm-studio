@@ -500,7 +500,9 @@ export function NewChatPlusButton({
       workspaceCommands().newChat(project);
       return;
     }
-    router.push(`/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}`);
+    router.push(
+      `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}&replace=1`,
+    );
   };
   const openNewTerminal = () => {
     onNavigateStart?.();
@@ -509,7 +511,7 @@ export function NewChatPlusButton({
       return;
     }
     router.push(
-      `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}&terminal=1`,
+      `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}&terminal=1&replace=1`,
     );
   };
   const runItem = (action: () => void) => (event: MouseEvent) => {
