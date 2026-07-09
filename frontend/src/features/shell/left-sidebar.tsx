@@ -1,12 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   useCallback,
   useRef,
   useState,
+  type ComponentType,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -43,6 +43,16 @@ type ActiveSessionDetail = {
   updatedAt: string;
 };
 
+type ProjectsNavSectionComponent = ComponentType<{ expanded: boolean }>;
+
+type SessionsCommandComponent = ComponentType<{
+  open: boolean;
+  onClose: () => void;
+  activeSessions: ActiveSessionDetail[];
+}>;
+
+type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
+
 const tabs = [
   { href: "/", label: "Status", icon: Gauge },
   { href: "/usage", label: "Usage", icon: Microchip },
@@ -55,20 +65,22 @@ const SIDEBAR_MIN_WIDTH = 188;
 const SIDEBAR_MAX_WIDTH = 320;
 const SIDEBAR_DEFAULT_WIDTH = 224;
 
-const ProjectsNavSection = dynamic(
-  () => import("@/features/agent/ui/projects-nav-section").then((mod) => mod.ProjectsNavSection),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="px-2 py-1 text-[length:var(--fs-md)] text-(--dim)">Loading projects...</div>
-    ),
-  },
-);
+let projectsNavSectionPromise: Promise<ProjectsNavSectionComponent> | null = null;
+let sessionsCommandPromise: Promise<SessionsCommandComponent> | null = null;
 
-const SessionsCommand = dynamic(
-  () => import("@/features/agent/ui/sessions-command").then((mod) => mod.SessionsCommand),
-  { ssr: false },
-);
+function loadProjectsNavSection(): Promise<ProjectsNavSectionComponent> {
+  projectsNavSectionPromise ??= import("@/features/agent/ui/projects-nav-section").then(
+    (mod) => mod.ProjectsNavSection,
+  );
+  return projectsNavSectionPromise;
+}
+
+function loadSessionsCommand(): Promise<SessionsCommandComponent> {
+  sessionsCommandPromise ??= import("@/features/agent/ui/sessions-command").then(
+    (mod) => mod.SessionsCommand,
+  );
+  return sessionsCommandPromise;
+}
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
@@ -93,8 +105,36 @@ function isRouteActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
+function routeHidesAppSidebar(pathname: string): boolean {
+  return (
+    pathname.startsWith("/setup") ||
+    pathname.startsWith("/download") ||
+    pathname.startsWith("/agents") ||
+    pathname.startsWith("/quick") ||
+    pathname.startsWith("/landing") ||
+    pathname.startsWith("/docs")
+  );
+}
+
+function requestIdleWork(callback: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(callback, { timeout: 1200 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(callback, 400);
+  return () => window.clearTimeout(handle);
+}
+
+function ProjectsNavPlaceholder() {
+  return (
+    <div className="px-2 py-1 text-[length:var(--fs-md)] text-(--dim)">Loading projects...</div>
+  );
+}
+
 export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const hidesAppSidebar = routeHidesAppSidebar(pathname);
+  const projectsNavImmediate = pathname.startsWith("/agent");
   const { desktopSidebarPinnedOpen, setDesktopSidebarPinnedOpen, sidebarWidth, setSidebarWidth } =
     useAppStore(
       useShallow((s) => ({
@@ -110,6 +150,11 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionDetail[]>([]);
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [projectsNavReady, setProjectsNavReady] = useState(projectsNavImmediate);
+  const [ProjectsNavSection, setProjectsNavSection] = useState<ProjectsNavSectionComponent | null>(
+    null,
+  );
+  const [SessionsCommand, setSessionsCommand] = useState<SessionsCommandComponent | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   useMountSubscription(() => {
@@ -147,6 +192,38 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useMountSubscription(() => {
+    if (projectsNavReady || hidesAppSidebar) return;
+    if (projectsNavImmediate || mobileMenuOpen) {
+      setProjectsNavReady(true);
+      return;
+    }
+    if (!isExpanded) return;
+    return requestIdleWork(() => setProjectsNavReady(true));
+  }, [hidesAppSidebar, isExpanded, mobileMenuOpen, projectsNavImmediate, projectsNavReady]);
+
+  useMountSubscription(() => {
+    if (!projectsNavReady || ProjectsNavSection) return;
+    let cancelled = false;
+    void loadProjectsNavSection().then((Component) => {
+      if (!cancelled) setProjectsNavSection(() => Component);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ProjectsNavSection, projectsNavReady]);
+
+  useMountSubscription(() => {
+    if (!searchOpen || SessionsCommand) return;
+    let cancelled = false;
+    void loadSessionsCommand().then((Component) => {
+      if (!cancelled) setSessionsCommand(() => Component);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [SessionsCommand, searchOpen]);
+
   const startSidebarResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!isExpanded) return;
@@ -179,14 +256,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
 
-  if (
-    pathname.startsWith("/setup") ||
-    pathname.startsWith("/download") ||
-    pathname.startsWith("/agents") ||
-    pathname.startsWith("/quick") ||
-    pathname.startsWith("/landing") ||
-    pathname.startsWith("/docs")
-  ) {
+  if (hidesAppSidebar) {
     return <div className="h-full w-full">{children}</div>;
   }
 
@@ -284,7 +354,13 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                     active={isRouteActive(pathname, tab.href)}
                   />
                 ))}
-                <ProjectsNavSection expanded={isExpanded} />
+                {projectsNavReady ? (
+                  ProjectsNavSection ? (
+                    <ProjectsNavSection expanded={isExpanded} />
+                  ) : (
+                    <ProjectsNavPlaceholder />
+                  )
+                ) : null}
               </nav>
 
               <div className="shrink-0 px-3 py-2">
@@ -313,7 +389,6 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile/PWA: top app bar + hamburger drawer (no footer nav). */}
       <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
@@ -335,16 +410,22 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       </div>
 
       {mobileMenuOpen ? (
-        <MobileNavigationDrawer pathname={pathname} onClose={() => setMobileMenuOpen(false)} />
+        <MobileNavigationDrawer
+          pathname={pathname}
+          projectsNavReady={projectsNavReady}
+          ProjectsNavSection={ProjectsNavSection}
+          onClose={() => setMobileMenuOpen(false)}
+        />
       ) : null}
 
-      <SessionsCommand
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        activeSessions={activeSessions}
-      />
+      {SessionsCommand ? (
+        <SessionsCommand
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          activeSessions={activeSessions}
+        />
+      ) : null}
 
-      {/* Main content */}
       <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0">
         {children}
       </main>
@@ -352,7 +433,17 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   );
 }
 
-function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClose: () => void }) {
+function MobileNavigationDrawer({
+  pathname,
+  projectsNavReady,
+  ProjectsNavSection,
+  onClose,
+}: {
+  pathname: string;
+  projectsNavReady: boolean;
+  ProjectsNavSection: ProjectsNavSectionComponent | null;
+  onClose: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
       <button
@@ -403,7 +494,13 @@ function MobileNavigationDrawer({ pathname, onClose }: { pathname: string; onClo
             onClick={onClose}
           />
           <div className="my-3 border-t border-(--border)" />
-          <ProjectsNavSection expanded />
+          {projectsNavReady ? (
+            ProjectsNavSection ? (
+              <ProjectsNavSection expanded />
+            ) : (
+              <ProjectsNavPlaceholder />
+            )
+          ) : null}
         </nav>
       </aside>
     </div>
@@ -419,7 +516,7 @@ function NavItemMobile({
 }: {
   href: string;
   label: string;
-  Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  Icon: IconComponent;
   active: boolean;
   onClick: () => void;
 }) {
@@ -447,7 +544,7 @@ function NavItemDesktop({
 }: {
   href: string;
   label: string;
-  Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  Icon: IconComponent;
   active: boolean;
 }) {
   return (

@@ -11,7 +11,7 @@ import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
-import { HuggingFaceModelCardPanel } from "@/ui";
+import { LazyHuggingFaceModelCardPanel } from "@/ui/lazy-huggingface-model-card";
 import type { ModelFit } from "./hardware-profile";
 
 export function ExploreTab() {
@@ -164,7 +164,7 @@ export function ExploreTab() {
         loadMore={loadMore}
         openModelCard={openModelCard}
       />
-      <HuggingFaceModelCardPanel
+      <LazyHuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}
         model={selectedModelCard?.model ?? null}
         variants={selectedModelCard?.variants ?? []}

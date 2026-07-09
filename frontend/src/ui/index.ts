@@ -1,7 +1,6 @@
 export { Button } from "./button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./button";
 
-export { MarkdownContent } from "./markdown-content";
 export { RightDetailPanel } from "./right-detail-panel";
 export type { RightDetailPanelProps } from "./right-detail-panel";
 
@@ -84,6 +83,5 @@ export { StatusDot, StatusPill } from "./status";
 export type { UiTone, StatusPillVariant } from "./status";
 
 export { ModelLogo } from "./model-logo";
-export { HuggingFaceModelCardPanel } from "./huggingface-model-card";
 
 export { SitegeistIcon, PanelIcon } from "./icons";

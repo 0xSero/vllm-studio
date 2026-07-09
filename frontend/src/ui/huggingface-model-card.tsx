@@ -24,6 +24,14 @@ type HardwareFitSummary = {
   reason: string;
 };
 
+export type HuggingFaceModelCardPanelProps = {
+  model: HuggingFaceModel | null;
+  variants?: HuggingFaceModel[];
+  fit?: HardwareFitSummary;
+  open: boolean;
+  onClose: () => void;
+};
+
 type ModelCardStats = {
   downloads: number;
   likes: number;
@@ -36,13 +44,7 @@ export function HuggingFaceModelCardPanel({
   fit,
   open,
   onClose,
-}: {
-  model: HuggingFaceModel | null;
-  variants?: HuggingFaceModel[];
-  fit?: HardwareFitSummary;
-  open: boolean;
-  onClose: () => void;
-}) {
+}: HuggingFaceModelCardPanelProps) {
   const modelId = model?.modelId ?? "";
   const { error, loading, payload } = useModelCardPayload(modelId, open);
   const stats = modelCardStats(model, payload);

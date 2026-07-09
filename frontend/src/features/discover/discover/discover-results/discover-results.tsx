@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HuggingFaceModelCardPanel, Table, TBody, THead, TH, TRow, Spinner } from "@/ui";
+import { Table, TBody, THead, TH, TRow, Spinner } from "@/ui";
+import { LazyHuggingFaceModelCardPanel } from "@/ui/lazy-huggingface-model-card";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { originalModelKey } from "@/lib/huggingface";
 import { ModelRow } from "./model-row";
@@ -150,7 +151,7 @@ export function DiscoverResults({
           </button>
         </div>
       )}
-      <HuggingFaceModelCardPanel
+      <LazyHuggingFaceModelCardPanel
         open={Boolean(selectedModelCard)}
         model={selectedModelCard?.model ?? null}
         variants={selectedModelCard?.variants ?? []}
