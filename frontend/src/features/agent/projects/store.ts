@@ -54,7 +54,10 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
   let firstLoad = false;
   let lastGitFetch: string | null = null;
   let snapshot: ProjectsSnapshot = {
-    projects: [],
+    // Seed from the last-known list so entering /agent doesn't block the
+    // sidebar and URL navigation (?project=…&new=/terminal=) on the projects
+    // fetch — the refresh below reconciles stale entries.
+    projects: readCachedProjects(),
     loaded: false,
     selectedId: readSelection(),
     gitSummaries: new Map(),
@@ -106,8 +109,11 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     let projects: Project[] = [];
     try {
       projects = await api.loadProjects();
+      writeCachedProjects(projects);
     } catch {
-      // Swallow — we still mark loaded so consumers don't wait forever.
+      // Swallow — we still mark loaded so consumers don't wait forever. Keep
+      // the cache-seeded list rather than blanking the sidebar on a blip.
+      projects = snapshot.projects;
     }
     const previousSelectedId = snapshot.selectedId;
     const selectedId = resolveSelectedProjectId(previousSelectedId, projects);
@@ -184,6 +190,33 @@ function projectPathById(projects: readonly Project[], projectId: ProjectId | nu
 }
 
 const SELECTED_PROJECT_KEY = "local-studio.agent.selectedProjectId";
+const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
+
+function readCachedProjects(): Project[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROJECTS_CACHE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is Project =>
+        Boolean(entry) &&
+        typeof (entry as Project).id === "string" &&
+        typeof (entry as Project).path === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedProjects(projects: Project[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(projects));
+  } catch {
+    // Ignore quota/private-mode failures; the cache is a warm-start hint only.
+  }
+}
 
 function readSelectedProjectId(): string | null {
   if (typeof window === "undefined") return null;
