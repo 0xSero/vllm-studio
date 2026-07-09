@@ -5,9 +5,9 @@ import {
   legacyIntegrationHref,
 } from "../src/features/integrations/integration-navigation";
 
-test("integration navigation defaults unknown sections to connectors", () => {
-  assert.equal(integrationSectionFromHash(""), "connectors");
-  assert.equal(integrationSectionFromHash("#unknown"), "connectors");
+test("integration navigation defaults unknown sections to plugins", () => {
+  assert.equal(integrationSectionFromHash(""), "plugins");
+  assert.equal(integrationSectionFromHash("#unknown"), "plugins");
 });
 
 test("integration navigation selects skills from a hash", () => {

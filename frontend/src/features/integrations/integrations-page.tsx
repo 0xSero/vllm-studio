@@ -1,16 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { GraduationCap, Plug, type LucideIcon } from "@/ui/icon-registry";
+import { Boxes, GraduationCap, Plug, type LucideIcon } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SkillsSettings } from "@/features/settings/agent-settings-sections";
 import { ConnectorsSection } from "@/features/settings/connectors-section";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
+import { PluginsSection } from "./plugins-section";
 import { integrationSectionFromHash, type IntegrationSectionId } from "./integration-navigation";
 
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
 const SECTIONS: SettingsSectionDef<IntegrationSectionId>[] = [
+  {
+    id: "plugins",
+    label: "Plugins",
+    description: "Codex-compatible capability bundles.",
+    icon: sectionIcon(Boxes),
+  },
   {
     id: "connectors",
     label: "Connectors",
@@ -27,7 +34,7 @@ const SECTIONS: SettingsSectionDef<IntegrationSectionId>[] = [
 
 export function IntegrationsPage() {
   const [activeSection, setActiveSection] = useState<IntegrationSectionId>(() =>
-    typeof window === "undefined" ? "connectors" : integrationSectionFromHash(window.location.hash),
+    typeof window === "undefined" ? "plugins" : integrationSectionFromHash(window.location.hash),
   );
   const [revision, setRevision] = useState(0);
 
@@ -53,7 +60,9 @@ export function IntegrationsPage() {
       onSelectSection={selectSection}
     >
       <div key={`${activeSection}-${revision}`}>
-        {activeSection === "connectors" ? <ConnectorsSection /> : <SkillsSettings />}
+        {activeSection === "plugins" ? <PluginsSection /> : null}
+        {activeSection === "connectors" ? <ConnectorsSection /> : null}
+        {activeSection === "skills" ? <SkillsSettings /> : null}
       </div>
     </SettingsLayout>
   );
