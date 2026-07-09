@@ -93,6 +93,7 @@ function createWorkspaceCommands(): WorkspaceCommands {
         ...(sessionTitle ? { sessionTitle } : {}),
         newSession: false,
         split: false,
+        replaceWorkspace: true,
         paneId: newPaneId(),
         tab,
       });

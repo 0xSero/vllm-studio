@@ -83,6 +83,35 @@ function replacePaneSession(
   return { ...next, focusedPaneId: paneId };
 }
 
+function focusSessionAsOnlyPane(
+  state: WorkspaceState,
+  paneId: PaneId,
+  sessionId: SessionId,
+): WorkspaceState {
+  const pane = state.panesById.get(paneId);
+  if (!pane || paneSessionId(pane) !== sessionId) return state;
+  return pruneOrphanSessions({
+    ...state,
+    layout: { kind: "leaf", paneId },
+    panesById: new Map([[paneId, pane]]),
+    focusedPaneId: paneId,
+  });
+}
+
+function replaceWorkspaceSession(
+  state: WorkspaceState,
+  paneId: PaneId | undefined,
+  session: Session | undefined,
+): WorkspaceState {
+  if (!validPaneId(paneId) || !isSession(session)) return state;
+  return pruneOrphanSessions({
+    ...withSessions(state, setSessionInMap(state.sessions, session)),
+    layout: { kind: "leaf", paneId },
+    panesById: new Map([[paneId, { sessionId: session.id }]]),
+    focusedPaneId: paneId,
+  });
+}
+
 function copySessionWithFreshRuntimeId(
   source: Session,
   fallback: Session | undefined,
@@ -200,8 +229,20 @@ function replaySessionInFocusedPane(
 ): WorkspaceState {
   if (!payload.piSessionId) return state;
   const existing = findPaneByPiSessionId(state, payload.piSessionId);
-  if (existing) return focusExistingSession(state, existing.paneId, existing.session.id);
+  if (existing) {
+    return payload.replaceWorkspace
+      ? focusSessionAsOnlyPane(state, existing.paneId, existing.session.id)
+      : focusExistingSession(state, existing.paneId, existing.session.id);
+  }
   const targetPaneId = chatTargetPaneId(state);
+  if (payload.replaceWorkspace) {
+    if (!isSession(payload.tab)) return state;
+    return replaceWorkspaceSession(state, payload.newPaneId ?? targetPaneId, {
+      ...payload.tab,
+      piSessionId: payload.piSessionId,
+      title: replaySessionTitle(payload.sessionTitle),
+    });
+  }
   const pane = state.panesById.get(targetPaneId);
   if (!pane) return state;
   if (pane.kind === "terminal") {
@@ -605,6 +646,7 @@ export function applyUrlNavigation(
       sessionTitle,
       tab,
       newPaneId: paneId,
+      replaceWorkspace: payload.replaceWorkspace,
     });
   }
   return marked;
@@ -618,6 +660,7 @@ type ReplaySessionPayload = SessionPayload & {
   sessionTitle?: string;
   /** Pane id for the split fallback when the only leaves are terminals. */
   newPaneId?: PaneId;
+  replaceWorkspace?: boolean;
 };
 type ReplaySessionInSplitPayload = ReplaySessionPayload & { paneId?: PaneId };
 type OpenSessionPayloadInPanePayload = SessionPayload & {
@@ -646,4 +689,5 @@ type UrlNavigationPayload = SessionPayload & {
   paneId?: PaneId;
   terminal?: boolean;
   terminalMountKey?: string;
+  replaceWorkspace?: boolean;
 };

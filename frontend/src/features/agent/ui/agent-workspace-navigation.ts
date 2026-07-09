@@ -30,12 +30,14 @@ type NavigationParams = {
   openParam: string | null;
   splitParam: string | null;
   terminalParam: string | null;
+  replaceParam: string | null;
 };
 
 function navigationKey(params: NavigationParams): string {
-  const { projectId, sessionId, newParam, openParam, splitParam, terminalParam } = params;
+  const { projectId, sessionId, newParam, openParam, splitParam, terminalParam, replaceParam } =
+    params;
   if (!(projectId || sessionId || newParam || openParam || terminalParam)) return "";
-  return `${projectId ?? ""}|${sessionId ?? ""}|${newParam ?? ""}|${openParam ?? ""}|${splitParam ?? ""}|${terminalParam ?? ""}`;
+  return `${projectId ?? ""}|${sessionId ?? ""}|${newParam ?? ""}|${openParam ?? ""}|${splitParam ?? ""}|${terminalParam ?? ""}|${replaceParam ?? ""}`;
 }
 
 function projectForNavigation(
@@ -60,6 +62,7 @@ function requestWorkspaceUrlNavigation({
   const openParam = searchParams.get("open");
   const splitParam = searchParams.get("split");
   const terminalParam = searchParams.get("terminal");
+  const replaceParam = searchParams.get("replace");
   const key = navigationKey({
     projectId,
     sessionId,
@@ -67,6 +70,7 @@ function requestWorkspaceUrlNavigation({
     openParam,
     splitParam,
     terminalParam,
+    replaceParam,
   });
   if (!key || lastHandledNavKey === key) return;
 
@@ -92,6 +96,7 @@ function requestWorkspaceUrlNavigation({
     newSession: newParam !== null,
     split: splitParam === "1",
     terminal: terminalParam !== null,
+    replaceWorkspace: replaceParam === "1",
     // `terminal=1` opens a fresh terminal; any other value is a PTY mountKey
     // to focus/reattach (sidebar terminal rows when the workspace is unbound).
     ...(terminalParam && terminalParam !== "1" ? { terminalMountKey: terminalParam } : {}),
@@ -105,7 +110,7 @@ function consumeOneShotNavParams(): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   let changed = false;
-  for (const param of ["new", "terminal", "split", "open"]) {
+  for (const param of ["new", "terminal", "split", "open", "replace"]) {
     if (!url.searchParams.has(param)) continue;
     url.searchParams.delete(param);
     changed = true;

@@ -102,8 +102,13 @@ function fakeStorage(): { storage: WorkspaceStorage; map: Map<string, string> } 
   };
 }
 
-function effectDeps(): { deps: WorkspaceEffectDeps; closed: string[] } {
+function effectDeps(): {
+  deps: WorkspaceEffectDeps;
+  closed: string[];
+  remembered: Array<{ mountKey: string; matchKeys: string[] }>;
+} {
   const closed: string[] = [];
+  const remembered: Array<{ mountKey: string; matchKeys: string[] }> = [];
   const deps: WorkspaceEffectDeps = {
     storage: fakeStorage().storage,
     window: {
@@ -118,8 +123,11 @@ function effectDeps(): { deps: WorkspaceEffectDeps; closed: string[] } {
     closeTerminalOwner: (mountKey) => {
       closed.push(mountKey);
     },
+    rememberTerminalOwner: (owner) => {
+      remembered.push({ mountKey: owner.mountKey, matchKeys: owner.matchKeys });
+    },
   };
-  return { deps, closed };
+  return { deps, closed, remembered };
 }
 
 test("openTerminalPane replaces the source chat pane in place and inherits the owner identity", () => {
@@ -499,6 +507,76 @@ test("url session replay keeps a focused terminal pane and lands in the sibling 
   assert.equal(next.sessions.has(b.id), false);
 });
 
+test("chat row replay replaces a terminal split with just the selected chat", () => {
+  const a = chatSession({ piSessionId: "pi-a" });
+  const b = chatSession({ piSessionId: "pi-b" });
+  const withTerminal = openTerminalPane(twoChatPaneState(a, b), { sourcePaneId: "p-a" });
+  const replayTab = chatSession();
+
+  const next = applyUrlNavigation(withTerminal, {
+    key: "nav-term-replay-replace",
+    project: null,
+    sessionId: "pi-replay",
+    tab: replayTab,
+    replaceWorkspace: true,
+    paneId: "p-replay",
+  });
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-replay"]);
+  assert.equal(asChat(next.panesById.get("p-replay")).sessionId, replayTab.id);
+  assert.equal(next.sessions.get(replayTab.id)?.piSessionId, "pi-replay");
+  assert.equal(next.focusedPaneId, "p-replay");
+});
+
+test("chat row replay remembers detached terminal panes without closing their owners", () => {
+  const a = chatSession({ piSessionId: "pi-a", projectId: "project-a" });
+  const b = chatSession({ piSessionId: "pi-b" });
+  const withTerminal = openTerminalPane(twoChatPaneState(a, b), { sourcePaneId: "p-a" });
+  const replayTab = chatSession();
+  const action = {
+    type: "urlNavRequested",
+    key: "nav-term-replay-remember",
+    project: null,
+    sessionId: "pi-replay",
+    tab: replayTab,
+    replaceWorkspace: true,
+    paneId: "p-replay",
+  } as const;
+  const next = reducer(withTerminal, action);
+  const { deps, closed, remembered } = effectDeps();
+
+  runWorkspaceEffect(action, withTerminal, next, deps);
+
+  assert.deepEqual(closed, []);
+  assert.equal(remembered.length, 1);
+  assert.equal(remembered[0]?.mountKey, `pane-session:${a.id}`);
+  assert.ok(remembered[0]?.matchKeys.includes(`pane-session:${a.id}`));
+  assert.ok(remembered[0]?.matchKeys.includes(`session:${a.id}`));
+  assert.ok(remembered[0]?.matchKeys.includes("pi:pi-a"));
+  assert.ok(remembered[0]?.matchKeys.includes("project:project-a"));
+});
+
+test("chat row replay replaces a terminal-only workspace with just the selected chat", () => {
+  const withTerminal = openTerminalPane(stateWithChatPane(chatSession()), {
+    sourcePaneId: "p-init",
+  });
+  const replayTab = chatSession();
+
+  const next = applyUrlNavigation(withTerminal, {
+    key: "nav-terminal-only-replace",
+    project: null,
+    sessionId: "pi-replay",
+    tab: replayTab,
+    replaceWorkspace: true,
+    paneId: "p-replay",
+  });
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-replay"]);
+  assert.equal(asChat(next.panesById.get("p-replay")).sessionId, replayTab.id);
+  assert.equal(next.sessions.get(replayTab.id)?.piSessionId, "pi-replay");
+  assert.equal(next.focusedPaneId, "p-replay");
+});
+
 test("url replay of a session already open in the sibling pane focuses it and keeps the terminal", () => {
   const a = chatSession({ piSessionId: "pi-a" });
   const b = chatSession({ piSessionId: "pi-b" });
@@ -534,21 +612,16 @@ test("terminal panes broadcast as kind:'terminal' active-session rows keyed by m
 
   const broadcasts: unknown[] = [];
   const { deps } = effectDeps();
-  runWorkspaceEffect(
-    action,
-    base,
-    next,
-    {
-      ...deps,
-      window: {
-        ...deps.window,
-        dispatchEvent: (event: Event) => {
-          if ("detail" in event) broadcasts.push((event as CustomEvent).detail);
-          return true;
-        },
+  runWorkspaceEffect(action, base, next, {
+    ...deps,
+    window: {
+      ...deps.window,
+      dispatchEvent: (event: Event) => {
+        if ("detail" in event) broadcasts.push((event as CustomEvent).detail);
+        return true;
       },
     },
-  );
+  });
 
   const sessions = (
     broadcasts.find(

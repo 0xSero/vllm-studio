@@ -4,11 +4,13 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
+import { uniqueTerminalKeys, type TerminalOwner } from "@/features/agent/terminal-owners";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   AgentModel,
   PaneId,
+  TerminalPaneState,
   WorkspaceAction,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
@@ -61,6 +63,7 @@ export type WorkspaceEffectDeps = {
   /** Resolve a session's tool selection from the tools context. */
   selectionFor?: (sessionId: SessionId) => ToolSelection;
   closeTerminalOwner?: (mountKey: string) => void;
+  rememberTerminalOwner?: (owner: TerminalOwner) => void;
 };
 
 const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
@@ -505,6 +508,41 @@ function closeRemovedTerminalPanes(
   }
 }
 
+function terminalOwnerFromPane(pane: TerminalPaneState): TerminalOwner {
+  const sessionKey = pane.ownerSessionId ? `session:${pane.ownerSessionId}` : "";
+  const piKey = pane.ownerPiSessionId ? `pi:${pane.ownerPiSessionId}` : "";
+  const projectKey = pane.projectId ? `project:${pane.projectId}` : "";
+  return {
+    mountKey: pane.mountKey,
+    matchKeys: uniqueTerminalKeys([pane.mountKey, sessionKey, piKey, projectKey]),
+    cwd: pane.cwd,
+    title: pane.title,
+    kind: pane.ownerSessionId || pane.ownerPiSessionId ? "session" : "project",
+    sessionId: pane.ownerSessionId,
+    piSessionId: pane.ownerPiSessionId,
+    projectId: pane.projectId,
+  };
+}
+
+function rememberDetachedTerminalPanes(
+  action: WorkspaceAction,
+  prevState: WorkspaceState,
+  nextState: WorkspaceState,
+  deps: WorkspaceEffectDeps,
+): void {
+  if (action.type !== "urlNavRequested" || action.replaceWorkspace !== true) return;
+  if (!deps.rememberTerminalOwner || prevState.panesById === nextState.panesById) return;
+  const surviving = new Set<string>();
+  for (const pane of nextState.panesById.values()) {
+    if (pane.kind === "terminal") surviving.add(pane.mountKey);
+  }
+  for (const pane of prevState.panesById.values()) {
+    if (pane.kind === "terminal" && !surviving.has(pane.mountKey)) {
+      deps.rememberTerminalOwner(terminalOwnerFromPane(pane));
+    }
+  }
+}
+
 export function runWorkspaceEffect(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -513,6 +551,7 @@ export function runWorkspaceEffect(
 ): void {
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
+  rememberDetachedTerminalPanes(action, prevState, nextState, deps);
   closeRemovedTerminalPanes(action, prevState, nextState, deps);
 
   if (action.type === "hydrate") {

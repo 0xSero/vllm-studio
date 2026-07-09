@@ -11,6 +11,7 @@ import {
 } from "@/features/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { closeTerminalOwner } from "@/features/agent/ui/terminal-panel";
+import { rememberPersistentTerminalOwner } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
   runWorkspaceEffect,
   type WorkspaceDispatch,
@@ -190,6 +191,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         findProjectById: (id) => projectsRef.current.findById(id),
         selectionFor: (id) => toolsRef.current.selectionFor(id),
         closeTerminalOwner,
+        rememberTerminalOwner: rememberPersistentTerminalOwner,
       };
     };
 

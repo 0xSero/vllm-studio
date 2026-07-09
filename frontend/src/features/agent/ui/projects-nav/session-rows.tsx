@@ -484,7 +484,7 @@ export function SessionRow({
       unseen={unseen}
       rowClass="group relative flex h-6.5 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/95"
       renameRowClass="flex h-6.5 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
-      href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}`}
+      href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&replace=1`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onOpen={() => {
         projects.selectProject(project);

@@ -268,6 +268,7 @@ function reduceSessionEditAction(
         split: action.split,
         terminal: action.terminal,
         terminalMountKey: action.terminalMountKey,
+        replaceWorkspace: action.replaceWorkspace,
         paneId: action.paneId,
         tab: action.tab,
       });

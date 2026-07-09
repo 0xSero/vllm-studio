@@ -139,6 +139,7 @@ export type WorkspaceAction =
       split?: boolean;
       paneId: PaneId;
       terminal?: boolean;
+      replaceWorkspace?: boolean;
       /** Reattach target: focus/recreate the terminal pane with this mountKey. */
       terminalMountKey?: string;
       tab: Session;
