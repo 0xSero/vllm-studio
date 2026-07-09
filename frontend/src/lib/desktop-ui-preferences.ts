@@ -22,6 +22,7 @@ const EXCLUDED_DURABLE_KEYS = new Set([
 ]);
 
 const EXCLUDED_DURABLE_PREFIXES = ["local-studio.agent.transcript."];
+const UI_PREFERENCES_REQUEST = { timeout: 1_500, retries: 0 } as const;
 
 let saveTimer: number | null = null;
 
@@ -65,7 +66,7 @@ function withoutControllerCredentials(prefs: Record<string, string>): Record<str
 async function loadControllerUiPreferences(): Promise<Record<string, string>> {
   try {
     const { default: api } = await import("@/lib/api/client");
-    const settings = await api.getStudioSettings();
+    const settings = await api.getStudioSettings(UI_PREFERENCES_REQUEST);
     return withoutControllerCredentials(settings.persisted.ui_preferences ?? {});
   } catch {
     return {};

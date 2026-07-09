@@ -12,7 +12,7 @@ import type {
   RuntimeRocmInfo,
   RuntimeTarget,
 } from "../types";
-import { encodePathSegments, type ApiCore } from "./core";
+import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
 
 export interface StudioModelsRoot {
   path: string;
@@ -56,7 +56,8 @@ export function createStudioApi(core: ApiCore) {
       configured_models_dir?: string;
     }> => core.request("/v1/studio/models"),
 
-    getStudioSettings: (): Promise<StudioSettings> => core.request("/studio/settings"),
+    getStudioSettings: (options?: RequestOptions): Promise<StudioSettings> =>
+      core.request("/studio/settings", options),
 
     updateStudioSettings: (payload: {
       models_dir?: string | null;

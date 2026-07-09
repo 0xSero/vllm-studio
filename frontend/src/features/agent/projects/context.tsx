@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { createProjectsStore } from "@/features/agent/projects/store";
+import { createProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
 import type { GitSummary, Project, ProjectId } from "@/features/agent/projects/types";
 
 export type ProjectsContextValue = {
@@ -29,10 +29,16 @@ export type ProjectsContextValue = {
   initGitForActiveProject: () => Promise<void>;
 };
 
-const ProjectsContext = createContext<ProjectsContextValue | null>(null);
+const ProjectsContext = createContext<ProjectsStore | null>(null);
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => createProjectsStore(), []);
+  return <ProjectsContext.Provider value={store}>{children}</ProjectsContext.Provider>;
+}
+
+export function useProjects(): ProjectsContextValue {
+  const store = useContext(ProjectsContext);
+  if (!store) throw new Error("useProjects must be used within a ProjectsProvider");
   const { projects, loaded, selectedId, gitSummaries } = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -100,11 +106,5 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;
-}
-
-export function useProjects(): ProjectsContextValue {
-  const value = useContext(ProjectsContext);
-  if (!value) throw new Error("useProjects must be used within a ProjectsProvider");
   return value;
 }

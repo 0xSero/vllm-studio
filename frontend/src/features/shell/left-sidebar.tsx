@@ -30,7 +30,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ACTIVE_AGENT_SESSIONS_EVENT } from "@/lib/workspace-events";
-import { requestIdleWork } from "@/lib/idle-work";
 
 type ActiveSessionDetail = {
   projectId: string;
@@ -65,7 +64,6 @@ const tabs = [
 const SIDEBAR_MIN_WIDTH = 188;
 const SIDEBAR_MAX_WIDTH = 320;
 const SIDEBAR_DEFAULT_WIDTH = 224;
-const PROJECTS_NAV_IDLE_DELAY_MS = 1800;
 
 let projectsNavSectionPromise: Promise<ProjectsNavSectionComponent> | null = null;
 let sessionsCommandPromise: Promise<SessionsCommandComponent> | null = null;
@@ -189,18 +187,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     if (projectsNavReady || hidesAppSidebar) return;
     if (projectsNavImmediate || mobileMenuOpen) {
       setProjectsNavReady(true);
-      return;
     }
-    if (!isExpanded) return;
-    let cancelIdle: (() => void) | null = null;
-    const delay = window.setTimeout(() => {
-      cancelIdle = requestIdleWork(() => setProjectsNavReady(true));
-    }, PROJECTS_NAV_IDLE_DELAY_MS);
-    return () => {
-      window.clearTimeout(delay);
-      cancelIdle?.();
-    };
-  }, [hidesAppSidebar, isExpanded, mobileMenuOpen, projectsNavImmediate, projectsNavReady]);
+  }, [hidesAppSidebar, mobileMenuOpen, projectsNavImmediate, projectsNavReady]);
 
   useMountSubscription(() => {
     if (!projectsNavReady || ProjectsNavSection) return;
@@ -276,6 +264,9 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       ) : null}
       <aside
         onPointerEnter={() => {
+          if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
+        }}
+        onFocusCapture={() => {
           if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
         }}
         className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden shadow-[inset_-1px_0_rgba(255,255,255,0.02)] ${

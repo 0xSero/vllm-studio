@@ -125,6 +125,7 @@ function buildInitialComputer(): ComputerState {
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const catalogueEnabled = pathname === "/agent" || pathname === "/quick";
+  const canvasEffectsEnabled = pathname === "/agent" || pathname === "/quick";
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
@@ -147,7 +148,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setPromptTemplateCatalogue(promptTemplates);
     },
   });
-  useCanvasEffects({ setComputer, sessionId: activeCanvasSessionId });
+  useCanvasEffects({
+    enabled: canvasEffectsEnabled,
+    setComputer,
+    sessionId: activeCanvasSessionId,
+  });
 
   const setActiveCanvasSession = useCallback((sessionId: SessionId | null) => {
     activeCanvasSessionRef.current = sessionId;

@@ -8,6 +8,7 @@ import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const MAX_RENDERED_LINES = 20_000;
+const FAST_LOG_REQUEST = { timeout: 3_000, retries: 0 } as const;
 
 export function useLogs() {
   // Stale-while-revalidate: paint the last-loaded session list instantly on
@@ -28,7 +29,7 @@ export function useLogs() {
 
   const loadSessions = useCallback(async () => {
     try {
-      const data = await api.getLogSessions();
+      const data = await api.getLogSessions(FAST_LOG_REQUEST);
       writePageCache("logs:sessions", data.sessions || []);
       setSessions(data.sessions || []);
       if (data.sessions?.length > 0 && !selectedSession) setSelectedSession(data.sessions[0].id);
@@ -42,7 +43,7 @@ export function useLogs() {
   const loadLogContent = useCallback(async (sessionId: string, silent = false) => {
     if (!silent) setLoadingContent(true);
     try {
-      const data = await api.getLogs(sessionId, 2000);
+      const data = await api.getLogs(sessionId, 2000, FAST_LOG_REQUEST);
       const lines = Array.isArray(data.logs) ? data.logs : [];
       setLogLines(lines);
     } catch (e) {

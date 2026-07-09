@@ -17,6 +17,7 @@ function processKey(process: ProcessInfo | null): string {
 
 let lastRecipe: RecipeWithStatus | null = null;
 let lastRecipeProcessKey = "";
+const FAST_LOG_REQUEST = { timeout: 3_000, retries: 0 } as const;
 
 type DashboardRecipesCache = {
   currentRecipe: RecipeWithStatus | null;
@@ -140,12 +141,14 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
 
   const refreshLogs = useCallback(
     async (client: DashboardApi, runningRecipe: RecipeWithStatus | null, limit = 220) => {
-      const sessions = await client.getLogSessions();
+      const sessions = await client.getLogSessions(FAST_LOG_REQUEST);
       const list = sessions.sessions || [];
       if (list.length === 0) return [];
       const targetSession = selectTargetLogSession(list, runningRecipe);
       if (!targetSession) return [];
-      const logData = await client.getLogs(targetSession.id, limit).catch(() => ({ logs: [] }));
+      const logData = await client
+        .getLogs(targetSession.id, limit, FAST_LOG_REQUEST)
+        .catch(() => ({ logs: [] }));
       return logData.logs || [];
     },
     [selectTargetLogSession],

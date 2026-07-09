@@ -42,13 +42,16 @@ function loadCanvasEffect(
 }
 
 export function useCanvasEffects({
+  enabled,
   setComputer,
   sessionId,
 }: {
+  enabled: boolean;
   setComputer: Dispatch<SetStateAction<ComputerState>>;
   sessionId?: SessionId | null;
 }): void {
   useMountSubscription(() => {
+    if (!enabled) return;
     let cancelled = false;
     const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
     void Effect.runPromise(
@@ -67,5 +70,5 @@ export function useCanvasEffects({
     return () => {
       cancelled = true;
     };
-  }, [setComputer, sessionId]);
+  }, [enabled, setComputer, sessionId]);
 }

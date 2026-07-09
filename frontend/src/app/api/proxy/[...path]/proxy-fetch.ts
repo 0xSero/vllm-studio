@@ -113,7 +113,7 @@ export async function fetchWithOptionalFallback(
 
   const fetchOnce = async (url: string): Promise<Response> => {
     const controller = new AbortController();
-    const timeoutMs = getUpstreamTimeoutMs(context.path);
+    const timeoutMs = getUpstreamTimeoutMs(context.path, context.method);
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       // Do not auto-follow redirects: a compromised/misbehaving upstream must
