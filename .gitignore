@@ -88,3 +88,5 @@ refactory/
 release-staging/
 frontend/dist-desktop/
 frontend/dist-installers/
+.vercel
+.env*
