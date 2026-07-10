@@ -182,7 +182,7 @@ test("only the bundled Chatterbox plugin receives the local speech capability", 
   assert.equal(untrusted[0]?.hostCapability, undefined);
   assert.equal(untrusted[0]?.tools.state, "none");
 
-  const bundledRoot = path.resolve("frontend/desktop/resources/plugins");
+  const bundledRoot = path.resolve(import.meta.dirname, "../desktop/resources/plugins");
   const bundled = await Effect.runPromise(
     listPluginRuntimeViews([{ label: "Local Studio", dir: bundledRoot, priority: 1 }]),
   );

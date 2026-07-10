@@ -32,6 +32,7 @@ export {
 // Lucide-react re-exports — all icons used across the app
 export {
   Activity,
+  AudioLines,
   AlertCircle,
   AlertTriangle,
   Archive,
@@ -90,6 +91,7 @@ export {
   MessageCircle,
   MessageSquare,
   MessageSquarePlus,
+  Mic,
   Microchip,
   Minus,
   Monitor,
@@ -128,7 +130,9 @@ export {
   TrendingUp,
   TriangleAlert,
   Trash2,
+  Upload,
   Variable,
+  Volume2,
   Wrench,
   X,
   XCircle,

@@ -3,6 +3,7 @@ import { createApiCore } from "./core";
 import { createLogsApi } from "./logs";
 import { createRecipesApi } from "./recipes";
 import { createStudioApi } from "./studio";
+import { createSpeechApi } from "./speech";
 import { createSystemApi } from "./system";
 
 export function createApiClient(params: {
@@ -18,6 +19,7 @@ export function createApiClient(params: {
     ...createLogsApi(core),
     ...createStudioApi(core),
     ...createRigsApi(core),
+    ...createSpeechApi(core),
     healthPoll: (timeoutMs?: number) => core.healthPoll(timeoutMs),
   };
 }

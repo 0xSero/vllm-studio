@@ -18,6 +18,9 @@ import {
   type StatusTone,
 } from "@/features/settings/settings-ui";
 import { GoogleAccountModal } from "./google-account-modal";
+import { ChatterboxVoiceModal } from "./chatterbox-voice-modal";
+import { speechStatusLabel, speechStatusTone } from "./chatterbox-voice-model";
+import { useSpeechStore, type SpeechSnapshot } from "./chatterbox-voice-store";
 
 type PluginStatus = { label: string; tone: StatusTone };
 
@@ -36,6 +39,9 @@ async function pluginResponse(response: Response, fallback: string) {
 }
 
 function capabilitySummary(plugin: PluginRuntimeView): string {
+  if (plugin.hostCapability?.capability === "speech") {
+    return `local speech · voice cloning · v${plugin.version}`;
+  }
   return [
     plugin.provides.skills ? "skills" : null,
     plugin.provides.mcpServers || plugin.account
@@ -48,7 +54,18 @@ function capabilitySummary(plugin: PluginRuntimeView): string {
     .join(" · ");
 }
 
-function pluginStatus(plugin: PluginRuntimeView): PluginStatus {
+function pluginStatus(plugin: PluginRuntimeView, speech: SpeechSnapshot): PluginStatus {
+  if (plugin.hostCapability?.capability === "speech") {
+    if (!speech.available && !speech.loading) return { label: "Unavailable", tone: "danger" };
+    if (speech.status) {
+      return {
+        label: speechStatusLabel(speech.status),
+        tone: speechStatusTone(speech.status),
+      };
+    }
+    if (speech.loading) return { label: "Checking", tone: "default" };
+    return { label: speech.error ? "Unavailable" : "Configure", tone: "warning" };
+  }
   if (plugin.account && !plugin.account.configured) return { label: "Setup", tone: "warning" };
   if (plugin.account && !plugin.account.connected) return { label: "Sign in", tone: "warning" };
   if (plugin.tools.state === "enabled") {
@@ -67,6 +84,7 @@ function pluginStatus(plugin: PluginRuntimeView): PluginStatus {
 }
 
 function activationAction(plugin: PluginRuntimeView): "account" | "connect" | "disconnect" | null {
+  if (plugin.hostCapability) return null;
   if (plugin.account && !plugin.account.connected) return "account";
   if (plugin.account) {
     return plugin.tools.state === "available" || plugin.tools.state === "disabled"
@@ -109,22 +127,35 @@ function PluginRowActions({
   plugin,
   action,
   busy,
+  hostActionLabel,
   onConnect,
   onDisconnect,
   onAccount,
+  onHostCapability,
 }: {
   plugin: PluginRuntimeView;
   action: PluginRowAction;
   busy: boolean;
+  hostActionLabel: string;
   onConnect: () => void;
   onDisconnect: () => void;
   onAccount: () => void;
+  onHostCapability: () => void;
 }) {
-  const actionLabel = pluginActionLabel(plugin, action);
+  const actionLabel = action ? pluginActionLabel(plugin, action) : "";
   const handleAction =
     action === "account" ? onAccount : action === "connect" ? onConnect : onDisconnect;
   return (
     <>
+      {plugin.hostCapability ? (
+        <SettingsButton
+          onClick={onHostCapability}
+          disabled={busy}
+          aria-label={`${hostActionLabel} ${plugin.displayName}`}
+        >
+          {hostActionLabel}
+        </SettingsButton>
+      ) : null}
       {plugin.account?.connected ? (
         <SettingsButton
           onClick={onAccount}
@@ -149,19 +180,24 @@ function PluginRowActions({
 
 function PluginRow({
   plugin,
+  speech,
   busy,
   onConnect,
   onDisconnect,
   onAccount,
+  onHostCapability,
 }: {
   plugin: PluginRuntimeView;
+  speech: SpeechSnapshot;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onAccount: () => void;
+  onHostCapability: () => void;
 }) {
-  const status = pluginStatus(plugin);
+  const status = pluginStatus(plugin, speech);
   const action = activationAction(plugin);
+  const hostActionLabel = speech.status?.install.phase === "ready" ? "Manage" : "Configure";
   return (
     <SettingsRow
       label={plugin.displayName}
@@ -169,14 +205,16 @@ function PluginRow({
       value={<SettingsValue dim>{capabilitySummary(plugin)}</SettingsValue>}
       status={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
       actions={
-        action || plugin.account?.connected ? (
+        action || plugin.account?.connected || plugin.hostCapability ? (
           <PluginRowActions
             plugin={plugin}
             action={action}
             busy={busy}
+            hostActionLabel={hostActionLabel}
             onConnect={onConnect}
             onDisconnect={onDisconnect}
             onAccount={onAccount}
+            onHostCapability={onHostCapability}
           />
         ) : undefined
       }
@@ -192,6 +230,7 @@ function PluginRow({
 }
 
 export function PluginsSection() {
+  const speech = useSpeechStore();
   const [plugins, setPlugins] = useState<readonly PluginRuntimeView[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -199,6 +238,7 @@ export function PluginsSection() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PluginRuntimeView | null>(null);
   const [accountPlugin, setAccountPlugin] = useState<PluginRuntimeView | null>(null);
+  const [speechPlugin, setSpeechPlugin] = useState<PluginRuntimeView | null>(null);
   const requestGeneration = useRef(0);
 
   const loadPlugins = useCallback(() => {
@@ -295,10 +335,12 @@ export function PluginsSection() {
             <PluginRow
               key={plugin.id}
               plugin={plugin}
+              speech={speech}
               busy={busyId === plugin.id}
               onConnect={() => setPending(plugin)}
               onDisconnect={() => void setEnabled(plugin, false)}
               onAccount={() => setAccountPlugin(plugin)}
+              onHostCapability={() => setSpeechPlugin(plugin)}
             />
           ))
         ) : (
@@ -352,6 +394,9 @@ export function PluginsSection() {
           onClose={() => setAccountPlugin(null)}
           onChanged={handleAccountChanged}
         />
+      ) : null}
+      {speechPlugin?.hostCapability?.capability === "speech" ? (
+        <ChatterboxVoiceModal key={speech.controllerKey} onClose={() => setSpeechPlugin(null)} />
       ) : null}
     </>
   );
