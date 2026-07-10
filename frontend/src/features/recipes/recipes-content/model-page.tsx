@@ -5,7 +5,7 @@ import { StatusPill, type UiTone } from "@/ui";
 import { cx } from "@/ui/utils";
 
 export type ModelStatusTone = UiTone;
-export type ModelRowHighlight = "none" | "success";
+export type ModelRowVariant = "default" | "catalog";
 
 export type ModelSummaryItem = {
   label: string;
@@ -21,7 +21,7 @@ type ModelRowProps = {
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
-  highlight?: ModelRowHighlight;
+  variant?: ModelRowVariant;
   className?: string;
   onClick?: () => void;
 };
@@ -130,7 +130,7 @@ export function ModelRow({
   status,
   actions,
   children,
-  highlight = "none",
+  variant = "default",
   className,
   onClick,
 }: ModelRowProps) {
@@ -140,9 +140,9 @@ export function ModelRow({
       className={cx(
         "group px-1 py-2",
         interactive
-          ? "cursor-pointer rounded-md transition-colors hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45"
+          ? "cursor-pointer rounded-md transition-[background-color,transform] hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45 active:translate-y-px"
           : "",
-        highlight === "success" ? "model-row-shine" : "",
+        variant === "catalog" ? "py-2.5" : "",
         className,
       )}
       onClick={onClick}
@@ -159,7 +159,14 @@ export function ModelRow({
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
     >
-      <div className="grid min-h-7 grid-cols-1 gap-2 md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:items-center md:gap-5">
+      <div
+        className={cx(
+          "grid min-h-7 grid-cols-1 gap-2 md:items-center",
+          variant === "catalog"
+            ? "md:grid-cols-[minmax(260px,0.52fr)_minmax(0,0.48fr)] md:gap-4"
+            : "md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:gap-5",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           {leading ? <span className="shrink-0">{leading}</span> : null}
           <div className="min-w-0">
@@ -204,7 +211,16 @@ export function ModelRow({
           ) : null}
         </div>
       </div>
-      {children ? <div className="mt-2 md:ml-[calc(180px+1.25rem)]">{children}</div> : null}
+      {children ? (
+        <div
+          className={cx(
+            "mt-2",
+            variant === "catalog" ? "md:ml-[calc(260px+1rem)]" : "md:ml-[calc(180px+1.25rem)]",
+          )}
+        >
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -274,7 +290,7 @@ export function ModelButton({
       disabled={disabled}
       title={title}
       className={cx(
-        "inline-flex h-6 items-center justify-center gap-1.5 rounded-md px-1.5 text-[length:var(--fs-sm)] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex h-6 items-center justify-center gap-1.5 rounded-md px-1.5 text-[length:var(--fs-sm)] font-medium transition-[background-color,color,transform] active:translate-y-px disabled:pointer-events-none disabled:opacity-45",
         classes,
       )}
     >

@@ -132,8 +132,3 @@
 .animate-cursor-blink {
   animation: blink 0.7s ease-in-out infinite;
 }
-
-.model-row-shine {
-  position: relative;
-  background: color-mix(in srgb, var(--ui-success) 7%, transparent);
-}
