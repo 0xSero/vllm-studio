@@ -271,6 +271,12 @@ restart_controller() {
 set -euo pipefail
 remote_dir=$1
 cd "$remote_dir"
+for controller_service in local-studio-controller-8080.service vllm-studio-controller-b70.service vllm-studio-controller.service; do
+  if systemctl --user is-active "$controller_service" >/dev/null 2>&1; then
+    systemctl --user restart "$controller_service"
+    exit 0
+  fi
+done
 docker compose stop controller 2>/dev/null || true
 controller_dir=$(readlink -f "$PWD/controller")
 
