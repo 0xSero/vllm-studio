@@ -13,6 +13,7 @@ import {
   type ModelSummaryItem,
 } from "./model-page";
 import { modelIdFromPath } from "@/lib/huggingface";
+import { visionModeOverrideLabel } from "@/features/recipes/recipe-vision";
 import type { RecipesTableProps } from "./types";
 import { RecipesTable } from "./recipes-table";
 
@@ -52,11 +53,13 @@ const activeDetailsFor = (
       { label: "serves", value: recipeCount || "defaults" },
     ];
   }
+  const inputMode = visionModeOverrideLabel(recipe);
   return [
     { label: "backend", value: recipe.backend },
     { label: "runtime", value: recipe.runtime?.label ?? recipe.runtime?.kind ?? "legacy" },
     { label: "context", value: contextLabel(recipe) },
     { label: "parallel", value: parallelismLabel(recipe) },
+    ...(inputMode ? [{ label: "input", value: inputMode }] : []),
     { label: "served", value: recipe.served_model_name ?? recipe.name },
   ];
 };

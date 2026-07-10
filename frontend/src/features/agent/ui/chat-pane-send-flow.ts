@@ -18,7 +18,7 @@ import {
 import { type ToolsContextValue } from "@/features/agent/tools/context";
 import {
   attachmentPrompt,
-  imageInputFromAttachment,
+  imageInputsFromAttachments,
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
 
@@ -79,12 +79,7 @@ export function useChatPaneSendFlow({
         vision: modelSupportsVision,
       });
       const prompt = [browserContextText, contextText, attachedText].filter(Boolean).join("\n\n");
-      const images = modelSupportsVision
-        ? attachments.flatMap((file) => {
-            const image = imageInputFromAttachment(file);
-            return image ? [image] : [];
-          })
-        : [];
+      const images = modelSupportsVision ? imageInputsFromAttachments(attachments) : [];
       const messageAttachments = attachments.map((file) => {
         // Prefer the durable inline data URL over the ephemeral blob: URL when
         // available; blob URLs are tied to the composer document and can go stale

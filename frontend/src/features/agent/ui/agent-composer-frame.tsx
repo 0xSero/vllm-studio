@@ -46,6 +46,7 @@ export type AgentComposerFrameProps = {
   mention: ComposerMention | null;
   mentionIndex: number;
   mentionRows: MentionRow[];
+  modelSupportsVision: boolean;
   modelSelector?: ReactNode;
   onAbortTurn: () => void;
   onAttachFiles: (files: FileList | null) => void;
@@ -95,6 +96,7 @@ export function AgentComposerFrame({
   mention,
   mentionIndex,
   mentionRows,
+  modelSupportsVision,
   modelSelector,
   onAbortTurn,
   onAttachFiles,
@@ -165,7 +167,11 @@ export function AgentComposerFrame({
           activeIndex={mentionIndex}
           onSelect={onSelectMention}
         />
-        <AgentAttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
+        <AgentAttachmentTray
+          attachments={attachments}
+          modelSupportsVision={modelSupportsVision}
+          onRemove={onRemoveAttachment}
+        />
         <AgentComposerTextArea
           inputRef={textareaRef}
           value={input}

@@ -104,6 +104,7 @@ export interface RecipeEditor {
   fully_sharded_loras?: boolean;
 
   // Multimodal
+  vision?: boolean | null;
   image_input_type?: string;
   image_token_id?: number;
   image_input_shape?: string;

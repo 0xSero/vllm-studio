@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { refreshPiModels, resolvePiModelSelection } from "@local-studio/agent-runtime/pi-runtime-models";
+import {
+  refreshPiModels,
+  resolvePiModelSelection,
+} from "@local-studio/agent-runtime/pi-runtime-models";
 
 test("Pi model refresh pulls and writes models from every configured controller", async () => {
   const previousDataDir = process.env.LOCAL_STUDIO_DATA_DIR;
@@ -25,6 +28,20 @@ test("Pi model refresh pulls and writes models from every configured controller"
     }),
     "utf8",
   );
+  const userPiAgentDir = path.join(dataDir, ".pi", "agent");
+  mkdirSync(userPiAgentDir, { recursive: true });
+  writeFileSync(
+    path.join(userPiAgentDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        custom: {
+          baseUrl: "http://custom.test:9000/v1",
+          models: [{ id: "qwen3-vl-text-only", input: ["text"] }],
+        },
+      },
+    }),
+    "utf8",
+  );
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
@@ -41,17 +58,14 @@ test("Pi model refresh pulls and writes models from every configured controller"
       { url: "http://secondary.test:8080", apiKey: "secondary-key", name: "secondary" },
     ]);
 
-    assert.deepEqual(
-      requests.map((request) => request.url).sort(),
-      [
-        "http://primary.test:8080/v1/models",
-        "http://secondary.test:8080/v1/models",
-      ],
-    );
-    assert.deepEqual(
-      requests.map((request) => request.authorization).sort(),
-      ["Bearer primary-key", "Bearer secondary-key"],
-    );
+    assert.deepEqual(requests.map((request) => request.url).sort(), [
+      "http://primary.test:8080/v1/models",
+      "http://secondary.test:8080/v1/models",
+    ]);
+    assert.deepEqual(requests.map((request) => request.authorization).sort(), [
+      "Bearer primary-key",
+      "Bearer secondary-key",
+    ]);
 
     assert.deepEqual(
       result.models.map((model) => ({
@@ -73,7 +87,17 @@ test("Pi model refresh pulls and writes models from every configured controller"
           providerId: "local-studio-secondary-test-8080",
           controllerName: "secondary",
         },
+        {
+          id: "user-pi-custom/qwen3-vl-text-only",
+          rawId: "qwen3-vl-text-only",
+          providerId: "user-pi-custom",
+          controllerName: "custom",
+        },
       ],
+    );
+    assert.equal(
+      result.models.find((model) => model.id === "user-pi-custom/qwen3-vl-text-only")?.vision,
+      false,
     );
 
     assert.deepEqual(resolvePiModelSelection("deepseek-v4-flash"), {
@@ -93,10 +117,12 @@ test("Pi model refresh pulls and writes models from every configured controller"
     assert.deepEqual(Object.keys(modelsConfig.providers).sort(), [
       "local-studio",
       "local-studio-secondary-test-8080",
+      "user-pi-custom",
     ]);
-    assert.deepEqual(modelsConfig.providers["local-studio"]?.models.map((model) => model.id), [
-      "deepseek-v4-flash",
-    ]);
+    assert.deepEqual(
+      modelsConfig.providers["local-studio"]?.models.map((model) => model.id),
+      ["deepseek-v4-flash"],
+    );
     assert.deepEqual(
       modelsConfig.providers["local-studio-secondary-test-8080"]?.models.map((model) => model.id),
       ["qwen3-coder"],

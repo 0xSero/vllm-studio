@@ -32,6 +32,10 @@ import {
 } from "../../../../shared/agent/agent-turn";
 import type { AgentImageInput } from "../../../../shared/agent/agent-image-input";
 import {
+  AGENT_TURN_BODY_LIMIT_BYTES,
+  readJsonRequestWithinLimit,
+} from "../../../../shared/agent/agent-turn-body";
+import {
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
   selectedContextInstructions,
@@ -196,12 +200,11 @@ export function handleAgentTurn(request: Request): Promise<Response> {
 
 function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
   return Effect.gen(function* () {
-    const rawBody = yield* Effect.tryPromise({
-      try: () => request.json(),
-      catch: () => null,
-    });
-    if (!rawBody) return jsonError("Invalid JSON body");
-    const parsed = parseAgentTurnRequest(rawBody);
+    const body = yield* Effect.promise(() =>
+      readJsonRequestWithinLimit(request, AGENT_TURN_BODY_LIMIT_BYTES),
+    );
+    if (!body.ok) return jsonError(body.error, body.status);
+    const parsed = parseAgentTurnRequest(body.value);
     if (!parsed.ok) return jsonError(parsed.error);
     const turn = parsed.value;
     const commandImages = turn.images.length ? turn.images : undefined;

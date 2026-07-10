@@ -5,7 +5,11 @@
 // @local-studio/agent-runtime HTTP handlers can share the exact parsing logic
 // with the frontend; the frontend module re-exports everything from this file.
 
-import type { AgentImageInput } from "./agent-image-input";
+import {
+  agentImageDataError,
+  agentImageLimitError,
+  type AgentImageInput,
+} from "./agent-image-input";
 import { sanitizeComposerPromptTemplates, sanitizeComposerSkills } from "./composer-refs";
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -111,13 +115,15 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
     body.streamingBehavior === "steer" || body.streamingBehavior === "followUp"
       ? body.streamingBehavior
       : undefined;
+  const images = parseImages(body.images);
+  if (!images.ok) return images;
   return {
     ok: true,
     value: {
       sessionId: sessionId.value ?? "default",
       modelId: modelId.value!,
       message: message.value!,
-      images: sanitizeImages(body.images),
+      images: images.value,
       cwd: cwd.value,
       piSessionId: piSessionId.value ?? null,
       browserToolEnabled: boolField(body, "browserToolEnabled"),
@@ -132,16 +138,26 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   };
 }
 
-function sanitizeImages(value: unknown): AgentImageInput[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry): AgentImageInput[] => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-    const record = entry as Record<string, unknown>;
-    const data = typeof record.data === "string" ? record.data.replace(/\s+/g, "") : "";
-    const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
-    if (!data || !/^image\/[a-z0-9.+-]+$/i.test(mimeType)) return [];
-    return [{ type: "image", data, mimeType }];
-  });
+function parseImages(value: unknown): ParseResult<AgentImageInput[]> {
+  if (value == null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, error: "images must be an array" };
+  const images: AgentImageInput[] = [];
+  for (const entry of value) {
+    const record = objectRecord(entry);
+    if (!record || record["type"] !== "image") {
+      return { ok: false, error: "images must contain image inputs" };
+    }
+    const data = typeof record["data"] === "string" ? record["data"].trim() : "";
+    const dataError = agentImageDataError(data);
+    if (dataError) return { ok: false, error: dataError };
+    const mimeType = typeof record["mimeType"] === "string" ? record["mimeType"].trim() : "";
+    if (!/^image\/[a-z0-9.+-]+$/i.test(mimeType)) {
+      return { ok: false, error: "Image mimeType must be an image media type." };
+    }
+    images.push({ type: "image", data, mimeType });
+  }
+  const error = agentImageLimitError(images);
+  return error ? { ok: false, error } : { ok: true, value: images };
 }
 
 export function controlTargetHasActiveTurn(

@@ -18,6 +18,7 @@ const recipe = (id: string, status: RecipeWithStatus["status"]): RecipeWithStatu
   id,
   name: id,
   model_path: `/models/${id}`,
+  vision: null,
   backend: "vllm",
   runtime: { kind: "managed_venv", ref: "vllm" },
   env_vars: null,

@@ -422,6 +422,7 @@ export function ChatPane({
         mention={mention}
         mentionIndex={mentionIndex}
         mentionRows={mentionRows}
+        modelSupportsVision={modelSupportsVision}
         modelSelector={modelSelector}
         onAbortTurn={() => void abortTurn()}
         onAttachFiles={(files) => void attachFiles(files)}

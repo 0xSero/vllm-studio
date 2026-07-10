@@ -1,6 +1,7 @@
 "use client";
 
 import { formatBytes } from "@/lib/formatters";
+import { StatusPill } from "@/ui";
 import { CloseIcon, FileIcon } from "@/ui/icons";
 
 export type AgentComposerAttachment = {
@@ -17,15 +18,30 @@ export type AgentComposerAttachment = {
 
 export function AgentAttachmentTray({
   attachments,
+  modelSupportsVision,
   onRemove,
 }: {
   attachments: AgentComposerAttachment[];
+  modelSupportsVision: boolean;
   onRemove: (id: string) => void;
 }) {
   if (attachments.length === 0) return null;
+  const hasInlineImage = attachments.some(
+    (attachment) => attachment.mode === "data-url" && attachment.type.startsWith("image/"),
+  );
 
   return (
     <div className="flex flex-wrap gap-1.5 px-4 pt-2">
+      {hasInlineImage && !modelSupportsVision ? (
+        <div className="flex basis-full items-center gap-2 pb-0.5" role="status">
+          <StatusPill tone="warning" variant="badge">
+            Vision unavailable
+          </StatusPill>
+          <span className="truncate text-[length:var(--fs-xs)] text-(--ui-warning)">
+            The model will receive file details, not the image.
+          </span>
+        </div>
+      ) : null}
       {attachments.map((file) => (
         <span
           key={file.id}

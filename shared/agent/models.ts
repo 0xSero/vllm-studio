@@ -1,3 +1,5 @@
+import { inferModelVision, resolveModelVision } from "../contracts/model-capabilities";
+
 export interface OpenAIModelListItem {
   id: string;
   object?: string;
@@ -48,45 +50,7 @@ export function inferReasoningSupport(modelId: string): boolean {
 }
 
 export function inferVisionSupport(modelId: string): boolean {
-  const normalized = modelId.toLowerCase();
-  const patterns = [
-    "mimo-v2.5",
-    "mimo-v2-5",
-    "step-3.7",
-    "step-3_7",
-    "step-3-7",
-    "nex-n2",
-    "gemma-4",
-    "gemma4",
-    "llava",
-    "internvl",
-    "qwen-vl",
-    "qwen2-vl",
-    "qwen2.5-vl",
-    "qwen3-vl",
-    "qwen-omni",
-    "pixtral",
-    "minicpm-v",
-    "molmo",
-    "phi-3.5-v",
-    "phi-3-vision",
-    "phi-4-mm",
-    "phi-4-multimodal",
-    "llama-3.2-vision",
-    "llama-4",
-    "deepseek-vl",
-    "idefics",
-    "ovis",
-    "moondream",
-    "fuyu",
-    "kosmos",
-    "-vl-",
-    "-vlm",
-    "vision",
-    "multimodal",
-    "-mm-",
-  ];
-  return patterns.some((p) => normalized.includes(p));
+  return inferModelVision([modelId]);
 }
 
 function numberFromUnknown(value: unknown): number | undefined {
@@ -98,30 +62,12 @@ function numberFromUnknown(value: unknown): number | undefined {
   return undefined;
 }
 
-function booleanFromUnknown(value: unknown): boolean | undefined {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) return true;
-    if (["0", "false", "no", "off"].includes(normalized)) return false;
-  }
-  return undefined;
-}
-
-function hasImageInput(value: unknown): boolean | undefined {
-  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-  const normalized = values
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  if (normalized.length === 0) return undefined;
-  return normalized.some((entry) => entry === "image" || entry === "vision");
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  return isRecord(value) ? value : {};
 }
 
 function firstNumber(values: unknown[], fallback: number): number {
@@ -130,22 +76,6 @@ function firstNumber(values: unknown[], fallback: number): number {
     if (parsed) return parsed;
   }
   return fallback;
-}
-
-function firstBoolean(values: unknown[]): boolean | undefined {
-  for (const value of values) {
-    const parsed = booleanFromUnknown(value);
-    if (typeof parsed === "boolean") return parsed;
-  }
-  return undefined;
-}
-
-function firstImageInput(values: unknown[]): boolean | undefined {
-  for (const value of values) {
-    const parsed = hasImageInput(value);
-    if (typeof parsed === "boolean") return parsed;
-  }
-  return undefined;
 }
 
 function resolveContextWindow(
@@ -185,36 +115,8 @@ function resolveReasoning(
   return typeof explicitReasoning === "boolean" ? explicitReasoning : inferReasoningSupport(id);
 }
 
-function resolveVision(
-  model: OpenAIModelListItem,
-  metadata: Record<string, unknown>,
-  capabilities: Record<string, unknown>,
-  id: string,
-): boolean {
-  const explicitVision =
-    firstBoolean([
-      metadata.vision,
-      metadata.supportsVision,
-      metadata.supports_vision,
-      metadata.multimodal,
-      capabilities.vision,
-      capabilities.image,
-    ]) ??
-    firstImageInput([
-      metadata.input,
-      metadata.inputs,
-      metadata.modalities,
-      metadata.input_modalities,
-      model.input,
-      model.inputs,
-      model.modalities,
-    ]);
-  return explicitVision ?? inferVisionSupport(id);
-}
-
 export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
   const metadata = recordFromUnknown(model.metadata);
-  const capabilities = recordFromUnknown(metadata.capabilities);
   const id = String(model.id || "").trim();
   const name = String(model.name || metadata.name || id).trim() || id;
   const contextWindow = resolveContextWindow(model, metadata);
@@ -228,7 +130,11 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
     contextWindow,
     maxTokens,
     reasoning: resolveReasoning(model, metadata, id),
-    vision: resolveVision(model, metadata, capabilities, id),
+    vision: resolveModelVision({
+      identifiers: [id],
+      metadata,
+      modalities: [model.input, model.inputs, model.modalities],
+    }),
     active: explicitActive === true,
   };
 }

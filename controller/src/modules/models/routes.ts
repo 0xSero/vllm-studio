@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
+import { resolveModelVision } from "@local-studio/contracts/model-capabilities";
 
 /**
  * OpenAI-compatible model info.
@@ -14,7 +15,7 @@ interface OpenAIModelInfo {
   owned_by: string;
   active: boolean;
   max_model_len?: number | null;
-  metadata?: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -34,12 +35,25 @@ function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
 }
 
-function recipeMetadata(recipe: Recipe): Record<string, unknown> | undefined {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function recipeMetadata(recipe: Recipe): Record<string, unknown> {
   const metadata = recipe.extra_args?.["metadata"];
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return undefined;
-  }
-  return metadata as Record<string, unknown>;
+  return isRecord(metadata) ? metadata : {};
+}
+
+function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string, unknown> {
+  const metadata = recipeMetadata(recipe);
+  return {
+    ...metadata,
+    vision: resolveModelVision({
+      identifiers: [modelId, recipe.id, recipe.name, recipe.model_path],
+      recipeOverride: recipe.vision,
+      metadata,
+    }),
+  };
 }
 
 export const registerModelsRoutes: RouteRegistrar = (app, context) => {
@@ -81,7 +95,6 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         }
       }
       const modelId = recipe.served_model_name ?? recipe.id;
-      const metadata = recipeMetadata(recipe);
       models.push({
         id: modelId,
         object: "model",
@@ -89,7 +102,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         owned_by: "local-studio",
         active: isActive,
         max_model_len: maxModelLength,
-        ...(metadata ? { metadata } : {}),
+        metadata: resolvedRecipeMetadata(recipe, modelId),
       });
     }
 
@@ -108,6 +121,9 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         owned_by: "local-studio",
         active: true,
         max_model_len: activeModelData?.data?.[0]?.max_model_len ?? 32768,
+        metadata: {
+          vision: resolveModelVision({ identifiers: [inferredId] }),
+        },
       });
     }
 
@@ -162,6 +178,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
       owned_by: "local-studio",
       active: isActive,
       max_model_len: maxModelLength,
+      metadata: resolvedRecipeMetadata(recipe, recipe.served_model_name ?? recipe.id),
     };
 
     return ctx.json(payload);

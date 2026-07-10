@@ -1,11 +1,20 @@
-import { useCallback, useState, type DragEvent, type RefObject } from "react";
-import { Effect } from "effect";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type Dispatch,
+  type DragEvent,
+  type RefObject,
+  type SetStateAction,
+} from "react";
+import { Effect, Semaphore } from "effect";
 import { type SessionTab } from "@/features/agent/messages";
 import {
-  attachmentDedupKey,
+  appendAttachmentsWithinImageLimits,
   createAttachment,
   dataTransferHasFiles,
   filesFromDataTransfer,
+  preflightAttachmentFiles,
   revokeAttachmentPreview,
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
@@ -18,15 +27,31 @@ type UseComposerAttachmentsOptions = {
   fileInputRef: RefObject<HTMLInputElement | null>;
 };
 
+function resolveAttachments(current: ChatAttachment[], update: SetStateAction<ChatAttachment[]>) {
+  return typeof update === "function" ? update(current) : update;
+}
+
+export function createAttachmentQueue() {
+  return Semaphore.makeUnsafe(1);
+}
+
 export function useComposerAttachments({
   activeTab,
   running,
   updateTab,
   fileInputRef,
 }: UseComposerAttachmentsOptions) {
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachments, setAttachmentState] = useState<ChatAttachment[]>([]);
+  const attachmentsRef = useRef<ChatAttachment[]>([]);
+  const pendingAttachmentBatchesRef = useRef(0);
+  const [attachmentQueue] = useState(createAttachmentQueue);
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
+  const setAttachments = useCallback<Dispatch<SetStateAction<ChatAttachment[]>>>((update) => {
+    const next = resolveAttachments(attachmentsRef.current, update);
+    attachmentsRef.current = next;
+    setAttachmentState(next);
+  }, []);
 
   const attachFiles = useCallback(
     (files: FileList | File[] | null) => {
@@ -39,45 +64,47 @@ export function useComposerAttachments({
         }));
         return Promise.resolve();
       }
+      pendingAttachmentBatchesRef.current += 1;
       setReadingAttachments(true);
       return Effect.runPromise(
-        Effect.gen(function* () {
-          const next = yield* Effect.all(
-            fileArray.map((file) =>
-              Effect.tryPromise({ try: () => createAttachment(file), catch: (error) => error }),
-            ),
-          );
-          setAttachments((current) => {
-            const seen = new Set(current.map(attachmentDedupKey));
-            const uniqueNext: ChatAttachment[] = [];
-            next.forEach((file) => {
-              const key = attachmentDedupKey(file);
-              if (seen.has(key)) return;
-              seen.add(key);
-              uniqueNext.push(file);
-            });
-            return [...current, ...uniqueNext];
-          });
-          updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
-        }).pipe(
-          Effect.catch((err) =>
-            Effect.sync(() => {
+        attachmentQueue
+          .withPermit(
+            Effect.gen(function* () {
+              const preflight = preflightAttachmentFiles(attachmentsRef.current, fileArray);
+              const next = yield* Effect.all(
+                preflight.accepted.map((file) =>
+                  Effect.tryPromise({ try: () => createAttachment(file), catch: (error) => error }),
+                ),
+              );
+              const result = appendAttachmentsWithinImageLimits(attachmentsRef.current, next);
+              result.discarded.forEach(revokeAttachmentPreview);
+              setAttachments(result.attachments);
               updateTab(activeTab.id, (tab) => ({
                 ...tab,
-                error: err instanceof Error ? err.message : "Failed to attach file",
+                error: preflight.error ?? result.error ?? "",
               }));
             }),
+          )
+          .pipe(
+            Effect.catch((err) =>
+              Effect.sync(() => {
+                updateTab(activeTab.id, (tab) => ({
+                  ...tab,
+                  error: err instanceof Error ? err.message : "Failed to attach file",
+                }));
+              }),
+            ),
+            Effect.ensuring(
+              Effect.sync(() => {
+                pendingAttachmentBatchesRef.current -= 1;
+                if (pendingAttachmentBatchesRef.current === 0) setReadingAttachments(false);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }),
+            ),
           ),
-          Effect.ensuring(
-            Effect.sync(() => {
-              setReadingAttachments(false);
-              if (fileInputRef.current) fileInputRef.current.value = "";
-            }),
-          ),
-        ),
       );
     },
-    [activeTab, fileInputRef, running, updateTab],
+    [activeTab, attachmentQueue, fileInputRef, running, setAttachments, updateTab],
   );
 
   const removeAttachment = useCallback((id: string) => {

@@ -7,6 +7,7 @@ import { ModelLogo } from "@/ui/model-logo";
 import { ModelButton, ModelRow, ModelStatus, type ModelStatusTone } from "./model-page";
 import { modelIdFromPath } from "@/lib/huggingface";
 import { engineNodeStyle, formatBackendLabel } from "@/features/recipes/recipe-labels";
+import { visionModeOverrideLabel } from "@/features/recipes/recipe-vision";
 
 type Props = {
   recipe: RecipeWithStatus;
@@ -80,6 +81,7 @@ export const RecipeRow = memo(function RecipeRow({
   const runtime =
     recipe.runtime?.label ??
     (recipe.runtime ? `${recipe.runtime.kind}:${recipe.runtime.ref}` : "legacy runtime");
+  const inputMode = visionModeOverrideLabel(recipe);
 
   return (
     <ModelRow
@@ -110,6 +112,14 @@ export const RecipeRow = memo(function RecipeRow({
           >
             {runtime}
           </span>
+          {inputMode ? (
+            <span
+              title="Image input override"
+              className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)"
+            >
+              {inputMode}
+            </span>
+          ) : null}
           {quant ? (
             <span
               title={`Quantization: weights compressed to ${quant} for lower memory use`}

@@ -44,7 +44,11 @@ const normalizedRuntime = (
 // arrive via the API / DB. A NaN previously failed schema validation and made
 // the whole recipe silently vanish; a negative/zero passed straight into the
 // engine launch command. Clamp to a valid value instead.
-const coercePositiveInt = (value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER): number => {
+const coercePositiveInt = (
+  value: unknown,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number => {
   if (value === undefined) return fallback;
   const parsed = Math.floor(Number(value));
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
@@ -75,6 +79,15 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   }
   const data = { ...(raw as Record<string, unknown>) };
   const extraArguments = { ...((data["extra_args"] as Record<string, unknown> | undefined) ?? {}) };
+  const legacyVision = extraArguments["vision"];
+
+  if (
+    data["vision"] === undefined &&
+    (legacyVision === null || typeof legacyVision === "boolean")
+  ) {
+    data["vision"] = legacyVision;
+  }
+  delete extraArguments["vision"];
 
   if (data["backend"] === undefined && data["engine"] !== undefined) {
     data["backend"] = data["engine"];
@@ -117,6 +130,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
     "id",
     "name",
     "model_path",
+    "vision",
     "backend",
     "runtime",
     "env_vars",
@@ -163,6 +177,7 @@ export const recipeSchema = Schema.Struct({
   id: Schema.String.check(Schema.isNonEmpty()),
   name: Schema.String,
   model_path: Schema.String,
+  vision: Schema.Union([Schema.Null, Schema.Boolean]),
   backend: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx"]),
   runtime: serveRuntimeSchema,
   env_vars: Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.String)]),
@@ -202,6 +217,7 @@ export const parseRecipe = (raw: unknown): Recipe => {
     onExcessProperty: "preserve",
   })({
     ...normalized,
+    vision: normalized["vision"] ?? null,
     backend: normalized["backend"] ?? "vllm",
     env_vars: normalized["env_vars"] ?? null,
     tensor_parallel_size: coercePositiveInt(normalized["tensor_parallel_size"], 1),
@@ -235,6 +251,7 @@ export const parseRecipe = (raw: unknown): Recipe => {
   return {
     ...parsed,
     id: asRecipeId(parsed.id),
+    vision: parsed.vision ?? null,
     env_vars: environmentVariables,
     tool_call_parser: parsed.tool_call_parser ?? null,
     reasoning_parser: parsed.reasoning_parser ?? null,

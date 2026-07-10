@@ -10,7 +10,13 @@
 // Read at request time (not module scope) so the standalone server picks the
 // value up from its systemd/service environment.
 
+import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
+
 const HOP_BY_HOP_REQUEST_HEADERS = ["host", "connection", "content-length", "accept-encoding"];
+
+type AgentRuntimeProxyOptions = {
+  bodyLimitBytes?: number;
+};
 
 export function agentRuntimeBaseUrl(): string | null {
   const raw = process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL?.trim();
@@ -25,7 +31,10 @@ export function agentRuntimeBaseUrl(): string | null {
  * unreachable, so a dead sidecar degrades with a clean error instead of a
  * hung request.
  */
-export async function proxyToAgentRuntime(request: Request): Promise<Response | null> {
+export async function proxyToAgentRuntime(
+  request: Request,
+  options: AgentRuntimeProxyOptions = {},
+): Promise<Response | null> {
   const base = agentRuntimeBaseUrl();
   if (!base) return null;
   const url = new URL(request.url);
@@ -34,17 +43,24 @@ export async function proxyToAgentRuntime(request: Request): Promise<Response | 
   const headers = new Headers(request.headers);
   for (const name of HOP_BY_HOP_REQUEST_HEADERS) headers.delete(name);
 
+  let body: ArrayBuffer | undefined;
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    if (options.bodyLimitBytes) {
+      const bounded = await readRequestBytesWithinLimit(request, options.bodyLimitBytes);
+      if (!bounded.ok) return Response.json({ error: bounded.error }, { status: bounded.status });
+      body = new ArrayBuffer(bounded.value.byteLength);
+      new Uint8Array(body).set(bounded.value);
+    } else {
+      body = await request.arrayBuffer();
+    }
+  }
+
   let upstream: Response;
   try {
     upstream = await fetch(target, {
       method: request.method,
       headers,
-      // Runtime/browser requests are small JSON bodies; buffering avoids the
-      // Node fetch duplex-stream requirement for streamed request bodies.
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await request.arrayBuffer(),
+      body,
       // Propagate client disconnects so upstream SSE subscriptions close.
       signal: request.signal,
       cache: "no-store",

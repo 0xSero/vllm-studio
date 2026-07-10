@@ -1,8 +1,21 @@
 "use client";
 
-import { Brain, MessageSquare, Settings, Wrench } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Select } from "@/ui";
+import { Brain, Eye, MessageSquare, Settings, Wrench } from "@/ui/icon-registry";
+import {
+  CheckboxRow,
+  FormField,
+  FormSection,
+  Input,
+  SegmentedControl,
+  Select,
+  type SegmentedItem,
+} from "@/ui";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
+import {
+  type VisionMode,
+  visionForMode,
+  visionModeForRecipe,
+} from "@/features/recipes/recipe-vision";
 import { EngineOptionsSection } from "../engine-options-section";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
 
@@ -16,6 +29,7 @@ export function RecipeModalTabFeatures({
   const options = getEngineOptions(capabilities.options, "features");
   return (
     <div className="space-y-6">
+      <ModelInputSection recipe={recipe} onChange={onChange} capabilities={capabilities} />
       <ToolCallingSection recipe={recipe} onChange={onChange} capabilities={capabilities} />
       <ReasoningSection recipe={recipe} onChange={onChange} capabilities={capabilities} />
       <ChatTemplatesSection recipe={recipe} onChange={onChange} capabilities={capabilities} />
@@ -38,6 +52,34 @@ export function RecipeModalTabFeatures({
 }
 
 type SectionProps = RecipeModalSectionProps;
+
+const VISION_MODE_ITEMS: SegmentedItem<VisionMode>[] = [
+  { id: "auto", label: "Auto" },
+  { id: "enabled", label: "Enabled" },
+  { id: "text", label: "Text only" },
+];
+
+const VISION_MODE_DESCRIPTIONS: Record<VisionMode, string> = {
+  auto: "Detect image support from the model metadata and architecture.",
+  enabled: "Advertise image input even when model metadata is incomplete.",
+  text: "Keep this recipe text-only even when the model appears multimodal.",
+};
+
+function ModelInputSection({ recipe, onChange }: SectionProps) {
+  const mode = visionModeForRecipe(recipe);
+  return (
+    <FormSection icon={<Eye className="h-4 w-4" />} title="Model Input">
+      <FormField label="Image input" description={VISION_MODE_DESCRIPTIONS[mode]} asGroup>
+        <SegmentedControl
+          items={VISION_MODE_ITEMS}
+          value={mode}
+          onChange={(next) => onChange({ ...recipe, vision: visionForMode(next) })}
+          size="sm"
+        />
+      </FormField>
+    </FormSection>
+  );
+}
 
 function ToolCallingSection({ recipe, onChange, capabilities }: SectionProps) {
   if (!capabilities.toolCalling) return null;

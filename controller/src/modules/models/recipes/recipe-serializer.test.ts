@@ -42,12 +42,43 @@ describe("parseRecipe runtime migration", () => {
   });
 
   test("normalizes the legacy venv runtime kind", () => {
-    expect(
-      parseRecipe(minimalRecipe({ runtime: { kind: "venv", ref: "vllm" } })).runtime,
-    ).toEqual({ kind: "managed_venv", ref: "vllm" });
+    expect(parseRecipe(minimalRecipe({ runtime: { kind: "venv", ref: "vllm" } })).runtime).toEqual({
+      kind: "managed_venv",
+      ref: "vllm",
+    });
   });
 
   test("rejects a runtime without a reference", () => {
     expect(() => parseRecipe(minimalRecipe({ runtime: { kind: "docker", ref: "" } }))).toThrow();
+  });
+});
+
+describe("parseRecipe vision capability", () => {
+  test("defaults the first-class override to automatic detection", () => {
+    expect(parseRecipe(minimalRecipe()).vision).toBeNull();
+  });
+
+  test("preserves explicit true and false overrides outside engine arguments", () => {
+    const enabled = parseRecipe(minimalRecipe({ vision: true }));
+    const disabled = parseRecipe(minimalRecipe({ vision: false }));
+    expect(enabled.vision).toBe(true);
+    expect(disabled.vision).toBe(false);
+    expect(enabled.extra_args).not.toHaveProperty("vision");
+    expect(disabled.extra_args).not.toHaveProperty("vision");
+  });
+
+  test("migrates the legacy engine argument without overriding a first-class value", () => {
+    const migrated = parseRecipe(minimalRecipe({ extra_args: { vision: true } }));
+    const overridden = parseRecipe(
+      minimalRecipe({ vision: false, extra_args: { vision: true, seed: 7 } }),
+    );
+    expect(migrated.vision).toBe(true);
+    expect(migrated.extra_args).toEqual({});
+    expect(overridden.vision).toBe(false);
+    expect(overridden.extra_args).toEqual({ seed: 7 });
+  });
+
+  test("rejects non-boolean overrides", () => {
+    expect(() => parseRecipe(minimalRecipe({ vision: "true" }))).toThrow();
   });
 });

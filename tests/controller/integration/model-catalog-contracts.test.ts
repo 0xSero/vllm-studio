@@ -48,6 +48,7 @@ describe("controller route contracts", () => {
         object: "model",
         owned_by: "local-studio",
         active: true,
+        metadata: { vision: false },
       }),
     ]);
   });
@@ -78,6 +79,8 @@ describe("controller route contracts", () => {
         backend: "vllm",
         served_model_name: "catalog-route-served",
         max_model_len: 8192,
+        vision: false,
+        extra_args: { metadata: { family: "catalog", modalities: ["image"] } },
       }),
     });
     const createRecipeBody = await createRecipeResponse.json();
@@ -98,6 +101,7 @@ describe("controller route contracts", () => {
         owned_by: "local-studio",
         active: false,
         max_model_len: 8192,
+        metadata: { family: "catalog", modalities: ["image"], vision: false },
       }),
     ]);
 
@@ -110,6 +114,7 @@ describe("controller route contracts", () => {
       owned_by: "local-studio",
       active: false,
       max_model_len: 8192,
+      metadata: { family: "catalog", modalities: ["image"], vision: false },
     });
 
     const missingModelResponse = await app.request("/v1/models/missing-model");

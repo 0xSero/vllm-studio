@@ -17,5 +17,6 @@ export const DEFAULT_RECIPE: RecipeEditor = {
   max_num_seqs: 256,
   kv_cache_dtype: "auto",
   trust_remote_code: true,
+  vision: null,
   extra_args: {},
 };

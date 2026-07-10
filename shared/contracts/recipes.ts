@@ -15,6 +15,7 @@ export interface RecipeBase {
   id: string;
   name: string;
   model_path: string;
+  vision: boolean | null;
   backend: Backend;
   runtime: ServeRuntime;
   env_vars: Record<string, string> | null;
