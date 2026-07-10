@@ -12,6 +12,13 @@ import { LIFECYCLE_READY_TIMEOUT_MS } from "./configs";
 import type { LaunchFailureBudget } from "./process/launch-failure-budget";
 import { formatLaunchFailureBudgetMessage } from "./process/launch-failure-budget";
 import { getEngineSpec } from "./engine-spec";
+import { Effect } from "effect";
+import {
+  GpuLeaseConflict,
+  type GpuLeaseRegistry,
+  resolveRecipeGpuUuids,
+} from "../system/gpu-leases";
+import type { GpuInfo } from "../models/types";
 
 export type SetActiveRecipeResult = { ok: true } | { ok: false; error: string };
 
@@ -26,6 +33,8 @@ interface CoordinatorDeps {
   processManager: ProcessManager;
   recipeStore: RecipeStore;
   launchFailureBudget: LaunchFailureBudget;
+  gpuLeaseRegistry: GpuLeaseRegistry;
+  gpuInfo: () => GpuInfo[];
 }
 export class EngineCoordinator {
   private readonly switchLock = new AsyncLock();
@@ -48,6 +57,7 @@ export class EngineCoordinator {
     const release = await this.switchLock.acquire();
     let spawnedPid: number | null = null;
     let cancelled = false;
+    let releaseLeaseOnCancel = false;
     const lifecycleAbort = recipe ? new AbortController() : null;
     const abortLifecycle = (): void => lifecycleAbort?.abort();
     if (lifecycleAbort) {
@@ -63,6 +73,7 @@ export class EngineCoordinator {
       if (spawnedPid) {
         await this.deps.processManager.killProcess(spawnedPid, true);
       }
+      if (spawnedPid || releaseLeaseOnCancel) await this.releaseLlmGpuLease();
       await this.deps.eventManager.publishLaunchProgress(
         targetRecipe.id,
         "cancelled",
@@ -88,10 +99,17 @@ export class EngineCoordinator {
       const initialAbort = await abortIfNeeded(recipe);
       if (initialAbort) return initialAbort;
       if (!recipe && !current) {
+        await this.releaseLlmGpuLease();
         return { ok: true };
       }
       if (recipe && current && isRecipeRunning(recipe, current)) {
+        const leaseFailure = await this.prepareRecipeGpuLease(recipe, true);
+        if (leaseFailure) return leaseFailure;
         return { ok: true };
+      }
+      if (recipe && current) {
+        const leaseFailure = await this.prepareRecipeGpuLease(recipe, false);
+        if (leaseFailure) return leaseFailure;
       }
       const killCurrent = async (process: ProcessInfo): Promise<boolean> => {
         const evictedRecipe = this.findRecipeForProcess(process);
@@ -117,17 +135,24 @@ export class EngineCoordinator {
       if (current && (!recipe || !isRecipeRunning(recipe, current))) {
         const stopped = await killCurrent(current);
         if (!stopped) {
+          const currentRecipe = this.findRecipeForProcess(current);
+          if (currentRecipe) await this.prepareRecipeGpuLease(currentRecipe, true);
           return { ok: false, error: `Failed to stop process ${current.pid}` };
         }
+        releaseLeaseOnCancel = true;
         await delay(500);
       }
       const postEvictAbort = await abortIfNeeded(recipe);
       if (postEvictAbort) return postEvictAbort;
       if (!recipe) {
+        await this.releaseLlmGpuLease();
         return { ok: true };
       }
+      const leaseFailure = await this.prepareRecipeGpuLease(recipe, true);
+      if (leaseFailure) return leaseFailure;
       const blocked = this.deps.launchFailureBudget.isBlocked(recipe.id);
       if (blocked) {
+        await this.releaseLlmGpuLease();
         const message = formatLaunchFailureBudgetMessage(blocked);
         await this.deps.eventManager.publishLaunchProgress(recipe.id, "error", message, 0);
         return { ok: false, error: message };
@@ -138,10 +163,14 @@ export class EngineCoordinator {
         `Starting ${recipe.name}...`,
         0.25,
       );
-      const launch = await this.deps.processManager.launchModel(recipe);
+      const launch = await this.deps.processManager.launchModel(recipe).catch(async (error) => {
+        await this.releaseLlmGpuLease();
+        throw error;
+      });
       spawnedPid = launch.pid;
       this.activeLaunchPid = launch.pid;
       if (!launch.success) {
+        await this.releaseLlmGpuLease();
         const failure = this.deps.launchFailureBudget.recordFailure(recipe.id);
         await this.deps.eventManager.publishLaunchProgress(
           recipe.id,
@@ -185,6 +214,7 @@ export class EngineCoordinator {
       if (launch.pid) {
         await this.deps.processManager.killProcess(launch.pid, true);
       }
+      await this.releaseLlmGpuLease();
       const failure = this.deps.launchFailureBudget.recordFailure(recipe.id);
       await this.deps.eventManager.publishLaunchProgress(
         recipe.id,
@@ -272,5 +302,50 @@ export class EngineCoordinator {
 
   async getCurrentProcess(): Promise<ProcessInfo | null> {
     return this.deps.processManager.findInferenceProcess(this.deps.config.inference_port);
+  }
+
+  async getCurrentRecipe(): Promise<Recipe | null> {
+    const process = await this.getCurrentProcess();
+    return process ? this.findRecipeForProcess(process) : null;
+  }
+
+  private async releaseLlmGpuLease(): Promise<void> {
+    await Effect.runPromise(this.deps.gpuLeaseRegistry.release("llm"));
+  }
+
+  private async prepareRecipeGpuLease(
+    recipe: Recipe,
+    replace: boolean,
+  ): Promise<SetActiveRecipeResult | null> {
+    const resolution = resolveRecipeGpuUuids(recipe, this.deps.gpuInfo());
+    const leases = await Effect.runPromise(this.deps.gpuLeaseRegistry.snapshot());
+    const speechActive = leases.some((lease) => lease.owner === "speech");
+    if (resolution.unresolvedTokens.length > 0 && speechActive) {
+      return {
+        ok: false,
+        error: `Cannot resolve GPU selectors while speech owns a device: ${resolution.unresolvedTokens.join(", ")}`,
+      };
+    }
+    if (resolution.source === "all" && resolution.uuids.length === 0 && speechActive) {
+      return { ok: false, error: "Cannot verify model GPU isolation while speech is active" };
+    }
+    if (resolution.uuids.length === 0) return null;
+    try {
+      const effect = replace
+        ? this.deps.gpuLeaseRegistry.replace("llm", resolution.uuids)
+        : this.deps.gpuLeaseRegistry.claim("llm", resolution.uuids);
+      await Effect.runPromise(effect);
+      return null;
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof GpuLeaseConflict
+            ? "The selected model GPU is reserved by local speech"
+            : error instanceof Error
+              ? error.message
+              : String(error),
+      };
+    }
   }
 }

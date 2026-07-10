@@ -22,6 +22,8 @@ import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
 import { RigStore } from "./stores/rig-store";
+import { createGpuLeaseRegistry, type GpuLeaseRegistry } from "./modules/system/gpu-leases";
+import { getGpuInfo } from "./modules/system/platform/gpu";
 
 export interface AppContext {
   config: Config;
@@ -32,6 +34,7 @@ export interface AppContext {
   processManager: ProcessManager;
   downloadManager: DownloadManager;
   engineService: EngineCoordinator;
+  gpuLeaseRegistry: GpuLeaseRegistry;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -91,6 +94,7 @@ export const createAppContext = (): AppContext => {
   const launchFailureBudget = createLaunchFailureBudget();
   const processManager = createProcessManager(config, logger, eventManager);
   const downloadManager = new DownloadManager(config, downloadStore, eventManager, logger);
+  const gpuLeaseRegistry = createGpuLeaseRegistry();
 
   const engineService = new EngineCoordinator({
     config,
@@ -98,6 +102,8 @@ export const createAppContext = (): AppContext => {
     processManager,
     recipeStore,
     launchFailureBudget,
+    gpuLeaseRegistry,
+    gpuInfo: getGpuInfo,
   });
 
   lifetimeMetricsStore.ensureFirstStarted();
@@ -111,6 +117,7 @@ export const createAppContext = (): AppContext => {
     processManager,
     downloadManager,
     engineService,
+    gpuLeaseRegistry,
     stores: {
       recipeStore,
       downloadStore,
