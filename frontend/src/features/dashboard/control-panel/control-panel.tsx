@@ -3,6 +3,7 @@
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
+import { useApiUrlCensored } from "@/ui/api-url-censor";
 import {
   activateController,
   useControllerMatrixStore,
@@ -82,6 +83,7 @@ function ControllerTab({
   active: boolean;
   onActivate: () => void;
 }) {
+  const censorUrls = useApiUrlCensored();
   const fallback = controller.primary ? "primary" : `controller ${controller.index + 1}`;
   const label = controller.name?.trim() || fallback;
   const state = controller.authRequired
@@ -95,7 +97,7 @@ function ControllerTab({
     <button
       type="button"
       onClick={onActivate}
-      title={controller.url}
+      title={censorUrls ? "Controller URL censored" : controller.url}
       className={`group inline-flex h-7 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-left text-[length:var(--fs-sm)] transition ${
         active
           ? "border-(--accent)/60 bg-(--accent)/10 text-(--fg)"

@@ -26,6 +26,7 @@ import {
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
 import { StatusPill, Spinner } from "@/ui";
+import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
 import {
   SettingsButton,
   SettingsGroup,
@@ -110,6 +111,7 @@ export function ApiConnectionSection({
   };
   const [draft, setDraft] = useState<SavedController>({ url: "" });
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const censorUrls = useApiUrlCensored();
 
   const activeId = useMemo(() => normalizeControllerUrl(activeUrl), [activeUrl]);
   const persist = setEntries;
@@ -149,11 +151,14 @@ export function ApiConnectionSection({
         title="Controllers"
         description="Every controller is saved in one list. Switch active with the radio button."
         actions={
-          <ApiStatus
-            status={connectionStatus}
-            message={statusMessage}
-            loading={apiSettingsLoading}
-          />
+          <div className="flex items-center gap-2">
+            <ApiUrlCensorToggle />
+            <ApiStatus
+              status={connectionStatus}
+              message={statusMessage}
+              loading={apiSettingsLoading}
+            />
+          </div>
         }
       >
         {entries.length === 0 ? (
@@ -168,6 +173,7 @@ export function ApiConnectionSection({
               index={index}
               active={entry.id === activeId}
               revealed={Boolean(revealed[entry.id])}
+              censorUrls={censorUrls}
               onToggleReveal={() => toggleReveal(entry.id)}
               onActivate={() => activate(entry)}
               onCommit={(next) => {
@@ -202,6 +208,7 @@ export function ApiConnectionSection({
             placeholder="http://192.168.1.70:8080"
             onChange={(url) => setDraft((current) => ({ ...current, url }))}
             className="min-w-60 flex-1"
+            censored={censorUrls}
           />
           <ControllerSecretInput
             value={draft.apiKey ?? ""}
@@ -281,6 +288,7 @@ function ControllerListRow({
   index,
   active,
   revealed,
+  censorUrls,
   onToggleReveal,
   onActivate,
   onCommit,
@@ -290,6 +298,7 @@ function ControllerListRow({
   index: number;
   active: boolean;
   revealed: boolean;
+  censorUrls: boolean;
   onToggleReveal: () => void;
   onActivate: () => void;
   onCommit: (entry: ControllerEntry) => void;
@@ -336,6 +345,7 @@ function ControllerListRow({
         onChange={(url) => setDraft((current) => ({ ...current, url }))}
         onBlur={() => commit(draft)}
         className="min-w-60 flex-1"
+        censored={censorUrls}
       />
       <ControllerSecretInput
         value={draft.apiKey ?? ""}
@@ -358,16 +368,25 @@ function ControllerTextInput({
   onChange,
   onBlur,
   className,
+  censored = false,
 }: {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
   className: string;
+  censored?: boolean;
 }) {
   return (
     <div className={className}>
-      <SettingsInput value={value} placeholder={placeholder} onChange={onChange} onBlur={onBlur} />
+      <SettingsInput
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        onBlur={onBlur}
+        className={censored ? "blur-[6px]" : undefined}
+        aria-label={censored ? "API URL censored" : undefined}
+      />
     </div>
   );
 }

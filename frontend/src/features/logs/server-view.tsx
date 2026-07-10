@@ -7,6 +7,7 @@ import { useLogs } from "@/features/logs/use-logs";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import type { RealtimeStatusSnapshot } from "@/hooks/realtime-status-types";
 import { getStoredBackendUrl } from "@/lib/api/connection";
+import { CensoredApiUrl } from "@/ui/api-url-censor";
 
 type Tab = "logs" | "docs";
 type BackendInfo = { installed: boolean; version: string | null };
@@ -84,7 +85,9 @@ function ServerHeader({
           <h1 className="mt-1 text-[length:var(--fs-3xl)] font-semibold tracking-[-0.015em]">
             Controller
           </h1>
-          <p className="mt-1 font-mono text-xs text-(--color-foreground-subtle)">{backendUrl}</p>
+          <CensoredApiUrl className="mt-1 block font-mono text-xs text-(--color-foreground-subtle)">
+            {backendUrl}
+          </CensoredApiUrl>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={connected ? "good" : "danger"} variant="badge">
@@ -163,7 +166,10 @@ function ConnectionGroup({
 }) {
   return (
     <StatusGroup title="Connection">
-      <KeyValueRow label="URL" value={<span className="font-mono">{backendUrl}</span>} />
+      <KeyValueRow
+        label="URL"
+        value={<CensoredApiUrl className="font-mono">{backendUrl}</CensoredApiUrl>}
+      />
       <KeyValueRow label="Reachable" value={realtime.connected ? "yes" : "no"} />
       <KeyValueRow label="Inference port" value={realtime.status?.inference_port ?? "—"} />
       {realtime.lease?.holder ? <KeyValueRow label="Lease" value={realtime.lease.holder} /> : null}
