@@ -28,7 +28,6 @@ import { useSessionEngine } from "@/features/agent/runtime/engine";
 import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
-import { CloseIcon, ReloadIcon } from "@/ui/icons";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,
@@ -39,10 +38,6 @@ const Timeline = dynamic(
   () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
   { ssr: false, loading: () => <TimelineFallback /> },
 );
-
-const FINALIZATION_RETRY_ERROR_RE =
-  /Model did not produce a valid final response\.?\s+Retrying finalization/i;
-const BENIGN_TRANSPORT_ERROR_RE = /^(?:terminated|abort(?:ed)?|network error|load failed)$/i;
 
 function downloadTextFile(filename: string, content: string): void {
   if (typeof document === "undefined") return;
@@ -55,18 +50,6 @@ function downloadTextFile(filename: string, content: string): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
-}
-
-function visibleSessionError(error?: string): string {
-  const value = error?.trim() ?? "";
-  return FINALIZATION_RETRY_ERROR_RE.test(value) || BENIGN_TRANSPORT_ERROR_RE.test(value)
-    ? ""
-    : value;
-}
-
-function canRetrySession(tab: SessionTab | null, hasModel: boolean, running: boolean): boolean {
-  if (!tab || !hasModel || running) return false;
-  return tab.messages.some((message) => message.role === "user") || Boolean(tab.input.trim());
 }
 
 function EmptyPromptTimeline() {
@@ -271,7 +254,7 @@ export function ChatPane({
     updateSession: updateTab,
     selectionFor: tools.selectionFor,
   });
-  const { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn, retryLast } =
+  const { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn } =
     useChatPaneSendFlow({
       activeTab,
       attachments,
@@ -320,12 +303,6 @@ export function ChatPane({
     onRegisterHandle,
     running: Boolean(running),
   });
-  const visibleError = visibleSessionError(activeTab?.error);
-  const canRetry = canRetrySession(activeTab, Boolean(modelId), Boolean(running));
-  const dismissVisibleError = useCallback(() => {
-    if (!activeTab) return;
-    updateTab(activeTab.id, (tab) => ({ ...tab, error: "" }));
-  }, [activeTab, updateTab]);
   const exportSession = useCallback(() => {
     if (!activeTab) return;
     const markdown = sessionToMarkdown(activeTab.messages, displayedSessionTitle);
@@ -360,35 +337,6 @@ export function ChatPane({
           onClose={onClose}
           onToggleRightPanel={onToggleRightPanel}
         />
-      ) : null}
-      {visibleError ? (
-        <div
-          className="flex shrink-0 items-start gap-3 border-b border-(--border) bg-(--err)/10 px-4 py-2 text-xs text-(--err)"
-          role="alert"
-        >
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{visibleError}</span>
-          {canRetry ? (
-            <button
-              type="button"
-              onClick={() => void retryLast()}
-              className="-my-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-(--err)/30 px-1.5 py-0.5 text-(--err)/90 hover:bg-(--err)/10 hover:text-(--err)"
-              aria-label="Retry"
-              title="Resend the last message"
-            >
-              <ReloadIcon className="h-3 w-3 pointer-events-none" />
-              Retry
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={dismissVisibleError}
-            className="-my-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--err)/75 hover:bg-(--err)/10 hover:text-(--err)"
-            aria-label="Dismiss error"
-            title="Dismiss error"
-          >
-            <CloseIcon className="h-3 w-3 pointer-events-none" />
-          </button>
-        </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
         {showEmptyPrompt ? (

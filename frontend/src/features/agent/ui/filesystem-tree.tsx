@@ -110,9 +110,12 @@ export function TreeFileList({
         return (
           <div key={entry.path}>
             <div
-              className={`flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-selected) text-(--fg)" : "text-(--dim)"}`}
+              className={`relative flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-selected) font-medium text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
+              {isActive ? (
+                <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-(--link)" />
+              ) : null}
               {isDir ? (
                 <button
                   type="button"
@@ -139,6 +142,7 @@ export function TreeFileList({
                 type="button"
                 onClick={() => (isDir ? onToggleDir(entry.rel) : onOpen(entry))}
                 title={entry.rel}
+                aria-current={isActive ? "page" : undefined}
                 className="flex min-w-0 flex-1 items-center gap-1 text-left"
               >
                 {isDir ? (

@@ -27,7 +27,7 @@ describe("starter presets", () => {
 
   test("remote presets carry a base_url and model", () => {
     for (const preset of STUDIO_STARTER_PRESETS.filter((p) => p.kind === "remote")) {
-      expect(preset.remote?.base_url).toMatch(/^https:\/\//);
+      expect(preset.remote?.base_url).toMatch(/^(https:\/\/|http:\/\/[^/]+\.ts\.net(?::\d+)?\/)/);
       expect(preset.remote?.model).toBeTruthy();
     }
   });

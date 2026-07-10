@@ -78,7 +78,7 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
           <p className="text-sm text-(--ui-muted)">Detecting local agents…</p>
         ) : agents.length === 0 ? (
           <p className="text-sm text-(--ui-muted)">
-            No local agents detected (looked for pi, opencode, droid, hermes, and omp config
+            No local agents detected (looked for pi, opencode, droid, Hermes, and omp config
             directories).
           </p>
         ) : (

@@ -182,6 +182,46 @@ test("merge without runtime events returns the canonical log untouched", () => {
   assert.deepEqual(mergeCanonicalAndRuntimeEvents(canonical), canonical);
 });
 
+test("merge aligns repeated prompts by the longest runtime message sequence", () => {
+  const canonical = [
+    userEvent("start"),
+    assistantEvent("started"),
+    userEvent("what happened"),
+    assistantEvent("first explanation"),
+    userEvent("what happened"),
+    assistantEvent("second explanation"),
+  ];
+  const runtime: RuntimeLoggedEvent[] = [
+    { seq: 2, event: assistantEvent("second explanation") },
+    { seq: 1, event: userEvent("what happened") },
+  ];
+
+  assert.deepEqual(mergeCanonicalAndRuntimeEvents(canonical, runtime), canonical);
+});
+
+test("runtime replay preserves repeated user prompts across completed turns", () => {
+  const events = [
+    { type: "message_start", message: { role: "user", content: "what happened" } },
+    { type: "message_end", message: { role: "user", content: "what happened" } },
+    assistantEvent("first explanation"),
+    { type: "message_start", message: { role: "user", content: "what happened" } },
+    { type: "message_end", message: { role: "user", content: "what happened" } },
+    assistantEvent("second explanation"),
+  ];
+
+  const messages = foldSessionEvents(events).messages;
+
+  assert.deepEqual(
+    messages.map((message) => [message.role, message.text]),
+    [
+      ["user", "what happened"],
+      ["assistant", "first explanation"],
+      ["user", "what happened"],
+      ["assistant", "second explanation"],
+    ],
+  );
+});
+
 // ----- batch replay over the golden event log (runtime/pi-event-applier.ts foldSessionEvents) -----
 
 test("golden event log replays to the expected transcript", () => {
@@ -365,7 +405,8 @@ function createControllerHarness(
       if (prev.status !== "idle" && session.status === "idle") order.push("idle-patch");
       const joinedBlocks = (entry: Session) =>
         (entry.messages.at(-1)?.blocks ?? []).map((block) => block.text).join("");
-      if (joinedBlocks(session) !== joinedBlocks(prev)) order.push(`blocks:${joinedBlocks(session)}`);
+      if (joinedBlocks(session) !== joinedBlocks(prev))
+        order.push(`blocks:${joinedBlocks(session)}`);
     },
     getSession: (sessionId) => (sessionId === session.id ? session : undefined),
     getSessions: () => [session],
@@ -560,10 +601,7 @@ test("reconnect mid-coalesce replays nothing and commits the merged text exactly
   harness.emit({ type: "pi", seq: 1, event: partialDeltaEvent("a", "a") });
   harness.emit({ type: "pi", seq: 2, event: partialDeltaEvent("b", "ab") });
   harness.emit({ type: "pi", seq: 3, event: partialDeltaEvent("c", "abc") });
-  assert.equal(
-    harness.order.filter((entry) => entry.startsWith("blocks:")).length,
-    blocksBefore,
-  );
+  assert.equal(harness.order.filter((entry) => entry.startsWith("blocks:")).length, blocksBefore);
 
   // The frame fires: exactly one commit applies "abc" and stamps the cursor.
   harness.frames.runAll();
@@ -714,9 +752,7 @@ function createPollHarness(initial: Session[]): PollHarness {
 }
 
 test("poll promotes an active runtime to running and adopts its key via the pi match", async () => {
-  const harness = createPollHarness([
-    pollSession({ status: "idle", piSessionId: "pi-1" }),
-  ]);
+  const harness = createPollHarness([pollSession({ status: "idle", piSessionId: "pi-1" })]);
   harness.controller.pollNow();
   assert.equal(harness.fetchCount(), 1);
 

@@ -288,6 +288,33 @@ test("session list refreshes fire immediately and again after the settle delay",
   assert.equal(harness2.fired.filter((entry) => entry.type === SESSIONS_CHANGED_EVENT).length, 0);
 });
 
+test("url navigation does not replay an already-open session", () => {
+  const session = makeSession("s-open", {
+    piSessionId: "pi-open",
+    messages: [{ id: "u-1", role: "user", text: "keep this transcript" }],
+    status: "running",
+  });
+  const prev = makeState(session);
+  const next = { ...prev, lastHandledNavKey: "open-existing" };
+  const { deps, replays } = makeEffectDeps();
+
+  runWorkspaceEffect(
+    {
+      type: "urlNavRequested",
+      key: "open-existing",
+      project: null,
+      sessionId: "pi-open",
+      paneId: "p-unused",
+      tab: makeSession("s-unused"),
+    },
+    prev,
+    next,
+    deps,
+  );
+
+  assert.deepEqual(replays, []);
+});
+
 // ----- session replay queue (workspace/replay-queue.ts) -----
 
 type ReplayHarness = {
@@ -400,6 +427,24 @@ test("replay queue is last-wins per pane and immediate when the handle exists", 
   // Two drains ran but the pending slot was consumed by the first; only the
   // newest queued id replays.
   assert.deepEqual(harness.replays, [{ paneId: "p-1", piSessionId: "pi-b" }]);
+});
+
+test("replay queue preserves a populated live transcript", () => {
+  const harness = makeReplayHarness();
+  harness.setHandle("p-1", true);
+  harness.setSession(
+    "p-1",
+    makeSession("s-live", {
+      piSessionId: "pi-live",
+      messages: [{ id: "u-1", role: "user", text: "keep this transcript" }],
+      status: "running",
+    }),
+  );
+
+  harness.queue.queue("p-1", "pi-live");
+  harness.runTimers();
+
+  assert.deepEqual(harness.replays, []);
 });
 
 test("a replay queued for a pane that never mounts stays inert", () => {

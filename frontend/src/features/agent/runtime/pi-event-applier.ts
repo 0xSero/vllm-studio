@@ -526,8 +526,9 @@ function reduceUserMessageEvent(
   ctx: SessionStreamContext,
   event: Record<string, unknown>,
 ): Session | null {
-  const isCanonical = event.type === "message";
+  const isCanonical = event.type === "message" || (ctx.replay && event.type === "message_end");
   if (!isCanonical && event.type !== "message_start" && event.type !== "message_end") return null;
+  if (ctx.replay && event.type === "message_start") return session;
   const msg = event.message as { role?: string; content?: string | Record<string, unknown>[] };
   if (msg?.role !== "user") return null;
   const text = visibleUserTextFromPi(messageText(msg.content));

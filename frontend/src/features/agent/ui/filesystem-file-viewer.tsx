@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { MessageSquarePlus, Minus } from "@/ui/icon-registry";
-import { highlightFenced } from "@/features/agent/highlight-cache";
+import { highlightLines } from "@/features/agent/highlight-cache";
 import type { FileComment } from "@/features/agent/filesystem-types";
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -88,7 +88,7 @@ export function FileViewer({
   const highlightedLines = useMemo(() => {
     const lang = languageForPath(filePath);
     if (!lang) return null;
-    return lines.map((line) => highlightFenced(lang, line));
+    return highlightLines(lang, lines);
   }, [filePath, lines]);
   const commentsByLine = useMemo(() => {
     const map = new Map<number, FileComment[]>();

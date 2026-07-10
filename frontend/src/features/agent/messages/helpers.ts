@@ -1,8 +1,5 @@
 import { piEventIsSuccessfulCompaction } from "@shared/agent/pi-events";
-import {
-  cleanSessionTitle,
-  isPlaceholderSessionTitle,
-} from "@shared/agent/session-title";
+import { cleanSessionTitle, isPlaceholderSessionTitle } from "@shared/agent/session-title";
 
 export { cleanSessionTitle, isPlaceholderSessionTitle };
 import type {
@@ -111,7 +108,6 @@ export function formatTokenCount(tokens: number): string {
 export function sessionTitleFromPrompt(text: string): string {
   return cleanSessionTitle(text.replace(/\s+/g, " ").trim().slice(0, 48)) || "New session";
 }
-
 
 export function visibleUserTextFromPi(text: string): string {
   const marker = "\n\nUser prompt:\n";
@@ -271,51 +267,78 @@ function eventKey(event: Record<string, unknown>): string {
   }
 }
 
-function userTextFromEvent(event: Record<string, unknown>): string | null {
+function messageFingerprint(event: Record<string, unknown>): string | null {
   const message = asRecord(event.message);
-  if (!message || message.role !== "user") return null;
-  const content = message.content;
-  if (typeof content !== "string" && !Array.isArray(content)) return null;
-  const text = visibleUserTextFromPi(messageText(content as string | Record<string, unknown>[]));
-  return text ? text : null;
+  if (!message || typeof message.role !== "string") return null;
+  return eventKey(message);
 }
 
 function canonicalEventsBeforeRuntimeTail(
   canonicalEvents: Record<string, unknown>[],
   runtime: Record<string, unknown>[],
 ): Record<string, unknown>[] {
-  const firstRuntimeUser = runtime
-    .map(userTextFromEvent)
-    .find((text): text is string => Boolean(text));
-  if (!firstRuntimeUser) return canonicalEvents;
-  for (let index = canonicalEvents.length - 1; index >= 0; index -= 1) {
-    if (userTextFromEvent(canonicalEvents[index]) === firstRuntimeUser) {
-      return canonicalEvents.slice(0, index);
+  const canonicalMessages = canonicalEvents.flatMap((event, eventIndex) => {
+    const fingerprint = messageFingerprint(event);
+    return fingerprint ? [{ eventIndex, fingerprint }] : [];
+  });
+  const runtimeMessages = runtime.flatMap((event) => {
+    if (event.type !== "message" && event.type !== "message_end") return [];
+    const fingerprint = messageFingerprint(event);
+    return fingerprint ? [fingerprint] : [];
+  });
+  const firstRuntimeMessage = runtimeMessages[0];
+  if (!firstRuntimeMessage) return canonicalEvents;
+  let best: { eventIndex: number; score: number } | null = null;
+  for (let index = 0; index < canonicalMessages.length; index += 1) {
+    if (canonicalMessages[index]?.fingerprint !== firstRuntimeMessage) continue;
+    let score = 0;
+    while (
+      canonicalMessages[index + score]?.fingerprint === runtimeMessages[score] &&
+      runtimeMessages[score]
+    ) {
+      score += 1;
     }
+    const candidate = { eventIndex: canonicalMessages[index]?.eventIndex ?? 0, score };
+    if (!best || candidate.score >= best.score) best = candidate;
+  }
+  if (best) {
+    return canonicalEvents.slice(0, best.eventIndex);
   }
   return canonicalEvents;
+}
+
+function runtimeEventsInOrder(
+  runtimeEvents: readonly RuntimeLoggedEvent[],
+): Record<string, unknown>[] {
+  return [...runtimeEvents]
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .flatMap((entry) => {
+      if (entry.event && typeof entry.event === "object") {
+        return [entry.event];
+      }
+      return [];
+    });
+}
+
+function dedupeAdjacentEvents(events: Record<string, unknown>[]): Record<string, unknown>[] {
+  let previous = "";
+  return events.filter((event) => {
+    const key = eventKey(event);
+    if (key === previous) return false;
+    previous = key;
+    return true;
+  });
 }
 
 export function mergeCanonicalAndRuntimeEvents(
   canonicalEvents: Record<string, unknown>[],
   runtimeEvents: readonly RuntimeLoggedEvent[] = [],
 ): Record<string, unknown>[] {
-  const runtime = [...runtimeEvents]
-    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-    .flatMap((entry) => (entry.event && typeof entry.event === "object" ? [entry.event] : []));
-  const canonicalPrefix = canonicalEventsBeforeRuntimeTail(canonicalEvents, runtime);
-
-  const merged: Record<string, unknown>[] = [];
-  const seen = new Set<string>();
-  const push = (event: Record<string, unknown>) => {
-    const key = eventKey(event);
-    if (seen.has(key)) return;
-    seen.add(key);
-    merged.push(event);
-  };
-  canonicalPrefix.forEach(push);
-  runtime.forEach(push);
-  return merged;
+  const runtime = runtimeEventsInOrder(runtimeEvents);
+  return dedupeAdjacentEvents([
+    ...canonicalEventsBeforeRuntimeTail(canonicalEvents, runtime),
+    ...runtime,
+  ]);
 }
 
 export function makeFreshTab(): SessionTab {
