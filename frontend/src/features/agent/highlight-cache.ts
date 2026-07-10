@@ -47,6 +47,30 @@ export function highlightFenced(language: string | null, code: string): string {
   return highlighted;
 }
 
+export function highlightLines(language: string | null, lines: readonly string[]): string[] {
+  if (lines.length === 0) return [];
+  const rendered = [""];
+  const openSpans: string[] = [];
+  for (const token of highlightFenced(language, lines.join("\n")).split(
+    /(<span[^>]*>|<\/span>|\n)/,
+  )) {
+    const line = rendered.length - 1;
+    if (token === "\n") {
+      rendered[line] += "</span>".repeat(openSpans.length);
+      rendered.push(openSpans.join(""));
+    } else if (token.startsWith("<span")) {
+      openSpans.push(token);
+      rendered[line] += token;
+    } else if (token === "</span>") {
+      openSpans.pop();
+      rendered[line] += token;
+    } else {
+      rendered[line] += token;
+    }
+  }
+  return rendered;
+}
+
 export function escapeHighlightHtml(code: string): string {
   return code
     .replaceAll("&", "&amp;")
