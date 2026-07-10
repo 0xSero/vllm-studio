@@ -1,4 +1,8 @@
-import { Effect, Semaphore } from "effect";
+import { randomUUID } from "node:crypto";
+import { chmod, link, mkdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Schema, Semaphore } from "effect";
 import type { GpuInfo, Recipe } from "../models/types";
 
 const fullNvidiaUuid =
@@ -55,20 +59,261 @@ export class InvalidGpuLeaseUuid extends Error {
   }
 }
 
+export class GpuLeaseLockFailure extends Error {
+  readonly _tag = "GpuLeaseLockFailure";
+
+  constructor(
+    readonly operation: "acquire" | "release",
+    cause: unknown,
+  ) {
+    super(`Unable to ${operation} the host GPU lease`, { cause });
+    this.name = "GpuLeaseLockFailure";
+  }
+}
+
+export interface GpuLeaseRegistryOptions {
+  readonly lockDirectory?: string;
+}
+
+type GpuLeaseError = GpuLeaseConflict | GpuLeaseLockFailure | InvalidGpuLeaseUuid;
+
 export interface GpuLeaseRegistry {
   readonly claim: (
     owner: GpuLeaseOwner,
     uuids: readonly string[],
-  ) => Effect.Effect<readonly GpuLease[], GpuLeaseConflict | InvalidGpuLeaseUuid>;
+  ) => Effect.Effect<readonly GpuLease[], GpuLeaseError>;
   readonly replace: (
     owner: GpuLeaseOwner,
     uuids: readonly string[],
-  ) => Effect.Effect<readonly GpuLease[], GpuLeaseConflict | InvalidGpuLeaseUuid>;
+  ) => Effect.Effect<readonly GpuLease[], GpuLeaseError>;
   readonly release: (
     owner: GpuLeaseOwner,
     uuids?: readonly string[],
-  ) => Effect.Effect<readonly GpuLease[], InvalidGpuLeaseUuid>;
+  ) => Effect.Effect<readonly GpuLease[], GpuLeaseLockFailure | InvalidGpuLeaseUuid>;
   readonly snapshot: () => Effect.Effect<readonly GpuLease[]>;
+}
+
+const HostGpuLeaseRecordSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  uuid: Schema.String,
+  owner: Schema.Literals(["llm", "speech"]),
+  pid: Schema.Number,
+  processStartToken: Schema.Union([Schema.String, Schema.Null]),
+  registryId: Schema.String,
+});
+
+interface HostGpuLeaseRecord {
+  readonly version: 1;
+  readonly uuid: string;
+  readonly owner: GpuLeaseOwner;
+  readonly pid: number;
+  readonly processStartToken: string | null;
+  readonly registryId: string;
+}
+
+type HostLockRead =
+  | { readonly status: "found"; readonly record: HostGpuLeaseRecord }
+  | { readonly status: "invalid" }
+  | { readonly status: "missing" };
+
+type HostLockClaim =
+  | { readonly status: "acquired" }
+  | { readonly status: "owned" }
+  | { readonly status: "conflict"; readonly heldBy: GpuLeaseOwner };
+
+interface HostGpuLockStore {
+  readonly acquire: (uuid: string, owner: GpuLeaseOwner) => Promise<HostLockClaim>;
+  readonly release: (uuid: string) => Promise<void>;
+}
+
+type LinuxProcessStart =
+  | { readonly status: "found"; readonly token: string }
+  | { readonly status: "missing" }
+  | { readonly status: "unknown" };
+
+const hostLockAttempts = 128;
+const staleReaperAgeMs = 5_000;
+
+function hasErrorCode(error: unknown): error is Error & { code: string } {
+  return error instanceof Error && "code" in error && typeof error.code === "string";
+}
+
+function linuxStartToken(stat: string): string | null {
+  const commandEnd = stat.lastIndexOf(")");
+  if (commandEnd < 0) return null;
+  const token = stat
+    .slice(commandEnd + 1)
+    .trim()
+    .split(/\s+/)[19];
+  return token && /^\d+$/.test(token) ? token : null;
+}
+
+async function readLinuxProcessStart(pid: number): Promise<LinuxProcessStart> {
+  try {
+    const token = linuxStartToken(await readFile(`/proc/${pid}/stat`, "utf8"));
+    return token ? { status: "found", token } : { status: "unknown" };
+  } catch (error) {
+    return hasErrorCode(error) && error.code === "ENOENT"
+      ? { status: "missing" }
+      : { status: "unknown" };
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !hasErrorCode(error) || error.code !== "ESRCH";
+  }
+}
+
+async function hostRecordIsLive(record: HostGpuLeaseRecord): Promise<boolean> {
+  if (!Number.isSafeInteger(record.pid) || record.pid <= 0) return false;
+  if (process.platform !== "linux") return processIsAlive(record.pid);
+  if (record.processStartToken === null) return false;
+  const current = await readLinuxProcessStart(record.pid);
+  if (current.status === "missing") return false;
+  return current.status === "unknown" || current.token === record.processStartToken;
+}
+
+async function currentProcessStartToken(): Promise<string | null> {
+  if (process.platform !== "linux") return null;
+  const current = await readLinuxProcessStart(process.pid);
+  if (current.status !== "found") throw new Error("Unable to read the controller process identity");
+  return current.token;
+}
+
+function validHostRecord(value: unknown): HostGpuLeaseRecord | null {
+  try {
+    const record = Schema.decodeUnknownSync(HostGpuLeaseRecordSchema)(value);
+    if (!Number.isSafeInteger(record.pid) || record.pid <= 0 || !record.registryId) return null;
+    if (!fullNvidiaUuid.test(record.uuid)) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+async function readHostLock(path: string): Promise<HostLockRead> {
+  try {
+    const record = validHostRecord(JSON.parse(await readFile(path, "utf8")));
+    return record ? { status: "found", record } : { status: "invalid" };
+  } catch (error) {
+    if (hasErrorCode(error) && error.code === "ENOENT") return { status: "missing" };
+    if (error instanceof SyntaxError) return { status: "invalid" };
+    throw error;
+  }
+}
+
+async function removeIfPresent(path: string): Promise<void> {
+  await unlink(path).catch((error: unknown) => {
+    if (!hasErrorCode(error) || error.code !== "ENOENT") throw error;
+  });
+}
+
+async function releaseReaper(path: string): Promise<void> {
+  await rmdir(path).catch((error: unknown) => {
+    if (!hasErrorCode(error) || error.code !== "ENOENT") throw error;
+  });
+}
+
+async function staleReaper(path: string): Promise<boolean> {
+  try {
+    return Date.now() - (await stat(path)).mtimeMs >= staleReaperAgeMs;
+  } catch (error) {
+    if (hasErrorCode(error) && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function reclaimStaleHostLock(path: string): Promise<void> {
+  const reaperPath = `${path}.reaper`;
+  try {
+    await mkdir(reaperPath, { mode: 0o700 });
+  } catch (error) {
+    if (hasErrorCode(error) && error.code === "EEXIST") {
+      if (await staleReaper(reaperPath)) await releaseReaper(reaperPath);
+      else await Effect.runPromise(Effect.sleep(5));
+      return;
+    }
+    throw error;
+  }
+  try {
+    const current = await readHostLock(path);
+    if (current.status === "invalid") throw new Error("Host GPU lease record is invalid");
+    if (current.status === "found" && !(await hostRecordIsLive(current.record))) {
+      await removeIfPresent(path);
+    }
+  } finally {
+    await releaseReaper(reaperPath);
+  }
+}
+
+function hostLockPath(directory: string, uuid: string): string {
+  return join(directory, `${uuid.toLowerCase()}.lock`);
+}
+
+function createHostGpuLockStore(directory: string): HostGpuLockStore {
+  const registryId = randomUUID();
+  const processStartToken = currentProcessStartToken();
+  const ensureDirectory = async (): Promise<void> => {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+  };
+  const acquire = async (uuid: string, owner: GpuLeaseOwner): Promise<HostLockClaim> => {
+    await ensureDirectory();
+    const path = hostLockPath(directory, uuid);
+    const temporaryPath = join(directory, `.${registryId}-${randomUUID()}.lock`);
+    const record = {
+      version: 1,
+      uuid,
+      owner,
+      pid: process.pid,
+      processStartToken: await processStartToken,
+      registryId,
+    } satisfies HostGpuLeaseRecord;
+    await writeFile(temporaryPath, JSON.stringify(record), { flag: "wx", mode: 0o600 });
+    try {
+      for (let attempt = 0; attempt < hostLockAttempts; attempt += 1) {
+        try {
+          await link(temporaryPath, path);
+          return { status: "acquired" };
+        } catch (error) {
+          if (!hasErrorCode(error) || error.code !== "EEXIST") throw error;
+        }
+        const current = await readHostLock(path);
+        if (current.status === "missing") continue;
+        if (current.status === "found") {
+          if (current.record.registryId === registryId) {
+            return current.record.owner === owner
+              ? { status: "owned" }
+              : { status: "conflict", heldBy: current.record.owner };
+          }
+          if (await hostRecordIsLive(current.record)) {
+            return { status: "conflict", heldBy: current.record.owner };
+          }
+        }
+        await reclaimStaleHostLock(path);
+      }
+      throw new Error(`Unable to settle host GPU lease ${uuid}`);
+    } finally {
+      await removeIfPresent(temporaryPath);
+    }
+  };
+  const release = async (uuid: string): Promise<void> => {
+    const path = hostLockPath(directory, uuid);
+    const current = await readHostLock(path);
+    if (current.status === "found" && current.record.registryId === registryId) {
+      await removeIfPresent(path);
+    }
+  };
+  return { acquire, release };
+}
+
+export function perUserGpuLeaseLockDirectory(): string {
+  const user = typeof process.getuid === "function" ? process.getuid() : "user";
+  return join(tmpdir(), `local-studio-${user}`, "gpu-leases");
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
@@ -193,14 +438,52 @@ function releaseOwnerLeases(
   }
 }
 
-export function createGpuLeaseRegistry(): GpuLeaseRegistry {
+export function createGpuLeaseRegistry(options: GpuLeaseRegistryOptions = {}): GpuLeaseRegistry {
   const leases = new Map<string, GpuLeaseOwner>();
   const semaphore = Semaphore.makeUnsafe(1);
+  const hostLocks = options.lockDirectory ? createHostGpuLockStore(options.lockDirectory) : null;
+  const acquireHostLeases = async (
+    owner: GpuLeaseOwner,
+    uuids: readonly string[],
+  ): Promise<readonly GpuLeaseConflictEntry[]> => {
+    if (!hostLocks) return [];
+    const acquired: string[] = [];
+    try {
+      for (const uuid of uuids) {
+        const result = await hostLocks.acquire(uuid, owner);
+        if (result.status !== "conflict") acquired.push(uuid);
+        if (result.status === "conflict") {
+          await Promise.all(acquired.map((acquiredUuid) => hostLocks.release(acquiredUuid)));
+          return [{ uuid, heldBy: result.heldBy }];
+        }
+      }
+      return [];
+    } catch (error) {
+      await Promise.allSettled(acquired.map((uuid) => hostLocks.release(uuid)));
+      throw error;
+    }
+  };
+  const releaseHostLeases = async (uuids: readonly string[]): Promise<void> => {
+    if (hostLocks) await Promise.all(uuids.map((uuid) => hostLocks.release(uuid)));
+  };
+  const hostAcquireEffect = (
+    owner: GpuLeaseOwner,
+    uuids: readonly string[],
+  ): Effect.Effect<readonly GpuLeaseConflictEntry[], GpuLeaseLockFailure> =>
+    Effect.tryPromise({
+      try: () => acquireHostLeases(owner, uuids),
+      catch: (error) => new GpuLeaseLockFailure("acquire", error),
+    });
+  const hostReleaseEffect = (uuids: readonly string[]): Effect.Effect<void, GpuLeaseLockFailure> =>
+    Effect.tryPromise({
+      try: () => releaseHostLeases(uuids),
+      catch: (error) => new GpuLeaseLockFailure("release", error),
+    });
   const assign = (
     owner: GpuLeaseOwner,
     requestedUuids: readonly string[],
     replace: boolean,
-  ): Effect.Effect<readonly GpuLease[], GpuLeaseConflict | InvalidGpuLeaseUuid> =>
+  ): Effect.Effect<readonly GpuLease[], GpuLeaseError> =>
     semaphore.withPermit(
       Effect.gen(function* () {
         const requested = uniqueUuids(requestedUuids);
@@ -209,24 +492,46 @@ export function createGpuLeaseRegistry(): GpuLeaseRegistry {
         const uuids = uniqueUuids(requested.map(canonicalNvidiaUuid));
         const conflicts = conflictingLeases(leases, owner, uuids);
         if (conflicts.length > 0) return yield* Effect.fail(new GpuLeaseConflict(owner, conflicts));
+        const additions = uuids.filter((uuid) => leases.get(uuid) !== owner);
+        const hostConflicts = yield* hostAcquireEffect(owner, additions);
+        if (hostConflicts.length > 0) {
+          return yield* Effect.fail(new GpuLeaseConflict(owner, hostConflicts));
+        }
+        const removals = replace
+          ? [...leases]
+              .filter(([uuid, heldBy]) => heldBy === owner && !uuids.includes(uuid))
+              .map(([uuid]) => uuid)
+          : [];
+        yield* hostReleaseEffect(removals).pipe(
+          Effect.catch((error) =>
+            hostReleaseEffect(additions).pipe(
+              Effect.catch(() => Effect.void),
+              Effect.andThen(Effect.fail(error)),
+            ),
+          ),
+        );
         if (replace) releaseOwnerLeases(leases, owner);
         for (const uuid of uuids) leases.set(uuid, owner);
         return leaseSnapshot(leases);
-      }),
+      }).pipe(Effect.uninterruptible),
     );
   const release = (
     owner: GpuLeaseOwner,
     requestedUuids?: readonly string[],
-  ): Effect.Effect<readonly GpuLease[], InvalidGpuLeaseUuid> =>
+  ): Effect.Effect<readonly GpuLease[], GpuLeaseLockFailure | InvalidGpuLeaseUuid> =>
     semaphore.withPermit(
       Effect.gen(function* () {
         const requested = requestedUuids ? uniqueUuids(requestedUuids) : undefined;
         const invalid = requested ? invalidUuidRequest(requested) : null;
         if (invalid) return yield* Effect.fail(invalid);
         const uuids = requested?.map(canonicalNvidiaUuid);
+        const released = [...leases]
+          .filter(([uuid, heldBy]) => heldBy === owner && (!uuids || uuids.includes(uuid)))
+          .map(([uuid]) => uuid);
+        yield* hostReleaseEffect(released);
         releaseOwnerLeases(leases, owner, uuids);
         return leaseSnapshot(leases);
-      }),
+      }).pipe(Effect.uninterruptible),
     );
   return {
     claim: (owner, uuids) => assign(owner, uuids, false),

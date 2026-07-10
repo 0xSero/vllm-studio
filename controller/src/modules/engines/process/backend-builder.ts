@@ -12,9 +12,7 @@ import type { Logger } from "../../../core/logger";
 import { resolveBinary } from "../../../core/command";
 import { managedLlamaServerPath } from "../runtimes/managed-llamacpp";
 import { getEngineSpec } from "../engine-spec";
-import { getGpuInfo } from "../../system/platform/gpu";
 import { resolveRecipeGpuUuids } from "../../system/gpu-leases";
-import type { GpuInfo } from "../../models/types";
 
 export const normalizeJsonArgument = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -281,10 +279,10 @@ const buildDockerEnvironmentFlags = (recipe: Recipe): string[] => {
   return flags;
 };
 
-export const buildDockerGpuFlags = (recipe: Recipe, gpus: readonly GpuInfo[]): string[] => {
-  const resolution = resolveRecipeGpuUuids(recipe, gpus);
-  const resolved = resolution.unresolvedTokens.length === 0 ? resolution.uuids.join(",") : "";
-  const selector = resolved || resolution.selector?.trim() || "";
+export const buildDockerGpuFlags = (recipe: Recipe): string[] => {
+  const resolution = resolveRecipeGpuUuids(recipe, []);
+  const selector = resolution.selector?.trim() || "";
+  if (resolution.source === "recipe" && !selector) return [];
   const request = selector.includes(",") ? `"device=${selector}"` : `device=${selector}`;
   return selector
     ? ["--gpus", request, "-e", `CUDA_VISIBLE_DEVICES=${selector}`]
@@ -328,7 +326,7 @@ export const buildDockerRunArguments = ({
     "--rm",
     "--name",
     name,
-    ...buildDockerGpuFlags(recipe, getGpuInfo()),
+    ...buildDockerGpuFlags(recipe),
     "--network",
     "host",
     "--ipc",
@@ -381,9 +379,16 @@ const rejectPathTraversal = (value: string, label: string): void => {
     throw new Error(`Invalid ${label}: path traversal is not allowed`);
   }
 };
-export const buildBackendCommand = (recipe: Recipe, config: Config): string[] => {
+export const buildBackendCommand = (
+  recipe: Recipe,
+  config: Config,
+  managedGpuSelection = false,
+): string[] => {
   const launchCommand = getLaunchCommandOverride(recipe);
   if (launchCommand) {
+    if (managedGpuSelection) {
+      throw new Error("Custom launch commands cannot use managed GPU selection");
+    }
     return launchCommand;
   }
   return getEngineSpec(recipe.backend).buildCommand(recipe, config);

@@ -180,6 +180,78 @@ describe("process manager launch/stop via the process seam", () => {
   );
 
   test(
+    "docker runtime receives the coordinator's exact canonical UUID set",
+    async () => {
+      const runner = new FakeProcessRunner();
+      const { manager } = createManager(runner);
+      const image = "vllm/vllm-custom:test";
+      const recipe = vllmRecipe(
+        "vllm-docker-uuids",
+        { kind: "docker", ref: image },
+        { visible_devices: "3", env_vars: { CUDA_VISIBLE_DEVICES: "3" } },
+      );
+      const gpuUuids = [
+        "GPU-00000000-0000-0000-0000-000000000001",
+        "GPU-00000000-0000-0000-0000-000000000002",
+        "GPU-00000000-0000-0000-0000-000000000003",
+        "GPU-00000000-0000-0000-0000-000000000004",
+      ];
+
+      const result = await manager.launchModel(recipe, { gpuUuids });
+
+      expect(result.success).toBe(true);
+      const selector = gpuUuids.join(",");
+      const spawn = onlySpawn(runner);
+      expect(spawn.args.slice(4, 8)).toEqual([
+        "--gpus",
+        `"device=${selector}"`,
+        "-e",
+        `CUDA_VISIBLE_DEVICES=${selector}`,
+      ]);
+    },
+    LAUNCH_TIMEOUT_MS,
+  );
+
+  test("managed GPU selection rejects a custom launch command", async () => {
+    const runner = new FakeProcessRunner();
+    const { manager } = createManager(runner);
+    const key = "LOCAL_STUDIO_ALLOW_CUSTOM_LAUNCH_COMMAND";
+    const previous = process.env[key];
+    process.env[key] = "true";
+    try {
+      const result = await manager.launchModel(
+        vllmRecipe("vllm-custom-gpu", undefined, {
+          launch_command: "docker run --gpus all unsafe-image",
+        }),
+        { gpuUuids: ["GPU-00000000-0000-0000-0000-000000000001"] },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe("Custom launch commands cannot use managed GPU selection");
+      expect(runner.spawns()).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
+  });
+
+  test("stop confirmation cleans and retains known orphan workers", async () => {
+    const pid = 2_147_483_000;
+    const runner = new FakeProcessRunner().onRunSync(
+      (command, args) => command === "ps" && args.includes("pid=,ppid=,stat=,args="),
+      { stdout: `${pid} 1 S VLLM::Worker` },
+    );
+    const { manager } = createManager(runner);
+
+    await expect(manager.confirmInferenceStopped(8000)).resolves.toBe(false);
+    expect(runner.invocations).toContainEqual({
+      kind: "runSync",
+      command: "sudo",
+      args: ["-n", "kill", "-SIGTERM", String(pid)],
+    });
+  });
+
+  test(
     "a fast-failing launch surfaces the exit code and captured output",
     async () => {
       const runner = new FakeProcessRunner().onSpawn("vllm", {
