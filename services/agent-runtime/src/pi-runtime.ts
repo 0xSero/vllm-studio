@@ -46,6 +46,10 @@ function runtimeFingerprint(
   });
 }
 
+export function shouldRestartAfterPromptError(error: unknown): boolean {
+  return error instanceof Error && /Cannot continue from message role: assistant/i.test(error.message);
+}
+
 type PiResourceDiagnostic = {
   type: "info" | "warning" | "error";
   message: string;
@@ -76,6 +80,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentPiSessionId: string | null = null;
   private currentCwd = "";
   private currentModelId = "";
+  private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
 
   ensureStarted(
@@ -209,6 +214,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentCwd = resolvedCwd;
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
+        this.currentStartOptions = options;
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
       }.bind(this),
     );
@@ -227,19 +233,19 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     onEvent: (event: PiEvent, seq: number) => void,
     options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] },
   ): Effect.Effect<void, unknown> {
-    const session = this.requireSession();
     const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
     this.on("loggedEvent", listener);
     this.activePromptCount += 1;
     this.lastError = null;
     return Effect.tryPromise({
-      try: () =>
-        session.prompt(message, {
-          streamingBehavior: options.streamingBehavior,
-          images: options.images,
-        }),
+      try: () => this.promptSession(message, options),
       catch: (error) => error,
     }).pipe(
+      Effect.catch((error) =>
+        shouldRestartAfterPromptError(error)
+          ? this.restartPromptEffect(message, options)
+          : Effect.fail(error),
+      ),
       Effect.catch((error) =>
         Effect.sync(() => {
           this.lastError = error instanceof Error ? error.message : String(error);
@@ -249,6 +255,35 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         Effect.sync(() => {
           this.activePromptCount = Math.max(0, this.activePromptCount - 1);
           this.off("loggedEvent", listener);
+        }),
+      ),
+    );
+  }
+
+  private promptSession(
+    message: string,
+    options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] },
+  ): Promise<void> {
+    return this.requireSession().prompt(message, {
+      streamingBehavior: options.streamingBehavior,
+      images: options.images,
+    });
+  }
+
+  private restartPromptEffect(
+    message: string,
+    options: { streamingBehavior?: "steer" | "followUp"; images?: AgentImageInput[] },
+  ): Effect.Effect<void, unknown> {
+    return this.ensureStartedEffect(
+      this.currentModelId,
+      this.currentCwd,
+      null,
+      this.currentStartOptions,
+    ).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => this.promptSession(message, options),
+          catch: (error) => error,
         }),
       ),
     );

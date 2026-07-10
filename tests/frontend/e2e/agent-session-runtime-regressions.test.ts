@@ -14,6 +14,7 @@ import {
 import { parseAgentTurnCommandResult } from "@/features/agent/contracts";
 import { findRuntimeSessionForLookup } from "@local-studio/agent-runtime/pi-runtime-state";
 import { piStatusFromEvents } from "@local-studio/agent-runtime/pi-runtime-state";
+import { shouldRestartAfterPromptError } from "@local-studio/agent-runtime/pi-runtime";
 import { inferVisionSupport, normalizeOpenAIModels } from "@/features/agent/models";
 import { modelsToPiModels } from "@local-studio/agent-runtime/pi-runtime-models";
 import { applyAssistantPiEventToBlocks } from "@/features/agent/messages/block-event";
@@ -102,6 +103,11 @@ test("turn command result parser preserves runtime status", () => {
   assert.equal(payload?.runtimeSessionId, "rt-1");
   assert.equal(payload?.status?.active, true);
   assert.equal(payload?.status?.contextUsage, null);
+});
+
+test("invalid assistant continuations restart with a fresh Pi session", () => {
+  assert.equal(shouldRestartAfterPromptError(new Error("Cannot continue from message role: assistant")), true);
+  assert.equal(shouldRestartAfterPromptError(new Error("Upstream connection failed")), false);
 });
 
 test("new chat url navigation opens a fresh runtime in a new split pane", () => {
