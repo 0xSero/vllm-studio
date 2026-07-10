@@ -2,7 +2,11 @@ import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { publishOpenSessions, type OpenAgentSession } from "@/features/agent/session-index";
+import {
+  markSessionActivitySeen,
+  publishOpenSessions,
+  type OpenAgentSession,
+} from "@/features/agent/session-index";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
@@ -173,7 +177,6 @@ function openSessionSnapshot(
     title: cleanSessionTitle(tab.title) || (paneId ? "Current session" : "Background session"),
     status: tab.status,
     focused,
-    unseen: false,
     startedAt: tab.startedAt,
     updatedAt: tab.startedAt ?? "",
     skills: selection.skills.length > 0 ? selection.skills : undefined,
@@ -247,7 +250,11 @@ function publishWorkspaceSessions(
   if (openSessionsSignature(prevState) === openSessionsSignature(nextState)) return;
   const selectionFor = deps.selectionFor ?? (() => EMPTY_SELECTION);
   const next = openSessionsFromWorkspace(nextState, selectionFor);
-  if (next) publishOpenSessions(next);
+  if (!next) return;
+  publishOpenSessions(next);
+  for (const session of next) {
+    if (session.focused) markSessionActivitySeen(session.id, session.threadId);
+  }
 }
 
 function queueLocatedReplay(

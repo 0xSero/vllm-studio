@@ -35,6 +35,7 @@ import {
 import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
 import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
+import { publishRuntimeActivity } from "@/features/agent/session-index";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
 const RESUME_RECONNECT_DELAY_MS = 1_000;
@@ -93,18 +94,6 @@ export type SessionRuntimeController = {
   noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
   /** Apply any coalesced-but-unflushed deltas for a session right now. */
   flush(sessionId: SessionId): void;
-  /**
-   * Subscribe to changes in the set of session ids (runtime + pi) the runtime
-   * reports as actively working. Drives the sidebar's background-activity
-   * indicator. Returns an unsubscribe fn.
-   */
-  subscribeActiveRuntimeIds(listener: () => void): () => void;
-  /** Current set of actively-working session ids (stable identity until change). */
-  getActiveRuntimeIds(): ReadonlySet<string>;
-  /** Session ids that finished working while unseen (drives the sidebar dot). */
-  getUnseenFinishedIds(): ReadonlySet<string>;
-  /** Clear a session's unseen-activity flag (the user opened/looked at it). */
-  markRuntimeSeen(sessionId: string): void;
   /**
    * Reconcile every session against the runtime list right now, then restart
    * the steady poll. Called by the React binding when poll-relevant session
@@ -182,50 +171,6 @@ export function createSessionRuntimeController(
   const connectionKeyOverrides = new Map<SessionId, string>();
   const connectionKeyFor = (session: Session): string =>
     connectionKeyOverrides.get(session.id) ?? session.id;
-
-  // The set of session ids (runtime AND pi ids) the runtime reports as actively
-  // working, refreshed every poll. The sidebar subscribes so a session running
-  // in the BACKGROUND (not open in any pane) still shows a working indicator —
-  // the poll sees server-side runtimes regardless of pane membership. A new Set
-  // identity is produced only on change, so useSyncExternalStore stays stable.
-  let activeRuntimeIds: ReadonlySet<string> = new Set();
-  // Sessions that finished working while not being looked at — the sidebar
-  // "unseen activity" dot. Set when a session leaves the active set; cleared
-  // when the user opens it (markRuntimeSeen) or it starts working again.
-  let unseenFinishedIds: ReadonlySet<string> = new Set();
-  const activeRuntimeListeners = new Set<() => void>();
-  const notifyRuntimeListeners = () => activeRuntimeListeners.forEach((listener) => listener());
-  const setsEqual = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
-    a.size === b.size && [...a].every((id) => b.has(id));
-  const updateActiveRuntimeIds = (entries: RuntimeSessionSummary[]): void => {
-    const next = new Set<string>();
-    for (const entry of entries) {
-      if (entry.status.active !== true) continue;
-      if (entry.sessionId) next.add(entry.sessionId);
-      if (entry.status.piSessionId) next.add(entry.status.piSessionId);
-    }
-    let nextUnseen: Set<string> | null = null;
-    // Active -> inactive = finished in the background -> unseen.
-    for (const id of activeRuntimeIds) {
-      if (!next.has(id)) (nextUnseen ??= new Set(unseenFinishedIds)).add(id);
-    }
-    // Re-entered active = working again -> not unseen anymore.
-    for (const id of next) {
-      if (unseenFinishedIds.has(id)) (nextUnseen ??= new Set(unseenFinishedIds)).delete(id);
-    }
-    const activeChanged = !setsEqual(activeRuntimeIds, next);
-    if (!activeChanged && !nextUnseen) return;
-    if (activeChanged) activeRuntimeIds = next;
-    if (nextUnseen) unseenFinishedIds = nextUnseen;
-    notifyRuntimeListeners();
-  };
-  const markRuntimeSeen = (sessionId: string): void => {
-    if (!unseenFinishedIds.has(sessionId)) return;
-    const next = new Set(unseenFinishedIds);
-    next.delete(sessionId);
-    unseenFinishedIds = next;
-    notifyRuntimeListeners();
-  };
 
   const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
     binding?.commit(sessionId, patch);
@@ -526,7 +471,7 @@ export function createSessionRuntimeController(
           catch: (error) => error,
         });
         if (epoch !== pollEpoch || !binding) return;
-        updateActiveRuntimeIds(entries);
+        publishRuntimeActivity(entries);
         applyRuntimeList(entries, fetchStartedAt);
       }),
     );
@@ -729,13 +674,6 @@ export function createSessionRuntimeController(
       }
     },
     flush: (sessionId) => coalescer.flushNow(sessionId),
-    subscribeActiveRuntimeIds: (listener) => {
-      activeRuntimeListeners.add(listener);
-      return () => activeRuntimeListeners.delete(listener);
-    },
-    getActiveRuntimeIds: () => activeRuntimeIds,
-    getUnseenFinishedIds: () => unseenFinishedIds,
-    markRuntimeSeen,
     pollNow: () => {
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;
@@ -748,6 +686,7 @@ export function createSessionRuntimeController(
     },
     closeAll: () => {
       stopPoll();
+      publishRuntimeActivity([]);
       for (const attachment of attachments.values()) attachment.close();
       attachments.clear();
       coalescer.clear();

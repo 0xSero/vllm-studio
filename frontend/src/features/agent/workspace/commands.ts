@@ -3,7 +3,11 @@ import type { PaneId, SessionId, WorkspaceAction } from "@/features/agent/worksp
 export type WorkspaceCommands = {
   bind(dispatch: (action: WorkspaceAction) => void): void;
   unbind(): void;
-  focusSession(paneId: PaneId, sessionId: SessionId): void;
+  focusSession(
+    paneId: PaneId,
+    sessionId: SessionId,
+    options?: { replaceWorkspace?: boolean },
+  ): void;
   renameSession(paneId: PaneId, tabId: SessionId, title: string): void;
 };
 
@@ -16,8 +20,13 @@ function createWorkspaceCommands(): WorkspaceCommands {
     unbind: () => {
       dispatch = null;
     },
-    focusSession: (paneId, sessionId) => {
-      dispatch?.({ type: "focusPaneSession", paneId, sessionId });
+    focusSession: (paneId, sessionId, options) => {
+      dispatch?.({
+        type: "focusPaneSession",
+        paneId,
+        sessionId,
+        replaceWorkspace: options?.replaceWorkspace,
+      });
     },
     renameSession: (paneId, tabId, title) => {
       if (!title.trim()) return;

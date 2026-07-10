@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  reconcileOpenSessions,
+  getSessionActivity,
+  markSessionActivitySeen,
+  publishRuntimeActivity,
   sessionRows,
   type OpenAgentSession,
+  type SessionActivitySnapshot,
 } from "../src/features/agent/session-index";
 import type { SessionSummary } from "../src/features/agent/session-summary";
 
@@ -18,7 +21,6 @@ function openSession(patch: Partial<OpenAgentSession> = {}): OpenAgentSession {
     title: "Task",
     status: "idle",
     focused: true,
-    unseen: false,
     updatedAt: "2026-07-10T12:00:00.000Z",
     ...patch,
   };
@@ -39,18 +41,42 @@ function historySession(id: string, startedAt: string): SessionSummary {
   };
 }
 
-test("runtime adoption keeps one stable open task and clears unseen when focused", () => {
-  const previous = [
-    openSession({ status: "running", focused: false, unseen: true, threadId: null }),
-  ];
-  const next = reconcileOpenSessions(previous, [
-    openSession({ status: "running", focused: true, threadId: "thread-1" }),
-  ]);
+test("runtime adoption resolves activity through local and thread identities", () => {
+  const activity: SessionActivitySnapshot = {
+    active: new Set(["thread-1"]),
+    unseen: new Set(["task-1"]),
+  };
+  const [row] = sessionRows([openSession({ focused: true, threadId: "thread-1" })], [], activity);
 
-  assert.equal(next.length, 1);
-  assert.equal(next[0].id, "task-1");
-  assert.equal(next[0].threadId, "thread-1");
-  assert.equal(next[0].unseen, false);
+  assert.equal(row.kind, "open");
+  assert.equal(row.activity, "running");
+});
+
+test("focused settled sessions never render unseen", () => {
+  const activity: SessionActivitySnapshot = {
+    active: new Set(),
+    unseen: new Set(["task-1", "thread-1"]),
+  };
+  const [row] = sessionRows([openSession({ focused: true, threadId: "thread-1" })], [], activity);
+
+  assert.equal(row.activity, "idle");
+});
+
+test("runtime activity uses one alias-aware unseen lifecycle", () => {
+  publishRuntimeActivity([
+    {
+      sessionId: "runtime-alias",
+      status: { active: true, piSessionId: "thread-alias" },
+    },
+  ]);
+  publishRuntimeActivity([]);
+
+  assert.equal(getSessionActivity().unseen.has("runtime-alias"), true);
+  assert.equal(getSessionActivity().unseen.has("thread-alias"), true);
+
+  markSessionActivitySeen("runtime-alias", "thread-alias");
+  assert.equal(getSessionActivity().unseen.has("runtime-alias"), false);
+  assert.equal(getSessionActivity().unseen.has("thread-alias"), false);
 });
 
 test("open thread replaces its exact history row without changing history order", () => {

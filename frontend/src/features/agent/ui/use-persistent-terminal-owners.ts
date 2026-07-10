@@ -189,17 +189,22 @@ function subscribeTerminalOwners(listener: () => void): () => void {
 export function usePersistentTerminalOwners(
   active: boolean,
   owner: TerminalOwner | null,
-  isVisible: (owner: TerminalOwner) => boolean,
 ): TerminalOwnersSnapshot {
   const subscribe = useCallback(
     (notify: () => void) => {
       const unsubscribe = subscribeTerminalOwners(notify);
-      if (active && owner && !terminalState.owners.some(isVisible)) {
+      if (
+        active &&
+        owner &&
+        !terminalState.owners.some((terminal) =>
+          terminalKeysMatch(terminal.matchKeys, owner.matchKeys),
+        )
+      ) {
         queueMicrotask(() => rememberTerminalOwner(owner, { select: true }));
       }
       return unsubscribe;
     },
-    [active, owner, isVisible],
+    [active, owner],
   );
 
   return useSyncExternalStore(subscribe, getTerminalOwnersSnapshot, getTerminalOwnersSnapshot);

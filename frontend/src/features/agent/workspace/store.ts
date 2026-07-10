@@ -62,7 +62,10 @@ type PersistedTabShape = Partial<Session> & {
   runtimeSessionId?: unknown;
 };
 
-export type PersistedSessionMeta = Omit<Session, "messages" | "error"> & {
+export type PersistedSessionMeta = Omit<
+  Session,
+  "messages" | "error" | "status" | "activeAssistantId"
+> & {
   skills?: ComposerSkillRef[];
 };
 
@@ -79,13 +82,12 @@ export function normalizePersistedTab(value: unknown): Session | null {
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
     messages: [],
-    status: typeof tab.status === "string" ? tab.status : "idle",
+    status: "idle",
     error: "",
     startedAt: typeof tab.startedAt === "string" ? tab.startedAt : undefined,
     input: typeof tab.input === "string" ? tab.input : "",
     queue: Array.isArray(tab.queue) ? tab.queue : undefined,
-    activeAssistantId:
-      typeof tab.activeAssistantId === "string" ? tab.activeAssistantId : undefined,
+    activeAssistantId: undefined,
     lastEventSeq: typeof tab.lastEventSeq === "number" ? tab.lastEventSeq : undefined,
     usedSkills: Array.isArray(tab.usedSkills) ? (tab.usedSkills as ComposerSkillRef[]) : undefined,
   };
@@ -232,12 +234,10 @@ export function sessionMetaForPersistence(
     cwd: tab.cwd,
     modelId: tab.modelId,
     title: cleanSessionTitle(tab.title) || "New session",
-    status: tab.status,
     startedAt: tab.startedAt,
     input: tab.input,
     tokenStats: tab.tokenStats,
     usedSkills: tab.usedSkills,
-    activeAssistantId: tab.activeAssistantId,
     lastEventSeq: tab.lastEventSeq,
     queue: tab.queue,
   };

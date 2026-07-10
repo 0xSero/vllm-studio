@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { makeFreshTab } from "../src/features/agent/messages/helpers";
 import type { Project } from "../src/features/agent/projects/types";
-import { terminalOwnerFor } from "../src/features/agent/terminal-owners";
+import { terminalOwnerFor, terminalKeysMatch } from "../src/features/agent/terminal-owners";
 import { collectLeaves } from "../src/features/agent/workspace/layout";
 import { restorePersistedPaneState } from "../src/features/agent/workspace/store";
 
@@ -89,4 +89,31 @@ test("a task owns one stable terminal across runtime adoption", () => {
   assert.equal(after?.mountKey, before?.mountKey);
   assert.deepEqual(after?.matchKeys, ["session:task-1", "pi:pi-1"]);
   assert.equal(after?.cwd, project.path);
+});
+
+test("terminal owners keep old session terminals addressable by their keys", () => {
+  const sessionA = {
+    ...makeFreshTab(),
+    id: "task-a",
+    title: "Chat A",
+    projectId: "project-a",
+    cwd: "/repo/a",
+    piSessionId: "pi-a",
+  };
+  const sessionB = {
+    ...makeFreshTab(),
+    id: "task-b",
+    title: "Chat B",
+    projectId: "project-b",
+    cwd: "/repo/b",
+    piSessionId: "pi-b",
+  };
+  const ownerA = terminalOwnerFor(null, sessionA);
+  const ownerB = terminalOwnerFor(null, sessionB);
+
+  assert.ok(ownerA);
+  assert.ok(ownerB);
+  assert.equal(ownerA.mountKey, "session:task-a");
+  assert.equal(ownerB.mountKey, "session:task-b");
+  assert.equal(terminalKeysMatch(ownerA.matchKeys, ownerB.matchKeys), false);
 });

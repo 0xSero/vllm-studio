@@ -1,11 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { safeJson } from "@/features/agent/safe-json";
-import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { sessionRows } from "@/features/agent/session-index";
+import {
+  markSessionActivitySeen,
+  sessionRows,
+  type SessionActivity,
+} from "@/features/agent/session-index";
+import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import {
   patchSessionPref,
   type SessionPref,
@@ -28,22 +32,6 @@ import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
 
 const SESSIONS_PAGE_SIZE = 5;
-
-function useActiveRuntimeIds(): ReadonlySet<string> {
-  return useSyncExternalStore(
-    (notify) => sessionRuntimeController().subscribeActiveRuntimeIds(notify),
-    () => sessionRuntimeController().getActiveRuntimeIds(),
-    () => sessionRuntimeController().getActiveRuntimeIds(),
-  );
-}
-
-function useUnseenFinishedIds(): ReadonlySet<string> {
-  return useSyncExternalStore(
-    (notify) => sessionRuntimeController().subscribeActiveRuntimeIds(notify),
-    () => sessionRuntimeController().getUnseenFinishedIds(),
-    () => sessionRuntimeController().getUnseenFinishedIds(),
-  );
-}
 
 export function ProjectRow({
   project,
@@ -171,8 +159,7 @@ export function ProjectSessions({
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(SESSIONS_PAGE_SIZE);
-  const activeRuntimeIds = useActiveRuntimeIds();
-  const unseenFinishedIds = useUnseenFinishedIds();
+  const activity = useSessionActivity();
   const projectActiveSessions = useMemo(
     () => activeSessions.filter((session) => session.projectId === project.id),
     [activeSessions, project.id],
@@ -212,8 +199,8 @@ export function ProjectSessions({
     );
   }, [sessions, excludedIds, prefs]);
   const orderedRows = useMemo(
-    () => sessionRows(visibleActiveSessions, recent),
-    [visibleActiveSessions, recent],
+    () => sessionRows(visibleActiveSessions, recent, activity),
+    [visibleActiveSessions, recent, activity],
   );
   const visibleRows = orderedRows.slice(0, visibleLimit);
   const hasMore = orderedRows.length > visibleLimit || (sessions?.length ?? 0) > visibleLimit;
@@ -232,6 +219,7 @@ export function ProjectSessions({
               project={project}
               session={row.session}
               pref={mergeActiveSessionPref(row.session, prefs)}
+              activity={row.activity}
             />
           ) : (
             <SessionRow
@@ -239,8 +227,8 @@ export function ProjectSessions({
               project={project}
               session={row.session}
               pref={prefs[row.session.id] ?? {}}
-              isRunning={activeRuntimeIds.has(row.session.id)}
-              unseen={unseenFinishedIds.has(row.session.id)}
+              isRunning={row.activity === "running"}
+              unseen={row.activity === "unseen"}
             />
           ),
         )
@@ -262,10 +250,12 @@ export function ActiveSessionRow({
   project,
   session,
   pref,
+  activity,
 }: {
   project: ProjectEntry;
   session: ActiveAgentSession;
   pref: SessionPref;
+  activity: SessionActivity;
 }) {
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
@@ -283,7 +273,11 @@ export function ActiveSessionRow({
         session.threadId ? `&session=${encodeURIComponent(session.threadId)}&replace=1` : ""
       }`}
       onOpen={() => {
-        if (!session.threadId) workspaceCommands().focusSession(session.paneId, session.id);
+        if (session.paneId) {
+          workspaceCommands().focusSession(session.paneId, session.id, {
+            replaceWorkspace: true,
+          });
+        }
       }}
       onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
       onRenameCommit={(trimmed) =>
@@ -293,7 +287,10 @@ export function ActiveSessionRow({
           cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label,
         )
       }
-      onRememberTitle={() => rememberAgentSessionNavTitle(session.threadId, label)}
+      onRememberTitle={() => {
+        rememberAgentSessionNavTitle(session.threadId, label);
+        markSessionActivitySeen(session.id, session.threadId);
+      }}
       onDragStart={(event) =>
         setAgentSessionDragData(event, {
           piSessionId: session.threadId,
@@ -304,8 +301,8 @@ export function ActiveSessionRow({
           title: session.title,
         })
       }
-      isRunning={session.status !== "idle" && session.status !== "done"}
-      unseen={session.unseen === true && !isFocused}
+      isRunning={activity === "running"}
+      unseen={activity === "unseen" && !isFocused}
       canDoubleClickRename
       renameInputClass="text-[length:var(--fs-xs)]"
     />
@@ -351,7 +348,7 @@ export function SessionRow({
       }}
       onRememberTitle={() => {
         rememberAgentSessionNavTitle(session.id, label);
-        sessionRuntimeController().markRuntimeSeen(session.id);
+        markSessionActivitySeen(session.id);
       }}
       onDragStart={(event) => {
         setAgentSessionDragData(event, {

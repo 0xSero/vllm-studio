@@ -173,7 +173,12 @@ test("active local sidebar rows focus by pane and tab without cloning identity",
   workspaceCommands().focusSession("p-main", "s-local");
 
   assert.deepEqual(actions, [
-    { type: "focusPaneSession", paneId: "p-main", sessionId: "s-local" },
+    {
+      type: "focusPaneSession",
+      paneId: "p-main",
+      sessionId: "s-local",
+      replaceWorkspace: undefined,
+    },
     {
       type: "renameTab",
       paneId: "p-main",
@@ -181,6 +186,44 @@ test("active local sidebar rows focus by pane and tab without cloning identity",
       title: "Renamed chat",
     },
   ]);
+});
+
+test("focus session can collapse split panes for sidebar replacement opens", () => {
+  const main = makeSession("s-main", { piSessionId: "pi-main" });
+  const side = makeSession("s-side", { piSessionId: "pi-side" });
+  const state: WorkspaceState = {
+    ...makeState(main),
+    sessions: new Map([
+      [main.id, main],
+      [side.id, side],
+    ]),
+    layout: {
+      kind: "split",
+      direction: "vertical",
+      ratio: 0.5,
+      a: { kind: "leaf", paneId: "p-main" },
+      b: { kind: "leaf", paneId: "p-side" },
+    },
+    panesById: new Map([
+      ["p-main", { sessionId: main.id }],
+      ["p-side", { sessionId: side.id }],
+    ]),
+    focusedPaneId: "p-main",
+  };
+
+  const next = reducer(state, {
+    type: "focusPaneSession",
+    paneId: "p-side",
+    sessionId: "s-side",
+    replaceWorkspace: true,
+  });
+
+  assert.deepEqual(collectLeaves(next.layout), ["p-side"]);
+  assert.equal(next.focusedPaneId, "p-side");
+  assert.equal(next.panesById.size, 1);
+  assert.equal(next.panesById.get("p-side")?.sessionId, "s-side");
+  assert.equal(next.sessions.has("s-main"), false);
+  assert.equal(next.sessions.has("s-side"), true);
 });
 
 test("new chat replaces an empty starter with fresh identity", () => {

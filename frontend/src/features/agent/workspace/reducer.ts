@@ -69,7 +69,11 @@ function reducePaneLayoutAction(
     case "focusPane":
       return focusPane(state, { paneId: action.paneId });
     case "focusPaneSession":
-      return focusPaneSession(state, { paneId: action.paneId, sessionId: action.sessionId });
+      return focusPaneSession(state, {
+        paneId: action.paneId,
+        sessionId: action.sessionId,
+        replaceWorkspace: action.replaceWorkspace,
+      });
     case "closePane":
       return closePane(state, { paneId: action.paneId });
     default:

@@ -8,8 +8,8 @@ import {
   useProjectsNavAddProjectEffect,
   useProjectsNavSessionPrefs,
 } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
-import { useOpenSessions } from "@/features/agent/ui/use-open-sessions";
-import type { OpenAgentSession } from "@/features/agent/session-index";
+import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
+import { sessionActivity, type OpenAgentSession } from "@/features/agent/session-index";
 import { useProjects } from "@/features/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
@@ -34,6 +34,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const refreshProjects = projectsContext.refresh;
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const activeSessions = useOpenSessions();
+  const activity = useSessionActivity();
   const [addError, setAddError] = useState("");
   const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
   const [projectRemoveConfirm, setProjectRemoveConfirm] = useState<ProjectEntry | null>(null);
@@ -145,9 +146,16 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const chatsHasActivity = useMemo(() => {
     if (!chatProject) return false;
     return activeSessions.some(
-      (session) => session.projectId === chatProject.id && session.unseen === true,
+      (session) =>
+        session.projectId === chatProject.id &&
+        sessionActivity(
+          [session.id, session.threadId],
+          activity,
+          session.status,
+          session.focused,
+        ) !== "idle",
     );
-  }, [activeSessions, chatProject]);
+  }, [activeSessions, activity, chatProject]);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   useProjectsNavAddProjectEffect(handleAddProject);
   usePinnedSessionsEffect({
@@ -185,6 +193,12 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
               project={project}
               session={session}
               pref={mergeActiveSessionPref(session, prefs)}
+              activity={sessionActivity(
+                [session.id, session.threadId],
+                activity,
+                session.status,
+                session.focused,
+              )}
             />
           ))}
           {pinnedSessions

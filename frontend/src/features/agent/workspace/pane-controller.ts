@@ -342,9 +342,11 @@ export function focusPane(state: WorkspaceState, payload: { paneId: PaneId }): W
 
 export function focusPaneSession(
   state: WorkspaceState,
-  payload: { paneId: PaneId; sessionId: SessionId },
+  payload: { paneId: PaneId; sessionId: SessionId; replaceWorkspace?: boolean },
 ): WorkspaceState {
-  return focusExistingSession(state, payload.paneId, payload.sessionId);
+  return payload.replaceWorkspace
+    ? focusSessionAsOnlyPane(state, payload.paneId, payload.sessionId)
+    : focusExistingSession(state, payload.paneId, payload.sessionId);
 }
 
 export function renameTab(

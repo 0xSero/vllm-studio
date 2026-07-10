@@ -162,6 +162,8 @@ test("pane state round-trips durable session metadata and drops transcripts", ()
   assert.equal(restoredRich?.title, "GPU planning");
   assert.equal(restoredRich?.input, "draft text");
   assert.equal(restoredRich?.lastEventSeq, 17);
+  assert.equal(restoredRich?.status, "idle");
+  assert.equal(restoredRich?.activeAssistantId, undefined);
   assert.deepEqual(restoredRich?.queue, [
     { id: "q-1", mode: "follow_up", text: "next", sent: true },
   ]);

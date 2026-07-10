@@ -35,7 +35,6 @@ import type { Session } from "@/features/agent/runtime/types";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import {
-  isTerminalOwnerVisible,
   terminalOwnerFor,
   terminalOwnerLabel,
   type TerminalOwner,
@@ -124,23 +123,17 @@ export function AgentBrowserPanel({
     () => terminalOwnerFor(activeProject, focusedSession),
     [activeProject, focusedSession],
   );
-  const isOwnerVisible = useCallback(
-    (owner: TerminalOwner) =>
-      isTerminalOwnerVisible(owner, focusedSession, activeProject?.id ?? null),
-    [activeProject, focusedSession],
-  );
   const terminalState = usePersistentTerminalOwners(
     tools.computer.open && tools.computer.tab === "terminal",
     terminalOwner,
-    isOwnerVisible,
   );
   const visibleTerminalState = useMemo<TerminalOwnersSnapshot>(() => {
-    const owners = terminalState.owners.filter(isOwnerVisible);
+    const owners = terminalState.owners;
     const activeOwnerKey = owners.some((owner) => owner.mountKey === terminalState.activeOwnerKey)
       ? terminalState.activeOwnerKey
       : (owners[0]?.mountKey ?? null);
     return { owners, activeOwnerKey };
-  }, [isOwnerVisible, terminalState]);
+  }, [terminalState]);
   const openTerminalForFocusedSession = useCallback(() => {
     if (terminalOwner) rememberPersistentTerminalOwner(terminalOwner, { select: true });
     tools.setComputerTab("terminal");

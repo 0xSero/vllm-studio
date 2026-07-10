@@ -1,4 +1,5 @@
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
+import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
 import type { SessionSummary } from "@/features/agent/session-summary";
 
 export type OpenAgentSession = {
@@ -11,7 +12,6 @@ export type OpenAgentSession = {
   title: string;
   status: string;
   focused: boolean;
-  unseen: boolean;
   startedAt?: string;
   updatedAt: string;
   skills?: ComposerSkillRef[];
@@ -25,6 +25,7 @@ export type SessionIndexRow =
       threadId: string | null;
       sortAt: number;
       session: OpenAgentSession;
+      activity: SessionActivity;
     }
   | {
       kind: "history";
@@ -32,7 +33,20 @@ export type SessionIndexRow =
       threadId: string;
       sortAt: number;
       session: SessionSummary;
+      activity: SessionActivity;
     };
+
+export type SessionActivity = "idle" | "running" | "unseen";
+
+export type SessionActivitySnapshot = {
+  active: ReadonlySet<string>;
+  unseen: ReadonlySet<string>;
+};
+
+const EMPTY_ACTIVITY: SessionActivitySnapshot = {
+  active: new Set(),
+  unseen: new Set(),
+};
 
 function timestamp(value?: string | null): number {
   const parsed = value ? Date.parse(value) : NaN;
@@ -43,25 +57,19 @@ function isWorking(status: string): boolean {
   return status !== "" && status !== "idle" && status !== "done";
 }
 
-function unseenFor(session: OpenAgentSession, previous?: OpenAgentSession): boolean {
-  if (session.focused) return false;
-  return (
-    session.unseen ||
-    previous?.unseen === true ||
-    isWorking(session.status) ||
-    Boolean(previous && isWorking(previous.status) && !isWorking(session.status))
-  );
+function hasIdentity(ids: ReadonlySet<string>, identity: readonly (string | null)[]): boolean {
+  return identity.some((id) => Boolean(id && ids.has(id)));
 }
 
-export function reconcileOpenSessions(
-  previous: readonly OpenAgentSession[],
-  incoming: readonly OpenAgentSession[],
-): OpenAgentSession[] {
-  const previousById = new Map(previous.map((session) => [session.id, session]));
-  return incoming.map((session) => ({
-    ...session,
-    unseen: unseenFor(session, previousById.get(session.id)),
-  }));
+export function sessionActivity(
+  identity: readonly (string | null)[],
+  snapshot: SessionActivitySnapshot,
+  optimisticStatus = "idle",
+  focused = false,
+): SessionActivity {
+  if (isWorking(optimisticStatus) || hasIdentity(snapshot.active, identity)) return "running";
+  if (!focused && hasIdentity(snapshot.unseen, identity)) return "unseen";
+  return "idle";
 }
 
 function uniqueOpenSessions(sessions: readonly OpenAgentSession[]): OpenAgentSession[] {
@@ -83,6 +91,7 @@ function uniqueOpenSessions(sessions: readonly OpenAgentSession[]): OpenAgentSes
 export function sessionRows(
   openSessions: readonly OpenAgentSession[],
   historySessions: readonly SessionSummary[],
+  activity: SessionActivitySnapshot = EMPTY_ACTIVITY,
 ): SessionIndexRow[] {
   const historyById = new Map(historySessions.map((session) => [session.id, session]));
   const openThreadIds = new Set<string>();
@@ -96,6 +105,12 @@ export function sessionRows(
       threadId: session.threadId,
       sortAt: timestamp(history?.startedAt ?? session.startedAt ?? session.updatedAt),
       session,
+      activity: sessionActivity(
+        [session.id, session.threadId],
+        activity,
+        session.status,
+        session.focused,
+      ),
     });
   }
   for (const session of historySessions) {
@@ -106,6 +121,7 @@ export function sessionRows(
       threadId: session.id,
       sortAt: timestamp(session.startedAt),
       session,
+      activity: sessionActivity([session.id], activity),
     });
   }
   return rows.sort((left, right) => right.sortAt - left.sortAt);
@@ -113,6 +129,8 @@ export function sessionRows(
 
 let openSessions: OpenAgentSession[] = [];
 const listeners = new Set<() => void>();
+let activitySnapshot = EMPTY_ACTIVITY;
+const activityListeners = new Set<() => void>();
 
 export function getOpenSessions(): readonly OpenAgentSession[] {
   return openSessions;
@@ -124,8 +142,44 @@ export function subscribeOpenSessions(listener: () => void): () => void {
 }
 
 export function publishOpenSessions(incoming: readonly OpenAgentSession[]): void {
-  const next = reconcileOpenSessions(openSessions, incoming);
+  const next = [...incoming];
   if (JSON.stringify(next) === JSON.stringify(openSessions)) return;
   openSessions = next;
   for (const listener of listeners) listener();
+}
+
+export function getSessionActivity(): SessionActivitySnapshot {
+  return activitySnapshot;
+}
+
+export function subscribeSessionActivity(listener: () => void): () => void {
+  activityListeners.add(listener);
+  return () => activityListeners.delete(listener);
+}
+
+function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]): void {
+  const active = new Set<string>();
+  for (const entry of entries) {
+    if (entry.status.active !== true) continue;
+    active.add(entry.sessionId);
+    if (entry.status.piSessionId) active.add(entry.status.piSessionId);
+  }
+  const unseen = new Set(activitySnapshot.unseen);
+  for (const id of activitySnapshot.active) if (!active.has(id)) unseen.add(id);
+  for (const id of active) unseen.delete(id);
+  if (sameIds(activitySnapshot.active, active) && sameIds(activitySnapshot.unseen, unseen)) return;
+  activitySnapshot = { active, unseen };
+  for (const listener of activityListeners) listener();
+}
+
+export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
+  const unseen = new Set(activitySnapshot.unseen);
+  for (const id of ids) if (id) unseen.delete(id);
+  if (sameIds(activitySnapshot.unseen, unseen)) return;
+  activitySnapshot = { ...activitySnapshot, unseen };
+  for (const listener of activityListeners) listener();
 }
