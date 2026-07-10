@@ -337,22 +337,49 @@ REMOTE
 
 restart_frontend() {
   step "Restarting frontend on :3000"
-  remote bash <<REMOTE
+  remote bash -s -- "$REMOTE_DIR" <<'REMOTE'
 set -euo pipefail
-cd $REMOTE_DIR_SHELL/frontend
-docker compose -f ../docker-compose.yml stop frontend 2>/dev/null || true
-pkill -f "next start" 2>/dev/null || true
-pkill -f "next dev" 2>/dev/null || true
-fuser -k 3000/tcp >/dev/null 2>&1 || true
-sleep 1
-export BACKEND_URL=http://localhost:8080
-# Documented env line (Phase 5b): point the frontend's runtime/browser routes
-# at the agent-runtime sidecar so they proxy pass-through — the only mode in
-# which SSE flushes through Next's standalone server. Remove to fall back to
-# the in-process runtime (SSE will buffer under standalone).
-export LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081
-# Use the standalone start (package.json "start"); "next start" breaks SSE streaming.
-nohup node scripts/start-standalone.mjs > /tmp/frontend-stdout.log 2>&1 &
+remote_dir=$1
+frontend_service=vllm-studio-frontend.service
+
+restart_managed_frontend() {
+  local unit_file="$HOME/.config/systemd/user/$frontend_service"
+  local drop_in_dir="${unit_file}.d"
+  local drop_in
+  systemctl --user cat "$frontend_service" >/dev/null 2>&1 || return 1
+  [[ -f "$unit_file" ]] || return 1
+  systemctl --user stop "$frontend_service" || return 1
+  sed -i \
+    's/vllm-studio-controller\.service/local-studio-controller-8080.service/g' \
+    "$unit_file" || return 1
+  for drop_in in "$drop_in_dir"/*.conf; do
+    [[ -f "$drop_in" ]] || continue
+    sed -i \
+      's/vllm-studio-controller\.service/local-studio-controller-8080.service/g' \
+      "$drop_in" || return 1
+  done
+  rm -f "$drop_in_dir/zz-local-studio-controller.conf"
+  systemctl --user daemon-reload || return 1
+  systemctl --user disable --now \
+    vllm-studio-controller.service \
+    vllm-studio-controller-b70.service >/dev/null 2>&1 || true
+  fuser -k 3000/tcp >/dev/null 2>&1 || true
+  systemctl --user restart "$frontend_service"
+}
+
+restart_detached_frontend() {
+  cd "$remote_dir/frontend"
+  docker compose -f "$remote_dir/docker-compose.yml" stop frontend 2>/dev/null || true
+  pkill -f "next start" 2>/dev/null || true
+  pkill -f "next dev" 2>/dev/null || true
+  fuser -k 3000/tcp >/dev/null 2>&1 || true
+  sleep 1
+  export BACKEND_URL=http://localhost:8080
+  export LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081
+  nohup node scripts/start-standalone.mjs > /tmp/frontend-stdout.log 2>&1 &
+}
+
+restart_managed_frontend || restart_detached_frontend
 REMOTE
   wait_port 3000 frontend 15 || return 1
   ok "frontend :3000 (production)"
