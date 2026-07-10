@@ -70,6 +70,12 @@ export function getForwardedSearchParams(request: NextRequest): {
   return { apiKeyQuery, searchParams: forwardedParams.toString() };
 }
 
+export const readProxyRequestBody = (
+  request: Pick<Request, "arrayBuffer">,
+  method: string,
+): Promise<ArrayBuffer | undefined> =>
+  method === "GET" || method === "DELETE" ? Promise.resolve(undefined) : request.arrayBuffer();
+
 export function buildProxyRequestHeaders(
   request: NextRequest,
   apiKey: string,

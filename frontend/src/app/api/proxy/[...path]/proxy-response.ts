@@ -90,7 +90,7 @@ export async function toProxyNextResponse(
     );
   }
 
-  const data = await response.text();
+  const data = await response.arrayBuffer();
   return new NextResponse(data, {
     status: response.status,
     headers: {
