@@ -201,7 +201,16 @@ describe("controller route contracts", () => {
     );
   });
 
-  test("usage includes persisted controller route observability", async () => {
+  test("usage omits controller observability by default", async () => {
+    const app = await createTestApp();
+    const response = await app.request("/usage");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.controller).toBeUndefined();
+  });
+
+  test("usage includes persisted controller route observability when requested", async () => {
     const app = await createTestApp();
 
     await app.request("/gpus");
@@ -213,7 +222,7 @@ describe("controller route contracts", () => {
       body: JSON.stringify({ context_length: 0 }),
     });
 
-    const response = await app.request("/usage");
+    const response = await app.request("/usage?include_controller=true");
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -328,7 +337,7 @@ describe("controller route contracts", () => {
     );
   });
 
-  test("usage still returns controller observability when inference aggregation fails", async () => {
+  test("usage still returns requested controller observability when inference aggregation fails", async () => {
     const [{ createAppContext }, { createApp }] = await Promise.all([
       import("../../../controller/src/app-context"),
       import("../../../controller/src/http/app"),
@@ -344,7 +353,7 @@ describe("controller route contracts", () => {
 
     await app.request("/gpus");
 
-    const response = await app.request("/usage");
+    const response = await app.request("/usage?include_controller=true");
     const body = await response.json();
 
     context.stores.inferenceRequestStore.aggregate = aggregate;

@@ -132,7 +132,7 @@ export class InferenceRequestStore {
     const filter = buildModelFilter(knownModels);
     const params = filter.params;
 
-    const totalsRow = this.db
+    const summary = this.db
       .query<NumberRow, string[]>(
         `SELECT
            COUNT(*) as total_requests,
@@ -141,32 +141,34 @@ export class InferenceRequestStore {
            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
            COALESCE(SUM(cache_read_tokens), 0) as cache_read,
            COALESCE(SUM(cache_write_tokens), 0) as cache_write,
-           COUNT(DISTINCT session_id) as unique_sessions
-         FROM inference_requests
-         WHERE 1=1${filter.clause}`,
-      )
-      .get(...params) as NumberRow | null;
-
-    const totalRequests = toFiniteNumber(totalsRow?.["total_requests"]);
-    if (totalRequests === 0) return null;
-
-    const promptTokens = toFiniteNumber(totalsRow?.["prompt_tokens"]);
-    const completionTokens = toFiniteNumber(totalsRow?.["completion_tokens"]);
-    const totalTokens = promptTokens + completionTokens;
-    const cacheHits = toFiniteNumber(totalsRow?.["cache_read"]);
-    const cacheMisses = toFiniteNumber(totalsRow?.["cache_write"]);
-
-    const successRow = this.db
-      .query<NumberRow, string[]>(
-        `SELECT
+           COUNT(DISTINCT session_id) as unique_sessions,
            SUM(CASE WHEN status >= 200 AND status < 300 THEN 1 ELSE 0 END) as ok,
            AVG(duration_ms) as avg_dur,
-           AVG(ttft_ms) as avg_ttft
+           AVG(ttft_ms) as avg_ttft,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_hour,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-48 hours') AND datetime(created_at) < datetime('now', '-24 hours') THEN 1 ELSE 0 END) as prev_24h,
+           COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as last_24h_tokens,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as this_week_requests,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END) as this_week_tokens,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') AND status >= 200 AND status < 300 THEN 1 ELSE 0 END) as this_week_ok,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') THEN 1 ELSE 0 END) as last_week_requests,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END) as last_week_tokens,
+           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') AND status >= 200 AND status < 300 THEN 1 ELSE 0 END) as last_week_ok
          FROM inference_requests
          WHERE 1=1${filter.clause}`,
       )
       .get(...params) as NumberRow | null;
-    const successful = toFiniteNumber(successRow?.["ok"]);
+
+    const totalRequests = toFiniteNumber(summary?.["total_requests"]);
+    if (totalRequests === 0) return null;
+
+    const promptTokens = toFiniteNumber(summary?.["prompt_tokens"]);
+    const completionTokens = toFiniteNumber(summary?.["completion_tokens"]);
+    const totalTokens = promptTokens + completionTokens;
+    const cacheHits = toFiniteNumber(summary?.["cache_read"]);
+    const cacheMisses = toFiniteNumber(summary?.["cache_write"]);
+    const successful = toFiniteNumber(summary?.["ok"]);
 
     const byModel = this.db
       .query<Record<string, unknown>, string[]>(
@@ -264,32 +266,6 @@ export class InferenceRequestStore {
       )
       .all(...params) as Array<Record<string, unknown>>;
 
-    const recent = this.db
-      .query<NumberRow, string[]>(
-        `SELECT
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_hour,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-48 hours') AND datetime(created_at) < datetime('now', '-24 hours') THEN 1 ELSE 0 END) as prev_24h,
-           COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as last_24h_tokens
-         FROM inference_requests
-         WHERE 1=1${filter.clause}`,
-      )
-      .get(...params) as NumberRow | null;
-
-    const week = this.db
-      .query<NumberRow, string[]>(
-        `SELECT
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as this_week_requests,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END) as this_week_tokens,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') AND status >= 200 AND status < 300 THEN 1 ELSE 0 END) as this_week_ok,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') THEN 1 ELSE 0 END) as last_week_requests,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END) as last_week_tokens,
-           SUM(CASE WHEN datetime(created_at) >= datetime('now', '-14 days') AND datetime(created_at) < datetime('now', '-7 days') AND status >= 200 AND status < 300 THEN 1 ELSE 0 END) as last_week_ok
-         FROM inference_requests
-         WHERE 1=1${filter.clause}`,
-      )
-      .get(...params) as NumberRow | null;
-
     const calcChangePct = (current: number, previous: number): number | null => {
       if (previous === 0) return current === 0 ? 0 : null;
       return ((current - previous) / previous) * 100;
@@ -304,11 +280,11 @@ export class InferenceRequestStore {
         successful_requests: successful,
         failed_requests: totalRequests - successful,
         success_rate: totalRequests ? (successful / totalRequests) * 100 : 0,
-        unique_sessions: toFiniteNumber(totalsRow?.["unique_sessions"]),
+        unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
         unique_users: 0,
       },
       latency: {
-        avg_ms: toNullableNumber(successRow?.["avg_dur"]),
+        avg_ms: toNullableNumber(summary?.["avg_dur"]),
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
@@ -316,7 +292,7 @@ export class InferenceRequestStore {
         max_ms: null,
       },
       ttft: {
-        avg_ms: toNullableNumber(successRow?.["avg_ttft"]),
+        avg_ms: toNullableNumber(summary?.["avg_ttft"]),
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
@@ -347,34 +323,34 @@ export class InferenceRequestStore {
       },
       week_over_week: {
         this_week: {
-          requests: toFiniteNumber(week?.["this_week_requests"]),
-          tokens: toFiniteNumber(week?.["this_week_tokens"]),
-          successful: toFiniteNumber(week?.["this_week_ok"]),
+          requests: toFiniteNumber(summary?.["this_week_requests"]),
+          tokens: toFiniteNumber(summary?.["this_week_tokens"]),
+          successful: toFiniteNumber(summary?.["this_week_ok"]),
         },
         last_week: {
-          requests: toFiniteNumber(week?.["last_week_requests"]),
-          tokens: toFiniteNumber(week?.["last_week_tokens"]),
-          successful: toFiniteNumber(week?.["last_week_ok"]),
+          requests: toFiniteNumber(summary?.["last_week_requests"]),
+          tokens: toFiniteNumber(summary?.["last_week_tokens"]),
+          successful: toFiniteNumber(summary?.["last_week_ok"]),
         },
         change_pct: {
           requests: calcChangePct(
-            toFiniteNumber(week?.["this_week_requests"]),
-            toFiniteNumber(week?.["last_week_requests"]),
+            toFiniteNumber(summary?.["this_week_requests"]),
+            toFiniteNumber(summary?.["last_week_requests"]),
           ),
           tokens: calcChangePct(
-            toFiniteNumber(week?.["this_week_tokens"]),
-            toFiniteNumber(week?.["last_week_tokens"]),
+            toFiniteNumber(summary?.["this_week_tokens"]),
+            toFiniteNumber(summary?.["last_week_tokens"]),
           ),
         },
       },
       recent_activity: {
-        last_hour_requests: toFiniteNumber(recent?.["last_hour"]),
-        last_24h_requests: toFiniteNumber(recent?.["last_24h"]),
-        prev_24h_requests: toFiniteNumber(recent?.["prev_24h"]),
-        last_24h_tokens: toFiniteNumber(recent?.["last_24h_tokens"]),
+        last_hour_requests: toFiniteNumber(summary?.["last_hour"]),
+        last_24h_requests: toFiniteNumber(summary?.["last_24h"]),
+        prev_24h_requests: toFiniteNumber(summary?.["prev_24h"]),
+        last_24h_tokens: toFiniteNumber(summary?.["last_24h_tokens"]),
         change_24h_pct: calcChangePct(
-          toFiniteNumber(recent?.["last_24h"]),
-          toFiniteNumber(recent?.["prev_24h"]),
+          toFiniteNumber(summary?.["last_24h"]),
+          toFiniteNumber(summary?.["prev_24h"]),
         ),
       },
       peak_days: peakDays.map((row) => ({

@@ -141,11 +141,12 @@ export function createSystemApi(core: ApiCore) {
         total_requests: number;
       }>;
       error?: string;
-    }> => core.request("/peak-metrics"),
+    }> => core.request("/peak-metrics", { retries: 0 }),
 
-    getUsageStats: (): Promise<UsageStats> => core.request("/usage"),
+    getUsageStats: (): Promise<UsageStats> => core.request("/usage", { retries: 0 }),
 
-    getPiSessionsUsageStats: (): Promise<UsageStats> => core.request("/usage/pi-sessions"),
+    getPiSessionsUsageStats: (): Promise<UsageStats> =>
+      core.request("/usage/pi-sessions", { retries: 0 }),
 
     getStatus: async (
       options?: RequestOptions,

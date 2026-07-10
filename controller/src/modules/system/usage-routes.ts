@@ -35,13 +35,23 @@ const collectKnownModels = (context: AppContext): Set<string> => {
 // dashboard polling (and repeated aggregation passes) into one computation.
 const USAGE_CACHE_TTL_MS = 15_000;
 
+const withControllerUsage = (
+  context: AppContext,
+  body: UsageStats,
+  includeController: boolean,
+): UsageStats =>
+  includeController
+    ? { ...body, controller: context.stores.controllerRequestStore.aggregate() }
+    : body;
+
 export const registerUsageRoutes: RouteRegistrar = (app, context) => {
   let usageCache: { at: number; body: UsageStats } | null = null;
 
   app.get("/usage", async (ctx) => {
+    const includeController = ctx.req.query("include_controller") === "true";
     try {
       if (usageCache && Date.now() - usageCache.at < USAGE_CACHE_TTL_MS) {
-        return ctx.json(usageCache.body);
+        return ctx.json(withControllerUsage(context, usageCache.body, includeController));
       }
       const knownModels = await observeControllerFunction(context, "usage.collectKnownModels", () =>
         collectKnownModels(context),
@@ -51,19 +61,12 @@ export const registerUsageRoutes: RouteRegistrar = (app, context) => {
         "usage.aggregateInferenceRequests",
         () => context.stores.inferenceRequestStore.aggregate(knownModels),
       );
-      const body: UsageStats = {
-        ...(usage ?? emptyResponse()),
-        controller: context.stores.controllerRequestStore.aggregate(),
-      };
+      const body: UsageStats = usage ?? emptyResponse();
       usageCache = { at: Date.now(), body };
-      return ctx.json(body);
+      return ctx.json(withControllerUsage(context, body, includeController));
     } catch (error) {
       context.logger.error(`[Usage] Error fetching usage stats: ${(error as Error).message}`);
-      const body: UsageStats = {
-        ...emptyResponse(),
-        controller: context.stores.controllerRequestStore.aggregate(),
-      };
-      return ctx.json(body);
+      return ctx.json(withControllerUsage(context, emptyResponse(), includeController));
     }
   });
 

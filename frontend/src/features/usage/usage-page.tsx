@@ -15,6 +15,7 @@ import { DailyUsageChart, type UsagePeriod } from "@/features/usage/daily-usage-
 import { ModelPerformanceTable } from "@/features/usage/model-performance-table";
 import { SecondaryMetrics } from "@/features/usage/secondary-metrics";
 import { useUsage, type UsageSource } from "@/features/usage/use-usage";
+import { UsageSkeleton } from "@/features/usage/usage-skeleton";
 import { formatNumber } from "@/lib/formatters";
 
 const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
@@ -54,6 +55,8 @@ export default function UsagePage() {
     handleSort,
     toggleRow,
   } = useUsage(tab);
+
+  if (loading && !stats) return <UsageSkeleton />;
 
   const pageStateRender = PageState({
     loading,

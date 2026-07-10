@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import api from "@/lib/api/client";
 import type { PeakMetrics, UsageStats } from "@/lib/types";
 import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { isRecord } from "@/lib/guards";
 
 import type { SortDirection, SortField } from "@/features/usage/model-performance-table-model";
 
@@ -17,72 +18,88 @@ function normalizePeakNumber(value: unknown): number | null {
 
 export type UsageSource = "provider" | "pi-sessions";
 
+const peakMetricsFromCache = (): Map<string, PeakMetrics> =>
+  new Map(readPageCache<Array<[string, PeakMetrics]>>("usage:peaks") ?? []);
+
+function peakMetricsFromResponse(metrics: unknown): Map<string, PeakMetrics> {
+  const result = new Map<string, PeakMetrics>();
+  if (!Array.isArray(metrics)) return result;
+  for (const metric of metrics) {
+    if (!isRecord(metric)) continue;
+    const modelId = typeof metric["model_id"] === "string" ? metric["model_id"] : "";
+    if (!modelId) continue;
+    result.set(modelId, {
+      model_id: modelId,
+      prefill_tps: normalizePeakNumber(metric["prefill_tps"]),
+      generation_tps: normalizePeakNumber(metric["generation_tps"]),
+      ttft_ms: normalizePeakNumber(metric["ttft_ms"]),
+      best_session_id:
+        typeof metric["best_session_id"] === "string" ? metric["best_session_id"] : null,
+      best_session_prefill_tps: normalizePeakNumber(metric["best_session_prefill_tps"]),
+      best_session_generation_tps: normalizePeakNumber(metric["best_session_generation_tps"]),
+      best_session_ttft_ms: normalizePeakNumber(metric["best_session_ttft_ms"]),
+      total_tokens: normalizePeakNumber(metric["total_tokens"]) ?? 0,
+      total_requests: normalizePeakNumber(metric["total_requests"]) ?? 0,
+    });
+  }
+  return result;
+}
+
 export function useUsage(source: UsageSource = "provider") {
-  // Stale-while-revalidate: the controller round-trip can take seconds, so
-  // seed from the last-loaded data and refresh in the background instead of
-  // blanking the page behind a spinner on every navigation.
   const [stats, setStats] = useState<UsageStats | null>(() =>
     readPageCache<UsageStats>(`usage:stats:${source}`),
   );
-  const [peakMetrics, setPeakMetrics] = useState<Map<string, PeakMetrics>>(
-    () => readPageCache<Map<string, PeakMetrics>>("usage:peaks") ?? new Map(),
-  );
+  const [peakMetrics, setPeakMetrics] = useState<Map<string, PeakMetrics>>(peakMetricsFromCache);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("tokens");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [selectedModel, setSelectedModel] = useState<string>("all");
+  const statsRequestSequence = useRef(0);
+  const peakRequestSequence = useRef(0);
 
   const loadStats = useCallback(async () => {
+    const requestId = ++statsRequestSequence.current;
     try {
       setLoading(true);
       setError(null);
       const fetchUsage =
         source === "pi-sessions" ? api.getPiSessionsUsageStats() : api.getUsageStats();
-      // Peak metrics are keyed by this controller's served models and are only
-      // rendered for the provider source; skip the round-trip for pi-sessions.
-      const fetchPeaks =
-        source === "pi-sessions"
-          ? Promise.resolve({ metrics: [] as [] })
-          : api.getPeakMetrics().catch(() => ({ metrics: [] }));
-      const [usageData, peakResult] = await Promise.all([fetchUsage, fetchPeaks]);
+      const usageData = await fetchUsage;
+      if (requestId !== statsRequestSequence.current) return;
       const normalized = normalizeUsageStats(usageData);
       writePageCache(`usage:stats:${source}`, normalized);
       setStats(normalized);
-
-      if (Array.isArray(peakResult.metrics)) {
-        const metricsMap = new Map<string, PeakMetrics>();
-        for (const metric of peakResult.metrics) {
-          const modelId = typeof metric.model_id === "string" ? metric.model_id : "";
-          if (!modelId) continue;
-          metricsMap.set(modelId, {
-            model_id: modelId,
-            prefill_tps: normalizePeakNumber(metric.prefill_tps),
-            generation_tps: normalizePeakNumber(metric.generation_tps),
-            ttft_ms: normalizePeakNumber(metric.ttft_ms),
-            best_session_id:
-              typeof metric.best_session_id === "string" ? metric.best_session_id : null,
-            best_session_prefill_tps: normalizePeakNumber(metric.best_session_prefill_tps),
-            best_session_generation_tps: normalizePeakNumber(metric.best_session_generation_tps),
-            best_session_ttft_ms: normalizePeakNumber(metric.best_session_ttft_ms),
-            total_tokens: normalizePeakNumber(metric.total_tokens) ?? 0,
-            total_requests: normalizePeakNumber(metric.total_requests) ?? 0,
-          });
-        }
-        writePageCache("usage:peaks", metricsMap);
-        setPeakMetrics(metricsMap);
-      }
     } catch (e) {
-      setError((e as Error).message);
+      if (requestId === statsRequestSequence.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (requestId === statsRequestSequence.current) setLoading(false);
     }
   }, [source]);
 
   useMountSubscription(() => {
+    setStats(readPageCache<UsageStats>(`usage:stats:${source}`));
     void loadStats();
-  }, [loadStats]);
+  }, [loadStats, source]);
+
+  const loadPeakMetrics = useCallback(async () => {
+    const requestId = ++peakRequestSequence.current;
+    if (source !== "provider") {
+      setPeakMetrics(new Map());
+      return;
+    }
+    const peakResult = await api.getPeakMetrics().catch(() => ({ metrics: [] }));
+    if (requestId !== peakRequestSequence.current) return;
+    const metricsMap = peakMetricsFromResponse(peakResult.metrics);
+    writePageCache("usage:peaks", [...metricsMap]);
+    setPeakMetrics(metricsMap);
+  }, [source]);
+
+  useMountSubscription(() => {
+    setPeakMetrics(source === "provider" ? peakMetricsFromCache() : new Map());
+    void loadPeakMetrics();
+  }, [loadPeakMetrics, source]);
 
   const dailyByModel = useMemo(() => {
     if (!stats || !stats.daily_by_model || !Array.isArray(stats.daily_by_model)) {
