@@ -1,7 +1,10 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { chmod, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { resolveBinary, runCommandAsync } from "../../core/command";
+import { Effect } from "effect";
+import { resolveBinary } from "../../core/command";
+import { secureSpeechDirectory } from "./storage";
 
 export const MAX_VOICE_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_NORMALIZED_BYTES = 1_100_000;
@@ -24,22 +27,56 @@ export interface NormalizedVoiceReference {
 
 interface VoiceReferenceDependencies {
   ffmpegPath: () => string | null;
-  transcode: (command: string, source: string, output: string) => Promise<void>;
+  transcode: (
+    command: string,
+    input: Uint8Array,
+    format: VoiceInputFormat,
+    output: string,
+  ) => Promise<void>;
 }
 
-const defaultDependencies: VoiceReferenceDependencies = {
-  ffmpegPath: () => resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg"),
-  transcode: async (command, source, output) => {
-    const result = await runCommandAsync(
+type VoiceInputFormat = "aiff" | "caf" | "flac" | "matroska" | "mov" | "mp3" | "ogg" | "wav";
+
+const FFMPEG_ARGS = [
+  "-hide_banner",
+  "-nostdin",
+  "-y",
+  "-v",
+  "error",
+  "-max_alloc",
+  "67108864",
+  "-protocol_whitelist",
+  "pipe",
+  "-probesize",
+  "1048576",
+  "-analyzeduration",
+  "5000000",
+] as const;
+
+const transcode = (
+  command: string,
+  input: Uint8Array,
+  format: VoiceInputFormat,
+  output: string,
+): Promise<void> => {
+  const conversion = Effect.callback<void, VoiceReferenceError>((resume) => {
+    const child = spawn(
       command,
       [
-        "-nostdin",
-        "-y",
-        "-v",
-        "error",
+        ...FFMPEG_ARGS,
+        "-f",
+        format,
         "-i",
-        source,
+        "pipe:0",
+        "-map",
+        "0:a:0",
         "-vn",
+        "-sn",
+        "-dn",
+        "-threads",
+        "1",
+        "-filter_threads",
+        "1",
         "-ac",
         "1",
         "-ar",
@@ -48,20 +85,83 @@ const defaultDependencies: VoiceReferenceDependencies = {
         "pcm_s16le",
         "-t",
         "20.1",
+        "-f",
+        "wav",
         output,
       ],
-      { timeoutMs: TRANSCODE_TIMEOUT_MS },
+      { stdio: ["pipe", "ignore", "ignore"] },
     );
-    if (result.timedOut) {
-      throw new VoiceReferenceError(504, "voice_decode_timeout", "Voice reference decode timed out");
-    }
-    if (result.status !== 0) {
-      throw new VoiceReferenceError(400, "voice_audio_invalid", "Voice reference could not be decoded");
-    }
-  },
+    let settled = false;
+    const settle = (effect: Effect.Effect<void, VoiceReferenceError>): void => {
+      if (settled) return;
+      settled = true;
+      resume(effect);
+    };
+    child.stdin.on("error", () => {});
+    child.stdin.end(input);
+    child.once("error", () =>
+      settle(
+        Effect.fail(
+          new VoiceReferenceError(503, "ffmpeg_unavailable", "FFmpeg could not be started"),
+        ),
+      ),
+    );
+    child.once("close", (code) =>
+      settle(
+        code === 0
+          ? Effect.void
+          : Effect.fail(
+              new VoiceReferenceError(
+                400,
+                "voice_audio_invalid",
+                "Voice reference could not be decoded",
+              ),
+            ),
+      ),
+    );
+    return Effect.sync(() => {
+      if (settled) return;
+      settled = true;
+      child.stdin.destroy();
+      child.kill("SIGKILL");
+    });
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: TRANSCODE_TIMEOUT_MS,
+      orElse: () =>
+        Effect.fail(
+          new VoiceReferenceError(504, "voice_decode_timeout", "Voice reference decode timed out"),
+        ),
+    }),
+  );
+  return Effect.runPromise(conversion);
 };
 
-const ascii = (bytes: Buffer, offset: number): string => bytes.subarray(offset, offset + 4).toString("ascii");
+const defaultDependencies: VoiceReferenceDependencies = {
+  ffmpegPath: () => resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg"),
+  transcode,
+};
+
+const ascii = (bytes: Buffer, offset: number): string =>
+  bytes.subarray(offset, offset + 4).toString("ascii");
+
+const detectedFormat = (input: Uint8Array): VoiceInputFormat => {
+  const bytes = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  if (ascii(bytes, 0) === "RIFF" && ascii(bytes, 8) === "WAVE") return "wav";
+  if (ascii(bytes, 0) === "OggS") return "ogg";
+  if (ascii(bytes, 0) === "fLaC") return "flac";
+  if (ascii(bytes, 0) === "FORM" && ["AIFF", "AIFC"].includes(ascii(bytes, 8))) return "aiff";
+  if (ascii(bytes, 0) === "caff") return "caf";
+  if (ascii(bytes, 4) === "ftyp") return "mov";
+  if (bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return "matroska";
+  if (bytes.subarray(0, 3).toString("ascii") === "ID3") return "mp3";
+  if (bytes.length >= 2 && bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) return "mp3";
+  throw new VoiceReferenceError(
+    400,
+    "voice_audio_invalid",
+    "Voice reference must be WAV, WebM, Ogg, FLAC, MP3, AIFF, CAF, or MP4 audio",
+  );
+};
 
 const wavDuration = (audio: Uint8Array): number => {
   const bytes = Buffer.from(audio);
@@ -108,6 +208,7 @@ export const normalizeVoiceReference = async (
       `Voice reference must be smaller than ${MAX_VOICE_UPLOAD_BYTES / 1024 / 1024} MB`,
     );
   }
+  const format = detectedFormat(input);
   const ffmpeg = dependencies.ffmpegPath();
   if (!ffmpeg) {
     throw new VoiceReferenceError(
@@ -117,12 +218,12 @@ export const normalizeVoiceReference = async (
     );
   }
   const directory = join(dataDirectory, "runtime", "speech", "uploads");
-  const source = join(directory, `${randomUUID()}.input`);
   const output = join(directory, `${randomUUID()}.wav`);
   try {
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    await writeFile(source, input, { mode: 0o600 });
-    await dependencies.transcode(ffmpeg, source, output);
+    secureSpeechDirectory(directory);
+    await writeFile(output, new Uint8Array(), { mode: 0o600, flag: "wx" });
+    await dependencies.transcode(ffmpeg, input, format, output);
+    await chmod(output, 0o600);
     const audio = await readFile(output);
     if (audio.length > MAX_NORMALIZED_BYTES) {
       throw new VoiceReferenceError(400, "voice_audio_invalid", "Voice reference is too long");
@@ -137,6 +238,6 @@ export const normalizeVoiceReference = async (
     }
     return { audio, durationMs };
   } finally {
-    await Promise.all([unlink(source).catch(() => undefined), unlink(output).catch(() => undefined)]);
+    await unlink(output).catch(() => undefined);
   }
 };

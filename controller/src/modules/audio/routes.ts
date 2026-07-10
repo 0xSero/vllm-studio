@@ -2,14 +2,26 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
+import { Schema } from "effect";
+import { CHATTERBOX_BACKEND } from "@local-studio/contracts/speech";
 import type { AppContext } from "../../app-context";
+import {
+  boundedFormData,
+  readBoundedRequestBody,
+  RequestBodyTooLargeError,
+} from "../../http/bounded-body";
 import { SttIntegrationError, transcribeAudio } from "../../services/stt";
 import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
 import type { AudioRouteDependencies } from "./interfaces";
+import { SpeechServiceError } from "../speech/service";
+import { VoiceProfileError } from "../speech/voice-store";
 const AUDIO_TEMP_PATH_SEGMENTS = ["tmp", "audio"];
 // Cap the STT upload so a single large POST can't buffer unbounded bytes into
 // memory and OOM the controller. Generous for any real speech clip.
 const MAX_STT_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_STT_REQUEST_BYTES = MAX_STT_UPLOAD_BYTES + 1024 * 1024;
+const MAX_TTS_REQUEST_BYTES = 64 * 1024;
+const JsonObjectSchema = Schema.Record(Schema.String, Schema.Unknown);
 import {
   defaultTranscodeToWav,
   ensureServiceLease,
@@ -34,7 +46,7 @@ export const registerAudioRoutes = (
     const cleanupPaths = new Set<string>();
 
     try {
-      const formData = await ctx.req.formData();
+      const formData = await boundedFormData(ctx.req.raw, MAX_STT_REQUEST_BYTES);
       const file = formData.get("file");
       if (!(file instanceof File)) {
         throw new SttIntegrationError(400, "file_missing", "Multipart field 'file' is required");
@@ -91,6 +103,15 @@ export const registerAudioRoutes = (
 
       return ctx.json({ text: transcription.text });
     } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return ctx.json(
+          {
+            code: "file_too_large",
+            error: `Audio upload exceeds the ${Math.round(MAX_STT_UPLOAD_BYTES / (1024 * 1024))} MB limit`,
+          },
+          { status: 413 },
+        );
+      }
       if (error instanceof SttIntegrationError) {
         return ctx.json(
           {
@@ -133,8 +154,11 @@ export const registerAudioRoutes = (
     try {
       let body: Record<string, unknown> = {};
       try {
-        body = (await ctx.req.json()) as Record<string, unknown>;
-      } catch {
+        const bytes = await readBoundedRequestBody(ctx.req.raw, MAX_TTS_REQUEST_BYTES);
+        const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+        body = Schema.decodeUnknownSync(JsonObjectSchema)(parsed);
+      } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) throw error;
         body = {};
       }
 
@@ -157,6 +181,25 @@ export const registerAudioRoutes = (
           "unsupported_response_format",
           "Only response_format='wav' is supported",
         );
+      }
+
+      const requestedModel = typeof body["model"] === "string" ? body["model"].trim() : "";
+      if (requestedModel === CHATTERBOX_BACKEND) {
+        const voiceId = typeof body["voice"] === "string" ? body["voice"].trim() : "";
+        if (!voiceId) {
+          throw new SpeechServiceError(
+            400,
+            "voice_required",
+            "voice is required for Chatterbox speech",
+          );
+        }
+        const output = await context.speechService.synthesize({ text: input, voiceId });
+        const audio = new ArrayBuffer(output.audio.byteLength);
+        new Uint8Array(audio).set(output.audio);
+        return new Response(audio, {
+          status: 200,
+          headers: { "Content-Type": output.contentType },
+        });
       }
 
       const mode = parseJsonMode(body["mode"]);
@@ -187,6 +230,15 @@ export const registerAudioRoutes = (
         },
       });
     } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return ctx.json(
+          { code: "request_too_large", error: "Speech request exceeds 64 KB" },
+          { status: 413 },
+        );
+      }
+      if (error instanceof SpeechServiceError || error instanceof VoiceProfileError) {
+        return Response.json({ code: error.code, error: error.message }, { status: error.status });
+      }
       if (error instanceof TtsIntegrationError) {
         return ctx.json(
           {

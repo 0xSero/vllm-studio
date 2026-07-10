@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { readFileSync, readdirSync, rmSync, writeFileSync, mkdtempSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VoiceProfileError, VoiceStore, VOICE_CONSENT_VERSION } from "./voice-store";
@@ -11,6 +19,24 @@ const fixture = (): { directory: string; store: VoiceStore } => {
     store: new VoiceStore(join(directory, "controller.db"), directory),
   };
 };
+
+test("sweeps only owned orphan plaintext when the store starts", () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-studio-voice-sweep-"));
+  const temporary = join(directory, "runtime", "speech", "tmp");
+  const orphan = "123e4567-e89b-42d3-a456-426614174000.wav";
+  try {
+    mkdirSync(temporary, { recursive: true, mode: 0o755 });
+    writeFileSync(join(temporary, orphan), "private", { mode: 0o644 });
+    writeFileSync(join(temporary, "preserve.wav"), "unowned", { mode: 0o644 });
+
+    new VoiceStore(join(directory, "controller.db"), directory);
+
+    expect(readdirSync(temporary)).toEqual(["preserve.wav"]);
+    expect(statSync(temporary).mode & 0o777).toBe(0o700);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("stores only opaque metadata and encrypted voice bytes", async () => {
   const { directory, store } = fixture();
@@ -71,7 +97,12 @@ test("rejects missing consent and authenticated ciphertext changes", async () =>
   const { directory, store } = fixture();
   try {
     await expect(
-      store.create({ name: "No consent", durationMs: 10_000, consent: "", audio: Buffer.alloc(32) }),
+      store.create({
+        name: "No consent",
+        durationMs: 10_000,
+        consent: "",
+        audio: Buffer.alloc(32),
+      }),
     ).rejects.toBeInstanceOf(VoiceProfileError);
     await expect(
       store.create({

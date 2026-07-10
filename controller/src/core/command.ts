@@ -74,19 +74,38 @@ export const realProcessRunner: ProcessRunner = {
 export type AsyncCommandResult = CommandResult & {
   timedOut: boolean;
   signal: NodeJS.Signals | null;
+  exitConfirmed?: boolean | undefined;
 };
 
 export type AsyncCommandOptions = {
   timeoutMs: number;
+  maxOutputBytes?: number | undefined;
   cwd?: string | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   stdin?: string | undefined;
+  signal?: AbortSignal | undefined;
   onOutput?: ((chunk: string) => void) | undefined;
   onSpawn?: ((child: ChildProcess) => void) | undefined;
 };
 
 const DEFAULT_TIMEOUT_MS = 3_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
+const TERMINATION_CONFIRM_GRACE_MS = 5_000;
+const DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024;
+
+export class CommandTerminationError extends Error {
+  constructor() {
+    super("Command process exit could not be confirmed");
+    this.name = "CommandTerminationError";
+  }
+}
+
+const boundedTail = (current: Buffer, chunk: Buffer, maximumBytes: number): Buffer => {
+  if (maximumBytes === 0) return Buffer.alloc(0);
+  if (chunk.length >= maximumBytes) return Buffer.from(chunk.subarray(-maximumBytes));
+  const retained = current.subarray(Math.max(0, current.length + chunk.length - maximumBytes));
+  return Buffer.concat([retained, chunk], retained.length + chunk.length);
+};
 
 export const runCommandEffect = (
   command: string,
@@ -107,6 +126,10 @@ export const runCommandAsyncEffect = (
   options: AsyncCommandOptions,
 ): Effect.Effect<AsyncCommandResult> =>
   Effect.callback<AsyncCommandResult>((resume) => {
+    const requestedOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+    const maximumOutputBytes = Number.isSafeInteger(requestedOutputBytes)
+      ? Math.max(0, requestedOutputBytes)
+      : DEFAULT_MAX_OUTPUT_BYTES;
     const child = spawn(command, args, {
       env: options.env ?? process.env,
       ...(options.cwd ? { cwd: options.cwd } : {}),
@@ -117,42 +140,94 @@ export const runCommandAsyncEffect = (
       child.stdin?.write(options.stdin);
       child.stdin?.end();
     }
-    let stdout = "";
-    let stderr = "";
+    let stdout: Buffer = Buffer.alloc(0);
+    let stderr: Buffer = Buffer.alloc(0);
     let timedOut = false;
+    let closed = false;
+    let settled = false;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), TIMEOUT_KILL_GRACE_MS);
-    }, options.timeoutMs);
-    const settle = (result: AsyncCommandResult): void => {
+    let confirmKillTimer: ReturnType<typeof setTimeout> | null = null;
+    const complete = (result: AsyncCommandResult): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeoutTimer);
       if (forceKillTimer) clearTimeout(forceKillTimer);
+      if (confirmKillTimer) clearTimeout(confirmKillTimer);
+      options.signal?.removeEventListener("abort", terminate);
       resume(Effect.succeed(result));
+    };
+    const terminate = (): void => {
+      if (closed) return;
+      child.kill("SIGTERM");
+      if (!forceKillTimer) {
+        forceKillTimer = setTimeout(() => {
+          child.kill("SIGKILL");
+          confirmKillTimer = setTimeout(
+            () =>
+              complete({
+                status: null,
+                stdout: stdout.toString("utf8").trim(),
+                stderr: new CommandTerminationError().message,
+                timedOut,
+                signal: null,
+                exitConfirmed: false,
+              }),
+            TERMINATION_CONFIRM_GRACE_MS,
+          );
+        }, TIMEOUT_KILL_GRACE_MS);
+      }
+    };
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, options.timeoutMs);
+    const settle = (result: AsyncCommandResult): void => {
+      complete(result);
     };
     child.stdout?.on("data", (data: Buffer) => {
       const chunk = data.toString("utf-8");
-      stdout += chunk;
+      stdout = boundedTail(stdout, data, maximumOutputBytes);
       options.onOutput?.(chunk);
     });
     child.stderr?.on("data", (data: Buffer) => {
       const chunk = data.toString("utf-8");
-      stderr += chunk;
+      stderr = boundedTail(stderr, data, maximumOutputBytes);
       options.onOutput?.(chunk);
     });
     child.on("error", (error) => {
       settle({
         status: null,
-        stdout: stdout.trim(),
+        stdout: stdout.toString("utf8").trim(),
         stderr: error.message,
         timedOut,
         signal: null,
       });
     });
     child.on("close", (code, signal) => {
-      settle({ status: code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut, signal });
+      closed = true;
+      settle({
+        status: code,
+        stdout: stdout.toString("utf8").trim(),
+        stderr: stderr.toString("utf8").trim(),
+        timedOut,
+        signal,
+      });
     });
+    options.signal?.addEventListener("abort", terminate, { once: true });
+    if (options.signal?.aborted) terminate();
+    return Effect.callback<void>((finish) => {
+      if (closed) {
+        finish(Effect.void);
+        return;
+      }
+      child.once("close", () => finish(Effect.void));
+      terminate();
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: TIMEOUT_KILL_GRACE_MS + TERMINATION_CONFIRM_GRACE_MS,
+        orElse: () => Effect.die(new CommandTerminationError()),
+      }),
+    );
   });
 
 export const runCommandAsync = (

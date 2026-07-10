@@ -11,6 +11,7 @@ const context = createAppContext();
 const app = createApp(context);
 let server: ReturnType<typeof Bun.serve> | null = null;
 let stopMetrics: (() => void) | null = null;
+let shuttingDown = false;
 
 const startBackgroundMetrics = (): (() => void) => {
   if (metricsDisabled()) {
@@ -55,17 +56,22 @@ const logBootSummary = (port: number): void => {
   );
 };
 
-const shutdown = (): void => {
+const shutdown = async (): Promise<void> => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   stopMetrics?.();
   stopMetrics = null;
   if (typeof server?.stop === "function") {
     server.stop();
   }
   server = null;
+  await context.speechService.shutdown().catch((error) => {
+    context.logger.error("Speech service failed to stop", { error: String(error) });
+  });
   process.exit(0);
 };
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 start();

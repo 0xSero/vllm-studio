@@ -10,6 +10,7 @@ import { registerModelsRoutes } from "../modules/models/routes";
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
 import { registerAudioRoutes } from "../modules/audio/routes";
+import { registerSpeechRoutes } from "../modules/speech/routes";
 import { createOpenApiSpec } from "./openapi-spec";
 import {
   createMutatingAuthMiddleware,
@@ -57,6 +58,7 @@ export const createApp = (context: AppContext): Hono => {
   registerEngineRoutes(app, context);
   registerModelsRoutes(app, context);
   registerStudioRoutes(app, context);
+  registerSpeechRoutes(app, context);
   registerAudioRoutes(app, context);
   registerAllProxyRoutes(app, context);
 

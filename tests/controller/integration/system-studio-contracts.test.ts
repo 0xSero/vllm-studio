@@ -460,6 +460,22 @@ describe("controller route contracts", () => {
       error: "Only response_format='wav' is supported",
     });
 
+    const missingVoiceResponse = await app.request("/v1/audio/speech", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: "Say hello",
+        model: "chatterbox-turbo",
+        voice: "voice_00000000000000000000000000000000",
+      }),
+    });
+    const missingVoiceBody = await missingVoiceResponse.json();
+    expect(missingVoiceResponse.status).toBe(404);
+    expect(missingVoiceBody).toEqual({
+      code: "voice_not_found",
+      error: "Voice profile not found",
+    });
+
     const missingModelResponse = await app.request("/v1/audio/speech", {
       method: "POST",
       headers: { "content-type": "application/json" },

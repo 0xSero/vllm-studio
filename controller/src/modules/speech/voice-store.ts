@@ -5,6 +5,7 @@ import type { Database } from "bun:sqlite";
 import { Effect, Semaphore } from "effect";
 import { openSqliteDatabase } from "../../stores/sqlite";
 import { VoiceVault } from "./voice-vault";
+import { prepareVoicePlaintextStorage } from "./storage";
 
 export const VOICE_CONSENT_VERSION = "self_voice_v1";
 const VOICE_ID_PATTERN = /^voice_[a-f\d]{32}$/;
@@ -34,7 +35,8 @@ export class VoiceProfileError extends Error {
 const voiceId = (): string => `voice_${randomUUID().replaceAll("-", "")}`;
 
 const validId = (id: string): string => {
-  if (!VOICE_ID_PATTERN.test(id)) throw new VoiceProfileError(404, "voice_not_found", "Voice profile not found");
+  if (!VOICE_ID_PATTERN.test(id))
+    throw new VoiceProfileError(404, "voice_not_found", "Voice profile not found");
   return id;
 };
 
@@ -67,6 +69,7 @@ export class VoiceStore {
     this.db = openSqliteDatabase(dbPath);
     this.vault = new VoiceVault(join(dataDirectory, "speech", "vault"));
     this.temporaryDirectory = join(dataDirectory, "runtime", "speech", "tmp");
+    prepareVoicePlaintextStorage(this.temporaryDirectory);
     this.db.run(`
       CREATE TABLE IF NOT EXISTS speech_voice_profiles (
         id TEXT PRIMARY KEY,
@@ -153,8 +156,10 @@ export class VoiceStore {
             const existing = this.get(normalizedId);
             if (!existing) return false;
             await this.vault.delete(normalizedId);
-            return this.db.query("DELETE FROM speech_voice_profiles WHERE id = ?").run(normalizedId)
-              .changes > 0;
+            return (
+              this.db.query("DELETE FROM speech_voice_profiles WHERE id = ?").run(normalizedId)
+                .changes > 0
+            );
           },
           catch: (error) => error,
         }),
@@ -165,7 +170,9 @@ export class VoiceStore {
   public withPlaintext<A>(id: string, use: (path: string) => Promise<A>): Promise<A> {
     const normalizedId = validId(id);
     if (!this.get(normalizedId)) {
-      return Promise.reject(new VoiceProfileError(404, "voice_not_found", "Voice profile not found"));
+      return Promise.reject(
+        new VoiceProfileError(404, "voice_not_found", "Voice profile not found"),
+      );
     }
     return Effect.runPromise(
       Effect.acquireUseRelease(
@@ -184,7 +191,9 @@ export class VoiceStore {
     );
   }
 
-  public consentRecord(id: string): Pick<VoiceProfileRow, "consent_version" | "consented_at"> | null {
+  public consentRecord(
+    id: string,
+  ): Pick<VoiceProfileRow, "consent_version" | "consented_at"> | null {
     return this.db
       .query<Pick<VoiceProfileRow, "consent_version" | "consented_at">, [string]>(
         "SELECT consent_version, consented_at FROM speech_voice_profiles WHERE id = ?",
