@@ -308,7 +308,7 @@ function DiffFileList({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[length:var(--fs-sm)] leading-5">
-      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--color-panel)/95 py-1 backdrop-blur">
+      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--color-panel) py-1">
         <DiffModeButton active={viewMode === "unified"} onClick={() => onViewMode("unified")}>
           Unified
         </DiffModeButton>

@@ -85,7 +85,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        className="absolute inset-0 z-0 bg-(--color-background)/85 backdrop-blur-[5px]"
+        className="absolute inset-0 z-0 bg-(--color-background)"
         onClick={onClose}
       />
       <div

@@ -208,7 +208,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-(--color-background)/85 backdrop-blur-[5px]"
+        className="absolute inset-0 bg-(--color-background)"
         onClick={onClose}
         aria-label="Close session search"
       />

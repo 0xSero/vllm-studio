@@ -141,22 +141,20 @@ export function AgentModelPicker({
       />
       {open ? (
         <div
-          className="absolute bottom-full right-0 z-[80] mb-2 flex max-h-[468px] w-[420px] flex-col overflow-hidden rounded-[var(--rad-lg)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0_24px_72px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.035)]"
+          className="absolute bottom-full right-0 z-10 mb-2 flex max-h-[352px] w-[372px] flex-col overflow-hidden rounded-[var(--rad-lg)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0_20px_56px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.035)]"
           onPointerDown={stopToolbarEvent}
           onMouseDown={stopToolbarEvent}
           onKeyDown={handleKeyDown}
         >
-          <div className="shrink-0 border-b border-(--color-popover-border) bg-(--color-popover-header) px-3 py-2.5">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-[length:var(--fs-sm)] font-medium text-(--fg)">
-                Choose a model
-              </span>
+          <div className="shrink-0 border-b border-(--color-popover-border) bg-(--color-popover-header) px-2.5 py-2">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="text-[length:var(--fs-sm)] font-medium text-(--fg)">Models</span>
               <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">
                 {models.length} available
               </span>
             </div>
-            <div className="flex h-8 items-center gap-2 rounded-md border border-(--color-popover-border) bg-(--color-input) px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-              <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+            <div className="flex h-7 items-center gap-2 rounded-md border border-(--color-popover-border) bg-(--color-input) px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+              <Search className="h-3 w-3 shrink-0 text-(--dim)" />
               <input
                 ref={searchRef}
                 value={query}
@@ -171,19 +169,19 @@ export function AgentModelPicker({
           </div>
 
           {!query && filteredGroups.length > 1 ? (
-            <div className="shrink-0 border-b border-(--color-popover-border) px-3 py-2">
-              <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)">
+            <div className="flex shrink-0 items-center gap-2 border-b border-(--color-popover-border) px-2.5 py-1.5">
+              <div className="flex shrink-0 items-center gap-1.5 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)">
                 <Server className="h-3 w-3" />
                 Source
               </div>
-              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+              <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
                 {filteredGroups.map((group) => (
                   <button
                     key={group.key}
                     type="button"
                     onClick={() => setActiveControllerKey(group.key)}
                     className={cx(
-                      "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 font-mono text-[length:var(--fs-2xs)] transition-colors active:translate-y-px",
+                      "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-1.5 font-mono text-[length:var(--fs-2xs)] transition-colors active:translate-y-px",
                       group.key === currentKey
                         ? "border-(--color-popover-border) bg-(--color-input) text-(--fg)"
                         : "border-transparent text-(--dim) hover:bg-(--hover) hover:text-(--fg)",
@@ -197,7 +195,7 @@ export function AgentModelPicker({
             </div>
           ) : null}
 
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1">
             {flatItems.length === 0 ? (
               <div className="px-3 py-8 text-center text-[length:var(--fs-sm)] text-(--dim)">
                 No models match &ldquo;{query}&rdquo;.
@@ -207,7 +205,7 @@ export function AgentModelPicker({
                 item.type === "header" ? (
                   <div
                     key={`header-${item.label}`}
-                    className="px-2.5 pb-1 pt-2.5 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)"
+                    className="px-2 pb-1 pt-2 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)"
                   >
                     {item.label}
                   </div>
@@ -300,20 +298,20 @@ function ModelOption({
       onClick={() => onSelect(model.id)}
       onMouseEnter={onHover}
       className={cx(
-        "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors",
+        "flex w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors",
         highlighted ? "border-(--color-popover-border) bg-(--hover)" : "",
         selected && !highlighted ? "border-(--color-popover-border) bg-(--color-input)" : "",
       )}
     >
       <span
         className={cx(
-          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border",
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
           selected
             ? "border-(--accent)/35 bg-(--accent)/15 text-(--accent)"
             : "border-(--color-popover-border) text-transparent",
         )}
       >
-        <Check className="h-3 w-3" />
+        <Check className="h-2.5 w-2.5" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">

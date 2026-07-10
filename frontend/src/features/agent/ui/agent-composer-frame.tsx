@@ -130,7 +130,10 @@ export function AgentComposerFrame({
   textareaRef,
 }: AgentComposerFrameProps) {
   return (
-    <form onSubmit={onSubmit} className="shrink-0 bg-(--agent-bg) px-6 pb-2 pt-2.5">
+    <form
+      onSubmit={onSubmit}
+      className="relative z-[100] shrink-0 bg-(--agent-bg) px-6 pb-2 pt-2.5"
+    >
       <AgentQueuePanel
         items={queueItems}
         expanded={queueExpanded}

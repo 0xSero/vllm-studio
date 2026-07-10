@@ -147,7 +147,7 @@ export function RecipesContentView(props: Props) {
           <button
             type="button"
             aria-label="Close recipe editor"
-            className="absolute inset-0 bg-(--color-background)/85 backdrop-blur-[5px]"
+            className="absolute inset-0 bg-(--color-background)"
             onClick={onCloseRecipeModal}
           />
           <RecipeModal
