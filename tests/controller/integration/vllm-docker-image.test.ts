@@ -116,7 +116,7 @@ describe("vLLM Docker runtime", () => {
 
     expect(flags).toEqual([
       "--gpus",
-      `device=${selector}`,
+      `"device=${selector}"`,
       "-e",
       `CUDA_VISIBLE_DEVICES=${selector}`,
     ]);

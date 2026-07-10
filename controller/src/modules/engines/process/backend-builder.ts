@@ -285,8 +285,9 @@ export const buildDockerGpuFlags = (recipe: Recipe, gpus: readonly GpuInfo[]): s
   const resolution = resolveRecipeGpuUuids(recipe, gpus);
   const resolved = resolution.unresolvedTokens.length === 0 ? resolution.uuids.join(",") : "";
   const selector = resolved || resolution.selector?.trim() || "";
+  const request = selector.includes(",") ? `"device=${selector}"` : `device=${selector}`;
   return selector
-    ? ["--gpus", `device=${selector}`, "-e", `CUDA_VISIBLE_DEVICES=${selector}`]
+    ? ["--gpus", request, "-e", `CUDA_VISIBLE_DEVICES=${selector}`]
     : ["--gpus", "all"];
 };
 
