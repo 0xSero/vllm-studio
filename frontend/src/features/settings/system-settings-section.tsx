@@ -23,7 +23,7 @@ export function ServicesSettings({
   error: string | null;
 }) {
   return (
-    <div className="space-y-5">
+    <div>
       <ServiceTopologyGroup data={data} apiSettings={apiSettings} loading={loading} error={error} />
       <EnvironmentUrlsGroup data={data} apiSettings={apiSettings} />
     </div>
@@ -141,7 +141,7 @@ export function SystemSettings({
   error: string | null;
 }) {
   return (
-    <div className="space-y-5">
+    <div>
       <ControllerStateGroup data={data} loading={loading} error={error} />
       <NetworkSettingsGroup data={data} />
       <StorageSettingsGroup data={data} />

@@ -84,7 +84,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
   const hasRows = hasHydratedEngineRows(engineRows);
 
   return (
-    <div className="space-y-8">
+    <div>
       <SettingsGroup
         title="Inference engines"
         description="Model-serving runtimes installed on the controller host."

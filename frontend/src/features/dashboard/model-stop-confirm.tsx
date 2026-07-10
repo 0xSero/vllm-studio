@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Square, TriangleAlert, X } from "@/ui/icon-registry";
-import { Button, UiModal, UiModalHeader, Spinner } from "@/ui";
+import { Square, TriangleAlert } from "@/ui/icon-registry";
+import { Button, ErrorBox, UiModal, UiModalHeader, Spinner } from "@/ui";
 
 type StopTriggerArgs = {
   open: () => void;
@@ -43,38 +43,33 @@ export function ModelStopConfirm({ trigger, onStop }: ModelStopConfirmProps) {
       })}
       <UiModal isOpen={open} onClose={() => !stopping && setOpen(false)} maxWidth="max-w-md">
         <UiModalHeader
-          title="Stop model?"
-          icon={
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-(--err)/30 bg-(--err)/10">
-              <Square className="h-3.5 w-3.5 text-(--err)" fill="currentColor" />
-            </span>
-          }
+          title="Stop model"
+          icon={<Square className="h-3 w-3 text-(--err)" fill="currentColor" />}
           onClose={() => !stopping && setOpen(false)}
-          closeIcon={<X className="h-4 w-4" />}
-          className="border-(--err)/20 bg-(--err)/[0.03]"
         />
-        <div className="space-y-5 px-6 py-5">
-          <div className="rounded-xl border border-(--border)/70 bg-(--bg)/60 p-4">
-            <div className="flex gap-3">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-(--err)" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-(--fg)">Active inference will end now.</p>
-                <p className="text-sm leading-6 text-(--dim)">
-                  Running chats may stop responding while the GPU lease is released.
-                </p>
-              </div>
+        <div className="px-5 pb-4 pt-2">
+          <div className="flex gap-2.5 py-2">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-(--err)" />
+            <div className="space-y-1">
+              <p className="text-[length:var(--fs-sm)] font-medium text-(--fg)">
+                Active inference will end now.
+              </p>
+              <p className="text-[length:var(--fs-sm)] leading-relaxed text-(--dim)">
+                Running chats may stop responding while the GPU lease is released.
+              </p>
             </div>
           </div>
-          {error && (
-            <div className="rounded-lg border border-(--err)/40 bg-(--err)/10 px-3 py-2 text-sm text-(--err)">
-              {error}
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setOpen(false)} disabled={stopping}>
+          {error ? <ErrorBox className="mt-3">{error}</ErrorBox> : null}
+          <div className="mt-4 flex justify-end gap-1.5 border-t border-(--ui-border) pt-3">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setOpen(false)}
+              disabled={stopping}
+            >
               Cancel
             </Button>
-            <Button variant="danger" onClick={confirmStop} disabled={stopping}>
+            <Button size="sm" variant="danger" onClick={confirmStop} disabled={stopping}>
               {stopping && <Spinner size="sm" />}
               {stopping ? "Stopping..." : "Stop model"}
             </Button>

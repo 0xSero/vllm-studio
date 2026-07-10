@@ -14,20 +14,22 @@ interface CardProps {
 }
 
 const paddingClasses: Record<CardPadding, string> = {
-  sm: "p-4",
-  md: "p-5",
-  lg: "p-7",
+  sm: "p-3",
+  md: "p-4",
+  lg: "p-5",
 };
 
 function CardHeading({ title, description }: Pick<CardProps, "title" | "description">) {
   if (!title && !description) return null;
   return (
-    <div className="mb-3">
+    <div className="mb-3 space-y-1">
       {title ? (
         <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">{title}</h2>
       ) : null}
       {description ? (
-        <p className="mt-1 text-[length:var(--fs-xs)] text-(--ui-muted)">{description}</p>
+        <p className="text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
+          {description}
+        </p>
       ) : null}
     </div>
   );
@@ -43,7 +45,7 @@ function Card({
 }: CardProps) {
   return (
     <div
-      className={`rounded-lg bg-(--ui-bg) ${bordered ? "border border-(--ui-border)" : ""} ${paddingClasses[padding]} ${className}`}
+      className={`rounded-[var(--rad-lg)] bg-(--ui-surface) ${bordered ? "border border-(--ui-border)" : ""} ${paddingClasses[padding]} ${className}`}
     >
       <CardHeading title={title} description={description} />
       {children}

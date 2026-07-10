@@ -12,11 +12,8 @@ import {
   type ThemeTokens,
 } from "@/lib/themes";
 import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
-import { ColorField, ListGroup, ListRow, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                           */
-/* ------------------------------------------------------------------ */
+import { ColorField, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
+import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
 
 const CUSTOM_THEME_TOKEN_KEY = "local-studio.customThemeTokens";
 const LIGHT_THEME_ID = "zai-light";
@@ -98,10 +95,6 @@ function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main component                                                    */
-/* ------------------------------------------------------------------ */
-
 export function AppearanceSettings() {
   const themeId = useAppStore((s) => s.themeId);
   const setThemeId = useAppStore((s) => s.setThemeId);
@@ -116,7 +109,6 @@ export function AppearanceSettings() {
   const sizeMap: Record<string, number> = { sm: 14, md: 16, lg: 17, xl: 18, "2xl": 20 };
   const [uiFontSize, setUiFontSize] = useState(sizeMap[fontSizeId] ?? 16);
 
-  // Master scale knobs — drive the canonical CSS vars the whole UI derives from.
   const [uiScale, setUiScale] = useState(() => readVar("--ui-scale", 1));
   const [radiusBase, setRadiusBase] = useState(() => readVar("--radius-base", 8));
   const setScale = (value: number) => {
@@ -163,16 +155,12 @@ export function AppearanceSettings() {
     setFontSizeId(closest as typeof fontSizeId);
   };
 
-  /* ---- live custom token editor (reuses the existing apply pipeline) ---- */
-
   const baseTokens = currentTheme.tokens;
   const [customTokens, setCustomTokens] = useState<ThemeTokens>(
     () => readCustomTokens() ?? baseTokens,
   );
   const [isCustomActive, setIsCustomActive] = useState(false);
 
-  // Reset edits when the active theme changes (render-phase sync — the
-  // React-sanctioned alternative to a syncing effect).
   const [prevThemeId, setPrevThemeId] = useState(themeId);
   if (themeId !== prevThemeId) {
     setPrevThemeId(themeId);
@@ -220,19 +208,16 @@ export function AppearanceSettings() {
 
   const advancedTokens: Array<keyof ThemeTokens> = ["dim", "border", "hl1", "hl2", "hl3", "err"];
 
-  /* ---------------------------------------------------------------- */
-
   return (
-    <div className="space-y-1">
-      {/* Theme + mode */}
-      <ListGroup
+    <div>
+      <SettingsGroup
         title="Theme"
         description="Use light, dark, or match your system."
         actions={
           <SegmentedControl items={MODE_ITEMS} value={mode} onChange={applyMode} size="sm" />
         }
       >
-        <ListRow
+        <SettingsRow
           label="Active theme"
           description={isCustomActive ? "Live custom tokens active" : currentTheme.description}
           control={
@@ -249,26 +234,21 @@ export function AppearanceSettings() {
             </div>
           }
         />
-      </ListGroup>
+      </SettingsGroup>
 
-      {/* Theme editor — color fields */}
-      <ListGroup
+      <SettingsGroup
         title="Theme editor"
         actions={
           isCustomActive ? (
-            <button
-              type="button"
-              onClick={resetTokens}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg)"
-            >
+            <SettingsButton onClick={resetTokens}>
               <RotateCcw className="h-3 w-3" />
               Reset
-            </button>
+            </SettingsButton>
           ) : undefined
         }
       >
         {editorTokens.map((row) => (
-          <ListRow
+          <SettingsRow
             key={row.key}
             label={row.label}
             description={row.description}
@@ -281,12 +261,11 @@ export function AppearanceSettings() {
             }
           />
         ))}
-      </ListGroup>
+      </SettingsGroup>
 
-      {/* Advanced tokens */}
-      <ListGroup title="Advanced tokens" collapsible defaultOpen={false}>
+      <SettingsGroup title="Advanced tokens" collapsible defaultOpen={false}>
         {advancedTokens.map((key) => (
-          <ListRow
+          <SettingsRow
             key={key}
             label={`--${key}`}
             control={
@@ -298,11 +277,10 @@ export function AppearanceSettings() {
             }
           />
         ))}
-      </ListGroup>
+      </SettingsGroup>
 
-      {/* Typography */}
-      <ListGroup title="Typography">
-        <ListRow
+      <SettingsGroup title="Typography">
+        <SettingsRow
           label="Font family"
           control={
             <div className="relative w-full max-w-[184px]">
@@ -324,7 +302,7 @@ export function AppearanceSettings() {
             </div>
           }
         />
-        <ListRow
+        <SettingsRow
           label="UI font size"
           description="Base size for the Local Studio UI"
           control={
@@ -342,14 +320,13 @@ export function AppearanceSettings() {
             </div>
           }
         />
-      </ListGroup>
+      </SettingsGroup>
 
-      {/* Sizing & shape — master scales that resize the whole UI uniformly */}
-      <ListGroup
+      <SettingsGroup
         title="Sizing & shape"
-        description="Master scales — each resizes the entire UI uniformly."
+        description="Scale the interface and adjust its corner treatment."
       >
-        <ListRow
+        <SettingsRow
           label="UI scale"
           description="Scales every text size at once"
           control={
@@ -368,7 +345,7 @@ export function AppearanceSettings() {
             </div>
           }
         />
-        <ListRow
+        <SettingsRow
           label="Corner radius"
           description="Roundness of cards, buttons, inputs"
           control={
@@ -387,10 +364,9 @@ export function AppearanceSettings() {
             </div>
           }
         />
-      </ListGroup>
+      </SettingsGroup>
 
-      {/* Theme library */}
-      <ListGroup title="Theme library" collapsible defaultOpen={false}>
+      <SettingsGroup title="Theme library" collapsible defaultOpen={false}>
         <div>
           <div className="flex items-center gap-2 px-3.5 py-2.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-(--ui-muted)" />
@@ -469,7 +445,7 @@ export function AppearanceSettings() {
             })
           )}
         </div>
-      </ListGroup>
+      </SettingsGroup>
     </div>
   );
 }

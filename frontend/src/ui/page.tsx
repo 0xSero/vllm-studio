@@ -115,28 +115,22 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group relative grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 rounded-md px-2.5 text-left text-[length:var(--fs-md)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:translate-y-px sm:max-w-none lg:w-full",
+                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
                 active
-                  ? "bg-(--color-surface) text-(--ui-fg)"
-                  : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--ui-fg)",
+                  ? "bg-(--ui-hover) text-(--ui-fg)"
+                  : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",
               )}
               title={item.description}
             >
-              {active ? (
-                <span
-                  aria-hidden
-                  className="absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-(--color-sky-400)"
-                />
-              ) : null}
               <span
                 className={cx(
-                  "flex h-4 w-4 items-center justify-center",
-                  active ? "text-(--color-sky-400) opacity-100" : "opacity-70",
+                  "flex h-4 w-4 items-center justify-center text-(--ui-muted)",
+                  active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
                 )}
               >
                 {item.icon}
               </span>
-              <span className={cx("truncate", active ? "font-medium" : "")}>{item.label}</span>
+              <span className="truncate font-normal">{item.label}</span>
             </button>
           );
         })}

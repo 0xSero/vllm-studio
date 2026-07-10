@@ -16,23 +16,23 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary:
     "bg-(--ui-fg)/90 text-(--ui-bg) hover:bg-(--ui-fg) disabled:opacity-50 disabled:cursor-not-allowed",
   secondary:
-    "border border-(--ui-border)/40 text-(--ui-muted) hover:bg-(--ui-fg)/[0.06] hover:text-(--ui-fg) disabled:opacity-50",
+    "border border-(--ui-border) text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-50",
   danger:
-    "text-(--ui-danger) hover:bg-(--ui-danger)/15 disabled:opacity-50 disabled:cursor-not-allowed",
+    "bg-(--ui-danger) text-(--destructive-foreground) hover:bg-(--ui-danger)/90 disabled:cursor-not-allowed disabled:opacity-50",
   ghost: "text-(--ui-muted) hover:bg-(--ui-fg)/[0.06] hover:text-(--ui-fg) disabled:opacity-50",
-  icon: "hover:bg-(--ui-surface) text-(--ui-muted) hover:text-(--ui-fg) rounded-lg disabled:opacity-50",
+  icon: "text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-50",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-4 py-2 text-sm",
-  lg: "px-5 py-2.5 text-sm",
+  sm: "h-7 px-2.5 text-xs",
+  md: "h-8 px-3 text-sm",
+  lg: "h-9 px-4 text-sm",
 };
 
 const iconSizeClasses: Record<ButtonSize, string> = {
-  sm: "p-1",
-  md: "p-1.5",
-  lg: "p-2",
+  sm: "h-7 w-7",
+  md: "h-8 w-8",
+  lg: "h-9 w-9",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -51,7 +51,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 ) {
   const isIcon = variant === "icon";
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-[transform,color,background-color,border-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:translate-y-px";
+    "inline-flex items-center justify-center gap-1.5 rounded-[var(--rad-md)] font-medium transition-[transform,color,background-color,border-color,opacity] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.98]";
   const vClass = variantClasses[variant];
   const sClass = isIcon ? iconSizeClasses[size] : sizeClasses[size];
 

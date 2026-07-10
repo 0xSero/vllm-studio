@@ -70,7 +70,7 @@ export function TerminalSettings() {
   }, [capturing]);
 
   return (
-    <div className="space-y-8">
+    <div>
       <SettingsGroup
         title="Terminal shortcuts"
         description="Hotkeys apply to the focused terminal. Duplicate combos are flagged; the first matching action wins."

@@ -12,21 +12,21 @@ interface AlertProps {
   className?: string;
 }
 
-const variantConfig: Record<AlertVariant, { classes: string; DefaultIcon: typeof Info }> = {
+const variantConfig: Record<AlertVariant, { iconClass: string; DefaultIcon: typeof Info }> = {
   info: {
-    classes: "border-(--ui-info)/30 bg-(--ui-info)/10 text-(--ui-info)",
+    iconClass: "text-(--ui-info)",
     DefaultIcon: Info,
   },
   success: {
-    classes: "border-(--ui-success)/30 bg-(--ui-success)/10 text-(--ui-success)",
+    iconClass: "text-(--ui-success)",
     DefaultIcon: CheckCircle2,
   },
   warning: {
-    classes: "border-(--ui-warning)/30 bg-(--ui-warning)/10 text-(--ui-warning)",
+    iconClass: "text-(--ui-warning)",
     DefaultIcon: TriangleAlert,
   },
   error: {
-    classes: "border-(--ui-danger)/30 bg-(--ui-danger)/10 text-(--ui-danger)",
+    iconClass: "text-(--ui-danger)",
     DefaultIcon: AlertCircle,
   },
 };
@@ -40,11 +40,15 @@ function Alert({ variant = "info", icon, children, className = "" }: AlertProps)
     <div
       role={variant === "error" ? "alert" : live ? "status" : undefined}
       aria-live={live}
-      className={`rounded-lg border p-4 ${config.classes} ${className}`}
+      className={`rounded-[var(--rad-lg)] border border-(--ui-border) bg-(--color-surface) px-3 py-2.5 ${className}`}
     >
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 mt-0.5">{icon || <IconComponent className="h-4 w-4" />}</div>
-        <div className="text-sm">{children}</div>
+      <div className="flex items-start gap-2.5">
+        <div className={`mt-0.5 shrink-0 ${config.iconClass}`}>
+          {icon || <IconComponent className="h-4 w-4" />}
+        </div>
+        <div className="text-[length:var(--fs-sm)] leading-relaxed text-(--ui-fg)/85">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { X } from "@/ui/icon-registry";
 import { cx } from "./utils";
 
 interface UiModalProps {
@@ -79,12 +80,12 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <button
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        className="absolute inset-0 z-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 z-0 bg-(--bg)/75 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
@@ -94,7 +95,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         aria-modal="true"
         aria-labelledby={titleId}
         className={cx(
-          "relative z-10 w-full rounded-xl border border-(--ui-border) bg-(--ui-surface) shadow-xl",
+          "relative z-10 max-h-full w-full overflow-hidden rounded-[var(--rad-xl)] border border-(--color-popover-border) bg-(--color-popover) shadow-2xl outline-none",
           maxWidth,
           className,
         )}
@@ -130,14 +131,14 @@ function UiModalHeader({
 
   return (
     <div
-      className={cx(
-        "flex items-center justify-between border-b border-(--ui-border) px-6 py-4",
-        className,
-      )}
+      className={cx("flex min-h-12 items-center justify-between gap-3 px-5 pb-2 pt-4", className)}
     >
       <div className="flex items-center gap-2">
         {icon}
-        <h2 id={titleId ?? undefined} className="text-lg font-semibold">
+        <h2
+          id={titleId ?? undefined}
+          className="text-[length:var(--fs-md)] font-medium tracking-[-0.01em] text-(--ui-fg)"
+        >
           {title}
         </h2>
       </div>
@@ -147,10 +148,10 @@ function UiModalHeader({
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1.5 hover:bg-(--ui-hover)"
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--rad-md)] text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) active:scale-[0.98]"
             aria-label={closeLabel}
           >
-            {closeIcon ?? "x"}
+            {closeIcon ?? <X className="h-3.5 w-3.5" />}
           </button>
         ) : null}
       </div>

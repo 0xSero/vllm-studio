@@ -283,7 +283,7 @@ export function ConnectorsSection() {
   );
 
   return (
-    <div className="space-y-8">
+    <div>
       <SettingsGroup
         title="Connectors"
         description="MCP servers the agent can use — accounts, services, and your other machines. Stored in connectors.json (mcp.json-compatible)."

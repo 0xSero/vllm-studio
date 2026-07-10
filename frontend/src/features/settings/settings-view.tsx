@@ -42,13 +42,13 @@ interface SettingsViewProps {
 }
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 const SECTIONS: SettingsSectionDef[] = [
-  ["connection", "Connection", "Controller URL and API key.", Cable],
-  ["system", "System", "Runtime targets, services, storage, hardware.", Cpu],
-  ["appearance", "Appearance", "Theme variables, typography, density.", Paintbrush],
-  ["desktop", "Desktop", "Quick panel hotkey and desktop app behavior.", Keyboard],
+  ["connection", "General", "Controller connections and API access.", Cable],
+  ["system", "System", "Engines, services, storage, and hardware.", Cpu],
+  ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
+  ["desktop", "Desktop", "Quick panel shortcut and desktop behavior.", Keyboard],
   ["terminal", "Terminal", "Terminal shortcuts and text size.", Terminal],
-  ["archive", "Archived chats", "Pi sessions kept out of normal chat lists.", Archive],
-  ["setup", "Setup", "First-run checks for Pi, controller, and local directories.", ServerCog],
+  ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
+  ["setup", "Setup", "Local prerequisites and first-run checks.", ServerCog],
 ].map(([id, label, description, Icon]) => ({
   id: id as SettingsSectionId,
   label: label as string,
@@ -137,7 +137,7 @@ export function SettingsView({
         />
       ) : null}
       {activeSection === "system" ? (
-        <div className="space-y-8">
+        <div className="space-y-10">
           <EnginesSection runtime={data?.runtime ?? null} />
           <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
           <SystemSettings

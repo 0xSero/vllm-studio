@@ -144,7 +144,7 @@ export function ApiConnectionSection({
   };
 
   return (
-    <div className="space-y-8">
+    <div>
       <SettingsGroup
         title="Controllers"
         description="Every controller is saved in one list. Switch active with the radio button."

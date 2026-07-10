@@ -1,12 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AppPage,
-  PageHeader,
+  Button,
+  Input,
   RefreshIconButton,
   SectionNav,
-  ListGroup,
   ListRow,
   RowValue,
   EmptySafeNotice,
@@ -14,6 +14,7 @@ import {
   type SectionNavItem,
   type UiTone,
 } from "@/ui";
+import { ChevronDown } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;
@@ -57,14 +58,14 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   refreshLabel = `Refresh ${title.toLowerCase()}`,
   children,
 }: LayoutProps<Id>) {
-  const activeLabel = sections.find((section) => section.id === activeSection)?.label ?? title;
+  const active = sections.find((section) => section.id === activeSection);
 
   return (
     <AppPage>
-      <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10 lg:py-8 2xl:px-10">
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="mb-4 hidden items-start justify-between gap-3 lg:flex">
-            <h1 className="text-[length:var(--fs-xl)] font-semibold tracking-[-0.01em] text-(--ui-fg)">
+      <div className="mx-auto grid w-full max-w-[72rem] grid-cols-1 gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[176px_minmax(0,48rem)] lg:justify-center lg:gap-10 lg:py-8">
+        <aside className="min-w-0 lg:sticky lg:top-8 lg:self-start">
+          <div className="mb-5 hidden items-center justify-between gap-3 px-2 lg:flex">
+            <h1 className="text-[length:var(--fs-xl)] font-medium tracking-[-0.01em] text-(--ui-fg)">
               {title}
             </h1>
             <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
@@ -76,18 +77,31 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
             onSelectItem={onSelectSection}
           />
         </aside>
-        <section className="min-w-0 pb-10">
-          <PageHeader
-            eyebrow={eyebrow}
-            title={activeLabel}
-            status={status}
-            actions={
+        <section className="min-w-0 pb-12">
+          <header className="mb-8 flex min-h-8 items-start justify-between gap-4">
+            <div className="min-w-0">
+              {eyebrow ? (
+                <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--ui-muted)">
+                  {eyebrow}
+                </div>
+              ) : null}
+              <h2 className="text-[length:var(--fs-2xl)] font-normal tracking-[-0.015em] text-(--ui-fg)">
+                {active?.label ?? title}
+              </h2>
+              {active?.description ? (
+                <p className="mt-1 max-w-[42rem] text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
+                  {active.description}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+              {status}
               <span className="lg:hidden">
                 <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
               </span>
-            }
-          />
-          <div className="space-y-0">{children}</div>
+            </div>
+          </header>
+          <div>{children}</div>
         </section>
       </div>
     </AppPage>
@@ -109,16 +123,48 @@ export function SettingsGroup({
   collapsible?: boolean;
   defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen ?? true);
+  const showBody = collapsible ? open : true;
+
   return (
-    <ListGroup
-      title={title}
-      description={description}
-      actions={actions}
-      collapsible={collapsible}
-      defaultOpen={defaultOpen}
-    >
-      {children}
-    </ListGroup>
+    <section className="mb-10 last:mb-0">
+      <div className="mb-3 flex items-start justify-between gap-4 px-1">
+        <div className="min-w-0">
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              className="group flex items-center gap-1.5 text-(--ui-fg)"
+            >
+              <ChevronDown
+                className={cx(
+                  "h-3.5 w-3.5 text-(--ui-muted) transition-transform",
+                  open ? "" : "-rotate-90",
+                )}
+                aria-hidden
+              />
+              <h3 className="text-[length:var(--fs-lg)] font-medium tracking-[-0.01em]">{title}</h3>
+            </button>
+          ) : (
+            <h3 className="text-[length:var(--fs-lg)] font-medium tracking-[-0.01em] text-(--ui-fg)">
+              {title}
+            </h3>
+          )}
+          {description ? (
+            <p className="mt-1 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {actions ? <div className="shrink-0">{actions}</div> : null}
+      </div>
+      {showBody ? (
+        <div className="border-y border-(--ui-separator) [&>*+*]:border-t [&>*+*]:border-(--ui-separator)">
+          {children}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -206,27 +252,18 @@ export function SettingsButton({
   type?: "button" | "submit";
   "aria-label"?: string;
 }) {
-  const classes =
-    tone === "primary"
-      ? "bg-(--ui-fg)/90 text-(--ui-bg) hover:bg-(--ui-fg)"
-      : tone === "danger"
-        ? "text-(--ui-danger) hover:bg-(--ui-danger)/10"
-        : "text-(--ui-muted) hover:text-(--ui-fg) hover:bg-(--ui-hover)";
-
   return (
-    <button
+    <Button
       type={type}
       onClick={onClick}
       disabled={disabled}
       title={title}
       aria-label={ariaLabel}
-      className={cx(
-        "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[length:var(--fs-sm)] font-normal transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:translate-y-px disabled:pointer-events-none disabled:opacity-45",
-        classes,
-      )}
+      size="sm"
+      variant={tone === "primary" ? "primary" : tone === "danger" ? "danger" : "ghost"}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -280,7 +317,7 @@ export function SettingsInput({
   "aria-label"?: string;
 }) {
   return (
-    <input
+    <Input
       id={id}
       type={type}
       value={value}
@@ -288,10 +325,7 @@ export function SettingsInput({
       onBlur={onBlur}
       placeholder={placeholder}
       aria-label={ariaLabel}
-      className={cx(
-        "h-7 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-2.5 text-[length:var(--fs-base)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/50 focus:border-(--ui-accent)/40",
-        className,
-      )}
+      className={cx("h-8", className)}
     />
   );
 }

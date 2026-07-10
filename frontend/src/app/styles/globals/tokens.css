@@ -305,12 +305,12 @@
   --color-surface: #ffffff0c;
   --color-surface-hover: #ffffff14;
 
-  --color-card: #202020;
+  --color-card: #181818;
   --color-card-selected: var(--color-input);
   --color-card-border: var(--color-border);
 
-  --color-popover: #222222;
-  --color-popover-header: #191919;
+  --color-popover: #181818f0;
+  --color-popover-header: #181818f0;
   --color-popover-border: var(--color-border);
 
   --color-input: #242424;
