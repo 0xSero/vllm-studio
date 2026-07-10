@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readProxyRequestBody } from "../src/app/api/proxy/[...path]/proxy-fetch";
+import {
+  ProxyBodyTooLargeError,
+  readProxyRequestBody,
+} from "../src/app/api/proxy/[...path]/proxy-fetch";
 import { toProxyNextResponse } from "../src/app/api/proxy/[...path]/proxy-response";
 
 test("preserves binary controller request bodies byte for byte", async () => {
@@ -11,6 +14,15 @@ test("preserves binary controller request bodies byte for byte", async () => {
   );
 
   assert.deepEqual(new Uint8Array(body ?? new ArrayBuffer(0)), bytes);
+});
+
+test("rejects chunked request bodies at the configured byte boundary", async () => {
+  const request = new Request("http://localhost/speech/voices", {
+    method: "POST",
+    body: Uint8Array.from([1, 2, 3, 4]),
+  });
+
+  await assert.rejects(() => readProxyRequestBody(request, "POST", 3), ProxyBodyTooLargeError);
 });
 
 test("preserves binary controller responses byte for byte", async () => {

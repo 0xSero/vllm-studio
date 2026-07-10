@@ -90,12 +90,20 @@ export async function toProxyNextResponse(
     );
   }
 
-  const data = await response.arrayBuffer();
-  return new NextResponse(data, {
-    status: response.status,
-    headers: {
-      "Content-Type": contentType,
-      ...invalidOverrideHeaders(context.invalidateOverride),
+  return new NextResponse(
+    response.body
+      ? proxyResponseStream(response.body, {
+          client: context.client,
+          method: context.method,
+          path: context.path,
+        })
+      : null,
+    {
+      status: response.status,
+      headers: {
+        "Content-Type": contentType,
+        ...invalidOverrideHeaders(context.invalidateOverride),
+      },
     },
-  });
+  );
 }

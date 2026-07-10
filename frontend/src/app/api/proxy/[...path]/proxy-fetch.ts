@@ -70,11 +70,55 @@ export function getForwardedSearchParams(request: NextRequest): {
   return { apiKeyQuery, searchParams: forwardedParams.toString() };
 }
 
-export const readProxyRequestBody = (
-  request: Pick<Request, "arrayBuffer">,
+const DEFAULT_REQUEST_BODY_LIMIT = 32 * 1024 * 1024;
+const VOICE_REQUEST_BODY_LIMIT = 21 * 1024 * 1024;
+const TRANSCRIPTION_REQUEST_BODY_LIMIT = 101 * 1024 * 1024;
+
+export class ProxyBodyTooLargeError extends Error {}
+
+export const proxyRequestBodyLimit = (path: readonly string[]): number => {
+  const route = path.join("/");
+  if (route === "v1/audio/voices") return VOICE_REQUEST_BODY_LIMIT;
+  if (route === "v1/audio/transcriptions") return TRANSCRIPTION_REQUEST_BODY_LIMIT;
+  return DEFAULT_REQUEST_BODY_LIMIT;
+};
+
+export const readProxyRequestBody = async (
+  request: Pick<Request, "body" | "headers">,
   method: string,
-): Promise<ArrayBuffer | undefined> =>
-  method === "GET" || method === "DELETE" ? Promise.resolve(undefined) : request.arrayBuffer();
+  limit = DEFAULT_REQUEST_BODY_LIMIT,
+): Promise<ArrayBuffer | undefined> => {
+  if (method === "GET" || method === "DELETE" || !request.body) return undefined;
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declared) && declared > limit) {
+    throw new ProxyBodyTooLargeError("Request body exceeds the proxy limit");
+  }
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const current = await reader.read();
+      if (current.done) break;
+      total += current.value.byteLength;
+      if (total > limit) {
+        await reader.cancel().catch(() => undefined);
+        throw new ProxyBodyTooLargeError("Request body exceeds the proxy limit");
+      }
+      chunks.push(current.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new ArrayBuffer(total);
+  const bytes = new Uint8Array(body);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+};
 
 export function buildProxyRequestHeaders(
   request: NextRequest,
