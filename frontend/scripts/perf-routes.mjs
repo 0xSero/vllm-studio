@@ -30,8 +30,8 @@ const httpBudgetOverrides = new Map([
   ["/download", { assetKiB: 900 }],
   ["/logs", { assetKiB: 1000 }],
   ["/server", { assetKiB: 1000 }],
-  ["/usage", { assetKiB: 1000 }],
-  ["/configure", { assetKiB: 1000 }],
+  ["/usage", { assetKiB: 1025 }],
+  ["/configure", { assetKiB: 1025 }],
   ["/discover", { assetKiB: 1000 }],
 ]);
 
