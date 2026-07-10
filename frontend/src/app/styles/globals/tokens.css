@@ -269,6 +269,12 @@
   --color-session-node: #14807a1a;
   --color-session-node-hover: #14807a29;
   --color-session-node-foreground: #14807a;
+  --color-syntax-keyword: #1a70b8;
+  --color-syntax-string: #2e8f52;
+  --color-syntax-title: #b43c4b;
+  --color-syntax-value: #a13c72;
+  --color-syntax-comment: #73787c;
+  --color-syntax-deletion: #cc4a4a;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -433,6 +439,12 @@
   --color-session-node: #65aaa924;
   --color-session-node-hover: #65aaa933;
   --color-session-node-foreground: #93cfcd;
+  --color-syntax-keyword: #7db7df;
+  --color-syntax-string: #75c892;
+  --color-syntax-title: #ef7d89;
+  --color-syntax-value: #dd83b1;
+  --color-syntax-comment: #858a8e;
+  --color-syntax-deletion: #ff7373;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

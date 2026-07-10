@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { Brain, Check, ChevronDown, Search, Server } from "@/ui/icon-registry";
+import { Check, ChevronDown, Search, Server } from "@/ui/icon-registry";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import { loadSavedControllers } from "@/lib/api/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";
@@ -48,9 +48,6 @@ export function AgentModelPicker({
     activeControllerKey ?? (active ? controllerGroupKey(active) : null) ?? groups[0]?.key ?? null;
   const disabled = loading || models.length === 0;
   const triggerLabel = modelTriggerLabel(active, selectedModel, loading, models.length);
-  // The selected model exists but isn't the one currently loaded — sending will
-  // 503 until it's launched. Warn on the trigger so the user notices BEFORE they
-  // send, and can switch to a running model from the dropdown.
   const selectedModelNotRunning = !loading && Boolean(active && active.active === false);
 
   const { flatItems, filteredGroups } = useMemo(() => {
@@ -244,7 +241,6 @@ function ModelPickerTrigger({
   title: string;
   disabled: boolean;
   open: boolean;
-  /** Selected model isn't the one loaded — sending will 503 until it launches. */
   notRunning: boolean;
   onToggle: () => void;
 }) {
@@ -256,21 +252,16 @@ function ModelPickerTrigger({
       onClick={onToggle}
       disabled={disabled}
       className={cx(
-        "group/model inline-flex !h-7 !min-h-7 !min-w-0 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:border-(--color-popover-border) hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
-        open && "border-(--color-popover-border) bg-(--color-input) text-(--fg)",
+        "group/model inline-flex !h-7 !min-h-7 !min-w-0 items-center gap-1 rounded-md bg-transparent px-1.5 text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
+        open && "bg-(--hover) text-(--fg)",
       )}
       title={notRunning ? `${title} is not running — launch it or pick a running model` : title}
       aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
     >
-      <span className="relative shrink-0">
-        <Brain className="h-3.5 w-3.5" />
-        {notRunning ? (
-          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--warn)/80 ring-1 ring-(--bg)" />
-        ) : null}
-      </span>
       <span className={cx("inline-block max-w-[148px] truncate whitespace-nowrap align-middle")}>
         {label}
       </span>
+      {notRunning ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" /> : null}
       <ChevronDown className={cx("h-3 w-3 shrink-0 transition-transform", open && "rotate-180")} />
     </button>
   );
@@ -298,21 +289,11 @@ function ModelOption({
       onClick={() => onSelect(model.id)}
       onMouseEnter={onHover}
       className={cx(
-        "flex w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors",
-        highlighted ? "border-(--color-popover-border) bg-(--hover)" : "",
-        selected && !highlighted ? "border-(--color-popover-border) bg-(--color-input)" : "",
+        "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+        highlighted ? "bg-(--hover)" : "",
+        selected && !highlighted ? "bg-(--color-input)" : "",
       )}
     >
-      <span
-        className={cx(
-          "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
-          selected
-            ? "border-(--accent)/35 bg-(--accent)/15 text-(--accent)"
-            : "border-(--color-popover-border) text-transparent",
-        )}
-      >
-        <Check className="h-2.5 w-2.5" />
-      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[length:var(--fs-sm)] text-(--fg)">
@@ -351,6 +332,7 @@ function ModelOption({
             : ""}
         </span>
       </span>
+      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-(--fg)" /> : null}
     </button>
   );
 }

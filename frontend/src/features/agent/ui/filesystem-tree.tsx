@@ -36,7 +36,7 @@ const FILE_TONE_BY_EXT: Record<string, string> = Object.fromEntries(
   TONE_GROUPS.flatMap(([tone, exts]) => exts.map((ext) => [ext, tone] as const)),
 );
 
-function fileTone(name: string): string {
+export function fileTone(name: string): string {
   const dot = name.lastIndexOf(".");
   const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
   return FILE_TONE_BY_EXT[ext] ?? "text-(--dim)";
@@ -110,7 +110,7 @@ export function TreeFileList({
         return (
           <div key={entry.path}>
             <div
-              className={`flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--dim)"}`}
+              className={`flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-selected) text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
               {isDir ? (

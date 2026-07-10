@@ -160,7 +160,7 @@ function ShellBlock({
   status: ToolBlock["status"];
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-(--border)/60 bg-(--surface)/50">
+    <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
       <div className="flex items-start gap-2 px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/85">
         <span className="select-none text-(--dim)/70">$</span>
         <span className="min-w-0 whitespace-pre-wrap break-words">{command}</span>
@@ -189,16 +189,13 @@ function ShellBlock({
 
 function ToolOutput({ children }: { children: ReactNode }) {
   return (
-    <pre className="max-h-[320px] max-w-full overflow-auto whitespace-pre-wrap rounded-lg border border-(--border)/40 bg-(--surface)/40 px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
+    <pre className="max-h-[320px] max-w-full overflow-auto whitespace-pre-wrap rounded-lg border border-(--border) bg-(--color-input) px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
       {children}
     </pre>
   );
 }
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
-  // Shares the curated highlight.js core instance (a dozen languages) via the
-  // memoizing cache — using the full `highlight.js` package here pulled ~190
-  // languages (≈1 MB) into the agent route bundle.
   const highlighted = useMemo(
     () => (body ? highlightFenced(lang || null, body) : ""),
     [body, lang],
@@ -210,7 +207,7 @@ function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   return (
     <pre className={className}>
       <code
-        className={lang ? `language-${lang}` : undefined}
+        className={`syntax-highlight${lang ? ` language-${lang}` : ""}`}
         dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
       />
     </pre>
@@ -322,7 +319,7 @@ function FileWritePreview({
 
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <div className="overflow-hidden rounded-lg border border-(--border)/60 bg-(--surface)/50">
+      <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
         <div className="flex items-center justify-between gap-2 border-b border-(--border)/40 px-3 py-1.5 text-[length:var(--fs-sm)] text-(--dim)">
           <span className="truncate font-mono">
             {fileBasename(filePath) ?? sourceLang ?? "source"}
@@ -379,7 +376,7 @@ function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }
   const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <div className="overflow-hidden rounded-lg border border-(--border)/60 bg-(--surface)/50">
+      <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
         <HighlightedToolSource body={diffText} lang="diff" />
       </div>
     </ToolSummary>
@@ -405,7 +402,7 @@ function BrowserPreview({ block }: { block: ToolBlock }) {
   return (
     <ToolSummary block={block} open={block.status === "running"}>
       {args ? (
-        <div className="mb-1.5 rounded-md border border-(--border)/45 bg-(--surface)/30 px-2 py-1 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--fg)/75">
+        <div className="mb-1.5 rounded-md border border-(--border) bg-(--color-input) px-2 py-1 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--fg)/75">
           {args}
         </div>
       ) : null}

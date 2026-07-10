@@ -83,7 +83,12 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
   language: string | null;
 }) {
   const highlightedHtml = useMemo(() => highlightFenced(language, code), [code, language]);
-  const codeClassName = ["hljs", language ? `language-${language}` : "", "font-mono"]
+  const codeClassName = [
+    "syntax-highlight",
+    "hljs",
+    language ? `language-${language}` : "",
+    "font-mono",
+  ]
     .filter(Boolean)
     .join(" ");
 

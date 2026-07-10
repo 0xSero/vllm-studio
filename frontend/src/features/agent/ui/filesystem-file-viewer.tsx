@@ -88,7 +88,7 @@ export function FileViewer({
   const highlightedLines = useMemo(() => {
     const lang = languageForPath(filePath);
     if (!lang) return null;
-    return highlightFenced(lang, lines.join("\n")).split("\n");
+    return lines.map((line) => highlightFenced(lang, line));
   }, [filePath, lines]);
   const commentsByLine = useMemo(() => {
     const map = new Map<number, FileComment[]>();
@@ -149,7 +149,7 @@ export function FileViewer({
             </span>
             {html ? (
               <pre
-                className="min-w-0 flex-1 whitespace-pre font-mono text-(--fg)"
+                className="syntax-highlight min-w-0 flex-1 whitespace-pre font-mono text-(--fg)"
                 style={{ fontSize, lineHeight: `${lineHeight}px` }}
                 dangerouslySetInnerHTML={{ __html: html || "&nbsp;" }}
               />

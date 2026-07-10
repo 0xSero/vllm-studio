@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Code,
+  File,
   FolderTree,
   Monitor,
   Minus,
@@ -15,7 +16,7 @@ import { useToolSelections, useToolsActions } from "@/features/agent/tools/conte
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";
 import { FileViewer } from "@/features/agent/ui/filesystem-file-viewer";
 import { RenderedPreview, previewKindForOpenFile } from "@/features/agent/ui/filesystem-preview";
-import { Breadcrumb, TreeFileList } from "@/features/agent/ui/filesystem-tree";
+import { Breadcrumb, fileTone, TreeFileList } from "@/features/agent/ui/filesystem-tree";
 import { useFilesystemPanelEffects } from "@/features/agent/ui/filesystem-panel-effects";
 
 type Props = { cwd: string | null };
@@ -313,9 +314,13 @@ export function FilesystemPanel({ cwd }: Props) {
           </div>
         ) : (
           <>
-            <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border)/80 bg-(--color-header) px-2">
-              <div className="min-w-0 flex-1 truncate font-mono text-[length:var(--fs-sm)] text-(--dim)">
-                {openFile}
+            <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border)/80 bg-(--color-header) pr-2">
+              <div
+                className="relative flex h-full min-w-0 max-w-[55%] items-center gap-1.5 border-r border-(--border) bg-(--color-panel) px-3 text-[length:var(--fs-sm)] text-(--fg) after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-(--link)"
+                title={openFile}
+              >
+                <File className={`h-3.5 w-3.5 shrink-0 ${fileTone(openFile)}`} />
+                <span className="truncate font-mono">{openFile.split("/").pop() ?? openFile}</span>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 {comments.length > 0 && (
