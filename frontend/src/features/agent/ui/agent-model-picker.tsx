@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { Brain, Search } from "@/ui/icon-registry";
+import { Brain, Check, ChevronDown, Search, Server } from "@/ui/icon-registry";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import { loadSavedControllers } from "@/lib/api/controllers";
 import type { AgentModel } from "@/features/agent/workspace/types";
@@ -141,52 +141,65 @@ export function AgentModelPicker({
       />
       {open ? (
         <div
-          className="absolute bottom-full right-0 z-[80] mb-1 flex max-h-[420px] w-[340px] flex-col overflow-hidden rounded-md border border-(--border) bg-[#151515] shadow-[0_12px_36px_rgba(0,0,0,0.65)]"
+          className="absolute bottom-full right-0 z-[80] mb-2 flex max-h-[468px] w-[420px] flex-col overflow-hidden rounded-[var(--rad-lg)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0_24px_72px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.035)]"
           onPointerDown={stopToolbarEvent}
           onMouseDown={stopToolbarEvent}
           onKeyDown={handleKeyDown}
         >
-          {/* Search bar */}
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-(--border) px-2.5 py-1.5">
-            <Search className="h-3 w-3 shrink-0 text-(--dim)" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Search models…"
-              className="min-w-0 flex-1 bg-transparent text-xs text-(--fg) outline-none placeholder:text-(--dim)/60"
-            />
-            <kbd className="shrink-0 rounded bg-(--surface-2) px-1 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)">
-              esc
-            </kbd>
+          <div className="shrink-0 border-b border-(--color-popover-border) bg-(--color-popover-header) px-3 py-2.5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-[length:var(--fs-sm)] font-medium text-(--fg)">
+                Choose a model
+              </span>
+              <span className="font-mono text-[length:var(--fs-2xs)] text-(--dim)">
+                {models.length} available
+              </span>
+            </div>
+            <div className="flex h-8 items-center gap-2 rounded-md border border-(--color-popover-border) bg-(--color-input) px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+              <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(event) => handleSearchChange(event.target.value)}
+                placeholder="Search models…"
+                className="min-w-0 flex-1 bg-transparent text-[length:var(--fs-sm)] text-(--fg) outline-none placeholder:text-(--dim)/60"
+              />
+              <kbd className="shrink-0 rounded border border-(--color-popover-border) bg-(--color-popover) px-1.5 py-0.5 font-mono text-[length:var(--fs-2xs)] text-(--dim)">
+                esc
+              </kbd>
+            </div>
           </div>
 
-          {/* Provider tabs — hidden during search */}
           {!query && filteredGroups.length > 1 ? (
-            <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-(--border) px-1.5 py-1">
-              {filteredGroups.map((group) => (
-                <button
-                  key={group.key}
-                  type="button"
-                  onClick={() => setActiveControllerKey(group.key)}
-                  className={cx(
-                    "shrink-0 rounded px-1.5 py-0.5 font-mono text-[length:var(--fs-2xs)]",
-                    group.key === currentKey
-                      ? "bg-(--hover) text-(--fg)"
-                      : "text-(--dim) hover:text-(--fg)",
-                  )}
-                >
-                  {group.name || controllerLabel || "local"}
-                  <span className="ml-1 opacity-50">{group.models.length}</span>
-                </button>
-              ))}
+            <div className="shrink-0 border-b border-(--color-popover-border) px-3 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)">
+                <Server className="h-3 w-3" />
+                Source
+              </div>
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {filteredGroups.map((group) => (
+                  <button
+                    key={group.key}
+                    type="button"
+                    onClick={() => setActiveControllerKey(group.key)}
+                    className={cx(
+                      "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 font-mono text-[length:var(--fs-2xs)] transition-colors active:translate-y-px",
+                      group.key === currentKey
+                        ? "border-(--color-popover-border) bg-(--color-input) text-(--fg)"
+                        : "border-transparent text-(--dim) hover:bg-(--hover) hover:text-(--fg)",
+                    )}
+                  >
+                    {group.name || controllerLabel || "local"}
+                    <span className="text-(--dim)">{group.models.length}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 
-          {/* Model list */}
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1">
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {flatItems.length === 0 ? (
-              <div className="px-3 py-6 text-center text-xs text-(--dim)">
+              <div className="px-3 py-8 text-center text-[length:var(--fs-sm)] text-(--dim)">
                 No models match &ldquo;{query}&rdquo;.
               </div>
             ) : (
@@ -194,7 +207,7 @@ export function AgentModelPicker({
                 item.type === "header" ? (
                   <div
                     key={`header-${item.label}`}
-                    className="px-2 pt-2 pb-1 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)/60"
+                    className="px-2.5 pb-1 pt-2.5 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)"
                   >
                     {item.label}
                   </div>
@@ -245,26 +258,22 @@ function ModelPickerTrigger({
       onClick={onToggle}
       disabled={disabled}
       className={cx(
-        "group/model inline-flex !h-auto !min-h-0 !min-w-0 items-center gap-1 rounded-sm bg-transparent px-1 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:text-(--fg) disabled:opacity-60",
-        open && "text-(--fg)",
+        "group/model inline-flex !h-7 !min-h-7 !min-w-0 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 font-mono text-[length:var(--fs-xs)] text-(--dim) transition-colors hover:border-(--color-popover-border) hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
+        open && "border-(--color-popover-border) bg-(--color-input) text-(--fg)",
       )}
       title={notRunning ? `${title} is not running — launch it or pick a running model` : title}
       aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
     >
       <span className="relative shrink-0">
-        <Brain className="h-3.5 w-3.5 shrink-0" />
+        <Brain className="h-3.5 w-3.5" />
         {notRunning ? (
           <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--warn)/80 ring-1 ring-(--bg)" />
         ) : null}
       </span>
-      <span
-        className={cx(
-          "inline-block max-w-0 overflow-hidden whitespace-nowrap align-middle opacity-0 transition-all duration-200 group-hover/model:max-w-[160px] group-hover/model:opacity-100",
-          open && "max-w-[160px] opacity-100",
-        )}
-      >
+      <span className={cx("inline-block max-w-[148px] truncate whitespace-nowrap align-middle")}>
         {label}
       </span>
+      <ChevronDown className={cx("h-3 w-3 shrink-0 transition-transform", open && "rotate-180")} />
     </button>
   );
 }
@@ -291,20 +300,26 @@ function ModelOption({
       onClick={() => onSelect(model.id)}
       onMouseEnter={onHover}
       className={cx(
-        "flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left",
-        highlighted ? "bg-(--hover)" : "",
-        selected && !highlighted ? "bg-(--hover)/50" : "",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors",
+        highlighted ? "border-(--color-popover-border) bg-(--hover)" : "",
+        selected && !highlighted ? "border-(--color-popover-border) bg-(--color-input)" : "",
       )}
     >
       <span
         className={cx(
-          "h-1.5 w-1.5 shrink-0 rounded-full",
-          selected ? "bg-(--accent)" : "bg-(--dim)/35",
+          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border",
+          selected
+            ? "border-(--accent)/35 bg-(--accent)/15 text-(--accent)"
+            : "border-(--color-popover-border) text-transparent",
         )}
-      />
+      >
+        <Check className="h-3 w-3" />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-xs text-(--fg)">{model.rawId || model.name}</span>
+          <span className="truncate text-[length:var(--fs-sm)] text-(--fg)">
+            {model.rawId || model.name}
+          </span>
           {model.reasoning ? (
             <span
               className="shrink-0 rounded-[3px] bg-(--accent)/15 px-1 text-[length:var(--fs-2xs)] text-(--accent)"
@@ -323,7 +338,7 @@ function ModelOption({
           ) : null}
           {model.active ? (
             <span
-              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-(--ok)/15 px-1 text-[length:var(--fs-2xs)] text-(--ok)"
+              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-(--ok)/15 px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--ok)"
               title="Currently running — ready to use without launching"
             >
               <span className="h-1 w-1 rounded-full bg-(--ok)" />
