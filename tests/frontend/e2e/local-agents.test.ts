@@ -51,7 +51,7 @@ function makeModel(overrides: Partial<LocalAgentModel> = {}): LocalAgentModel {
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf-8"));
 const readYaml = (file: string) => JSON.parse(readFileSync(file, "utf-8")); // yaml output is still JSON-like
 
-test("detect: home with all four agents present, and a home with none", async () => {
+test("detect: home with all supported agents present, and a home with none", async () => {
   const home = makeHome();
   mkdirSync(path.join(home, ".pi"), { recursive: true });
   mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
@@ -62,12 +62,12 @@ test("detect: home with all four agents present, and a home with none", async ()
 
   const targets = await detectLocalAgents(home);
   assert.deepEqual(
-    targets.map((t) => [t.agent, t.configPath, t.exists]),
+    targets.map((t) => [t.agent, t.label, t.configPath, t.exists]),
     [
-      ["pi", path.join(home, ".pi", "agent", "models.json"), false],
-      ["opencode", path.join(home, ".config", "opencode", "opencode.json"), false],
-      ["droid", path.join(home, ".factory", "settings.json"), true],
-      ["hermes", path.join(home, ".hermes", "config.yaml"), true],
+      ["pi", "pi", path.join(home, ".pi", "agent", "models.json"), false],
+      ["opencode", "opencode", path.join(home, ".config", "opencode", "opencode.json"), false],
+      ["droid", "droid (Factory)", path.join(home, ".factory", "settings.json"), true],
+      ["hermes", "Hermes", path.join(home, ".hermes", "config.yaml"), true],
     ],
   );
 

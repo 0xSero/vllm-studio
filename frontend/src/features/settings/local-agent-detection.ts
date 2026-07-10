@@ -93,7 +93,7 @@ export async function detectLocalAgents(home: string): Promise<LocalAgentTarget[
     const configPath = hermesConfigPath(home);
     targets.push({
       agent: "hermes",
-      label: "hermes",
+      label: "Hermes",
       configPath,
       exists: await pathExists(configPath),
     });
