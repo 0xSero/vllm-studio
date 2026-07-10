@@ -150,3 +150,54 @@ test("plugin runtime rejects manifest paths that escape the bundle", async (cont
   assert.equal(plugins[0]?.tools.state, "invalid");
   assert.match(plugins[0]?.tools.reason ?? "", /escapes its bundle/);
 });
+
+test("only the bundled Chatterbox plugin receives the local speech capability", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "local-studio-speech-plugin-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const bundle = await createPlugin(root, "chatterbox-voice");
+  await writeFile(
+    path.join(bundle, ".codex-plugin", "plugin.json"),
+    JSON.stringify({
+      name: "chatterbox-voice",
+      version: "99.0.0",
+      apps: "./.app.json",
+    }),
+  );
+  await writeFile(
+    path.join(bundle, ".app.json"),
+    JSON.stringify({
+      apps: {
+        "chatterbox-voice": {
+          adapter: "local-studio-controller",
+          capability: "speech",
+          actions: ["synthesize"],
+        },
+      },
+    }),
+  );
+
+  const untrusted = await Effect.runPromise(
+    listPluginRuntimeViews([{ label: "Test", dir: root, priority: 99 }]),
+  );
+  assert.equal(untrusted[0]?.hostCapability, undefined);
+  assert.equal(untrusted[0]?.tools.state, "none");
+
+  const bundledRoot = path.resolve("frontend/desktop/resources/plugins");
+  const bundled = await Effect.runPromise(
+    listPluginRuntimeViews([{ label: "Local Studio", dir: bundledRoot, priority: 1 }]),
+  );
+  const chatterbox = bundled.find((plugin) => plugin.id === "chatterbox-voice");
+  assert.deepEqual(chatterbox?.hostCapability, {
+    adapter: "local-studio-controller",
+    capability: "speech",
+    actions: ["synthesize"],
+  });
+  assert.equal(chatterbox?.tools.state, "none");
+
+  const activation = await Effect.runPromise(
+    setPluginEnabled("chatterbox-voice", true, [
+      { label: "Local Studio", dir: bundledRoot, priority: 1 },
+    ]),
+  );
+  assert.deepEqual(activation.connectorIds, []);
+});

@@ -1,0 +1,12 @@
+{
+  "name": "chatterbox-voice",
+  "version": "1.0.0",
+  "description": "Clone your voice and synthesize speech on your local controller.",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Chatterbox Voice",
+    "shortDescription": "Private local voice cloning and speech",
+    "category": "Local AI",
+    "capabilities": ["speech", "voice cloning", "local-only"]
+  }
+}
