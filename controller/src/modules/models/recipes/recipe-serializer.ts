@@ -105,6 +105,11 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
     data["pipeline_parallel_size"] = data["pp"];
   }
 
+  for (const key of ["status", "crash_loop"]) {
+    delete data[key];
+    delete extraArguments[key];
+  }
+
   const envCandidates = ["env_vars", "env-vars", "envVars"];
   const hasEnvironmentVariables =
     data["env_vars"] !== undefined ||

@@ -82,3 +82,18 @@ describe("parseRecipe vision capability", () => {
     expect(() => parseRecipe(minimalRecipe({ vision: "true" }))).toThrow();
   });
 });
+
+describe("parseRecipe runtime state", () => {
+  test("drops read-only status fields instead of converting them to engine arguments", () => {
+    const recipe = parseRecipe(
+      minimalRecipe({
+        status: "error",
+        crash_loop: { blocked: true, failure_count: 3 },
+        extra_args: { status: "stopped", crash_loop: { blocked: false } },
+      }),
+    );
+
+    expect(recipe.extra_args).not.toHaveProperty("status");
+    expect(recipe.extra_args).not.toHaveProperty("crash_loop");
+  });
+});

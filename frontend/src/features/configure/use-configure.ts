@@ -6,6 +6,7 @@ import type { RigNodePayload } from "@/lib/api/rigs";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Rig, RigsPayload, RecipeWithStatus } from "@/lib/types";
+import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 
 const RIGS_CACHE_KEY = "configure:rigs";
 const RECIPES_CACHE_KEY = "configure:recipes";
@@ -135,7 +136,7 @@ export function useConfigure(): ConfigureState {
   );
 
   const renameRecipe = useCallback(async (recipe: RecipeWithStatus, name: string) => {
-    await api.updateRecipe(recipe.id, { ...recipe, name });
+    await api.updateRecipe(recipe.id, prepareRecipeForSave({ ...recipe, name }));
     setRecipes((current) => {
       const next = current.map((entry) => (entry.id === recipe.id ? { ...entry, name } : entry));
       writePageCache(RECIPES_CACHE_KEY, next);

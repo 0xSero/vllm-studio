@@ -28,7 +28,7 @@ export const prepareRecipeForSave = (recipe: RecipeEditor): Recipe => {
     if (value !== undefined) {
       setExtraArgValue(extraArgs, field, value);
     }
-    delete (payload as unknown as Record<string, unknown>)[field.field];
+    Reflect.deleteProperty(payload, field.field);
   }
 
   const existingKwargs = parseJsonObject(
@@ -59,10 +59,11 @@ export const prepareRecipeForSave = (recipe: RecipeEditor): Recipe => {
     );
   }
 
-  delete (payload as unknown as Record<string, unknown>)["tp"];
-  delete (payload as unknown as Record<string, unknown>)["pp"];
-  delete (payload as unknown as Record<string, unknown>)["status"];
-  delete (payload as unknown as Record<string, unknown>)["thinking_budget"];
+  for (const key of ["tp", "pp", "status", "crash_loop", "thinking_budget"]) {
+    Reflect.deleteProperty(payload, key);
+  }
+  Reflect.deleteProperty(extraArgs, "status");
+  Reflect.deleteProperty(extraArgs, "crash_loop");
 
   // Drop any vLLM-only flags that would otherwise leak into a non-vLLM engine
   // (e.g. after switching a recipe's backend). The active engine is the
