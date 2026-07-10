@@ -29,15 +29,13 @@ type NavigationParams = {
   newParam: string | null;
   openParam: string | null;
   splitParam: string | null;
-  terminalParam: string | null;
   replaceParam: string | null;
 };
 
 function navigationKey(params: NavigationParams): string {
-  const { projectId, sessionId, newParam, openParam, splitParam, terminalParam, replaceParam } =
-    params;
-  if (!(projectId || sessionId || newParam || openParam || terminalParam)) return "";
-  return `${projectId ?? ""}|${sessionId ?? ""}|${newParam ?? ""}|${openParam ?? ""}|${splitParam ?? ""}|${terminalParam ?? ""}|${replaceParam ?? ""}`;
+  const { projectId, sessionId, newParam, openParam, splitParam, replaceParam } = params;
+  if (!(projectId || sessionId || newParam || openParam)) return "";
+  return `${projectId ?? ""}|${sessionId ?? ""}|${newParam ?? ""}|${openParam ?? ""}|${splitParam ?? ""}|${replaceParam ?? ""}`;
 }
 
 function projectForNavigation(
@@ -61,7 +59,6 @@ function requestWorkspaceUrlNavigation({
   const newParam = searchParams.get("new");
   const openParam = searchParams.get("open");
   const splitParam = searchParams.get("split");
-  const terminalParam = searchParams.get("terminal");
   const replaceParam = searchParams.get("replace");
   const key = navigationKey({
     projectId,
@@ -69,7 +66,6 @@ function requestWorkspaceUrlNavigation({
     newParam,
     openParam,
     splitParam,
-    terminalParam,
     replaceParam,
   });
   if (!key || lastHandledNavKey === key) return;
@@ -95,11 +91,7 @@ function requestWorkspaceUrlNavigation({
     ...(sessionTitle ? { sessionTitle } : {}),
     newSession: newParam !== null,
     split: splitParam === "1",
-    terminal: terminalParam !== null,
     replaceWorkspace: replaceParam === "1",
-    // `terminal=1` opens a fresh terminal; any other value is a PTY mountKey
-    // to focus/reattach (sidebar terminal rows when the workspace is unbound).
-    ...(terminalParam && terminalParam !== "1" ? { terminalMountKey: terminalParam } : {}),
     paneId: newPaneId(),
     tab,
   });

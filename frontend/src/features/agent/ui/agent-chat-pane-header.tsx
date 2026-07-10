@@ -7,7 +7,7 @@ import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { useAppStore } from "@/store";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
-import { preloadTerminalPanel } from "@/features/agent/ui/terminal-pane";
+import { preloadTerminalPanel } from "@/features/agent/ui/terminal-panel";
 
 const CHAT_HEADER_MENU_CLASS =
   "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-lg border border-(--border) bg-(--surface-2)/95 p-1 text-xs text-(--fg) opacity-100 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md";
@@ -126,15 +126,6 @@ export function AgentChatPaneHeader({
               }}
             >
               Fork
-            </HeaderMenuItem>
-            <HeaderMenuItem
-              disabled={!onOpenTerminal}
-              onClick={() => {
-                onOpenTerminal?.();
-                setOpen(false);
-              }}
-            >
-              New terminal
             </HeaderMenuItem>
             <HeaderMenuItem
               disabled={!canExport || !onExport}

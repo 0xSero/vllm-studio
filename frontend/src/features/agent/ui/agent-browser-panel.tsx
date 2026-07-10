@@ -36,8 +36,8 @@ import { makeFreshTab } from "@/features/agent/messages/helpers";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import {
   isTerminalOwnerVisible,
+  terminalOwnerFor,
   terminalOwnerLabel,
-  uniqueTerminalKeys,
   type TerminalOwner,
 } from "@/features/agent/terminal-owners";
 import {
@@ -50,7 +50,7 @@ import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 
 type AgentBrowserPanelHandles = Pick<
   WorkspaceHandles,
-  "registerComputerAside" | "startComputerResize" | "compactFocusedSession" | "openTerminalPane"
+  "registerComputerAside" | "startComputerResize" | "compactFocusedSession"
 >;
 
 type AgentBrowserPanelProps = {
@@ -77,37 +77,6 @@ function createSideChatSession(
     cwd: focusedSession?.cwd ?? activeProject?.path,
     projectId: focusedSession?.projectId ?? activeProject?.id,
     modelId: focusedSession?.modelId ?? activeModelId,
-  };
-}
-
-function terminalOwnerFor(
-  activeProject: Project | null,
-  focusedSession: Session | null,
-): TerminalOwner | null {
-  if (focusedSession) {
-    const sessionKey = `session:${focusedSession.id}`;
-    const piKey = focusedSession.piSessionId ? `pi:${focusedSession.piSessionId}` : null;
-    const title = focusedSession.title?.trim() || activeProject?.name || "Session terminal";
-    return {
-      mountKey: sessionKey,
-      matchKeys: uniqueTerminalKeys([sessionKey, piKey ?? ""]),
-      cwd: focusedSession.cwd ?? activeProject?.path ?? null,
-      title,
-      kind: "session",
-      sessionId: focusedSession.id,
-      piSessionId: focusedSession.piSessionId ?? null,
-      projectId: focusedSession.projectId ?? activeProject?.id ?? null,
-    };
-  }
-  if (!activeProject) return null;
-  const projectKey = `project:${activeProject.id}`;
-  return {
-    mountKey: projectKey,
-    matchKeys: [projectKey],
-    cwd: activeProject.path,
-    title: activeProject.name || "Project terminal",
-    kind: "project",
-    projectId: activeProject.id,
   };
 }
 
@@ -309,7 +278,7 @@ export function AgentBrowserPanel({
         onCompactSession={handles.compactFocusedSession}
         onNavigateBrowser={navigateBrowser}
         onOpenSideChat={openSideChat}
-        onOpenTerminal={() => handles.openTerminalPane()}
+        onOpenTerminal={openTerminalForFocusedSession}
         onRenameSideChat={renameSideChat}
         onUpdateSideChatTabs={updateSideChatTabs}
         sessions={sessions}

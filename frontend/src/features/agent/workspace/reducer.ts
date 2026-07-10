@@ -16,11 +16,7 @@ import {
   closePane,
   focusPane,
   focusPaneSession,
-  focusTerminalPane,
   openSessionPayloadInPane,
-  openProjectTerminal,
-  splitTerminalPane,
-  openTerminalPane,
   patchActiveTab,
   setPaneSession,
   setWorkspaceSplitRatio,
@@ -83,14 +79,8 @@ function hydrateSessionSnapshots(
 
   const restorable = snapshots.filter(
     (session) =>
-      // Terminal rows are pane-state, not chat sessions — the durable
-      // pane-state restore owns them; rebuilding one here would fabricate a
-      // chat session out of a PTY mountKey.
-      session.kind !== "terminal" &&
-      ((!session.projectId && Boolean(session.cwd)) ||
-        projects.some(
-          (project) => project.id === session.projectId || project.path === session.cwd,
-        )),
+      (!session.projectId && Boolean(session.cwd)) ||
+      projects.some((project) => project.id === session.projectId || project.path === session.cwd),
   );
   if (restorable.length === 0) return { ...state, hydrated: true };
 
@@ -154,8 +144,6 @@ function reduceWorkspaceStatus(
       return { ...state, error: action.error };
     case "hydrateActiveSessions":
       if (state.hydrated) return state;
-      // A durable pane-state restore is authoritative — never rebuild panes from
-      // chat snapshots on top of it (that clobbers a restored terminal main pane).
       return action.hasExplicitSessionNav || state.paneStateRestored
         ? { ...state, hydrated: true }
         : hydrateSessionSnapshots(state, action.snapshots, action.projects);
@@ -177,31 +165,6 @@ function reducePaneLayoutAction(
       return focusPaneSession(state, { paneId: action.paneId, sessionId: action.sessionId });
     case "closePane":
       return closePane(state, { paneId: action.paneId });
-    case "openTerminalPane":
-      return openTerminalPane(state, {
-        sourcePaneId: action.sourcePaneId ?? state.focusedPaneId,
-      });
-    case "openProjectTerminal":
-      return openProjectTerminal(state, {
-        cwd: action.cwd,
-        newPaneId: action.newPaneId,
-        projectId: action.projectId,
-        replaceWorkspace: action.replaceWorkspace,
-      });
-    case "focusTerminalPane":
-      return focusTerminalPane(state, {
-        mountKey: action.mountKey,
-        cwd: action.cwd,
-        title: action.title,
-        projectId: action.projectId,
-        newPaneId: action.newPaneId,
-      });
-    case "splitTerminalPane":
-      return splitTerminalPane(state, {
-        sourcePaneId: action.sourcePaneId,
-        newPaneId: action.newPaneId,
-        direction: action.direction,
-      });
     default:
       return null;
   }
@@ -267,8 +230,6 @@ function reduceSessionEditAction(
         sessionTitle: action.sessionTitle,
         newSession: action.newSession,
         split: action.split,
-        terminal: action.terminal,
-        terminalMountKey: action.terminalMountKey,
         replaceWorkspace: action.replaceWorkspace,
         paneId: action.paneId,
         tab: action.tab,

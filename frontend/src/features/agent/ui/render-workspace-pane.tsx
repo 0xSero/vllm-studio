@@ -2,7 +2,6 @@
 
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
-import { TerminalPane } from "@/features/agent/ui/terminal-pane";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -15,7 +14,6 @@ import type {
 } from "@/features/agent/workspace/types";
 import { activeSession } from "@/features/agent/runtime/selectors";
 import { collectLeaves } from "@/features/agent/workspace/layout";
-import { canRestoreTerminalOwner } from "@/features/agent/workspace/pane-controller";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 
 export type WorkspacePaneRenderContext = {
@@ -83,7 +81,7 @@ function selectWorkspacePaneView(
   projects: ProjectsContextValue,
 ): WorkspacePaneView | null {
   const pane = state.panesById.get(paneId);
-  if (!pane || pane.kind === "terminal") return null;
+  if (!pane) return null;
   const session = activeSession(state, paneId);
   const project = projects.resolveProject(session);
   const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
@@ -114,23 +112,6 @@ export function renderWorkspacePane({
   handles,
   compact = false,
 }: WorkspacePaneRenderContext) {
-  const pane = state.panesById.get(paneId);
-  if (pane?.kind === "terminal") {
-    return (
-      <TerminalPane
-        key={paneId}
-        paneId={paneId}
-        pane={pane}
-        canClose={collectLeaves(state.layout).length > 1 || canRestoreTerminalOwner(state, paneId)}
-        rightPanelOpen={tools.computer.open}
-        onFocus={() => dispatch({ type: "focusPane", paneId })}
-        onClose={() => handles.closePane(paneId)}
-        onSplit={(direction) => handles.splitTerminal(paneId, direction)}
-        onNewTerminal={() => handles.splitTerminal(paneId, "vertical")}
-        onToggleRightPanel={tools.toggleComputerOpen}
-      />
-    );
-  }
   const view = selectWorkspacePaneView(paneId, state, projects);
   if (!view) return null;
 
@@ -179,7 +160,7 @@ export function renderWorkspacePane({
       onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
       onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
       onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
-      onOpenTerminal={() => handles.openTerminalPane(view.paneId)}
+      onOpenTerminal={() => tools.setComputerTab("terminal")}
       rightPanelOpen={tools.computer.open}
       onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}

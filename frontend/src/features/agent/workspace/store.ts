@@ -1,5 +1,5 @@
 import { isRecord } from "@/lib/guards";
-import { clampLayoutToLimits, collectLeaves } from "@/features/agent/workspace/layout";
+import { clampLayoutToLimits, collectLeaves, removeLeaf } from "@/features/agent/workspace/layout";
 import {
   mergeActiveAgentSessions,
   type ActiveAgentSessionSnapshot,
@@ -12,7 +12,6 @@ import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   PaneId,
   PaneState,
-  TerminalPaneState,
   WorkspaceLayout,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
@@ -30,13 +29,6 @@ type PersistedPaneRecord = {
   /** Legacy pane-level runtime id written by older builds; ignored. */
   runtimeSessionId?: unknown;
   kind?: unknown;
-  mountKey?: unknown;
-  cwd?: unknown;
-  title?: unknown;
-  ownerSessionId?: unknown;
-  ownerPiSessionId?: unknown;
-  projectId?: unknown;
-  createdAt?: unknown;
 };
 
 type PersistedPaneState = {
@@ -46,23 +38,7 @@ type PersistedPaneState = {
   panes: Record<string, PersistedPaneRecord>;
 };
 
-export type PersistedPaneEntry =
-  | TerminalPaneState
-  | { activeTabId: string; tabs: PersistedSessionMeta[] };
-
-function terminalPaneFromPersisted(pane: PersistedPaneRecord): TerminalPaneState | null {
-  if (pane.kind !== "terminal" || typeof pane.mountKey !== "string") return null;
-  return {
-    kind: "terminal",
-    mountKey: pane.mountKey,
-    cwd: typeof pane.cwd === "string" ? pane.cwd : null,
-    title: typeof pane.title === "string" ? pane.title : "Terminal",
-    ownerSessionId: typeof pane.ownerSessionId === "string" ? pane.ownerSessionId : null,
-    ownerPiSessionId: typeof pane.ownerPiSessionId === "string" ? pane.ownerPiSessionId : null,
-    projectId: typeof pane.projectId === "string" ? pane.projectId : null,
-    createdAt: typeof pane.createdAt === "string" ? pane.createdAt : undefined,
-  };
-}
+export type PersistedPaneEntry = { activeTabId: string; tabs: PersistedSessionMeta[] };
 
 export function createInitialState(): WorkspaceState {
   const session = makeFreshTab();
@@ -220,15 +196,26 @@ function focusedPersistedPaneId(focusedPaneId: unknown, leaves: PaneId[]): PaneI
     : leaves[0];
 }
 
+function removeLegacyTerminalPanes(
+  layout: WorkspaceLayout,
+  panes: Record<string, PersistedPaneRecord>,
+): WorkspaceLayout | null {
+  let next: WorkspaceLayout | null = layout;
+  for (const paneId of collectLeaves(layout)) {
+    if (panes[paneId]?.kind !== "terminal" || !next) continue;
+    next = removeLeaf(next, paneId);
+  }
+  return next;
+}
+
 export function restorePersistedPaneState(raw: string): RestoredPaneState | null {
   const parsed = parsePersistedPaneState(raw);
   if (!parsed) return null;
 
   const persistedPanes = parsed.panes && typeof parsed.panes === "object" ? parsed.panes : {};
-  const layout = clampLayoutToLimits(
-    parsed.layout as WorkspaceLayout,
-    (paneId) => persistedPanes[paneId]?.kind === "terminal",
-  );
+  const chatLayout = removeLegacyTerminalPanes(parsed.layout as WorkspaceLayout, persistedPanes);
+  if (!chatLayout) return null;
+  const layout = clampLayoutToLimits(chatLayout, () => false);
   const leaves = collectLeaves(layout);
   if (leaves.length === 0) return null;
 
@@ -239,11 +226,6 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
 
   for (const paneId of leaves) {
     const pane = persistedPanes[paneId] ?? {};
-    const terminalPane = terminalPaneFromPersisted(pane);
-    if (terminalPane) {
-      panesById.set(paneId, terminalPane);
-      continue;
-    }
     const rawTabs = Array.isArray(pane.tabs) ? pane.tabs : [];
     const restored = restoreTabsWithSelections(rawTabs);
     const activeSessionId = activePersistedTabId(pane, restored.tabs);
@@ -332,12 +314,10 @@ export function loadPersistedActiveAgentSessions(
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(isRecord)
+      .filter((entry) => entry.kind !== "terminal")
       .map((entry): ActiveAgentSessionSnapshot => {
         const piSessionId = typeof entry.piSessionId === "string" ? entry.piSessionId.trim() : null;
-        const isTerminal = entry.kind === "terminal";
         return {
-          ...(isTerminal ? { kind: "terminal" as const } : {}),
-          ...(isTerminal && typeof entry.mountKey === "string" ? { mountKey: entry.mountKey } : {}),
           projectId: typeof entry.projectId === "string" ? entry.projectId : "",
           cwd: typeof entry.cwd === "string" ? entry.cwd : "",
           paneId: typeof entry.paneId === "string" ? entry.paneId : "",
@@ -351,7 +331,7 @@ export function loadPersistedActiveAgentSessions(
           modelId: typeof entry.modelId === "string" ? entry.modelId : undefined,
           title:
             cleanSessionTitle(typeof entry.title === "string" ? entry.title : null) ||
-            (isTerminal ? "Terminal" : "Loading session"),
+            "Loading session",
           status: typeof entry.status === "string" ? entry.status : "idle",
           focused: entry.focused === true,
           startedAt: typeof entry.startedAt === "string" ? entry.startedAt : undefined,
@@ -364,7 +344,6 @@ export function loadPersistedActiveAgentSessions(
       })
       .filter(
         (entry) =>
-          entry.kind !== "terminal" &&
           !prefs[entry.piSessionId ?? ""]?.hidden &&
           Boolean(entry.cwd) &&
           Boolean(entry.paneId) &&

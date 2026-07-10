@@ -102,8 +102,6 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
     const { selections, legacyRuntimeKeys, ...workspace } = restoredState;
-    // Flag the durable-restore path so hydrateActiveSessions trusts this layout
-    // (incl. a terminal main pane) instead of rebuilding panes from chat snapshots.
     return { workspace: { ...workspace, paneStateRestored: true }, selections, legacyRuntimeKeys };
   }
 
@@ -119,19 +117,6 @@ export function writePaneState(
 ): void {
   const panes: Record<string, PersistedPaneEntry> = {};
   for (const [paneId, pane] of state.panesById.entries()) {
-    if (pane.kind === "terminal") {
-      panes[paneId] = {
-        kind: "terminal",
-        mountKey: pane.mountKey,
-        cwd: pane.cwd,
-        title: pane.title,
-        ownerSessionId: pane.ownerSessionId,
-        ownerPiSessionId: pane.ownerPiSessionId,
-        projectId: pane.projectId ?? null,
-        createdAt: pane.createdAt,
-      };
-      continue;
-    }
     const session = state.sessions.get(pane.sessionId);
     panes[paneId] = {
       activeTabId: pane.sessionId,

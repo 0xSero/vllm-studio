@@ -3,9 +3,9 @@
 import { useRef, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { SearchAddon } from "@xterm/addon-search";
 import type { TerminalRunResult } from "@/features/agent/contracts";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { effectTimeout } from "@/lib/effect-timers";
 import {
   bumpTerminalFontSize,
   getTerminalFontSize,
@@ -16,38 +16,17 @@ import {
   type TerminalAction,
 } from "@/lib/terminal-keybinds";
 
-export type TerminalSearchDirection = "next" | "previous";
+export function preloadTerminalPanel(): void {
+  void import("@xterm/xterm");
+  void import("@xterm/addon-fit");
+  void import("@xterm/addon-web-links").catch(() => null);
+}
 
-export type TerminalControl = {
-  search: (term: string, direction: TerminalSearchDirection) => void;
-  clearSearch: () => void;
-  focus: () => void;
-};
-
-export type TerminalPanelActions = {
-  onRequestClose?: () => void;
-  onSplit?: (direction: "vertical" | "horizontal") => void;
-  onNewTerminal?: () => void;
-  onToggleSearch?: () => void;
-};
-
-export function TerminalPanel({
-  cwd,
-  ownerKey,
-  actions,
-  controlRef,
-}: {
-  cwd: string | null;
-  ownerKey: string;
-  actions?: TerminalPanelActions;
-  controlRef?: RefObject<TerminalControl | null>;
-}) {
+export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const actionsRef = useRef<TerminalPanelActions>({});
   const stateRef = useRef<TerminalRefs>({
     term: null,
     fit: null,
-    search: null,
     applyResize: null,
     input: "",
     running: false,
@@ -59,9 +38,6 @@ export function TerminalPanel({
     cwd,
     ownerKey,
     stateRef,
-    actions,
-    actionsRef,
-    controlRef,
   });
 
   return (
@@ -81,7 +57,6 @@ export function TerminalPanel({
 }
 
 type PtyBridge = {
-  status(): Promise<{ available: boolean; reason: string | null }>;
   open(opts: {
     cwd?: string;
     cols?: number;
@@ -90,8 +65,6 @@ type PtyBridge = {
   }): Promise<{ id: string; replay?: string; reused?: boolean }>;
   write(id: string, data: string): Promise<void>;
   resize(id: string, cols: number, rows: number): Promise<void>;
-  close(id: string): Promise<void>;
-  closeOwner(ownerKey: string): Promise<void>;
   onData(listener: (id: string, chunk: string) => void): () => void;
   onExit(
     listener: (id: string, info: { exitCode: number; signal: number | null }) => void,
@@ -105,14 +78,9 @@ function getPtyBridge(): PtyBridge | null {
   return bridge ?? null;
 }
 
-export function closeTerminalOwner(ownerKey: string): void {
-  void getPtyBridge()?.closeOwner(ownerKey);
-}
-
 type TerminalRefs = {
   term: XTerm | null;
   fit: FitAddon | null;
-  search: SearchAddon | null;
   applyResize: (() => void) | null;
   input: string;
   running: boolean;
@@ -194,17 +162,8 @@ function loadWebLinksAddon(
   } catch {}
 }
 
-function runTerminalAction(
-  action: TerminalAction,
-  refs: TerminalRefs,
-  actions: TerminalPanelActions,
-): void {
+function runTerminalAction(action: TerminalAction, refs: TerminalRefs): void {
   const dispatch: Record<TerminalAction, () => void> = {
-    newTerminal: () => actions.onNewTerminal?.(),
-    closeTerminal: () => actions.onRequestClose?.(),
-    splitRight: () => actions.onSplit?.("vertical"),
-    splitDown: () => actions.onSplit?.("horizontal"),
-    searchTerminal: () => actions.onToggleSearch?.(),
     clearTerminal: () => refs.term?.clear(),
     fontSizeUp: () => bumpTerminalFontSize(1),
     fontSizeDown: () => bumpTerminalFontSize(-1),
@@ -213,35 +172,15 @@ function runTerminalAction(
   dispatch[action]();
 }
 
-function terminalKeyHandler(
-  stateRef: RefObject<TerminalRefs>,
-  actionsRef: RefObject<TerminalPanelActions>,
-): (event: KeyboardEvent) => boolean {
+function terminalKeyHandler(stateRef: RefObject<TerminalRefs>): (event: KeyboardEvent) => boolean {
   return (event) => {
     if (event.type !== "keydown") return true;
     const action = matchTerminalAction(event, getTerminalKeybinds());
     if (!action) return true;
     event.preventDefault();
     event.stopPropagation();
-    runTerminalAction(action, stateRef.current, actionsRef.current);
+    runTerminalAction(action, stateRef.current);
     return false;
-  };
-}
-
-function terminalControl(refs: TerminalRefs): TerminalControl {
-  return {
-    search: (term, direction) => {
-      const search = refs.search;
-      if (!search) return;
-      if (!term) {
-        search.clearDecorations();
-        return;
-      }
-      if (direction === "previous") search.findPrevious(term);
-      else search.findNext(term, { incremental: true });
-    },
-    clearSearch: () => refs.search?.clearDecorations(),
-    focus: () => refs.term?.focus(),
   };
 }
 
@@ -250,22 +189,12 @@ function useTerminalPanelEffects({
   cwd,
   ownerKey,
   stateRef,
-  actions,
-  actionsRef,
-  controlRef,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   cwd: string | null;
   ownerKey: string;
   stateRef: RefObject<TerminalRefs>;
-  actions?: TerminalPanelActions;
-  actionsRef: RefObject<TerminalPanelActions>;
-  controlRef?: RefObject<TerminalControl | null>;
 }): void {
-  useMountSubscription(() => {
-    actionsRef.current = actions ?? {};
-  }, [actionsRef, actions]);
-
   useMountSubscription(() => {
     const refs = stateRef.current;
     refs.disposed = false;
@@ -276,10 +205,9 @@ function useTerminalPanelEffects({
     async function boot() {
       const element = containerRef.current;
       if (!element) return;
-      const [{ Terminal }, { FitAddon }, { SearchAddon }, webLinksModule] = await Promise.all([
+      const [{ Terminal }, { FitAddon }, webLinksModule] = await Promise.all([
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
-        import("@xterm/addon-search"),
         import("@xterm/addon-web-links").catch(() => null),
       ]);
       if (refs.disposed) return;
@@ -299,22 +227,16 @@ function useTerminalPanelEffects({
         theme: buildTerminalTheme(cssVar),
       });
       const fit = new FitAddon();
-      const search = new SearchAddon();
       term.loadAddon(fit);
-      term.loadAddon(search);
       loadWebLinksAddon(term, webLinksModule);
-      term.attachCustomKeyEventHandler(terminalKeyHandler(stateRef, actionsRef));
+      term.attachCustomKeyEventHandler(terminalKeyHandler(stateRef));
       term.open(element);
       fit.fit();
       refs.term = term;
       refs.fit = fit;
-      refs.search = search;
-      if (controlRef) controlRef.current = terminalControl(refs);
 
       const pty = getPtyBridge();
       if (pty) {
-        // Open directly — a failed open carries the unavailability reason, so
-        // the old pre-flight status() round trip was pure added latency.
         try {
           cleanupTerminal = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey });
         } catch (error) {
@@ -328,7 +250,7 @@ function useTerminalPanelEffects({
         cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
       }
 
-      window.setTimeout(() => {
+      effectTimeout(() => {
         if (!refs.disposed) term.focus();
       }, 0);
     }
@@ -341,11 +263,9 @@ function useTerminalPanelEffects({
       refs.term?.dispose();
       refs.term = null;
       refs.fit = null;
-      refs.search = null;
       refs.applyResize = null;
-      if (controlRef) controlRef.current = null;
     };
-  }, [containerRef, cwd, ownerKey, stateRef, actionsRef, controlRef]);
+  }, [containerRef, cwd, ownerKey, stateRef]);
 
   useMountSubscription(
     () =>

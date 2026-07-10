@@ -1,16 +1,7 @@
 "use client";
 
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ComponentType,
-  type MouseEvent,
-} from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { safeJson } from "@/features/agent/safe-json";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
@@ -22,11 +13,9 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
-import { preloadTerminalPanel } from "@/features/agent/ui/terminal-pane";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { useProjects } from "@/features/agent/projects/context";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
-import { Terminal } from "@/ui/icon-registry";
 import {
   mergeActiveSessionPref,
   patchActiveSessionPref,
@@ -131,7 +120,7 @@ export function ProjectRow({
           <NewChatPlusButton
             projectId={project.id}
             project={project}
-            label={`New chat in ${project.name}`}
+            label={`New task in ${project.name}`}
             className="flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity hover:text-(--fg)/80 group-hover:opacity-100"
             onNavigateStart={onNewChatStart}
           />
@@ -452,9 +441,6 @@ export function SessionRow({
   );
 }
 
-const NEW_CHAT_MENU_CLASS =
-  "fixed z-[999] min-w-[164px] -translate-x-full rounded-lg border border-(--color-popover-border) bg-(--color-popover) p-1 shadow-[0_8px_28px_rgba(0,0,0,0.45)]";
-
 export function NewChatPlusButton({
   projectId,
   project,
@@ -469,31 +455,6 @@ export function NewChatPlusButton({
   onNavigateStart?: () => void;
 }) {
   const router = useRouter();
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const menuOpen = menuPos !== null;
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => setMenuPos(null), []);
-
-  useMountSubscription(() => {
-    if (!menuOpen || typeof document === "undefined") return;
-    const onDocMouseDown = (event: globalThis.MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (anchorRef.current?.contains(target) || popRef.current?.contains(target)) return;
-      closeMenu();
-    };
-    const onScrollOrResize = () => closeMenu();
-    document.addEventListener("mousedown", onDocMouseDown);
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
-    return () => {
-      document.removeEventListener("mousedown", onDocMouseDown);
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
-    };
-  }, [menuOpen, closeMenu]);
-
   const openNewChat = () => {
     onNavigateStart?.();
     if (project && workspaceCommands().isBound()) {
@@ -504,94 +465,20 @@ export function NewChatPlusButton({
       `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}&replace=1`,
     );
   };
-  const openNewTerminal = () => {
-    onNavigateStart?.();
-    if (project && workspaceCommands().isBound()) {
-      workspaceCommands().openTerminal(project);
-      return;
-    }
-    router.push(
-      `/agent?project=${encodeURIComponent(projectId)}&new=${Date.now().toString(36)}&terminal=1&replace=1`,
-    );
-  };
-  const runItem = (action: () => void) => (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    closeMenu();
-    action();
-  };
 
-  return (
-    <div ref={anchorRef} className="relative flex items-center justify-center leading-none">
-      <button
-        type="button"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (menuOpen) {
-            closeMenu();
-            return;
-          }
-          const rect = event.currentTarget.getBoundingClientRect();
-          setMenuPos({ top: rect.bottom + 4, left: rect.right });
-          // Warm the xterm chunks while the menu is open so "New terminal"
-          // doesn't pay the dynamic-import cost on click.
-          preloadTerminalPanel();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") closeMenu();
-        }}
-        className={`${className} ${menuOpen ? "opacity-100" : ""}`}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        title={label}
-      >
-        <PlusIcon className="block h-3.5 w-3.5" />
-      </button>
-      {menuPos
-        ? createPortal(
-            <div
-              ref={popRef}
-              className={NEW_CHAT_MENU_CLASS}
-              style={{ top: menuPos.top, left: menuPos.left }}
-              role="menu"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") closeMenu();
-              }}
-            >
-              <NewChatMenuItem Icon={ChatIcon} onClick={runItem(openNewChat)}>
-                New chat
-              </NewChatMenuItem>
-              <NewChatMenuItem Icon={Terminal} onClick={runItem(openNewTerminal)}>
-                New terminal
-              </NewChatMenuItem>
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>
-  );
-}
-
-function NewChatMenuItem({
-  Icon,
-  onClick,
-  children,
-}: {
-  Icon: ComponentType<{ className?: string }>;
-  onClick: (event: MouseEvent) => void;
-  children: string;
-}) {
   return (
     <button
       type="button"
-      role="menuitem"
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[length:var(--fs-md)] text-(--fg)/90 transition-colors hover:bg-(--color-menu-hover) hover:text-(--fg)"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openNewChat();
+      }}
+      className={className}
+      aria-label={label}
+      title={label}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
-      <span className="truncate">{children}</span>
+      <PlusIcon className="block h-3.5 w-3.5" />
     </button>
   );
 }

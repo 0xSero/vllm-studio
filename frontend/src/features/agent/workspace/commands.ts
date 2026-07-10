@@ -11,14 +11,6 @@ export type WorkspaceCommands = {
   focusSession(paneId: PaneId, sessionId: SessionId): void;
   renameSession(paneId: PaneId, tabId: SessionId, title: string): void;
   newChat(project?: Project | null): void;
-  openTerminal(project?: Project | null): void;
-  /** Focus the pane holding this terminal, or recreate it (PTY reattach). */
-  focusTerminal(terminal: {
-    mountKey: string;
-    cwd?: string | null;
-    title?: string;
-    projectId?: string | null;
-  }): void;
   openSession(project: Project | null, piSessionId: string, sessionTitle?: string): void;
 };
 
@@ -51,25 +43,6 @@ function createWorkspaceCommands(): WorkspaceCommands {
         replaceWorkspace: true,
         paneId: newPaneId(),
         tab: makeFreshTab(),
-      });
-    },
-    openTerminal: (project) => {
-      dispatch?.({
-        type: "openProjectTerminal",
-        cwd: project?.path ?? null,
-        newPaneId: newPaneId(),
-        projectId: project?.id ?? null,
-        replaceWorkspace: true,
-      });
-    },
-    focusTerminal: (terminal) => {
-      dispatch?.({
-        type: "focusTerminalPane",
-        mountKey: terminal.mountKey,
-        cwd: terminal.cwd ?? null,
-        title: terminal.title,
-        projectId: terminal.projectId ?? null,
-        newPaneId: newPaneId(),
       });
     },
     openSession: (project, piSessionId, sessionTitle) => {

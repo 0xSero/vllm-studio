@@ -7,7 +7,7 @@ export function paneSessions(state: WorkspaceState, paneId: PaneId): Session[] {
 }
 
 export function paneSessionId(pane: PaneState | undefined): SessionId | null {
-  return pane && pane.kind !== "terminal" ? pane.sessionId : null;
+  return pane?.sessionId ?? null;
 }
 
 export function activeSession(state: WorkspaceState, paneId: PaneId): Session | null {
@@ -34,9 +34,7 @@ export function findPaneByPiSessionId(
 export function referencedSessionIds(state: WorkspaceState): Set<SessionId> {
   const ids = new Set<SessionId>();
   for (const pane of state.panesById.values()) {
-    const sessionId = paneSessionId(pane);
-    if (sessionId) ids.add(sessionId);
-    if (pane.kind === "terminal" && pane.ownerSessionId) ids.add(pane.ownerSessionId);
+    ids.add(pane.sessionId);
   }
   return ids;
 }

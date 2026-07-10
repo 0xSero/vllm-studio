@@ -136,37 +136,19 @@ test("eventToKeybind returns null for modifier-only and unmodified events", () =
   });
 });
 
-test("matchTerminalAction returns the matching action and disambiguates by shift", () => {
+test("matchTerminalAction returns only supported terminal-local actions", () => {
   const keybinds: TerminalKeybinds = {
-    newTerminal: "mod+shift+t",
-    closeTerminal: "mod+w",
     clearTerminal: "mod+k",
-    searchTerminal: "alt+f",
     fontSizeUp: "mod+=",
     fontSizeDown: "mod+-",
     fontSizeReset: "mod+0",
-    splitRight: "mod+d",
-    splitDown: "mod+shift+d",
   };
   withPlatform("MacIntel", () => {
     assert.equal(
-      matchTerminalAction(keyEvent({ code: "KeyD", metaKey: true }), keybinds),
-      "splitRight",
-    );
-    assert.equal(
-      matchTerminalAction(keyEvent({ code: "KeyD", metaKey: true, shiftKey: true }), keybinds),
-      "splitDown",
-    );
-    assert.equal(
-      matchTerminalAction(keyEvent({ code: "KeyT", metaKey: true, shiftKey: true }), keybinds),
-      "newTerminal",
-    );
-    assert.equal(
-      matchTerminalAction(keyEvent({ code: "KeyF", altKey: true }), keybinds),
-      "searchTerminal",
+      matchTerminalAction(keyEvent({ code: "KeyK", metaKey: true }), keybinds),
+      "clearTerminal",
     );
     assert.equal(matchTerminalAction(keyEvent({ code: "KeyG", metaKey: true }), keybinds), null);
-    assert.equal(matchTerminalAction(keyEvent({ code: "KeyT", metaKey: true }), keybinds), null);
   });
 });
 
@@ -189,16 +171,16 @@ test("the terminal store re-reads keybinds and font size from localStorage on st
     withPlatform("MacIntel", () => {
       values.set(
         KEYBINDS_KEY,
-        JSON.stringify({ splitRight: "alt+r", clearTerminal: 5, unknownAction: "mod+z" }),
+        JSON.stringify({ fontSizeReset: "alt+r", clearTerminal: 5, unknownAction: "mod+z" }),
       );
       sync();
       const merged = getTerminalKeybinds();
-      assert.equal(merged.splitRight, "alt+r");
+      assert.equal(merged.fontSizeReset, "alt+r");
       assert.equal(
         matchTerminalAction(keyEvent({ code: "KeyR", altKey: true }), merged),
-        "splitRight",
+        "fontSizeReset",
       );
-      assert.equal(matchTerminalAction(keyEvent({ code: "KeyD", metaKey: true }), merged), null);
+      assert.equal(matchTerminalAction(keyEvent({ code: "Digit0", metaKey: true }), merged), null);
       assert.equal(merged.clearTerminal, DEFAULT_TERMINAL_KEYBINDS.clearTerminal);
       assert.equal(Object.prototype.hasOwnProperty.call(merged, "unknownAction"), false);
 

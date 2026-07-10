@@ -284,14 +284,14 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       {chatProject ? (
         <>
           <SidebarSectionHeader
-            label="Chats"
+            label="Tasks"
             open={chatsExpanded}
             indicator={chatsHasActivity}
             onToggle={() => setChatsExpanded((value) => !value)}
             action={
               <NewChatPlusButton
                 projectId={chatProject.id}
-                label="New chat"
+                label="New task"
                 className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
               />
             }

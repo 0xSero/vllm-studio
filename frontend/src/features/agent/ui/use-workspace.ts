@@ -10,8 +10,6 @@ import {
   type SessionReplayQueue,
 } from "@/features/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
-import { closeTerminalOwner } from "@/features/agent/ui/terminal-panel";
-import { rememberPersistentTerminalOwner } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
   runWorkspaceEffect,
   type WorkspaceDispatch,
@@ -45,8 +43,6 @@ export type WorkspaceHandles = {
   openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
-  openTerminalPane: (paneId?: PaneId) => void;
-  splitTerminal: (paneId: PaneId, direction: "vertical" | "horizontal") => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
   compactFocusedSession: () => Promise<void>;
   setSplitRatio: (path: number[], ratio: number) => void;
@@ -190,8 +186,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         queueReplay: queueSessionReplay,
         findProjectById: (id) => projectsRef.current.findById(id),
         selectionFor: (id) => toolsRef.current.selectionFor(id),
-        closeTerminalOwner,
-        rememberTerminalOwner: rememberPersistentTerminalOwner,
       };
     };
 
@@ -263,15 +257,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
           sourceTabId: tabId,
           newPaneId: newPaneId(),
           tab: makeFreshTab(),
-        }),
-      openTerminalPane: (paneId?: PaneId) =>
-        dispatch({ type: "openTerminalPane", ...(paneId ? { sourcePaneId: paneId } : {}) }),
-      splitTerminal: (paneId: PaneId, direction: "vertical" | "horizontal") =>
-        dispatch({
-          type: "splitTerminalPane",
-          sourcePaneId: paneId,
-          newPaneId: newPaneId(),
-          direction,
         }),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);

@@ -1,14 +1,6 @@
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 
 export type ActiveAgentSessionSnapshot = {
-  /**
-   * Row kind. Absent/"chat" = a chat session. "terminal" = a live terminal
-   * pane — `tabId` is its PTY mountKey and clicking the row focuses (or
-   * recreates, reattaching the PTY) the terminal pane.
-   */
-  kind?: "chat" | "terminal";
-  /** Terminal rows only: the stable PTY owner key used to reattach. */
-  mountKey?: string;
   projectId: string;
   cwd: string;
   paneId: string;

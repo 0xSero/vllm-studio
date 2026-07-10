@@ -4,13 +4,11 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { uniqueTerminalKeys, type TerminalOwner } from "@/features/agent/terminal-owners";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   AgentModel,
   PaneId,
-  TerminalPaneState,
   WorkspaceAction,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
@@ -62,8 +60,6 @@ export type WorkspaceEffectDeps = {
   findProjectById?: (id: string) => Project | null;
   /** Resolve a session's tool selection from the tools context. */
   selectionFor?: (sessionId: SessionId) => ToolSelection;
-  closeTerminalOwner?: (mountKey: string) => void;
-  rememberTerminalOwner?: (owner: TerminalOwner) => void;
 };
 
 const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
@@ -75,10 +71,6 @@ const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
   "renameTab",
   "splitTab",
   "closePane",
-  "openTerminalPane",
-  "openProjectTerminal",
-  "focusTerminalPane",
-  "splitTerminalPane",
   "hydrateActiveSessions",
   "urlNavRequested",
 ]);
@@ -247,9 +239,6 @@ function computeActiveSessionBroadcast(
   const out: ActiveAgentSessionSnapshot[] = [];
   const inPane = new Set<SessionId>();
   for (const [paneId, pane] of state.panesById.entries()) {
-    if (pane.kind === "terminal") {
-      continue;
-    }
     const sessionId = paneSessionId(pane);
     const tab = sessionId ? state.sessions.get(sessionId) : undefined;
     if (!tab) continue;
@@ -306,16 +295,10 @@ function storedSessionsKey(state: WorkspaceState): string {
 // help and only the next session-field change re-broadcasts it (unchanged from
 // the prior every-dispatch behavior).
 export function activeBroadcastSignature(state: WorkspaceState): string {
-  if (!state.hydrated) return " unhydrated";
+  if (!state.hydrated) return "\u0000unhydrated";
   const parts: string[] = [`m:${state.selectedModel ?? ""}`, `f:${state.focusedPaneId ?? ""}`];
   for (const [paneId, pane] of state.panesById.entries())
-    parts.push(
-      `P:${paneId}>${
-        pane.kind === "terminal"
-          ? `${pane.mountKey}|${pane.title}|${pane.projectId ?? ""}|${pane.cwd ?? ""}`
-          : pane.sessionId
-      }`,
-    );
+    parts.push(`P:${paneId}>${pane.sessionId}`);
   for (const tab of state.sessions.values()) {
     parts.push(
       `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +
@@ -415,15 +398,12 @@ function paneMetadataKey(
   for (const [paneId, pane] of state.panesById.entries()) {
     const sessionId = paneSessionId(pane);
     const session = sessionId ? state.sessions.get(sessionId) : undefined;
-    panes[paneId] =
-      pane.kind === "terminal"
-        ? { terminal: pane.mountKey }
-        : {
-            sessionId: pane.sessionId,
-            tab: session
-              ? sessionMetaForPersistence(session, selectionFor?.(pane.sessionId) ?? undefined)
-              : null,
-          };
+    panes[paneId] = {
+      sessionId: pane.sessionId,
+      tab: session
+        ? sessionMetaForPersistence(session, selectionFor?.(pane.sessionId) ?? undefined)
+        : null,
+    };
   }
   return JSON.stringify({
     layout: state.layout,
@@ -473,83 +453,6 @@ function persistSettledTranscripts(
   }
 }
 
-function closeRemovedTerminalPanes(
-  action: WorkspaceAction,
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  if (action.type !== "closePane") return;
-  if (!deps.closeTerminalOwner || prevState.panesById === nextState.panesById) return;
-  const surviving = new Set<string>();
-  for (const pane of nextState.panesById.values()) {
-    if (pane.kind === "terminal") surviving.add(pane.mountKey);
-  }
-  for (const pane of prevState.panesById.values()) {
-    if (pane.kind === "terminal" && !surviving.has(pane.mountKey)) {
-      deps.closeTerminalOwner(pane.mountKey);
-    }
-  }
-}
-
-function terminalOwnerFromPane(pane: TerminalPaneState): TerminalOwner {
-  const sessionKey = pane.ownerSessionId ? `session:${pane.ownerSessionId}` : "";
-  const piKey = pane.ownerPiSessionId ? `pi:${pane.ownerPiSessionId}` : "";
-  const projectKey = pane.projectId ? `project:${pane.projectId}` : "";
-  return {
-    mountKey: pane.mountKey,
-    matchKeys: uniqueTerminalKeys([pane.mountKey, sessionKey, piKey, projectKey]),
-    cwd: pane.cwd,
-    title: pane.title,
-    kind: pane.ownerSessionId || pane.ownerPiSessionId ? "session" : "project",
-    sessionId: pane.ownerSessionId,
-    piSessionId: pane.ownerPiSessionId,
-    projectId: pane.projectId,
-  };
-}
-
-function terminalOwnerKey(state: WorkspaceState): string {
-  const keys: string[] = [];
-  for (const pane of state.panesById.values()) {
-    if (pane.kind === "terminal") keys.push(pane.mountKey);
-  }
-  return keys.sort().join("\n");
-}
-
-function rememberCurrentTerminalPanes(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  if (!deps.rememberTerminalOwner) return;
-  if (terminalOwnerKey(prevState) === terminalOwnerKey(nextState)) return;
-  for (const pane of nextState.panesById.values()) {
-    if (pane.kind === "terminal") deps.rememberTerminalOwner(terminalOwnerFromPane(pane));
-  }
-}
-
-function rememberDetachedTerminalPanes(
-  action: WorkspaceAction,
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  const replaceWorkspace =
-    (action.type === "urlNavRequested" || action.type === "openProjectTerminal") &&
-    action.replaceWorkspace === true;
-  if (!replaceWorkspace) return;
-  if (!deps.rememberTerminalOwner || prevState.panesById === nextState.panesById) return;
-  const surviving = new Set<string>();
-  for (const pane of nextState.panesById.values()) {
-    if (pane.kind === "terminal") surviving.add(pane.mountKey);
-  }
-  for (const pane of prevState.panesById.values()) {
-    if (pane.kind === "terminal" && !surviving.has(pane.mountKey)) {
-      deps.rememberTerminalOwner(terminalOwnerFromPane(pane));
-    }
-  }
-}
-
 export function runWorkspaceEffect(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -558,9 +461,6 @@ export function runWorkspaceEffect(
 ): void {
   persistActionEffects(action, prevState, nextState, deps);
   queueReplayEffects(action, prevState, nextState, deps);
-  rememberCurrentTerminalPanes(prevState, nextState, deps);
-  rememberDetachedTerminalPanes(action, prevState, nextState, deps);
-  closeRemovedTerminalPanes(action, prevState, nextState, deps);
 
   if (action.type === "hydrate") {
     runInitialApiEffects(nextState, deps);

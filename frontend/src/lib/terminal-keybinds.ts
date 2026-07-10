@@ -3,53 +3,29 @@
 import { useSyncExternalStore } from "react";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 
-export type TerminalAction =
-  | "newTerminal"
-  | "closeTerminal"
-  | "clearTerminal"
-  | "searchTerminal"
-  | "fontSizeUp"
-  | "fontSizeDown"
-  | "fontSizeReset"
-  | "splitRight"
-  | "splitDown";
+export type TerminalAction = "clearTerminal" | "fontSizeUp" | "fontSizeDown" | "fontSizeReset";
 
 export type TerminalKeybinds = Record<TerminalAction, string>;
 
 export const TERMINAL_ACTIONS: readonly TerminalAction[] = [
-  "newTerminal",
-  "closeTerminal",
   "clearTerminal",
-  "searchTerminal",
   "fontSizeUp",
   "fontSizeDown",
   "fontSizeReset",
-  "splitRight",
-  "splitDown",
 ] as const;
 
 export const TERMINAL_ACTION_LABELS: Record<TerminalAction, string> = {
-  newTerminal: "New terminal",
-  closeTerminal: "Close terminal",
   clearTerminal: "Clear terminal",
-  searchTerminal: "Search terminal",
   fontSizeUp: "Increase font size",
   fontSizeDown: "Decrease font size",
   fontSizeReset: "Reset font size",
-  splitRight: "Split right",
-  splitDown: "Split down",
 };
 
 export const DEFAULT_TERMINAL_KEYBINDS: TerminalKeybinds = {
-  newTerminal: "mod+t",
-  closeTerminal: "mod+w",
   clearTerminal: "mod+k",
-  searchTerminal: "mod+f",
   fontSizeUp: "mod+=",
   fontSizeDown: "mod+-",
   fontSizeReset: "mod+0",
-  splitRight: "mod+d",
-  splitDown: "mod+shift+d",
 };
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 12;

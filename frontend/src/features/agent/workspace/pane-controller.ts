@@ -20,7 +20,6 @@ import type { Project } from "@/features/agent/projects/types";
 import type {
   PaneId,
   PaneState,
-  TerminalPaneState,
   WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
@@ -146,14 +145,8 @@ function splitPaneWithSession(
   };
 }
 
-// A chat looking for a pane to take over must never claim a terminal leaf —
-// replacing one silently kills the user's shell view (the PTY survives but
-// nothing references its mountKey anymore).
 function siblingPaneId(state: WorkspaceState, sourcePaneId: PaneId): PaneId | null {
-  const leaves = collectLeaves(state.layout);
-  return (
-    leaves.find((id) => id !== sourcePaneId && state.panesById.get(id)?.kind !== "terminal") ?? null
-  );
+  return collectLeaves(state.layout).find((id) => id !== sourcePaneId) ?? null;
 }
 
 function openSessionAdjacentToFocusedPane(
@@ -180,21 +173,11 @@ export function setWorkspaceSplitRatio(
   return { ...state, layout: setLayoutSplitRatio(state.layout, payload.path, payload.ratio) };
 }
 
-function chatTargetPaneId(state: WorkspaceState): PaneId {
-  const focused = state.panesById.get(state.focusedPaneId);
-  if (focused && focused.kind !== "terminal") return state.focusedPaneId;
-  for (const paneId of collectLeaves(state.layout)) {
-    const pane = state.panesById.get(paneId);
-    if (pane?.kind !== "terminal" && paneSessionId(pane)) return paneId;
-  }
-  return state.focusedPaneId;
-}
-
 function openNewSessionInFocusedPane(
   state: WorkspaceState,
   payload: OpenNewSessionPayload,
 ): WorkspaceState {
-  const targetPaneId = chatTargetPaneId(state);
+  const targetPaneId = state.focusedPaneId;
   const pane = state.panesById.get(targetPaneId);
   if (!pane) return state;
   if (!isSession(payload.tab)) return state;
@@ -209,12 +192,8 @@ function openNewSessionInFocusedPane(
   }
   const activeId = paneSessionId(pane);
   const active = activeId ? state.sessions.get(activeId) : undefined;
-  const focusedIsEmptyStarter =
-    pane.kind !== "terminal" && Boolean(active) && isEmptyStarterSession(active!);
-  if (
-    pane.kind !== "terminal" &&
-    (focusedIsEmptyStarter || collectLeaves(state.layout).length >= 2)
-  ) {
+  const focusedIsEmptyStarter = Boolean(active) && isEmptyStarterSession(active!);
+  if (focusedIsEmptyStarter || collectLeaves(state.layout).length >= 2) {
     return replacePaneSession(state, targetPaneId, session);
   }
   return (
@@ -222,7 +201,7 @@ function openNewSessionInFocusedPane(
       sourcePaneId: targetPaneId,
       session,
       newPaneId: payload.newPaneId,
-    }) ?? (pane.kind === "terminal" ? state : replacePaneSession(state, targetPaneId, session))
+    }) ?? replacePaneSession(state, targetPaneId, session)
   );
 }
 
@@ -237,7 +216,7 @@ function replaySessionInFocusedPane(
       ? focusSessionAsOnlyPane(state, existing.paneId, existing.session.id)
       : focusExistingSession(state, existing.paneId, existing.session.id);
   }
-  const targetPaneId = chatTargetPaneId(state);
+  const targetPaneId = state.focusedPaneId;
   if (payload.replaceWorkspace) {
     if (!isSession(payload.tab)) return state;
     return replaceWorkspaceSession(state, payload.newPaneId ?? targetPaneId, {
@@ -248,50 +227,36 @@ function replaySessionInFocusedPane(
   }
   const pane = state.panesById.get(targetPaneId);
   if (!pane) return state;
-  if (pane.kind === "terminal") {
-    // Every leaf is a terminal (chatTargetPaneId fell through). Opening the
-    // chat here would overwrite the terminal — the "Back clobbers my shell"
-    // bug. Split a fresh chat pane beside it instead; if the grid is full,
-    // leave the terminal alone.
-    if (!isSession(payload.tab)) return state;
-    const session: Session = {
-      ...payload.tab,
-      piSessionId: payload.piSessionId,
-      title: replaySessionTitle(payload.sessionTitle),
-    };
-    return (
-      splitPaneWithSession(state, {
-        sourcePaneId: targetPaneId,
-        session,
-        newPaneId: payload.newPaneId,
-      }) ?? state
-    );
-  }
   const activeId = paneSessionId(pane);
   const active = activeId ? (state.sessions.get(activeId) ?? null) : null;
   const targetSession = active && isEmptyStarterSession(active) ? active : null;
-  if (!targetSession && !isSession(payload.tab)) return state;
-
   if (targetSession) {
-    const sessions = patchSessionInMap(state.sessions, targetSession.id, {
-      projectId: targetSession.projectId ?? payload.tab?.projectId,
-      cwd: targetSession.cwd ?? payload.tab?.cwd,
-      modelId: targetSession.modelId ?? payload.tab?.modelId,
-      piSessionId: payload.piSessionId,
-      title: replaySessionTitle(payload.sessionTitle, targetSession.title || "Loading session"),
-      startedAt: targetSession.startedAt ?? payload.tab?.startedAt,
-    });
-    return setPane(withSessions(state, sessions), targetPaneId, {
-      sessionId: targetSession.id,
-    });
+    return adoptReplaySession(state, targetPaneId, targetSession, payload);
   }
-
+  if (!isSession(payload.tab)) return state;
   const session: Session = {
-    ...payload.tab!,
+    ...payload.tab,
     piSessionId: payload.piSessionId,
     title: replaySessionTitle(payload.sessionTitle),
   };
   return replacePaneSession(state, targetPaneId, session);
+}
+
+function adoptReplaySession(
+  state: WorkspaceState,
+  paneId: PaneId,
+  target: Session,
+  payload: ReplaySessionPayload,
+): WorkspaceState {
+  const sessions = patchSessionInMap(state.sessions, target.id, {
+    projectId: target.projectId ?? payload.tab?.projectId,
+    cwd: target.cwd ?? payload.tab?.cwd,
+    modelId: target.modelId ?? payload.tab?.modelId,
+    piSessionId: payload.piSessionId,
+    title: replaySessionTitle(payload.sessionTitle, target.title || "Loading session"),
+    startedAt: target.startedAt ?? payload.tab?.startedAt,
+  });
+  return setPane(withSessions(state, sessions), paneId, { sessionId: target.id });
 }
 
 function replaySessionInSplitPane(
@@ -414,28 +379,10 @@ export function splitTabIntoNewPane(
   );
 }
 
-function restoredTerminalOwnerPane(state: WorkspaceState, paneId: PaneId): WorkspaceState | null {
-  const pane = state.panesById.get(paneId);
-  if (pane?.kind !== "terminal" || !pane.ownerSessionId) return null;
-  if (!state.sessions.has(pane.ownerSessionId)) return null;
-  return {
-    ...setPane(state, paneId, { sessionId: pane.ownerSessionId }),
-    focusedPaneId: paneId,
-  };
-}
-
-export function canRestoreTerminalOwner(state: WorkspaceState, paneId: PaneId): boolean {
-  const pane = state.panesById.get(paneId);
-  return (
-    pane?.kind === "terminal" &&
-    Boolean(pane.ownerSessionId && state.sessions.has(pane.ownerSessionId))
-  );
-}
-
 export function closePane(state: WorkspaceState, payload: { paneId: PaneId }): WorkspaceState {
   const leaves = collectLeaves(state.layout);
   if (!leaves.includes(payload.paneId)) return state;
-  if (leaves.length <= 1) return restoredTerminalOwnerPane(state, payload.paneId) ?? state;
+  if (leaves.length <= 1) return state;
   const nextPanes = new Map(state.panesById);
   nextPanes.delete(payload.paneId);
   const remaining = leaves.filter((id) => id !== payload.paneId);
@@ -448,165 +395,6 @@ export function closePane(state: WorkspaceState, payload: { paneId: PaneId }): W
         ? (remaining[0] ?? state.focusedPaneId)
         : state.focusedPaneId,
   });
-}
-
-export function openTerminalPane(
-  state: WorkspaceState,
-  payload: { sourcePaneId: PaneId },
-): WorkspaceState {
-  if (!leafExists(state, payload.sourcePaneId)) return state;
-  const source = state.panesById.get(payload.sourcePaneId);
-  if (source?.kind === "terminal") return { ...state, focusedPaneId: payload.sourcePaneId };
-  const sourceSessionId = paneSessionId(source);
-  const session = sourceSessionId ? state.sessions.get(sourceSessionId) : undefined;
-  const pane: TerminalPaneState = {
-    kind: "terminal",
-    mountKey: session ? `pane-session:${session.id}` : `pane:${payload.sourcePaneId}`,
-    cwd: session?.cwd ?? null,
-    title: "Terminal",
-    ownerSessionId: session?.id ?? null,
-    ownerPiSessionId: session?.piSessionId ?? null,
-    projectId: session?.projectId ?? null,
-    createdAt: new Date().toISOString(),
-  };
-  return { ...setPane(state, payload.sourcePaneId, pane), focusedPaneId: payload.sourcePaneId };
-}
-
-function projectTerminalPane(
-  mountKey: string,
-  cwd: string | null,
-  projectId: string | null | undefined,
-  title = "Terminal",
-): TerminalPaneState {
-  return {
-    kind: "terminal",
-    mountKey,
-    cwd,
-    title,
-    ownerSessionId: null,
-    ownerPiSessionId: null,
-    projectId: projectId ?? null,
-    createdAt: new Date().toISOString(),
-  };
-}
-
-// Place a terminal pane: convert the focused empty-starter chat in place, or
-// split a new leaf off the focused pane. Returns null when the grid is full.
-function placeTerminalPane(
-  state: WorkspaceState,
-  newPaneId: PaneId,
-  makePane: (paneId: PaneId) => TerminalPaneState,
-): WorkspaceState | null {
-  const focusedId = state.focusedPaneId;
-  if (!leafExists(state, focusedId)) return null;
-  const focused = state.panesById.get(focusedId);
-  const activeId = paneSessionId(focused);
-  const active = activeId ? state.sessions.get(activeId) : undefined;
-  if (focused && focused.kind !== "terminal" && active && isEmptyStarterSession(active)) {
-    return pruneOrphanSessions({
-      ...setPane(state, focusedId, makePane(focusedId)),
-      focusedPaneId: focusedId,
-    });
-  }
-  if (!validPaneId(newPaneId)) return null;
-  const layout = splitLeafWithinLimits(state.layout, focusedId, newPaneId, "vertical", "b");
-  if (!layout) return null;
-  const nextPanes = new Map(state.panesById);
-  nextPanes.set(newPaneId, makePane(newPaneId));
-  return {
-    ...state,
-    panesById: nextPanes,
-    layout,
-    focusedPaneId: newPaneId,
-  };
-}
-
-export function openProjectTerminal(
-  state: WorkspaceState,
-  payload: {
-    cwd: string | null;
-    newPaneId: PaneId;
-    projectId?: string | null;
-    replaceWorkspace?: boolean;
-  },
-): WorkspaceState {
-  const mountKey = payload.projectId ? `project:${payload.projectId}` : `pane:${payload.newPaneId}`;
-  if (payload.replaceWorkspace) {
-    if (!validPaneId(payload.newPaneId)) return state;
-    return pruneOrphanSessions({
-      ...state,
-      layout: { kind: "leaf", paneId: payload.newPaneId },
-      panesById: new Map([
-        [payload.newPaneId, projectTerminalPane(mountKey, payload.cwd, payload.projectId)],
-      ]),
-      focusedPaneId: payload.newPaneId,
-    });
-  }
-  return (
-    placeTerminalPane(state, payload.newPaneId, (paneId) =>
-      projectTerminalPane(
-        payload.projectId ? mountKey : `pane:${paneId}`,
-        payload.cwd,
-        payload.projectId,
-      ),
-    ) ?? state
-  );
-}
-
-/**
- * Focus the terminal pane holding `mountKey`; if no pane references it anymore
- * (lost on navigation), recreate one with the SAME mountKey — the Electron PTY
- * manager keeps owner-keyed shells alive and reattaches with replay.
- */
-export function focusTerminalPane(
-  state: WorkspaceState,
-  payload: {
-    mountKey: string;
-    cwd: string | null;
-    title?: string;
-    projectId?: string | null;
-    newPaneId: PaneId;
-  },
-): WorkspaceState {
-  for (const paneId of collectLeaves(state.layout)) {
-    const pane = state.panesById.get(paneId);
-    if (pane?.kind === "terminal" && pane.mountKey === payload.mountKey) {
-      return { ...state, focusedPaneId: paneId };
-    }
-  }
-  return (
-    placeTerminalPane(state, payload.newPaneId, () =>
-      projectTerminalPane(payload.mountKey, payload.cwd, payload.projectId, payload.title),
-    ) ?? state
-  );
-}
-
-export function splitTerminalPane(
-  state: WorkspaceState,
-  payload: { sourcePaneId: PaneId; newPaneId: PaneId; direction: "vertical" | "horizontal" },
-): WorkspaceState {
-  const source = state.panesById.get(payload.sourcePaneId);
-  if (source?.kind !== "terminal") return state;
-  if (!validPaneId(payload.newPaneId) || !leafExists(state, payload.sourcePaneId)) return state;
-  const layout = splitLeafWithinLimits(
-    state.layout,
-    payload.sourcePaneId,
-    payload.newPaneId,
-    payload.direction,
-    "b",
-  );
-  if (!layout) return state;
-  const nextPanes = new Map(state.panesById);
-  nextPanes.set(
-    payload.newPaneId,
-    projectTerminalPane(`pane:${payload.newPaneId}`, source.cwd, source.projectId),
-  );
-  return {
-    ...state,
-    panesById: nextPanes,
-    layout,
-    focusedPaneId: payload.newPaneId,
-  };
 }
 
 export function setPaneSession(
@@ -631,29 +419,12 @@ export function applyUrlNavigation(
   payload: UrlNavigationPayload,
 ): WorkspaceState {
   if (state.lastHandledNavKey === payload.key) return state;
-  if (!payload.project && !payload.sessionId && !payload.newSession && !payload.terminal) {
+  if (!payload.project && !payload.sessionId && !payload.newSession) {
     return state;
   }
   const marked: WorkspaceState = { ...state, lastHandledNavKey: payload.key };
   const { paneId, tab, sessionTitle } = payload;
   const project = payload.project ?? undefined;
-  if (payload.terminal) {
-    if (!payload.paneId) return marked;
-    if (payload.terminalMountKey) {
-      return focusTerminalPane(marked, {
-        mountKey: payload.terminalMountKey,
-        cwd: payload.project?.path ?? null,
-        projectId: payload.project?.id ?? null,
-        newPaneId: payload.paneId,
-      });
-    }
-    return openProjectTerminal(marked, {
-      cwd: payload.project?.path ?? null,
-      newPaneId: payload.paneId,
-      projectId: payload.project?.id ?? null,
-      replaceWorkspace: payload.replaceWorkspace,
-    });
-  }
   if (payload.newSession && !payload.sessionId) {
     return openNewSessionInFocusedPane(marked, {
       project,
@@ -692,7 +463,6 @@ type OpenNewSessionPayload = SessionPayload & {
 type ReplaySessionPayload = SessionPayload & {
   piSessionId: string;
   sessionTitle?: string;
-  /** Pane id for the split fallback when the only leaves are terminals. */
   newPaneId?: PaneId;
   replaceWorkspace?: boolean;
 };
@@ -721,7 +491,5 @@ type UrlNavigationPayload = SessionPayload & {
   newSession?: boolean;
   split?: boolean;
   paneId?: PaneId;
-  terminal?: boolean;
-  terminalMountKey?: string;
   replaceWorkspace?: boolean;
 };
