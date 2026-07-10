@@ -48,7 +48,7 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     if (!handle) return;
     const sessionId = paneSessionId(deps.getState().panesById.get(paneId));
     const current = sessionId ? deps.getState().sessions.get(sessionId) : undefined;
-    if (!current || isFreshStarter(current)) {
+    if (!current || isFreshStarter(current) || current.messages.length > 0) {
       pending.delete(paneId);
       return;
     }

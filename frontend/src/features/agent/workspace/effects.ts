@@ -284,7 +284,9 @@ function queueReplayEffects(
       }
       return;
     case "urlNavRequested":
-      if (action.sessionId) queueLocatedReplay(action.sessionId, nextState, deps);
+      if (action.sessionId && !findPaneByPiSessionId(prevState, action.sessionId)) {
+        queueLocatedReplay(action.sessionId, nextState, deps);
+      }
       return;
     default:
       return;

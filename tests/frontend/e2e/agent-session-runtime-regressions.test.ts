@@ -106,7 +106,10 @@ test("turn command result parser preserves runtime status", () => {
 });
 
 test("invalid assistant continuations restart with a fresh Pi session", () => {
-  assert.equal(shouldRestartAfterPromptError(new Error("Cannot continue from message role: assistant")), true);
+  assert.equal(
+    shouldRestartAfterPromptError(new Error("Cannot continue from message role: assistant")),
+    true,
+  );
   assert.equal(shouldRestartAfterPromptError(new Error("Upstream connection failed")), false);
 });
 
@@ -430,6 +433,23 @@ test("runtime lookup by unknown pi session does not create an empty runtime", ()
 
   assert.equal(resolved, null);
   assert.equal(after, before);
+});
+
+test("runtime lookup prefers the exact local session over an older pi match", () => {
+  const sessions = [
+    {
+      sessionId: "rt-old",
+      session: { status: { piSessionId: "pi-shared" }, marker: "old" },
+    },
+    {
+      sessionId: "rt-current",
+      session: { status: { piSessionId: "pi-shared" }, marker: "current" },
+    },
+  ];
+
+  const resolved = findRuntimeSessionForLookup(sessions, "rt-current", "pi-shared");
+
+  assert.equal(resolved?.session.marker, "current");
 });
 
 test("finished runtime event streams replay missed pi events before idle status", () => {
