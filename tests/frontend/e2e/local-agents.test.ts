@@ -38,7 +38,7 @@ function makeModel(overrides: Partial<LocalAgentModel> = {}): LocalAgentModel {
   return {
     modelId: "deepseek-v4-flash",
     displayName: "HomeLab DeepSeek-V4-Flash",
-    baseUrl: "https://api.homelabai.org/v1",
+    baseUrl: "http://pop-os-1.tailadb2c1.ts.net:8080/v1",
     apiKey: "sk-studio-key",
     contextWindow: 128000,
     maxTokens: 128000,
@@ -84,7 +84,7 @@ test("pi: upserts into an existing same-baseUrl provider without touching its ap
     providers: {
       homelab: {
         // Trailing slash on purpose: matching must be trailing-slash-insensitive.
-        baseUrl: "https://api.homelabai.org/v1/",
+        baseUrl: "http://pop-os-1.tailadb2c1.ts.net:8080/v1/",
         apiKey: "sk-original-key",
         api: "openai-completions",
         models: [
@@ -153,7 +153,7 @@ test("pi: creates models.json with a local-studio provider when only ~/.pi exist
   const written = readJson(configPath);
   const provider = written.providers["local-studio"];
   assert.equal(provider.api, "openai-completions");
-  assert.equal(provider.baseUrl, "https://api.homelabai.org/v1");
+  assert.equal(provider.baseUrl, "http://pop-os-1.tailadb2c1.ts.net:8080/v1");
   assert.equal(provider.apiKey, "sk-studio-key");
   assert.equal(provider.models.length, 1);
   assert.equal(provider.models[0].id, "deepseek-v4-flash");
@@ -223,7 +223,7 @@ test("opencode: adds a new provider and preserves every other key", async () => 
   assert.deepEqual(written.provider["local-studio"], {
     npm: "@ai-sdk/openai-compatible",
     name: "Local Studio",
-    options: { baseURL: "https://api.homelabai.org/v1", apiKey: "sk-studio-key" },
+    options: { baseURL: "http://pop-os-1.tailadb2c1.ts.net:8080/v1", apiKey: "sk-studio-key" },
     models: {
       "deepseek-v4-flash": {
         id: "deepseek-v4-flash",
@@ -248,7 +248,7 @@ test("opencode: upserts into an existing matching-baseURL provider, leaving its 
           homelab: {
             npm: "@ai-sdk/openai-compatible",
             name: "HomeLab",
-            options: { baseURL: "https://api.homelabai.org/v1/", apiKey: "sk-existing" },
+            options: { baseURL: "http://pop-os-1.tailadb2c1.ts.net:8080/v1/", apiKey: "sk-existing" },
             models: { "old-model": { name: "Old" } },
           },
         },
@@ -265,7 +265,7 @@ test("opencode: upserts into an existing matching-baseURL provider, leaving its 
   const written = readJson(configPath);
   assert.deepEqual(Object.keys(written.provider), ["homelab"], "no new provider key");
   assert.deepEqual(written.provider.homelab.options, {
-    baseURL: "https://api.homelabai.org/v1/",
+    baseURL: "http://pop-os-1.tailadb2c1.ts.net:8080/v1/",
     apiKey: "sk-existing",
   });
   assert.deepEqual(Object.keys(written.provider.homelab.models).sort(), [
@@ -313,7 +313,7 @@ test("droid: appends with next index + slug id; re-attach updates in place", asy
     model: "deepseek-v4-flash",
     id: "custom:HomeLab-DeepSeek-V4-Flash-4",
     index: 4,
-    baseUrl: "https://api.homelabai.org/v1",
+    baseUrl: "http://pop-os-1.tailadb2c1.ts.net:8080/v1",
     apiKey: "sk-studio-key",
     displayName: "HomeLab DeepSeek-V4-Flash",
     maxContextLimit: 128000,
@@ -353,7 +353,7 @@ test("hermes: appends to custom_models and updates existing entry by model+base_
   const written = readFileSync(configPath, "utf-8");
   assert.ok(written.includes("name: HomeLab DeepSeek-V4-Flash"));
   assert.ok(written.includes("model: deepseek-v4-flash"));
-  assert.ok(written.includes("base_url: https://api.homelabai.org/v1"));
+  assert.ok(written.includes("base_url: http://pop-os-1.tailadb2c1.ts.net:8080/v1"));
   assert.ok(written.includes("api_key: sk-studio-key"));
   assert.ok(written.includes("provider: custom"));
   assert.ok(written.includes("reasoning_effort: high"));

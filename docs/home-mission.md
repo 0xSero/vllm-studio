@@ -27,7 +27,7 @@ Guiding question at every step: **how can I make this a home for people?**
   etc. Engines: vLLM (:8000), llama.cpp (:8081). Models incl. qwen3.6-35b
   (NVFP4), step3.7-flash, qwen3.6-27b, gemma-4-31b. `~/models` has
   Qwen3.6-35B-A3B-NVFP4 already downloaded.
-- `deepseek-v4-flash` = the model live on api.homelabai.org (remote preset).
+- `deepseek-v4-flash` = the model live on pop-os-1.tailadb2c1.ts.net:8080 (remote preset).
 - `lfm2.5` = LiquidAI LFM 2.5 small model — needs recipe + weights source
   (confirm exact HF repo before wiring).
 
@@ -156,7 +156,7 @@ system.** A deeper subjective reskin of pre-existing wizard chrome (Card
 rounded-lg → hairline) remains available but is a taste pass best done with
 Sero watching; the app is in good shape as-is.
 Dev-dir note: switched ~/.local-studio active controller to Spark for QA, then
-restored to api.homelabai.org. Packaged desktop app uses a separate data dir,
+restored to pop-os-1.tailadb2c1.ts.net:8080. Packaged desktop app uses a separate data dir,
 unaffected.
 
 ## Rules
