@@ -8,7 +8,6 @@ import {
   type LucideIcon,
   Paintbrush,
   ServerCog,
-  Terminal,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
@@ -16,10 +15,9 @@ import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
 import { ArchivedChatsSettings, SetupChecksSettings } from "./agent-settings-sections";
 import { AppearanceSettings } from "./appearance-settings";
-import { QuickPanelSettings } from "./quick-panel-settings";
-import { TerminalSettings } from "./terminal-settings";
+import { ShortcutsSettings } from "./terminal-settings";
 import { EnginesSection } from "./engines-section";
-import { ServicesSettings, SystemSettings } from "./system-settings-section";
+import { ServicesSettings, SystemDetails, SystemOverview } from "./system-settings-section";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 interface SettingsViewProps {
   data: ConfigData | null;
@@ -45,8 +43,7 @@ const SECTIONS: SettingsSectionDef[] = [
   ["connection", "General", "Controller connections and API access.", Cable],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
   ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
-  ["desktop", "Desktop", "Quick panel shortcut and desktop behavior.", Keyboard],
-  ["terminal", "Terminal", "Terminal shortcuts and text size.", Terminal],
+  ["terminal", "Shortcuts", "Quick panel and terminal key bindings.", Keyboard],
   ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
   ["setup", "Setup", "Local prerequisites and first-run checks.", ServerCog],
 ].map(([id, label, description, Icon]) => ({
@@ -59,6 +56,7 @@ const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
 const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (isSectionId(value)) return value;
+  if (value === "desktop") return "terminal";
   if (value === "engines" || value === "services") return "system";
   return null;
 };
@@ -138,19 +136,19 @@ export function SettingsView({
       ) : null}
       {activeSection === "system" ? (
         <div className="space-y-10">
-          <EnginesSection runtime={data?.runtime ?? null} />
-          <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
-          <SystemSettings
+          <SystemOverview
             data={data}
             compatibilityReport={compatibilityReport}
             loading={loading}
             error={error}
           />
+          <EnginesSection runtime={data?.runtime ?? null} />
+          <ServicesSettings data={data} apiSettings={apiSettings} loading={loading} error={error} />
+          <SystemDetails data={data} compatibilityReport={compatibilityReport} />
         </div>
       ) : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
-      {activeSection === "desktop" ? <QuickPanelSettings /> : null}
-      {activeSection === "terminal" ? <TerminalSettings /> : null}
+      {activeSection === "terminal" ? <ShortcutsSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
       {activeSection === "setup" ? <SetupChecksSettings /> : null}
     </SettingsLayout>

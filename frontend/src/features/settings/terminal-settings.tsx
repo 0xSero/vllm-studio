@@ -21,6 +21,7 @@ import {
   type TerminalAction,
   type TerminalKeybinds,
 } from "@/lib/terminal-keybinds";
+import { QuickPanelSettings } from "./quick-panel-settings";
 import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
 
 function Keycaps({ binding }: { binding: string }) {
@@ -45,7 +46,16 @@ function conflictCounts(keybinds: TerminalKeybinds): Record<string, number> {
   return counts;
 }
 
-export function TerminalSettings() {
+export function ShortcutsSettings() {
+  return (
+    <div>
+      <QuickPanelSettings />
+      <TerminalSettings />
+    </div>
+  );
+}
+
+function TerminalSettings() {
   const keybinds = useTerminalKeybinds();
   const fontSize = useTerminalFontSize();
   const [capturing, setCapturing] = useState<TerminalAction | null>(null);
@@ -72,8 +82,8 @@ export function TerminalSettings() {
   return (
     <div>
       <SettingsGroup
-        title="Terminal shortcuts"
-        description="Hotkeys apply to the focused terminal. Duplicate combos are flagged; the first matching action wins."
+        title="Terminal key bindings"
+        description="Hotkeys apply to the focused terminal. Duplicate combinations are flagged; the first match wins."
         actions={<SettingsButton onClick={resetTerminalKeybinds}>Reset all</SettingsButton>}
       >
         {TERMINAL_ACTIONS.map((action) => {

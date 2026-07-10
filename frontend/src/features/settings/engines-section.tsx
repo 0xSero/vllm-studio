@@ -86,9 +86,11 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
   return (
     <div>
       <SettingsGroup
-        title="Inference engines"
-        description="Model-serving runtimes installed on the controller host."
+        title="Runtime engines"
+        description="Install, update, and inspect the model-serving runtimes on this controller."
         actions={<HydrationStatus hasRows={hasRows} />}
+        collapsible
+        defaultOpen={false}
       >
         {lostJobNotice ? (
           <SettingsNotice tone="warning" className="m-3">
@@ -101,12 +103,6 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
           onJobCreated={refreshRuntimeJobs}
           view={engineRows}
         />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Hardware monitor"
-        description="GPU telemetry and lease state reported by the controller."
-      >
         <GpuMonitoringRow gpuMon={gpuMon} />
         <GpuLeaseRow holder={lease?.holder} />
       </SettingsGroup>

@@ -188,8 +188,8 @@ export function QuickPanelSettings() {
 
   return (
     <SettingsGroup
-      title="Quick panel"
-      description="Floating chat panel summoned from anywhere with a global hotkey."
+      title="Quick panel shortcut"
+      description="Choose the global hotkey that toggles the floating chat panel."
     >
       {bridgeAvailable === false ? (
         <div className="px-3 py-2">
