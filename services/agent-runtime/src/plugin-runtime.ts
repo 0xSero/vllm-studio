@@ -4,12 +4,26 @@ import path from "node:path";
 import { Effect, Schema } from "effect";
 import { probeConnector } from "./connector-pool";
 import { listConnectors, upsertConnectors, type ConnectorConfig } from "./connectors-service";
+import { getGoogleAccount, type GoogleAccountView } from "./google-account";
 import {
-  discoverPluginBundles,
-  type PluginBundle,
-  type PluginSource,
-  type PluginView,
-} from "./plugin-discovery";
+  googleWorkspaceConnector,
+  trustedGoogleWorkspacePlugin,
+  type GoogleWorkspacePluginId,
+} from "./google-workspace-adapter";
+import { discoverPluginBundles, type PluginBundle, type PluginSource } from "./plugin-discovery";
+import {
+  type PluginActivationResult,
+  type PluginRuntimeView,
+  type PluginToolsView,
+  type PluginToolState,
+} from "./plugin-runtime-contract";
+
+export {
+  type PluginActivationResult,
+  type PluginRuntimeView,
+  type PluginToolsView,
+  type PluginToolState,
+} from "./plugin-runtime-contract";
 
 const StringRecord = Schema.Record(Schema.String, Schema.String);
 
@@ -34,34 +48,9 @@ const McpManifestSchema = Schema.Struct({
   mcpServers: Schema.Record(Schema.String, Schema.Unknown),
 });
 
-type PluginToolState =
-  | "none"
-  | "available"
-  | "enabled"
-  | "disabled"
-  | "configuration_required"
-  | "invalid";
-
-export type PluginToolsView = {
-  state: PluginToolState;
-  serverCount: number;
-  allowedToolCount: number;
-  mode: "observe" | null;
-  reason?: string;
-};
-
-export type PluginRuntimeView = PluginView & {
-  tools: PluginToolsView;
-};
-
 type ResolvedServer = {
   connector: ConnectorConfig | null;
   blocker?: string;
-};
-
-export type PluginActivationResult = {
-  plugins: PluginRuntimeView[];
-  connectorIds: string[];
 };
 
 export class PluginRuntimeError extends Error {
@@ -251,25 +240,82 @@ function pluginToolsView(
   };
 }
 
+function googleWorkspaceRuntimeView(
+  bundle: PluginBundle,
+  id: GoogleWorkspacePluginId,
+  connectors: ConnectorConfig[],
+  account: GoogleAccountView,
+): PluginRuntimeView {
+  const connection = account.connections[id];
+  const current = connectors.filter(
+    (connector) =>
+      connector.origin?.kind === "account-adapter" &&
+      connector.origin.id === id &&
+      connector.origin.binding === "google-workspace",
+  );
+  const enabled = current.filter((connector) => connector.enabled);
+  const allowedToolCount = enabled.reduce(
+    (count, connector) => count + (connector.allowTools?.length ?? 0),
+    0,
+  );
+  const state: PluginToolState =
+    !account.configured || !connection.connected
+      ? "configuration_required"
+      : enabled.length
+        ? "enabled"
+        : current.length
+          ? "disabled"
+          : "available";
+  const reason = !account.configured
+    ? "Add a Google Desktop OAuth client"
+    : !connection.connected
+      ? "Finish Google sign-in"
+      : undefined;
+  return {
+    ...bundle.plugin,
+    account: {
+      provider: "google",
+      id,
+      configured: account.configured,
+      connected: connection.connected,
+      email: connection.email,
+    },
+    tools: {
+      state,
+      serverCount: 1,
+      allowedToolCount,
+      mode: connection.connected ? "observe" : null,
+      ...(reason ? { reason } : {}),
+    },
+  };
+}
+
 function runtimeView(
   bundle: PluginBundle,
   connectors: ConnectorConfig[],
+  account: GoogleAccountView,
 ): Effect.Effect<PluginRuntimeView> {
-  return Effect.match(loadPluginServers(bundle), {
-    onFailure: (error) => ({
-      ...bundle.plugin,
-      tools: {
-        state: "invalid" as const,
-        serverCount: 0,
-        allowedToolCount: 0,
-        mode: null,
-        reason: error.message,
-      },
-    }),
-    onSuccess: (servers) => ({
-      ...bundle.plugin,
-      tools: pluginToolsView(bundle, connectors, servers),
-    }),
+  return Effect.gen(function* () {
+    const googleWorkspace = yield* trustedGoogleWorkspacePlugin(bundle);
+    if (googleWorkspace) {
+      return googleWorkspaceRuntimeView(bundle, googleWorkspace, connectors, account);
+    }
+    return yield* Effect.match(loadPluginServers(bundle), {
+      onFailure: (error) => ({
+        ...bundle.plugin,
+        tools: {
+          state: "invalid" as const,
+          serverCount: 0,
+          allowedToolCount: 0,
+          mode: null,
+          reason: error.message,
+        },
+      }),
+      onSuccess: (servers) => ({
+        ...bundle.plugin,
+        tools: pluginToolsView(bundle, connectors, servers),
+      }),
+    });
   });
 }
 
@@ -280,6 +326,14 @@ function connectorsEffect(): Effect.Effect<ConnectorConfig[], PluginRuntimeError
   });
 }
 
+function googleAccountEffect(): Effect.Effect<GoogleAccountView, PluginRuntimeError> {
+  return getGoogleAccount().pipe(
+    Effect.mapError(
+      (error) => new PluginRuntimeError(error.status, `Google account failed: ${error.message}`),
+    ),
+  );
+}
+
 export function listPluginRuntimeViews(
   sources?: PluginSource[],
 ): Effect.Effect<PluginRuntimeView[], PluginRuntimeError> {
@@ -288,7 +342,8 @@ export function listPluginRuntimeViews(
       Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
     );
     const connectors = yield* connectorsEffect();
-    return yield* Effect.all(bundles.map((bundle) => runtimeView(bundle, connectors)));
+    const account = yield* googleAccountEffect();
+    return yield* Effect.all(bundles.map((bundle) => runtimeView(bundle, connectors, account)));
   });
 }
 
@@ -311,14 +366,21 @@ function enabledObserveConnectors(
             `${connector.name} failed to start: ${probe.error ?? "MCP probe failed"}`,
           );
         }
+        const requested = connector.allowTools ? new Set(connector.allowTools) : null;
         const allowTools = probe.tools
-          .filter((tool) => tool.annotations?.readOnlyHint === true)
+          .filter(
+            (tool) =>
+              tool.annotations?.readOnlyHint === true && (!requested || requested.has(tool.name)),
+          )
           .map((tool) => tool.name);
         if (allowTools.length === 0) {
           throw new PluginRuntimeError(
             409,
             `${connector.name} does not declare any read-only tools`,
           );
+        }
+        if (requested && allowTools.length !== requested.size) {
+          throw new PluginRuntimeError(409, `${connector.name} read-only contract changed`);
         }
         return { ...connector, allowTools, enabled: true };
       });
@@ -342,6 +404,35 @@ export function setPluginEnabled(
     const bundle = bundles.find((candidate) => candidate.plugin.id === pluginId);
     if (!bundle) return yield* Effect.fail(new PluginRuntimeError(404, "Plugin not found"));
     const current = yield* connectorsEffect();
+    const googleWorkspace = yield* trustedGoogleWorkspacePlugin(bundle);
+    if (googleWorkspace) {
+      const account = yield* googleAccountEffect();
+      if (!account.connections[googleWorkspace].connected) {
+        return yield* Effect.fail(new PluginRuntimeError(409, "Finish Google sign-in first"));
+      }
+      const owned = current.filter(
+        (connector) =>
+          connector.origin?.kind === "account-adapter" &&
+          connector.origin.id === googleWorkspace &&
+          connector.origin.binding === "google-workspace",
+      );
+      const changed = enabled
+        ? yield* enabledObserveConnectors([
+            { connector: googleWorkspaceConnector(googleWorkspace, false) },
+          ])
+        : owned.map((connector) => ({ ...connector, enabled: false }));
+      if (changed.length) {
+        yield* Effect.tryPromise({
+          try: () => upsertConnectors(changed),
+          catch: (error) =>
+            new PluginRuntimeError(500, `Failed to save account adapter state: ${error}`),
+        });
+      }
+      return {
+        plugins: yield* listPluginRuntimeViews(sources),
+        connectorIds: changed.map((connector) => connector.id),
+      };
+    }
     const owned = current.filter(
       (connector) => connector.origin?.kind === "plugin" && connector.origin.id === pluginId,
     );

@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, type TextareaHTMLAttributes } from "react";
+import { useFormControlAttributes } from "./form-field-context";
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
@@ -8,10 +9,28 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 }
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { label, error, className = "", id, ...props },
+  {
+    label,
+    error,
+    className = "",
+    id,
+    required,
+    "aria-describedby": ariaDescribedBy,
+    "aria-invalid": ariaInvalid,
+    ...props
+  },
   ref,
 ) {
-  const textareaId = id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
+  const generatedId = useId();
+  const field = useFormControlAttributes({
+    id,
+    required,
+    describedBy: ariaDescribedBy,
+    invalid: ariaInvalid,
+  });
+  const textareaId = field.id ?? (label ? generatedId : undefined);
+  const errorId = error ? `${textareaId ?? generatedId}-error` : undefined;
+  const describedBy = [field.describedBy, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
     <div>
@@ -26,10 +45,17 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
       <textarea
         ref={ref}
         id={textareaId}
+        required={field.required}
+        aria-describedby={describedBy}
+        aria-invalid={field.invalid ?? (error ? true : undefined)}
         className={`w-full resize-none rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2.5 text-sm text-(--ui-fg) transition-all placeholder:text-(--ui-muted)/50 focus:border-(--ui-info)/50 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/20 ${error ? "border-(--ui-danger)" : ""} ${className}`}
         {...props}
       />
-      {error && <p className="mt-1.5 text-xs text-(--ui-danger)">{error}</p>}
+      {error && (
+        <p id={errorId} role="alert" className="mt-1.5 text-xs text-(--ui-danger)">
+          {error}
+        </p>
+      )}
     </div>
   );
 });

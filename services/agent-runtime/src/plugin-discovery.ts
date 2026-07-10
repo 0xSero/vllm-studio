@@ -1,8 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Effect, Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
+import { resolveBundledPluginDirectory } from "./plugin-resources";
 
 const PluginInterfaceSchema = Schema.Struct({
   displayName: Schema.optional(Schema.String),
@@ -51,6 +52,7 @@ export type PluginBundle = {
   plugin: PluginView;
   manifest: PluginManifest;
   rootDir: string;
+  trusted: boolean;
 };
 
 type DiscoveredPlugin = {
@@ -62,8 +64,10 @@ export class PluginDiscoveryError extends Error {}
 
 export function defaultPluginSources(): PluginSource[] {
   const home = homedir();
+  const bundled = resolveBundledPluginDirectory();
   return [
-    { label: "Local Studio", dir: path.join(resolveDataDir(), "plugins"), priority: 3 },
+    { label: "Local Studio", dir: path.join(resolveDataDir(), "plugins"), priority: 5 },
+    ...(bundled ? [{ label: "Local Studio", dir: bundled, priority: 4 }] : []),
     { label: "Codex", dir: path.join(home, ".codex", "plugins", "cache"), priority: 2 },
     {
       label: "Codex",
@@ -115,8 +119,12 @@ async function manifestInDirectory(
   try {
     const raw = await readFile(path.join(dir, ".codex-plugin", "plugin.json"), "utf8");
     const manifest = Schema.decodeUnknownSync(PluginManifestSchema)(JSON.parse(raw));
+    const bundled = resolveBundledPluginDirectory();
+    const trusted = bundled
+      ? path.dirname(await realpath(dir)) === (await realpath(bundled))
+      : false;
     return {
-      bundle: { plugin: pluginView(manifest, source.label), manifest, rootDir: dir },
+      bundle: { plugin: pluginView(manifest, source.label), manifest, rootDir: dir, trusted },
       priority: source.priority,
     };
   } catch {
@@ -155,7 +163,11 @@ function preferredPlugin(
   current: DiscoveredPlugin | undefined,
   candidate: DiscoveredPlugin,
 ): DiscoveredPlugin {
-  if (!current || candidate.priority > current.priority) return candidate;
+  if (!current) return candidate;
+  if (current.bundle.trusted !== candidate.bundle.trusted) {
+    return candidate.bundle.trusted ? candidate : current;
+  }
+  if (candidate.priority > current.priority) return candidate;
   if (candidate.priority < current.priority) return current;
   return compareVersions(candidate.bundle.plugin.version, current.bundle.plugin.version) > 0
     ? candidate

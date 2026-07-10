@@ -1,24 +1,34 @@
 import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
+import { connectorAuthorizationHeaders } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
 
 const pool = new Map<string, McpConnection>();
 
 export class ConnectorToolDeniedError extends Error {}
 
-const toTarget = (connector: ConnectorConfig) =>
-  connector.transport === "stdio"
-    ? {
-        transport: "stdio" as const,
-        command: connector.command ?? "",
-        args: connector.args ?? [],
-        env: connector.env ?? {},
-        ...(connector.cwd ? { cwd: connector.cwd } : {}),
-      }
-    : {
-        transport: "http" as const,
-        url: connector.url ?? "",
-        headers: connector.headers ?? {},
-      };
+const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
+  if (connector.transport === "stdio") {
+    return {
+      transport: "stdio" as const,
+      command: connector.command ?? "",
+      args: [...(connector.args ?? [])],
+      env: connector.env ?? {},
+      ...(connector.cwd ? { cwd: connector.cwd } : {}),
+    };
+  }
+  return {
+    transport: "http" as const,
+    url: connector.url ?? "",
+    headers: connector.headers ?? {},
+    ...(connector.auth
+      ? {
+          authorize: (forceRefresh: boolean) =>
+            connectorAuthorizationHeaders(connector, forceRefresh),
+        }
+      : {}),
+    ...(signal ? { signal } : {}),
+  };
+};
 
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
@@ -84,10 +94,11 @@ export async function callConnectorTool(
 
 export async function probeConnector(
   connector: ConnectorConfig,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   let connection: McpConnection | null = null;
   try {
-    connection = connectMcp(toTarget(connector));
+    connection = connectMcp(toTarget(connector, signal));
     const tools = await connection.listTools();
     return { ok: true, tools };
   } catch (error) {

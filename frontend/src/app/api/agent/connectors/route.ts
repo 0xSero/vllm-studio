@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { Schema } from "effect";
+import { ConnectorUpsertInputSchema } from "@local-studio/agent-runtime/connector-contract";
 import {
   isValidConnectorId,
   listConnectors,
@@ -8,22 +10,29 @@ import {
   type ConnectorConfig,
 } from "@local-studio/agent-runtime/connectors-service";
 import { closePooledConnection } from "@local-studio/agent-runtime/connector-pool";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const connectors = await listConnectors();
   return NextResponse.json({ connectors: connectors.map(toConnectorView) });
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as Partial<ConnectorConfig>;
-  if (!body.id || !isValidConnectorId(body.id)) {
-    return NextResponse.json({ error: "invalid connector id" }, { status: 400 });
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
+  let body: typeof ConnectorUpsertInputSchema.Type;
+  try {
+    body = Schema.decodeUnknownSync(ConnectorUpsertInputSchema)(await request.json());
+  } catch {
+    return NextResponse.json({ error: "invalid connector payload" }, { status: 400 });
   }
-  if (body.transport !== "stdio" && body.transport !== "http") {
-    return NextResponse.json({ error: "transport must be stdio or http" }, { status: 400 });
+  if (!isValidConnectorId(body.id)) {
+    return NextResponse.json({ error: "invalid connector id" }, { status: 400 });
   }
   if (body.transport === "stdio" && !body.command) {
     return NextResponse.json({ error: "command is required for stdio" }, { status: 400 });
@@ -44,15 +53,31 @@ export async function POST(request: NextRequest) {
     ...(body.allowTools ? { allowTools: body.allowTools } : {}),
     enabled: body.enabled ?? true,
   };
-  const connectors = await upsertConnector(connector);
-  closePooledConnection(connector.id);
-  return NextResponse.json({ connectors: connectors.map(toConnectorView) });
+  try {
+    const connectors = await upsertConnector(connector);
+    closePooledConnection(connector.id);
+    return NextResponse.json({ connectors: connectors.map(toConnectorView) });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Connector could not be saved" },
+      { status: 409 },
+    );
+  }
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const id = request.nextUrl.searchParams.get("id") ?? "";
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
-  const connectors = await removeConnector(id);
-  closePooledConnection(id);
-  return NextResponse.json({ connectors: connectors.map(toConnectorView) });
+  try {
+    const connectors = await removeConnector(id);
+    closePooledConnection(id);
+    return NextResponse.json({ connectors: connectors.map(toConnectorView) });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Connector could not be removed" },
+      { status: 409 },
+    );
+  }
 }

@@ -72,6 +72,10 @@ export function RecipeModalTabResources({
 
 type SectionProps = RecipeModalSectionProps;
 
+function parallelSize(value: string): number {
+  return Math.max(1, Math.floor(Number(value) || 1));
+}
+
 function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
   if (capabilities.parallelism === "none") return null;
   return (
@@ -83,9 +87,7 @@ function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
             min={1}
             value={recipe.tp ?? recipe.tensor_parallel_size ?? 1}
             onChange={(e) => {
-              // Clearing the field yields Number("") === 0; a parallel size of 0
-              // is invalid and the controller schema doesn't reject it. Floor at 1.
-              const size = Math.max(1, Math.floor(Number(e.target.value) || 1));
+              const size = parallelSize(e.target.value);
               onChange({ ...recipe, tp: size, tensor_parallel_size: size });
             }}
           />
@@ -134,6 +136,7 @@ function GpuSection({ recipe, onChange, capabilities }: SectionProps) {
     <FormSection icon={<Cpu className="h-4 w-4" />} title="GPU">
       {capabilities.gpuMemoryUtil ? (
         <FormField
+          asGroup
           label="GPU Memory Utilization"
           description={
             capabilities.backend === "sglang" ? "Maps to SGLang --mem-fraction-static." : undefined

@@ -1,15 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { Schema } from "effect";
 import {
   callConnectorTool,
   ConnectorToolDeniedError,
   listConnectorTools,
 } from "@local-studio/agent-runtime/connector-pool";
 import { enabledConnectors } from "@local-studio/agent-runtime/connectors-service";
+import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const ConnectorToolCallSchema = Schema.Struct({
+  connector_id: Schema.String,
+  tool: Schema.String,
+  args: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+
+export async function GET(request: NextRequest) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
   const connectors = await enabledConnectors();
   const inventory = await Promise.all(
     connectors.map(async (connector) => {
@@ -30,12 +40,15 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as {
-    connector_id?: string;
-    tool?: string;
-    args?: Record<string, unknown>;
-  };
-  if (!body.connector_id || !body.tool) {
+  const denied = requireApiAccess(request);
+  if (denied) return denied;
+  let body: typeof ConnectorToolCallSchema.Type;
+  try {
+    body = Schema.decodeUnknownSync(ConnectorToolCallSchema)(await request.json());
+  } catch {
+    return NextResponse.json({ error: "connector_id and tool are required" }, { status: 400 });
+  }
+  if (!body.connector_id.trim() || !body.tool.trim()) {
     return NextResponse.json({ error: "connector_id and tool are required" }, { status: 400 });
   }
   try {

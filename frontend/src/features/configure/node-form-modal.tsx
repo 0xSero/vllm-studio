@@ -41,6 +41,10 @@ const EMPTY_FORM: NodeFormState = {
   notes: "",
 };
 
+function isRigNodeRole(value: string): value is RigNodeRole {
+  return RIG_NODE_ROLES.some((role) => role === value);
+}
+
 export function nodeToForm(node: RigNode): NodeFormState {
   const accelerator = node.accelerators[0];
   return {
@@ -123,13 +127,14 @@ export function NodeFormModal({
     <UiModal isOpen onClose={onClose} maxWidth="max-w-2xl">
       <UiModalHeader title={title} onClose={onClose} />
       <div className="max-h-[78dvh] space-y-4 overflow-y-auto p-4">
-        <FormField label="Hardware type">
+        <FormField label="Hardware type" asGroup>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {RIG_HARDWARE_TYPES.map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => set("hardware_type", type)}
+                aria-pressed={form.hardware_type === type}
                 className={cx(
                   "flex flex-col items-center gap-1 rounded-lg border p-2 transition-colors",
                   form.hardware_type === type
@@ -155,7 +160,9 @@ export function NodeFormModal({
           <FormField label="Role" description="Head runs the API; workers join over the network.">
             <Select
               value={form.role}
-              onChange={(event) => set("role", event.target.value as RigNodeRole)}
+              onChange={(event) => {
+                if (isRigNodeRole(event.target.value)) set("role", event.target.value);
+              }}
               options={RIG_NODE_ROLES.map((role) => ({
                 value: role,
                 label: RIG_NODE_ROLE_LABELS[role],

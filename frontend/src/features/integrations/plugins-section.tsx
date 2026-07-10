@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { PluginRuntimeView } from "@local-studio/agent-runtime/plugin-runtime";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Schema } from "effect";
+import {
+  PluginRuntimeResponseSchema,
+  type PluginRuntimeView,
+} from "@local-studio/agent-runtime/plugin-runtime-contract";
+import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
 import { Alert, Button, SearchInput, StatusPill, UiModal, UiModalHeader } from "@/ui";
 import { Eye, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -12,14 +17,29 @@ import {
   SettingsValue,
   type StatusTone,
 } from "@/features/settings/settings-ui";
+import { GoogleAccountModal } from "./google-account-modal";
 
 type PluginStatus = { label: string; tone: StatusTone };
+
+function responseError(body: unknown, fallback: string): string {
+  try {
+    return Schema.decodeUnknownSync(ApiErrorResponseSchema)(body).error;
+  } catch {
+    return fallback;
+  }
+}
+
+async function pluginResponse(response: Response, fallback: string) {
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(responseError(body, fallback));
+  return Schema.decodeUnknownSync(PluginRuntimeResponseSchema)(body);
+}
 
 function capabilitySummary(plugin: PluginRuntimeView): string {
   return [
     plugin.provides.skills ? "skills" : null,
-    plugin.provides.mcpServers
-      ? `${plugin.tools.serverCount} MCP ${plugin.tools.serverCount === 1 ? "server" : "servers"}`
+    plugin.provides.mcpServers || plugin.account
+      ? `${plugin.tools.serverCount} ${plugin.account ? "remote " : ""}MCP ${plugin.tools.serverCount === 1 ? "server" : "servers"}`
       : null,
     plugin.provides.apps ? "account app" : null,
     `v${plugin.version}`,
@@ -29,6 +49,8 @@ function capabilitySummary(plugin: PluginRuntimeView): string {
 }
 
 function pluginStatus(plugin: PluginRuntimeView): PluginStatus {
+  if (plugin.account && !plugin.account.configured) return { label: "Setup", tone: "warning" };
+  if (plugin.account && !plugin.account.connected) return { label: "Sign in", tone: "warning" };
   if (plugin.tools.state === "enabled") {
     return {
       label: `Observe · ${plugin.tools.allowedToolCount} ${plugin.tools.allowedToolCount === 1 ? "tool" : "tools"}`,
@@ -44,7 +66,13 @@ function pluginStatus(plugin: PluginRuntimeView): PluginStatus {
   return { label: "Skills", tone: "default" };
 }
 
-function activationAction(plugin: PluginRuntimeView): "connect" | "disconnect" | null {
+function activationAction(plugin: PluginRuntimeView): "account" | "connect" | "disconnect" | null {
+  if (plugin.account && !plugin.account.connected) return "account";
+  if (plugin.account) {
+    return plugin.tools.state === "available" || plugin.tools.state === "disabled"
+      ? "connect"
+      : null;
+  }
   if (plugin.tools.state === "enabled") return "disconnect";
   if (plugin.tools.state === "available" || plugin.tools.state === "disabled") return "connect";
   return null;
@@ -69,16 +97,68 @@ function PluginRowsSkeleton() {
   );
 }
 
+type PluginRowAction = ReturnType<typeof activationAction>;
+
+function pluginActionLabel(plugin: PluginRuntimeView, action: PluginRowAction): string {
+  if (action === "account") return plugin.account?.configured ? "Sign in" : "Set up";
+  if (action === "connect") return "Connect";
+  return "Disconnect";
+}
+
+function PluginRowActions({
+  plugin,
+  action,
+  busy,
+  onConnect,
+  onDisconnect,
+  onAccount,
+}: {
+  plugin: PluginRuntimeView;
+  action: PluginRowAction;
+  busy: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onAccount: () => void;
+}) {
+  const actionLabel = pluginActionLabel(plugin, action);
+  const handleAction =
+    action === "account" ? onAccount : action === "connect" ? onConnect : onDisconnect;
+  return (
+    <>
+      {plugin.account?.connected ? (
+        <SettingsButton
+          onClick={onAccount}
+          disabled={busy}
+          aria-label={`Manage ${plugin.displayName}`}
+        >
+          Manage
+        </SettingsButton>
+      ) : null}
+      {action ? (
+        <SettingsButton
+          onClick={handleAction}
+          disabled={busy}
+          aria-label={`${actionLabel} ${plugin.displayName}`}
+        >
+          {busy ? "Working" : actionLabel}
+        </SettingsButton>
+      ) : null}
+    </>
+  );
+}
+
 function PluginRow({
   plugin,
   busy,
   onConnect,
   onDisconnect,
+  onAccount,
 }: {
   plugin: PluginRuntimeView;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onAccount: () => void;
 }) {
   const status = pluginStatus(plugin);
   const action = activationAction(plugin);
@@ -89,43 +169,63 @@ function PluginRow({
       value={<SettingsValue dim>{capabilitySummary(plugin)}</SettingsValue>}
       status={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
       actions={
-        action ? (
-          <SettingsButton onClick={action === "connect" ? onConnect : onDisconnect} disabled={busy}>
-            {busy ? "Working" : action === "connect" ? "Connect" : "Disconnect"}
-          </SettingsButton>
+        action || plugin.account?.connected ? (
+          <PluginRowActions
+            plugin={plugin}
+            action={action}
+            busy={busy}
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onAccount={onAccount}
+          />
         ) : undefined
       }
     >
       {plugin.tools.reason ? (
         <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.tools.reason}</div>
       ) : null}
+      {plugin.account?.email ? (
+        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.account.email}</div>
+      ) : null}
     </SettingsRow>
   );
 }
 
 export function PluginsSection() {
-  const [plugins, setPlugins] = useState<PluginRuntimeView[]>([]);
+  const [plugins, setPlugins] = useState<readonly PluginRuntimeView[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PluginRuntimeView | null>(null);
+  const [accountPlugin, setAccountPlugin] = useState<PluginRuntimeView | null>(null);
+  const requestGeneration = useRef(0);
 
-  useMountSubscription(() => {
-    void fetch("/api/agent/plugins", { cache: "no-store" })
+  const loadPlugins = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    return fetch("/api/agent/plugins", { cache: "no-store" })
       .then(async (response) => {
-        const payload = (await response.json()) as {
-          plugins?: PluginRuntimeView[];
-          error?: string;
-        };
-        if (!response.ok) throw new Error(payload.error || "Plugin discovery failed");
-        setPlugins(payload.plugins ?? []);
+        const payload = await pluginResponse(response, "Plugin discovery failed");
+        if (generation !== requestGeneration.current) return;
+        setPlugins(payload.plugins);
+        setError("");
       })
       .catch((loadError: unknown) => {
+        if (generation !== requestGeneration.current) return;
         setError(loadError instanceof Error ? loadError.message : "Plugin discovery failed");
       })
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        if (generation === requestGeneration.current) setLoaded(true);
+      });
   }, []);
+
+  useMountSubscription(() => {
+    void loadPlugins();
+  }, [loadPlugins]);
+
+  const handleAccountChanged = useCallback(() => {
+    void loadPlugins();
+  }, [loadPlugins]);
 
   const visiblePlugins = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -138,6 +238,7 @@ export function PluginsSection() {
   }, [plugins, query]);
 
   const setEnabled = async (plugin: PluginRuntimeView, enabled: boolean) => {
+    const generation = ++requestGeneration.current;
     setBusyId(plugin.id);
     setError("");
     try {
@@ -146,19 +247,17 @@ export function PluginsSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
-      const payload = (await response.json()) as {
-        plugins?: PluginRuntimeView[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(payload.error || "Plugin activation failed");
-      setPlugins(payload.plugins ?? []);
+      const payload = await pluginResponse(response, "Plugin activation failed");
+      if (generation !== requestGeneration.current) return;
+      setPlugins(payload.plugins);
       setPending(null);
     } catch (activationError) {
+      if (generation !== requestGeneration.current) return;
       setError(
         activationError instanceof Error ? activationError.message : "Plugin activation failed",
       );
     } finally {
-      setBusyId(null);
+      setBusyId((current) => (current === plugin.id ? null : current));
     }
   };
 
@@ -199,6 +298,7 @@ export function PluginsSection() {
               busy={busyId === plugin.id}
               onConnect={() => setPending(plugin)}
               onDisconnect={() => void setEnabled(plugin, false)}
+              onAccount={() => setAccountPlugin(plugin)}
             />
           ))
         ) : (
@@ -245,6 +345,14 @@ export function PluginsSection() {
           </div>
         </div>
       </UiModal>
+      {accountPlugin?.account?.provider === "google" ? (
+        <GoogleAccountModal
+          accountId={accountPlugin.account.id}
+          displayName={accountPlugin.displayName}
+          onClose={() => setAccountPlugin(null)}
+          onChanged={handleAccountChanged}
+        />
+      ) : null}
     </>
   );
 }

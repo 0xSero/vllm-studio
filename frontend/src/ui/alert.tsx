@@ -34,9 +34,14 @@ const variantConfig: Record<AlertVariant, { classes: string; DefaultIcon: typeof
 function Alert({ variant = "info", icon, children, className = "" }: AlertProps) {
   const config = variantConfig[variant];
   const IconComponent = config.DefaultIcon;
+  const live = variant === "error" ? "assertive" : variant === "info" ? undefined : "polite";
 
   return (
-    <div className={`rounded-lg border p-4 ${config.classes} ${className}`}>
+    <div
+      role={variant === "error" ? "alert" : live ? "status" : undefined}
+      aria-live={live}
+      className={`rounded-lg border p-4 ${config.classes} ${className}`}
+    >
       <div className="flex items-start gap-3">
         <div className="shrink-0 mt-0.5">{icon || <IconComponent className="h-4 w-4" />}</div>
         <div className="text-sm">{children}</div>

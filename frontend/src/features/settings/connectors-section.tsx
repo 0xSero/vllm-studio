@@ -1,23 +1,18 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { Schema } from "effect";
+import {
+  ConnectorSshPathResponseSchema,
+  ConnectorTestResponseSchema,
+  ConnectorsResponseSchema,
+  type ConnectorView,
+} from "@local-studio/agent-runtime/connector-contract";
+import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
 import { Plug, Plus, Trash2 } from "@/ui/icon-registry";
-import { Spinner } from "@/ui";
+import { Input, Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup } from "./settings-ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-
-interface ConnectorView {
-  id: string;
-  name: string;
-  transport: "stdio" | "http";
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  url?: string;
-  headers?: Record<string, string>;
-  enabled: boolean;
-  secret_keys: string[];
-}
 
 interface CatalogEntry {
   id: string;
@@ -29,10 +24,6 @@ interface CatalogEntry {
   envFields: Array<{ key: string; label: string; placeholder?: string }>;
 }
 
-/**
- * Curated starters — every entry is a published MCP server (or the bundled
- * ssh server), so connectors stay registry-compatible and reproducible.
- */
 const CATALOG: CatalogEntry[] = [
   {
     id: "github",
@@ -42,27 +33,6 @@ const CATALOG: CatalogEntry[] = [
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-github"],
     envFields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token" }],
-  },
-  {
-    id: "google",
-    name: "Google Workspace",
-    description: "Gmail, Calendar, Drive, YouTube (OAuth on first use).",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "@pegasusheavy/google-mcp"],
-    envFields: [
-      { key: "GOOGLE_CLIENT_ID", label: "OAuth client id" },
-      { key: "GOOGLE_CLIENT_SECRET", label: "OAuth client secret" },
-    ],
-  },
-  {
-    id: "gmail",
-    name: "Gmail (standalone)",
-    description: "Read, search, and send mail with auto-auth.",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
-    envFields: [],
   },
   {
     id: "x",
@@ -89,16 +59,25 @@ const CATALOG: CatalogEntry[] = [
   },
 ];
 
-const inputClass =
-  "border border-(--border) bg-transparent px-2 py-1 text-[length:var(--fs-md)] font-mono outline-none focus:border-(--accent)";
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `HTTP ${response.status}`);
+function responseError(body: unknown, fallback: string): string {
+  try {
+    return Schema.decodeUnknownSync(ApiErrorResponseSchema)(body).error;
+  } catch {
+    return fallback;
   }
-  return (await response.json()) as T;
+}
+
+async function requestJson<T>(
+  url: string,
+  decode: (input: unknown) => T,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(url, init);
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(responseError(body, `HTTP ${response.status}`));
+  }
+  return decode(body);
 }
 
 function ConnectorRow({
@@ -106,14 +85,15 @@ function ConnectorRow({
   onChanged,
 }: {
   connector: ConnectorView;
-  onChanged: (connectors: ConnectorView[]) => void;
+  onChanged: (connectors: readonly ConnectorView[]) => void;
 }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
   const toggle = async () => {
-    const { connectors } = await requestJson<{ connectors: ConnectorView[] }>(
+    const { connectors } = await requestJson(
       "/api/agent/connectors",
+      Schema.decodeUnknownSync(ConnectorsResponseSchema),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,8 +104,9 @@ function ConnectorRow({
   };
 
   const remove = async () => {
-    const { connectors } = await requestJson<{ connectors: ConnectorView[] }>(
+    const { connectors } = await requestJson(
       `/api/agent/connectors?id=${encodeURIComponent(connector.id)}`,
+      Schema.decodeUnknownSync(ConnectorsResponseSchema),
       { method: "DELETE" },
     );
     onChanged(connectors);
@@ -135,8 +116,9 @@ function ConnectorRow({
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await requestJson<{ ok: boolean; tool_count: number; error?: string }>(
+      const result = await requestJson(
         "/api/agent/connectors/test",
+        Schema.decodeUnknownSync(ConnectorTestResponseSchema),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -183,7 +165,7 @@ function CatalogCard({
 }: {
   entry: CatalogEntry;
   installed: boolean;
-  onChanged: (connectors: ConnectorView[]) => void;
+  onChanged: (connectors: readonly ConnectorView[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -197,15 +179,19 @@ function CatalogCard({
       const sshServerPath = "/api/agent/connectors/ssh-server-path";
       let args = entry.args;
       if (entry.args.includes("{{SSH_REMOTE_SERVER}}")) {
-        const { path } = await requestJson<{ path: string | null }>(sshServerPath);
+        const { path } = await requestJson(
+          sshServerPath,
+          Schema.decodeUnknownSync(ConnectorSshPathResponseSchema),
+        );
         if (!path) throw new Error("Bundled ssh server not found");
         args = entry.args.map((value) => (value === "{{SSH_REMOTE_SERVER}}" ? path : value));
       }
       const host = fields.SSH_HOST?.trim();
       const id = entry.id === "computer" && host ? `computer-${host.split("@").pop()}` : entry.id;
       const name = entry.id === "computer" && host ? `Computer: ${host}` : entry.name;
-      const { connectors } = await requestJson<{ connectors: ConnectorView[] }>(
+      const { connectors } = await requestJson(
         "/api/agent/connectors",
+        Schema.decodeUnknownSync(ConnectorsResponseSchema),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -254,7 +240,7 @@ function CatalogCard({
       {open && (
         <div className="mt-2 space-y-2">
           {entry.envFields.map((field) => (
-            <input
+            <Input
               key={field.key}
               value={fields[field.key] ?? ""}
               onChange={(event) =>
@@ -263,7 +249,7 @@ function CatalogCard({
               placeholder={field.placeholder ?? field.label}
               spellCheck={false}
               type={/token|secret|key/i.test(field.key) ? "password" : "text"}
-              className={`${inputClass} w-full`}
+              className="font-mono"
             />
           ))}
           {error && <div className="text-[11px] text-(--err)">{error}</div>}
@@ -277,11 +263,11 @@ function CatalogCard({
 }
 
 export function ConnectorsSection() {
-  const [connectors, setConnectors] = useState<ConnectorView[]>([]);
+  const [connectors, setConnectors] = useState<readonly ConnectorView[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(() => {
-    void requestJson<{ connectors: ConnectorView[] }>("/api/agent/connectors")
+    void requestJson("/api/agent/connectors", Schema.decodeUnknownSync(ConnectorsResponseSchema))
       .then(({ connectors: list }) => setConnectors(list))
       .catch(() => setConnectors([]))
       .finally(() => setLoaded(true));
@@ -292,6 +278,9 @@ export function ConnectorsSection() {
   }, [refresh]);
 
   const installedIds = new Set(connectors.map((connector) => connector.id));
+  const visibleConnectors = connectors.filter(
+    (connector) => connector.origin?.kind !== "account-adapter",
+  );
 
   return (
     <div className="space-y-8">
@@ -303,12 +292,12 @@ export function ConnectorsSection() {
           <div className="px-4 py-3.5">
             <Spinner size="xs" />
           </div>
-        ) : connectors.length === 0 ? (
+        ) : visibleConnectors.length === 0 ? (
           <div className="px-4 py-3.5 text-[length:var(--fs-md)] text-(--dim)">
             No connectors yet. Add one from the catalog below.
           </div>
         ) : (
-          connectors.map((connector) => (
+          visibleConnectors.map((connector) => (
             <ConnectorRow key={connector.id} connector={connector} onChanged={setConnectors} />
           ))
         )}

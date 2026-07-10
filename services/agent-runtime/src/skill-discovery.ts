@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { matchSource, readCapped, sortedRows } from "./discovery-core";
+import { resolveBundledPluginDirectory } from "./plugin-resources";
 
 export type SkillRow = {
   id: string;
@@ -18,7 +19,9 @@ export type SkillSource = {
 
 export function defaultSkillSources(): SkillSource[] {
   const home = homedir();
+  const bundled = resolveBundledPluginDirectory();
   return [
+    ...(bundled ? [{ source: "Local Studio", dir: bundled }] : []),
     { source: "~/.claude", dir: path.join(home, ".claude", "skills") },
     { source: "~/.claude", dir: path.join(home, ".claude", "plugins", "cache") },
     { source: "~/.pi", dir: path.join(home, ".pi", "skills") },

@@ -1,38 +1,83 @@
+import { randomUUID } from "node:crypto";
 import { chmod, readFile, rename, writeFile } from "fs/promises";
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { resolveDataDir } from "./data-dir";
+import { Schema } from "effect";
+import {
+  ConnectorsFileSchema,
+  type ConnectorConfig,
+  type ConnectorView,
+} from "./connector-contract";
+import {
+  GOOGLE_WORKSPACE_BINDINGS,
+  googleWorkspaceConnectorAccount,
+} from "./google-workspace-binding";
 
-export interface ConnectorOrigin {
-  kind: string;
-  id: string;
-  version?: string;
-  binding?: string;
-}
-
-export interface ConnectorConfig {
-  id: string;
-  name: string;
-  transport: "stdio" | "http";
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  cwd?: string;
-  url?: string;
-  headers?: Record<string, string>;
-  allowTools?: string[];
-  origin?: ConnectorOrigin;
-  enabled: boolean;
-}
-
-export interface ConnectorView extends Omit<ConnectorConfig, "env" | "headers"> {
-  env?: Record<string, string>;
-  headers?: Record<string, string>;
-  secret_keys: string[];
-}
+export {
+  type ConnectorAuthReference,
+  type ConnectorConfig,
+  type ConnectorOrigin,
+  type ConnectorView,
+} from "./connector-contract";
 
 const MASK = "••••••••";
 const SECRET_KEY_PATTERN = /token|key|secret|password|auth/i;
+let connectorAccess = Promise.resolve();
+
+function withConnectorAccess<A>(operation: () => Promise<A>): Promise<A> {
+  const result = connectorAccess.then(operation);
+  connectorAccess = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+function claimsGoogleWorkspace(connector: ConnectorConfig): boolean {
+  return (
+    googleWorkspaceConnectorAccount(connector.id) !== null ||
+    connector.auth?.provider === "google-workspace" ||
+    connector.origin?.binding === "google-workspace"
+  );
+}
+
+export function protectManagedConnector(connector: ConnectorConfig): ConnectorConfig {
+  if (!claimsGoogleWorkspace(connector)) return connector;
+  const account = googleWorkspaceConnectorAccount(connector.id);
+  const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
+  const valid =
+    account !== null &&
+    binding !== null &&
+    connector.transport === "http" &&
+    connector.url === binding.endpoint &&
+    connector.auth?.type === "oauth" &&
+    connector.auth.provider === "google-workspace" &&
+    connector.auth.account === account &&
+    connector.origin?.kind === "account-adapter" &&
+    connector.origin.id === account &&
+    connector.origin.binding === "google-workspace" &&
+    !connector.command &&
+    !connector.cwd &&
+    !connector.args?.length &&
+    !connector.env &&
+    !connector.headers &&
+    connector.allowTools?.length === binding?.observeTools.length &&
+    binding?.observeTools.every((tool, index) => connector.allowTools?.[index] === tool);
+  if (!valid || !account || !binding) {
+    throw new Error(`Managed Google Workspace connector "${connector.id}" is immutable`);
+  }
+  return {
+    id: binding.connectorId,
+    name: binding.name,
+    transport: "http",
+    url: binding.endpoint,
+    auth: { type: "oauth", provider: "google-workspace", account },
+    allowTools: [...binding.observeTools],
+    origin: { kind: "account-adapter", id: account, binding: "google-workspace" },
+    enabled: connector.enabled,
+  };
+}
 
 export function resolveConnectorsFilePath(): string {
   return join(resolveDataDir(), "connectors.json");
@@ -46,54 +91,68 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
   const file = resolveConnectorsFilePath();
   if (!existsSync(file)) return [];
   try {
-    const parsed = JSON.parse(await readFile(file, "utf-8")) as {
-      connectors?: ConnectorConfig[];
-    };
-    return Array.isArray(parsed.connectors) ? parsed.connectors : [];
-  } catch (error) {
-    console.error(`[Connectors] Failed to read ${file}:`, error);
-    return [];
+    const parsed = Schema.decodeUnknownSync(ConnectorsFileSchema)(
+      JSON.parse(await readFile(file, "utf-8")),
+    );
+    return (parsed.connectors ?? []).map(protectManagedConnector);
+  } catch {
+    throw new Error("Connector configuration is invalid");
   }
 }
 
-export async function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {
+async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
   resolveDataDir();
   const file = resolveConnectorsFilePath();
-  const payload = JSON.stringify({ connectors }, null, 2);
-  const tempFile = `${file}.tmp-${process.pid}`;
+  const payload = JSON.stringify({ connectors: connectors.map(protectManagedConnector) }, null, 2);
+  const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tempFile, payload, "utf-8");
   await chmod(tempFile, 0o600).catch(() => undefined);
   await rename(tempFile, file);
+}
+
+export function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {
+  return withConnectorAccess(() => writeConnectors(connectors));
 }
 
 export async function upsertConnector(connector: ConnectorConfig): Promise<ConnectorConfig[]> {
   return upsertConnectors([connector]);
 }
 
-export async function upsertConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
-  const connectors = await listConnectors();
-  for (const connector of incoming) {
-    const index = connectors.findIndex((entry) => entry.id === connector.id);
-    const existing = index === -1 ? null : connectors[index];
-    const merged: ConnectorConfig = {
-      ...connector,
-      env: mergeSecrets(connector.env, existing?.env),
-      headers: mergeSecrets(connector.headers, existing?.headers),
-      cwd: connector.cwd ?? existing?.cwd,
-      allowTools: connector.allowTools ?? existing?.allowTools,
-      origin: connector.origin ?? existing?.origin,
-    };
-    if (index === -1) connectors.push(merged);
-    else connectors[index] = merged;
-  }
-  await saveConnectors(connectors);
-  return connectors;
+export function upsertConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
+  return withConnectorAccess(async () => {
+    const connectors = await listConnectors();
+    for (const candidate of incoming) {
+      const connector = protectManagedConnector(candidate);
+      const index = connectors.findIndex((entry) => entry.id === connector.id);
+      const existing = index === -1 ? null : connectors[index];
+      const merged: ConnectorConfig = {
+        ...connector,
+        env: mergeSecrets(connector.env, existing?.env),
+        headers: mergeSecrets(connector.headers, existing?.headers),
+        cwd: connector.cwd ?? existing?.cwd,
+        allowTools: connector.allowTools ?? existing?.allowTools,
+        origin: connector.origin ?? existing?.origin,
+        auth: connector.auth ?? existing?.auth,
+      };
+      if (index === -1) connectors.push(merged);
+      else connectors[index] = merged;
+    }
+    await writeConnectors(connectors);
+    return connectors;
+  });
 }
 
-export async function removeConnector(id: string): Promise<ConnectorConfig[]> {
-  const connectors = (await listConnectors()).filter((entry) => entry.id !== id);
-  await saveConnectors(connectors);
-  return connectors;
+export function removeConnector(id: string): Promise<ConnectorConfig[]> {
+  if (googleWorkspaceConnectorAccount(id)) {
+    return Promise.reject(
+      new Error(`Managed Google Workspace connector "${id}" cannot be removed`),
+    );
+  }
+  return withConnectorAccess(async () => {
+    const connectors = (await listConnectors()).filter((entry) => entry.id !== id);
+    await writeConnectors(connectors);
+    return connectors;
+  });
 }
 
 function mergeSecrets(
@@ -140,9 +199,9 @@ export function hasEnabledConnectorsSync(): boolean {
   const file = resolveConnectorsFilePath();
   if (!existsSync(file)) return false;
   try {
-    const parsed = JSON.parse(readFileSync(file, "utf-8")) as {
-      connectors?: ConnectorConfig[];
-    };
+    const parsed = Schema.decodeUnknownSync(ConnectorsFileSchema)(
+      JSON.parse(readFileSync(file, "utf-8")),
+    );
     return Boolean(parsed.connectors?.some((connector) => connector.enabled));
   } catch {
     return false;

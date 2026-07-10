@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { useFormControlAttributes } from "./form-field-context";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -9,10 +10,29 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, icon, className = "", id, ...props },
+  {
+    label,
+    error,
+    icon,
+    className = "",
+    id,
+    required,
+    "aria-describedby": ariaDescribedBy,
+    "aria-invalid": ariaInvalid,
+    ...props
+  },
   ref,
 ) {
-  const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
+  const generatedId = useId();
+  const field = useFormControlAttributes({
+    id,
+    required,
+    describedBy: ariaDescribedBy,
+    invalid: ariaInvalid,
+  });
+  const inputId = field.id ?? (label ? generatedId : undefined);
+  const errorId = error ? `${inputId ?? generatedId}-error` : undefined;
+  const describedBy = [field.describedBy, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
     <div>
@@ -31,11 +51,18 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         <input
           ref={ref}
           id={inputId}
+          required={field.required}
+          aria-describedby={describedBy}
+          aria-invalid={field.invalid ?? (error ? true : undefined)}
           className={`h-9 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-3 text-[length:var(--fs-base)] text-(--ui-fg) transition-all placeholder:text-(--ui-muted)/50 focus:border-(--ui-info)/50 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/20 ${icon ? "pl-9" : ""} ${error ? "border-(--ui-danger)" : ""} ${className}`}
           {...props}
         />
       </div>
-      {error && <p className="mt-1.5 text-xs text-(--ui-danger)">{error}</p>}
+      {error && (
+        <p id={errorId} role="alert" className="mt-1.5 text-xs text-(--ui-danger)">
+          {error}
+        </p>
+      )}
     </div>
   );
 });

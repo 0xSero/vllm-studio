@@ -55,6 +55,10 @@ extraResources:
     to: desktop/resources/mcp
     filter:
       - "**/*"
+  - from: desktop/resources/plugins
+    to: desktop/resources/plugins
+    filter:
+      - "**/*"
   - from: desktop/resources/skills
     to: desktop/resources/skills
     filter:

@@ -5,6 +5,7 @@ import { fork, type ChildProcess } from "node:child_process";
 import { DESKTOP_CONFIG, resolveStandaloneBaseDir, resolveStaticAssetsSource } from "../configs";
 import type { DesktopServerRuntime } from "../types";
 import { log } from "../helpers/logger";
+import { registerOAuthVault } from "./oauth-vault";
 import { resolveStablePort } from "../helpers/ports";
 import { resolveAugmentedPath } from "../helpers/resolve-path";
 
@@ -217,6 +218,8 @@ export async function startFrontendServer(
       LOCAL_STUDIO_FRONTEND_BASE: url,
     },
   });
+
+  registerOAuthVault(child, DESKTOP_CONFIG.userDataDir);
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
     log.info(`frontend: ${String(chunk).trim()}`);
