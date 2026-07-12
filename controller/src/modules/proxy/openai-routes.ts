@@ -54,32 +54,29 @@ export const modelNotRunningError = (
 export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
 
-  app.post("/v1/chat/completions", async (ctx) => {
-    let bodyBuffer: ArrayBuffer;
-    try {
-      bodyBuffer = await ctx.req.arrayBuffer();
-    } catch {
-      // If the client already disconnected (e.g. Droid cancelled the
-      // stream before finishing its POST body), don't report this as a
-      // "400 Invalid request body" — that ends up as `400 (no body)` on
-      // the SDK side, which looks like a real server bug.
-      if (ctx.req.raw.signal.aborted) {
-        return ctx.body(null, { status: 499 });
-      }
-      throw new HttpStatus({ status: 400, detail: "Invalid request body" });
-    }
+  interface ParsedChatBody {
+    parsed: Record<string, unknown>;
+    requestedModel: string | null;
+    matchedRecipe: Recipe | null;
+    isStreaming: boolean;
+    bodyChanged: boolean;
+    sessionId: string | null;
+  }
 
+  const parseChatBody = (
+    bodyBuffer: ArrayBuffer,
+    getHeader: (name: string) => string | undefined,
+  ): ParsedChatBody => {
     let parsed: Record<string, unknown> = {};
     let requestedModel: string | null = null;
     let matchedRecipe: Recipe | null = null;
     let isStreaming = false;
     let bodyChanged = false;
     let sessionId: string | null = null;
-
     try {
       const bodyText = new TextDecoder().decode(bodyBuffer);
       parsed = JSON.parse(bodyText) as Record<string, unknown>;
-      sessionId = extractSessionId(parsed, (name) => ctx.req.header(name));
+      sessionId = extractSessionId(parsed, getHeader);
       normalizeToolRequest(parsed);
       if (normalizeChatMessageContentParts(parsed)) {
         bodyChanged = true;
@@ -106,7 +103,19 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     } catch {
       throw new HttpStatus({ status: 400, detail: "Invalid JSON body" });
     }
+    return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
+  };
 
+  const resolveChatUpstream = (
+    requestedModel: string | null,
+    parsed: Record<string, unknown>,
+  ): {
+    upstreamUrl: string;
+    headers: Record<string, string>;
+    requestProvider: string;
+    providerRouting: ReturnType<typeof resolveProviderConfig>;
+    rewroteModel: boolean;
+  } => {
     const providerModel = requestedModel
       ? parseProviderModel(requestedModel)
       : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
@@ -117,53 +126,11 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
             providers: context.config.providers,
           })
         : null;
-    const sourceHeader =
-      ctx.req.header("x-vllm-source") ??
-      ctx.req.header("x-source") ??
-      ctx.req.header("user-agent") ??
-      null;
-
+    let rewroteModel = false;
     if (providerRouting && requestedModel) {
       parsed["model"] = providerModel.modelId;
-      bodyChanged = true;
+      rewroteModel = true;
     }
-
-    if (
-      !matchedRecipe &&
-      requestProvider === DEFAULT_CHAT_PROVIDER &&
-      requestedModel &&
-      context.config.strict_openai_models
-    ) {
-      throw notFound(`Model not managed: ${requestedModel}`);
-    }
-
-    // Chat proxy never launches or switches models. The frontend's explicit
-    // /engines/* and /recipes/:id/launch endpoints are the only authorized
-    // path to control which model is running. If the requested model isn't
-    // running, reject with 503 so the caller can ask the frontend to launch
-    // it instead of silently thrashing the GPU.
-    if (matchedRecipe) {
-      const current = await context.processManager.findInferenceProcess(
-        context.config.inference_port,
-      );
-      const matches =
-        current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
-      if (!matches) {
-        const activeModel = current?.served_model_name ?? current?.model_path ?? null;
-        warnNonRunningModel({
-          requestedModel,
-          requestedRecipeId: matchedRecipe.id,
-          activeModel,
-          source: sourceHeader,
-        });
-        // Return an OpenAI-shaped error so SDK callers (the pi agent runtime)
-        // surface the message instead of a bare "503 status code (no body)" —
-        // the SDK reads `error.message`, not FastAPI's `detail`. Keep `detail`
-        // too for any non-OpenAI caller that already relies on it.
-        return ctx.json(modelNotRunningError(activeModel, requestedModel), { status: 503 });
-      }
-    }
-
     const upstreamUrl =
       providerRouting && requestedModel
         ? `${providerRouting.baseUrl.replace(/\/+$/, "")}/v1/chat/completions`
@@ -177,9 +144,107 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
           ? { Authorization: `Bearer ${inferenceKey}` }
           : {}),
     };
-    const finalBody = bodyChanged
-      ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
-      : bodyBuffer;
+    return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
+  };
+
+  // Chat proxy never launches or switches models. The frontend's explicit
+  // /engines/* and /recipes/:id/launch endpoints are the only authorized
+  // path to control which model is running. If the requested model isn't
+  // running, reject with 503 so the caller can ask the frontend to launch
+  // it instead of silently thrashing the GPU.
+  const gateOnRunningModel = async (
+    matchedRecipe: Recipe,
+    requestedModel: string | null,
+    sourceHeader: string | null,
+  ): Promise<ModelNotRunningError | null> => {
+    const current = await context.processManager.findInferenceProcess(
+      context.config.inference_port,
+    );
+    const matches =
+      current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
+    if (matches) return null;
+    const activeModel = current?.served_model_name ?? current?.model_path ?? null;
+    warnNonRunningModel({
+      requestedModel,
+      requestedRecipeId: matchedRecipe.id,
+      activeModel,
+      source: sourceHeader,
+    });
+    // Return an OpenAI-shaped error so SDK callers (the pi agent runtime)
+    // surface the message instead of a bare "503 status code (no body)" —
+    // the SDK reads `error.message`, not FastAPI's `detail`. Keep `detail`
+    // too for any non-OpenAI caller that already relies on it.
+    return modelNotRunningError(activeModel, requestedModel);
+  };
+
+  const normalizeCompletionChoices = (
+    result: Record<string, unknown>,
+    recordedModel: string,
+    sourceHeader: string | null,
+  ): void => {
+    const choices = result["choices"];
+    if (!Array.isArray(choices)) return;
+    for (const choice of choices) {
+      const choiceRecord = choice as Record<string, unknown>;
+      const message = choiceRecord["message"] as Record<string, unknown> | undefined;
+      if (!message) continue;
+      if (normalizeToolCallsInMessage(message)) choiceRecord["finish_reason"] = "tool_calls";
+      normalizeReasoningAndContentInMessage(message);
+      if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
+        context.logger.warn(
+          "Exposed Trinity reasoning as content because visible content was empty",
+          {
+            model: recordedModel,
+            source: sourceHeader,
+          },
+        );
+      }
+    }
+  };
+
+  app.post("/v1/chat/completions", async (ctx) => {
+    let bodyBuffer: ArrayBuffer;
+    try {
+      bodyBuffer = await ctx.req.arrayBuffer();
+    } catch {
+      // If the client already disconnected (e.g. Droid cancelled the
+      // stream before finishing its POST body), don't report this as a
+      // "400 Invalid request body" — that ends up as `400 (no body)` on
+      // the SDK side, which looks like a real server bug.
+      if (ctx.req.raw.signal.aborted) {
+        return ctx.body(null, { status: 499 });
+      }
+      throw new HttpStatus({ status: 400, detail: "Invalid request body" });
+    }
+
+    const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
+      parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
+    const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
+      resolveChatUpstream(requestedModel, parsed);
+    const sourceHeader =
+      ctx.req.header("x-vllm-source") ??
+      ctx.req.header("x-source") ??
+      ctx.req.header("user-agent") ??
+      null;
+
+    if (
+      !matchedRecipe &&
+      requestProvider === DEFAULT_CHAT_PROVIDER &&
+      requestedModel &&
+      context.config.strict_openai_models
+    ) {
+      throw notFound(`Model not managed: ${requestedModel}`);
+    }
+
+    if (matchedRecipe) {
+      const rejection = await gateOnRunningModel(matchedRecipe, requestedModel, sourceHeader);
+      if (rejection) return ctx.json(rejection, { status: 503 });
+    }
+
+    const finalBody =
+      bodyChanged || rewroteModel
+        ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
+        : bodyBuffer;
 
     const clientSignal = ctx.req.raw.signal;
     const requestStart = performance.now();
@@ -231,26 +296,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
       );
 
       attachSessionUsage(result, sessionId, usage);
-
-      const choices = result["choices"];
-      if (Array.isArray(choices)) {
-        for (const choice of choices) {
-          const choiceRecord = choice as Record<string, unknown>;
-          const message = choiceRecord["message"] as Record<string, unknown> | undefined;
-          if (!message) continue;
-          if (normalizeToolCallsInMessage(message)) choiceRecord["finish_reason"] = "tool_calls";
-          normalizeReasoningAndContentInMessage(message);
-          if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
-            context.logger.warn(
-              "Exposed Trinity reasoning as content because visible content was empty",
-              {
-                model: recordedModel,
-                source: sourceHeader,
-              },
-            );
-          }
-        }
-      }
+      normalizeCompletionChoices(result, recordedModel, sourceHeader);
 
       return ctx.json(result, { status: response.status });
     }

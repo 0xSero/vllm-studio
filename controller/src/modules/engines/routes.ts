@@ -100,7 +100,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/recipes", async (ctx) => {
-    const body = await ctx.req.json();
+    const body = await parseJsonObjectBody(ctx);
     try {
       const recipe = parseRecipe(body);
       context.stores.recipeStore.save(recipe);
@@ -114,7 +114,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
 
   app.put("/recipes/:recipeId", async (ctx) => {
     const recipeId = ctx.req.param("recipeId");
-    const body = await ctx.req.json();
+    const body = await parseJsonObjectBody(ctx);
     try {
       const recipe = parseRecipe({ ...body, id: recipeId });
       context.stores.recipeStore.save(recipe);
