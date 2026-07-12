@@ -101,6 +101,25 @@ and logic, keep code DRY.
   routes use RuntimeTarget discovery while specs use probe chains; they can genuinely disagree,
   and /runtime/vllm has a different (frontend-typed) response shape. Needs a design decision +
   live verification; folds into the multi-model/#171 work. Do not flip routes blind.
-- Next: docs refresh (README/AGENTS accuracy pass), component extraction (>400-line tsx files),
-  Effect Schema validation for raw ctx.req.json() boundaries (recipe CRUD), openai-routes
-  request-shaping extraction.
+- **I10 (19:15)**: docs accuracy (AGENTS.md pi-runtime paths → services/agent-runtime, 3090 gone,
+  Zod→Effect Schema, CLI/voice refs dropped) + NEW chat-proxy end-to-end tests
+  (chat-proxy-forwarding.test.ts): upstream forwarding, keepalive-first-byte SSE contract,
+  model_not_running 503 gate. That coverage did not exist.
+- **I11 (19:30)**: chat handler decomposed into parseChatBody/resolveChatUpstream/
+  gateOnRunningModel/normalizeCompletionChoices closure stages (behavior pinned by I10 tests;
+  117/117 integration green). Recipe CRUD: malformed JSON now 400s (ctx.req.json() threw outside
+  the try → 500). SCOPED: Effect-ifying engine-coordinator's setActiveRecipe deliberately NOT
+  attempted autonomously — that's the machinery keeping models alive; Effect adoption stays at
+  boundaries where the repo already uses it (Schema at config/speech/recipes, command effects,
+  coalescer).
+- **I12 (20:00)**: chatterbox modal 750→240 (09947a97) and left sidebar 548→212 (0607f52a),
+  both verbatim-move extractions verified byte-identical markup, all gates green.
+  ⚠️ INCIDENT, resolved: an agent stash cycle over the 15-entry stash pile resurrected an old
+  half-finished "move pi-session usage scanning into agent-runtime" WIP into the tree (broken
+  imports, 2× TS2307). Quarantined — full patch + untracked files preserved in the session
+  scratchpad (quarantine-usage-wip/) and the original stash entry is untouched; affected paths
+  restored to HEAD; stale .next/types purged. NOTE for future loops: the stash pile is a trap —
+  never `git stash pop` on this repo without checking `git stash list` first.
+- Remaining queue: engines/routes.ts god-router split (recipes/lifecycle/downloads/runtime),
+  tools-selection ownership (context.tsx 612 + persistence split — judgment call), final full
+  gate + PR to main + PushNotification. Desktop rebuild owed post-merge per AGENTS.md.
