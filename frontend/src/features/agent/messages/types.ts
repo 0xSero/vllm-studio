@@ -91,7 +91,7 @@ export type SessionTab = {
   modelId?: string;
   title: string;
   messages: ChatMessage[];
-  status: string;
+  status: import("@/features/agent/runtime/types").SessionStatus;
   error: string;
   startedAt?: string;
   input: string;
