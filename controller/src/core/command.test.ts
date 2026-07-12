@@ -74,7 +74,7 @@ describe("resolveBinary", () => {
   let savedSnap: string | undefined;
   let savedHome: string | undefined;
 
-  const restoreEnv = (key: string, value: string | undefined): void => {
+  const restoreEnvironment = (key: string, value: string | undefined): void => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   };
@@ -90,10 +90,10 @@ describe("resolveBinary", () => {
   });
 
   afterEach(() => {
-    restoreEnv("PATH", savedPath);
-    restoreEnv("LOCAL_STUDIO_RUNTIME_BIN", savedRuntimeBin);
-    restoreEnv("SNAP", savedSnap);
-    restoreEnv("HOME", savedHome);
+    restoreEnvironment("PATH", savedPath);
+    restoreEnvironment("LOCAL_STUDIO_RUNTIME_BIN", savedRuntimeBin);
+    restoreEnvironment("SNAP", savedSnap);
+    restoreEnvironment("HOME", savedHome);
     rmSync(temporaryDirectory, { recursive: true, force: true });
   });
 
