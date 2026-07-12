@@ -120,6 +120,14 @@ and logic, keep code DRY.
   scratchpad (quarantine-usage-wip/) and the original stash entry is untouched; affected paths
   restored to HEAD; stale .next/types purged. NOTE for future loops: the stash pile is a trap —
   never `git stash pop` on this repo without checking `git stash list` first.
-- Remaining queue: engines/routes.ts god-router split (recipes/lifecycle/downloads/runtime),
-  tools-selection ownership (context.tsx 612 + persistence split — judgment call), final full
-  gate + PR to main + PushNotification. Desktop rebuild owed post-merge per AGENTS.md.
+- **I13 (19:20)**: engines god-router split (registerEngineRoutes → recipe/lifecycle/download/
+  runtime registrars + observed-process factory; routes.ts 387→12). All controller gates green.
+- **I14 (19:25)**: CONTEXT.md seeded — repo domain language (recipes/engines/targets/launch-state,
+  proxy stages, session/turn/pane, contracts/gates) per the architecture-skill discipline.
+- **I15 (19:33)**: git-diff-panel 544→173 (+workflow/diff-view sections, DiffViewMode alias) and
+  recipe-modal 526→126 (+model hook — order preserved — source helpers, summary, footer).
+  All gates green. FLAKE NOTE: one combined `bun test scripts` run showed 2 fails that vanished
+  on immediate rerun (timing-sensitive usage-policy tests); two consecutive greens after.
+- Remaining queue: tools-selection ownership (judgment call — may skip as too entangled for
+  autonomous hours), final full `npm run check` + `test:integration`, PR to main,
+  PushNotification. Desktop rebuild owed post-merge per AGENTS.md.
