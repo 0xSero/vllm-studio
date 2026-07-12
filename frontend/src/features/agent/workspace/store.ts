@@ -2,6 +2,11 @@ import { clampLayoutToLimits, collectLeaves, removeLeaf } from "@/features/agent
 import { cleanSessionTitle, makeFreshTab } from "@/features/agent/messages/helpers";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
+import {
+  persistedTabFieldsFromSelection,
+  toolSelectionFromPersistedTab,
+  type PersistedToolSelectionFields,
+} from "@/features/agent/tools/selection-persistence";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type {
   PaneId,
@@ -65,9 +70,8 @@ type PersistedTabShape = Partial<Session> & {
 export type PersistedSessionMeta = Omit<
   Session,
   "messages" | "error" | "status" | "activeAssistantId"
-> & {
-  skills?: ComposerSkillRef[];
-};
+> &
+  PersistedToolSelectionFields;
 
 export function normalizePersistedTab(value: unknown): Session | null {
   if (!value || typeof value !== "object") return null;
@@ -101,19 +105,6 @@ export function legacyRuntimeKeyFromPersistedTab(value: unknown): string | null 
     : null;
 }
 
-export function selectionFromPersistedTab(value: unknown): ToolSelection | null {
-  if (!value || typeof value !== "object") return null;
-  const tab = value as PersistedTabShape & {
-    promptTemplates?: ToolSelection["promptTemplates"];
-  };
-  const skills = Array.isArray(tab.skills) ? tab.skills : [];
-  const promptTemplates = Array.isArray(tab.promptTemplates) ? tab.promptTemplates : [];
-  if (skills.length === 0 && promptTemplates.length === 0) {
-    return null;
-  }
-  return { skills, promptTemplates };
-}
-
 export type RestoredPaneState = {
   layout: WorkspaceLayout;
   panesById: Map<PaneId, PaneState>;
@@ -144,7 +135,7 @@ function restoreTabsWithSelections(rawTabs: unknown[]): {
     const session = normalizePersistedTab(raw);
     if (!session) continue;
     tabs.push(session);
-    const selection = selectionFromPersistedTab(raw);
+    const selection = toolSelectionFromPersistedTab(raw);
     if (selection) selections.set(session.id, selection);
     const legacyRuntimeKey = legacyRuntimeKeyFromPersistedTab(raw);
     if (legacyRuntimeKey && legacyRuntimeKey !== session.id) {
@@ -242,13 +233,7 @@ export function sessionMetaForPersistence(
     queue: tab.queue,
   };
   if (selection) {
-    return {
-      ...base,
-      ...(selection.skills.length > 0 ? { skills: selection.skills } : {}),
-      ...(selection.promptTemplates.length > 0
-        ? { promptTemplates: selection.promptTemplates }
-        : {}),
-    };
+    return { ...base, ...persistedTabFieldsFromSelection(selection) };
   }
   return base;
 }
