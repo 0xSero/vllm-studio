@@ -11,6 +11,7 @@ import {
   MessageSquarePlus,
   PanelRight,
   Plus,
+  ScanSearch,
   TerminalSquare,
   type LucideIcon,
 } from "@/ui/icon-registry";
@@ -297,6 +298,7 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   files: "Filesystem",
   diff: "Git",
   plan: "Plan",
+  inspector: "Inspector",
   terminal: "Terminal",
 };
 
@@ -336,6 +338,12 @@ const TAB_OPTIONS: Array<{
     label: "Filesystem",
     description: "Project files and rendered previews",
     icon: FolderTree,
+  },
+  {
+    tab: "inspector",
+    label: "Inspector",
+    description: "Per-turn tools, files, and context",
+    icon: ScanSearch,
   },
   { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
 ];
