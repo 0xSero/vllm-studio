@@ -69,6 +69,6 @@ jobs:
       - name: Unit tests
         working-directory: ./frontend
         run: npm run test
-      - name: E2E tests
+      - name: Regression tests
         working-directory: ./frontend
-        run: npm run test:e2e
+        run: npm run test:regression
