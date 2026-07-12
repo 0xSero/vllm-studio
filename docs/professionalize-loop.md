@@ -128,6 +128,11 @@ and logic, keep code DRY.
   recipe-modal 526→126 (+model hook — order preserved — source helpers, summary, footer).
   All gates green. FLAKE NOTE: one combined `bun test scripts` run showed 2 fails that vanished
   on immediate rerun (timing-sensitive usage-policy tests); two consecutive greens after.
-- Remaining queue: tools-selection ownership (judgment call — may skip as too entangled for
-  autonomous hours), final full `npm run check` + `test:integration`, PR to main,
-  PushNotification. Desktop rebuild owed post-merge per AGENTS.md.
+- **I16 (19:50)**: tools/selection-persistence.ts single-owns the ToolSelection wire shape
+  (no discrepancies found between the two sides; persisted JSON byte-identical; type now honest).
+- **I17 (19:55)**: full `npm run check` + `test:integration` green end-to-end → **PR #181 opened**
+  (loop continues appending). FLAGGED FOR OWNER: landing-page.tsx and marketing-page.tsx are
+  ~90% clones and BOTH routed (/landing+/docs vs /agents+/download) — consolidation is the
+  pending marketing product decision, not an autonomous call.
+- In flight: use-setup.ts and google-account-modal extractions (agents).
+- Final: PushNotification at stop; desktop rebuild owed post-merge per AGENTS.md.
