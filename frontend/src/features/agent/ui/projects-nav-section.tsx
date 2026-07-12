@@ -184,7 +184,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
       />
       {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
         <div className="flex flex-col">
-          <div className="mt-5 flex h-5 items-center px-2.5 text-[length:var(--fs-md)] font-normal text-(--dim)">
+          <div className="flex items-center px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
             Pinned
           </div>
           {pinnedActiveSessions.map(({ session, project }) => (
@@ -349,7 +349,7 @@ function SidebarSectionHeader({
   indicator?: boolean;
 }) {
   return (
-    <div className="group mt-5 flex h-5 items-center justify-between px-2.5 text-[length:var(--fs-md)] font-normal text-(--dim)">
+    <div className="group flex items-center justify-between px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
       <button
         type="button"
         onClick={onToggle}

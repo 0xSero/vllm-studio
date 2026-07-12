@@ -22,7 +22,6 @@ import {
   PanelLeftClose,
   Menu,
   PanelLeftOpen,
-  Square,
   X,
   Wrench,
   MessageSquare,
@@ -54,9 +53,9 @@ const tabs = [
   { href: "/server", label: "Server", icon: Globe },
 ];
 
-const SIDEBAR_MIN_WIDTH = 188;
-const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_DEFAULT_WIDTH = 224;
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 400;
+const SIDEBAR_DEFAULT_WIDTH = 260;
 
 let projectsNavSectionPromise: Promise<ProjectsNavSectionComponent> | null = null;
 let sessionsCommandPromise: Promise<SessionsCommandComponent> | null = null;
@@ -253,7 +252,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         onFocusCapture={() => {
           if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
         }}
-        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden shadow-[inset_-1px_0_rgba(255,255,255,0.02)] ${
+        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${
           sidebarResizing ? "" : "transition-[width] duration-150 ease-out"
         } ${isExpanded ? "" : "w-0 border-r-0"}`}
         style={{
@@ -280,47 +279,47 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         >
           {isExpanded ? (
             <>
-              <div className="sticky top-0 z-50 flex h-10 shrink-0 items-center gap-1 bg-(--sidebar-bg) px-1.5">
+              <div className="sticky top-0 z-50 flex h-[var(--h-toolbar)] shrink-0 items-center gap-1 bg-(--sidebar-bg) px-2">
                 <button
                   onClick={() => setDesktopSidebarPinnedOpen(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Collapse sidebar"
                   aria-label="Collapse sidebar"
                 >
-                  <Square className="h-3.5 w-3.5" />
+                  <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.5} />
                 </button>
                 <button
                   onClick={() => window.history.back()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Go back"
                   aria-label="Go back"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={1.5} />
                 </button>
                 <button
                   onClick={() => window.history.forward()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Go forward"
                   aria-label="Go forward"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-[18px] w-[18px]" strokeWidth={1.5} />
                 </button>
               </div>
 
-              <nav className="flex-1 min-h-0 flex flex-col px-3 py-0.5 overflow-y-auto overflow-x-hidden">
+              <nav className="flex-1 min-h-0 flex flex-col px-2.5 py-0.5 overflow-y-auto overflow-x-hidden">
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mb-1 flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-(--fg)/90 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)"
+                  className="mb-0.5 flex h-9 shrink-0 items-center gap-2.5 rounded-[10px] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-4 w-4 shrink-0 opacity-60" strokeWidth={1.5} />
-                  <span className="flex-1 truncate text-left text-[length:var(--fs-lg)] font-normal">
+                  <SearchIcon className="h-[18px] w-[18px] shrink-0 opacity-70" strokeWidth={1.5} />
+                  <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal">
                     Search
                   </span>
                 </button>
 
-                <div className="mb-1 mt-5 px-2.5 text-[length:var(--fs-md)] font-normal text-(--dim)">
+                <div className="pb-1 pt-5 px-2 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -341,24 +340,24 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                 ) : null}
               </nav>
 
-              <div className="shrink-0 px-3 py-2">
+              <div className="shrink-0 px-2.5 py-2">
                 <Link
                   href="/settings"
                   prefetch={false}
                   title="Settings"
-                  className={`group flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 transition-colors ${
+                  className={`group flex h-9 shrink-0 items-center gap-2.5 rounded-[10px] px-2 transition-colors ${
                     isRouteActive(pathname, "/settings")
-                      ? "bg-(--color-surface-hover) font-medium text-(--fg)"
-                      : "text-(--fg)/90 hover:bg-(--color-surface-hover) hover:text-(--fg)"
+                      ? "bg-(--active) text-(--fg)"
+                      : "text-(--fg) hover:bg-(--hover)"
                   }`}
                 >
                   <Settings
-                    className={`h-4 w-4 shrink-0 ${
-                      isRouteActive(pathname, "/settings") ? "text-(--fg)/85" : "opacity-60"
+                    className={`h-[18px] w-[18px] shrink-0 ${
+                      isRouteActive(pathname, "/settings") ? "opacity-90" : "opacity-70"
                     }`}
-                    strokeWidth={1.75}
+                    strokeWidth={1.5}
                   />
-                  <span className="whitespace-nowrap text-[length:var(--fs-lg)] font-normal">
+                  <span className="whitespace-nowrap text-[length:var(--fs-base)] font-normal">
                     Settings
                   </span>
                 </Link>
@@ -504,10 +503,8 @@ function NavItemMobile({
       href={href}
       prefetch={false}
       onClick={onClick}
-      className={`mb-1 flex h-12 items-center gap-3 border-l-2 px-2 text-sm font-medium transition-colors ${
-        active
-          ? "border-(--accent) text-(--fg)"
-          : "border-transparent text-(--dim) hover:text-(--fg)"
+      className={`mb-0.5 flex h-11 items-center gap-3 rounded-[10px] px-3 text-[length:var(--fs-base)] font-normal transition-colors ${
+        active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
       }`}
     >
       <Icon className="h-5 w-5 shrink-0" />
@@ -532,17 +529,15 @@ function NavItemDesktop({
       href={href}
       prefetch={false}
       title={label}
-      className={`group flex h-8 items-center gap-2.5 rounded-md px-2.5 transition-colors shrink-0 ${
-        active
-          ? "bg-(--color-surface-hover) font-medium text-(--fg)"
-          : "text-(--fg)/90 hover:bg-(--color-surface-hover) hover:text-(--fg)"
+      className={`group flex h-9 items-center gap-2.5 rounded-[10px] px-2 transition-colors shrink-0 ${
+        active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
       }`}
     >
       <Icon
-        className={`h-4 w-4 shrink-0 ${active ? "text-(--fg)/85" : "opacity-60"}`}
-        strokeWidth={1.75}
+        className={`h-[18px] w-[18px] shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        strokeWidth={1.5}
       />
-      <span className="text-[length:var(--fs-lg)] whitespace-nowrap">{label}</span>
+      <span className="text-[length:var(--fs-base)] whitespace-nowrap">{label}</span>
     </Link>
   );
 }
