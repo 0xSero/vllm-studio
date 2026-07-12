@@ -39,20 +39,22 @@ function lightnessFromColor(value: string): number | null {
 
 function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
   const isLight = (lightnessFromColor(tokens.bg) ?? 0) > 50;
-  const ink = isLight ? "0, 0, 0" : "255, 255, 255";
+  const ink = isLight ? "26, 28, 31" : "255, 255, 255";
   return {
-    "surface-2": "color-mix(in srgb, var(--surface) 88%, var(--fg) 12%)",
-    "surface-3": "color-mix(in srgb, var(--surface) 78%, var(--fg) 22%)",
-    rail: "color-mix(in srgb, var(--surface) 72%, var(--bg) 28%)",
-    border: `rgba(${ink}, ${isLight ? "0.12" : "0.12"})`,
-    separator: `rgba(${ink}, ${isLight ? "0.18" : "0.18"})`,
-    hover: `rgba(${ink}, ${isLight ? "0.055" : "0.07"})`,
-    active: `rgba(${ink}, ${isLight ? "0.085" : "0.11"})`,
-    composer: "color-mix(in srgb, var(--surface) 88%, var(--bg) 12%)",
-    "composer-footer": "color-mix(in srgb, var(--surface) 72%, var(--bg) 28%)",
+    // White/ink overlays over a unified canvas: 8% surfaces, 5% hover,
+    // 8% active, hairline 8% borders — the same ratios tokens.css encodes.
+    "surface-2": `rgba(${ink}, 0.08)`,
+    "surface-3": `rgba(${ink}, 0.05)`,
+    rail: isLight ? "#f9f9f9" : tokens.bg,
+    border: `rgba(${ink}, 0.08)`,
+    separator: `rgba(${ink}, 0.08)`,
+    hover: `rgba(${ink}, 0.05)`,
+    active: `rgba(${ink}, 0.08)`,
+    composer: isLight ? "#ffffff" : tokens.surface,
+    "composer-footer": isLight ? "#ffffff" : tokens.surface,
     "composer-shadow": isLight
-      ? "0 12px 30px rgba(0, 0, 0, 0.07)"
-      : "0 18px 42px rgba(0, 0, 0, 0.42)",
+      ? "0 12px 36px rgba(0, 0, 0, 0.06)"
+      : "0 14px 34px rgba(0, 0, 0, 0.3)",
   };
 }
 
