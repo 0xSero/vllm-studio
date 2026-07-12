@@ -218,8 +218,8 @@ path) is the exception, only for risky feature-branch testing.
 
 - The agent page uses `@earendil-works/pi-coding-agent` directly in the Next.js
   Node process (no `pi --mode rpc` subprocess, no bundled CLI). Entry point:
-  `src/features/agent/pi-runtime.ts` → `piRuntimeManager.getSession(id)`.
-  Extensions/skills are wired in `src/features/agent/pi-runtime-helpers.ts`.
+  `services/agent-runtime/src/pi-runtime.ts` → `piRuntimeManager.getSession(id)`.
+  Extensions/skills are wired in `services/agent-runtime/src/pi-runtime-helpers.ts`.
 - Agent file read/write in chat is local-only, stored under `data/agentfs`. The
   filesystem root boundary (`src/features/agent/fs-store.ts`) trusts the caller's
   workspace cwd while rejecting filesystem roots and system directories. If file
@@ -228,7 +228,7 @@ path) is the exception, only for risky feature-branch testing.
 
 ## Notes
 
-- Remote server: AMD EPYC, 4x RTX PRO 6000 Blackwell + 1x RTX 3090, CUDA 12.8
+- Remote server: AMD EPYC, 4x RTX PRO 6000 Blackwell, CUDA 12.8
   (host in `.env.local`).
 - `npm run start` runs the standalone server (`scripts/start-standalone.mjs`).
   Never use plain `next start` — it breaks SSE streaming.
