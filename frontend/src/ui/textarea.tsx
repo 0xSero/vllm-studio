@@ -48,7 +48,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
         required={field.required}
         aria-describedby={describedBy}
         aria-invalid={field.invalid ?? (error ? true : undefined)}
-        className={`w-full resize-none rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2.5 text-sm text-(--ui-fg) transition-all placeholder:text-(--ui-muted)/50 focus:border-(--ui-info)/50 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/20 ${error ? "border-(--ui-danger)" : ""} ${className}`}
+        className={`w-full resize-none rounded-xl border border-(--ui-border) bg-(--surface-3) px-3 py-2.5 text-[length:var(--fs-base)] text-(--ui-fg) transition-all placeholder:text-(--hl2) focus:border-(--link)/70 focus:outline-none focus:ring-1 focus:ring-(--link)/25 ${error ? "border-(--ui-danger)" : ""} ${className}`}
         {...props}
       />
       {error && (

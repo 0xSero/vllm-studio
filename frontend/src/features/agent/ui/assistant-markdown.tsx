@@ -93,8 +93,8 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border)/40 bg-[#181818]">
-      <div className="flex h-8 items-center justify-between border-b border-(--border)/30 bg-(--surface)/40 px-3">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border) bg-(--color-surface)">
+      <div className="flex h-8 items-center justify-between border-b border-(--border) px-3">
         <span className="font-mono text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>

@@ -189,8 +189,8 @@ function GitWorkflowBar({
           Commit all
         </Button>
         <span className="font-mono">
-          <span className="text-emerald-400">+{payload.additions ?? 0}</span>{" "}
-          <span className="text-red-400">-{payload.deletions ?? 0}</span>{" "}
+          <span className="text-(--color-diff-added)">+{payload.additions ?? 0}</span>{" "}
+          <span className="text-(--color-diff-removed)">-{payload.deletions ?? 0}</span>{" "}
           {payload.status?.length ?? 0} files
         </span>
       </div>
@@ -362,8 +362,8 @@ function DiffFileEntry({
       >
         <span className="min-w-0 flex-1 truncate">{file.path}</span>
         <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
-          <span className="text-emerald-400">+{file.additions}</span>{" "}
-          <span className="text-red-400">-{file.deletions}</span>
+          <span className="text-(--color-diff-added)">+{file.additions}</span>{" "}
+          <span className="text-(--color-diff-removed)">-{file.deletions}</span>
         </span>
       </summary>
       {open ? (
@@ -451,8 +451,8 @@ function StackedDiff({ file }: { file: DiffFile }) {
           <DiffStackLine key={`${file.path}-old-${index}`} line={line} />
         ))}
       </div>
-      <div className="rounded border border-emerald-500/20">
-        <div className="border-b border-emerald-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-emerald-300">
+      <div className="rounded-lg border border-(--color-diff-added)/25">
+        <div className="border-b border-(--color-diff-added)/25 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--color-diff-added)">
           After
         </div>
         {newLines.map((line, index) => (

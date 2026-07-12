@@ -54,7 +54,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           required={field.required}
           aria-describedby={describedBy}
           aria-invalid={field.invalid ?? (error ? true : undefined)}
-          className={`h-9 w-full rounded-md border border-(--ui-separator) bg-(--ui-bg) px-3 text-[length:var(--fs-base)] text-(--ui-fg) transition-all placeholder:text-(--ui-muted)/50 focus:border-(--ui-info)/50 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/20 ${icon ? "pl-9" : ""} ${error ? "border-(--ui-danger)" : ""} ${className}`}
+          className={`h-9 w-full rounded-[10px] border border-(--ui-separator) bg-(--surface-3) px-3 text-[length:var(--fs-base)] text-(--ui-fg) transition-all placeholder:text-(--hl2) focus:border-(--link)/70 focus:outline-none focus:ring-1 focus:ring-(--link)/25 ${icon ? "pl-9" : ""} ${error ? "border-(--ui-danger)" : ""} ${className}`}
           {...props}
         />
       </div>

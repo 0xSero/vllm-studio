@@ -14,19 +14,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-(--ui-fg)/90 text-(--ui-bg) hover:bg-(--ui-fg) disabled:opacity-50 disabled:cursor-not-allowed",
+    "bg-(--color-primary) text-(--color-primary-foreground) hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed",
   secondary:
-    "border border-(--ui-border) text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-50",
+    "bg-(--ui-fg)/5 text-(--ui-fg) hover:bg-(--ui-fg)/10 active:bg-(--ui-fg)/12 disabled:opacity-50",
   danger:
     "bg-(--ui-danger) text-(--destructive-foreground) hover:bg-(--ui-danger)/90 disabled:cursor-not-allowed disabled:opacity-50",
-  ghost: "text-(--ui-muted) hover:bg-(--ui-fg)/[0.06] hover:text-(--ui-fg) disabled:opacity-50",
+  ghost: "text-(--ui-muted) hover:bg-(--ui-fg)/[0.07] hover:text-(--ui-fg) disabled:opacity-50",
   icon: "text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-50",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: "h-7 px-2.5 text-xs",
-  md: "h-8 px-3 text-sm",
-  lg: "h-9 px-4 text-sm",
+  sm: "h-7 px-3 text-[length:var(--fs-sm)]",
+  md: "h-8 px-3.5 text-[length:var(--fs-base)]",
+  lg: "h-9 px-4 text-[length:var(--fs-base)]",
 };
 
 const iconSizeClasses: Record<ButtonSize, string> = {
@@ -51,7 +51,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 ) {
   const isIcon = variant === "icon";
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-[var(--rad-md)] font-medium transition-[transform,color,background-color,border-color,opacity] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.98]";
+    "inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-[transform,color,background-color,border-color,opacity] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) active:scale-[0.98]";
   const vClass = variantClasses[variant];
   const sClass = isIcon ? iconSizeClasses[size] : sizeClasses[size];
 
