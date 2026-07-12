@@ -1,25 +1,24 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
-import { ErrorBox, Input, Button } from "@/ui";
-import type { GitAction, GitRef, GitState } from "@/features/agent/contracts";
+import { ErrorBox, Button } from "@/ui";
+import type { GitAction, GitState } from "@/features/agent/contracts";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
-  diffLineClassName,
-  diffLinePrefix,
-  gitDiffHeaderTitle,
   parseUnifiedDiff,
   type DiffFile,
+  type DiffViewMode,
 } from "@/features/agent/ui/git-diff-panel-model";
+import { GitPanelHeader, GitWorkflowBar } from "@/features/agent/ui/git-diff-panel-workflow";
+import { DiffFileList } from "@/features/agent/ui/git-diff-panel-diff-view";
 
 export function GitDiffPanel({ cwd }: { cwd: string | null }) {
   const [payload, setPayload] = useState<(Partial<GitState> & { error?: string }) | null>(null);
   const [loading, setLoading] = useState(false);
   const [draftBranch, setDraftBranch] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
-  const [viewMode, setViewMode] = useState<"unified" | "side-by-side" | "stacked">("unified");
+  const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
 
   const load = useCallback(async () => {
     if (!cwd) return setPayload(null);
@@ -81,156 +80,6 @@ export function GitDiffPanel({ cwd }: { cwd: string | null }) {
   );
 }
 
-function GitPanelHeader({
-  cwd,
-  loading,
-  payload,
-  onReload,
-}: {
-  cwd: string | null;
-  loading: boolean;
-  payload: Partial<GitState> | null;
-  onReload: () => Promise<void>;
-}) {
-  return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-3 text-xs">
-      <GitBranchIcon className="h-3.5 w-3.5 text-(--dim)" />
-      <span className="min-w-0 flex-1 truncate text-(--fg)" title={cwd ?? ""}>
-        {gitDiffHeaderTitle(payload, cwd)}
-      </span>
-      <button
-        type="button"
-        onClick={() => void onReload()}
-        disabled={loading || !cwd}
-        className="rounded-md p-1 text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-40"
-        title="Refresh git state"
-      >
-        <ReloadIcon className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-      </button>
-    </div>
-  );
-}
-
-function GitWorkflowBar({
-  payload,
-  loading,
-  draftBranch,
-  commitMessage,
-  onDraftBranch,
-  onCommitMessage,
-  onRun,
-}: {
-  payload: (Partial<GitState> & { error?: string }) | null;
-  loading: boolean;
-  draftBranch: string;
-  commitMessage: string;
-  onDraftBranch: (value: string) => void;
-  onCommitMessage: (value: string) => void;
-  onRun: (action: GitAction) => Promise<void>;
-}) {
-  if (!payload?.isRepo) return null;
-  const dirty = (payload.status?.length ?? 0) > 0;
-  return (
-    <div className="grid gap-2 border-b border-(--border)/80 bg-(--color-panel) p-2 text-[length:var(--fs-sm)] text-(--dim)">
-      <div className="flex flex-wrap items-center gap-2">
-        <RefSelect
-          refs={payload.refs ?? []}
-          branch={payload.branch}
-          loading={loading}
-          onRun={onRun}
-        />
-        <Input
-          value={draftBranch}
-          onChange={(event) => onDraftBranch(event.target.value)}
-          placeholder="new branch"
-          className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none focus:border-(--border-hover)"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={loading || !draftBranch.trim()}
-          onClick={() => void onRun({ action: "createBranch", branch: draftBranch.trim() })}
-        >
-          Branch
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={loading || !payload.branch}
-          onClick={() => void onRun({ action: "push" })}
-        >
-          Push
-        </Button>
-        {payload.prUrl ? (
-          <a
-            className="h-7 rounded-md border border-(--border)/80 px-2 leading-7 text-(--fg) hover:bg-(--hover)"
-            href={payload.prUrl}
-            target="_blank"
-          >
-            PR
-          </a>
-        ) : null}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={commitMessage}
-          onChange={(event) => onCommitMessage(event.target.value)}
-          placeholder={dirty ? "commit message" : "working tree clean"}
-          disabled={!dirty}
-          className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none disabled:opacity-45 focus:border-(--border-hover)"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={loading || !dirty || !commitMessage.trim()}
-          onClick={() => void onRun({ action: "commit", message: commitMessage.trim(), paths: [] })}
-          title="Stage all current changes and commit"
-        >
-          Commit all
-        </Button>
-        <span className="font-mono">
-          <span className="text-emerald-400">+{payload.additions ?? 0}</span>{" "}
-          <span className="text-red-400">-{payload.deletions ?? 0}</span>{" "}
-          {payload.status?.length ?? 0} files
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function RefSelect({
-  refs,
-  branch,
-  loading,
-  onRun,
-}: {
-  refs: GitRef[];
-  branch?: string | null;
-  loading: boolean;
-  onRun: (action: GitAction) => Promise<void>;
-}) {
-  return (
-    <select
-      value={branch ?? ""}
-      disabled={loading || refs.length === 0}
-      onChange={(event) =>
-        event.currentTarget.value &&
-        void onRun({ action: "checkout", ref: event.currentTarget.value })
-      }
-      className="h-7 min-w-[9rem] rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg)"
-      title="Switch branch"
-    >
-      <option value="">{branch ?? "detached"}</option>
-      {refs.map((ref) => (
-        <option key={ref.name} value={ref.name}>
-          {ref.remote ? "remote/" : ""}
-          {ref.name}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 function GitDiffPanelBody({
   cwd,
   files,
@@ -242,8 +91,8 @@ function GitDiffPanelBody({
 }: {
   cwd: string | null;
   files: DiffFile[];
-  viewMode: "unified" | "side-by-side" | "stacked";
-  onViewMode: (mode: "unified" | "side-by-side" | "stacked") => void;
+  viewMode: DiffViewMode;
+  onViewMode: (mode: DiffViewMode) => void;
   initGit: () => Promise<void>;
   loading: boolean;
   payload: (Partial<GitState> & { error?: string }) | null;
@@ -295,226 +144,6 @@ function EmptyDiffPanel({ loading, status }: { loading: boolean; status: string[
       ) : null}
     </div>
   );
-}
-
-function DiffFileList({
-  files,
-  viewMode,
-  onViewMode,
-}: {
-  files: DiffFile[];
-  viewMode: "unified" | "side-by-side" | "stacked";
-  onViewMode: (mode: "unified" | "side-by-side" | "stacked") => void;
-}) {
-  return (
-    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[length:var(--fs-sm)] leading-5">
-      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--color-panel) py-1">
-        <DiffModeButton active={viewMode === "unified"} onClick={() => onViewMode("unified")}>
-          Unified
-        </DiffModeButton>
-        <DiffModeButton
-          active={viewMode === "side-by-side"}
-          onClick={() => onViewMode("side-by-side")}
-        >
-          Side by side
-        </DiffModeButton>
-        <DiffModeButton active={viewMode === "stacked"} onClick={() => onViewMode("stacked")}>
-          Top / bottom
-        </DiffModeButton>
-      </div>
-      <div className="flex flex-col gap-2">
-        {files.map((file, fileIndex) => (
-          <DiffFileEntry
-            key={file.path}
-            file={file}
-            viewMode={viewMode}
-            defaultOpen={fileIndex === 0}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Render a file's diff body only while its <details> is open. A collapsed
-// <details> keeps its children in the DOM, so without this a large diff (a
-// lockfile, a big refactor) would materialize every file's full line list at
-// once — tens of thousands of grid rows — and freeze the pane.
-function DiffFileEntry({
-  file,
-  viewMode,
-  defaultOpen,
-}: {
-  file: DiffFile;
-  viewMode: "unified" | "side-by-side" | "stacked";
-  defaultOpen: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <details
-      className="overflow-hidden rounded-md border border-(--border)/80 bg-(--color-panel)"
-      open={open}
-      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary
-        className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-2 py-1.5 text-xs text-(--fg) hover:bg-(--color-surface-hover)"
-        title={file.path}
-      >
-        <span className="min-w-0 flex-1 truncate">{file.path}</span>
-        <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
-          <span className="text-emerald-400">+{file.additions}</span>{" "}
-          <span className="text-red-400">-{file.deletions}</span>
-        </span>
-      </summary>
-      {open ? (
-        viewMode === "side-by-side" ? (
-          <SideBySideDiff file={file} />
-        ) : viewMode === "stacked" ? (
-          <StackedDiff file={file} />
-        ) : (
-          <UnifiedDiff file={file} />
-        )
-      ) : null}
-    </details>
-  );
-}
-
-function DiffModeButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-6 rounded px-2 text-[length:var(--fs-xs)] ${
-        active ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function UnifiedDiff({ file }: { file: DiffFile }) {
-  return (
-    <div className="min-w-max">
-      {file.lines.map((line, index) => (
-        <div
-          key={`${file.path}-${index}`}
-          className={`grid grid-cols-[3rem_3rem_1fr] gap-2 border-b border-(--border)/20 px-2 ${diffLineClassName(line.kind)}`}
-        >
-          <span className="select-none text-right text-(--dim)">{line.oldLine ?? ""}</span>
-          <span className="select-none text-right text-(--dim)">{line.newLine ?? ""}</span>
-          <span className="whitespace-pre">
-            {diffLinePrefix(line.kind)}
-            {line.text}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SideBySideDiff({ file }: { file: DiffFile }) {
-  const rows = pairDiffLines(file);
-  return (
-    <div className="min-w-[52rem]">
-      {rows.map((row, index) => (
-        <div
-          key={`${file.path}-pair-${index}`}
-          className="grid grid-cols-2 border-b border-(--border)/20"
-        >
-          <DiffCell line={row.left} side="old" />
-          <DiffCell line={row.right} side="new" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StackedDiff({ file }: { file: DiffFile }) {
-  const oldLines = file.lines.filter((line) => line.kind !== "add");
-  const newLines = file.lines.filter((line) => line.kind !== "del");
-  return (
-    <div className="grid gap-2 p-2">
-      <div className="rounded border border-red-500/20">
-        <div className="border-b border-red-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-red-300">
-          Before
-        </div>
-        {oldLines.map((line, index) => (
-          <DiffStackLine key={`${file.path}-old-${index}`} line={line} />
-        ))}
-      </div>
-      <div className="rounded border border-emerald-500/20">
-        <div className="border-b border-emerald-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-emerald-300">
-          After
-        </div>
-        {newLines.map((line, index) => (
-          <DiffStackLine key={`${file.path}-new-${index}`} line={line} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DiffCell({ line, side }: { line?: DiffFile["lines"][number]; side: "old" | "new" }) {
-  if (!line) {
-    return <div className="min-h-5 border-r border-(--border)/20 bg-(--color-surface)" />;
-  }
-  const lineNumber = side === "old" ? line.oldLine : line.newLine;
-  return (
-    <div
-      className={`grid grid-cols-[3rem_1fr] gap-2 border-r border-(--border)/20 px-2 ${diffLineClassName(line.kind)}`}
-    >
-      <span className="select-none text-right text-(--dim)">{lineNumber ?? ""}</span>
-      <span className="whitespace-pre">
-        {diffLinePrefix(line.kind)}
-        {line.text}
-      </span>
-    </div>
-  );
-}
-
-function DiffStackLine({ line }: { line: DiffFile["lines"][number] }) {
-  return (
-    <div className={`grid grid-cols-[3rem_1fr] gap-2 px-2 ${diffLineClassName(line.kind)}`}>
-      <span className="select-none text-right text-(--dim)">
-        {line.kind === "del" ? line.oldLine : (line.newLine ?? line.oldLine ?? "")}
-      </span>
-      <span className="whitespace-pre">
-        {diffLinePrefix(line.kind)}
-        {line.text}
-      </span>
-    </div>
-  );
-}
-
-function pairDiffLines(file: DiffFile): Array<{
-  left?: DiffFile["lines"][number];
-  right?: DiffFile["lines"][number];
-}> {
-  const rows: Array<{ left?: DiffFile["lines"][number]; right?: DiffFile["lines"][number] }> = [];
-  const pendingDeletes: DiffFile["lines"] = [];
-  for (const line of file.lines) {
-    if (line.kind === "del") {
-      pendingDeletes.push(line);
-      continue;
-    }
-    if (line.kind === "add") {
-      rows.push({ left: pendingDeletes.shift(), right: line });
-      continue;
-    }
-    while (pendingDeletes.length > 0) rows.push({ left: pendingDeletes.shift() });
-    rows.push({ left: line, right: line });
-  }
-  while (pendingDeletes.length > 0) rows.push({ left: pendingDeletes.shift() });
-  return rows;
 }
 
 function useGitDiffPanelEffects(load: () => Promise<void>): void {
