@@ -217,7 +217,7 @@ function WorkspacePaneContent({
 function ComputerPanelFallback() {
   return (
     <aside className="relative flex w-[360px] shrink-0 flex-col border-l border-(--border) bg-(--color-panel)">
-      <div className="h-10 shrink-0 border-b border-(--border)/85 bg-(--color-header)" />
+      <div className="h-[var(--h-toolbar-pane)] shrink-0 border-b border-(--border) bg-(--color-header)" />
       <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-(--dim)">
         Loading tools...
       </div>
@@ -291,7 +291,7 @@ function ProjectEmptyState() {
         <button
           type="button"
           onClick={triggerAddProjectFlow}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded border border-(--border) bg-(--surface) px-3 text-sm font-medium text-(--fg) hover:bg-(--bg)"
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-(--fg)/5 px-4 text-[length:var(--fs-base)] font-medium text-(--fg) hover:bg-(--fg)/10"
         >
           <PlusIcon className="h-4 w-4" />
           Add a project

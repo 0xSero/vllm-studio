@@ -80,7 +80,7 @@ export function PageHeader({
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{description}</p>
+          <p className="mt-1 text-[length:var(--fs-md)] text-(--ui-muted)">{description}</p>
         ) : null}
       </div>
       {(actions ?? status) ? (
@@ -115,9 +115,9 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
+                "group grid h-9 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
                 active
-                  ? "bg-(--ui-hover) text-(--ui-fg)"
+                  ? "bg-(--ui-active) text-(--ui-fg)"
                   : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",
               )}
               title={item.description}

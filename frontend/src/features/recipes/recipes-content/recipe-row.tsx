@@ -147,7 +147,7 @@ export const RecipeRow = memo(function RecipeRow({
               <MoreVertical className="h-3 w-3" />
             </ModelButton>
             {isMenuOpen ? (
-              <div className="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-md border border-(--color-popover-border) bg-(--color-popover) shadow-[0_16px_44px_rgba(0,0,0,0.48)]">
+              <div className="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
                 <button
                   onClick={handleTogglePin}
                   className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
