@@ -1,12 +1,14 @@
-/* Theme system — Codex desktop workbench design language
+/* Theme system — desktop workbench design language
 
    Single source of truth for the visual language. Every component reads from
    these CSS variables; no hardcoded colors, radii, or row heights live in
    component files.
 
-   Inspired by the Codex desktop app's layered charcoal surfaces: a near-black
-   root, slightly lifted rails and panels, muted gray hierarchy, compact
-   control radii, and only occasional low-saturation accents for links/status.
+   The system is a warm neutral gray ramp over a unified canvas: one surface
+   color for window, rail, and panels separated by translucent hairline
+   borders; elevated grays for cards and popovers; white-overlay hover/active
+   states; a single saturated blue accent for links and focus; and calibrated
+   green/orange/red status hues.
 
    The `--ui-*` adapter layer and the shadcn/Radix compatibility aliases are
    preserved and repointed to the new tokens, so existing components re-skin
@@ -14,9 +16,9 @@
 :root {
   /* Master knobs — the values the Appearance editor controls. Type / radius /
      weight all derive from these via calc(), so a handful of values re-theme
-     the whole app uniformly. Defaults reproduce the Codex-like density. */
+     the whole app uniformly. */
   --ui-scale: 1; /* master text-size multiplier — scales the entire type ramp */
-  --leading: 1.55; /* base line-height */
+  --leading: 1.5; /* base line-height */
   --leading-tight: 1.25;
   --weight-normal: 400;
   --weight-medium: 500;
@@ -24,6 +26,51 @@
   --radius-base: 10px; /* master corner radius — the radius ramp scales from it */
   --border-width: 1px;
   --space-base: 4px; /* base spacing unit */
+
+  /* ──────────────────────────────────────────────────────────────────────
+     Gray ramp — the neutral primitives every surface derives from.
+     ────────────────────────────────────────────────────────────────────── */
+  --gray-0: #fff;
+  --gray-50: #f9f9f9;
+  --gray-75: #f3f3f3;
+  --gray-100: #ededed;
+  --gray-300: #afafaf;
+  --gray-500: #5d5d5d;
+  --gray-550: #4f4f4f;
+  --gray-600: #414141;
+  --gray-700: #303030;
+  --gray-750: #282828;
+  --gray-800: #212121;
+  --gray-900: #181818;
+  --gray-1000: #0d0d0d;
+
+  /* Accent primitives — one blue family plus calibrated status hues. */
+  --blue-50: #e5f3ff;
+  --blue-100: #99ceff;
+  --blue-300: #339cff;
+  --blue-400: #0285ff;
+  --blue-900: #00284d;
+  --green-50: #d9f4e4;
+  --green-300: #40c977;
+  --green-400: #04b84c;
+  --green-500: #00a240;
+  --green-700: #00692a;
+  --red-50: #ffd9d9;
+  --red-300: #ff6764;
+  --red-400: #fa423e;
+  --red-500: #e02e2a;
+  --red-600: #ba2623;
+  --red-900: #4d100e;
+  --orange-50: #ffe7d9;
+  --orange-300: #ff8549;
+  --orange-400: #fb6a22;
+  --orange-500: #e25507;
+  --orange-900: #4a2206;
+  --yellow-300: #ffd240;
+  --yellow-400: #ffc300;
+  --purple-300: #ad7bf9;
+  --purple-400: #924ff7;
+  --pink-400: #ff66ad;
 
   /* ──────────────────────────────────────────────────────────────────────
      Tailwind primitive palette — neutral + accent stops used by the app so
@@ -106,13 +153,14 @@
 
   /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
      attribute both select the default dark system; `.theme-zai-*` class hooks are
-     also wired for parity with the source app. */
+     also wired for parity. */
   color-scheme: dark;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Codex LIGHT — `.theme-zai-light` / `[data-theme="zai-light"]`
-   Neutral canvas, near-white surfaces, black brand, sky-blue data accents.
+   LIGHT — `.theme-zai-light` / `[data-theme="zai-light"]`
+   Pure white canvas, near-white rail, hairline foreground-mix borders,
+   near-black brand, one blue accent.
    ────────────────────────────────────────────────────────────────────────── */
 .theme-zai-light,
 :root[data-theme="zai-light"] {
@@ -121,35 +169,37 @@
   --animated-gradient-text-strong: #0d0d0d;
   --animated-gradient-text-soft: #0d0d0d38;
 
-  --color-background: #f4f5f5;
-  --color-background-win-alt: #e9ebec;
+  --color-background: var(--gray-0);
+  --color-background-win-alt: var(--gray-50);
   --color-background-alt: var(--color-background-win-alt);
 
-  --color-brand: #1a1a1a;
-  --color-accent: #ebf4ff;
-  --color-find-highlight: #fff4eb;
-  --color-find-highlight-active: #ffb26b;
+  --color-brand: var(--gray-1000);
+  --color-accent: var(--blue-50);
+  --color-find-highlight: var(--orange-50);
+  --color-find-highlight-active: var(--orange-300);
 
-  --color-border: #d7d9da;
-  --color-border-hover: #c8cbcd;
-  --color-hover: #e8eaeb;
-  --color-selected: #dde0e1;
+  /* Hairline borders — translucent foreground mixes so they sit correctly on
+     any surface. 8% default, 16% heavy (hover), 5% light. */
+  --color-border: #1a1c1f14;
+  --color-border-hover: #1a1c1f29;
+  --color-hover: #1a1c1f0d;
+  --color-selected: #1a1c1f14;
 
-  --color-header: #fbfbfb;
-  --color-panel: #fbfbfb;
-  --color-sidebar: #eceeee;
-  --color-surface: #f0f1f1;
-  --color-surface-hover: #e4e6e7;
+  --color-header: var(--gray-0);
+  --color-panel: var(--gray-0);
+  --color-sidebar: var(--gray-50);
+  --color-surface: var(--gray-75);
+  --color-surface-hover: var(--gray-100);
 
-  --color-card: #fbfbfb;
+  --color-card: var(--gray-0);
   --color-card-selected: var(--color-input);
   --color-card-border: var(--color-border);
 
-  --color-popover: #fbfbfb;
-  --color-popover-header: #f4f5f5;
+  --color-popover: var(--gray-0);
+  --color-popover-header: var(--gray-50);
   --color-popover-border: var(--color-border);
 
-  --color-input: #fbfbfb;
+  --color-input: var(--gray-0);
   --color-input-focused: var(--color-input);
   --color-input-border: var(--color-border);
   --color-input-border-hover: var(--color-border-hover);
@@ -160,127 +210,130 @@
   --color-terminal-fg: var(--color-foreground);
   --color-terminal-cursor: #0d0d0d;
   --color-terminal-cursor-accent: var(--color-background);
-  --color-terminal-selection: #0b7fff38;
+  --color-terminal-selection: #0285ff38;
   --color-terminal-selection-inactive: #0d0d0d1a;
   --color-terminal-black: #5c5c5c;
-  --color-terminal-red: #e03131;
-  --color-terminal-green: #1e8a3e;
-  --color-terminal-yellow: #e07b00;
-  --color-terminal-blue: #0b7fff;
-  --color-terminal-magenta: #9e77ed;
+  --color-terminal-red: #e02e2a;
+  --color-terminal-green: #00a240;
+  --color-terminal-yellow: #e25507;
+  --color-terminal-blue: #0285ff;
+  --color-terminal-magenta: #924ff7;
   --color-terminal-cyan: #0aa7a7;
   --color-terminal-white: #adadad;
   --color-terminal-bright-black: #888;
-  --color-terminal-bright-red: #e03131;
-  --color-terminal-bright-green: #1e8a3e;
-  --color-terminal-bright-yellow: #e07b00;
-  --color-terminal-bright-blue: #06d;
-  --color-terminal-bright-magenta: #9e77ed;
-  --color-terminal-bright-cyan: #0aa7a7;
+  --color-terminal-bright-red: #fa423e;
+  --color-terminal-bright-green: #04b84c;
+  --color-terminal-bright-yellow: #fb6a22;
+  --color-terminal-bright-blue: #006aff;
+  --color-terminal-bright-magenta: #9840ff;
+  --color-terminal-bright-cyan: #20b8ff;
   --color-terminal-bright-white: #0d0d0d;
 
-  /* Usage charts — light sky/teal/violet/red/amber/cyan */
-  --color-usage-chart-1: #6b8db5;
-  --color-usage-chart-2: #2f8f5f;
-  --color-usage-chart-3: #8672b9;
-  --color-usage-chart-4: #d35656;
-  --color-usage-chart-5: #c8792f;
-  --color-usage-chart-6: #2d8e91;
-  --color-usage-chart-7: #c9a227;
-  --color-usage-chart-8: #d65a93;
-  --color-usage-chart-9: #5a78d6;
-  --color-usage-chart-10: #88b540;
-  --color-usage-chart-11: #b14a7a;
-  --color-usage-chart-12: #3aa7d8;
+  /* Usage charts — accent family on white */
+  --color-usage-chart-1: #0285ff;
+  --color-usage-chart-2: #00a240;
+  --color-usage-chart-3: #924ff7;
+  --color-usage-chart-4: #e02e2a;
+  --color-usage-chart-5: #e25507;
+  --color-usage-chart-6: #0aa7a7;
+  --color-usage-chart-7: #d29b00;
+  --color-usage-chart-8: #e0559a;
+  --color-usage-chart-9: #006aff;
+  --color-usage-chart-10: #04b84c;
+  --color-usage-chart-11: #7453d0;
+  --color-usage-chart-12: #20a8d8;
 
-  /* Context breakdown — sky ramp, deep→pale */
-  --color-context-breakdown-1: #0b7fff;
-  --color-context-breakdown-2: #338fff;
-  --color-context-breakdown-3: #5ca7ff;
-  --color-context-breakdown-4: #85bbff;
-  --color-context-breakdown-5: #acd0ff;
-  --color-context-breakdown-6: #c8ddff;
-  --color-context-breakdown-7: #e0ecff;
+  /* Context breakdown — blue ramp, deep→pale */
+  --color-context-breakdown-1: #0285ff;
+  --color-context-breakdown-2: #339cff;
+  --color-context-breakdown-3: #5cadff;
+  --color-context-breakdown-4: #85c2ff;
+  --color-context-breakdown-5: #a8d3ff;
+  --color-context-breakdown-6: #c9e3ff;
+  --color-context-breakdown-7: #e5f3ff;
 
-  /* Usage heatmap — 5-step sky ramp, 0%→82% saturation over the surface */
-  --color-usage-heatmap-0: color-mix(in oklab, #0b7fff 0%, var(--color-surface));
-  --color-usage-heatmap-1: color-mix(in oklab, #0b7fff 18%, var(--color-surface));
-  --color-usage-heatmap-2: color-mix(in oklab, #0b7fff 36%, var(--color-surface));
-  --color-usage-heatmap-3: color-mix(in oklab, #0b7fff 58%, var(--color-surface));
-  --color-usage-heatmap-4: color-mix(in oklab, #06d 82%, var(--color-surface));
+  /* Usage heatmap — 5-step blue ramp, 0%→82% saturation over the surface */
+  --color-usage-heatmap-0: color-mix(in oklab, #0285ff 0%, var(--color-surface));
+  --color-usage-heatmap-1: color-mix(in oklab, #0285ff 18%, var(--color-surface));
+  --color-usage-heatmap-2: color-mix(in oklab, #0285ff 36%, var(--color-surface));
+  --color-usage-heatmap-3: color-mix(in oklab, #0285ff 58%, var(--color-surface));
+  --color-usage-heatmap-4: color-mix(in oklab, #006aff 82%, var(--color-surface));
 
-  --color-tab: #eceeee;
-  --color-tab-active: #fbfbfb;
+  --color-tab: var(--gray-50);
+  --color-tab-active: var(--gray-0);
   --color-tab-border: var(--color-border);
 
-  --color-menu: #fbfbfb;
-  --color-menu-hover: #eceeee;
+  --color-menu: var(--gray-0);
+  --color-menu-hover: #1a1c1f0d;
 
-  --color-primary: #000;
+  --color-primary: var(--gray-1000);
   --color-primary-foreground: #fff;
-  --color-secondary: #e6e6e6;
+  --color-secondary: #1a1c1f14;
 
-  --color-foreground: var(--color-neutral-800);
-  --color-foreground-subtle: #5d6266;
-  --color-foreground-subtlest: #858a8e;
+  --color-foreground: #1a1c1f;
+  --color-foreground-subtle: #5f6165;
+  --color-foreground-subtlest: #8c8e91;
   --color-foreground-inverse: #fff;
 
-  --color-success: #2e8f52;
+  --color-success: var(--green-500);
   --color-success-foreground: #fff;
-  --color-destructive: #cc4a4a;
+  --color-destructive: var(--red-500);
   --color-destructive-foreground: #fff;
-  --color-warning: #c97b2d;
+  --color-warning: var(--orange-500);
   --color-warning-foreground: #fff;
 
-  --color-diff-added: #1e8a3e;
+  --color-diff-added: var(--green-500);
   --color-diff-added-foreground: #fff;
-  --color-diff-removed: #e03131;
+  --color-diff-removed: var(--red-500);
   --color-diff-removed-foreground: #fff;
+  --color-diff-added-bg: #00a24026;
+  --color-diff-removed-bg: #e02e2a1f;
 
   --color-git-none: var(--color-foreground);
-  --color-git-modified: #e07b00;
-  --color-git-added: #1e8a3e;
-  --color-git-deleted: #e03131;
-  --color-git-renamed: #0b7fff;
-  --color-git-untracked: #1e8a3e;
+  --color-git-modified: var(--orange-500);
+  --color-git-added: var(--green-500);
+  --color-git-deleted: var(--red-500);
+  --color-git-renamed: var(--blue-400);
+  --color-git-untracked: var(--green-400);
   --color-git-ignored: var(--color-foreground-subtlest);
-  --color-git-descendant: #e07b00;
+  --color-git-descendant: var(--orange-500);
 
   --color-toast: #fff;
-  --color-tooltip: #f0f0f0;
-  --color-tooltip-foreground: #0d0d0d;
-  --color-tooltip-tag: #e6e6e6;
-  --color-tooltip-tag-foreground: #5c5c5c;
-  --color-tag: #e6e6e6;
+  --color-tooltip: var(--gray-1000);
+  --color-tooltip-foreground: var(--gray-50);
+  --color-tooltip-tag: var(--gray-700);
+  --color-tooltip-tag-foreground: var(--gray-300);
+  --color-tag: #1a1c1f14;
 
   /* Node taxonomy — color-coding for engines/models/sessions/skills/agents */
-  --color-file-node: #1a70b81a;
-  --color-file-node-hover: #1a70b829;
-  --color-file-node-foreground: #1a70b8;
-  --color-skill-node: #7453b01a;
-  --color-skill-node-hover: #7453b029;
-  --color-skill-node-foreground: #7453b0;
-  --color-command-node: #5662701a;
-  --color-command-node-hover: #56627029;
-  --color-command-node-foreground: #566270;
-  --color-subagent-node: #6f7a2f1a;
-  --color-subagent-node-hover: #6f7a2f29;
-  --color-subagent-node-foreground: #6f7a2f;
-  --color-session-node: #14807a1a;
-  --color-session-node-hover: #14807a29;
-  --color-session-node-foreground: #14807a;
-  --color-syntax-keyword: #1a70b8;
-  --color-syntax-string: #2e8f52;
-  --color-syntax-title: #b43c4b;
-  --color-syntax-value: #a13c72;
-  --color-syntax-comment: #73787c;
-  --color-syntax-deletion: #cc4a4a;
+  --color-file-node: #0285ff1a;
+  --color-file-node-hover: #0285ff29;
+  --color-file-node-foreground: #0269cc;
+  --color-skill-node: #924ff71a;
+  --color-skill-node-hover: #924ff729;
+  --color-skill-node-foreground: #8036ea;
+  --color-command-node: #5d5d5d1a;
+  --color-command-node-hover: #5d5d5d29;
+  --color-command-node-foreground: #5d5d5d;
+  --color-subagent-node: #a07c001a;
+  --color-subagent-node-hover: #a07c0029;
+  --color-subagent-node-foreground: #a07c00;
+  --color-session-node: #0aa7a71a;
+  --color-session-node-hover: #0aa7a729;
+  --color-session-node-foreground: #0a8787;
+  --color-syntax-keyword: #0269cc;
+  --color-syntax-string: var(--green-700);
+  --color-syntax-title: var(--red-600);
+  --color-syntax-value: #c22f88;
+  --color-syntax-comment: #767a7e;
+  --color-syntax-deletion: var(--red-600);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Codex DARK — `.theme-zai-dark` / `.dark` / `[data-theme="zai-dark"]`
-   Near-black canvas, layered charcoal surfaces, white brand, muted data.
-   This is the live default (set on <html data-theme="zai-dark">).
+   DARK — `.theme-zai-dark` / `.dark` / `[data-theme="zai-dark"]`
+   Unified warm-charcoal canvas (one surface for window, rail, and panels),
+   elevated grays for cards/popovers, translucent white hairlines and
+   overlays, one blue accent. This is the live default.
    ────────────────────────────────────────────────────────────────────────── */
 .theme-zai-dark,
 .dark,
@@ -291,35 +344,37 @@
   --animated-gradient-text-strong: #fff;
   --animated-gradient-text-soft: #ffffff38;
 
-  --color-background: #0f0f0f;
-  --color-background-win-alt: #202020;
+  --color-background: var(--gray-900);
+  --color-background-win-alt: var(--gray-1000);
   --color-background-alt: var(--color-background-win-alt);
 
-  --color-brand: #f2f2f0;
-  --color-accent: #1c2734;
-  --color-find-highlight: #3a2a18;
-  --color-find-highlight-active: #d48a4c;
+  --color-brand: #fff;
+  --color-accent: var(--blue-900);
+  --color-find-highlight: var(--orange-900);
+  --color-find-highlight-active: var(--orange-400);
 
-  --color-border: #2a2a2a;
-  --color-border-hover: #393939;
-  --color-hover: #242424;
-  --color-selected: #2d2d2d;
+  /* Hairline borders — translucent white mixes: 8% default, 16% heavy,
+     4% light. Hover/selected are white overlays (5% / 8%). */
+  --color-border: #ffffff14;
+  --color-border-hover: #ffffff29;
+  --color-hover: #ffffff0d;
+  --color-selected: #ffffff14;
 
-  --color-header: #101010;
-  --color-panel: #111111;
-  --color-sidebar: #191919;
-  --color-surface: #1b1b1b;
-  --color-surface-hover: #252525;
+  --color-header: var(--gray-900);
+  --color-panel: var(--gray-900);
+  --color-sidebar: var(--gray-900);
+  --color-surface: var(--gray-800);
+  --color-surface-hover: var(--gray-750);
 
-  --color-card: #181818;
+  --color-card: var(--gray-800);
   --color-card-selected: var(--color-input);
   --color-card-border: var(--color-border);
 
-  --color-popover: #1a1a1a;
-  --color-popover-header: #1e1e1e;
+  --color-popover: var(--gray-750);
+  --color-popover-header: var(--gray-700);
   --color-popover-border: #ffffff1a;
 
-  --color-input: #242424;
+  --color-input: #ffffff0d;
   --color-input-focused: var(--color-input);
   --color-input-border: var(--color-border);
   --color-input-border-hover: var(--color-border-hover);
@@ -329,126 +384,128 @@
   --color-terminal-bg: var(--color-background);
   --color-terminal-fg: var(--color-foreground);
   --color-terminal-cursor: #f8f8f8;
-  --color-terminal-cursor-accent: #161616;
-  --color-terminal-selection: #7ea1c847;
+  --color-terminal-cursor-accent: var(--gray-900);
+  --color-terminal-selection: #339cff47;
   --color-terminal-selection-inactive: #ffffff14;
   --color-terminal-black: #363636;
-  --color-terminal-red: #ff5c5c;
-  --color-terminal-green: #46bf72;
-  --color-terminal-yellow: #d48a4c;
-  --color-terminal-blue: #7ea1c8;
-  --color-terminal-magenta: #7b5ce5;
-  --color-terminal-cyan: #42c8c8;
+  --color-terminal-red: #f67576;
+  --color-terminal-green: #85df7b;
+  --color-terminal-yellow: #fa994c;
+  --color-terminal-blue: #3d8dff;
+  --color-terminal-magenta: #b06dff;
+  --color-terminal-cyan: #6dcbf4;
   --color-terminal-white: #adadad;
   --color-terminal-bright-black: #747474;
-  --color-terminal-bright-red: #f99;
-  --color-terminal-bright-green: #87d9a4;
-  --color-terminal-bright-yellow: #ffb26b;
-  --color-terminal-bright-blue: #9ab6d2;
-  --color-terminal-bright-magenta: #a888f2;
-  --color-terminal-bright-cyan: #8ee5e5;
+  --color-terminal-bright-red: #f44a4c;
+  --color-terminal-bright-green: #59d24e;
+  --color-terminal-bright-yellow: #f87915;
+  --color-terminal-bright-blue: #55a2ff;
+  --color-terminal-bright-magenta: #c592ff;
+  --color-terminal-bright-cyan: #20b8ff;
   --color-terminal-bright-white: #f8f8f8;
 
-  /* Usage charts */
-  --color-usage-chart-1: #7ea1c8;
-  --color-usage-chart-2: #4aa06f;
-  --color-usage-chart-3: #8d7fc6;
-  --color-usage-chart-4: #e16b6b;
-  --color-usage-chart-5: #d48a4c;
-  --color-usage-chart-6: #65aaa9;
-  --color-usage-chart-7: #d8b53a;
-  --color-usage-chart-8: #e87ba9;
-  --color-usage-chart-9: #6f8ce0;
-  --color-usage-chart-10: #9cc45a;
-  --color-usage-chart-11: #c26890;
-  --color-usage-chart-12: #5cb8e3;
+  /* Usage charts — accent family on charcoal */
+  --color-usage-chart-1: #339cff;
+  --color-usage-chart-2: #40c977;
+  --color-usage-chart-3: #ad7bf9;
+  --color-usage-chart-4: #ff6764;
+  --color-usage-chart-5: #ff8549;
+  --color-usage-chart-6: #6dcbf4;
+  --color-usage-chart-7: #ffd240;
+  --color-usage-chart-8: #ff66ad;
+  --color-usage-chart-9: #0285ff;
+  --color-usage-chart-10: #85df7b;
+  --color-usage-chart-11: #924ff7;
+  --color-usage-chart-12: #20b8ff;
 
-  /* Context breakdown — sky ramp */
-  --color-context-breakdown-1: #7ea1c8;
-  --color-context-breakdown-2: #91adc9;
-  --color-context-breakdown-3: #a1b8cf;
-  --color-context-breakdown-4: #b1c4d7;
-  --color-context-breakdown-5: #c3d0df;
-  --color-context-breakdown-6: #d1dbe6;
-  --color-context-breakdown-7: #e0e6ec;
+  /* Context breakdown — blue ramp */
+  --color-context-breakdown-1: #339cff;
+  --color-context-breakdown-2: #5cadff;
+  --color-context-breakdown-3: #7cbcff;
+  --color-context-breakdown-4: #99ceff;
+  --color-context-breakdown-5: #b5daff;
+  --color-context-breakdown-6: #cfe7ff;
+  --color-context-breakdown-7: #e5f3ff;
 
-  /* Usage heatmap — 5-step sky ramp over the dark surface */
-  --color-usage-heatmap-0: color-mix(in oklab, #7ea1c8 0%, var(--color-surface));
-  --color-usage-heatmap-1: color-mix(in oklab, #7ea1c8 22%, var(--color-surface));
-  --color-usage-heatmap-2: color-mix(in oklab, #7ea1c8 38%, var(--color-surface));
-  --color-usage-heatmap-3: color-mix(in oklab, #7ea1c8 56%, var(--color-surface));
-  --color-usage-heatmap-4: color-mix(in oklab, #9ab6d2 72%, var(--color-surface));
+  /* Usage heatmap — 5-step blue ramp over the dark surface */
+  --color-usage-heatmap-0: color-mix(in oklab, #339cff 0%, var(--color-surface));
+  --color-usage-heatmap-1: color-mix(in oklab, #339cff 22%, var(--color-surface));
+  --color-usage-heatmap-2: color-mix(in oklab, #339cff 38%, var(--color-surface));
+  --color-usage-heatmap-3: color-mix(in oklab, #339cff 56%, var(--color-surface));
+  --color-usage-heatmap-4: color-mix(in oklab, #99ceff 72%, var(--color-surface));
 
-  --color-tab: #191919;
-  --color-tab-active: #101010;
+  --color-tab: var(--gray-900);
+  --color-tab-active: var(--gray-800);
   --color-tab-border: var(--color-border);
 
-  --color-menu: #222222;
-  --color-menu-hover: #2b2b2b;
+  --color-menu: var(--gray-750);
+  --color-menu-hover: #ffffff14;
 
-  --color-primary: #f2f2f0;
-  --color-primary-foreground: #000;
-  --color-secondary: #2b2b2b;
+  --color-primary: #fff;
+  --color-primary-foreground: var(--gray-1000);
+  --color-secondary: #ffffff14;
 
-  --color-foreground: #e7e7e7;
-  --color-foreground-subtle: #969696;
-  --color-foreground-subtlest: #686868;
+  --color-foreground: #fff;
+  --color-foreground-subtle: #ffffffb3;
+  --color-foreground-subtlest: #ffffff80;
   --color-foreground-inverse: #000;
 
-  --color-success: #5cb87f;
-  --color-success-foreground: #000;
-  --color-destructive: #e57373;
-  --color-destructive-foreground: #000;
-  --color-warning: #cf9060;
-  --color-warning-foreground: #000;
+  --color-success: var(--green-300);
+  --color-success-foreground: var(--gray-1000);
+  --color-destructive: var(--red-300);
+  --color-destructive-foreground: var(--gray-1000);
+  --color-warning: var(--orange-300);
+  --color-warning-foreground: var(--gray-1000);
 
-  --color-diff-added: #46bf72;
-  --color-diff-added-foreground: #000;
-  --color-diff-removed: #ff5c5c;
-  --color-diff-removed-foreground: #000;
+  --color-diff-added: var(--green-300);
+  --color-diff-added-foreground: var(--gray-1000);
+  --color-diff-removed: var(--red-400);
+  --color-diff-removed-foreground: var(--gray-1000);
+  --color-diff-added-bg: #40c9773b;
+  --color-diff-removed-bg: #fa423e3b;
 
   --color-git-none: var(--color-foreground);
-  --color-git-modified: #ff8a30;
-  --color-git-added: #46bf72;
-  --color-git-deleted: #ff5c5c;
-  --color-git-renamed: #7ea1c8;
-  --color-git-untracked: #46bf72;
+  --color-git-modified: var(--orange-300);
+  --color-git-added: var(--green-300);
+  --color-git-deleted: var(--red-300);
+  --color-git-renamed: var(--blue-300);
+  --color-git-untracked: var(--green-300);
   --color-git-ignored: var(--color-foreground-subtlest);
-  --color-git-descendant: #ff8a30;
+  --color-git-descendant: var(--orange-300);
 
-  --color-toast: #222222;
-  --color-tooltip: #222222;
+  --color-toast: var(--gray-750);
+  --color-tooltip: var(--gray-700);
   --color-tooltip-foreground: #f8f8f8;
-  --color-tooltip-tag: #2b2b2b;
-  --color-tooltip-tag-foreground: #adadad;
-  --color-tag: #2b2b2b;
+  --color-tooltip-tag: var(--gray-600);
+  --color-tooltip-tag-foreground: var(--gray-300);
+  --color-tag: #ffffff14;
 
   /* Node taxonomy */
-  --color-file-node: #7ea1c824;
-  --color-file-node-hover: #7ea1c833;
-  --color-file-node-foreground: #a7bfd8;
-  --color-skill-node: #a689da29;
-  --color-skill-node-hover: #a689da38;
-  --color-skill-node-foreground: #bda5e6;
-  --color-command-node: #9aa6b424;
-  --color-command-node-hover: #9aa6b433;
-  --color-command-node-foreground: #b5c0cc;
-  --color-subagent-node: #b7bd7529;
-  --color-subagent-node-hover: #b7bd7538;
-  --color-subagent-node-foreground: #c8cd90;
-  --color-session-node: #65aaa924;
-  --color-session-node-hover: #65aaa933;
-  --color-session-node-foreground: #93cfcd;
-  --color-syntax-keyword: #7db7df;
-  --color-syntax-string: #75c892;
-  --color-syntax-title: #ef7d89;
-  --color-syntax-value: #dd83b1;
-  --color-syntax-comment: #858a8e;
-  --color-syntax-deletion: #ff7373;
+  --color-file-node: #339cff24;
+  --color-file-node-hover: #339cff38;
+  --color-file-node-foreground: #7cbfff;
+  --color-skill-node: #ad7bf929;
+  --color-skill-node-hover: #ad7bf938;
+  --color-skill-node-foreground: #c5a1fb;
+  --color-command-node: #afafaf24;
+  --color-command-node-hover: #afafaf33;
+  --color-command-node-foreground: #c6c6c6;
+  --color-subagent-node: #ffd24024;
+  --color-subagent-node-hover: #ffd24038;
+  --color-subagent-node-foreground: #ffdf70;
+  --color-session-node: #6dcbf424;
+  --color-session-node-hover: #6dcbf433;
+  --color-session-node-foreground: #9adcf7;
+  --color-syntax-keyword: #339cff;
+  --color-syntax-string: #85df7b;
+  --color-syntax-title: #f67576;
+  --color-syntax-value: #ff66ad;
+  --color-syntax-comment: #8f8f8f;
+  --color-syntax-deletion: var(--red-300);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Legacy local-studio token names — repointed onto the Codex-like system so every
+   Legacy local-studio token names — repointed onto the new system so every
    existing component re-skins without class-name changes. `--bg/--fg/--dim/
    --surface, --rail, --border and friends all resolve to the same values.
    ────────────────────────────────────────────────────────────────────────── */
@@ -471,10 +528,10 @@
   --separator: var(--color-border);
   --hover: var(--color-hover);
   --active: var(--color-selected);
-  --composer: var(--color-card);
-  --composer-footer: var(--color-card);
+  --composer: var(--color-surface);
+  --composer-footer: var(--color-surface);
 
-  /* Accents — grayscale brand + the sanctioned chroma: sky-blue link/brand */
+  /* Accents — grayscale brand + one sanctioned chroma: the blue accent */
   --accent: var(--color-brand);
   --hl1: var(--color-foreground-subtle);
   --hl2: var(--color-foreground-subtlest);
@@ -482,8 +539,8 @@
   --err: var(--color-destructive);
   --ok: var(--color-success);
   --warn: var(--color-warning);
-  /* Muted blue — links, file/URL chips, focus, live status */
-  --link: #7ea1c8;
+  /* Blue — links, file/URL chips, focus, live status */
+  --link: var(--blue-300);
 }
 
 .theme-zai-light,
@@ -512,7 +569,7 @@
   --err: var(--color-destructive);
   --ok: var(--color-success);
   --warn: var(--color-warning);
-  --link: #6b8db5;
+  --link: var(--blue-400);
 
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
 }
@@ -526,56 +583,79 @@
 
 @media (min-width: 1024px) {
   :root {
-    --composer-w: clamp(25vw, 46rem, 50vw);
+    --composer-w: clamp(25vw, 48rem, 52vw);
     --thread-w: 900px;
   }
 }
 
 :root {
-  /* Density / dimensions (Codex desktop geometry) */
-  --sidebar-w: 224px;
+  /* Density / dimensions */
+  --sidebar-w: 260px;
   --sidebar-w-collapsed: 48px;
-  --row-h: 28px;
-  --row-h-sm: 24px;
+  --row-h: 36px;
+  --row-h-sm: 28px;
   --row-radius: var(--rad-md);
-  /* Composer / thread geometry preserved from local-studio. */
-  --composer-w: clamp(25vw, 46rem, 50vw);
+  /* Toolbar heights — main bar, small bar, pane header. */
+  --h-toolbar: 46px;
+  --h-toolbar-sm: 36px;
+  --h-toolbar-pane: 40px;
+  /* Composer / thread geometry: a 48rem reading column. */
+  --composer-w: clamp(25vw, 48rem, 52vw);
   --thread-w: 900px;
-  --composer-radius: 18px;
+  --composer-radius: 24px;
+  --composer-radius-single: 22px;
   --composer-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
 
   /* Typography */
-  --text-nav: var(--fs-xl);
+  --text-nav: var(--fs-base);
   --text-section: var(--fs-base);
   --section-tracking: 0.16em;
 
   --app-height: 100vh;
   --app-font-size: 16px;
-  --app-font-weight: 445;
+  --app-font-weight: 400;
 
-  /* Type ramp — fixed steps × --ui-scale. */
-  --fs-2xs: calc(9px * var(--ui-scale));
-  --fs-xs: calc(10px * var(--ui-scale));
-  --fs-sm: calc(11px * var(--ui-scale));
-  --fs-md: calc(12px * var(--ui-scale));
-  --fs-base: calc(13px * var(--ui-scale));
-  --fs-lg: calc(14px * var(--ui-scale));
-  --fs-xl: calc(16px * var(--ui-scale));
-  --fs-2xl: calc(18px * var(--ui-scale));
-  --fs-3xl: calc(20px * var(--ui-scale));
-  --fs-4xl: calc(24px * var(--ui-scale));
-  --fs-display: calc(34px * var(--ui-scale));
+  /* Type ramp — fixed steps × --ui-scale. Base is 14px. */
+  --fs-2xs: calc(10px * var(--ui-scale));
+  --fs-xs: calc(11px * var(--ui-scale));
+  --fs-sm: calc(12px * var(--ui-scale));
+  --fs-md: calc(13px * var(--ui-scale));
+  --fs-base: calc(14px * var(--ui-scale));
+  --fs-lg: calc(16px * var(--ui-scale));
+  --fs-xl: calc(18px * var(--ui-scale));
+  --fs-2xl: calc(20px * var(--ui-scale));
+  --fs-3xl: calc(24px * var(--ui-scale));
+  --fs-4xl: calc(28px * var(--ui-scale));
+  --fs-display: calc(36px * var(--ui-scale));
 
-  /* Radius ramp — proportional to --radius-base. */
-  --rad-2xs: calc(var(--radius-base) * 0.25);
-  --rad-xs: calc(var(--radius-base) * 0.5);
-  --rad-sm: calc(var(--radius-base) * 0.75);
-  --rad-md: calc(var(--radius-base) * 0.75);
+  /* Radius ramp — proportional to --radius-base (default resolves to
+     2 / 4 / 6 / 8 / 10 / 12 / 16 / 20 / 24 px). */
+  --rad-2xs: calc(var(--radius-base) * 0.2);
+  --rad-xs: calc(var(--radius-base) * 0.4);
+  --rad-sm: calc(var(--radius-base) * 0.6);
+  --rad-md: calc(var(--radius-base) * 0.8);
   --rad-lg: var(--radius-base);
-  --rad-xl: calc(var(--radius-base) * 1.5);
-  --rad-2xl: calc(var(--radius-base) * 2);
-  --rad-3xl: calc(var(--radius-base) * 3);
+  --rad-xl: calc(var(--radius-base) * 1.2);
+  --rad-2xl: calc(var(--radius-base) * 1.6);
+  --rad-3xl: calc(var(--radius-base) * 2);
+  --rad-4xl: calc(var(--radius-base) * 2.4);
   --rad-full: 9999px;
+
+  /* Elevation ramp — soft, low-alpha drop shadows + a 0.5px hairline ring. */
+  --elev-hairline: 0px 0px 0px 0.5px #0000001a;
+  --elev-sm: 0px 1px 2px -1px #00000014;
+  --elev-md: 0px 2px 4px -1px #00000014;
+  --elev-lg: 0px 4px 8px -2px #0000001a;
+  --elev-xl: 0px 8px 16px -4px #0000001f;
+  --elev-2xl: 0px 16px 32px -8px #00000030;
+
+  /* Motion — snappy exponential enter curve + calm basic transitions. */
+  --cubic-enter: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-enter: var(--cubic-enter);
+  --ease-enter-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-basic: ease;
+  --duration-basic: 0.15s;
+  --duration-relaxed: 0.3s;
 
   /* UI adapter tokens — shared components under src/ui read through this
      layer. Repointed onto the design tokens so a future library swap needs no per-page
@@ -591,7 +671,7 @@
   --ui-hover: var(--hover);
   --ui-active: var(--active);
   --ui-accent: var(--accent);
-  --ui-info: var(--color-sky-500);
+  --ui-info: var(--link);
   --ui-success: var(--color-success);
   --ui-warning: var(--color-warning);
   --ui-danger: var(--color-destructive);
@@ -617,7 +697,7 @@
   --destructive: var(--ui-danger);
   --destructive-foreground: var(--color-destructive-foreground);
   --input: var(--ui-separator);
-  --ring: color-mix(in srgb, var(--color-sky-500) 40%, transparent);
+  --ring: color-mix(in srgb, var(--link) 70%, transparent);
   --radius: var(--ui-radius);
 }
 
@@ -647,12 +727,22 @@
   --text-4xl: calc(72px * var(--ui-scale));
 
   /* Radius scale: Tailwind rounded-* read the themed ramp. */
+  --radius-xs: var(--rad-xs);
   --radius-sm: var(--rad-sm);
   --radius-md: var(--rad-md);
   --radius-lg: var(--rad-lg);
   --radius-xl: var(--rad-xl);
   --radius-2xl: var(--rad-2xl);
   --radius-3xl: var(--rad-3xl);
+  --radius-4xl: var(--rad-4xl);
+
+  /* Elevation: Tailwind shadow-* read the themed ramp. */
+  --shadow-hairline: var(--elev-hairline);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-xl);
+  --shadow-2xl: var(--elev-2xl);
 
   /* Weights */
   --font-weight-normal: var(--weight-normal);
