@@ -119,21 +119,21 @@ function ToolSummary({
   return (
     <details className="group min-w-0" open={expanded}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!expanded);
         }}
       >
         <span
-          className={`shrink-0 text-[13px] font-medium leading-5 ${
+          className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
             running ? "codex-shimmer-text" : idleColor
           }`}
         >
           {meta.verb}
         </span>
         {meta.detail ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--dim)/80">
+          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--hl2)">
             {meta.detail}
           </span>
         ) : (
