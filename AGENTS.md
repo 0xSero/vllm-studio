@@ -119,8 +119,8 @@ the Effect v4 idioms already established in this repo.
 npm --prefix frontend run check:quality   # lint + typecheck + desktop typecheck
                                            # + cycles + ui-structure + knip + jscpd + depcheck + build
 npm run check                              # full repo gate (contracts + structure + frontend + controller)
-npm --prefix frontend run test             # frontend unit tests (tsx --test)
-npm run test:e2e                           # controller integration + frontend e2e
+npm --prefix frontend run test             # frontend unit tests (bun test scripts)
+npm run test:e2e                           # controller integration + frontend surface tests (bun test)
 ```
 
 The pre-push hook (`.githooks/pre-push`) checks conventional commits and runs
