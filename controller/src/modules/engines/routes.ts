@@ -365,52 +365,22 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     return ctx.json(getRocmInfo(smiTool));
   });
 
-  app.post("/runtime/vllm/upgrade", async (ctx) => {
+  app.post("/runtime/:backend/upgrade", async (ctx) => {
+    const backend = optionalEnum(
+      { backend: ctx.req.param("backend") },
+      "backend",
+      RUNTIME_JOB_BACKENDS,
+    );
+    if (!backend) throw notFound("Unknown runtime backend");
     const body = await parseRuntimeJobBody(ctx);
-    const current = await context.engineService.getCurrentProcess();
+    const current = await getObservedProcess(`runtime.upgrade.${backend}`);
     const job = createEngineJob(context.config, {
-      backend: "vllm",
+      backend,
       type: "update",
       ...(body.targetId ? { targetId: body.targetId } : {}),
       ...(body.version ? { version: body.version.trim() } : {}),
       ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
       runningProcess: current,
-    });
-    return ctx.json({ job_id: job.id, job });
-  });
-
-  app.post("/runtime/sglang/upgrade", async (ctx) => {
-    await parseRuntimeJobBody(ctx);
-    const job = createEngineJob(context.config, {
-      backend: "sglang",
-      type: "update",
-    });
-    return ctx.json({ job_id: job.id, job });
-  });
-
-  app.post("/runtime/llamacpp/upgrade", async (ctx) => {
-    await parseRuntimeJobBody(ctx);
-    const job = createEngineJob(context.config, {
-      backend: "llamacpp",
-      type: "update",
-    });
-    return ctx.json({ job_id: job.id, job });
-  });
-
-  app.post("/runtime/cuda/upgrade", async (ctx) => {
-    await parseRuntimeJobBody(ctx);
-    const job = createEngineJob(context.config, {
-      backend: "cuda",
-      type: "update",
-    });
-    return ctx.json({ job_id: job.id, job });
-  });
-
-  app.post("/runtime/rocm/upgrade", async (ctx) => {
-    await parseRuntimeJobBody(ctx);
-    const job = createEngineJob(context.config, {
-      backend: "rocm",
-      type: "update",
     });
     return ctx.json({ job_id: job.id, job });
   });
