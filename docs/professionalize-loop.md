@@ -93,7 +93,14 @@ and logic, keep code DRY.
   KNOWN QUIRK (pre-existing): `bun test ../tests/frontend scripts` combined in ONE invocation
   fails 1 assertion (build-agent-session-options FRONTEND_BASE) — order/module-resolution
   cross-talk; CI and all scripts run the suites separately, where both are green.
-- Next: EngineSpec deepening (I9) — move vllm command-build/probe/install bodies into
-  specs/vllm-spec.ts; unify the four "/runtime/:backend info" paths on RuntimeTarget discovery.
-  Then docs refresh (README/AGENTS accuracy), component extraction (>400-line tsx), Effect
-  boundary validation for raw ctx.req.json() routes.
+- **I9 (20:45… actually 18:48 — clock notes below)**: EngineSpec deepening, mechanical half
+  (d350a867): vllm allowlist filter + Docker JIT wrapper and llama.cpp binary-resolution/
+  serialization moved from backend-builder into their specs; backend-builder 413→279 lines,
+  now engine-agnostic (generic serialization seam + shared docker-run shape). All gates green.
+  DESIGN-SCOPED SKIP: unifying the four GET /runtime/<backend> info paths — sglang/llamacpp
+  routes use RuntimeTarget discovery while specs use probe chains; they can genuinely disagree,
+  and /runtime/vllm has a different (frontend-typed) response shape. Needs a design decision +
+  live verification; folds into the multi-model/#171 work. Do not flip routes blind.
+- Next: docs refresh (README/AGENTS accuracy pass), component extraction (>400-line tsx files),
+  Effect Schema validation for raw ctx.req.json() boundaries (recipe CRUD), openai-routes
+  request-shaping extraction.
