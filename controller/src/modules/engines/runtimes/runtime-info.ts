@@ -12,6 +12,7 @@ import type {
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommand, runCommandAsync } from "../../../core/command";
 import { getGpuInfo, queryNvidiaSmiSnapshot } from "../../system/platform/gpu";
+import { extractCudaVersion } from "./cuda-version";
 import { getVllmRuntimeInfo } from "./vllm-runtime";
 import { probeGpuMonitoringAsync } from "../../system/platform/compatibility-report";
 import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info";
@@ -175,11 +176,6 @@ export const getLlamacppRuntimeInfo = (config: Config): RuntimeBackendInfo => {
   };
 };
 
-const extractCudaVersion = (output: string): string | null => {
-  const match = output.match(/CUDA Version\s*:\s*([0-9.]+)/i);
-  if (match) return match[1] ?? null;
-  return null;
-};
 
 const extractNvccVersion = (output: string): string | null => {
   const match = output.match(/release\s+([0-9.]+)/i);

@@ -93,7 +93,7 @@ function walk(dir) {
 }
 
 function inspect(filePath) {
-  const rel = relative(root, filePath);
+  const rel = relative(root, filePath).replaceAll("\\", "/");
   const source = readFileSync(filePath, "utf8");
   collectExportedDeclarations(rel, source);
   for (const name of contractNames) {
