@@ -1,4 +1,5 @@
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
+import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
 import type { SessionSummary } from "@/features/agent/session-summary";
 
@@ -53,10 +54,6 @@ function timestamp(value?: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isWorking(status: string): boolean {
-  return status !== "" && status !== "idle" && status !== "done";
-}
-
 function hasIdentity(ids: ReadonlySet<string>, identity: readonly (string | null)[]): boolean {
   return identity.some((id) => Boolean(id && ids.has(id)));
 }
@@ -67,7 +64,7 @@ export function sessionActivity(
   optimisticStatus = "idle",
   focused = false,
 ): SessionActivity {
-  if (isWorking(optimisticStatus) || hasIdentity(snapshot.active, identity)) return "running";
+  if (isWorkingStatus(optimisticStatus) || hasIdentity(snapshot.active, identity)) return "running";
   if (!focused && hasIdentity(snapshot.unseen, identity)) return "unseen";
   return "idle";
 }

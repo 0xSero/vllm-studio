@@ -1,5 +1,7 @@
 {
   "minLines": 30,
-  "minTokens": 400,
-  "reporters": ["console"]
+  "minTokens": 200,
+  "reporters": [
+    "console"
+  ]
 }

@@ -38,7 +38,7 @@ flowchart TB
         AgentApi["/api/agent/*"]
         ProxyApi["/api/proxy/*"]
         SettingsApi["/api/settings"]
-        VoiceApi["/api/voice/*"]
+        DownloadsApi["/api/downloads/*"]
     end
 
     UI --> APIs

@@ -6,6 +6,20 @@ on:
     branches: [main]
 
 jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Repo-level gates (pure node stdlib, no install needed). These existed
+      # for months but only ran when someone remembered `npm run check` locally.
+      - name: Shared-contract duplication gate
+        run: node scripts/validate-shared-contracts.mjs
+      - name: Barrel/dir sibling structure gate
+        run: node scripts/validate-barrel-dir-siblings.mjs
+
   controller:
     runs-on: ubuntu-latest
     steps:
@@ -55,6 +69,6 @@ jobs:
       - name: Unit tests
         working-directory: ./frontend
         run: npm run test
-      - name: E2E tests
+      - name: Regression tests
         working-directory: ./frontend
-        run: npm run test:e2e
+        run: npm run test:regression

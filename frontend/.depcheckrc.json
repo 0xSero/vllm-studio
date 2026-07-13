@@ -1,0 +1,25 @@
+{
+  "ignores": [
+    "ws",
+    "hono",
+    "@hono/node-server",
+    "@types/ws",
+    "@types/react",
+    "@types/react-dom",
+    "@types/node",
+    "eslint-config-next",
+    "tailwindcss",
+    "@tailwindcss/postcss",
+    "depcheck",
+    "prettier",
+    "jscpd",
+    "knip",
+    "lint-staged",
+    "concurrently",
+    "electron-builder",
+    "madge"
+  ],
+  "ignore-patterns": ["*.d.ts", ".next/**", "dist-desktop/**", "desktop/dist/**"],
+  "specials": ["next", "webpack", "babel"],
+  "skip-missing": true
+}

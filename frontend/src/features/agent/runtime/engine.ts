@@ -7,6 +7,7 @@ import {
   runtimeStatusAcceptsControl,
 } from "@/features/agent/messages";
 import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
+import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -208,16 +209,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // and activeAssistantId would linger. Flush pending deltas first so the
           // last streamed text is committed before we finalize.
           sessionRuntimeController().flush(sessionId);
-          updateSession(sessionId, (s) => ({
-            ...s,
-            status: "idle",
-            activeAssistantId: undefined,
-            messages: s.messages.map((message) =>
-              message.role === "assistant" && message.blocks
-                ? { ...message, blocks: finalizeRunningToolBlocks(message.blocks) }
-                : message,
-            ),
-          }));
+          updateSession(sessionId, settleTurnFinalizingTools);
         }),
       ),
     [updateSession],

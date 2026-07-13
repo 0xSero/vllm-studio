@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AgentsPage } from "@/features/marketing/marketing-page";
+import { AgentsPage } from "@/features/landing-page/agents-page";
 
 export const metadata: Metadata = {
   title: "Local Studio Agents",

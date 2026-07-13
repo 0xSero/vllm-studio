@@ -18,6 +18,8 @@ export type DiffFile = {
   lines: DiffLine[];
 };
 
+export type DiffViewMode = "unified" | "side-by-side" | "stacked";
+
 const DIFF_LINE_CLASS_NAMES: Record<DiffLineKind, string> = {
   add: "bg-emerald-500/10 text-emerald-100",
   context: "text-(--fg)",
@@ -121,4 +123,26 @@ export function diffLineClassName(kind: DiffLineKind): string {
  */
 export function diffLinePrefix(kind: DiffLineKind): string {
   return DIFF_LINE_PREFIXES[kind];
+}
+
+export function pairDiffLines(file: DiffFile): Array<{
+  left?: DiffFile["lines"][number];
+  right?: DiffFile["lines"][number];
+}> {
+  const rows: Array<{ left?: DiffFile["lines"][number]; right?: DiffFile["lines"][number] }> = [];
+  const pendingDeletes: DiffFile["lines"] = [];
+  for (const line of file.lines) {
+    if (line.kind === "del") {
+      pendingDeletes.push(line);
+      continue;
+    }
+    if (line.kind === "add") {
+      rows.push({ left: pendingDeletes.shift(), right: line });
+      continue;
+    }
+    while (pendingDeletes.length > 0) rows.push({ left: pendingDeletes.shift() });
+    rows.push({ left: line, right: line });
+  }
+  while (pendingDeletes.length > 0) rows.push({ left: pendingDeletes.shift() });
+  return rows;
 }

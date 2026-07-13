@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import type { Recipe } from "../../models/types";
 import type { Backend } from "@local-studio/contracts/recipes";
@@ -8,47 +7,20 @@ import {
   getExtraArgument,
 } from "../argument-utilities";
 import { isManagedPythonBackend, managedVenvPython } from "../runtimes/managed-venv";
+import { listProcessInventory } from "./process-inventory";
 import type { Config } from "../../../config/env";
 
 export { extractFlagUtility as extractFlag };
-
-const splitCommand = (command: string): string[] => {
-  const matches = command.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
-  return matches.map((token) => token.replace(/^"|"$/g, ""));
-};
 
 export const detectBackend = (args: string[]): Backend | null => {
   if (args.length === 0) return null;
   return detectEngineFromArguments(args);
 };
 
-export const listProcesses = (): Array<{ pid: number; args: string[] }> => {
-  try {
-    const result = spawnSync("ps", ["-eo", "pid=,args="]);
-    if (result.status !== 0) {
-      return [];
-    }
-    const output = result.stdout.toString("utf-8").trim();
-    if (!output) {
-      return [];
-    }
-    return output
-      .split("\n")
-      .map((line) => {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^(\d+)\s+(.*)$/);
-        if (!match) {
-          return { pid: 0, args: [] };
-        }
-        const pid = Number(match[1]);
-        const args = splitCommand(match[2] ?? "");
-        return { pid, args };
-      })
-      .filter((entry) => entry.pid > 0 && entry.args.length > 0);
-  } catch {
-    return [];
-  }
-};
+export const listProcesses = (): Array<{ pid: number; args: string[] }> =>
+  listProcessInventory()
+    .filter((entry) => entry.args.length > 0)
+    .map(({ pid, args }) => ({ pid, args }));
 
 export const buildEnvironment = (
   recipe: Recipe,
@@ -161,26 +133,11 @@ export const pidExists = (pid: number): boolean => {
 };
 
 export const buildProcessTree = (): Map<number, number[]> => {
-  const result = spawnSync("ps", ["-eo", "pid=,ppid="]);
-  if (result.status !== 0) {
-    return new Map();
-  }
-  const output = result.stdout.toString("utf-8").trim();
   const tree = new Map<number, number[]>();
-  if (!output) {
-    return tree;
-  }
-  for (const line of output.split("\n")) {
-    const trimmed = line.trim();
-    const match = trimmed.match(/^(\d+)\s+(\d+)$/);
-    if (!match) {
-      continue;
-    }
-    const pid = Number(match[1]);
-    const parent = Number(match[2]);
-    const children = tree.get(parent) ?? [];
+  for (const { pid, ppid } of listProcessInventory()) {
+    const children = tree.get(ppid) ?? [];
     children.push(pid);
-    tree.set(parent, children);
+    tree.set(ppid, children);
   }
   return tree;
 };

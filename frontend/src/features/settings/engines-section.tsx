@@ -314,8 +314,6 @@ function EngineStatus({ installed, active }: { installed: boolean; active?: bool
 }
 
 function upgradeHandler(id: string) {
-  if (id === "vllm") return () => api.upgradeVllmRuntime();
-  if (id === "sglang") return () => api.upgradeSglangRuntime();
-  if (id === "llamacpp") return () => api.upgradeLlamacppRuntime();
+  if (id === "vllm" || id === "sglang" || id === "llamacpp") return () => api.upgradeRuntime(id);
   return undefined;
 }

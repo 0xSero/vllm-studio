@@ -10,7 +10,7 @@ import type { RuntimeContextUsage } from "@/features/agent/runtime/api";
 // The session identity string — the same value a pane stores as `sessionId`.
 export type SessionId = string;
 
-export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done" | string;
+export type SessionStatus = "idle" | "starting" | "running" | "loading";
 
 /**
  * A `Session` is a conversation record — domain content and runtime status,

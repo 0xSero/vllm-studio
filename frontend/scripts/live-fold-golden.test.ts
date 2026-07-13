@@ -13,7 +13,7 @@
 // Event shapes mirror pi's runtime stream (message_start/update/end with full
 // accumulated snapshots + assistantMessageEvent deltas, tool_execution_*,
 // agent_start/agent_end) as consumed by pi-event-applier.ts and exercised in
-// tests/frontend/e2e/session-runtime-controller.test.ts.
+// tests/frontend/regression/session-runtime-controller.test.ts.
 //
 // Regenerate intentionally with:
 //   UPDATE_GOLDENS=1 bun test scripts/live-fold-golden.test.ts
@@ -117,11 +117,19 @@ function liveToolTurnEvents(): Record<string, unknown>[] {
     },
     {
       type: "message_update",
-      message: call1([firstThinking, firstText, { type: "toolCall", id: "live-call-1", name: "read_file", arguments: {} }]),
+      message: call1([
+        firstThinking,
+        firstText,
+        { type: "toolCall", id: "live-call-1", name: "read_file", arguments: {} },
+      ]),
       assistantMessageEvent: {
         type: "toolcall_start",
         contentIndex: 2,
-        partial: call1([firstThinking, firstText, { type: "toolCall", id: "live-call-1", name: "read_file", arguments: {} }]),
+        partial: call1([
+          firstThinking,
+          firstText,
+          { type: "toolCall", id: "live-call-1", name: "read_file", arguments: {} },
+        ]),
       },
     },
     {

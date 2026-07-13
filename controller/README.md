@@ -1,6 +1,6 @@
 # Controller
 
-`controller/` is the Bun/Hono backend for Local Studio. It exposes the HTTP API that the frontend, desktop app, and CLI use to manage models, proxy inference requests, read runtime status, and inspect usage/system data.
+`controller/` is the Bun/Hono backend for Local Studio. It exposes the HTTP API that the frontend and desktop app use to manage models, proxy inference requests, read runtime status, and inspect usage/system data.
 
 ## What It Does
 
@@ -15,7 +15,7 @@
 
 - Bun runtime.
 - Hono HTTP framework.
-- Zod configuration validation.
+- Effect Schema configuration and boundary validation.
 - SQLite-backed local stores.
 - `prom-client` metrics.
 - Swagger UI from `@hono/swagger-ui`.

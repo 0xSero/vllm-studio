@@ -16,6 +16,7 @@ import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
+import { settleTurn } from "@/features/agent/runtime/session-status";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -216,7 +217,7 @@ function startPromptCommand(
  */
 export function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
-  return { ...session, error: message, status: "idle", activeAssistantId: undefined };
+  return { ...settleTurn(session), error: message };
 }
 
 function promptTurnRequest(

@@ -1,4 +1,5 @@
 import type { SpeechStatus } from "@local-studio/contracts/speech";
+import { SpeechApiError } from "@/lib/api/speech";
 import type { UiTone } from "@/ui";
 
 export type SpeechIssue = {
@@ -6,6 +7,49 @@ export type SpeechIssue = {
   title: string;
   detail: string;
 };
+
+export type PendingAction =
+  | "install"
+  | "cancel-install"
+  | "repair"
+  | "create"
+  | "preview"
+  | "stop"
+  | `delete:${string}`;
+
+const gpuIsolationErrors = new Set([
+  "model_gpu_conflict",
+  "model_gpu_telemetry_missing",
+  "model_gpu_transition",
+  "model_gpu_unresolved",
+  "model_process_changed",
+  "model_process_unknown",
+  "speech_gpu_busy",
+]);
+
+const gpuTargetErrors = new Set([
+  "speech_gpu_ambiguous",
+  "speech_gpu_invalid",
+  "speech_gpu_missing",
+  "speech_gpu_telemetry_missing",
+  "speech_gpu_unavailable",
+]);
+
+export function actionErrorMessage(error: unknown): string {
+  if (!(error instanceof SpeechApiError)) {
+    return error instanceof Error ? error.message : "Voice operation failed";
+  }
+  if (error.code && gpuIsolationErrors.has(error.code)) {
+    return `${error.message}. Stop the model using the RTX 3090 or move it to another GPU, then retry.`;
+  }
+  if (error.code && gpuTargetErrors.has(error.code)) {
+    return `${error.message}. Configure the RTX 3090 by its full GPU UUID, then refresh this panel.`;
+  }
+  if (error.code === "speech_queue_full") {
+    return "The voice queue is full. Wait for the current preview to finish, then retry.";
+  }
+  return error.message;
+}
 
 const gpuConflict = /gpu|lease|reserved|in use|occupied|conflict/i;
 

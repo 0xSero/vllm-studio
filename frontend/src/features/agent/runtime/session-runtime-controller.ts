@@ -36,6 +36,7 @@ import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-
 import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
+import { settleTurn } from "@/features/agent/runtime/session-status";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
 const RESUME_RECONNECT_DELAY_MS = 1_000;
@@ -268,10 +269,8 @@ export function createSessionRuntimeController(
       // together.
       coalescer.flushNow(sessionId);
       applyEvent(sessionId, payload.event, payload.seq, (session) => ({
-        ...session,
+        ...settleTurn(session),
         piSessionId: eventId || session.piSessionId,
-        status: "idle",
-        activeAssistantId: undefined,
       }));
       // The turn is over: drop any mid-stream user-message redirect. The
       // liveAssistantIds override only bridges the React-commit lag WITHIN a
@@ -442,12 +441,7 @@ export function createSessionRuntimeController(
       if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
         return current;
       }
-      return {
-        ...current,
-        ...patch,
-        status: "idle",
-        activeAssistantId: undefined,
-      };
+      return { ...settleTurn(current), ...patch };
     });
   };
 
@@ -540,9 +534,7 @@ export function createSessionRuntimeController(
           commit(sessionId, (session) =>
             session.status === "running" || session.status === "starting"
               ? {
-                  ...session,
-                  status: "idle",
-                  activeAssistantId: undefined,
+                  ...settleTurn(session),
                   contextUsage: runtimeContextUsage(status, session.contextUsage),
                 }
               : session,

@@ -10,12 +10,11 @@
     "perf:audit": "node scripts/perf-audit.mjs",
     "perf:browser": "node scripts/browser-perf-audit.mjs",
     "test": "bun test scripts",
-    "test:e2e": "bun test ../tests/frontend",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
-    "depcheck": "depcheck --ignores=\"ws,hono,@hono/node-server,@types/ws,@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,jscpd,knip,lint-staged,concurrently,electron-builder,madge\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
+    "depcheck": "depcheck",
     "prepare": "node scripts/prepare-repo-hooks.mjs",
     "postinstall": "node scripts/patch-pi-ai-openai-text-boundaries.mjs && node scripts/link-services-node-modules.mjs",
     "check:deadcode": "knip",
@@ -37,7 +36,8 @@
     "check:cycles": "madge --extensions ts,tsx --circular src",
     "check:static": "npm run lint && npm run typecheck && npm run typecheck:desktop && npm run check:cycles && npm run check:ui-structure",
     "check:quality": "node scripts/validate-package-json.mjs && npm run check:static && npm run check:cleanup && npm run build",
-    "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck"
+    "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck",
+    "test:regression": "bun test ../tests/frontend"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.78.1",

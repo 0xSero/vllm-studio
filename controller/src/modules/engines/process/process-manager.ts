@@ -14,6 +14,7 @@ import { realProcessRunner, type ProcessRunner } from "../../../core/command";
 import type { LaunchResult, ProcessInfo, Recipe } from "../../models/types";
 import type { EventManager } from "../../system/event-manager";
 import { buildBackendCommand } from "./backend-builder";
+import { listProcessInventory, type ProcessInventoryEntry } from "./process-inventory";
 import {
   buildEnvironment,
   collectChildren,
@@ -53,13 +54,6 @@ export const createProcessManager = (
   eventManager?: EventManager,
   runner: ProcessRunner = realProcessRunner,
 ): ProcessManager => {
-  type ProcessTableEntry = {
-    pid: number;
-    ppid: number;
-    stat: string;
-    command: string;
-  };
-
   const findInferenceProcess = async (port: number): Promise<ProcessInfo | null> => {
     const processes = listProcesses();
     for (const proc of processes) {
@@ -208,38 +202,7 @@ export const createProcessManager = (
     }
   };
 
-  const listProcessTable = (): ProcessTableEntry[] => {
-    try {
-      const result = runner.runSync("ps", ["-eo", "pid=,ppid=,stat=,args="]);
-      if (result.status !== 0) {
-        return [];
-      }
-      const output = result.stdout;
-      if (!output) {
-        return [];
-      }
-      return output
-        .split("\n")
-        .map((line): ProcessTableEntry | null => {
-          const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
-          if (!match) {
-            return null;
-          }
-          const command = match[4] ?? "";
-          return {
-            pid: Number(match[1]),
-            ppid: Number(match[2]),
-            stat: match[3] ?? "",
-            command,
-          };
-        })
-        .filter((entry): entry is ProcessTableEntry => entry !== null && entry.pid > 0);
-    } catch {
-      return [];
-    }
-  };
-
-  const isOrphanedInferenceWorker = (entry: ProcessTableEntry): boolean => {
+  const isOrphanedInferenceWorker = (entry: ProcessInventoryEntry): boolean => {
     if (entry.ppid !== 1 || entry.stat.includes("Z")) {
       return false;
     }
@@ -248,7 +211,7 @@ export const createProcessManager = (
 
   const cleanupOrphanedInferenceWorkersEffect = (reason: string): Effect.Effect<number> =>
     Effect.gen(function* () {
-      const workers = listProcessTable().filter(isOrphanedInferenceWorker);
+      const workers = listProcessInventory(runner).filter(isOrphanedInferenceWorker);
       if (workers.length === 0) {
         return 0;
       }
@@ -287,7 +250,7 @@ export const createProcessManager = (
   const confirmInferenceStopped = async (port: number): Promise<boolean> => {
     await cleanupOrphanedInferenceWorkers("confirm-stopped");
     const process = await findInferenceProcess(port);
-    return process === null && !listProcessTable().some(isOrphanedInferenceWorker);
+    return process === null && !listProcessInventory(runner).some(isOrphanedInferenceWorker);
   };
 
   const launchModel = async (

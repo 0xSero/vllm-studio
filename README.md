@@ -168,7 +168,7 @@ Local daemon helper: `./scripts/daemon.sh {start|stop|status}`.
 
 ```bash
 npm run check        # contracts + structure + frontend quality + controller typecheck
-npm run test:e2e     # controller integration + frontend e2e
+npm run test:integration   # controller integration + frontend regression suites
 ```
 
 The configured pre-push hook (`.githooks/pre-push`) checks conventional commits
@@ -187,7 +187,7 @@ There is no npm publish (private monorepo, protected `main`). Do not tag by hand
 
 Contributions should be small, focused, and easy to review. Start from the
 latest `main`, one logical change per branch, no formatting-only rewrites, no
-secrets or build artifacts. Run `npm run check` (and `npm run test:e2e` for
+secrets or build artifacts. Run `npm run check` (and `npm run test:integration` for
 behavior changes) before opening a PR; include a concise summary, the validation
 commands you ran, and screenshots for UI changes. See AGENTS.md for the full
 code standards an agent (or contributor) must follow.

@@ -70,7 +70,6 @@ const allowedFiles = new Set([
   "shared/contracts/controller-events.ts",
   "shared/contracts/observability.ts",
   "shared/contracts/usage.ts",
-  "shared/contracts/environments.ts",
   "shared/contracts/rigs.ts",
   "controller/src/modules/shared/recipe-types.ts",
   "controller/src/modules/shared/system-types.ts",
