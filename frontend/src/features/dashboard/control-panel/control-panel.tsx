@@ -53,7 +53,7 @@ function ControllerMatrix() {
   return (
     <section className="mb-3 border-b border-(--border)/35 pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
           controllers live
         </div>
         <div className="text-[length:var(--fs-xs)] text-(--dim)/70">
@@ -109,7 +109,7 @@ function ControllerTab({
       {controller.modelName ? (
         <span className="max-w-[14rem] truncate text-(--dim)">{controller.modelName}</span>
       ) : null}
-      <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
+      <span className="text-[length:var(--fs-sm)] text-(--hl2)">
         {state}
       </span>
     </button>
@@ -122,7 +122,7 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
   return (
     <section className="border-t border-(--border)/40 px-2 pt-4 pb-5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
+        <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
           Controller logs
         </div>
         <div className="text-[length:var(--fs-xs)] text-(--dim)/70">{tail.length} lines</div>

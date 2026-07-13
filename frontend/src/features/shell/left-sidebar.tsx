@@ -241,7 +241,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+            <PanelLeftOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
       ) : null}
@@ -286,7 +286,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Collapse sidebar"
                   aria-label="Collapse sidebar"
                 >
-                  <PanelLeftClose className="h-4 w-4" strokeWidth={1.5} />
+                  <PanelLeftClose className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => window.history.back()}
@@ -294,7 +294,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Go back"
                   aria-label="Go back"
                 >
-                  <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
+                  <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => window.history.forward()}
@@ -302,7 +302,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   title="Go forward"
                   aria-label="Go forward"
                 >
-                  <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
+                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
               </div>
 
@@ -313,7 +313,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   className="mb-0.5 flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-(--fg) transition-colors hover:bg-(--hover)"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.5} />
+                  <SearchIcon className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.75} />
                   <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
                     Search
                   </span>
@@ -352,10 +352,10 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
                   }`}
                 >
                   <Settings
-                    className={`h-4 w-4 shrink-0 ${
+                    className={`h-3.5 w-3.5 shrink-0 ${
                       isRouteActive(pathname, "/settings") ? "opacity-90" : "opacity-70"
                     }`}
-                    strokeWidth={1.5}
+                    strokeWidth={1.75}
                   />
                   <span className="whitespace-nowrap text-[length:var(--fs-md)] font-normal">
                     Settings
@@ -534,8 +534,8 @@ function NavItemDesktop({
       }`}
     >
       <Icon
-        className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
-        strokeWidth={1.5}
+        className={`h-3.5 w-3.5 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        strokeWidth={1.75}
       />
       <span className="text-[length:var(--fs-md)] whitespace-nowrap">{label}</span>
     </Link>

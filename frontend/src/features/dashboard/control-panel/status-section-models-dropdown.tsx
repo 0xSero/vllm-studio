@@ -42,7 +42,7 @@ export function ModelsDropdown({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="h-7 rounded-[var(--rad-2xs)] border border-(--border)/70 px-2.5 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--fg) hover:border-(--border) hover:bg-(--fg)/5"
+        className="h-7 rounded-full bg-(--fg)/5 px-3 text-[length:var(--fs-sm)] text-(--fg)/85 hover:bg-(--fg)/10 hover:text-(--fg)"
       >
         Models ▾
       </button>
@@ -55,7 +55,7 @@ export function ModelsDropdown({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Search models…"
-              className="min-w-0 bg-transparent px-2.5 py-1.5 font-mono text-xs text-(--fg) placeholder:text-(--dim)/60 focus:outline-none"
+              className="min-w-0 bg-transparent px-2.5 py-1.5 text-[length:var(--fs-sm)] text-(--fg) placeholder:text-(--hl2) focus:outline-none"
             />
             {onNewRecipe ? (
               <button
@@ -63,7 +63,7 @@ export function ModelsDropdown({
                   setOpen(false);
                   onNewRecipe();
                 }}
-                className="border-l border-(--border) px-2.5 py-1.5 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
+                className="border-l border-(--border) px-2.5 py-1.5 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
               >
                 + new
               </button>
@@ -71,7 +71,7 @@ export function ModelsDropdown({
           </div>
           <div className="max-h-[18rem] overflow-auto">
             {visible.length === 0 ? (
-              <div className="px-2.5 py-2 font-mono text-[length:var(--fs-xs)] text-(--dim)">
+              <div className="px-2.5 py-2 text-[length:var(--fs-sm)] text-(--dim)">
                 No models found.
               </div>
             ) : null}
@@ -92,7 +92,7 @@ export function ModelsDropdown({
                 setOpen(false);
                 onViewAll();
               }}
-              className="block w-full border-t border-(--border) px-2.5 py-1.5 text-left font-mono text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
+              className="block w-full border-t border-(--border) px-2.5 py-1.5 text-left text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--fg)/5 hover:text-(--fg)"
             >
               {filter
                 ? `${filtered.length - visible.length} more →`
@@ -133,11 +133,11 @@ function ModelDropdownRow({
       <span
         className={`h-3 w-0.5 shrink-0 ${isCurrent ? "bg-(--fg)" : running ? "bg-(--fg)/60" : "bg-(--dim)/40"}`}
       />
-      <span className="flex-1 truncate font-mono text-xs text-(--fg)" title={recipe.name}>
+      <span className="flex-1 truncate text-[length:var(--fs-sm)] text-(--fg)" title={recipe.name}>
         {recipe.name}
       </span>
       {running ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> : null}
-      <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.12em] text-(--dim)">
+      <span className="text-[length:var(--fs-2xs)] text-(--dim)">
         tp{recipe.tp || recipe.tensor_parallel_size}
       </span>
     </button>

@@ -530,6 +530,8 @@
   --active: var(--color-selected);
   --composer: var(--color-surface);
   --composer-footer: var(--color-surface);
+  /* Dark composer reads as a raised surface with no outline. */
+  --composer-border: transparent;
 
   /* Accents — grayscale brand + one sanctioned chroma: the blue accent */
   --accent: var(--color-brand);
@@ -561,6 +563,8 @@
   --active: var(--color-selected);
   --composer: var(--color-card);
   --composer-footer: var(--color-card);
+  /* Light composer keeps a hairline outline over the white canvas. */
+  --composer-border: var(--color-border);
 
   --accent: var(--color-brand);
   --hl1: var(--color-foreground-subtle);

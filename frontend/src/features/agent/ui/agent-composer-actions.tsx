@@ -64,7 +64,7 @@ export function AgentComposerActions({
         aria-label="Attach files"
         title="Attach files (or paste/drop into composer)"
       >
-        <Plus className="h-[18px] w-[18px]" strokeWidth={1.5} />
+        <Plus className="h-4 w-4" strokeWidth={1.75} />
       </button>
       <button
         type="button"

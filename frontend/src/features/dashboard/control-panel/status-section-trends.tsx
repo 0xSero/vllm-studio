@@ -124,10 +124,10 @@ function TrendPanel({
   return (
     <div className="min-w-0">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--dim)/75">
+        <span className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
           {label}
         </span>
-        <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] text-(--dim)/45">
+        <span className="text-[length:var(--fs-xs)] text-(--dim)/45">
           {meta}
         </span>
       </div>
