@@ -64,7 +64,7 @@ export function AgentChatPaneHeader({
   return (
     <div
       className={`grid h-[var(--h-toolbar-pane)] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border) bg-(--color-header) py-0 pr-2 text-xs ${
-        sidebarCollapsed ? "pl-12" : "pl-2"
+        sidebarCollapsed ? "pl-12" : "pl-5"
       }`}
     >
       <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
