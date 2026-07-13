@@ -13,7 +13,7 @@ import styles from "./landing.module.css";
 
 type Screenshot = { src: string; title: string; meta: string; alt: string };
 
-const screenshots: Screenshot[] = [
+export const screenshots: Screenshot[] = [
   {
     src: "/marketing/screenshots/status-dashboard.png",
     title: "Telemetry",
@@ -75,7 +75,7 @@ const downloads = [
   },
 ];
 
-function LandingNav() {
+export function LandingNav() {
   return (
     <header className={styles.nav}>
       <Link href="/landing" className={styles.brand} aria-label="Local Studio">
@@ -101,7 +101,7 @@ function LandingNav() {
   );
 }
 
-function ScreenshotFrame({
+export function ScreenshotFrame({
   screenshot,
   priority = false,
 }: {
@@ -323,7 +323,7 @@ export function LandingPage() {
 
       <footer className={styles.footer}>
         <span>Local Studio</span>
-        <span>Desktop / web / controller / CLI / Pi</span>
+        <span>Desktop / web / controller / Pi</span>
       </footer>
     </main>
   );
@@ -527,7 +527,7 @@ export function DocsPage() {
             </ul>
             <pre className={styles.codeBlock}>
               npm run check # contracts + structure + frontend quality + controller typecheck npm
-              run test:e2e # controller integration + frontend e2e
+              run test:integration # controller integration + frontend regression
             </pre>
             <p>
               For the full agent runbook — controllers, providers, runtimes, and Pi sessions — see
@@ -542,7 +542,7 @@ export function DocsPage() {
       </div>
       <footer className={styles.footer}>
         <span>Local Studio docs</span>
-        <span>Desktop / web / controller / CLI / Pi</span>
+        <span>Desktop / web / controller / Pi</span>
       </footer>
     </main>
   );
