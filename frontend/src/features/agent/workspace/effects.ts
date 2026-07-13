@@ -110,39 +110,48 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
     : Effect.succeed(null);
 
   if (deps.api.loadModels) {
-    deps.dispatch?.({ type: "setModelsLoading", loading: true });
-    deps.dispatch?.({ type: "setError", error: "" });
-    void Effect.runPromise(
-      Effect.gen(function* () {
-        const payload = yield* Effect.tryPromise({
-          try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
-          catch: (error) => error,
-        });
-        const normalized = normalizeModelsPayload(payload);
-        if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
-        deps.dispatch?.({ type: "setModels", models: normalized.models });
-        if (normalized.models.length > 0) {
-          deps.dispatch?.({ type: "setSetupWarning", warning: "" });
-        } else {
-          const setupPayload = yield* loadSetupChecksEffect;
-          const pi = setupPayload?.checks?.find((check) => check.id === "pi");
-          deps.dispatch?.({
-            type: "setSetupWarning",
-            warning: setupWarningFromPiCheck(pi, false),
+    // Retry quietly with backoff: transient controller/network failures should
+    // resolve themselves without the user having to reload the page. The error
+    // notice stays visible (dismissible) until an attempt succeeds.
+    const attemptLoadModels = (attempt: number): void => {
+      deps.dispatch?.({ type: "setModelsLoading", loading: true });
+      if (attempt === 0) deps.dispatch?.({ type: "setError", error: "" });
+      void Effect.runPromise(
+        Effect.gen(function* () {
+          const payload = yield* Effect.tryPromise({
+            try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
+            catch: (error) => error,
           });
-        }
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
+          const normalized = normalizeModelsPayload(payload);
+          if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
+          deps.dispatch?.({ type: "setError", error: "" });
+          deps.dispatch?.({ type: "setModels", models: normalized.models });
+          if (normalized.models.length > 0) {
+            deps.dispatch?.({ type: "setSetupWarning", warning: "" });
+          } else {
+            const setupPayload = yield* loadSetupChecksEffect;
+            const pi = setupPayload?.checks?.find((check) => check.id === "pi");
             deps.dispatch?.({
-              type: "setError",
-              error: error instanceof Error ? error.message : "Failed to load models",
+              type: "setSetupWarning",
+              warning: setupWarningFromPiCheck(pi, false),
             });
-            deps.dispatch?.({ type: "setModelsLoading", loading: false });
-          }),
+          }
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              deps.dispatch?.({
+                type: "setError",
+                error: error instanceof Error ? error.message : "Failed to load models",
+              });
+              deps.dispatch?.({ type: "setModelsLoading", loading: false });
+              const delay = Math.min(5_000 * 2 ** attempt, 60_000);
+              deps.window.setTimeout?.(() => attemptLoadModels(attempt + 1), delay);
+            }),
+          ),
         ),
-      ),
-    );
+      );
+    };
+    attemptLoadModels(0);
   } else if (deps.api.loadSetupChecks) {
     void Effect.runPromise(
       loadSetupChecksEffect.pipe(

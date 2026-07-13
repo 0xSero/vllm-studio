@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
@@ -43,6 +43,11 @@ export function ProjectRow({
   prefs,
   excludedIds,
   icon = "folder",
+  reorderDraggable = false,
+  onReorderDragStart,
+  onReorderDragEnd,
+  onReorderDragOver,
+  onReorderDrop,
 }: {
   project: ProjectEntry;
   open: boolean;
@@ -53,6 +58,11 @@ export function ProjectRow({
   prefs: SessionPrefs;
   excludedIds: ReadonlySet<string>;
   icon?: "folder" | "chat";
+  reorderDraggable?: boolean;
+  onReorderDragStart?: () => void;
+  onReorderDragEnd?: () => void;
+  onReorderDragOver?: (event: DragEvent) => void;
+  onReorderDrop?: () => void;
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const handleToggle = () => {
@@ -66,7 +76,14 @@ export function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-8 items-center rounded-lg pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)">
+      <div
+        className="group relative flex h-8 items-center rounded-lg pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)"
+        draggable={reorderDraggable}
+        onDragStart={onReorderDragStart}
+        onDragEnd={onReorderDragEnd}
+        onDragOver={onReorderDragOver}
+        onDrop={onReorderDrop}
+      >
         <button
           type="button"
           onClick={handleToggle}

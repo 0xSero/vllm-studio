@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Button, UiModal, UiModalHeader } from "@/ui";
 import { ChevronDownIcon, PlusIcon } from "@/ui/icons";
 import {
@@ -30,6 +30,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const chatProject = projects.find(isChatsProject) ?? null;
   const fileProjects = projects.filter((project) => !isChatsProject(project));
   const upsertProject = projectsContext.upsertProject;
+  const moveProjectBefore = projectsContext.moveProjectBefore;
   const removeProject = projectsContext.removeProject;
   const refreshProjects = projectsContext.refresh;
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
@@ -165,9 +166,159 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     projects,
     setPinnedSessions,
   });
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(readSectionOrder);
+  const [dragProjectId, setDragProjectId] = useState<string | null>(null);
+  const [dragSection, setDragSection] = useState<SectionId | null>(null);
+  const moveSectionBefore = (dragged: SectionId, target: SectionId) => {
+    if (dragged === target) return;
+    setSectionOrder((current) => {
+      const next = current.filter((entry) => entry !== dragged);
+      next.splice(next.indexOf(target), 0, dragged);
+      writeSectionOrder(next);
+      return next;
+    });
+  };
+  const projectDragProps = (projectId: string) => ({
+    reorderDraggable: true,
+    onReorderDragStart: () => setDragProjectId(projectId),
+    onReorderDragEnd: () => setDragProjectId(null),
+    onReorderDragOver: (event: DragEvent) => {
+      if (dragProjectId && dragProjectId !== projectId) event.preventDefault();
+    },
+    onReorderDrop: () => {
+      if (dragProjectId && dragProjectId !== projectId) {
+        moveProjectBefore(dragProjectId, projectId);
+      }
+      setDragProjectId(null);
+    },
+  });
   if (!expanded) {
     return null;
   }
+  const projectsSection = (
+    <div
+      key="projects"
+      onDragOver={(event) => {
+        if (dragSection && dragSection !== "projects") event.preventDefault();
+      }}
+      onDrop={() => {
+        if (dragSection && dragSection !== "projects") moveSectionBefore(dragSection, "projects");
+        setDragSection(null);
+      }}
+    >
+      <SidebarSectionHeader
+        label="Projects"
+        open={projectsExpanded}
+        onToggle={() => setProjectsExpanded((value) => !value)}
+        draggable
+        onDragStart={() => setDragSection("projects")}
+        onDragEnd={() => setDragSection(null)}
+        action={
+          <button
+            type="button"
+            onClick={handleAddProject}
+            className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
+            title="Add folder"
+            aria-label="Add folder"
+          >
+            <PlusIcon className="block h-3.5 w-3.5" />
+          </button>
+        }
+      />
+      {projectsExpanded ? (
+        fileProjects.length === 0 ? (
+          <button
+            type="button"
+            onClick={handleAddProject}
+            className="px-2 py-1 text-left text-[length:var(--fs-md)] text-(--dim) hover:text-(--fg)"
+          >
+            No projects yet — pick a folder to get started.
+          </button>
+        ) : (
+          <>
+            {fileProjects.map((project) => (
+              <ProjectRow
+                key={project.id}
+                project={project}
+                open={openIds.has(project.id)}
+                activeSessions={activeSessions.filter(
+                  (session) => session.projectId === project.id,
+                )}
+                prefs={prefs}
+                excludedIds={pinnedRenderedIds}
+                onToggle={() => toggle(project.id)}
+                {...projectDragProps(project.id)}
+                onNewChatStart={() => {
+                  setProjectsExpanded(true);
+                  setOpenIds((current) => {
+                    if (current.has(project.id)) return current;
+                    const next = new Set(current);
+                    next.add(project.id);
+                    return next;
+                  });
+                }}
+                onRemove={() => {
+                  setAddError("");
+                  setProjectRemoveConfirm(project);
+                }}
+              />
+            ))}
+            {dragProjectId ? (
+              <div
+                className="h-2"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (dragProjectId) moveProjectBefore(dragProjectId, null);
+                  setDragProjectId(null);
+                }}
+              />
+            ) : null}
+          </>
+        )
+      ) : null}
+    </div>
+  );
+  const tasksSection = chatProject ? (
+    <div
+      key="tasks"
+      onDragOver={(event) => {
+        if (dragSection && dragSection !== "tasks") event.preventDefault();
+      }}
+      onDrop={() => {
+        if (dragSection && dragSection !== "tasks") moveSectionBefore(dragSection, "tasks");
+        setDragSection(null);
+      }}
+    >
+      <SidebarSectionHeader
+        label="Tasks"
+        open={chatsExpanded}
+        indicator={chatsHasActivity}
+        onToggle={() => setChatsExpanded((value) => !value)}
+        draggable
+        onDragStart={() => setDragSection("tasks")}
+        onDragEnd={() => setDragSection(null)}
+        action={
+          <NewChatPlusButton
+            projectId={chatProject.id}
+            label="New task"
+            className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
+          />
+        }
+      />
+      {chatsExpanded ? (
+        <ProjectSessions
+          project={chatProject}
+          activeSessions={activeSessions}
+          prefs={prefs}
+          excludedIds={pinnedRenderedIds}
+        />
+      ) : null}
+    </div>
+  ) : null;
+  const sections: Record<SectionId, ReactNode> = {
+    projects: projectsSection,
+    tasks: tasksSection,
+  };
   return (
     <div className="flex shrink-0 flex-col">
       <ProjectDirectoryPickerModal
@@ -213,83 +364,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
             ))}
         </div>
       ) : null}
-      <SidebarSectionHeader
-        label="Projects"
-        open={projectsExpanded}
-        onToggle={() => setProjectsExpanded((value) => !value)}
-        action={
-          <button
-            type="button"
-            onClick={handleAddProject}
-            className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
-            title="Add folder"
-            aria-label="Add folder"
-          >
-            <PlusIcon className="block h-3.5 w-3.5" />
-          </button>
-        }
-      />
-      {projectsExpanded ? (
-        fileProjects.length === 0 ? (
-          <button
-            type="button"
-            onClick={handleAddProject}
-            className="px-2 py-1 text-left text-[length:var(--fs-md)] text-(--dim) hover:text-(--fg)"
-          >
-            No projects yet — pick a folder to get started.
-          </button>
-        ) : (
-          fileProjects.map((project) => (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              open={openIds.has(project.id)}
-              activeSessions={activeSessions.filter((session) => session.projectId === project.id)}
-              prefs={prefs}
-              excludedIds={pinnedRenderedIds}
-              onToggle={() => toggle(project.id)}
-              onNewChatStart={() => {
-                setProjectsExpanded(true);
-                setOpenIds((current) => {
-                  if (current.has(project.id)) return current;
-                  const next = new Set(current);
-                  next.add(project.id);
-                  return next;
-                });
-              }}
-              onRemove={() => {
-                setAddError("");
-                setProjectRemoveConfirm(project);
-              }}
-            />
-          ))
-        )
-      ) : null}
-      {chatProject ? (
-        <>
-          <SidebarSectionHeader
-            label="Tasks"
-            open={chatsExpanded}
-            indicator={chatsHasActivity}
-            onToggle={() => setChatsExpanded((value) => !value)}
-            action={
-              <NewChatPlusButton
-                projectId={chatProject.id}
-                label="New task"
-                className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
-              />
-            }
-          />
-          {chatsExpanded ? (
-            <ProjectSessions
-              project={chatProject}
-              activeSessions={activeSessions}
-              prefs={prefs}
-              excludedIds={pinnedRenderedIds}
-            />
-          ) : null}
-        </>
-      ) : null}
+      {sectionOrder.map((id) => sections[id])}
       {addError ? (
         <div className="px-2 py-1 text-[length:var(--fs-sm)] text-red-400">{addError}</div>
       ) : null}
@@ -341,15 +416,26 @@ function SidebarSectionHeader({
   onToggle,
   action,
   indicator = false,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
 }: {
   label: string;
   open: boolean;
   onToggle: () => void;
   action?: ReactNode;
   indicator?: boolean;
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   return (
-    <div className="group flex items-center justify-between px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
+    <div
+      className="group flex cursor-default items-center justify-between px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -375,4 +461,32 @@ function SidebarSectionHeader({
       ) : null}
     </div>
   );
+}
+
+type SectionId = "projects" | "tasks";
+
+const NAV_SECTION_ORDER_KEY = "local-studio.agent.nav-section-order.v1";
+
+function readSectionOrder(): SectionId[] {
+  const fallback: SectionId[] = ["projects", "tasks"];
+  if (typeof window === "undefined") return fallback;
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(NAV_SECTION_ORDER_KEY) ?? "[]",
+    ) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const valid = parsed.filter(
+      (entry): entry is SectionId => entry === "projects" || entry === "tasks",
+    );
+    return valid.length === fallback.length ? valid : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSectionOrder(order: SectionId[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NAV_SECTION_ORDER_KEY, JSON.stringify(order));
+  } catch {}
 }
