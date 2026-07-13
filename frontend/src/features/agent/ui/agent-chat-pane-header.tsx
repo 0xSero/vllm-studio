@@ -19,6 +19,7 @@ export function AgentChatPaneHeader({
   canFork,
   canClose,
   canExport = false,
+  terminalOpen = false,
   onTogglePinned,
   onRename,
   onFork,
@@ -33,6 +34,7 @@ export function AgentChatPaneHeader({
   canFork: boolean;
   canClose: boolean;
   canExport?: boolean;
+  terminalOpen?: boolean;
   onTogglePinned: () => void;
   onRename: (title: string) => void;
   onFork?: () => void;
@@ -172,9 +174,14 @@ export function AgentChatPaneHeader({
             onMouseEnter={preloadTerminalPanel}
             onFocus={preloadTerminalPanel}
             onClick={onOpenTerminal}
-            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
-            title="Open terminal"
-            aria-label="Open terminal"
+            aria-pressed={terminalOpen}
+            className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+              terminalOpen
+                ? "bg-(--active) text-(--fg)"
+                : "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
+            }`}
+            title={terminalOpen ? "Back to chat" : "Open terminal"}
+            aria-label={terminalOpen ? "Back to chat" : "Open terminal"}
           >
             <TerminalSquare className="pointer-events-none h-3.5 w-3.5" />
           </button>

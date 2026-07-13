@@ -20,6 +20,7 @@ export function preloadTerminalPanel(): void {
   void import("@xterm/xterm");
   void import("@xterm/addon-fit");
   void import("@xterm/addon-web-links").catch(() => null);
+  void import("@xterm/addon-webgl").catch(() => null);
 }
 
 export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
@@ -50,7 +51,7 @@ export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey:
           if ((event.target as HTMLElement)?.tagName === "A") return;
           stateRef.current.term?.focus();
         }}
-        className="min-h-0 flex-1 overflow-hidden p-2 [--xterm-color-background:var(--color-terminal-bg)]"
+        className="min-h-0 flex-1 overflow-hidden px-3 py-2.5 [--xterm-color-background:var(--color-terminal-bg)]"
       />
     </section>
   );
@@ -115,24 +116,24 @@ function resolveTerminalFont(cssVar: (name: string) => string): string {
 function buildTerminalTheme(cssVar: (name: string) => string): Record<string, string> {
   const v = (name: string, fallback: string) => cssVar(name) || fallback;
   return {
-    background: v("--color-terminal-bg", "#161616"),
+    background: v("--color-terminal-bg", "#181818"),
     foreground: v("--color-terminal-fg", "#d4d4d4"),
     cursor: v("--color-terminal-cursor", "#f8f8f8"),
-    cursorAccent: v("--color-terminal-cursor-accent", "#161616"),
-    selectionBackground: v("--color-terminal-selection", "#4099ff47"),
+    cursorAccent: v("--color-terminal-cursor-accent", "#181818"),
+    selectionBackground: v("--color-terminal-selection", "#339cff47"),
     black: v("--color-terminal-black", "#363636"),
-    red: v("--color-terminal-red", "#ff5c5c"),
-    green: v("--color-terminal-green", "#46bf72"),
-    yellow: v("--color-terminal-yellow", "#ff8a30"),
-    blue: v("--color-terminal-blue", "#4099ff"),
-    magenta: v("--color-terminal-magenta", "#7b5ce5"),
-    cyan: v("--color-terminal-cyan", "#42c8c8"),
+    red: v("--color-terminal-red", "#f67576"),
+    green: v("--color-terminal-green", "#85df7b"),
+    yellow: v("--color-terminal-yellow", "#fa994c"),
+    blue: v("--color-terminal-blue", "#3d8dff"),
+    magenta: v("--color-terminal-magenta", "#b06dff"),
+    cyan: v("--color-terminal-cyan", "#6dcbf4"),
     white: v("--color-terminal-white", "#adadad"),
     brightBlack: v("--color-terminal-bright-black", "#747474"),
     brightRed: v("--color-terminal-bright-red", "#f99"),
     brightGreen: v("--color-terminal-bright-green", "#87d9a4"),
     brightYellow: v("--color-terminal-bright-yellow", "#ffb26b"),
-    brightBlue: v("--color-terminal-bright-blue", "#80beff"),
+    brightBlue: v("--color-terminal-bright-blue", "#55a2ff"),
     brightMagenta: v("--color-terminal-bright-magenta", "#a888f2"),
     brightCyan: v("--color-terminal-bright-cyan", "#8ee5e5"),
     brightWhite: v("--color-terminal-bright-white", "#f8f8f8"),
@@ -140,6 +141,20 @@ function buildTerminalTheme(cssVar: (name: string) => string): Record<string, st
 }
 
 type ITerminalLoadable = { loadAddon(addon: unknown): void };
+
+function loadWebglAddon(
+  term: ITerminalLoadable,
+  webglModule: { WebglAddon: new () => { onContextLoss?: (cb: () => void) => void; dispose(): void } } | null,
+): void {
+  // GPU renderer for crisp, fast glyphs; falls back to the DOM renderer when
+  // WebGL is unavailable (headless, software rendering, context loss).
+  if (!webglModule) return;
+  try {
+    const addon = new webglModule.WebglAddon();
+    addon.onContextLoss?.(() => addon.dispose());
+    term.loadAddon(addon);
+  } catch {}
+}
 
 function loadWebLinksAddon(
   term: ITerminalLoadable,
@@ -205,10 +220,11 @@ function useTerminalPanelEffects({
     async function boot() {
       const element = containerRef.current;
       if (!element) return;
-      const [{ Terminal }, { FitAddon }, webLinksModule] = await Promise.all([
+      const [{ Terminal }, { FitAddon }, webLinksModule, webglModule] = await Promise.all([
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
         import("@xterm/addon-web-links").catch(() => null),
+        import("@xterm/addon-webgl").catch(() => null),
       ]);
       if (refs.disposed) return;
       const styles = getComputedStyle(element);
@@ -216,19 +232,25 @@ function useTerminalPanelEffects({
       const fontFamily = resolveTerminalFont(cssVar);
       const term = new Terminal({
         cursorBlink: true,
+        cursorStyle: "block",
         convertEol: false,
-        scrollback: 10_000,
+        scrollback: 50_000,
         allowProposedApi: true,
         macOptionIsMeta: true,
         rightClickSelectsWord: true,
+        smoothScrollDuration: 80,
+        minimumContrastRatio: 3,
         fontFamily,
         fontSize: getTerminalFontSize(),
-        lineHeight: 1.0,
+        fontWeightBold: "600",
+        lineHeight: 1.2,
+        letterSpacing: 0,
         theme: buildTerminalTheme(cssVar),
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
       loadWebLinksAddon(term, webLinksModule);
+      loadWebglAddon(term, webglModule);
       term.attachCustomKeyEventHandler(terminalKeyHandler(stateRef));
       term.open(element);
       fit.fit();
