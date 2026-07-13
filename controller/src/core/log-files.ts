@@ -8,11 +8,12 @@ import {
   closeSync,
   readSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const LOG_PREFIX = "vllm_";
 const LOG_SUFFIX = ".log";
-const FALLBACK_LOG_DIR = "/tmp";
+const FALLBACK_LOG_DIR = tmpdir();
 
 export interface LogFileEntry {
   sessionId: string;
