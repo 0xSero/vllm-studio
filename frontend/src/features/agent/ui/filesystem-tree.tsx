@@ -110,7 +110,7 @@ export function TreeFileList({
         return (
           <div key={entry.path}>
             <div
-              className={`relative flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--color-surface-hover) ${isActive ? "bg-(--color-selected) font-medium text-(--fg)" : "text-(--dim)"}`}
+              className={`relative flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--hover) ${isActive ? "bg-(--color-selected) font-medium text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
               {isActive ? (

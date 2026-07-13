@@ -367,7 +367,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
+      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border) bg-(--bg) px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
             {mobilePageTitle(pathname)}
@@ -377,7 +377,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md border-0 bg-transparent text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
+            className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md border-0 bg-transparent text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
             aria-label="Open navigation menu"
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-navigation-drawer"

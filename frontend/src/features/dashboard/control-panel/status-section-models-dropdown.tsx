@@ -128,7 +128,7 @@ function ModelDropdownRow({
         setOpen(false);
         await onLaunch(recipe.id);
       }}
-      className={`flex w-full items-center gap-2 border-b border-(--border)/60 px-2.5 py-1.5 text-left last:border-b-0 ${isCurrent ? "bg-(--fg)/8" : "hover:bg-(--fg)/5"} ${disabled && !isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
+      className={`flex w-full items-center gap-2 border-b border-(--separator) px-2.5 py-1.5 text-left last:border-b-0 ${isCurrent ? "bg-(--fg)/8" : "hover:bg-(--fg)/5"} ${disabled && !isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
     >
       <span
         className={`h-3 w-0.5 shrink-0 ${isCurrent ? "bg-(--fg)" : running ? "bg-(--fg)/60" : "bg-(--dim)/40"}`}

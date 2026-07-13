@@ -136,7 +136,7 @@ export function FileViewer({
       return (
         <div className="group flex flex-col">
           <div
-            className="flex items-start gap-1 px-1 hover:bg-(--color-surface-hover)"
+            className="flex items-start gap-1 px-1 hover:bg-(--hover)"
             onMouseEnter={() => {
               lastLineRef.current = lineNumber;
             }}
@@ -178,7 +178,7 @@ export function FileViewer({
           {lineComments?.map((comment) => (
             <div
               key={comment.id}
-              className="ml-9 mr-2 my-0.5 flex items-start gap-2 rounded-md border border-(--border)/60 bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg)/85"
+              className="ml-9 mr-2 my-0.5 flex items-start gap-2 rounded-md border border-(--separator) bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg)/85"
             >
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{comment.body}</span>
               <button

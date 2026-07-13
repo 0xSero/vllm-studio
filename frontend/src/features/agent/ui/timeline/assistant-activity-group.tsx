@@ -70,7 +70,7 @@ function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {open ? (
-        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--separator) pl-2">
           {blocks.map((block) => (
             <ToolBlockView key={block.id} block={block} />
           ))}
@@ -161,7 +161,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {expanded ? (
-        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--separator) pl-2">
           {items.map((item, index) => {
             const isLastItem = index === items.length - 1;
             if (item.kind === "reasoning") {

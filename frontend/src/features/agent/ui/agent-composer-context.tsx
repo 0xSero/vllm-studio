@@ -136,7 +136,7 @@ function MentionPickerHeader({
 }) {
   const meta = MENTION_KIND_META[kind];
   return (
-    <div className="mb-1.5 flex items-center gap-2 border-b border-(--border)/60 pb-1.5 text-[length:var(--fs-sm)]">
+    <div className="mb-1.5 flex items-center gap-2 border-b border-(--separator) pb-1.5 text-[length:var(--fs-sm)]">
       <meta.Icon className={`h-3.5 w-3.5 ${meta.accentClass}`} />
       <span className="font-medium text-(--fg)">{meta.title}</span>
       {query ? (

@@ -32,7 +32,7 @@ export function QuickPanelTopBar({
     // The bar doubles as the frameless window's drag handle; interactive
     // children opt back out so clicks don't start a window drag.
     <div
-      className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-(--border)/70 px-2 [-webkit-app-region:drag]"
+      className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2 [-webkit-app-region:drag]"
       onDoubleClick={(event) => event.preventDefault()}
     >
       <div className="[-webkit-app-region:no-drag]">

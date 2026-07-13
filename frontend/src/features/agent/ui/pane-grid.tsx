@@ -145,7 +145,7 @@ function SplitNode({
         role="separator"
         aria-orientation={isRow ? "vertical" : "horizontal"}
         onPointerDown={handlePointerDown}
-        className={`shrink-0 border-(--border)/75 bg-(--color-header) hover:bg-(--surface) ${
+        className={`shrink-0 border-(--border) bg-(--color-header) hover:bg-(--hover) ${
           isRow ? "h-full w-1 cursor-col-resize border-x" : "w-full h-1 cursor-row-resize border-y"
         }`}
         title="Drag to resize"

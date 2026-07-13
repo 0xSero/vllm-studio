@@ -59,9 +59,9 @@ export function WorkedForDivider({
 
   return (
     <div className="flex items-center gap-3 py-1 text-[length:var(--fs-sm)] text-(--fg)/35">
-      <span className="h-px flex-1 bg-(--border)/60" />
+      <span className="h-px flex-1 bg-(--separator)" />
       <span className={working ? "codex-shimmer-text" : undefined}>{label}</span>
-      <span className="h-px flex-1 bg-(--border)/60" />
+      <span className="h-px flex-1 bg-(--separator)" />
     </div>
   );
 }

@@ -114,7 +114,7 @@ export function ProjectDirectoryPickerModal({
                 key={entry.path}
                 type="button"
                 onClick={() => void loadDirectory(entry.path)}
-                className="flex w-full items-center gap-2 border-b border-(--border)/50 px-3 py-2 text-left hover:bg-(--surface)"
+                className="flex w-full items-center gap-2 border-b border-(--separator) px-3 py-2 text-left hover:bg-(--hover)"
                 title={entry.path}
               >
                 <Folder className="h-4 w-4 shrink-0 text-(--dim)" />

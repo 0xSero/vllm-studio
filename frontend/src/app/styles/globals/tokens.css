@@ -181,6 +181,8 @@
   /* Hairline borders — translucent foreground mixes so they sit correctly on
      any surface. 8% default, 16% heavy (hover), 5% light. */
   --color-border: #1a1c1f14;
+  --color-border-light: #1a1c1f0d;
+  --color-border-heavy: #1a1c1f29;
   --color-border-hover: #1a1c1f29;
   --color-hover: #1a1c1f0d;
   --color-selected: #1a1c1f14;
@@ -356,6 +358,8 @@
   /* Hairline borders — translucent white mixes: 8% default, 16% heavy,
      4% light. Hover/selected are white overlays (5% / 8%). */
   --color-border: #ffffff14;
+  --color-border-light: #ffffff0a;
+  --color-border-heavy: #ffffff29;
   --color-border-hover: #ffffff29;
   --color-hover: #ffffff0d;
   --color-selected: #ffffff14;
@@ -376,9 +380,10 @@
 
   --color-input: #ffffff0d;
   --color-input-focused: var(--color-input);
-  --color-input-border: var(--color-border);
-  --color-input-border-hover: var(--color-border-hover);
-  --color-input-border-focused: var(--color-border-hover);
+  /* Dark inputs are filled surfaces with no resting outline. */
+  --color-input-border: transparent;
+  --color-input-border-hover: var(--color-border-heavy);
+  --color-input-border-focused: var(--color-border-heavy);
 
   /* Terminal — dark variant */
   --color-terminal-bg: var(--color-background);
@@ -525,7 +530,7 @@
   --sidebar-bg: var(--color-sidebar);
 
   --border: var(--color-border);
-  --separator: var(--color-border);
+  --separator: var(--color-border-light);
   --hover: var(--color-hover);
   --active: var(--color-selected);
   --composer: var(--color-surface);
@@ -558,7 +563,7 @@
   --sidebar-bg: var(--color-sidebar);
 
   --border: var(--color-border);
-  --separator: var(--color-border);
+  --separator: var(--color-border-light);
   --hover: var(--color-hover);
   --active: var(--color-selected);
   --composer: var(--color-card);

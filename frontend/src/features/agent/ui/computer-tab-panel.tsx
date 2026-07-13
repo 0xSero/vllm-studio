@@ -295,7 +295,7 @@ function ComputerLauncherPanel({
               className={`group flex min-h-0 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
                 selected
                   ? "bg-(--color-surface-hover) text-(--fg)"
-                  : "text-(--fg)/75 hover:bg-(--color-surface-hover) hover:text-(--fg)"
+                  : "text-(--fg)/75 hover:bg-(--hover) hover:text-(--fg)"
               }`}
             >
               {Icon ? (

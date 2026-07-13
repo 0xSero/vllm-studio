@@ -49,8 +49,8 @@ export function LogsSessionsSidebar({
           onSelectSession(session.id);
         }
       }}
-      className={`w-full text-left p-3 border-b border-(--border)/50 transition-colors group cursor-pointer ${
-        selectedSession === session.id ? "bg-(--surface)" : "hover:bg-(--surface)"
+      className={`w-full text-left p-3 border-b border-(--separator) transition-colors group cursor-pointer ${
+        selectedSession === session.id ? "bg-(--surface)" : "hover:bg-(--hover)"
       }`}
     >
       <div className="flex items-start justify-between gap-2">

@@ -215,7 +215,7 @@ export function StatusMetricStrip({
   metricColumns: MetricColumnView[];
 }) {
   return (
-    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 border-b border-(--border)/40 pb-5 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 border-b border-(--separator) pb-5 sm:grid-cols-3 lg:grid-cols-6">
       {metricColumns.map((metric) => (
         <MetricCell
           key={metric.label}
@@ -279,7 +279,7 @@ function StatusDot({ running, loading }: { running: boolean; loading?: boolean }
 
 function Tag({ tone, children }: { tone?: "err"; children: ReactNode }) {
   const cls =
-    tone === "err" ? "border-(--err)/60 text-(--err)" : "border-(--border)/70 text-(--dim)";
+    tone === "err" ? "border-(--err)/60 text-(--err)" : "border-(--border) text-(--dim)";
   return (
     <span
       className={`rounded-full border px-2 py-[1px] text-[length:var(--fs-2xs)] font-medium ${cls}`}

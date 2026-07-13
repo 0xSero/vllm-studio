@@ -51,7 +51,7 @@ function ControllerMatrix() {
   const { rows, activeUrl, visible } = useControllerMatrixStore();
   if (!visible) return null;
   return (
-    <section className="mb-3 border-b border-(--border)/35 pb-3">
+    <section className="mb-3 border-b border-(--separator) pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
           controllers live
@@ -120,7 +120,7 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
   const tail = logs.length > 0 ? logs.slice(-120) : [];
 
   return (
-    <section className="border-t border-(--border)/40 px-2 pt-4 pb-5">
+    <section className="border-t border-(--separator) px-2 pt-4 pb-5">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
           Controller logs

@@ -79,7 +79,7 @@ export function useMetricSamples({
 
 export function MetricTrends({ samples, peaks }: { samples: MetricSample[]; peaks: MetricPeak }) {
   return (
-    <div className="mt-6 border-t border-(--border)/40 pt-3">
+    <div className="mt-6 border-t border-(--separator) pt-3">
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
         <TrendPanel
           label="Throughput (tok/s)"

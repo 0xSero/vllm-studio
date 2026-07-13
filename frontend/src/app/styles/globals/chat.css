@@ -266,7 +266,7 @@
 
 .chat-markdown thead th {
   background: color-mix(in srgb, var(--fg) 5%, transparent);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--separator);
 }
 
 .chat-markdown th {
@@ -285,7 +285,7 @@
   color: color-mix(in srgb, var(--fg) 84%, transparent);
   vertical-align: top;
   overflow-wrap: anywhere;
-  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-top: 1px solid var(--separator);
 }
 
 .chat-markdown tbody tr:first-child td {

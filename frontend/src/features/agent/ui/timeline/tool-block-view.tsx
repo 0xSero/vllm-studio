@@ -166,20 +166,20 @@ function ShellBlock({
         <span className="min-w-0 whitespace-pre-wrap break-words">{command}</span>
       </div>
       {output ? (
-        <pre className="max-h-[320px] overflow-auto border-t border-(--border)/40 px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
+        <pre className="max-h-[320px] overflow-auto border-t border-(--separator) px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
           {output}
         </pre>
       ) : status !== "running" ? (
-        <div className="border-t border-(--border)/40 px-3 py-1.5 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--dim)/60">
+        <div className="border-t border-(--separator) px-3 py-1.5 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--dim)/60">
           No output
         </div>
       ) : null}
       {status === "done" ? (
-        <div className="border-t border-(--border)/40 px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--ok)">
+        <div className="border-t border-(--separator) px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--ok)">
           Success
         </div>
       ) : status === "error" ? (
-        <div className="border-t border-(--border)/40 px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--err)">
+        <div className="border-t border-(--separator) px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--err)">
           Failed
         </div>
       ) : null}
@@ -320,7 +320,7 @@ function FileWritePreview({
   return (
     <ToolSummary block={block} filePath={filePath} open>
       <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
-        <div className="flex items-center justify-between gap-2 border-b border-(--border)/40 px-3 py-1.5 text-[length:var(--fs-sm)] text-(--dim)">
+        <div className="flex items-center justify-between gap-2 border-b border-(--separator) px-3 py-1.5 text-[length:var(--fs-sm)] text-(--dim)">
           <span className="truncate font-mono">
             {fileBasename(filePath) ?? sourceLang ?? "source"}
           </span>

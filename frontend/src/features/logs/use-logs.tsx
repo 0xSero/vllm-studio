@@ -207,7 +207,7 @@ export function useLogs() {
       ? logLines.filter((line) => line.toLowerCase().includes(query))
       : logLines;
     return visible.map((line, index) => (
-      <div key={index} className={`${getLogLineClass(line)} hover:bg-(--surface) px-2 py-0.5`}>
+      <div key={index} className={`${getLogLineClass(line)} hover:bg-(--hover) px-2 py-0.5`}>
         {line || "\u00A0"}
       </div>
     ));

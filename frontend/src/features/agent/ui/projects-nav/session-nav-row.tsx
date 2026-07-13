@@ -126,7 +126,7 @@ export function SessionNavRow({
             event.stopPropagation();
             setMenuOpen((value) => !value);
           }}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) transition-[opacity,color,background-color] hover:bg-(--color-surface-hover) hover:text-(--fg) ${
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) transition-[opacity,color,background-color] hover:bg-(--hover) hover:text-(--fg) ${
             menuOpen
               ? "pointer-events-auto opacity-100"
               : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"

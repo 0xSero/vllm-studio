@@ -47,7 +47,7 @@ function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
     "surface-3": `rgba(${ink}, 0.05)`,
     rail: isLight ? "#f9f9f9" : tokens.bg,
     border: `rgba(${ink}, 0.08)`,
-    separator: `rgba(${ink}, 0.08)`,
+    separator: `rgba(${ink}, 0.05)`,
     hover: `rgba(${ink}, 0.05)`,
     active: `rgba(${ink}, 0.08)`,
     composer: isLight ? "#ffffff" : tokens.surface,

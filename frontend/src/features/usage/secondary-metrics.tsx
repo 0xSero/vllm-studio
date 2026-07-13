@@ -64,7 +64,7 @@ export function SecondaryMetrics(stats: SecondaryMetricsStats) {
 
         <div>
           <SectionLabel>Hourly activity</SectionLabel>
-          <div className="flex h-28 items-end gap-0.5 border-b border-(--border)/40 pb-2">
+          <div className="flex h-28 items-end gap-0.5 border-b border-(--separator) pb-2">
             {Array.from({ length: 24 }, (_: undefined, i: number) => {
               const hourData = stats.hourly_pattern.find((h: HourlyPatternData) => h.hour === i);
               const requests = hourData?.requests || 0;
