@@ -134,5 +134,10 @@ and logic, keep code DRY.
   (loop continues appending). FLAGGED FOR OWNER: landing-page.tsx and marketing-page.tsx are
   ~90% clones and BOTH routed (/landing+/docs vs /agents+/download) — consolidation is the
   pending marketing product decision, not an autonomous call.
-- In flight: use-setup.ts and google-account-modal extractions (agents).
-- Final: PushNotification at stop; desktop rebuild owed post-merge per AGENTS.md.
+- **I18 (20:10)**: google-account-modal 501→263 (+setup/connected/load-state sections, 655b38e7).
+- **OUTAGE (20:20–06:38)**: the API session limit cut the night short — the use-setup extraction
+  agent died mid-verification and no wakeups could fire until morning. Nothing was lost: the
+  orphaned extraction was re-verified at 06:38 (all gates green) and committed.
+- **WRAP (06:45)**: deadline passed; final push (27 commits on PR #181), loop stopped.
+  Owed after PR review/merge: desktop rebuild per AGENTS.md; owner decisions on
+  landing-vs-marketing consolidation and the GET /runtime info-path unification design.
