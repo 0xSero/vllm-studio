@@ -29,12 +29,10 @@ export function GpuSection({ gpus }: GpuSectionProps) {
 
   if (!hasGpus) {
     return (
-      <section className="mt-4 border-t border-(--border)/40 px-2 pt-3 pb-4">
+      <section className="mt-4 border-t border-(--separator) px-2 pt-3 pb-4">
         <div className="flex w-full items-center gap-4 text-left">
           <div className="flex shrink-0 items-baseline gap-2">
-            <span className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
-              GPUs
-            </span>
+            <span className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">GPUs</span>
             <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
               0
             </span>
@@ -56,7 +54,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
   }
 
   return (
-    <section className="mt-4 border-t border-(--border)/40 px-2 pt-3 pb-5">
+    <section className="mt-4 border-t border-(--separator) px-2 pt-3 pb-5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -64,9 +62,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
         aria-expanded={expanded}
       >
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="shrink-0 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.18em] text-(--dim)">
-            GPUs
-          </span>
+          <span className="shrink-0 text-[length:var(--fs-sm)] font-medium text-(--hl2)">GPUs</span>
           <span className="shrink-0 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
             {sortedGpus.length}
           </span>
@@ -125,9 +121,7 @@ export function GpuSection({ gpus }: GpuSectionProps) {
 function Aggregate({ label, value }: { label: string; value: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[length:var(--fs-2xs)] uppercase tracking-[0.14em] text-(--dim)/55">
-        {label}
-      </span>
+      <span className="text-[length:var(--fs-2xs)] text-(--dim)/55">{label}</span>
       <span className="text-(--fg)/85">{value}</span>
     </span>
   );

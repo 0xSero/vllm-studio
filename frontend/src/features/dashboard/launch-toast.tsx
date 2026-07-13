@@ -17,7 +17,7 @@ export function LaunchToast({ launching, launchProgress }: LaunchToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 left-4 right-4 z-50 rounded-[var(--rad-lg)] border border-(--color-popover-border) bg-(--color-popover) px-3 py-2.5 shadow-lg sm:bottom-5 sm:left-auto sm:right-5 sm:w-[280px]"
+      className="fixed bottom-4 left-4 right-4 z-50 rounded-2xl border border-(--color-popover-border) bg-(--color-popover) px-3 py-2.5 shadow-xl sm:bottom-5 sm:left-auto sm:right-5 sm:w-[280px]"
       style={{ marginBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="space-y-1">

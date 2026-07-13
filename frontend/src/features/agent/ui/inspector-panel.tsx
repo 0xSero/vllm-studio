@@ -164,7 +164,7 @@ function SessionSummaryHeader({
           className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors ${
             toolOnly
               ? "bg-(--accent)/15 text-(--accent)"
-              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)/75"
+              : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)/75"
           }`}
           title={toolOnly ? "Show all turns" : "Show only turns with tool calls"}
         >
@@ -256,7 +256,7 @@ function TurnRow({ turn }: { turn: TurnRecord }) {
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      className="group cursor-pointer rounded-lg border border-(--border)/40 bg-(--surface)/30 px-3 py-2.5 transition-colors hover:bg-(--surface)/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--accent)"
+      className="group cursor-pointer rounded-lg border border-(--separator) bg-(--surface)/30 px-3 py-2.5 transition-colors hover:bg-(--hover)/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--accent)"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">

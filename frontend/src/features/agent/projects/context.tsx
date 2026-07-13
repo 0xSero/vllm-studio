@@ -24,6 +24,7 @@ export type ProjectsContextValue = {
   selectProject: (project: Project | null) => void;
   upsertProject: (project: Project) => void;
   removeProject: (id: string) => Promise<void>;
+  moveProjectBefore: (dragId: string, targetId: string | null) => void;
   refresh: () => Promise<void>;
   loadGitSummary: (cwd: string) => Promise<GitSummary | null>;
   initGitForActiveProject: () => Promise<void>;
@@ -88,6 +89,7 @@ export function useProjects(): ProjectsContextValue {
       selectProject: store.selectProject,
       upsertProject: store.upsertProject,
       removeProject: store.removeProject,
+      moveProjectBefore: store.moveProjectBefore,
       refresh: store.refresh,
       loadGitSummary: store.loadGitSummary,
       initGitForActiveProject: store.initGitForActiveProject,

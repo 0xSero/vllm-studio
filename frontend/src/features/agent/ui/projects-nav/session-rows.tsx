@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
@@ -43,6 +43,11 @@ export function ProjectRow({
   prefs,
   excludedIds,
   icon = "folder",
+  reorderDraggable = false,
+  onReorderDragStart,
+  onReorderDragEnd,
+  onReorderDragOver,
+  onReorderDrop,
 }: {
   project: ProjectEntry;
   open: boolean;
@@ -53,6 +58,11 @@ export function ProjectRow({
   prefs: SessionPrefs;
   excludedIds: ReadonlySet<string>;
   icon?: "folder" | "chat";
+  reorderDraggable?: boolean;
+  onReorderDragStart?: () => void;
+  onReorderDragEnd?: () => void;
+  onReorderDragOver?: (event: DragEvent) => void;
+  onReorderDrop?: () => void;
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const handleToggle = () => {
@@ -66,7 +76,14 @@ export function ProjectRow({
 
   return (
     <div className="flex flex-col">
-      <div className="group relative flex h-7 items-center rounded-md pl-2 pr-1.5 text-(--dim)/70 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/80">
+      <div
+        className="group relative flex h-8 items-center rounded-lg pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)"
+        draggable={reorderDraggable}
+        onDragStart={onReorderDragStart}
+        onDragEnd={onReorderDragEnd}
+        onDragOver={onReorderDragOver}
+        onDrop={onReorderDrop}
+      >
         <button
           type="button"
           onClick={handleToggle}
@@ -74,9 +91,9 @@ export function ProjectRow({
           className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
         >
           {icon === "chat" ? (
-            <ChatIcon className="h-3.5 w-3.5 shrink-0 opacity-55 transition-opacity group-hover:opacity-75" />
+            <ChatIcon className="h-3.5 w-3.5 shrink-0 opacity-70 transition-opacity group-hover:opacity-90" />
           ) : (
-            <span className="relative h-3.5 w-3.5 shrink-0 opacity-55 transition-opacity group-hover:opacity-75">
+            <span className="relative h-3.5 w-3.5 shrink-0 opacity-70 transition-opacity group-hover:opacity-90">
               <Folder
                 className={`absolute inset-0 h-3.5 w-3.5 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-100"}`}
               />
@@ -85,9 +102,7 @@ export function ProjectRow({
               />
             </span>
           )}
-          <span className="truncate text-[length:var(--fs-lg)] font-normal text-(--dim) transition-colors group-hover:text-(--fg)/85">
-            {project.name}
-          </span>
+          <span className="truncate text-[length:var(--fs-md)] font-normal">{project.name}</span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)"
@@ -237,7 +252,7 @@ export function ProjectSessions({
         <button
           type="button"
           onClick={() => setVisibleLimit((value) => value + SESSIONS_PAGE_SIZE)}
-          className="flex h-6.5 items-center rounded-md pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim)/80 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/80"
+          className="flex h-7 items-center rounded-lg pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
         >
           Show more
         </button>
@@ -260,7 +275,7 @@ export function ActiveSessionRow({
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isFocused = session.focused === true;
-  const rowClass = `group relative flex h-6.5 items-center rounded-md pl-3 pr-0 transition-colors ${isFocused ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--fg)/72 hover:bg-(--color-surface-hover) hover:text-(--fg)/95"}`;
+  const rowClass = `group relative flex h-7 items-center rounded-lg pl-3 pr-0 transition-colors ${isFocused ? "bg-(--active) text-(--fg)" : "text-(--fg)/85 hover:bg-(--hover) hover:text-(--fg)"}`;
 
   return (
     <SessionNavRow
@@ -335,8 +350,8 @@ export function SessionRow({
       age={relativeAge(session.startedAt)}
       isRunning={isRunning}
       unseen={unseen}
-      rowClass="group relative flex h-6.5 items-center rounded-md pl-3 pr-0 text-(--fg)/72 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)/95"
-      renameRowClass="flex h-6.5 items-center rounded-md bg-(--surface)/40 pl-3 pr-1"
+      rowClass="group relative flex h-7 items-center rounded-lg pl-3 pr-0 text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg)"
+      renameRowClass="flex h-8 items-center rounded-[10px] bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&replace=1`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onArchive={() => {

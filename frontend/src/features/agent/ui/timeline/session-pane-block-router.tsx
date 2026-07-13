@@ -21,9 +21,9 @@ const MemoContentBlock = memo(function MemoContentBlock({ block }: { block: Text
 function EventBlockView({ block }: { block: EventBlock }) {
   return (
     <div className="flex items-center gap-3 py-1 text-[length:var(--fs-sm)] text-(--fg)/35">
-      <span className="h-px flex-1 bg-(--border)/60" />
+      <span className="h-px flex-1 bg-(--separator)" />
       <span>{block.text}</span>
-      <span className="h-px flex-1 bg-(--border)/60" />
+      <span className="h-px flex-1 bg-(--separator)" />
     </div>
   );
 }

@@ -20,14 +20,14 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
   return (
     <details className="group min-w-0" open={open}>
       <summary
-        className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!open);
         }}
       >
         <span
-          className={`text-[13px] font-medium leading-5 ${
+          className={`text-[length:var(--fs-base)] font-normal leading-5 ${
             active ? "codex-shimmer-text" : "text-(--fg)/55"
           }`}
         >
@@ -36,7 +36,7 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
         <ChevronRight className="h-3 w-3 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {open ? (
-        <div className="mb-1.5 ml-1.5 mt-1 max-h-[320px] min-w-0 overflow-auto whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[13px] leading-[1.6] text-(--fg)/60">
+        <div className="mb-1.5 ml-1.5 mt-1 max-h-[320px] min-w-0 overflow-auto whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[length:var(--fs-base)] leading-[1.625] text-(--fg)/60">
           {block.text}
         </div>
       ) : null}
@@ -51,26 +51,26 @@ function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean
   return (
     <details className="group min-w-0" open={open}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setOpen((value) => !value);
         }}
       >
         <span
-          className={`shrink-0 text-[13px] font-medium leading-5 ${
+          className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
             running ? "codex-shimmer-text" : "text-(--fg)/55"
           }`}
         >
           {running ? "Exploring" : "Explored"}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-(--dim)/80">
+        <span className="min-w-0 flex-1 truncate text-[length:var(--fs-base)] leading-5 text-(--hl2)">
           {counts}
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {open ? (
-        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--separator) pl-2">
           {blocks.map((block) => (
             <ToolBlockView key={block.id} block={block} />
           ))}
@@ -138,14 +138,14 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
   return (
     <details className="group min-w-0" open={expanded}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserExpanded(!expanded);
         }}
       >
         <span
-          className={`shrink-0 text-[13px] font-medium leading-5 ${
+          className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
             working || live ? "codex-shimmer-text" : "text-(--fg)/55"
           }`}
         >
@@ -161,7 +161,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {expanded ? (
-        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--border)/50 pl-2">
+        <div className="mb-1.5 ml-2 mt-1 flex min-w-0 flex-col gap-0.5 border-l border-(--separator) pl-2">
           {items.map((item, index) => {
             const isLastItem = index === items.length - 1;
             if (item.kind === "reasoning") {

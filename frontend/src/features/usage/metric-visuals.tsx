@@ -106,7 +106,7 @@ export function StackedMetricBar({
 export function MiniBarChart({ bars, max }: { bars: MiniBarDatum[]; max: number }) {
   const safeMax = Math.max(max, 1);
   return (
-    <div className="grid h-24 grid-cols-3 items-end gap-2 border-b border-(--border)/40 pb-2">
+    <div className="grid h-24 grid-cols-3 items-end gap-2 border-b border-(--separator) pb-2">
       {bars.map((bar) => (
         <div key={bar.label} className="flex h-full min-w-0 flex-col justify-end gap-1">
           <span

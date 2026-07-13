@@ -129,7 +129,7 @@ export function Timeline({
             })}
             {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
               <div className="pt-6 pb-4">
-                <span className="codex-shimmer-text text-[13px] font-medium leading-5">
+                <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
                   Thinking
                 </span>
               </div>

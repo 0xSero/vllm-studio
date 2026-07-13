@@ -42,7 +42,7 @@ export function QuickProjectPicker({ projects }: Props) {
         <span className="truncate">{active?.name ?? "Choose project"}</span>
       </button>
       {open ? (
-        <div className="absolute top-full left-0 z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto rounded-md border border-(--border) bg-[#151515] p-1 shadow-[0_12px_36px_rgba(0,0,0,0.65)]">
+        <div className="absolute top-full left-0 z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
           {projects.projects.map((project) => (
             <button
               key={project.id}

@@ -244,7 +244,7 @@ function PlanTodoRow({
         <button
           type="button"
           onClick={() => onCycle(todo)}
-          className="mt-0.5 rounded p-0.5 hover:bg-(--surface)"
+          className="mt-0.5 rounded p-0.5 hover:bg-(--hover)"
           title={`${meta.label} — click to change`}
           aria-label={`${meta.label} — click to change`}
         >
@@ -277,7 +277,7 @@ function PlanTodoRow({
           type="button"
           onClick={() => onOpenSideChat?.(todo)}
           disabled={!onOpenSideChat}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-(--dim) opacity-0 transition-opacity hover:border-(--border) hover:bg-(--surface) hover:text-(--fg) disabled:pointer-events-none group-hover:opacity-100 focus:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-(--dim) opacity-0 transition-opacity hover:border-(--border) hover:bg-(--hover) hover:text-(--fg) disabled:pointer-events-none group-hover:opacity-100 focus:opacity-100"
           title="Open this task in a new side chat"
           aria-label="Open this task in a new side chat"
         >

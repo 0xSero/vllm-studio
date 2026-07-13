@@ -95,7 +95,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         aria-modal="true"
         aria-labelledby={titleId}
         className={cx(
-          "relative z-10 max-h-full w-full overflow-hidden rounded-[var(--rad-xl)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0_24px_80px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.035)] outline-none",
+          "relative z-10 max-h-full w-full overflow-hidden rounded-[var(--rad-3xl)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)] outline-none",
           maxWidth,
           className,
         )}
@@ -151,7 +151,7 @@ function UiModalHeader({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-[var(--rad-md)] text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) active:scale-[0.98]"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) active:scale-[0.98]"
             aria-label={closeLabel}
           >
             {closeIcon ?? <X className="h-3.5 w-3.5" />}

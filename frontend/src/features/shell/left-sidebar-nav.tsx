@@ -105,17 +105,15 @@ export function NavItemDesktop({
       href={href}
       prefetch={false}
       title={label}
-      className={`group flex h-8 items-center gap-2.5 rounded-md px-2.5 transition-colors shrink-0 ${
-        active
-          ? "bg-(--color-surface-hover) font-medium text-(--fg)"
-          : "text-(--fg)/90 hover:bg-(--color-surface-hover) hover:text-(--fg)"
+      className={`group flex h-8 items-center gap-2.5 rounded-lg px-2 transition-colors shrink-0 ${
+        active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
       }`}
     >
       <Icon
-        className={`h-4 w-4 shrink-0 ${active ? "text-(--fg)/85" : "opacity-60"}`}
+        className={`h-3.5 w-3.5 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
         strokeWidth={1.75}
       />
-      <span className="text-[length:var(--fs-lg)] whitespace-nowrap">{label}</span>
+      <span className="text-[length:var(--fs-md)] whitespace-nowrap">{label}</span>
     </Link>
   );
 }

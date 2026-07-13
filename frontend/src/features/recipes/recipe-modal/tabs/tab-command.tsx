@@ -49,7 +49,7 @@ export function RecipeModalTabCommand({
           value={recipeSourceText}
           onChange={(e) => onRecipeSourceChange(e.target.value)}
           spellCheck={false}
-          className="min-h-[360px] flex-1 resize-none rounded-md border border-(--ui-border) bg-[#050505] px-4 py-3 font-mono text-[length:var(--fs-md)] leading-5 text-(--ui-fg) outline-none selection:bg-(--ui-info)/25 placeholder:text-(--ui-muted)/50 focus:border-(--ui-border) focus:ring-1 focus:ring-(--ui-info)/45"
+          className="min-h-[360px] flex-1 resize-none rounded-[10px] border border-(--ui-border) bg-(--color-surface) px-4 py-3 font-mono text-[length:var(--fs-md)] leading-5 text-(--ui-fg) outline-none selection:bg-(--ui-info)/25 placeholder:text-(--ui-muted)/50 focus:border-(--ui-border) focus:ring-1 focus:ring-(--link)/45"
           placeholder='{"id":"my-model","name":"My model","model_path":"/models/my-model"}'
         />
         {recipeSourceError ? (
@@ -86,7 +86,7 @@ export function RecipeModalTabCommand({
           value={commandText}
           onChange={(e) => onCommandChange(e.target.value)}
           spellCheck={false}
-          className="min-h-[220px] flex-1 resize-none rounded-md border border-(--ui-border) bg-[#050505] px-4 py-3 font-mono text-[length:var(--fs-md)] leading-6 text-(--ui-fg) outline-none selection:bg-(--ui-info)/25 placeholder:text-(--ui-muted)/50 focus:border-(--ui-border) focus:ring-1 focus:ring-(--ui-info)/45"
+          className="min-h-[220px] flex-1 resize-none rounded-[10px] border border-(--ui-border) bg-(--color-surface) px-4 py-3 font-mono text-[length:var(--fs-md)] leading-6 text-(--ui-fg) outline-none selection:bg-(--ui-info)/25 placeholder:text-(--ui-muted)/50 focus:border-(--ui-border) focus:ring-1 focus:ring-(--link)/45"
           placeholder={generatedCommand || "Command will appear here..."}
         />
       </section>

@@ -86,7 +86,7 @@ export default function UsagePage() {
   return (
     <AppPage>
       <PageContainer width="md" className="2xl:px-10">
-        <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--border)/35 pb-2">
+        <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--separator) pb-2">
           <span className="mr-1 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--dim)">
             source
           </span>
@@ -126,7 +126,7 @@ export default function UsagePage() {
             />
           </div>
 
-          <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--border)/40 pb-5 lg:grid-cols-4">
+          <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--separator) pb-5 lg:grid-cols-4">
             <HeaderStat
               label="prompt"
               value={formatNumber(totals.prompt_tokens)}
@@ -199,7 +199,7 @@ export default function UsagePage() {
 
 function HeaderStat({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="min-w-0 overflow-hidden border-r border-(--border)/40 pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
+    <div className="min-w-0 overflow-hidden border-r border-(--separator) pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
       <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
         {label}
       </dt>

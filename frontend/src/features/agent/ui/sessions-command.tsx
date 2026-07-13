@@ -212,7 +212,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0_24px_80px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.035)]"
+        className="relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]"
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault();

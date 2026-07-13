@@ -37,7 +37,7 @@ export function LocalhostStartPage({
           <button
             type="button"
             onClick={() => onQueryChange("")}
-            className="rounded-md px-2 py-1 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            className="rounded-md px-2 py-1 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           >
             Clear
           </button>
@@ -47,7 +47,7 @@ export function LocalhostStartPage({
           <button
             type="button"
             onClick={() => onNavigate(query)}
-            className="mb-3 flex w-full items-center justify-between rounded-xl border border-(--border) bg-(--surface)/70 px-4 py-3 text-left hover:bg-(--surface)"
+            className="mb-3 flex w-full items-center justify-between rounded-xl border border-(--border) bg-(--surface)/70 px-4 py-3 text-left hover:bg-(--hover)"
           >
             <span className="min-w-0">
               <span className="block truncate text-[length:var(--fs-base)] font-medium">
@@ -100,7 +100,7 @@ function LocalhostSiteRow({
     <button
       type="button"
       onClick={() => onNavigate(site.url)}
-      className="group flex w-full items-center gap-4 rounded-xl border border-(--border) bg-black/10 px-3 py-3 text-left transition-colors hover:bg-(--surface)"
+      className="group flex w-full items-center gap-4 rounded-xl border border-(--border) bg-black/10 px-3 py-3 text-left transition-colors hover:bg-(--hover)"
     >
       <span className="flex h-[58px] w-[92px] shrink-0 flex-col justify-between rounded-lg border border-white/20 bg-[#f4f4f4] p-2 shadow-inner">
         <span className="flex gap-1">

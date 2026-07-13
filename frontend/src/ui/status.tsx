@@ -49,7 +49,7 @@ export function StatusPill({
     return (
       <span
         className={cx(
-          "inline-flex h-5 items-center rounded-[var(--rad-xs)] px-1.5 text-[length:var(--fs-xs)] font-medium",
+          "inline-flex h-5 items-center rounded-full px-2 text-[length:var(--fs-xs)] font-medium",
           badgeClasses[tone],
           className,
         )}

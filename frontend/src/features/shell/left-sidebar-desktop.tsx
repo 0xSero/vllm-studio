@@ -8,7 +8,7 @@ import {
   Search as SearchIcon,
   Settings,
   PanelLeftOpen,
-  Square,
+  PanelLeftClose,
 } from "@/ui/icon-registry";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
@@ -51,14 +51,14 @@ export function DesktopSidebar({
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+            <PanelLeftOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
       ) : null}
       <aside
         onPointerEnter={onRevealProjectsNav}
         onFocusCapture={onRevealProjectsNav}
-        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden shadow-[inset_-1px_0_rgba(255,255,255,0.02)] ${
+        className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${
           resizing ? "" : "transition-[width] duration-150 ease-out"
         } ${isExpanded ? "" : "w-0 border-r-0"}`}
         style={{
@@ -85,47 +85,47 @@ export function DesktopSidebar({
         >
           {isExpanded ? (
             <>
-              <div className="sticky top-0 z-50 flex h-10 shrink-0 items-center gap-1 bg-(--sidebar-bg) px-1.5">
+              <div className="sticky top-0 z-50 flex h-[var(--h-toolbar)] shrink-0 items-center gap-1 bg-(--sidebar-bg) px-2">
                 <button
                   onClick={() => onSetPinnedOpen(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Collapse sidebar"
                   aria-label="Collapse sidebar"
                 >
-                  <Square className="h-3.5 w-3.5" />
+                  <PanelLeftClose className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => window.history.back()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Go back"
                   aria-label="Go back"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => window.history.forward()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                   title="Go forward"
                   aria-label="Go forward"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
               </div>
 
-              <nav className="flex-1 min-h-0 flex flex-col px-3 py-0.5 overflow-y-auto overflow-x-hidden">
+              <nav className="flex-1 min-h-0 flex flex-col px-2.5 py-0.5 overflow-y-auto overflow-x-hidden">
                 <button
                   type="button"
                   onClick={onOpenSearch}
-                  className="mb-1 flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-(--fg)/90 transition-colors hover:bg-(--color-surface-hover) hover:text-(--fg)"
+                  className="mb-0.5 flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-(--fg) transition-colors hover:bg-(--hover)"
                   title="Search sessions (⌘K)"
                 >
-                  <SearchIcon className="h-4 w-4 shrink-0 opacity-60" strokeWidth={1.5} />
-                  <span className="flex-1 truncate text-left text-[length:var(--fs-lg)] font-normal">
+                  <SearchIcon className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.75} />
+                  <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
                     Search
                   </span>
                 </button>
 
-                <div className="mb-1 mt-5 px-2.5 text-[length:var(--fs-md)] font-normal text-(--dim)">
+                <div className="pb-1 pt-5 px-2 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
                   Workspace
                 </div>
                 {tabs.map((tab) => (
@@ -146,24 +146,24 @@ export function DesktopSidebar({
                 ) : null}
               </nav>
 
-              <div className="shrink-0 px-3 py-2">
+              <div className="shrink-0 px-2.5 py-2">
                 <Link
                   href="/settings"
                   prefetch={false}
                   title="Settings"
-                  className={`group flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 transition-colors ${
+                  className={`group flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 transition-colors ${
                     isRouteActive(pathname, "/settings")
-                      ? "bg-(--color-surface-hover) font-medium text-(--fg)"
-                      : "text-(--fg)/90 hover:bg-(--color-surface-hover) hover:text-(--fg)"
+                      ? "bg-(--active) text-(--fg)"
+                      : "text-(--fg) hover:bg-(--hover)"
                   }`}
                 >
                   <Settings
-                    className={`h-4 w-4 shrink-0 ${
-                      isRouteActive(pathname, "/settings") ? "text-(--fg)/85" : "opacity-60"
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      isRouteActive(pathname, "/settings") ? "opacity-90" : "opacity-70"
                     }`}
                     strokeWidth={1.75}
                   />
-                  <span className="whitespace-nowrap text-[length:var(--fs-lg)] font-normal">
+                  <span className="whitespace-nowrap text-[length:var(--fs-md)] font-normal">
                     Settings
                   </span>
                 </Link>

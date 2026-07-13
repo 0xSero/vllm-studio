@@ -1,6 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
 import { type FileMentionRow } from "@/features/agent/ui/agent-composer-context";
@@ -32,6 +33,17 @@ import {
   exportFilenameFromTitle,
   sessionToMarkdown,
 } from "@/features/agent/messages/export-markdown";
+import {
+  OPEN_TERMINAL_EVENT,
+  type OpenTerminalEventDetail,
+  type TerminalOwner,
+} from "@/features/agent/terminal-owners";
+import {
+  rememberPersistentTerminalOwner,
+  selectPersistentTerminalOwner,
+  usePersistentTerminalOwners,
+} from "@/features/agent/ui/use-persistent-terminal-owners";
+import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 export type { ChatPaneHandle, SessionTab };
 
 const Timeline = dynamic(
@@ -100,6 +112,7 @@ type Props = {
   onClose?: () => void;
   onForkSession?: () => void;
   onOpenTerminal?: () => void;
+  terminalOwner?: TerminalOwner | null;
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
@@ -134,6 +147,7 @@ export function ChatPane({
   onClose,
   onForkSession,
   onOpenTerminal,
+  terminalOwner = null,
   rightPanelOpen,
   onToggleRightPanel,
   onRegisterHandle,
@@ -157,6 +171,32 @@ export function ChatPane({
     showEmptyPrompt,
     visibleQueueItems,
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
+  // In-pane terminal: replaces the transcript+composer with a persistent PTY
+  // for this session/project. Terminals stay mounted (hidden) after toggling
+  // back so the shell keeps running; the header button flips the view.
+  const [terminalView, setTerminalView] = useState(false);
+  const terminalSnapshot = usePersistentTerminalOwners(
+    terminalView,
+    terminalView ? terminalOwner : null,
+  );
+  const toggleTerminalView = useCallback(() => {
+    setTerminalView((open) => {
+      const next = !open;
+      if (next && terminalOwner) rememberPersistentTerminalOwner(terminalOwner, { select: true });
+      return next;
+    });
+  }, [terminalOwner]);
+  useMountSubscription(() => {
+    if (!isFocused) return;
+    const onOpenTerminalEvent = (event: Event) => {
+      const detail = (event as CustomEvent<OpenTerminalEventDetail>).detail;
+      if (!detail?.mountKey) return;
+      selectPersistentTerminalOwner(detail.mountKey);
+      setTerminalView(true);
+    };
+    window.addEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
+    return () => window.removeEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
+  }, [isFocused]);
   const updateTab = useCallback(
     (tabId: string, patch: (tab: SessionTab) => SessionTab) => {
       onTabsChange((currentTabs) =>
@@ -332,13 +372,21 @@ export function ChatPane({
           onTogglePinned={togglePinnedSession}
           onRename={renameActiveSession}
           onFork={onForkSession}
-          onOpenTerminal={onOpenTerminal}
+          onOpenTerminal={terminalOwner ? toggleTerminalView : onOpenTerminal}
+          terminalOpen={terminalView}
           onExport={exportSession}
           onClose={onClose}
           onToggleRightPanel={onToggleRightPanel}
         />
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1">
+      <div className={terminalView ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+        <PersistentTerminals
+          active={terminalView}
+          activeOwnerKey={terminalSnapshot.activeOwnerKey}
+          terminals={terminalSnapshot.owners}
+        />
+      </div>
+      <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
         {showEmptyPrompt ? (
           <EmptyPromptTimeline />
         ) : (
@@ -354,54 +402,56 @@ export function ChatPane({
           />
         )}
       </div>
-      <AgentComposerFrame
-        attachments={attachments}
-        browserToolEnabled={browserToolEnabled}
-        browserBackend={browserBackend}
-        canvasEnabled={canvasEnabled}
-        composerDragActive={composerDragActive}
-        contextWindow={effectiveContextWindow}
-        currentContextTokens={currentContextTokens}
-        cwd={cwd}
-        fileInputRef={fileInputRef}
-        gitBranch={gitBranch}
-        gitSummary={gitSummary}
-        input={activeTab?.input ?? ""}
-        mention={mention}
-        mentionIndex={mentionIndex}
-        mentionRows={mentionRows}
-        modelSupportsVision={modelSupportsVision}
-        modelSelector={modelSelector}
-        onAbortTurn={() => void abortTurn()}
-        onAttachFiles={(files) => void attachFiles(files)}
-        onComposerChange={handleComposerChange}
-        onComposerDragLeave={handleComposerDragLeave}
-        onComposerDragOver={handleComposerDragOver}
-        onComposerDrop={handleComposerDrop}
-        onComposerKeyDown={handleComposerKeyDown}
-        onComposerPaste={handleComposerPaste}
-        onEditQueued={editQueued}
-        onInitGit={onInitGit}
-        onOpenStatus={openComputerStatus}
-        onQueueExpandedChange={setQueueExpanded}
-        onRemoveAttachment={removeAttachment}
-        onRemoveLoadedContext={removeLoadedContext}
-        onRemoveQueued={removeQueued}
-        onSelectMention={(entry) => void selectMentionRow(entry)}
-        onSteerQueued={(queueId) => void steerQueued(queueId)}
-        onSubmit={sendMessage}
-        onToggleBrowserBackend={onToggleBrowserBackend}
-        onToggleBrowserTool={onToggleBrowserTool}
-        onToggleCanvas={onToggleCanvas}
-        promptTemplates={selectedPromptTemplates}
-        queueExpanded={queueExpanded}
-        queueItems={visibleQueueItems}
-        readingAttachments={readingAttachments}
-        running={Boolean(running)}
-        selectedSkills={selectedSkills}
-        status={activeTab?.status}
-        textareaRef={textareaRef}
-      />
+      <div className={terminalView ? "hidden" : "contents"}>
+        <AgentComposerFrame
+          attachments={attachments}
+          browserToolEnabled={browserToolEnabled}
+          browserBackend={browserBackend}
+          canvasEnabled={canvasEnabled}
+          composerDragActive={composerDragActive}
+          contextWindow={effectiveContextWindow}
+          currentContextTokens={currentContextTokens}
+          cwd={cwd}
+          fileInputRef={fileInputRef}
+          gitBranch={gitBranch}
+          gitSummary={gitSummary}
+          input={activeTab?.input ?? ""}
+          mention={mention}
+          mentionIndex={mentionIndex}
+          mentionRows={mentionRows}
+          modelSupportsVision={modelSupportsVision}
+          modelSelector={modelSelector}
+          onAbortTurn={() => void abortTurn()}
+          onAttachFiles={(files) => void attachFiles(files)}
+          onComposerChange={handleComposerChange}
+          onComposerDragLeave={handleComposerDragLeave}
+          onComposerDragOver={handleComposerDragOver}
+          onComposerDrop={handleComposerDrop}
+          onComposerKeyDown={handleComposerKeyDown}
+          onComposerPaste={handleComposerPaste}
+          onEditQueued={editQueued}
+          onInitGit={onInitGit}
+          onOpenStatus={openComputerStatus}
+          onQueueExpandedChange={setQueueExpanded}
+          onRemoveAttachment={removeAttachment}
+          onRemoveLoadedContext={removeLoadedContext}
+          onRemoveQueued={removeQueued}
+          onSelectMention={(entry) => void selectMentionRow(entry)}
+          onSteerQueued={(queueId) => void steerQueued(queueId)}
+          onSubmit={sendMessage}
+          onToggleBrowserBackend={onToggleBrowserBackend}
+          onToggleBrowserTool={onToggleBrowserTool}
+          onToggleCanvas={onToggleCanvas}
+          promptTemplates={selectedPromptTemplates}
+          queueExpanded={queueExpanded}
+          queueItems={visibleQueueItems}
+          readingAttachments={readingAttachments}
+          running={Boolean(running)}
+          selectedSkills={selectedSkills}
+          status={activeTab?.status}
+          textareaRef={textareaRef}
+        />
+      </div>
     </section>
   );
 }

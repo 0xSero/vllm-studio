@@ -21,10 +21,10 @@ export type DiffFile = {
 export type DiffViewMode = "unified" | "side-by-side" | "stacked";
 
 const DIFF_LINE_CLASS_NAMES: Record<DiffLineKind, string> = {
-  add: "bg-emerald-500/10 text-emerald-100",
+  add: "bg-(--color-diff-added-bg) text-(--fg)",
   context: "text-(--fg)",
-  del: "bg-red-500/10 text-red-100",
-  meta: "bg-(--surface) text-(--accent)",
+  del: "bg-(--color-diff-removed-bg) text-(--fg)",
+  meta: "bg-(--surface) text-(--dim)",
 };
 
 const DIFF_LINE_PREFIXES: Record<DiffLineKind, string> = {

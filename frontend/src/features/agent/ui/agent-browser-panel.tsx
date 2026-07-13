@@ -381,7 +381,7 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border)/85 bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
+    <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-(--border) bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
@@ -393,7 +393,7 @@ function ComputerHeader({
               className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
                 tab === openTab
                   ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
+                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
               }`}
               title={meta.label}
             >
@@ -434,7 +434,7 @@ function ComputerHeader({
               className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
                 selected
                   ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
+                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
               }`}
               title={shortcut ? `${label} (${shortcut})` : label}
             >
@@ -472,7 +472,7 @@ function ComputerHeader({
           className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
             tab === "tools"
               ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-              : "text-(--dim)/75 hover:bg-(--surface) hover:text-(--fg)/75"
+              : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
           }`}
           title="Show tools"
           aria-label="Show tools"

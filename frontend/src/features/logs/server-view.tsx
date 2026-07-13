@@ -296,7 +296,7 @@ function SessionList({
           className={`mb-1 block w-full truncate rounded px-2 py-1.5 text-left text-[length:var(--fs-sm)] ${
             selectedSession === session.id
               ? "bg-(--color-surface) text-(--fg)"
-              : "text-(--color-foreground-subtle) hover:bg-(--color-surface-hover) hover:text-(--fg)"
+              : "text-(--color-foreground-subtle) hover:bg-(--hover) hover:text-(--fg)"
           }`}
           title={session.id}
         >

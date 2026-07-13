@@ -72,11 +72,11 @@ export function ModelPerformanceTable({
 
       <Table
         bordered={false}
-        className="border-b border-(--border)/40"
+        className="border-b border-(--separator)"
         tableClassName="text-[length:var(--fs-md)]"
       >
         <THead className="bg-transparent">
-          <TRow className="border-b border-(--border)/40 hover:bg-transparent">
+          <TRow className="border-b border-(--separator) hover:bg-transparent">
             <TH className="w-6 px-2 py-2" />
             <SortableTH
               field="model"
@@ -142,7 +142,7 @@ export function ModelPerformanceTable({
             return (
               <Fragment key={model.model}>
                 <TRow
-                  className={`cursor-pointer border-b border-(--border)/25 transition-colors hover:bg-(--hover) ${
+                  className={`cursor-pointer border-b border-(--separator) transition-colors hover:bg-(--hover) ${
                     isExpanded ? "bg-(--hover)" : ""
                   }`}
                   onClick={() => toggleRow(model.model)}
@@ -196,7 +196,7 @@ export function ModelPerformanceTable({
                   </TCell>
                 </TRow>
                 {isExpanded ? (
-                  <TRow className="border-b border-(--border)/25 hover:bg-transparent">
+                  <TRow className="border-b border-(--separator) hover:bg-transparent">
                     <TCell colSpan={7} className="px-2 py-3">
                       <ExpandedModel model={model} peak={peak} modelColor={modelColor} />
                     </TCell>
@@ -228,7 +228,7 @@ function ExpandedModel({
     1,
   );
   return (
-    <div className="grid gap-4 border-y border-(--border)/40 py-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+    <div className="grid gap-4 border-y border-(--separator) py-3 lg:grid-cols-[1.2fr_1fr_1fr]">
       <MetricPanel title="Token mix" value={formatNumber(model.total_tokens)}>
         <StackedMetricBar
           segments={[

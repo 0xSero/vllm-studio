@@ -217,12 +217,35 @@ function WorkspacePaneContent({
 function ComputerPanelFallback() {
   return (
     <aside className="relative flex w-[360px] shrink-0 flex-col border-l border-(--border) bg-(--color-panel)">
-      <div className="h-10 shrink-0 border-b border-(--border)/85 bg-(--color-header)" />
+      <div className="h-[var(--h-toolbar-pane)] shrink-0 border-b border-(--border) bg-(--color-header)" />
       <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-(--dim)">
         Loading tools...
       </div>
     </aside>
   );
+}
+
+/* Errors and warnings never replace or overlay the chrome: they surface as a
+   quiet, dismissible notice pinned to the bottom-right corner, with raw
+   transport errors rewritten into plain language. */
+function humanizeWorkspaceNotice(message: string): string {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("fetch failed") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("network") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("terminated") ||
+    normalized.includes("socket") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out")
+  ) {
+    return "Can't reach the controller right now — retrying in the background. Check Settings → General if this persists.";
+  }
+  if (normalized.includes("unauthorized") || normalized.includes("401")) {
+    return "The controller rejected the API key. Update it in Settings → General.";
+  }
+  return message;
 }
 
 function WorkspaceTopBar({
@@ -234,16 +257,15 @@ function WorkspaceTopBar({
   setupWarning: string;
   onClearError: () => void;
 }) {
+  if (!error && !setupWarning) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start gap-3 px-3 pt-2">
-      <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2">
-        {error ? (
-          <WorkspaceBanner tone="error" onDismiss={onClearError}>
-            {error}
-          </WorkspaceBanner>
-        ) : null}
-        {setupWarning ? <WorkspaceBanner tone="warning">{setupWarning}</WorkspaceBanner> : null}
-      </div>
+    <div className="pointer-events-none absolute bottom-3 right-3 z-30 flex max-w-[26rem] flex-col items-end gap-2">
+      {error ? (
+        <WorkspaceBanner tone="error" onDismiss={onClearError}>
+          {humanizeWorkspaceNotice(error)}
+        </WorkspaceBanner>
+      ) : null}
+      {setupWarning ? <WorkspaceBanner tone="warning">{setupWarning}</WorkspaceBanner> : null}
     </div>
   );
 }
@@ -257,21 +279,19 @@ function WorkspaceBanner({
   onDismiss?: () => void;
   children: ReactNode;
 }) {
-  const toneClass =
-    tone === "error"
-      ? "border-(--err)/35 bg-(--err)/10 text-(--err)"
-      : "border-(--warn)/35 bg-(--warn)/10 text-(--fg)";
   return (
-    <div
-      className={`flex min-w-0 max-w-full items-center gap-2 rounded border px-2 py-1 text-xs ${toneClass}`}
-    >
-      <span className="min-w-0 truncate">{children}</span>
+    <div className="pointer-events-auto flex min-w-0 max-w-full items-start gap-2.5 rounded-xl border border-(--color-popover-border) bg-(--color-popover) px-3 py-2.5 text-[length:var(--fs-md)] text-(--fg) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+      <span
+        className={`mt-1 h-2 w-2 shrink-0 rounded-full ${tone === "error" ? "bg-(--err)" : "bg-(--warn)"}`}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 leading-5 [overflow-wrap:anywhere]">{children}</span>
       {onDismiss ? (
         <button
           type="button"
           onClick={onDismiss}
-          className="shrink-0 text-current opacity-70 hover:opacity-100"
-          aria-label="Dismiss error"
+          className="mt-0.5 shrink-0 text-(--hl2) hover:text-(--fg)"
+          aria-label="Dismiss"
         >
           <CloseIcon className="h-3.5 w-3.5" />
         </button>
@@ -291,7 +311,7 @@ function ProjectEmptyState() {
         <button
           type="button"
           onClick={triggerAddProjectFlow}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded border border-(--border) bg-(--surface) px-3 text-sm font-medium text-(--fg) hover:bg-(--bg)"
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-(--fg)/5 px-4 text-[length:var(--fs-base)] font-medium text-(--fg) hover:bg-(--fg)/10"
         >
           <PlusIcon className="h-4 w-4" />
           Add a project

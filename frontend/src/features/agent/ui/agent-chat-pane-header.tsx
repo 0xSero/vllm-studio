@@ -10,7 +10,7 @@ import { CloseIcon, MoreIcon } from "@/ui/icons";
 import { preloadTerminalPanel } from "@/features/agent/ui/terminal-panel";
 
 const CHAT_HEADER_MENU_CLASS =
-  "absolute left-0 top-7 isolate z-[999] min-w-[160px] rounded-lg border border-(--color-popover-border) bg-(--color-popover) p-1 text-xs text-(--fg) opacity-100 shadow-[0_12px_32px_rgba(0,0,0,0.48)]";
+  "absolute left-0 top-7 isolate z-[999] min-w-[180px] rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 text-xs text-(--fg) opacity-100 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]";
 
 export function AgentChatPaneHeader({
   title,
@@ -19,6 +19,7 @@ export function AgentChatPaneHeader({
   canFork,
   canClose,
   canExport = false,
+  terminalOpen = false,
   onTogglePinned,
   onRename,
   onFork,
@@ -33,6 +34,7 @@ export function AgentChatPaneHeader({
   canFork: boolean;
   canClose: boolean;
   canExport?: boolean;
+  terminalOpen?: boolean;
   onTogglePinned: () => void;
   onRename: (title: string) => void;
   onFork?: () => void;
@@ -61,8 +63,8 @@ export function AgentChatPaneHeader({
   };
   return (
     <div
-      className={`grid h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border)/85 bg-(--color-header) py-0 pr-2 text-xs ${
-        sidebarCollapsed ? "pl-12" : "pl-2"
+      className={`grid h-[var(--h-toolbar-pane)] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border) bg-(--color-header) py-0 pr-2 text-xs ${
+        sidebarCollapsed ? "pl-12" : "pl-5"
       }`}
     >
       <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
@@ -84,7 +86,7 @@ export function AgentChatPaneHeader({
           />
         ) : (
           <span
-            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-lg)] font-medium leading-none text-(--fg)"
+            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-base)] font-medium leading-none text-(--fg)"
             title={title}
           >
             {title}
@@ -97,8 +99,8 @@ export function AgentChatPaneHeader({
           onClick={() => setOpen((value) => !value)}
           className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
             open
-              ? "text-(--fg) hover:bg-(--surface)"
-              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+              ? "text-(--fg) hover:bg-(--hover)"
+              : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           }`}
           aria-label="Session settings"
           title="Session settings"
@@ -157,7 +159,7 @@ export function AgentChatPaneHeader({
               event.stopPropagation();
               onClose?.();
             }}
-            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
             aria-label="Close pane"
             title="Close pane"
           >
@@ -172,9 +174,14 @@ export function AgentChatPaneHeader({
             onMouseEnter={preloadTerminalPanel}
             onFocus={preloadTerminalPanel}
             onClick={onOpenTerminal}
-            className="relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
-            title="Open terminal"
-            aria-label="Open terminal"
+            aria-pressed={terminalOpen}
+            className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+              terminalOpen
+                ? "bg-(--active) text-(--fg)"
+                : "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
+            }`}
+            title={terminalOpen ? "Back to chat" : "Open terminal"}
+            aria-label={terminalOpen ? "Back to chat" : "Open terminal"}
           >
             <TerminalSquare className="pointer-events-none h-3.5 w-3.5" />
           </button>
@@ -187,8 +194,8 @@ export function AgentChatPaneHeader({
           aria-pressed={rightPanelOpen}
           className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-md ${
             rightPanelOpen
-              ? "text-(--fg) hover:bg-(--surface)"
-              : "text-(--dim) hover:bg-(--surface) hover:text-(--fg)"
+              ? "text-(--fg) hover:bg-(--hover)"
+              : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           }`}
           title={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
           aria-label={rightPanelOpen ? "Hide right sidebar" : "Show right sidebar"}
@@ -214,7 +221,7 @@ function HeaderMenuItem({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="block w-full rounded-sm px-2.5 py-1.5 text-left text-xs text-(--fg) hover:bg-(--active) disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+      className="block w-full rounded-[10px] px-2.5 py-2 text-left text-[length:var(--fs-base)] text-(--fg) hover:bg-(--color-menu-hover) disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       role="menuitem"
     >
       {children}

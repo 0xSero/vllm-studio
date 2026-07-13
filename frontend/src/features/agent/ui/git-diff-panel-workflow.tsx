@@ -113,8 +113,8 @@ export function GitWorkflowBar({
           Commit all
         </Button>
         <span className="font-mono">
-          <span className="text-emerald-400">+{payload.additions ?? 0}</span>{" "}
-          <span className="text-red-400">-{payload.deletions ?? 0}</span>{" "}
+          <span className="text-(--color-diff-added)">+{payload.additions ?? 0}</span>{" "}
+          <span className="text-(--color-diff-removed)">-{payload.deletions ?? 0}</span>{" "}
           {payload.status?.length ?? 0} files
         </span>
       </div>

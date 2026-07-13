@@ -53,10 +53,10 @@ function Tabs<T extends string = string>({
           <button
             key={tab.id}
             onClick={() => onSelectTab(tab.id)}
-            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-[length:var(--fs-base)] whitespace-nowrap transition-colors ${
               activeTab === tab.id
-                ? "bg-(--color-tab-active) font-medium text-(--fg)"
-                : "text-(--color-foreground-subtle) hover:bg-(--color-tab) hover:text-(--fg)"
+                ? "bg-(--active) font-medium text-(--fg)"
+                : "text-(--color-foreground-subtle) hover:bg-(--hover) hover:text-(--fg)"
             }`}
           >
             {tab.icon}
@@ -70,15 +70,15 @@ function Tabs<T extends string = string>({
   // button-group
   return (
     <div className={`overflow-x-auto ${className}`}>
-      <div className="flex min-w-max items-center gap-2 rounded-lg border border-(--ui-border) bg-(--ui-bg) p-1">
+      <div className="flex min-w-max items-center gap-2 rounded-full border border-(--ui-border) bg-(--surface-3) p-1">
         {items.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => onSelectTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-xs sm:text-sm whitespace-nowrap border ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors text-xs sm:text-sm whitespace-nowrap border ${
               activeTab === tab.id
-                ? "border-(--ui-info)/40 bg-(--ui-info)/15 text-(--ui-fg)"
+                ? "border-transparent bg-(--active) text-(--ui-fg)"
                 : "border-transparent text-(--ui-muted) hover:border-(--ui-border) hover:text-(--ui-fg)"
             }`}
           >

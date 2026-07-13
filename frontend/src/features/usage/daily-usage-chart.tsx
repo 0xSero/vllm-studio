@@ -233,7 +233,7 @@ export function DailyUsageChart({
         </div>
       </div>
 
-      <div className="overflow-x-auto border-b border-(--border)/40 pb-3">
+      <div className="overflow-x-auto border-b border-(--separator) pb-3">
         <div className="grid min-w-full auto-cols-fr grid-flow-col gap-1 sm:gap-1.5">
           {chartBuckets.map((bucket, index) => {
             const dayItems = dailyByModel.size > 0 ? (bucketItemsByKey.get(bucket.key) ?? []) : [];
@@ -352,7 +352,7 @@ export function DailyUsageChart({
         </div>
       ) : null}
 
-      <dl className="mt-4 grid grid-cols-2 border-b border-(--border)/40 pb-4">
+      <dl className="mt-4 grid grid-cols-2 border-b border-(--separator) pb-4">
         <Stat label="tokens in view" value={formatNumber(totalTokensInPeriod)} />
         <Stat label="requests in view" value={formatNumber(totalRequestsInPeriod)} />
       </dl>
@@ -367,7 +367,7 @@ export function DailyUsageChart({
           }}
         >
           <div className="px-3 py-2">
-            <div className="flex items-baseline justify-between gap-4 border-b border-(--border)/50 pb-1">
+            <div className="flex items-baseline justify-between gap-4 border-b border-(--separator) pb-1">
               <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.16em] text-(--dim)">
                 {hovered.date} · {formatNumber(hovered.requests)} req
               </span>

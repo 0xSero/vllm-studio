@@ -18,7 +18,7 @@ export function AssistantActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim)/65 transition-colors hover:bg-(--surface) hover:text-(--fg)/85 disabled:pointer-events-none disabled:opacity-30"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
       aria-label={label}
       title={label}
     >
@@ -47,14 +47,14 @@ export function AssistantMessageActions({
         onClick={() => void copy()}
         disabled={!copyText.trim()}
       >
-        <Copy className="h-3.5 w-3.5" />
+        <Copy className="h-4 w-4" strokeWidth={1.5} />
       </AssistantActionButton>
       <AssistantActionButton
         label="Fork from this point"
         onClick={() => onForkSession?.()}
         disabled={!onForkSession}
       >
-        <GitFork className="h-3.5 w-3.5" />
+        <GitFork className="h-4 w-4" strokeWidth={1.5} />
       </AssistantActionButton>
     </div>
   );
