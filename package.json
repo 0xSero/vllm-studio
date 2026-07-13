@@ -6,7 +6,7 @@
     "doctor": "bash scripts/doctor.sh",
     "release:notes": "node scripts/release-statement.mjs",
     "release:check-commits": "node scripts/check-conventional-commits.mjs --range origin/main..HEAD",
-    "setup:git-hooks": "git config core.hooksPath .githooks && chmod +x .githooks/*",
+    "setup:git-hooks": "node scripts/setup-git-hooks.mjs",
     "check": "npm run check:contracts && npm run check:structure && npm run check:frontend && npm run check:controller",
     "check:contracts": "node scripts/validate-shared-contracts.mjs",
     "check:structure": "node scripts/validate-barrel-dir-siblings.mjs",

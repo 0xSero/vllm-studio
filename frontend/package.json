@@ -3,6 +3,7 @@
   "version": "0.2.9",
   "private": true,
   "scripts": {
+    "predev": "node scripts/link-services-node-modules.mjs",
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "node scripts/start-standalone.mjs",
@@ -15,7 +16,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "depcheck": "depcheck --ignores=\"ws,hono,@hono/node-server,@types/ws,@types/react,@types/react-dom,@types/node,eslint-config-next,tailwindcss,@tailwindcss/postcss,depcheck,prettier,jscpd,knip,lint-staged,concurrently,electron-builder,madge\" --ignore-patterns=\"*.d.ts,.next/**,dist-desktop/**,desktop/dist/**\" --specials=next,webpack,babel --skip-missing",
-    "prepare": "cd .. && git rev-parse --git-dir >/dev/null 2>&1 && npm run setup:git-hooks || true",
+    "prepare": "node scripts/prepare-repo-hooks.mjs",
     "postinstall": "node scripts/patch-pi-ai-openai-text-boundaries.mjs && node scripts/link-services-node-modules.mjs",
     "check:deadcode": "knip",
     "check:dupes": "jscpd src",
