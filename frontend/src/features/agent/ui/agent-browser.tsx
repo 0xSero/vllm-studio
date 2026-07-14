@@ -64,6 +64,7 @@ export function AgentBrowser({
   isElectron,
 }: Props) {
   const webviewRef = useRef<WebviewElement | null>(null);
+  const [initialWebviewUrl] = useState(url);
   // Live mode is the server-side screencast; it is the default everywhere and
   // falls back to reading mode only when the host has no Chromium.
   const [readingMode, setReadingMode] = useState(false);
@@ -288,7 +289,7 @@ export function AgentBrowser({
                 ref={(node: WebviewElement | null) => {
                   webviewRef.current = node;
                 }}
-                src={url}
+                src={initialWebviewUrl}
                 // @ts-expect-error — Electron-specific attribute.
                 allowpopups="true"
                 className="size-full"

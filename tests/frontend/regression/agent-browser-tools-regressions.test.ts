@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
+import {
+  shouldLoadBrowserUrl,
+  shouldSyncBrowserLocation,
+} from "@/features/agent/ui/agent-browser-effects";
 
 declare global {
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
-    | ((hostname: string) => Promise<(string | { address: string; family: 4 | 6 })[]>)
-    | undefined;
+    ((hostname: string) => Promise<(string | { address: string; family: 4 | 6 })[]>) | undefined;
   var __LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST:
     | ((
         url: string,
@@ -29,6 +32,37 @@ test("free-text browser searches avoid Google webview refresh loops", () => {
   assert.equal(
     normalizeBrowserInput("latest vllm docs", "/workspace/project"),
     "https://duckduckgo.com/?q=latest%20vllm%20docs",
+  );
+});
+
+test("webview location updates do not reload the page that reported them", () => {
+  assert.equal(
+    shouldLoadBrowserUrl(
+      "https://www.google.com/search?q=vllm",
+      "https://www.google.com/search?q=vllm",
+      "https://www.google.com/search?q=vllm",
+    ),
+    false,
+  );
+  assert.equal(
+    shouldLoadBrowserUrl(
+      "https://example.com/next",
+      "https://www.google.com/search?q=vllm",
+      "https://www.google.com/search?q=vllm",
+    ),
+    true,
+  );
+  assert.equal(
+    shouldSyncBrowserLocation("https://www.google.com/search?q=vllm", "about:blank", "about:blank"),
+    false,
+  );
+  assert.equal(
+    shouldSyncBrowserLocation(
+      "https://www.google.com/search?q=vllm",
+      "about:blank",
+      "https://www.google.com/search?q=vllm",
+    ),
+    true,
   );
 });
 

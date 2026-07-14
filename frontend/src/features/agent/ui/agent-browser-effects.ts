@@ -1,4 +1,4 @@
-import { type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { BrowserPaneState } from "@/features/agent/ui/agent-browser-screencast";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
@@ -55,6 +55,7 @@ export function useLocalhostSitesEffects({
 type BrowserWebview = HTMLElement & {
   executeJavaScript: (script: string, userGesture?: boolean) => Promise<unknown>;
   getURL: () => string;
+  loadURL: (url: string) => Promise<void>;
   getTitle?: () => string;
   canGoBack?: () => boolean;
   canGoForward?: () => boolean;
@@ -71,6 +72,15 @@ type UseAgentBrowserEffectsParams = {
   enabled?: boolean;
 };
 
+export const shouldLoadBrowserUrl = (desired: string, current: string, observed: string): boolean =>
+  Boolean(desired && desired !== observed && desired !== current);
+
+export const shouldSyncBrowserLocation = (
+  desired: string,
+  observed: string,
+  current: string,
+): boolean => desired === observed || current === desired;
+
 export function useAgentBrowserEffects({
   url,
   readingMode,
@@ -81,6 +91,8 @@ export function useAgentBrowserEffects({
   onNavState,
   enabled = true,
 }: UseAgentBrowserEffectsParams): void {
+  const observedUrl = useRef(url);
+
   useMountSubscription(() => {
     if (enabled && url && readingMode) {
       void fetchReadable(url);
@@ -91,9 +103,38 @@ export function useAgentBrowserEffects({
     if (!enabled || !isElectron || readingMode) return;
     const webview = webviewRef.current;
     if (!webview) return;
+    const navigate = () => {
+      if (typeof webview.getURL !== "function" || typeof webview.loadURL !== "function") return;
+      try {
+        const current = webview.getURL();
+        if (shouldLoadBrowserUrl(url, current, observedUrl.current)) {
+          void webview
+            .loadURL(url)
+            .then(() => {
+              const loaded = webview.getURL();
+              observedUrl.current = loaded;
+              if (loaded) onLocationChange?.(loaded);
+            })
+            .catch(() => undefined);
+        }
+      } catch {
+        return;
+      }
+    };
+    navigate();
+    webview.addEventListener("dom-ready", navigate as EventListener);
+    return () => webview.removeEventListener("dom-ready", navigate as EventListener);
+  }, [enabled, isElectron, onLocationChange, readingMode, url, webviewRef]);
+
+  useMountSubscription(() => {
+    if (!enabled || !isElectron || readingMode) return;
+    const webview = webviewRef.current;
+    if (!webview) return;
     const sync = () => {
       try {
         const current = webview.getURL();
+        if (!shouldSyncBrowserLocation(url, observedUrl.current, current)) return;
+        observedUrl.current = current;
         if (current) onLocationChange?.(current);
         onNavState?.({
           url: current || url,
