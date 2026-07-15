@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Schema } from "effect";
-import { probeConnector } from "./connector-pool";
+import { closePooledConnection, probeConnector } from "./connector-pool";
 import { listConnectors, upsertConnectors, type ConnectorConfig } from "./connectors-service";
 import { getGoogleAccount, type GoogleAccountView } from "./google-account";
 import {
@@ -226,6 +226,7 @@ function pluginToolsView(
   bundle: PluginBundle,
   connectors: ConnectorConfig[],
   servers: ResolvedServer[],
+  reconciliationError?: string,
 ): PluginToolsView {
   if (!bundle.manifest.mcpServers) {
     return { state: "none", serverCount: 0, allowedToolCount: 0, mode: null };
@@ -251,6 +252,15 @@ function pluginToolsView(
       serverCount: servers.length,
       allowedToolCount,
       mode: "observe",
+    };
+  }
+  if (reconciliationError) {
+    return {
+      state: "invalid",
+      serverCount: servers.length,
+      allowedToolCount: 0,
+      mode: null,
+      reason: reconciliationError,
     };
   }
   if (current.length > 0) {
@@ -333,11 +343,19 @@ function runtimeView(
   bundle: PluginBundle,
   connectors: ConnectorConfig[],
   account: GoogleAccountView,
+  reconciliationError?: string,
 ): Effect.Effect<PluginRuntimeView, PluginRuntimeError> {
   return Effect.gen(function* () {
     const googleWorkspace = yield* trustedGoogleWorkspacePlugin(bundle);
     if (googleWorkspace) {
-      return googleWorkspaceRuntimeView(bundle, googleWorkspace, connectors, account);
+      const view = googleWorkspaceRuntimeView(bundle, googleWorkspace, connectors, account);
+      const current = connectors.filter(
+        (connector) =>
+          connector.origin?.kind === "account-adapter" &&
+          connector.origin.id === googleWorkspace &&
+          connector.origin.binding === "google-workspace",
+      );
+      return yield* runtimeHealthView(view, current);
     }
     const hostCapability = yield* loadHostCapability(bundle);
     if (hostCapability) {
@@ -347,22 +365,120 @@ function runtimeView(
         tools: { state: "none", serverCount: 0, allowedToolCount: 0, mode: null },
       };
     }
-    return yield* Effect.match(loadPluginServers(bundle), {
-      onFailure: (error) => ({
-        ...bundle.plugin,
-        tools: {
-          state: "invalid" as const,
-          serverCount: 0,
-          allowedToolCount: 0,
-          mode: null,
-          reason: error.message,
-        },
-      }),
-      onSuccess: (servers) => ({
-        ...bundle.plugin,
-        tools: pluginToolsView(bundle, connectors, servers),
-      }),
+    return yield* Effect.matchEffect(loadPluginServers(bundle), {
+      onFailure: (error) =>
+        Effect.succeed({
+          ...bundle.plugin,
+          tools: {
+            state: "invalid" as const,
+            serverCount: 0,
+            allowedToolCount: 0,
+            mode: null,
+            reason: error.message,
+          },
+        }),
+      onSuccess: (servers) => {
+        const current = connectors.filter(
+          (connector) =>
+            connector.origin?.kind === "plugin" &&
+            connector.origin.id === bundle.plugin.id &&
+            connector.origin.version === bundle.plugin.version,
+        );
+        return runtimeHealthView(
+          {
+            ...bundle.plugin,
+            tools: pluginToolsView(bundle, connectors, servers, reconciliationError),
+          },
+          current,
+        );
+      },
     });
+  });
+}
+
+function runtimeHealthView(
+  view: PluginRuntimeView,
+  connectors: ConnectorConfig[],
+): Effect.Effect<PluginRuntimeView> {
+  if (view.tools.state !== "enabled") return Effect.succeed(view);
+  return Effect.promise(() =>
+    Promise.all(connectors.map((connector) => probeConnector(connector))),
+  ).pipe(
+    Effect.map((probes) => {
+      const failures = probes.flatMap((probe, index) =>
+        probe.ok ? [] : [`${connectors[index]?.name}: ${probe.error ?? "MCP probe failed"}`],
+      );
+      return failures.length
+        ? {
+            ...view,
+            tools: { ...view.tools, state: "invalid" as const, reason: failures.join(" · ") },
+          }
+        : view;
+    }),
+  );
+}
+
+type ConnectorReconciliation = {
+  connectors: ConnectorConfig[];
+  errors: Map<string, string>;
+};
+
+async function reconcileEnabledPluginConnectors(
+  bundles: PluginBundle[],
+  initial: ConnectorConfig[],
+): Promise<ConnectorReconciliation> {
+  let connectors = initial;
+  const errors = new Map<string, string>();
+  for (const bundle of bundles) {
+    const stale = connectors.filter(
+      (connector) =>
+        connector.enabled &&
+        connector.origin?.kind === "plugin" &&
+        connector.origin.id === bundle.plugin.id &&
+        connector.origin.version !== bundle.plugin.version,
+    );
+    if (stale.length === 0) continue;
+    try {
+      const servers = await Effect.runPromise(loadPluginServers(bundle));
+      const replacements = stale.map((connector) => {
+        const replacement = servers.find(
+          (server) => server.connector?.origin?.binding === connector.origin?.binding,
+        )?.connector;
+        if (!replacement || !connector.allowTools?.length) {
+          throw new PluginRuntimeError(409, "Reconnect to approve the updated plugin");
+        }
+        return { ...replacement, allowTools: connector.allowTools, enabled: true };
+      });
+      const updated = await Effect.runPromise(enabledObserveConnectors(replacements));
+      connectors = await upsertConnectors(updated);
+      updated.forEach((connector) => closePooledConnection(connector.id));
+    } catch (error) {
+      errors.set(bundle.plugin.id, error instanceof Error ? error.message : "Plugin update failed");
+    }
+  }
+  return { connectors, errors };
+}
+
+function connectorReconciliationEffect(
+  bundles: PluginBundle[],
+): Effect.Effect<ConnectorReconciliation, PluginRuntimeError> {
+  return Effect.gen(function* () {
+    const initial = yield* connectorsEffect();
+    return yield* Effect.tryPromise({
+      try: () => reconcileEnabledPluginConnectors(bundles, initial),
+      catch: (error) => new PluginRuntimeError(500, `Plugin reconciliation failed: ${error}`),
+    });
+  });
+}
+
+export function refreshEnabledPluginConnectors(
+  sources?: PluginSource[],
+): Effect.Effect<void, PluginRuntimeError> {
+  return Effect.gen(function* () {
+    const bundles = yield* discoverPluginBundles(sources).pipe(
+      Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
+    );
+    yield* connectorReconciliationEffect(bundles);
   });
 }
 
@@ -388,16 +504,24 @@ export function listPluginRuntimeViews(
     const bundles = yield* discoverPluginBundles(sources).pipe(
       Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
     );
-    const connectors = yield* connectorsEffect();
+    const reconciliation = yield* connectorReconciliationEffect(bundles);
     const account = yield* googleAccountEffect();
-    return yield* Effect.all(bundles.map((bundle) => runtimeView(bundle, connectors, account)));
+    return yield* Effect.all(
+      bundles.map((bundle) =>
+        runtimeView(
+          bundle,
+          reconciliation.connectors,
+          account,
+          reconciliation.errors.get(bundle.plugin.id),
+        ),
+      ),
+    );
   });
 }
 
 function enabledObserveConnectors(
-  servers: ResolvedServer[],
+  connectors: ConnectorConfig[],
 ): Effect.Effect<ConnectorConfig[], PluginRuntimeError> {
-  const connectors = servers.flatMap((server) => (server.connector ? [server.connector] : []));
   return Effect.tryPromise({
     try: async () => {
       const probed = await Promise.all(
@@ -464,9 +588,7 @@ export function setPluginEnabled(
           connector.origin.binding === "google-workspace",
       );
       const changed = enabled
-        ? yield* enabledObserveConnectors([
-            { connector: googleWorkspaceConnector(googleWorkspace, false) },
-          ])
+        ? yield* enabledObserveConnectors([googleWorkspaceConnector(googleWorkspace, false)])
         : owned.map((connector) => ({ ...connector, enabled: false }));
       if (changed.length) {
         yield* Effect.tryPromise({
@@ -499,7 +621,9 @@ export function setPluginEnabled(
           new PluginRuntimeError(409, reason ?? "Plugin has no executable MCP server"),
         );
       }
-      changed = yield* enabledObserveConnectors(servers);
+      changed = yield* enabledObserveConnectors(
+        servers.flatMap((server) => (server.connector ? [server.connector] : [])),
+      );
     } else {
       if (owned.length === 0) {
         return {

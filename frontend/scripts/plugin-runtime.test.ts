@@ -17,6 +17,7 @@ import {
 } from "../../services/agent-runtime/src/connectors-service";
 import {
   listPluginRuntimeViews,
+  refreshEnabledPluginConnectors,
   setPluginEnabled,
 } from "../../services/agent-runtime/src/plugin-runtime";
 
@@ -43,14 +44,19 @@ for await (const line of input) {
 }
 `;
 
-async function createPlugin(root: string, name: string, mcpPath = "./.mcp.json") {
-  const bundle = path.join(root, name, "1.0.0");
+async function createPlugin(
+  root: string,
+  name: string,
+  mcpPath = "./.mcp.json",
+  version = "1.0.0",
+) {
+  const bundle = path.join(root, name, version);
   await mkdir(path.join(bundle, ".codex-plugin"), { recursive: true });
   await writeFile(
     path.join(bundle, ".codex-plugin", "plugin.json"),
     JSON.stringify({
       name,
-      version: "1.0.0",
+      version,
       mcpServers: mcpPath,
       interface: { displayName: name === "computer-use" ? "Computer Use" : name },
     }),
@@ -131,6 +137,12 @@ test("plugin runtime activates only declared read-only tools and refreshes conne
   const result = await callConnectorTool("plugin-computer-use-computer-use", "inspect", {});
   assert.match(JSON.stringify(result), /tool.*inspect/);
 
+  await rm(path.join(bundle, "server.mjs"));
+  const unavailable = await Effect.runPromise(listPluginRuntimeViews(sources));
+  assert.equal(unavailable[0]?.tools.state, "invalid");
+  assert.match(unavailable[0]?.tools.reason ?? "", /Computer Use/);
+  await writeFile(path.join(bundle, "server.mjs"), fakeServer);
+
   const deactivated = await Effect.runPromise(setPluginEnabled("computer-use", false, sources));
   assert.equal(deactivated.plugins[0]?.tools.state, "disabled");
   assert.equal((await listConnectors())[0]?.enabled, false);
@@ -149,6 +161,52 @@ test("plugin runtime rejects manifest paths that escape the bundle", async (cont
   );
   assert.equal(plugins[0]?.tools.state, "invalid");
   assert.match(plugins[0]?.tools.reason ?? "", /escapes its bundle/);
+});
+
+test("plugin runtime safely migrates enabled connectors after a bundle update", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "local-studio-plugin-update-"));
+  const dataDir = path.join(root, "data");
+  const pluginRoot = path.join(root, "plugins");
+  const previousDataDir = process.env.LOCAL_STUDIO_DATA_DIR;
+  process.env.LOCAL_STUDIO_DATA_DIR = dataDir;
+  context.after(async () => {
+    closePooledConnection("plugin-computer-use-computer-use");
+    if (previousDataDir === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
+    else process.env.LOCAL_STUDIO_DATA_DIR = previousDataDir;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const original = await createPlugin(pluginRoot, "computer-use");
+  await writeFile(path.join(original, "server.mjs"), fakeServer);
+  await writeFile(
+    path.join(original, ".mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        "computer-use": { command: process.execPath, args: ["./server.mjs"], cwd: "." },
+      },
+    }),
+  );
+  const sources = [{ label: "Test", dir: pluginRoot, priority: 1 }];
+  await Effect.runPromise(setPluginEnabled("computer-use", true, sources));
+
+  const updated = await createPlugin(pluginRoot, "computer-use", "./.mcp.json", "1.1.0");
+  await writeFile(path.join(updated, "server.mjs"), fakeServer);
+  await writeFile(
+    path.join(updated, ".mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        "computer-use": { command: process.execPath, args: ["./server.mjs"], cwd: "." },
+      },
+    }),
+  );
+
+  await Effect.runPromise(refreshEnabledPluginConnectors(sources));
+  const plugins = await Effect.runPromise(listPluginRuntimeViews(sources));
+  const connector = (await listConnectors())[0];
+  assert.equal(plugins[0]?.tools.state, "enabled");
+  assert.equal(connector?.origin?.version, "1.1.0");
+  assert.equal(connector?.cwd, await realpath(updated));
+  assert.deepEqual(connector?.allowTools, ["inspect"]);
 });
 
 test("only the bundled Chatterbox plugin receives the local speech capability", async (context) => {

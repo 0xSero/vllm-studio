@@ -76,7 +76,7 @@ function pluginStatus(plugin: PluginRuntimeView, speech: SpeechSnapshot): Plugin
   }
   if (plugin.tools.state === "available") return { label: "Available", tone: "info" };
   if (plugin.tools.state === "disabled") return { label: "Off", tone: "default" };
-  if (plugin.tools.state === "invalid") return { label: "Invalid manifest", tone: "danger" };
+  if (plugin.tools.state === "invalid") return { label: "Unavailable", tone: "danger" };
   if (plugin.tools.state === "configuration_required" || plugin.provides.apps) {
     return { label: "Adapter needed", tone: "warning" };
   }
@@ -305,8 +305,8 @@ export function PluginsSection() {
     <>
       <div className="mb-4 space-y-3 px-4">
         <p className="max-w-3xl text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-          Codex-compatible bundles discovered locally. Skills are available immediately; executable
-          tools require explicit permission.
+          Codex-compatible bundles discovered locally. Add skills from the chat @ menu for one
+          message. Connect MCP tools here to make them available in chat.
         </p>
         <SearchInput
           value={query}
