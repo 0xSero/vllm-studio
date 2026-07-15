@@ -1,28 +1,79 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ListGroup, RowValue, StatusPill, EmptySafeNotice } from "@/ui";
+import { EmptySafeNotice, ListGroup, SearchInput, StatusPill } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
-import { ExternalLink } from "@/ui/icon-registry";
+import { ArrowRightIcon } from "@/ui/icon-registry";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { RecipeWithStatus } from "@/lib/types";
 import type { ConfigureState } from "./use-configure";
 import { InlineRename } from "./inline-rename";
 
-const recipeFacts = (recipe: RecipeWithStatus): string =>
-  [recipe.backend, recipe.served_model_name].filter(Boolean).join(" · ");
+const recipeFacts = (recipe: RecipeWithStatus): string => {
+  const backend = recipe.backend === "llamacpp" ? "llama.cpp" : recipe.backend;
+  const servedName = recipe.served_model_name?.trim();
+  return servedName ? `${backend} · API name: ${servedName}` : backend;
+};
+
+const matchingRecipes = (recipes: RecipeWithStatus[], query: string): RecipeWithStatus[] => {
+  const needle = query.trim().toLowerCase();
+  return [...recipes]
+    .sort(
+      (a, b) =>
+        Number(b.status === "running") - Number(a.status === "running") ||
+        a.name.localeCompare(b.name),
+    )
+    .filter((recipe) =>
+      [recipe.name, recipe.backend, recipe.served_model_name, recipe.model_path]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle)),
+    );
+};
 
 export function ModelsSection({ state }: { state: ConfigureState }) {
+  const [query, setQuery] = useState("");
+  const recipes = matchingRecipes(state.recipes, query);
+
   return (
-    <div className="space-y-4">
-      <ListGroup
-        title="Model names"
-        description="Rename how each saved model appears across Local Studio. The served model id stays unchanged for API clients."
-      >
-        {state.recipes.map((recipe) => (
+    <div className="space-y-5">
+      <div className="rounded-[var(--rad-xl)] bg-(--ui-surface) p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+        <div>
+          <h3 className="text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">
+            Launch settings live in Models
+          </h3>
+          <p className="mt-1 max-w-[34rem] text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+            This page only changes friendly names. GPU count, engine, quantization, context length,
+            and performance tuning stay with each model profile.
+          </p>
+        </div>
+        <Link
+          href="/recipes"
+          className="mt-4 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-(--color-primary) px-3.5 text-[length:var(--fs-sm)] font-medium text-(--color-primary-foreground) transition-opacity hover:opacity-90 sm:mt-0"
+          style={{ color: "var(--color-primary-foreground)" }}
+        >
+          Open model settings
+          <ArrowRightIcon className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Find a model profile"
+          className="w-full max-w-sm"
+        />
+        <span className="shrink-0 text-[length:var(--fs-xs)] text-(--ui-muted)">
+          {recipes.length} of {state.recipes.length}
+        </span>
+      </div>
+
+      <ListGroup title="Saved profiles">
+        {recipes.map((recipe) => (
           <div
             key={recipe.id}
-            className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-(--ui-hover)/35"
+            className="flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-(--ui-hover)/35"
           >
             <ModelLogo modelId={modelIdFromPath(recipe.model_path)} size="sm" />
             <div className="min-w-0 flex-1">
@@ -37,26 +88,16 @@ export function ModelsSection({ state }: { state: ConfigureState }) {
               </p>
             </div>
             {recipe.status === "running" ? <StatusPill tone="good">running</StatusPill> : null}
-            <div className="hidden min-w-0 max-w-[45%] shrink sm:block">
-              <RowValue mono dim truncate>
-                {recipe.model_path}
-              </RowValue>
-            </div>
           </div>
         ))}
-        {state.recipes.length === 0 ? (
+        {recipes.length === 0 ? (
           <EmptySafeNotice>
-            No saved models yet. Add one from the Models page and it becomes renamable here.
+            {state.recipes.length === 0
+              ? "No model profiles yet. Add one from Models and it will appear here."
+              : `No model profiles match “${query}”.`}
           </EmptySafeNotice>
         ) : null}
       </ListGroup>
-      <Link
-        href="/recipes"
-        className="inline-flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-accent) hover:underline"
-      >
-        Open the full model library
-        <ExternalLink className="h-3.5 w-3.5" />
-      </Link>
     </div>
   );
 }

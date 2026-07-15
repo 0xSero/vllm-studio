@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   RIG_HARDWARE_TYPE_LABELS,
   RIG_HARDWARE_TYPES,
-  RIG_NODE_ROLE_LABELS,
   RIG_NODE_ROLES,
 } from "@local-studio/contracts/rigs";
 import { Button, Checkbox, FormField, Input, Select, Textarea, UiModal, UiModalHeader } from "@/ui";
@@ -40,6 +39,12 @@ const EMPTY_FORM: NodeFormState = {
   unified_memory: false,
   notes: "",
 };
+
+const ROLE_OPTIONS: Array<{ value: RigNodeRole; label: string }> = [
+  { value: "standalone", label: "Standalone — runs models by itself" },
+  { value: "head", label: "Head — coordinates other machines" },
+  { value: "worker", label: "Worker — lends GPUs to a head" },
+];
 
 function isRigNodeRole(value: string): value is RigNodeRole {
   return RIG_NODE_ROLES.some((role) => role === value);
@@ -127,7 +132,14 @@ export function NodeFormModal({
     <UiModal isOpen onClose={onClose} maxWidth="max-w-2xl">
       <UiModalHeader title={title} onClose={onClose} />
       <div className="max-h-[78dvh] space-y-4 overflow-y-auto p-4">
-        <FormField label="Hardware type" asGroup>
+        <div className="rounded-[var(--rad-lg)] bg-(--surface-3) px-3 py-2.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+          Only the name and how this machine is used are required.
+          {detected
+            ? " Hardware details stay synchronized automatically."
+            : " Everything else is optional."}
+        </div>
+
+        <FormField label="What kind of machine is this?" asGroup>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {RIG_HARDWARE_TYPES.map((type) => (
               <button
@@ -150,85 +162,98 @@ export function NodeFormModal({
         </FormField>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormField label="Name" required>
+          <FormField
+            label="Machine name"
+            required
+            description="A friendly name shown in Local Studio."
+          >
             <Input
               value={form.name}
               onChange={(event) => set("name", event.target.value)}
               placeholder="spark-2384"
             />
           </FormField>
-          <FormField label="Role" description="Head runs the API; workers join over the network.">
+          <FormField label="How is it used?">
             <Select
               value={form.role}
               onChange={(event) => {
                 if (isRigNodeRole(event.target.value)) set("role", event.target.value);
               }}
-              options={RIG_NODE_ROLES.map((role) => ({
-                value: role,
-                label: RIG_NODE_ROLE_LABELS[role],
-              }))}
+              options={ROLE_OPTIONS}
             />
           </FormField>
-          <FormField label="Hostname">
-            <Input
-              value={form.hostname}
-              onChange={(event) => set("hostname", event.target.value)}
-              placeholder="spark-2384"
-              disabled={detected}
-            />
-          </FormField>
-          <FormField label="Address" description="LAN IP or Tailscale name.">
+          {detected ? null : (
+            <FormField label="Hostname (optional)" description="The machine's network hostname.">
+              <Input
+                value={form.hostname}
+                onChange={(event) => set("hostname", event.target.value)}
+                placeholder="spark-2384"
+              />
+            </FormField>
+          )}
+          <FormField label="Network address (optional)" description="LAN IP or Tailscale name.">
             <Input
               value={form.address}
               onChange={(event) => set("address", event.target.value)}
               placeholder="192.168.1.90"
             />
           </FormField>
-          <FormField label="System memory (GB)">
-            <Input
-              type="number"
-              value={form.memory_gb}
-              onChange={(event) => set("memory_gb", event.target.value)}
-              placeholder="128"
-              disabled={detected}
-            />
-          </FormField>
-        </div>
-
-        {detected ? null : (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-(--ui-border) p-3 sm:grid-cols-3">
-            <FormField label="Accelerator" description="GPU or unified-memory chip.">
-              <Input
-                value={form.accelerator_name}
-                onChange={(event) => set("accelerator_name", event.target.value)}
-                placeholder="NVIDIA GB10"
-              />
-            </FormField>
-            <FormField label="Count">
+          {detected ? null : (
+            <FormField label="System memory (GB, optional)">
               <Input
                 type="number"
-                value={form.accelerator_count}
-                onChange={(event) => set("accelerator_count", event.target.value)}
-              />
-            </FormField>
-            <FormField label="Memory per unit (GB)">
-              <Input
-                type="number"
-                value={form.accelerator_memory_gb}
-                onChange={(event) => set("accelerator_memory_gb", event.target.value)}
+                value={form.memory_gb}
+                onChange={(event) => set("memory_gb", event.target.value)}
                 placeholder="128"
               />
             </FormField>
-            <Checkbox
-              className="sm:col-span-3"
-              checked={form.unified_memory}
-              onChange={(checked) => set("unified_memory", checked)}
-              label="Unified memory (shared between CPU and GPU)"
-            />
+          )}
+        </div>
+
+        {detected ? null : (
+          <div className="rounded-[var(--rad-lg)] bg-(--surface-3) p-3">
+            <div className="mb-3">
+              <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">
+                GPU details
+              </h3>
+              <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                Optional capacity information for a machine Local Studio cannot detect.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <FormField label="GPU or accelerator">
+                <Input
+                  value={form.accelerator_name}
+                  onChange={(event) => set("accelerator_name", event.target.value)}
+                  placeholder="NVIDIA GB10"
+                />
+              </FormField>
+              <FormField label="Count">
+                <Input
+                  type="number"
+                  value={form.accelerator_count}
+                  onChange={(event) => set("accelerator_count", event.target.value)}
+                />
+              </FormField>
+              <FormField label="Memory per unit (GB)">
+                <Input
+                  type="number"
+                  value={form.accelerator_memory_gb}
+                  onChange={(event) => set("accelerator_memory_gb", event.target.value)}
+                  placeholder="128"
+                />
+              </FormField>
+              <Checkbox
+                className="sm:col-span-3"
+                checked={form.unified_memory}
+                onChange={(checked) => set("unified_memory", checked)}
+                label="Unified memory (shared between CPU and GPU)"
+              />
+            </div>
           </div>
         )}
 
-        <FormField label="Notes">
+        <FormField label="Notes (optional)">
           <Textarea
             value={form.notes}
             onChange={(event) => set("notes", event.target.value)}

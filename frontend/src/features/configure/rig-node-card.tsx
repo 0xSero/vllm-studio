@@ -38,8 +38,8 @@ export function RigNodeCard({
   return (
     <div
       className={cx(
-        "group relative flex gap-4 rounded-xl border bg-(--ui-surface) p-4 transition-colors",
-        isHead ? "border-(--ui-accent)/35" : "border-(--ui-border) hover:border-(--ui-separator)",
+        "group relative flex gap-4 rounded-xl bg-(--surface-3) p-4 transition-colors hover:bg-(--ui-hover)",
+        isHead ? "ring-1 ring-(--ui-accent)/25" : "",
       )}
     >
       <div
