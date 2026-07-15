@@ -53,7 +53,7 @@ export function StatusSection({
   const trendData = useMetricSamples(view.sampleInput);
 
   return (
-    <section className="rounded-[var(--rad-xl)] bg-(--surface)/55 px-4 pt-4 pb-5 sm:px-5">
+    <section className="px-2 pt-2 pb-5">
       <StatusHeader
         backend={view.backend}
         benchmarking={benchmarking}

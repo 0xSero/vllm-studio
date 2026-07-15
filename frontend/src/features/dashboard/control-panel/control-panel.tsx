@@ -51,7 +51,7 @@ function ControllerMatrix() {
   const { rows, activeUrl, visible } = useControllerMatrixStore();
   if (!visible) return null;
   return (
-    <section className="mb-3 rounded-[var(--rad-xl)] bg-(--surface-3) px-3 py-2.5">
+    <section className="mb-3 border-b border-(--separator) pb-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">controllers live</div>
         <div className="text-[length:var(--fs-xs)] text-(--dim)/70">
@@ -98,8 +98,8 @@ function ControllerTab({
       title={censorUrls ? "Controller URL censored" : controller.url}
       className={`group inline-flex h-7 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-left text-[length:var(--fs-sm)] transition ${
         active
-          ? "border-transparent bg-(--surface) text-(--fg)"
-          : "border-transparent bg-transparent text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          ? "border-(--accent)/60 bg-(--accent)/10 text-(--fg)"
+          : "border-(--border)/55 bg-(--surface)/40 text-(--dim) hover:border-(--border) hover:text-(--fg)"
       }`}
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_BY_STATE[state]}`} aria-hidden />
@@ -116,12 +116,12 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
   const tail = logs.length > 0 ? logs.slice(-120) : [];
 
   return (
-    <section className="mt-3 rounded-[var(--rad-xl)] bg-(--surface)/55 px-4 pt-4 pb-5 sm:px-5">
+    <section className="border-t border-(--separator) px-2 pt-4 pb-5">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">Controller logs</div>
         <div className="text-[length:var(--fs-xs)] text-(--dim)/70">{tail.length} lines</div>
       </div>
-      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto rounded-[var(--rad-lg)] bg-(--surface-3) p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
+      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
         {tail.length > 0 ? (
           tail.map((line, index) => (
             <div key={`${index}-${line}`} className="truncate">
