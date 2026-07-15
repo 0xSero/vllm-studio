@@ -362,7 +362,7 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 10px;
+  gap: 7px;
   max-height: 60vh;
   width: 4.75rem;
   pointer-events: none;
@@ -380,7 +380,7 @@
   display: flex;
   align-items: center;
   width: 3rem;
-  height: 1rem;
+  height: 0.72rem;
   padding: 0;
   border: 0;
   background: transparent;
@@ -391,19 +391,24 @@
 
 .prompt-minimap-line {
   display: block;
-  width: 0.82rem;
-  height: 2px;
+  width: 0.6rem;
+  height: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--fg) 26%, transparent);
+  background: color-mix(in srgb, var(--fg) 20%, transparent);
   transition:
     width 0.14s ease,
     background-color 0.14s ease,
     box-shadow 0.14s ease;
 }
 
+.prompt-minimap-marker[data-current="true"] .prompt-minimap-line {
+  width: 0.72rem;
+  background: color-mix(in srgb, var(--fg) 82%, transparent);
+}
+
 .prompt-minimap-marker:hover .prompt-minimap-line,
 .prompt-minimap-marker:focus-visible .prompt-minimap-line {
-  width: 2rem;
+  width: 1.6rem;
   background: color-mix(in srgb, var(--fg) 88%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-bg) 72%, transparent);
 }

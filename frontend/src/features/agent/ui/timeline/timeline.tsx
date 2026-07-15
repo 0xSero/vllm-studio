@@ -237,13 +237,14 @@ function PromptMarkers({
   };
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
-      {visible.map((marker) => {
+      {visible.map((marker, index) => {
         const active = hoveredId === marker.id;
         return (
           <button
             key={marker.id}
             type="button"
             className="prompt-minimap-marker"
+            data-current={index === visible.length - 1 ? "true" : undefined}
             aria-label={`Scroll to prompt: ${marker.label}`}
             onMouseEnter={() => setHoveredId(marker.id)}
             onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}

@@ -1,4 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
+import {
+  FilePenLine,
+  FileText,
+  Globe2,
+  Search,
+  TerminalSquare,
+  Wrench,
+  type LucideIcon,
+} from "@/ui/icon-registry";
 import { highlightFenced } from "@/features/agent/highlight-cache";
 import type { ToolBlock } from "@/features/agent/messages";
 import {
@@ -13,13 +22,17 @@ import {
   toolArg,
   toolKindNodeColor,
   toolVerb,
+  type ToolKind,
 } from "@/features/agent/ui/timeline/tool-metadata";
 
-/* Codex action rows: a one-line `<verb> <detail>` pair — the verb carries the
-   emphasis and morphs tense with status, the detail is muted monospace. No
-   icons, no badges; a running call shimmers its verb, a failed one appends a
-   quiet red "failed". Expanding a row reveals the full payload (shell block,
-   file source, diff, raw output). */
+const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
+  edit: FilePenLine,
+  search: Search,
+  read: FileText,
+  exec: TerminalSquare,
+  browser: Globe2,
+  generic: Wrench,
+};
 
 type ToolMeta = { verb: string; detail: string | null };
 
@@ -115,7 +128,9 @@ function ToolSummary({
   const expanded = userOpen ?? open;
   const meta = toolMeta(block, filePath);
   const running = block.status === "running";
-  const idleColor = toolKindNodeColor(classifyTool(block));
+  const kind = classifyTool(block);
+  const idleColor = toolKindNodeColor(kind);
+  const Icon = TOOL_ICONS[kind];
   return (
     <details className="group min-w-0" open={expanded}>
       <summary
@@ -125,6 +140,7 @@ function ToolSummary({
           setUserOpen(!expanded);
         }}
       >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-(--dim)/65" strokeWidth={1.7} />
         <span
           className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
             running ? "codex-shimmer-text" : idleColor
