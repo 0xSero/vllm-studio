@@ -115,6 +115,7 @@ wait_port() {
 sync_controller() {
   step "Syncing controller"
   sync_dir controller/src/      "$REMOTE_DIR/controller/src/"
+  sync_dir controller/contracts/ "$REMOTE_DIR/controller/contracts/"
   sync_dir controller/scripts/  "$REMOTE_DIR/controller/scripts/" 2>/dev/null || true
   rsync -az -e "ssh $SSH_OPTS" \
     controller/package.json controller/bun.lock controller/tsconfig.json \
