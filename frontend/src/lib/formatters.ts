@@ -46,25 +46,6 @@ function formatNumber(value: number | null | undefined): string {
   return n.toLocaleString();
 }
 
-function formatDuration(value: number | null | undefined): string {
-  const ms = safeNumber(value, 0);
-  if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
-  return Math.round(ms) + "ms";
-}
-
-function formatDurationOrUnavailable(value: number | null | undefined): string {
-  const parsed = Number(value);
-  if (value === null || value === undefined || !Number.isFinite(parsed) || parsed <= 0) {
-    return "0ms";
-  }
-  return formatDuration(value);
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 /**
  * Format bytes into a human-readable string (B, KB, MB, GB, TB).
  */
@@ -80,12 +61,4 @@ function formatBytes(bytes: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export {
-  toGB,
-  toGBFromMB,
-  formatNumber,
-  formatDuration,
-  formatDurationOrUnavailable,
-  formatDate,
-  formatBytes,
-};
+export { toGB, toGBFromMB, formatNumber, formatBytes };

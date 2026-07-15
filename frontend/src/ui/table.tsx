@@ -37,13 +37,6 @@ interface TCellProps extends TdHTMLAttributes<HTMLTableCellElement> {
   align?: "left" | "right" | "center";
 }
 
-interface SortableTHProps<TField extends string> extends Omit<THProps, "onClick"> {
-  field: TField;
-  currentField: TField;
-  direction: "asc" | "desc";
-  onSort: (field: TField) => void;
-}
-
 function Table({ children, className = "", tableClassName = "", bordered = true }: TableProps) {
   return (
     <div
@@ -104,37 +97,6 @@ function TH({ children, align = "left", className = "", ...props }: THProps) {
   );
 }
 
-function SortableTH<TField extends string>({
-  field,
-  currentField,
-  direction,
-  onSort,
-  children,
-  align = "left",
-  className = "",
-  ...props
-}: SortableTHProps<TField>) {
-  const isActive = field === currentField;
-  return (
-    <TH
-      align={align}
-      className={cx("cursor-pointer select-none transition-colors hover:text-(--ui-fg)", className)}
-      onClick={() => onSort(field)}
-      {...props}
-    >
-      <div
-        className={cx(
-          "flex items-center gap-1",
-          align === "right" ? "justify-end" : align === "center" ? "justify-center" : "",
-        )}
-      >
-        {children}
-        {isActive ? <span>{direction === "asc" ? "↑" : "↓"}</span> : null}
-      </div>
-    </TH>
-  );
-}
-
 function TCell({ children, align = "left", className = "", ...props }: TCellProps) {
   const alignClass =
     align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
@@ -145,5 +107,5 @@ function TCell({ children, align = "left", className = "", ...props }: TCellProp
   );
 }
 
-export { Table, THead, TBody, TRow, TH, SortableTH, TCell };
-export type { TableProps, THeadProps, TBodyProps, TRowProps, THProps, SortableTHProps, TCellProps };
+export { Table, THead, TBody, TRow, TH, TCell };
+export type { TableProps, THeadProps, TBodyProps, TRowProps, THProps, TCellProps };

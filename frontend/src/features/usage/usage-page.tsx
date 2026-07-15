@@ -1,216 +1,177 @@
 "use client";
 
 import { useState } from "react";
-import {
-  AppPage,
-  PageContainer,
-  PageState,
-  RefreshButton,
-  SegmentedControl,
-  Select,
-  Tabs,
-  type SegmentedItem,
-} from "@/ui";
-import { DailyUsageChart, type UsagePeriod } from "@/features/usage/daily-usage-chart";
-import { ModelPerformanceTable } from "@/features/usage/model-performance-table";
-import { SecondaryMetrics } from "@/features/usage/secondary-metrics";
+import { AppPage, Card, PageContainer, PageState, RefreshButton, SegmentedControl } from "@/ui";
+import { TokenActivityHeatmap } from "@/features/usage/token-activity-heatmap";
 import { useUsage, type UsageSource } from "@/features/usage/use-usage";
 import { UsageSkeleton } from "@/features/usage/usage-skeleton";
 import { formatNumber } from "@/lib/formatters";
+import type { UsageStats } from "@/lib/types";
 
-const TABS: Array<{ id: UsageSource; label: string; sublabel: string }> = [
-  { id: "provider", label: "Provider", sublabel: "this controller" },
-  { id: "pi-sessions", label: "Pi sessions", sublabel: "coding-agent JSONL" },
-];
+const SOURCES = [
+  { id: "pi-sessions", label: "Lifetime" },
+  { id: "provider", label: "Controller" },
+] satisfies Array<{ id: UsageSource; label: string }>;
 
-const PERIOD_ITEMS: Array<SegmentedItem<UsagePeriod>> = [
-  { id: "day", label: "Day" },
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "year", label: "Year" },
-];
+const sourceDescription = (source: UsageSource): string =>
+  source === "pi-sessions"
+    ? "All recorded coding-agent activity · cached context included"
+    : "Every request recorded by this controller";
 
-const modelDisplayName = (modelId: string): string => modelId.split("/").pop() ?? modelId;
+const activeDays = (stats: UsageStats): number =>
+  stats.daily.filter((day) => day.total_tokens > 0).length;
+
+const peakDay = (stats: UsageStats): number =>
+  stats.daily.reduce((peak, day) => Math.max(peak, day.total_tokens), 0);
+
+const tokenParts = (stats: UsageStats): Array<{ label: string; value: number }> => {
+  const parts = [
+    { label: "Fresh input", value: stats.totals.prompt_tokens },
+    { label: "Cache read", value: stats.cache.hit_tokens },
+    { label: "Cache write", value: stats.cache.miss_tokens },
+    { label: "Output", value: stats.totals.completion_tokens },
+  ];
+  return parts.filter((part) => part.value > 0);
+};
 
 export default function UsagePage() {
-  const [tab, setTab] = useState<UsageSource>("provider");
-  const [period, setPeriod] = useState<UsagePeriod>("day");
-  const {
-    stats,
-    peakMetrics,
-    loading,
-    error,
-    expandedRows,
-    sortField,
-    sortDirection,
-    loadStats,
-    dailyByModel,
-    modelsForChart,
-    modelColorIndex,
-    modelOptions,
-    filteredDaily,
-    selectedModel,
-    setSelectedModel,
-    sortedModels,
-    handleSort,
-    toggleRow,
-  } = useUsage(tab);
+  const [source, setSource] = useState<UsageSource>("pi-sessions");
+  const { stats, loading, error, loadStats } = useUsage(source);
 
   if (loading && !stats) return <UsageSkeleton />;
 
-  const pageStateRender = PageState({
+  const pageState = PageState({
     loading,
     data: stats,
     hasData: Boolean(stats),
     error,
     onLoad: loadStats,
   });
-  if (pageStateRender) return <AppPage>{pageStateRender}</AppPage>;
+  if (pageState) return <AppPage>{pageState}</AppPage>;
   if (!stats) return null;
-
-  const totals = stats.totals;
-  const recent = stats.recent_activity;
-  const tpr = stats.tokens_per_request;
-  const allModelsSelected = selectedModel === "all";
-  const chartStats = {
-    ...stats,
-    daily: filteredDaily,
-    ...(allModelsSelected ? {} : { peak_days: [] }),
-  };
-
-  const handleTabChange = (next: UsageSource) => {
-    setTab(next);
-    setSelectedModel("all");
-  };
 
   return (
     <AppPage>
-      <PageContainer width="md" className="2xl:px-10">
-        <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-(--separator) pb-2">
-          <span className="mr-1 font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--dim)">
-            source
-          </span>
-          <Tabs
-            variant="pill"
-            items={TABS}
-            activeTab={tab}
-            onSelectTab={handleTabChange}
-            className="[&_button]:h-7 [&_button]:px-2 [&_button]:py-0 [&_button]:text-[length:var(--fs-sm)]"
-          />
-        </div>
-
-        <section className="px-2 pt-2 pb-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)] tracking-[0.04em]">
-                <span className="font-medium uppercase tracking-[0.14em] text-(--dim)">
-                  All-time usage
-                </span>
-                <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">
-                  {tab === "provider" ? "controller" : "pi sessions"}
-                </span>
-              </div>
-              <h1 className="mt-1.5 truncate text-[length:var(--fs-3xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg)">
-                {formatNumber(totals.total_tokens)} tokens
-              </h1>
-              <div className="mt-1 font-mono text-[length:var(--fs-sm)] text-(--dim)">
-                {formatNumber(totals.total_requests)} requests ·{" "}
-                {formatNumber(totals.unique_sessions)} sessions ·{" "}
-                {formatNumber(totals.unique_users)} users
-              </div>
-            </div>
-            <RefreshButton
-              onRefresh={loadStats}
-              loading={loading}
-              className="h-8 rounded-md border-0 bg-(--surface) px-3 text-[length:var(--fs-md)] text-(--dim) hover:bg-(--surface-2) hover:text-(--fg)"
-            />
+      <PageContainer width="sm" className="pt-5 sm:pt-7">
+        <header className="flex items-center justify-between gap-3">
+          <h1 className="text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">Usage</h1>
+          <div className="flex items-center gap-2">
+            <SegmentedControl items={SOURCES} value={source} onChange={setSource} size="sm" />
+            <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
           </div>
+        </header>
 
-          <dl className="mt-5 grid w-full grid-cols-2 border-b border-(--separator) pb-5 lg:grid-cols-4">
-            <HeaderStat
-              label="prompt"
-              value={formatNumber(totals.prompt_tokens)}
-              detail="input tokens"
-            />
-            <HeaderStat
-              label="completion"
-              value={formatNumber(totals.completion_tokens)}
-              detail="output tokens"
-            />
-            <HeaderStat
-              label="24h req"
-              value={formatNumber(recent.last_24h_requests)}
-              detail={`${formatNumber(recent.last_hour_requests)} last hour`}
-            />
-            <HeaderStat
-              label="avg tokens"
-              value={formatNumber(tpr.avg)}
-              detail={`${formatNumber(tpr.avg_prompt)} in · ${formatNumber(tpr.avg_completion)} out`}
-            />
-          </dl>
+        <section className="pt-14 text-center sm:pt-20">
+          <p className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">
+            Lifetime tokens
+          </p>
+          <div className="mt-2 text-[clamp(2.75rem,7vw,4.75rem)] font-medium leading-none tracking-[-0.055em] tabular-nums text-(--ui-fg)">
+            {formatNumber(stats.totals.total_tokens)}
+          </div>
+          <p className="mt-3 text-[length:var(--fs-sm)] text-(--ui-muted)">
+            {sourceDescription(source)}
+          </p>
         </section>
 
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--dim)/75">
-              model
-            </span>
-            <div className="w-[14rem] max-w-[60vw]">
-              <Select
-                value={selectedModel}
-                onChange={(event) => setSelectedModel(event.target.value)}
-                options={[
-                  { value: "all", label: "All models" },
-                  ...modelOptions.map((model) => ({
-                    value: model,
-                    label: modelDisplayName(model),
-                  })),
-                ]}
-              />
-            </div>
+        <Card padding="sm" className="mx-auto mt-10 max-w-[55rem] bg-(--ui-surface)/70 sm:mt-12">
+          <dl className="grid grid-cols-2 divide-x divide-(--ui-border) sm:grid-cols-4">
+            <ProfileStat label="Requests" value={formatNumber(stats.totals.total_requests)} />
+            <ProfileStat label="Sessions" value={formatNumber(stats.totals.unique_sessions)} />
+            <ProfileStat label="Active days" value={formatNumber(activeDays(stats))} />
+            <ProfileStat label="Peak day" value={formatNumber(peakDay(stats))} />
+          </dl>
+        </Card>
+
+        <section className="mx-auto mt-12 max-w-[55rem] sm:mt-16">
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
+              Token activity
+            </h2>
+            <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">Past year</span>
           </div>
-          <SegmentedControl items={PERIOD_ITEMS} value={period} onChange={setPeriod} size="sm" />
-        </div>
+          <TokenActivityHeatmap daily={stats.daily} />
+        </section>
 
-        <DailyUsageChart
-          stats={chartStats}
-          dailyByModel={dailyByModel}
-          modelsForChart={modelsForChart}
-          modelColorIndex={modelColorIndex}
-          period={period}
-        />
-
-        <ModelPerformanceTable
-          expandedRows={expandedRows}
-          handleSort={handleSort}
-          modelColorIndex={modelColorIndex}
-          peakMetrics={peakMetrics}
-          sortDirection={sortDirection}
-          sortField={sortField}
-          sortedModels={sortedModels}
-          toggleRow={toggleRow}
-        />
-
-        {SecondaryMetrics(stats)}
+        <section className="mx-auto mt-12 grid max-w-[55rem] gap-10 border-t border-(--ui-border) pt-8 sm:grid-cols-2 sm:gap-14">
+          <TokenMix stats={stats} />
+          <ModelUsage stats={stats} />
+        </section>
       </PageContainer>
     </AppPage>
   );
 }
 
-function HeaderStat({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function ProfileStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 overflow-hidden border-r border-(--separator) pr-2 pl-3 first:pl-0 last:border-r-0 sm:pr-4 sm:pl-5">
-      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--dim)/75">
-        {label}
-      </dt>
-      <dd className="mt-1 min-w-0 font-mono text-[length:var(--fs-2xl)] leading-none tabular-nums text-(--fg)">
+    <div className="px-3 py-2.5 text-center first:border-l-0 sm:px-5">
+      <dd className="text-[length:var(--fs-lg)] font-medium tabular-nums text-(--ui-fg)">
         {value}
       </dd>
-      {detail ? (
-        <dd className="mt-1 truncate font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {detail}
-        </dd>
-      ) : null}
+      <dt className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">{label}</dt>
+    </div>
+  );
+}
+
+function TokenMix({ stats }: { stats: UsageStats }) {
+  const total = stats.totals.total_tokens;
+  return (
+    <div>
+      <h2 className="mb-4 text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Token mix</h2>
+      <div className="space-y-3">
+        {tokenParts(stats).map((part) => (
+          <div key={part.label} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
+            <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">{part.label}</span>
+            <span className="text-[length:var(--fs-sm)] tabular-nums text-(--ui-fg)">
+              {formatNumber(part.value)}
+            </span>
+            <div className="col-span-2 h-1 overflow-hidden rounded-full bg-(--ui-surface-2)">
+              <div
+                className="h-full rounded-full bg-[color:var(--color-blue-500)]/65"
+                style={{ width: `${total > 0 ? Math.max(1, (part.value / total) * 100) : 0}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModelUsage({ stats }: { stats: UsageStats }) {
+  const models = stats.by_model.slice(0, 5);
+  const largest = models[0]?.total_tokens ?? 0;
+  return (
+    <div>
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Most used models</h2>
+        <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
+          {stats.by_model.length} models
+        </span>
+      </div>
+      <div className="space-y-3">
+        {models.map((model) => (
+          <div
+            key={model.model}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1"
+          >
+            <span
+              className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
+              title={model.model}
+            >
+              {model.model.split("/").pop()}
+            </span>
+            <span className="text-[length:var(--fs-sm)] tabular-nums text-(--ui-fg)">
+              {formatNumber(model.total_tokens)}
+            </span>
+            <div className="col-span-2 h-1 overflow-hidden rounded-full bg-(--ui-surface-2)">
+              <div
+                className="h-full rounded-full bg-[color:var(--color-blue-500)]/45"
+                style={{ width: `${largest > 0 ? (model.total_tokens / largest) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

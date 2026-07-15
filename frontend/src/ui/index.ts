@@ -39,16 +39,8 @@ export type { PageStateProps } from "./page-state";
 export { RefreshButton } from "./refresh-button";
 export type { RefreshButtonProps } from "./refresh-button";
 
-export { Table, THead, TBody, TRow, TH, SortableTH, TCell } from "./table";
-export type {
-  TableProps,
-  THeadProps,
-  TBodyProps,
-  TRowProps,
-  THProps,
-  SortableTHProps,
-  TCellProps,
-} from "./table";
+export { Table, THead, TBody, TRow, TH, TCell } from "./table";
+export type { TableProps, THeadProps, TBodyProps, TRowProps, THProps, TCellProps } from "./table";
 
 export { AppPage, PageContainer, PageHeader, SectionNav, RefreshIconButton } from "./page";
 export type { SectionNavItem, PageWidth } from "./page";
@@ -71,7 +63,6 @@ export { ColorField } from "./color-field";
 
 export { ProgressBar } from "./progress-bar";
 export { Stat } from "./stat";
-export { SectionLabel } from "./section-label";
 export { ErrorBox } from "./error-box";
 export { Spinner } from "./spinner";
 export type { SpinnerSize } from "./spinner";

@@ -1,58 +1,33 @@
-import { AppPage, PageContainer } from "@/ui";
+import { AppPage, Card, PageContainer } from "@/ui";
 
-const pulse = "animate-pulse rounded bg-(--surface-2)";
+const pulse = "animate-pulse rounded bg-(--ui-surface-2)";
 
 export function UsageSkeleton() {
   return (
     <AppPage>
-      <PageContainer width="md" className="2xl:px-10" aria-busy="true">
-        <div className="mb-3 flex items-center gap-2 border-b border-(--separator) pb-2">
-          <div className={`${pulse} h-3 w-12`} />
-          <div className={`${pulse} h-7 w-44 rounded-md`} />
+      <PageContainer width="sm" className="pt-5 sm:pt-7">
+        <div className="flex items-center justify-between">
+          <div className={`${pulse} h-5 w-14`} />
+          <div className={`${pulse} h-7 w-44 rounded-full`} />
         </div>
-        <section className="px-2 pt-2 pb-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <div className={`${pulse} h-3 w-32`} />
-              <div className={`${pulse} h-8 w-56`} />
-              <div className={`${pulse} h-3 w-48`} />
-            </div>
-            <div className={`${pulse} h-8 w-20 rounded-md`} />
-          </div>
-          <div className="mt-5 grid grid-cols-2 border-b border-(--separator) pb-5 lg:grid-cols-4">
+        <div className="flex flex-col items-center pt-20">
+          <div className={`${pulse} h-3 w-24`} />
+          <div className={`${pulse} mt-4 h-14 w-64`} />
+          <div className={`${pulse} mt-4 h-3 w-72`} />
+        </div>
+        <Card padding="sm" className="mx-auto mt-12 max-w-[55rem]">
+          <div className="grid grid-cols-4 gap-8 px-5 py-3">
             {Array.from({ length: 4 }, (_, index) => (
-              <div
-                key={index}
-                className="space-y-2 border-r border-(--separator) px-4 first:pl-0 last:border-r-0"
-              >
-                <div className={`${pulse} h-2.5 w-16`} />
-                <div className={`${pulse} h-6 w-24`} />
-                <div className={`${pulse} h-2.5 w-20`} />
+              <div key={index} className="flex flex-col items-center gap-2">
+                <div className={`${pulse} h-5 w-16`} />
+                <div className={`${pulse} h-3 w-14`} />
               </div>
             ))}
           </div>
-        </section>
-        <div className="mb-3 flex items-center justify-between px-2">
-          <div className={`${pulse} h-8 w-56 rounded-md`} />
-          <div className={`${pulse} h-7 w-44 rounded-md`} />
-        </div>
-        <div className="mx-2 h-64 border-y border-(--separator) py-5">
-          <div className={`${pulse} h-full w-full rounded-md opacity-60`} />
-        </div>
-        <div className="px-2 pt-5">
-          <div className="mb-3 flex items-center justify-between">
-            <div className={`${pulse} h-3 w-32`} />
-            <div className={`${pulse} h-3 w-16`} />
-          </div>
-          <div className="divide-y divide-(--border)/30 border-y border-(--separator)">
-            {Array.from({ length: 5 }, (_, index) => (
-              <div key={index} className="grid grid-cols-[1fr_5rem_7rem] gap-5 py-3">
-                <div className={`${pulse} h-4 w-2/3`} />
-                <div className={`${pulse} h-4 w-full`} />
-                <div className={`${pulse} h-4 w-full`} />
-              </div>
-            ))}
-          </div>
+        </Card>
+        <div className="mx-auto mt-16 max-w-[55rem]">
+          <div className={`${pulse} mb-5 h-4 w-28`} />
+          <div className={`${pulse} h-28 w-full opacity-70`} />
         </div>
       </PageContainer>
     </AppPage>
