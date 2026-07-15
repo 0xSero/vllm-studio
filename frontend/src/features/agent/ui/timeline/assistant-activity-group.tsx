@@ -28,7 +28,7 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
       >
         <span
           className={`text-[length:var(--fs-base)] font-normal leading-5 ${
-            active ? "codex-shimmer-text" : "text-(--fg)/55"
+            active ? "codex-shimmer-text" : "text-(--fg)/48"
           }`}
         >
           {active ? "Thinking" : "Thought"}
@@ -59,7 +59,7 @@ function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean
       >
         <span
           className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
-            running ? "codex-shimmer-text" : "text-(--fg)/55"
+            running ? "codex-shimmer-text" : "text-(--fg)/48"
           }`}
         >
           {running ? "Exploring" : "Explored"}
@@ -146,7 +146,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
       >
         <span
           className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
-            working || live ? "codex-shimmer-text" : "text-(--fg)/55"
+            working || live ? "codex-shimmer-text" : "text-(--fg)/48"
           }`}
         >
           {working || live ? "Working" : summary}

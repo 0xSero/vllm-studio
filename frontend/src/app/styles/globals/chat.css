@@ -57,8 +57,7 @@
   font-size: var(--codex-chat-font-size);
   line-height: var(--codex-chat-line-height);
   font-weight: var(--codex-chat-font-weight);
-  /* Codex renders message body at foreground 85% */
-  color: color-mix(in srgb, var(--fg) 85%, transparent);
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
   letter-spacing: 0;
 }
 
@@ -122,7 +121,7 @@
 .chat-markdown h3,
 .chat-markdown h4 {
   font-weight: 600;
-  color: var(--fg);
+  color: color-mix(in srgb, var(--fg) 90%, transparent);
   line-height: 1.3;
   letter-spacing: -0.01em;
 }
@@ -166,7 +165,7 @@
 
 .chat-markdown strong {
   font-weight: 600;
-  color: color-mix(in srgb, var(--fg) 94%, transparent);
+  color: color-mix(in srgb, var(--fg) 88%, transparent);
 }
 
 .chat-markdown a {

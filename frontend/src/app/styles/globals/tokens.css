@@ -587,7 +587,7 @@
 .dark,
 :root[data-theme="zai-dark"],
 :root[data-theme="omlx-dark"] {
-  --composer-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+  --composer-shadow: 0 10px 28px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
 }
 
 @media (min-width: 1024px) {
@@ -608,7 +608,6 @@
   --h-toolbar: 46px;
   --h-toolbar-sm: 36px;
   --h-toolbar-pane: 40px;
-  /* Composer / thread geometry: a 48rem reading column. */
   --composer-w: clamp(25vw, 48rem, 52vw);
   --thread-w: 900px;
   --composer-radius: 24px;
