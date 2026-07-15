@@ -215,7 +215,7 @@ export function StatusMetricStrip({
   metricColumns: MetricColumnView[];
 }) {
   return (
-    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 border-b border-(--separator) pb-5 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 rounded-[var(--rad-lg)] bg-(--surface-3) px-3 py-4 sm:grid-cols-3 lg:grid-cols-6">
       {metricColumns.map((metric) => (
         <MetricCell
           key={metric.label}

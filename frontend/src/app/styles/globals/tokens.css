@@ -366,7 +366,7 @@
 
   --color-header: var(--gray-900);
   --color-panel: var(--gray-900);
-  --color-sidebar: var(--gray-900);
+  --color-sidebar: color-mix(in srgb, var(--gray-800) 45%, var(--gray-900));
   --color-surface: var(--gray-800);
   --color-surface-hover: var(--gray-750);
 
