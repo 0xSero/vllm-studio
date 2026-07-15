@@ -413,9 +413,9 @@
   left: 2.55rem;
   top: 50%;
   display: grid;
-  width: min(26rem, calc(100vw - 8rem));
-  gap: 0.28rem;
-  padding: 0.65rem 0.75rem;
+  width: min(32rem, calc(100cqw - 8rem));
+  gap: 0.4rem;
+  padding: 0.8rem 0.9rem;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 0.72rem;
   background: color-mix(in srgb, var(--surface) 94%, var(--agent-bg));
@@ -430,7 +430,7 @@
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   font-size: 13px;
   line-height: 1.45;
   color: color-mix(in srgb, var(--fg) 90%, transparent);

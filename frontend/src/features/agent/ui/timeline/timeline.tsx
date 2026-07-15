@@ -249,7 +249,11 @@ function PromptMarkers({
             onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
             onFocus={() => setHoveredId(marker.id)}
             onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
-            onClick={() => scrollToPrompt(marker.id)}
+            onClick={(event) => {
+              scrollToPrompt(marker.id);
+              setHoveredId(null);
+              event.currentTarget.blur();
+            }}
           >
             <span className="prompt-minimap-line" />
             {active ? (
