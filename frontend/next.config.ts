@@ -43,6 +43,7 @@ const nextConfig: NextConfig = {
     "/*": [
       "./data/**/*",
       "./desktop/**/*",
+      "./dist-desktop/**/*",
       "./public/**/*",
       "./scripts/**/*",
       "./src/**/*",
