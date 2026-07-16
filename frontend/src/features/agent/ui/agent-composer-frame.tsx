@@ -78,6 +78,7 @@ export type AgentComposerFrameProps = {
   status?: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   floating?: boolean;
+  dense?: boolean;
 };
 
 export function AgentComposerFrame({
@@ -128,6 +129,7 @@ export function AgentComposerFrame({
   status,
   textareaRef,
   floating = false,
+  dense = false,
 }: AgentComposerFrameProps) {
   return (
     <form
@@ -136,7 +138,9 @@ export function AgentComposerFrame({
         "relative z-[100] shrink-0",
         floating
           ? "bg-transparent p-[calc(var(--space-base)*2)]"
-          : "bg-(--agent-bg) px-6 pb-2 pt-2.5",
+          : dense
+            ? "bg-(--agent-bg) px-3 pb-1 pt-1.5"
+            : "bg-(--agent-bg) px-6 pb-2 pt-2.5",
       )}
     >
       <AgentQueuePanel
