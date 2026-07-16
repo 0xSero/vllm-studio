@@ -50,6 +50,7 @@ export function useChatPaneRuntimeHandle({
   activeTabId,
   engine,
   modelId,
+  isFocused,
   onRegisterHandle,
   running,
 }: {
@@ -57,10 +58,20 @@ export function useChatPaneRuntimeHandle({
   activeTabId: string;
   engine: SessionEngine;
   modelId: string;
+  isFocused: boolean;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   running: boolean;
 }) {
   const [compacting, setCompacting] = useState(false);
+  const replayedRef = useRef<Set<string>>(new Set());
+  useMountSubscription(() => {
+    if (!isFocused || !activeTab) return;
+    const { piSessionId, messages, status } = activeTab;
+    if (!piSessionId || messages.length > 0 || status !== "idle") return;
+    if (replayedRef.current.has(activeTabId)) return;
+    replayedRef.current.add(activeTabId);
+    void engine.loadAndReplay(piSessionId, activeTabId);
+  }, [activeTab, activeTabId, isFocused, engine]);
   const loadAndReplay = useCallback(
     (piSessionId: string) =>
       activeTabId ? engine.loadAndReplay(piSessionId, activeTabId) : Promise.resolve(),

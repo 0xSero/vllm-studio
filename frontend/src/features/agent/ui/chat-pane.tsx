@@ -391,6 +391,7 @@ export function ChatPane({
     activeTabId,
     engine,
     modelId,
+    isFocused,
     onRegisterHandle,
     running: Boolean(running),
   });
@@ -497,6 +498,7 @@ export function ChatPane({
           status={activeTab?.status}
           textareaRef={textareaRef}
           floating={composerOnly}
+          dense={!showHeader && !composerOnly}
         />
       </div>
     </section>
