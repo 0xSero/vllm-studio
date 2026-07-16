@@ -64,11 +64,10 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
   return {
     queue: (paneId, piSessionId) => {
       pending.set(paneId, piSessionId);
-      // Defer past the dispatch/render that created the pane.
       deps.setTimeout(() => drain(paneId), 0);
     },
     notifyHandleRegistered: (paneId) => {
-      if (pending.has(paneId)) deps.setTimeout(() => drain(paneId), 0);
+      if (pending.has(paneId)) drain(paneId);
     },
   };
 }

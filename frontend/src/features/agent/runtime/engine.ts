@@ -28,6 +28,7 @@ import { sessionRuntimeController } from "@/features/agent/runtime/session-runti
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
+const inFlightReplays = new Set<SessionId>();
 
 export type UseSessionEngineDeps = {
   /** Latest `tabs` snapshot — engine reads via a ref so it doesn't restart on every frame. */
@@ -217,8 +218,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 
   const loadAndReplay = useCallback(
-    (piSessionId: string, sessionId: SessionId) =>
-      Effect.runPromise(
+    (piSessionId: string, sessionId: SessionId) => {
+      if (inFlightReplays.has(sessionId)) return Promise.resolve();
+      inFlightReplays.add(sessionId);
+      return Effect.runPromise(
         Effect.gen(function* () {
           const cachedMessages = readTranscriptSnapshot(piSessionId);
           const seedCached = (session: Session) =>
@@ -320,8 +323,15 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               status: "idle",
             }));
           }
-        }),
-      ),
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              inFlightReplays.delete(sessionId);
+            }),
+          ),
+        ),
+      );
+    },
     [cwd, modelId, updateSession],
   );
 
