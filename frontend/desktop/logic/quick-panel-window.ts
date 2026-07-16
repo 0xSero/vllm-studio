@@ -17,7 +17,13 @@ let applyingBounds = false;
 type PanelSize = { width: number; height: number };
 
 function threadWindowSize(): PanelSize {
-  return getStoredQuickPanelThreadSize() ?? DESKTOP_CONFIG.quickPanel.threadWindow;
+  const preferred = DESKTOP_CONFIG.quickPanel.threadWindow;
+  const stored = getStoredQuickPanelThreadSize();
+  if (!stored) return preferred;
+  return {
+    width: Math.max(stored.width, preferred.width),
+    height: Math.min(stored.height, preferred.height),
+  };
 }
 
 function currentModeSize(): PanelSize {

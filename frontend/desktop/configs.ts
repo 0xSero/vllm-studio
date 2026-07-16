@@ -14,7 +14,7 @@ export const DESKTOP_CONFIG = {
   quickPanel: {
     hotkey: process.env.LOCAL_STUDIO_DESKTOP_QUICK_PANEL_HOTKEY ?? "CommandOrControl+,",
     homeWindow: { width: 500, height: 164 },
-    threadWindow: { width: 560, height: 860 },
+    threadWindow: { width: 720, height: 760 },
     topInsetPx: 96,
   },
 };
