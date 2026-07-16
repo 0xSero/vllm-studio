@@ -32,9 +32,13 @@ function requireAsset(name) {
   return file;
 }
 
+function releaseAssetName(name) {
+  return name.replaceAll(" ", "-");
+}
+
 const version = frontendVersion();
 const names = releaseAssetNames(version);
-const assets = names.map((name) => [requireAsset(name), path.join(staging, name)]);
+const assets = names.map((name) => [requireAsset(name), path.join(staging, releaseAssetName(name))]);
 
 rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
