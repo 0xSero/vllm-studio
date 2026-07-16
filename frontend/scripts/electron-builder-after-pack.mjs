@@ -49,5 +49,12 @@ export default async function afterPack(context) {
     );
   }
 
+  const requiredRuntimePath =
+    "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/value/shared/union_priority_sort.mjs";
+  const runtimeRoots = [path.join(standaloneBase, "frontend"), standaloneBase];
+  if (!runtimeRoots.some((root) => existsSync(path.join(root, requiredRuntimePath)))) {
+    throw new Error(`Packaged app is missing runtime dependency: ${requiredRuntimePath}`);
+  }
+
   console.log(`  afterPack: embedded standalone server present (${electronPlatformName})`);
 }

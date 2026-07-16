@@ -8,6 +8,10 @@ const candidates = [
   resolve(standaloneBase, "frontend", "server.js"),
   resolve(standaloneBase, "server.js"),
 ];
+const runtimeRoots = [resolve(standaloneBase, "frontend"), standaloneBase];
+const requiredRuntimeFiles = [
+  "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/value/shared/union_priority_sort.mjs",
+];
 
 function filesUnder(directory) {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -33,6 +37,12 @@ function isRuntimeFile(file) {
 
 if (!candidates.some((candidate) => existsSync(candidate))) {
   throw new Error(`Missing standalone server: ${candidates.join(", ")}`);
+}
+
+for (const file of requiredRuntimeFiles) {
+  if (!runtimeRoots.some((root) => existsSync(resolve(root, file)))) {
+    throw new Error(`Missing standalone runtime dependency: ${file}`);
+  }
 }
 
 const unexpected = filesUnder(standaloneBase).filter((file) => !isRuntimeFile(file));
