@@ -339,7 +339,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
           : Promise.resolve(null),
       ]);
       if (!listResponse.ok) {
-        return ctx.json(
+        return Response.json(
           { detail: `HuggingFace API error: ${listResponse.status}` },
           { status: listResponse.status },
         );

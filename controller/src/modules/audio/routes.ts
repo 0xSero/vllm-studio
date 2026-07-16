@@ -113,7 +113,7 @@ export const registerAudioRoutes = (
       return ctx.json({ text: transcription.text });
     } catch (error) {
       if (error instanceof RequestBodyTooLargeError) {
-        return ctx.json(
+        return Response.json(
           {
             code: "file_too_large",
             error: `Audio upload exceeds the ${Math.round(MAX_STT_UPLOAD_BYTES / (1024 * 1024))} MB limit`,
@@ -122,7 +122,7 @@ export const registerAudioRoutes = (
         );
       }
       if (error instanceof SttIntegrationError) {
-        return ctx.json(
+        return Response.json(
           {
             code: error.code,
             error: error.message,
@@ -249,7 +249,7 @@ export const registerAudioRoutes = (
         return Response.json({ code: error.code, error: error.message }, { status: error.status });
       }
       if (error instanceof TtsIntegrationError) {
-        return ctx.json(
+        return Response.json(
           {
             code: error.code,
             error: error.message,

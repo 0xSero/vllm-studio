@@ -1,6 +1,6 @@
 {
   "name": "local-studio-controller",
-  "version": "0.3.2",
+  "version": "2.0.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -17,11 +17,11 @@
     "check:fix": "knip --fix"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.78.1",
+    "@earendil-works/pi-ai": "0.80.8",
     "@hono/swagger-ui": "0.5.3",
     "dotenv": "16.6.1",
     "effect": "4.0.0-beta.90",
-    "hono": "4.6.12"
+    "hono": "4.12.30"
   },
   "devDependencies": {
     "@types/node": "24.6.0",
@@ -38,5 +38,8 @@
   },
   "engines": {
     "bun": ">=1.1"
+  },
+  "overrides": {
+    "protobufjs": "7.6.5"
   }
 }

@@ -15,7 +15,7 @@
       "@local-studio/contracts/*": ["../../controller/contracts/*.ts"],
       "@shared/agent/*": ["../../shared/agent/*.ts"],
       "@earendil-works/pi-ai/openai-completions": [
-        "../../frontend/node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js"
+        "../../frontend/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js"
       ]
     }
   },

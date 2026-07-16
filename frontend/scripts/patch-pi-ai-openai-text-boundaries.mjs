@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const targetFiles = [
-  path.join(frontendRoot, "node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js"),
+  path.join(frontendRoot, "node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js"),
   path.join(
     frontendRoot,
-    "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/providers/openai-completions.js",
+    "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js",
   ),
 ];
 
@@ -86,8 +86,6 @@ for (const file of targetFiles) {
 }
 
 if (found === 0) {
-  // Loud but non-fatal: a missing pi-ai layout means agent streaming will
-  // misrender assistant text, and silence here hides that until runtime.
   console.warn(
     [
       "WARNING: patch-pi-ai-openai-text-boundaries.mjs found no pi-ai openai-completions.js to patch.",

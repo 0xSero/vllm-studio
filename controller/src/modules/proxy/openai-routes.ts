@@ -212,7 +212,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
       // "400 Invalid request body" — that ends up as `400 (no body)` on
       // the SDK side, which looks like a real server bug.
       if (ctx.req.raw.signal.aborted) {
-        return ctx.body(null, { status: 499 });
+        return new Response(null, { status: 499 });
       }
       throw new HttpStatus({ status: 400, detail: "Invalid request body" });
     }
@@ -263,7 +263,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
         });
       } catch (error) {
         if (clientSignal.aborted) {
-          return ctx.body(null, { status: 499 });
+          return new Response(null, { status: 499 });
         }
         throw error;
       }
@@ -272,11 +272,11 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
         result = (await response.json()) as Record<string, unknown>;
       } catch {
         if (clientSignal.aborted) {
-          return ctx.body(null, { status: 499 });
+          return new Response(null, { status: 499 });
         }
         // Upstream returned non-JSON body (empty or error text). Pass the
         // status through but don't pretend we got a structured response.
-        return ctx.body(null, { status: response.status });
+        return new Response(null, { status: response.status });
       }
 
       const usage = result["usage"] as OpenAIUsage | undefined;
@@ -298,7 +298,7 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
       attachSessionUsage(result, sessionId, usage);
       normalizeCompletionChoices(result, recordedModel, sourceHeader);
 
-      return ctx.json(result, { status: response.status });
+      return Response.json(result, { status: response.status });
     }
 
     // SSE keepalive streaming path (fixes Cloudflare 502 during vLLM prefill)

@@ -73,7 +73,7 @@ export const createApp = (context: AppContext): Hono => {
 
   app.onError((error, ctx) => {
     if (isHttpStatus(error)) {
-      return ctx.json({ detail: error.detail }, { status: error.status });
+      return Response.json({ detail: error.detail }, { status: error.status });
     }
     // Client-initiated disconnects (stream cancel, page close, Droid
     // cancelling an in-flight request to start a new turn) are not our
@@ -97,7 +97,7 @@ export const createApp = (context: AppContext): Hono => {
         method: ctx.req.method,
         path: ctx.req.path,
       });
-      return ctx.body(null, { status: 499 });
+      return new Response(null, { status: 499 });
     }
     context.logger.error("Unhandled error", { error: message });
     return ctx.json({ detail: "Internal Server Error" }, { status: 500 });

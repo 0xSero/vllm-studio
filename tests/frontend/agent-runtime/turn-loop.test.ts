@@ -107,9 +107,9 @@ test("turn loop ordering: agent_start -> turn -> deltas -> tool -> final turn ->
   // One model call per turn: the tool-call turn plus the final-text turn.
   expect(types.filter((type) => type === "turn_start")).toHaveLength(2);
   expect(types.filter((type) => type === "turn_end")).toHaveLength(2);
-  // agent_end terminates the run and is the last logged event.
   expect(types.filter((type) => type === "agent_end")).toHaveLength(1);
-  expect(isAgentEndEvent(logged[logged.length - 1].event)).toBe(true);
+  expect(isAgentEndEvent(logged[logged.length - 2].event)).toBe(true);
+  expect(types.at(-1)).toBe("agent_settled");
 });
 
 test("the real read tool executed against the workspace file", () => {

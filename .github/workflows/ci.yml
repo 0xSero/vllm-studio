@@ -12,9 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      # Repo-level gates (pure node stdlib, no install needed). These existed
-      # for months but only ran when someone remembered `npm run check` locally.
+          node-version: 22.19.0
       - name: Shared-contract duplication gate
         run: node scripts/validate-shared-contracts.mjs
       - name: Barrel/dir sibling structure gate
@@ -52,8 +50,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      # Tests run under bun (installs stay npm — see frontend/package.json).
+          node-version: 22.19.0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

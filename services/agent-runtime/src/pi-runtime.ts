@@ -155,7 +155,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                         }),
                       catch: (error) => error,
                     });
-                    const model = services.modelRegistry.find(providerId, backendModelId);
+                    const model = services.modelRuntime.getModel(providerId, backendModelId);
                     if (!model) {
                       return yield* Effect.fail(
                         new Error(

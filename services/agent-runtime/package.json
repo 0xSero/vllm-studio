@@ -1,6 +1,6 @@
 {
   "name": "@local-studio/agent-runtime",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Server-side pi agent runtime: SDK session manager, fs stores, and the CDP browser host. Consumed by the Next frontend as raw TypeScript via transpilePackages (the default), or run as a standalone localhost sidecar on :8081 (npm run build && npm start) when LOCAL_STUDIO_AGENT_RUNTIME_URL points the Next routes at it.",
@@ -13,11 +13,11 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.78.1",
-    "@earendil-works/pi-coding-agent": "0.78.1",
+    "@earendil-works/pi-ai": "0.80.8",
+    "@earendil-works/pi-coding-agent": "0.80.8",
     "@hono/node-server": "1.19.14",
     "effect": "4.0.0-beta.90",
-    "hono": "4.6.12",
+    "hono": "4.12.30",
     "ws": "8.21.0"
   }
 }
