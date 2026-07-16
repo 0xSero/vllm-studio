@@ -33,6 +33,9 @@ type SessionNavRowProps = {
   onRenameCommit?: (title: string) => void;
   onRememberTitle?: () => void;
   onDragStart: (event: DragEvent) => void;
+  onDragEnd?: () => void;
+  onDragOver?: (event: DragEvent) => void;
+  onDrop?: (event: DragEvent) => void;
   onContextMenu?: boolean;
   isRunning?: boolean;
   unseen?: boolean;
@@ -55,6 +58,9 @@ export function SessionNavRow({
   onRenameCommit,
   onRememberTitle,
   onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
   onContextMenu = false,
   isRunning = false,
   unseen = false,
@@ -105,6 +111,9 @@ export function SessionNavRow({
     <div
       className={`${rowClass} ${menuOpen ? "z-[900]" : "z-0"}`}
       onContextMenu={handleContextMenu}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       <SessionOpenTarget
         age={age}
@@ -118,7 +127,31 @@ export function SessionNavRow({
         onRememberTitle={onRememberTitle}
         onStartRename={startRename}
       />
-      <div ref={menuRef} className="absolute right-1 top-1/2 z-20 -translate-y-1/2 shrink-0">
+      <div
+        ref={menuRef}
+        className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5"
+      >
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onPatchPref({ pinned: !pref.pinned });
+          }}
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) transition-[opacity,color,background-color] hover:bg-(--hover) hover:text-(--fg) ${
+            menuOpen
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+          }`}
+          aria-label={pref.pinned ? "Unpin session" : "Pin session"}
+          title={pref.pinned ? "Unpin" : "Pin"}
+        >
+          {pref.pinned ? (
+            <PinOff className="pointer-events-none h-3.5 w-3.5" />
+          ) : (
+            <Pin className="pointer-events-none h-3.5 w-3.5" />
+          )}
+        </button>
         <button
           type="button"
           onClick={(event) => {
@@ -240,7 +273,7 @@ function SessionOpenTarget({
           navigateToSessionHref(router, targetHref);
         }}
         onDragStart={onDragStart}
-        className="flex min-w-0 flex-1 items-center gap-1"
+        className="flex min-w-0 flex-1 items-center gap-1 pr-14"
         {...openProps}
       >
         {content}
@@ -258,7 +291,7 @@ function SessionOpenTarget({
         onOpen?.("");
       }}
       aria-label={label}
-      className="flex min-w-0 flex-1 items-center gap-1 text-left"
+      className="flex min-w-0 flex-1 items-center gap-1 pr-14 text-left"
       {...openProps}
     >
       {content}
@@ -325,11 +358,11 @@ function SessionOptionsMenu({
 
   return (
     <div className={SESSION_MENU_CLASS} role="menu">
-      <SessionMenuItem Icon={SquarePen} onClick={run(onRename)}>
-        Rename
-      </SessionMenuItem>
       <SessionMenuItem Icon={pref.pinned ? PinOff : Pin} onClick={run(onPin)}>
         {pref.pinned ? "Unpin" : "Pin"}
+      </SessionMenuItem>
+      <SessionMenuItem Icon={SquarePen} onClick={run(onRename)}>
+        Rename
       </SessionMenuItem>
       {onArchive ? (
         <SessionMenuItem Icon={Archive} onClick={run(onArchive)}>

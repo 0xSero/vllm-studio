@@ -87,7 +87,7 @@ export function NavItemDesktop({
       href={href}
       prefetch={false}
       title={label}
-      className={`group flex h-8 items-center gap-2.5 rounded-lg px-2 transition-colors shrink-0 ${
+      className={`group flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 transition-colors ${
         active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
       }`}
     >

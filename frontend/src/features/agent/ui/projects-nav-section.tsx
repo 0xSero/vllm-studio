@@ -38,7 +38,25 @@ import {
   SessionRow,
 } from "./projects-nav/session-rows";
 import { mergeActiveSessionPref } from "./projects-nav/helpers";
+import {
+  movePinnedEntryBefore,
+  orderPinnedEntries,
+  readPinnedSessionOrder,
+  writePinnedSessionOrder,
+  type PinnedOrderEntry,
+} from "./projects-nav/pinned-order";
 import type { PinnedSession } from "./projects-nav/types";
+
+type PinnedNavEntry =
+  | (PinnedOrderEntry & {
+      kind: "active";
+      project: ProjectEntry;
+      session: OpenAgentSession;
+    })
+  | (PinnedOrderEntry & {
+      kind: "history";
+      session: PinnedSession;
+    });
 
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const projectsContext = useProjects();
@@ -57,6 +75,9 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const [projectRemoveConfirm, setProjectRemoveConfirm] = useState<ProjectEntry | null>(null);
   const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>([]);
+  const [pinnedExpanded, setPinnedExpanded] = useState(true);
+  const [pinnedOrder, setPinnedOrder] = useState(readPinnedSessionOrder);
+  const [dragPinnedId, setDragPinnedId] = useState<string | null>(null);
   const prefs = useProjectsNavSessionPrefs();
   const pinnedPrefIds = useMemo(
     () =>
@@ -102,6 +123,30 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
     for (const session of pinnedSessions) ids.add(session.id);
     return ids;
   }, [pinnedActiveSessionIds, pinnedSessions]);
+  const pinnedEntries = useMemo(() => {
+    const active = pinnedActiveSessions.map(
+      ({ session, project }): PinnedNavEntry => ({
+        id: session.threadId ?? session.id,
+        identities: [session.id, session.threadId].filter((identity): identity is string =>
+          Boolean(identity),
+        ),
+        kind: "active",
+        project,
+        session,
+      }),
+    );
+    const history = pinnedSessions
+      .filter((session) => !pinnedActiveSessionIds.has(session.id))
+      .map(
+        (session): PinnedNavEntry => ({
+          id: session.id,
+          identities: [session.id],
+          kind: "history",
+          session,
+        }),
+      );
+    return orderPinnedEntries([...active, ...history], pinnedOrder);
+  }, [pinnedActiveSessionIds, pinnedActiveSessions, pinnedOrder, pinnedSessions]);
   const removeProjectAndCloseRow = useCallback(
     async (id: string) => {
       await removeProject(id);
@@ -215,6 +260,28 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         moveProjectBefore(dragProjectId, projectId);
       }
       setDragProjectId(null);
+    },
+  });
+  const movePinnedBefore = (draggedId: string, targetId: string | null) => {
+    setPinnedOrder((current) => {
+      const next = movePinnedEntryBefore(pinnedEntries, current, draggedId, targetId);
+      writePinnedSessionOrder(next);
+      return next;
+    });
+  };
+  const pinnedDragProps = (entryId: string) => ({
+    dragging: dragPinnedId === entryId,
+    onReorderDragStart: () => setDragPinnedId(entryId),
+    onReorderDragEnd: () => setDragPinnedId(null),
+    onReorderDragOver: (event: DragEvent) => {
+      if (dragPinnedId && dragPinnedId !== entryId) event.preventDefault();
+    },
+    onReorderDrop: (event: DragEvent) => {
+      if (!dragPinnedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (dragPinnedId !== entryId) movePinnedBefore(dragPinnedId, entryId);
+      setDragPinnedId(null);
     },
   });
   if (!expanded) {
@@ -366,7 +433,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
           ? terminalOwners.map((owner, index) => (
               <div
                 key={owner.mountKey}
-                className="group relative flex h-8 items-center rounded-lg pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)"
+                className="group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)"
               >
                 <button
                   type="button"
@@ -415,35 +482,53 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
         onCancel={() => setProjectRemoveConfirm(null)}
         onConfirm={() => void confirmProjectRemove()}
       />
-      {pinnedSessions.length > 0 || pinnedActiveSessions.length > 0 ? (
-        <div className="flex flex-col">
-          <div className="flex items-center px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
-            Pinned
-          </div>
-          {pinnedActiveSessions.map(({ session, project }) => (
-            <ActiveSessionRow
-              key={session.threadId ?? session.id}
-              project={project}
-              session={session}
-              pref={mergeActiveSessionPref(session, prefs)}
-              activity={sessionActivity(
-                [session.id, session.threadId],
-                activity,
-                session.status,
-                session.focused,
-              )}
-            />
-          ))}
-          {pinnedSessions
-            .filter((session) => !pinnedActiveSessionIds.has(session.id))
-            .map((session) => (
-              <SessionRow
-                key={`${session.project.id}:${session.id}`}
-                project={session.project}
-                session={session}
-                pref={prefs[session.id] ?? {}}
-              />
-            ))}
+      {pinnedEntries.length > 0 ? (
+        <div
+          className={`flex flex-col rounded-[var(--sidebar-row-radius)] transition-[background-color,box-shadow] ${
+            dragPinnedId ? "bg-(--surface-2)/40 ring-1 ring-inset ring-(--border)" : ""
+          }`}
+          onDragOver={(event) => {
+            if (dragPinnedId) event.preventDefault();
+          }}
+          onDrop={(event) => {
+            if (!dragPinnedId) return;
+            event.preventDefault();
+            movePinnedBefore(dragPinnedId, null);
+            setDragPinnedId(null);
+          }}
+        >
+          <SidebarSectionHeader
+            label="Pinned"
+            open={pinnedExpanded}
+            onToggle={() => setPinnedExpanded((value) => !value)}
+          />
+          {pinnedExpanded
+            ? pinnedEntries.map((entry) =>
+                entry.kind === "active" ? (
+                  <ActiveSessionRow
+                    key={entry.id}
+                    project={entry.project}
+                    session={entry.session}
+                    pref={mergeActiveSessionPref(entry.session, prefs)}
+                    activity={sessionActivity(
+                      [entry.session.id, entry.session.threadId],
+                      activity,
+                      entry.session.status,
+                      entry.session.focused,
+                    )}
+                    {...pinnedDragProps(entry.id)}
+                  />
+                ) : (
+                  <SessionRow
+                    key={`${entry.session.project.id}:${entry.id}`}
+                    project={entry.session.project}
+                    session={entry.session}
+                    pref={prefs[entry.session.id] ?? {}}
+                    {...pinnedDragProps(entry.id)}
+                  />
+                ),
+              )
+            : null}
         </div>
       ) : null}
       {sectionOrder.map((id) => sections[id])}

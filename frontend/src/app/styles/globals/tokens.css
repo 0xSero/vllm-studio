@@ -599,8 +599,11 @@
 
 :root {
   /* Density / dimensions */
-  --sidebar-w: 260px;
+  --sidebar-w: 275px;
   --sidebar-w-collapsed: 48px;
+  --sidebar-row-height: 30px;
+  --sidebar-row-radius: 10px;
+  --sidebar-padding-x: 8px;
   --row-h: 36px;
   --row-h-sm: 28px;
   --row-radius: var(--rad-md);
