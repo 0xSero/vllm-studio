@@ -20,11 +20,13 @@ needed.
 
 ## Download links
 
-All download buttons currently point at
-`https://github.com/sybil-solutions/local-studio/releases/latest`.
-When installer assets are published, switch to direct links using the
-canonical pattern:
+The macOS button links direct to the latest release asset:
 
 ```
-https://github.com/sybil-solutions/local-studio/releases/latest/download/<asset>
+https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg
 ```
+
+The `Local-Studio-arm64.dmg` (and `Local-Studio-arm64-mac.zip`) assets are
+attached to the latest GitHub release. Windows (`.exe`) and Linux
+(`.AppImage`) installers are not built yet; those rows fall back to the
+releases page until they ship.
