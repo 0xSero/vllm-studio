@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { RefreshCw } from "@/ui/icon-registry";
 import { cx } from "./utils";
+import { Tabs, type TabItem } from "./tabs";
 
 export type SectionNavItem<Id extends string = string> = {
   id: Id;
@@ -136,6 +137,42 @@ export function SectionNav<Id extends string = string>({
         })}
       </div>
     </nav>
+  );
+}
+
+export function TabbedPage<T extends string = string>({
+  eyebrow,
+  title,
+  description,
+  actions,
+  width = "sm",
+  tabs,
+  activeTab,
+  onSelectTab,
+  children,
+  className,
+}: {
+  eyebrow?: string;
+  title: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  width?: PageWidth;
+  tabs: TabItem<T>[];
+  activeTab: T;
+  onSelectTab: (tab: T) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <AppPage>
+      <PageContainer width={width} className={cx("pt-6 sm:pt-8", className)}>
+        <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+        <div className="mt-7 border-b border-(--ui-separator)">
+          <Tabs items={tabs} activeTab={activeTab} onSelectTab={onSelectTab} className="-mb-px" />
+        </div>
+        <div className="mt-8">{children}</div>
+      </PageContainer>
+    </AppPage>
   );
 }
 
