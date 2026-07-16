@@ -25,6 +25,7 @@ export type WorkspacePaneRenderContext = {
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
   compact?: boolean;
+  composerOnly?: boolean;
 };
 
 type WorkspacePaneView = {
@@ -112,6 +113,7 @@ export function renderWorkspacePane({
   dispatch,
   handles,
   compact = false,
+  composerOnly = false,
 }: WorkspacePaneRenderContext) {
   const view = selectWorkspacePaneView(paneId, state, projects);
   if (!view) return null;
@@ -167,6 +169,7 @@ export function renderWorkspacePane({
       onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
       showHeader={!compact}
+      composerOnly={composerOnly}
     />
   );
 }

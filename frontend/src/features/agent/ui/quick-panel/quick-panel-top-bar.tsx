@@ -6,15 +6,12 @@ import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
-/** Resizes the OS-level quick-composer panel from its tiny composer-only
- * "home" bounds to its resizable "thread" bounds the first time a message
- * lands in the focused pane. No-op outside the quick panel (bridge absent). */
-export function useQuickPanelExpandEffect(compact: boolean, focusedMessageCount: number): void {
+export function useQuickPanelExpandEffect(compact: boolean, expanded: boolean): void {
   useMountSubscription(() => {
-    if (compact && focusedMessageCount > 0) {
+    if (compact && expanded) {
       void getQuickPanelBridge()?.expand();
     }
-  }, [compact, focusedMessageCount]);
+  }, [compact, expanded]);
 }
 
 export function QuickPanelTopBar({
@@ -28,9 +25,8 @@ export function QuickPanelTopBar({
   sessionId: string | null;
   hasThread: boolean;
 }) {
+  if (!hasThread) return null;
   return (
-    // The bar doubles as the frameless window's drag handle; interactive
-    // children opt back out so clicks don't start a window drag.
     <div
       className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2 [-webkit-app-region:drag]"
       onDoubleClick={(event) => event.preventDefault()}
@@ -38,7 +34,7 @@ export function QuickPanelTopBar({
       <div className="[-webkit-app-region:no-drag]">
         <QuickProjectPicker projects={projects} />
       </div>
-      {hasThread && projectId ? (
+      {projectId ? (
         <button
           type="button"
           onClick={() =>

@@ -13,12 +13,14 @@ export function AgentComposerTextArea({
   onPaste,
   onChange,
   onKeyDown,
+  placeholder = "Ask for follow-up changes",
 }: {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onPaste: ClipboardEventHandler<HTMLTextAreaElement>;
   onChange: ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
+  placeholder?: string;
 }) {
   return (
     <textarea
@@ -28,7 +30,7 @@ export function AgentComposerTextArea({
       onPaste={onPaste}
       onChange={onChange}
       onKeyDown={onKeyDown}
-      placeholder="Ask for follow-up changes"
+      placeholder={placeholder}
       className="min-h-[54px] max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1.5 pt-3 text-[length:var(--fs-lg)] leading-normal tracking-normal text-(--fg) outline-none placeholder:text-(--hl2)"
     />
   );

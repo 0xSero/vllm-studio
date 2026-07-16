@@ -77,6 +77,7 @@ export type AgentComposerFrameProps = {
   selectedSkills: ComposerSkillRef[];
   status?: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+  floating?: boolean;
 };
 
 export function AgentComposerFrame({
@@ -126,11 +127,17 @@ export function AgentComposerFrame({
   selectedSkills,
   status,
   textareaRef,
+  floating = false,
 }: AgentComposerFrameProps) {
   return (
     <form
       onSubmit={onSubmit}
-      className="relative z-[100] shrink-0 bg-(--agent-bg) px-6 pb-2 pt-2.5"
+      className={cx(
+        "relative z-[100] shrink-0",
+        floating
+          ? "bg-transparent p-[calc(var(--space-base)*2)]"
+          : "bg-(--agent-bg) px-6 pb-2 pt-2.5",
+      )}
     >
       <AgentQueuePanel
         items={queueItems}
@@ -177,6 +184,7 @@ export function AgentComposerFrame({
           onPaste={onComposerPaste}
           onChange={onComposerChange}
           onKeyDown={onComposerKeyDown}
+          placeholder={floating ? "Ask anything" : undefined}
         />
         <AgentComposerActions
           fileInputRef={fileInputRef}

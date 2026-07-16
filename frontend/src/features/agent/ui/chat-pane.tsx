@@ -44,6 +44,7 @@ import {
   usePersistentTerminalOwners,
 } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
+import { cx } from "@/ui/utils";
 export type { ChatPaneHandle, SessionTab };
 
 const Timeline = dynamic(
@@ -83,6 +84,57 @@ function TimelineFallback() {
   return <div className="flex min-h-0 flex-1 bg-(--agent-bg)" />;
 }
 
+function chatPaneClassName(composerOnly: boolean): string {
+  return cx(
+    "relative flex min-h-0 min-w-0 flex-1 flex-col",
+    composerOnly
+      ? "bg-transparent"
+      : "bg-(--agent-bg) shadow-[inset_1px_0_rgba(255,255,255,0.015)]",
+  );
+}
+
+function ChatTranscript({
+  composerOnly,
+  terminalView,
+  showEmptyPrompt,
+  activeTab,
+  stickToBottom,
+  setStickToBottom,
+  running,
+  onForkSession,
+  loadEarlierHistory,
+}: {
+  composerOnly: boolean;
+  terminalView: boolean;
+  showEmptyPrompt: boolean;
+  activeTab: SessionTab | undefined;
+  stickToBottom: boolean;
+  setStickToBottom: (value: boolean) => void;
+  running: boolean;
+  onForkSession?: () => void;
+  loadEarlierHistory: () => Promise<void>;
+}) {
+  if (composerOnly) return null;
+  return (
+    <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
+      {showEmptyPrompt ? (
+        <EmptyPromptTimeline />
+      ) : (
+        <Timeline
+          key={activeTab?.id ?? "empty"}
+          stickToBottom={stickToBottom}
+          onStickToBottomChange={setStickToBottom}
+          messages={activeTab?.messages ?? []}
+          running={running}
+          onForkSession={onForkSession}
+          hasEarlier={activeTab?.historyCursor != null}
+          onLoadEarlier={loadEarlierHistory}
+        />
+      )}
+    </div>
+  );
+}
+
 type Props = {
   paneId: string;
   modelId: string;
@@ -117,6 +169,7 @@ type Props = {
   onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   showHeader?: boolean;
+  composerOnly?: boolean;
 };
 export function ChatPane({
   paneId,
@@ -152,6 +205,7 @@ export function ChatPane({
   onToggleRightPanel,
   onRegisterHandle,
   showHeader = true,
+  composerOnly = false,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,9 +225,6 @@ export function ChatPane({
     showEmptyPrompt,
     visibleQueueItems,
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
-  // In-pane terminal: replaces the transcript+composer with a persistent PTY
-  // for this session/project. Terminals stay mounted (hidden) after toggling
-  // back so the shell keeps running; the header button flips the view.
   const [terminalView, setTerminalView] = useState(false);
   const terminalSnapshot = usePersistentTerminalOwners(
     terminalView,
@@ -359,7 +410,7 @@ export function ChatPane({
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--agent-bg) shadow-[inset_1px_0_rgba(255,255,255,0.015)]"
+      className={chatPaneClassName(composerOnly)}
     >
       {showHeader ? (
         <AgentChatPaneHeader
@@ -386,22 +437,17 @@ export function ChatPane({
           terminals={terminalSnapshot.owners}
         />
       </div>
-      <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
-        {showEmptyPrompt ? (
-          <EmptyPromptTimeline />
-        ) : (
-          <Timeline
-            key={activeTab?.id ?? "empty"}
-            stickToBottom={stickToBottom}
-            onStickToBottomChange={setStickToBottom}
-            messages={activeTab?.messages ?? []}
-            running={Boolean(running)}
-            onForkSession={onForkSession}
-            hasEarlier={activeTab?.historyCursor != null}
-            onLoadEarlier={loadEarlierHistory}
-          />
-        )}
-      </div>
+      <ChatTranscript
+        composerOnly={composerOnly}
+        terminalView={terminalView}
+        showEmptyPrompt={showEmptyPrompt}
+        activeTab={activeTab}
+        stickToBottom={stickToBottom}
+        setStickToBottom={setStickToBottom}
+        running={Boolean(running)}
+        onForkSession={onForkSession}
+        loadEarlierHistory={loadEarlierHistory}
+      />
       <div className={terminalView ? "hidden" : "contents"}>
         <AgentComposerFrame
           attachments={attachments}
@@ -450,6 +496,7 @@ export function ChatPane({
           selectedSkills={selectedSkills}
           status={activeTab?.status}
           textareaRef={textareaRef}
+          floating={composerOnly}
         />
       </div>
     </section>

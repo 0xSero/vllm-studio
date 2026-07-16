@@ -20,6 +20,7 @@ import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-wor
 import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { cx } from "@/ui/utils";
 
 const LazyAgentBrowserPanel = lazy(() =>
   import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
@@ -31,9 +32,28 @@ type AgentWorkspaceShellProps = {
   state: WorkspaceState;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
-  /** Chrome-free single-pane mode for the global-hotkey quick-composer panel. */
   compact?: boolean;
 };
+
+type QuickPanelMode = "composer" | "thread" | undefined;
+
+function quickPanelMode(
+  compact: boolean,
+  showProjectEmptyState: boolean,
+  focusedMessageCount: number,
+): QuickPanelMode {
+  if (!compact) return undefined;
+  return showProjectEmptyState || focusedMessageCount > 0 ? "thread" : "composer";
+}
+
+function workspaceClassName(mode: QuickPanelMode): string {
+  return cx(
+    "agent-workspace flex h-full min-h-0 w-full flex-col text-(--fg) md:h-[100dvh]",
+    mode === "composer" ? "bg-transparent" : "bg-(--agent-bg)",
+    mode === "thread" &&
+      "overflow-hidden rounded-[var(--rad-xl)] border border-(--color-popover-border) shadow-[var(--shadow-2xl)]",
+  );
+}
 
 export function shouldShowProjectEmptyState(
   projects: ProjectsContextValue,
@@ -66,10 +86,6 @@ export function AgentWorkspaceShell({
   });
 
   const focusedTab = focusedSession(state);
-  // The right panel (browser / files / git / terminal / status) follows the
-  // FOCUSED session, not the workspace-global selectedProject. Otherwise
-  // splitting/switching panes leaves the right panel pinned to whichever
-  // project was active when the panel was first opened.
   const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
   useActiveCanvasSessionEffects({
     sessionId: focusedTab?.id ?? null,
@@ -78,9 +94,13 @@ export function AgentWorkspaceShell({
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
   const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
-  useQuickPanelExpandEffect(compact, focusedTab?.messages.length ?? 0);
+  const showProjectEmptyState = shouldShowProjectEmptyState(projects, projectParam);
+  const focusedMessageCount = focusedTab?.messages.length ?? 0;
+  const panelMode = quickPanelMode(compact, showProjectEmptyState, focusedMessageCount);
+  const composerOnly = panelMode === "composer";
+  useQuickPanelExpandEffect(compact, panelMode === "thread");
   return (
-    <div className="agent-workspace flex h-full min-h-0 w-full flex-col bg-(--agent-bg) text-(--fg) md:h-[100dvh]">
+    <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
       <div className="flex min-h-0 flex-1">
         <section className="relative flex min-w-0 flex-1 flex-col">
           <WorkspaceTopBar
@@ -93,17 +113,18 @@ export function AgentWorkspaceShell({
               projects={projects}
               projectId={activeProject?.id ?? null}
               sessionId={focusedTab?.piSessionId ?? null}
-              hasThread={Boolean(focusedTab?.piSessionId)}
+              hasThread={focusedMessageCount > 0}
             />
           ) : null}
           <WorkspacePaneContent
-            showEmptyState={shouldShowProjectEmptyState(projects, projectParam)}
+            showEmptyState={showProjectEmptyState}
             state={state}
             projects={projects}
             tools={tools}
             dispatch={dispatch}
             handles={handles}
             compact={compact}
+            composerOnly={composerOnly}
           />
         </section>
         {!compact ? (
@@ -174,6 +195,7 @@ function WorkspacePaneContent({
   dispatch,
   handles,
   compact,
+  composerOnly,
 }: {
   showEmptyState: boolean;
   state: WorkspaceState;
@@ -182,11 +204,12 @@ function WorkspacePaneContent({
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
   compact?: boolean;
+  composerOnly: boolean;
 }) {
   if (showEmptyState) return <ProjectEmptyState />;
   if (compact) {
     return (
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1">
         {renderWorkspacePane({
           paneId: state.focusedPaneId,
           state,
@@ -195,6 +218,7 @@ function WorkspacePaneContent({
           dispatch,
           handles,
           compact,
+          composerOnly,
         })}
       </div>
     );
@@ -225,9 +249,6 @@ function ComputerPanelFallback() {
   );
 }
 
-/* Errors and warnings never replace or overlay the chrome: they surface as a
-   quiet, dismissible notice pinned to the bottom-right corner, with raw
-   transport errors rewritten into plain language. */
 function humanizeWorkspaceNotice(message: string): string {
   const normalized = message.toLowerCase();
   if (
@@ -334,8 +355,6 @@ function useActiveCanvasSessionEffects({
 }
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
-  // The quick panel is a throwaway surface: fresh session each time, never
-  // restoring (or overwriting) the main window's persisted workspace.
   const { state, dispatch, handles } = useWorkspace({ ephemeral: Boolean(compact) });
   return (
     <AgentWorkspaceShell state={state} dispatch={dispatch} handles={handles} compact={compact} />
