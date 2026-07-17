@@ -3,13 +3,15 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Server-side pi agent runtime: SDK session manager, fs stores, and the CDP browser host. Consumed by the Next frontend as raw TypeScript via transpilePackages (the default), or run as a standalone localhost sidecar on :8081 (npm run build && npm start) when LOCAL_STUDIO_AGENT_RUNTIME_URL points the Next routes at it.",
+  "description": "Standalone local Pi agent runtime, filesystem services, connectors, and CDP browser host.",
   "exports": {
     ".": "./src/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "bundle": "bun build src/server.ts --target=node --outfile=dist/standalone.mjs",
     "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "dev": "bun --watch src/server.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {

@@ -1,25 +1,10 @@
-// Postflight guard wired into desktop/electron-builder.yml as `afterPack`.
-//
-// electron-builder has been observed to log
-//   "file source doesn't exist from=.../frontend/.next/standalone"
-// while copying the extraResources standalone server, yet still exit 0 and
-// produce a signed .dmg whose
-//   Contents/Resources/app/frontend/.next/standalone/frontend/server.js
-// was never copied. That bundle then crashes at launch with
-//   "Missing standalone server build: ... Run npm run build first."
-//
-// afterPack runs after the app directory is fully packed but BEFORE code
-// signing and distributable (dmg/zip) creation, so throwing here aborts the
-// build loudly instead of shipping a broken signed bundle.
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-/** Resolve the packed app's resources root for the given platform. */
 function resolveResourcesDir(appOutDir, productFilename, electronPlatformName) {
   if (electronPlatformName === "darwin" || electronPlatformName === "mas") {
     return path.join(appOutDir, `${productFilename}.app`, "Contents", "Resources");
   }
-  // win32 + linux unpacked layout both nest resources directly under appOutDir.
   return path.join(appOutDir, "resources");
 }
 
@@ -30,9 +15,6 @@ export default async function afterPack(context) {
   const resourcesDir = resolveResourcesDir(appOutDir, productFilename, electronPlatformName);
   const standaloneBase = path.join(resourcesDir, "app", "frontend", ".next", "standalone");
 
-  // Mirror the runtime resolution in desktop/configs.ts + app-server.ts
-  // (resolveStandaloneServerRoot): nested `frontend/server.js` first, then the
-  // flat `server.js` fallback.
   const candidates = [
     path.join(standaloneBase, "frontend", "server.js"),
     path.join(standaloneBase, "server.js"),
@@ -49,12 +31,10 @@ export default async function afterPack(context) {
     );
   }
 
-  const requiredRuntimePath =
-    "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/value/shared/union_priority_sort.mjs";
-  const runtimeRoots = [path.join(standaloneBase, "frontend"), standaloneBase];
-  if (!runtimeRoots.some((root) => existsSync(path.join(root, requiredRuntimePath)))) {
-    throw new Error(`Packaged app is missing runtime dependency: ${requiredRuntimePath}`);
+  const agentRuntime = path.join(resourcesDir, "app", "agent-runtime", "server.mjs");
+  if (!existsSync(agentRuntime)) {
+    throw new Error(`Packaged app is missing the agent runtime: ${agentRuntime}`);
   }
 
-  console.log(`  afterPack: embedded standalone server present (${electronPlatformName})`);
+  console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);
 }

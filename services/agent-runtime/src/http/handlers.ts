@@ -1,24 +1,3 @@
-// Transport-neutral HTTP handlers for the 7 agent runtime endpoints:
-//
-//   POST /api/agent/turn        handleAgentTurn
-//   POST /api/agent/abort       handleAgentAbort
-//   POST /api/agent/compact     handleAgentCompact
-//   GET  /api/agent/runtime/sessions  handleRuntimeSessions
-//   GET  /api/agent/runtime/status    handleRuntimeStatus
-//   GET  /api/agent/runtime/events    handleRuntimeEvents (SSE)
-//   GET  /api/agent/setup-checks      handleSetupChecks
-//
-// Each takes a fetch-standard Request and returns a fetch-standard Response,
-// so the same functions serve both hosts: the Next route handlers (in-process
-// default) and the standalone :8081 server (server.ts) that exists because
-// Next's standalone server buffers locally-generated SSE — only proxied
-// upstream streams flush. Authentication is a host concern: the Next routes
-// run requireApiAccess() before calling in here, and the standalone server
-// binds 127.0.0.1 only.
-//
-// The bodies are ports of the former Next route bodies; semantics must stay
-// byte-identical (the e2e suite pins them).
-
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";

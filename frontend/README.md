@@ -23,18 +23,19 @@ redirects into Configure. New navigation must target the canonical route.
 flowchart TB
     Desktop["Electron main process"] --> Routes["Next.js app routes"]
     Browser["Web browser"] --> Routes
-    Routes --> AgentApi["/api/agent/*"]
+    Routes --> AgentApi["agent runtime proxy"]
     Routes --> ControllerApi["controller proxy routes"]
-    AgentApi --> Pi["embedded Pi agent runtime"]
+    AgentApi --> Pi["standalone Pi agent runtime"]
     ControllerApi --> Controller["Local Studio controller"]
     Configure["/configure"] --> ControllerApi
     Workbench["/agent"] --> AgentApi
 ```
 
-The agent runtime is consumed from `services/agent-runtime/` as raw TypeScript
-through `transpilePackages`. Shared controller HTTP shapes come from
-`@local-studio/contracts`; frontend and agent-runtime shapes come from
-`shared/agent/`.
+The Pi execution and browser-host routes always run in the standalone
+`services/agent-runtime/` sidecar. Next proxies those routes while importing
+shared contracts and non-runtime services from the package. Shared controller
+HTTP shapes come from `@local-studio/contracts`; frontend and agent-runtime
+shapes come from `shared/agent/`.
 
 ## Requirements and Commands
 

@@ -8,8 +8,8 @@
   "repository": "https://github.com/sybil-solutions/local-studio",
   "scripts": {
     "predev": "node scripts/link-services-node-modules.mjs",
-    "dev": "next dev",
-    "build": "next build && node scripts/assert-standalone-build.mjs",
+    "dev": "concurrently -k -n NEXT,AGENT -c cyan,green \"next dev\" \"npm --prefix ../services/agent-runtime run dev\"",
+    "build": "npm --prefix ../services/agent-runtime run bundle && next build && node scripts/assert-standalone-build.mjs",
     "start": "node scripts/start-standalone.mjs",
     "perf:audit": "node scripts/perf-audit.mjs",
     "perf:browser": "node scripts/browser-perf-audit.mjs",

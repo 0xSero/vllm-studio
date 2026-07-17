@@ -5,6 +5,7 @@ import {
   shouldLoadBrowserUrl,
   shouldSyncBrowserLocation,
 } from "@/features/agent/ui/agent-browser-effects";
+import { handleBrowserFetch } from "@local-studio/agent-runtime/http/browser-handlers";
 
 declare global {
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST:
@@ -108,11 +109,8 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     };
   };
   try {
-    const { GET } = await import("@/app/api/agent/browser/fetch/route");
-    const response = await GET(
-      new Request(
-        "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fexample.com%2F",
-      ) as never,
+    const response = await handleBrowserFetch(
+      new Request("http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fexample.com%2F"),
     );
     const body = (await response.json()) as {
       markdown?: string;
@@ -122,10 +120,10 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     assert.equal(body.title, "Reader Works");
     assert.match(body.markdown ?? "", /Reader Works/);
 
-    const htmlResponse = await GET(
+    const htmlResponse = await handleBrowserFetch(
       new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fhtml.test%2F",
-      ) as never,
+      ),
     );
     const htmlBody = (await htmlResponse.json()) as {
       text?: string;
@@ -136,37 +134,37 @@ test("desktop browser reader fetch renders public markdown and rejects private u
     assert.match(htmlBody.text ?? "", /Hello/);
     assert.doesNotMatch(htmlBody.text ?? "", /bad\(\)/);
 
-    const rejected = await GET(
+    const rejected = await handleBrowserFetch(
       new Request(
         "http://localhost/api/agent/browser/fetch?url=http%3A%2F%2Flocalhost%3A3000%2F",
-      ) as never,
+      ),
     );
     const rejectedBody = (await rejected.json()) as { error?: string };
     assert.equal(rejected.status, 400);
     assert.match(rejectedBody.error ?? "", /public http\/https/);
 
-    const redirectRejected = await GET(
+    const redirectRejected = await handleBrowserFetch(
       new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fredirect.test%2F",
-      ) as never,
+      ),
     );
     const redirectBody = (await redirectRejected.json()) as { error?: string };
     assert.equal(redirectRejected.status, 502);
     assert.match(redirectBody.error ?? "", /Redirect rejected/);
 
-    const dnsRejected = await GET(
+    const dnsRejected = await handleBrowserFetch(
       new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fprivate-dns.test%2F",
-      ) as never,
+      ),
     );
     const dnsBody = (await dnsRejected.json()) as { error?: string };
     assert.equal(dnsRejected.status, 502);
     assert.match(dnsBody.error ?? "", /Resolved host rejected/);
 
-    const mappedDnsRejected = await GET(
+    const mappedDnsRejected = await handleBrowserFetch(
       new Request(
         "http://localhost/api/agent/browser/fetch?url=https%3A%2F%2Fmapped-private.test%2F",
-      ) as never,
+      ),
     );
     const mappedDnsBody = (await mappedDnsRejected.json()) as {
       error?: string;

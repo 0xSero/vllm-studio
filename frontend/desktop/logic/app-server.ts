@@ -8,6 +8,11 @@ import { log } from "../helpers/logger";
 import { registerOAuthVault } from "./oauth-vault";
 import { resolveStablePort } from "../helpers/ports";
 import { resolveAugmentedPath } from "../helpers/resolve-path";
+import {
+  startAgentRuntime,
+  stopAgentRuntime,
+  type AgentRuntimeHandle,
+} from "./agent-runtime-server";
 
 // The most recently forked embedded server. A single process-exit hook kills
 // whichever child is current — registering a fresh once("exit") per (re)start
@@ -20,6 +25,7 @@ process.once("exit", () => {
 });
 
 interface ServerHandle {
+  agentRuntime: AgentRuntimeHandle;
   runtime: DesktopServerRuntime;
   process?: ChildProcess;
 }
@@ -157,7 +163,8 @@ export async function startFrontendServer(
       port: Number(new URL(DESKTOP_CONFIG.devServerUrl).port || "3000"),
       url: DESKTOP_CONFIG.devServerUrl,
     };
-    return { runtime };
+    const agentRuntime = await startAgentRuntime({ frontendUrl: runtime.url, preferredPort: 8081 });
+    return { agentRuntime, runtime };
   }
 
   await killStaleEmbeddedServer();
@@ -188,6 +195,7 @@ export async function startFrontendServer(
   const port = await resolveStablePort(options.port ?? readPersistedPort());
   persistPort(port);
   const url = `http://127.0.0.1:${port}`;
+  const agentRuntime = await startAgentRuntime({ frontendUrl: url });
 
   log.info(`Starting embedded frontend server from ${serverScript} on ${url}`);
 
@@ -215,6 +223,7 @@ export async function startFrontendServer(
       LOCAL_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
+      LOCAL_STUDIO_AGENT_RUNTIME_URL: agentRuntime.url,
       LOCAL_STUDIO_FRONTEND_BASE: url,
     },
   });
@@ -243,11 +252,25 @@ export async function startFrontendServer(
     options.onExit?.({ code, signal, pid: child.pid });
   });
 
+  agentRuntime.process?.once("exit", () => {
+    if (currentEmbeddedServer === child && !child.killed) child.kill("SIGTERM");
+  });
+
   currentEmbeddedServer = child;
 
-  await waitForServer(url, DESKTOP_CONFIG.startupTimeoutMs);
+  try {
+    await waitForServer(url, DESKTOP_CONFIG.startupTimeoutMs);
+  } catch (error) {
+    await stopFrontendServer({
+      agentRuntime,
+      process: child,
+      runtime: { mode: "embedded-standalone", port, url },
+    });
+    throw error;
+  }
 
   return {
+    agentRuntime,
     runtime: {
       mode: "embedded-standalone",
       port,
@@ -258,33 +281,34 @@ export async function startFrontendServer(
 }
 
 export async function stopFrontendServer(handle?: ServerHandle): Promise<void> {
-  if (!handle?.process) return;
-  const child = handle.process;
-  const pid = child.pid;
-  try {
-    if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
-      rmSync(embeddedServerPidPath(), { force: true });
-    }
-  } catch {
-    // pid file already gone
-  }
-  child.kill("SIGTERM");
-
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      if (pid && isProcessAlive(pid)) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {}
+  if (!handle) return;
+  if (handle.process) {
+    const child = handle.process;
+    const pid = child.pid;
+    try {
+      if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
+        rmSync(embeddedServerPidPath(), { force: true });
       }
-      resolve();
-    }, 5_000);
+    } catch {}
+    child.kill("SIGTERM");
 
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve();
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (pid && isProcessAlive(pid)) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+        }
+        resolve();
+      }, 5_000);
+
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
     });
-  });
+  }
+  await stopAgentRuntime(handle.agentRuntime);
 }
 
 export type { ServerHandle };

@@ -1,18 +1,3 @@
-// Transport-neutral HTTP handlers for the browser-host endpoints:
-//
-//   POST /api/agent/browser/:verb      handleBrowserVerb
-//   GET  /api/agent/browser/fetch      handleBrowserFetch
-//   GET  /api/agent/browser/frame      handleBrowserFrame
-//   POST /api/agent/browser/input      handleBrowserInput
-//   GET  /api/agent/browser/localhosts handleBrowserLocalhosts
-//   GET  /api/agent/browser/state      handleBrowserState
-//   POST /api/agent/browser/viewport   handleBrowserViewport
-//
-// Same hosting story as handlers.ts: the Next routes call these in-process by
-// default; the standalone :8081 server serves them when
-// LOCAL_STUDIO_AGENT_RUNTIME_URL points the Next proxies here. Bodies are
-// verbatim ports of the former Next route bodies.
-
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";

@@ -1,42 +1,22 @@
-// Single switch between the two agent-runtime hosts (Phase 5b).
-//
-// When LOCAL_STUDIO_AGENT_RUNTIME_URL is set (e.g. http://127.0.0.1:8081), the
-// runtime + browser-host routes proxy to the standalone agent-runtime process
-// and return the upstream body pass-through — the one case Next's standalone
-// server does NOT buffer, so SSE streams flush. When unset (the default, and
-// all of `next dev`), the routes fall back to their in-process handlers and
-// behavior is byte-identical to before this seam existed.
-//
-// Read at request time (not module scope) so the standalone server picks the
-// value up from its systemd/service environment.
-
 import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
 
 const HOP_BY_HOP_REQUEST_HEADERS = ["host", "connection", "content-length", "accept-encoding"];
+const DEFAULT_AGENT_RUNTIME_URL = "http://127.0.0.1:8081";
 
 type AgentRuntimeProxyOptions = {
   bodyLimitBytes?: number;
 };
 
-export function agentRuntimeBaseUrl(): string | null {
+export function agentRuntimeBaseUrl(): string {
   const raw = process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL?.trim();
-  return raw ? raw.replace(/\/+$/, "") : null;
+  return (raw || DEFAULT_AGENT_RUNTIME_URL).replace(/\/+$/, "");
 }
 
-/**
- * Proxy `request` to the standalone agent-runtime service, preserving the
- * pathname + query (the service mounts the identical /api/agent/* paths).
- * Returns null when the env switch is unset — the caller then runs the
- * in-process handler. Returns 502 when the switch is set but the service is
- * unreachable, so a dead sidecar degrades with a clean error instead of a
- * hung request.
- */
 export async function proxyToAgentRuntime(
   request: Request,
   options: AgentRuntimeProxyOptions = {},
-): Promise<Response | null> {
+): Promise<Response> {
   const base = agentRuntimeBaseUrl();
-  if (!base) return null;
   const url = new URL(request.url);
   const target = `${base}${url.pathname}${url.search}`;
 
@@ -61,7 +41,6 @@ export async function proxyToAgentRuntime(
       method: request.method,
       headers,
       body,
-      // Propagate client disconnects so upstream SSE subscriptions close.
       signal: request.signal,
       cache: "no-store",
     });
@@ -77,8 +56,6 @@ export async function proxyToAgentRuntime(
     );
   }
 
-  // Pass-through: hand Next the upstream body stream unchanged. Strip
-  // entity-framing headers that no longer match after re-chunking.
   const responseHeaders = new Headers(upstream.headers);
   responseHeaders.delete("content-length");
   responseHeaders.delete("content-encoding");
