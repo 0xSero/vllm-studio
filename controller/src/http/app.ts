@@ -23,11 +23,21 @@ import {
   createControllerRequestObservabilityMiddleware,
   TELEMETRY_SKIP_PATHS,
 } from "./observability-middleware";
-import { effectHandler } from "./effect-handler";
+import {
+  controllerRuntimeMiddleware,
+  effectHandler,
+  effectMiddleware,
+  type ControllerEnvironment,
+} from "./effect-handler";
 
-export const createApp = (context: AppContext, runtime: ControllerRuntime): Hono => {
-  const app = new Hono();
+export const createApp = (
+  context: AppContext,
+  runtime: ControllerRuntime,
+): Hono<ControllerEnvironment> => {
+  const app = new Hono<ControllerEnvironment>();
   const allowedCorsOrigins = context.config.cors_origins ?? [];
+
+  app.use("*", controllerRuntimeMiddleware(runtime));
 
   app.use(
     "*",
@@ -45,12 +55,23 @@ export const createApp = (context: AppContext, runtime: ControllerRuntime): Hono
     }),
   );
 
-  app.use("*", async (ctx, next) => {
-    if (!TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
-      context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
-    }
-    await next();
-  });
+  app.use(
+    "*",
+    effectMiddleware((ctx, next) =>
+      Effect.sync(() => {
+        if (!TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
+          context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
+        }
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => next(),
+            catch: (error) => error,
+          }),
+        ),
+      ),
+    ),
+  );
 
   app.use("*", createControllerRequestObservabilityMiddleware(context));
   app.use("*", createMutatingRateLimitMiddleware(context));
@@ -67,10 +88,9 @@ export const createApp = (context: AppContext, runtime: ControllerRuntime): Hono
 
   app.get(
     "/health",
-    effectHandler(runtime, (ctx) => Effect.succeed(ctx.json({ status: "ok" }))),
+    effectHandler((ctx) => Effect.succeed(ctx.json({ status: "ok" }))),
   );
 
-  // OpenAPI documentation endpoints
   app.get("/api/spec", (ctx) => ctx.json(createOpenApiSpec(context)));
 
   app.get("/api/docs", swaggerUI({ url: "/api/spec" }));
@@ -81,12 +101,6 @@ export const createApp = (context: AppContext, runtime: ControllerRuntime): Hono
     if (isHttpStatus(error)) {
       return Response.json({ detail: error.detail }, { status: error.status });
     }
-    // Client-initiated disconnects (stream cancel, page close, Droid
-    // cancelling an in-flight request to start a new turn) are not our
-    // bug. They must NEVER surface as 500 "Internal Server Error" or log
-    // as "Unhandled error". The client's socket is already closed so the
-    // response body will never reach them anyway; emit a terminal 499
-    // (client closed request) and move on.
     const name = (error as { name?: string })?.name ?? "";
     const message = String(error);
     if (
