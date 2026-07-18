@@ -18,6 +18,7 @@ const config = {
     "@local-studio/agent-runtime",
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
+    "chromium-bidi",
     "playwright-core",
     "proper-lockfile",
     "semver",
