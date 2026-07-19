@@ -234,10 +234,8 @@ export function ScheduledSection() {
     return (
       <div className="flex shrink-0 flex-col">
         <NewAutomationModal open={creating} onClose={() => setCreating(false)} onCreated={reload} />
-        <div className="group flex h-[var(--sidebar-row-height)] items-center justify-between rounded-[var(--sidebar-row-radius)] pl-2 pr-1.5">
-          <span className="text-[length:var(--fs-sm)] font-medium uppercase tracking-wide text-(--dim)/70">
-            Scheduled
-          </span>
+        <div className="group flex h-[var(--sidebar-row-height)] items-center justify-between pl-2 pr-1.5 pt-3">
+          <span className="text-[length:var(--fs-sm)] font-normal text-(--hl2)">Scheduled</span>
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -255,11 +253,11 @@ export function ScheduledSection() {
   return (
     <div className="flex shrink-0 flex-col">
       <NewAutomationModal open={creating} onClose={() => setCreating(false)} onCreated={reload} />
-      <div className="group flex h-[var(--sidebar-row-height)] items-center justify-between rounded-[var(--sidebar-row-radius)] pl-2 pr-1.5">
+      <div className="group flex h-[var(--sidebar-row-height)] items-center justify-between pl-2 pr-1.5 pt-3">
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="text-[length:var(--fs-sm)] font-medium uppercase tracking-wide text-(--dim)/70 hover:text-(--dim)"
+          className="text-[length:var(--fs-sm)] font-normal text-(--hl2) hover:text-(--fg)/70"
         >
           Scheduled
         </button>
