@@ -7,6 +7,7 @@ import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header"
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
 import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-composer-context";
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
+import { SessionGoalBar } from "@/features/agent/ui/session-goal-bar";
 import {
   promptTemplateCommandProvider,
   skillCommandProvider,
@@ -18,6 +19,11 @@ import {
 } from "@/features/agent/composer/command-registry";
 import { deriveComposerVisual } from "@/features/agent/composer/composer-visual-state";
 import { ADD_PROJECT_EVENT } from "@/lib/workspace-events";
+
+function goalBarFor(piSessionId: string | null | undefined, revision: number) {
+  if (!piSessionId) return null;
+  return <SessionGoalBar piSessionId={piSessionId} revision={revision} />;
+}
 
 function composerProjectRow(show: boolean, projectName: string | null) {
   if (!show) return null;
@@ -394,6 +400,38 @@ export function ChatPane({
       activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
     [activeTab, tools],
   );
+  const [goalRevision, setGoalRevision] = useState(0);
+  const goalAction = useCallback(
+    async (args: string): Promise<string | null> => {
+      const piSessionId = activeTab?.piSessionId;
+      if (!piSessionId) return "Send a first message, then set a goal for this session.";
+      if (!args) return "Usage: /goal <objective> — or /goal pause · resume · clear";
+      const url = `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`;
+      const verb = args.split(/\s+/)[0]?.toLowerCase() ?? "";
+      try {
+        if (verb === "clear") {
+          await fetch(url, { method: "DELETE" });
+        } else if (verb === "pause" || verb === "resume") {
+          await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: verb === "pause" ? "paused" : "active" }),
+          });
+        } else {
+          await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ objective: args, status: "active", resetTurns: true }),
+          });
+        }
+        setGoalRevision((value) => value + 1);
+        return null;
+      } catch {
+        return "Failed to update the goal.";
+      }
+    },
+    [activeTab],
+  );
   const commandRegistry = useMemo(
     () =>
       createComposerCommandRegistry([
@@ -406,6 +444,7 @@ export function ChatPane({
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
+          goal: goalAction,
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,
@@ -418,6 +457,7 @@ export function ChatPane({
       applyTemplate,
       canExport,
       compactSession,
+      goalAction,
       exportSession,
       onForkSession,
       onToggleBrowserTool,
@@ -587,6 +627,7 @@ export function ChatPane({
         loadEarlierHistory={loadEarlierHistory}
       />
       <div className={terminalView ? "hidden" : "contents"}>
+        {goalBarFor(activeTab?.piSessionId, goalRevision)}
         <AgentComposerFrame
           attachments={attachments}
           banner={composerVisual.banner}

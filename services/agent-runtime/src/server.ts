@@ -28,8 +28,20 @@ import {
   handleProvidersList,
 } from "./http/provider-handlers";
 import { markAgentRuntimeProcess } from "./provider-hub";
+import { startAutomationScheduler } from "./automation-scheduler";
+import {
+  handleAutomationCreate,
+  handleAutomationDelete,
+  handleAutomationPatch,
+  handleAutomationRun,
+  handleAutomationsList,
+  handleGoalDelete,
+  handleGoalGet,
+  handleGoalPut,
+} from "./http/automation-handlers";
 
 markAgentRuntimeProcess();
+startAutomationScheduler();
 
 const app = new Hono();
 
@@ -44,6 +56,15 @@ app.get("/api/agent/runtime/sessions", () => handleRuntimeSessions());
 app.get("/api/agent/runtime/status", (c) => handleRuntimeStatus(c.req.raw));
 app.get("/api/agent/runtime/events", (c) => handleRuntimeEvents(c.req.raw));
 app.get("/api/agent/setup-checks", () => handleSetupChecks());
+
+app.get("/api/agent/automations", () => handleAutomationsList());
+app.post("/api/agent/automations", (c) => handleAutomationCreate(c.req.raw));
+app.patch("/api/agent/automations/:id", (c) => handleAutomationPatch(c.req.raw, c.req.param("id")));
+app.delete("/api/agent/automations/:id", (c) => handleAutomationDelete(c.req.param("id")));
+app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
+app.get("/api/agent/goal", (c) => handleGoalGet(c.req.raw));
+app.put("/api/agent/goal", (c) => handleGoalPut(c.req.raw));
+app.delete("/api/agent/goal", (c) => handleGoalDelete(c.req.raw));
 
 app.get("/api/agent/providers", () => handleProvidersList());
 app.get("/api/agent/providers/models", () => handleProviderModels());

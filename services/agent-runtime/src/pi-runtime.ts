@@ -19,6 +19,7 @@ import {
 } from "./pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
+import { attachGoalDriver } from "./goal-driver";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
@@ -447,6 +448,7 @@ class PiRuntimeManager {
     if (existing) return existing;
 
     const created = new PiSdkSession();
+    attachGoalDriver(created);
     this.sessions.set(sessionId, created);
     return created;
   }
