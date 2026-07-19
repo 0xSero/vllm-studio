@@ -28,7 +28,12 @@ const BenchmarkQuerySchema = Schema.Struct({
   ),
 });
 const BenchmarkResponseSchema = Schema.Struct({
-  usage: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
+  usage: Schema.optionalKey(
+    Schema.Struct({
+      prompt_tokens: Schema.optionalKey(Schema.Number),
+      completion_tokens: Schema.optionalKey(Schema.Number),
+    }),
+  ),
 });
 
 const buildModelKeys = (modelId: string, modelPath: string | null | undefined): Set<string> => {

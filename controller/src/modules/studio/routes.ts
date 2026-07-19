@@ -241,11 +241,16 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
         getGpuInfo().pipe(
           Effect.map((gpus) => {
             const maxVramGb = deriveRecommendationVramGb(gpus);
-            const recommendations = STUDIO_MODEL_RECOMMENDATIONS.filter(
-              (model) =>
-                !model.min_vram_gb ||
-                (maxVramGb === 0 ? model.min_vram_gb <= 8 : model.min_vram_gb <= maxVramGb),
-            );
+            const appleSilicon = platform() === "darwin" && arch() === "arm64";
+            const recommendations = appleSilicon
+              ? []
+              : STUDIO_MODEL_RECOMMENDATIONS.filter(
+                  (model) =>
+                    !model.min_vram_gb ||
+                    (maxVramGb === 0
+                      ? model.min_vram_gb <= 8
+                      : model.min_vram_gb <= maxVramGb),
+                );
             return ctx.json({ recommendations, max_vram_gb: maxVramGb });
           }),
         ),
@@ -259,10 +264,15 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
         getGpuInfo().pipe(
           Effect.map((gpus) => {
             const maxVramGb = deriveRecommendationVramGb(gpus);
-            const presets = STUDIO_STARTER_PRESETS.map((preset) => ({
+            const appleSilicon = platform() === "darwin" && arch() === "arm64";
+            const presets = STUDIO_STARTER_PRESETS.filter(
+              (preset) => !appleSilicon || preset.backend !== "vllm",
+            ).map((preset) => ({
               ...preset,
               fits:
-                preset.min_vram_gb === null || maxVramGb === 0 || preset.min_vram_gb <= maxVramGb,
+                preset.min_vram_gb === null ||
+                maxVramGb === 0 ||
+                preset.min_vram_gb <= maxVramGb,
             }));
             return ctx.json({ presets, max_vram_gb: maxVramGb });
           }),
