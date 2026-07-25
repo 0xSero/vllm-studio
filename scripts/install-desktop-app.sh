@@ -36,7 +36,8 @@ ROLLBACK="/Applications/$APP_NAME.app.previous"
 
 if [[ ! -d "$BUILT" ]]; then
   echo "error: no built bundle at $BUILT" >&2
-  echo "       run: npm --prefix frontend run desktop:dist${channel/stable/}" >&2
+  hint="desktop:dist"; [[ "$channel" == "dev" ]] && hint="desktop:dist:dev"
+  echo "       run: npm --prefix frontend run $hint" >&2
   exit 1
 fi
 

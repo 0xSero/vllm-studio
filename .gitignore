@@ -93,6 +93,7 @@ scripts/*.local.sh
 refactory/
 release-staging/
 frontend/dist-desktop/
+frontend/dist-desktop-dev/
 frontend/dist-installers/
 .vercel
 .env*
