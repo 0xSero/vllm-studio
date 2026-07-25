@@ -3,6 +3,7 @@
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { X } from "@/ui/icon-registry";
+import { POPOVER_PANEL_CLASS } from "./popover";
 import { cx } from "./utils";
 
 interface UiModalProps {
@@ -95,7 +96,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         aria-modal="true"
         aria-labelledby={titleId}
         className={cx(
-          "relative z-10 max-h-full w-full overflow-hidden rounded-[var(--rad-3xl)] border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)] outline-none",
+          `relative z-10 max-h-full w-full outline-none ${POPOVER_PANEL_CLASS}`,
           maxWidth,
           className,
         )}
@@ -132,7 +133,7 @@ function UiModalHeader({
   return (
     <div
       className={cx(
-        "flex min-h-13 items-center justify-between gap-3 border-b border-(--color-popover-border) bg-(--color-popover-header) px-5 py-3.5",
+        "flex min-h-13 items-center justify-between gap-3 border-b border-(--border) bg-(--color-popover-header) px-5 py-3.5",
         className,
       )}
     >

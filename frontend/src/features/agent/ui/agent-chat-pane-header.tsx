@@ -3,14 +3,14 @@
 import { useRef, useState } from "react";
 import { PanelRightClose, PanelRightOpen, TerminalSquare } from "@/ui/icon-registry";
 import { MenuItem } from "@/ui";
+import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { setReasoningVisible } from "@/features/agent/messages/reasoning-pref";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 import { preloadTerminalPanel } from "@/features/agent/ui/terminal-panel";
 
-const CHAT_HEADER_MENU_CLASS =
-  "absolute left-0 top-7 isolate z-[999] min-w-[180px] rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 text-xs text-(--fg) opacity-100 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]";
+const CHAT_HEADER_MENU_CLASS = `absolute left-0 top-7 isolate z-[999] min-w-[180px] text-xs text-(--fg) opacity-100 ${POPOVER_MENU_CLASS}`;
 
 export function AgentChatPaneHeader({
   title,

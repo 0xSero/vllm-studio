@@ -98,6 +98,8 @@ export interface DesktopBridge {
     electronVersion: string;
   }>;
   openExternal(url: string): Promise<boolean>;
+  /** Reveal a file in Finder/Explorer. Returns false when outside the home tree. */
+  revealPath(target: string): Promise<boolean>;
   getUpdateStatus(): Promise<DesktopUpdateSnapshot>;
   checkForUpdates(): Promise<DesktopUpdateSnapshot>;
   openDirectory(): Promise<ProjectEntry | null>;

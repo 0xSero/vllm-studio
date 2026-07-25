@@ -6,13 +6,14 @@ const css = readFileSync(new URL("../../../app/styles/globals/chat.css", import.
 const composer = readFileSync(new URL("./agent-composer-frame.tsx", import.meta.url), "utf8");
 const timeline = readFileSync(new URL("./timeline/timeline.tsx", import.meta.url), "utf8");
 
+// A selector can appear more than once (base rule + media-query overrides);
+// join every occurrence so invariants assert against the union.
 function rule(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`${escaped}\\s*\\{([^}]+)\\}`, "g");
-  let declarations: string | null = null;
-  for (const match of css.matchAll(pattern)) declarations = match[1];
-  assert.ok(declarations, `Missing CSS rule for ${selector}`);
-  return declarations;
+  const declarations = [...css.matchAll(pattern)].map((match) => match[1]);
+  assert.ok(declarations.length > 0, `Missing CSS rule for ${selector}`);
+  return declarations.join("\n");
 }
 
 describe("chat markdown reading layout", () => {
@@ -36,7 +37,7 @@ describe("chat markdown reading layout", () => {
   });
 
   test("joins the scrolling transcript directly to the composer drawer", () => {
-    assert.match(composer, /bg-transparent px-5 pb-2 pt-0/);
-    assert.match(timeline, /px-5 pb-0 pt-2/);
+    assert.match(composer, /bg-transparent px-3 pb-2 pt-0 sm:px-5/);
+    assert.match(timeline, /px-4 pb-0 pt-2 .* sm:px-5/);
   });
 });

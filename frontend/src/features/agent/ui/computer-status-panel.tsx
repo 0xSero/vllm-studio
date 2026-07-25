@@ -2,9 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "@/ui";
-import { Code2 } from "@/ui/icon-registry";
 import { formatTokenCount } from "@/features/agent/messages";
-import { useBrowserTools, useComputerTools, useToolsActions } from "@/features/agent/tools/context";
+import { useBrowserTools } from "@/features/agent/tools/context";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -99,8 +98,6 @@ export function ComputerStatusPanel({
           )}
         />
       </StatusSection>
-
-      <CanvasPeek />
     </section>
   );
 }
@@ -277,40 +274,6 @@ function SessionSummary({
         <MiniStat label="session" value={formatTokenCount(sessionTokens)} />
         <MiniStat label="max" value={formatTokenCount(allTokens)} />
         <MiniStat label="msgs" value={String(messageCount)} />
-      </div>
-    </div>
-  );
-}
-
-function CanvasPeek() {
-  const computer = useComputerTools();
-  const { setComputerTab, toggleCanvas } = useToolsActions();
-  return (
-    <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="flex h-8 items-center gap-2">
-        <Code2 className="h-3.5 w-3.5 text-(--accent)" />
-        <span className="font-medium text-(--fg)">Canvas</span>
-        <button
-          type="button"
-          onClick={() => setComputerTab("canvas")}
-          className="ml-auto h-6 rounded px-2 text-[length:var(--fs-sm)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-        >
-          Open
-        </button>
-        <button
-          type="button"
-          onClick={toggleCanvas}
-          className={`h-6 rounded px-2 text-[length:var(--fs-sm)] ${
-            computer.canvasEnabled
-              ? "bg-(--accent)/15 text-(--accent)"
-              : "bg-(--bg) text-(--dim) hover:text-(--fg)"
-          }`}
-        >
-          {computer.canvasEnabled ? "On" : "Off"}
-        </button>
-      </div>
-      <div className="mt-2 max-h-28 overflow-hidden rounded-md bg-(--surface)/50 p-2 font-mono text-[length:var(--fs-sm)] leading-5 text-(--dim)">
-        {computer.canvasText.trim() || "No canvas notes yet."}
       </div>
     </div>
   );

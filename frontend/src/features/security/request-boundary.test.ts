@@ -52,6 +52,30 @@ describe("request boundary", () => {
     assert.equal(evaluateRequestBoundary(base({ csrfHeader: null })).ok, false);
   });
 
+  test("allows a non-browser server-to-server mutation with no CSRF proof", () => {
+    // The pi tool extensions (browser_*, plan_*) POST from Node: no cookie jar,
+    // no Origin, no Sec-Fetch-Site. They must not be treated as forgeable.
+    assert.deepEqual(
+      evaluateRequestBoundary(
+        base({ origin: null, fetchSite: null, csrfCookie: null, csrfHeader: null }),
+      ),
+      { ok: true, remote: false },
+    );
+  });
+
+  test("still rejects a browser mutation that omits CSRF proof", () => {
+    // Origin present (browser) but no token -> forged.
+    assert.equal(
+      evaluateRequestBoundary(base({ fetchSite: null, csrfCookie: null, csrfHeader: null })).ok,
+      false,
+    );
+    // Sec-Fetch-Site present (browser) but no token -> forged.
+    assert.equal(
+      evaluateRequestBoundary(base({ origin: null, csrfCookie: null, csrfHeader: null })).ok,
+      false,
+    );
+  });
+
   test("enforces an optional Tailscale user allowlist", () => {
     const remote = {
       host: "studio.tail.example.ts.net",

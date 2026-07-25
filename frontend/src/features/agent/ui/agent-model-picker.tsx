@@ -12,6 +12,7 @@ import Link from "next/link";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "@/ui/icon-registry";
 import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "@/features/agent/contracts";
 import type { AgentModel } from "@/features/agent/workspace/types";
+import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
 import { splitVisibleAgentModels } from "./model-visibility";
 
@@ -119,7 +120,7 @@ export function AgentModelPicker({
       />
       {open ? (
         <div
-          className="absolute bottom-full right-0 z-[300] mb-1.5 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]"
+          className={`absolute bottom-full right-0 z-[300] mb-1.5 w-80 max-w-[calc(100vw-2rem)] ${POPOVER_MENU_CLASS}`}
           role="menu"
           aria-label="Model and reasoning"
           onKeyDown={(event) => handleMenuKeyDown(event, view, setView, close)}
@@ -208,7 +209,7 @@ function PickerRootRow({
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className="flex h-10 min-w-0 items-center gap-3 rounded-[10px] px-2.5 text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:cursor-default disabled:opacity-55"
+      className="flex h-10 min-w-0 items-center gap-3 rounded-lg px-2.5 text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:cursor-default disabled:opacity-55"
     >
       <span className="w-20 shrink-0 text-left font-medium">{label}</span>
       <span className="min-w-0 flex-1 truncate text-right text-(--fg)/60">{value}</span>
@@ -271,7 +272,7 @@ function ModelList({
           role="menuitemcheckbox"
           aria-checked={showOtherModels}
           onClick={onToggleOtherModels}
-          className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-[10px] px-2.5 text-left text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover)"
+          className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 text-left text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover)"
         >
           <span className="min-w-0 flex-1">
             <span className="block font-medium">Other models</span>
@@ -363,7 +364,7 @@ function ReasoningList({
             disabled={disabled}
             onClick={() => onSelect(level)}
             className={cx(
-              "flex h-9 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:opacity-45",
+              "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:opacity-45",
               level === value && "bg-(--color-input)",
             )}
           >
@@ -458,7 +459,7 @@ function ModelOption({
   return (
     <div
       className={cx(
-        "flex min-h-8 w-full min-w-0 items-center rounded-[10px] text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover)",
+        "flex min-h-8 w-full min-w-0 items-center rounded-lg text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover)",
         selected && "bg-(--color-input)",
       )}
     >
@@ -467,7 +468,7 @@ function ModelOption({
         role="menuitemradio"
         aria-checked={selected}
         onClick={() => onSelect(model.id)}
-        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-[10px] pl-2.5 text-left focus-visible:outline-none active:translate-y-px"
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-lg pl-2.5 text-left focus-visible:outline-none active:translate-y-px"
       >
         <span className="min-w-0 flex-1 truncate" title={label}>
           {label}

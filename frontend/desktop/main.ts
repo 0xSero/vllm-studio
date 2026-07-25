@@ -8,7 +8,7 @@ import {
   shell,
   type BrowserWindow,
 } from "electron";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { DesktopAppState } from "./types";
 import { DESKTOP_CONFIG } from "./configs";
@@ -225,6 +225,24 @@ function registerIpcHandlers(): void {
   ipcMain.handle("desktop:open-external", async (_, url: string) => {
     if (!isHttpUrl(url)) return false;
     await shell.openExternal(url);
+    return true;
+  });
+
+  // Reveal a file the assistant referenced in the OS file manager. Confined to
+  // the user's home tree (the same default as the runtime's WORKSPACE_ROOTS) so
+  // a crafted markdown link cannot point the renderer at /etc or a mounted disk.
+  ipcMain.handle("desktop:reveal-path", async (_, target: unknown) => {
+    if (typeof target !== "string" || !target.trim()) return false;
+    let resolved: string;
+    try {
+      resolved = realpathSync.native(target.trim());
+    } catch {
+      return false;
+    }
+    const home = realpathSync.native(app.getPath("home"));
+    const relative = path.relative(home, resolved);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+    shell.showItemInFolder(resolved);
     return true;
   });
 

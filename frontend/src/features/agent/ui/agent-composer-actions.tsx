@@ -2,7 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import { Spinner } from "@/ui";
-import { ArrowUp, Code2, Plus } from "@/ui/icon-registry";
+import { ArrowUp, Plus } from "@/ui/icon-registry";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 import { ComposerDictationButton } from "./composer-dictation-button";
@@ -19,8 +19,6 @@ export function AgentComposerActions({
   browserBackend,
   onToggleBrowserBackend,
   onToggleBrowserTool,
-  canvasEnabled,
-  onToggleCanvas,
   onAbortTurn,
   onTranscript,
   modelSelector,
@@ -36,8 +34,6 @@ export function AgentComposerActions({
   browserBackend: BrowserBackend;
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
-  canvasEnabled: boolean;
-  onToggleCanvas: () => void;
   onAbortTurn: () => void;
   onTranscript: (text: string) => void;
   modelSelector?: ReactNode;
@@ -101,20 +97,6 @@ export function AgentComposerActions({
           )}
         </button>
       ) : null}
-      <button
-        type="button"
-        onClick={onToggleCanvas}
-        aria-pressed={canvasEnabled}
-        aria-label="Canvas context"
-        title={
-          canvasEnabled
-            ? "Canvas: ON — shared scratchboard tools loaded; model reads/writes the canvas"
-            : "Canvas: OFF — click to share a scratchboard with the model (notes, plans, links, state)"
-        }
-        className={`composer-action-optional inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full ${canvasEnabled ? activeIconClass : inactiveIconClass}`}
-      >
-        <Code2 className="h-4 w-4" strokeWidth={1.5} />
-      </button>
       <div className="ml-auto flex min-w-0 shrink items-center gap-0.5">
         {modelSelector}
         <ComposerDictationButton

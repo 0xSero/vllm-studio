@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { MenuItem, Spinner } from "@/ui";
+import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
@@ -9,8 +10,7 @@ import { Archive, MoreIcon, Pin, PinOff, SquarePen, X } from "@/ui/icon-registry
 import type { SessionPref } from "@/features/agent/messages/prefs";
 import { hrefWithOpenNonce, navigateToSessionHref } from "./helpers";
 
-const SESSION_MENU_CLASS =
-  "absolute right-0 top-6 isolate z-[999] min-w-[180px] rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]";
+const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
 
 type SessionNavRowProps = {
   pref: SessionPref;
@@ -108,6 +108,30 @@ export function SessionNavRow({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
+      {/* Pin sits on the sidebar's vertical guide line, left of the row: it is
+          the sole pin control (persistent when pinned, on hover otherwise).
+          left-[-12px] centers a 16px hit target on the rail's border, which
+          sits 4px (the rail's pl-1) outside this row's box. */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onPatchPref({ pinned: !pref.pinned });
+        }}
+        aria-label={pref.pinned ? "Unpin session" : "Pin session"}
+        title={pref.pinned ? "Unpin" : "Pin"}
+        className={`absolute left-[-12px] top-1/2 z-20 inline-flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-[var(--rad-xs)] bg-(--sidebar-bg) transition-[opacity,color] hover:text-(--fg) ${
+          pref.pinned
+            ? "text-(--fg)/75 opacity-100"
+            : "text-(--dim)/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+        }`}
+      >
+        <Pin
+          className="pointer-events-none h-3 w-3"
+          fill={pref.pinned ? "currentColor" : "none"}
+        />
+      </button>
       <SessionOpenTarget
         age={age}
         canDoubleClickRename={canDoubleClickRename}
@@ -124,27 +148,6 @@ export function SessionNavRow({
         ref={menuRef}
         className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5"
       >
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onPatchPref({ pinned: !pref.pinned });
-          }}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) transition-[opacity,color,background-color] hover:bg-(--hover) hover:text-(--fg) ${
-            menuOpen
-              ? "pointer-events-auto opacity-100"
-              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-          }`}
-          aria-label={pref.pinned ? "Unpin session" : "Pin session"}
-          title={pref.pinned ? "Unpin" : "Pin"}
-        >
-          {pref.pinned ? (
-            <PinOff className="pointer-events-none h-3.5 w-3.5" />
-          ) : (
-            <Pin className="pointer-events-none h-3.5 w-3.5" />
-          )}
-        </button>
         <button
           type="button"
           onClick={(event) => {
@@ -266,7 +269,7 @@ function SessionOpenTarget({
           navigateToSessionHref(router, targetHref);
         }}
         onDragStart={onDragStart}
-        className="flex min-w-0 flex-1 items-center gap-1 pr-2 group-focus-within:pr-14 group-hover:pr-14"
+        className="flex min-w-0 flex-1 items-center gap-1 pr-2 group-hover:pr-8 group-has-[:focus-visible]:pr-8"
         {...openProps}
       >
         {content}
@@ -284,7 +287,7 @@ function SessionOpenTarget({
         onOpen?.("");
       }}
       aria-label={label}
-      className="flex min-w-0 flex-1 items-center gap-1 pr-2 text-left group-focus-within:pr-14 group-hover:pr-14"
+      className="flex min-w-0 flex-1 items-center gap-1 pr-2 text-left group-hover:pr-8 group-has-[:focus-visible]:pr-8"
       {...openProps}
     >
       {content}
@@ -321,7 +324,7 @@ function SessionRowContent({
         />
       ) : null}
       {age ? (
-        <span className="shrink-0 pl-1.5 text-[length:var(--fs-sm)] text-(--hl2) transition-opacity group-hover:opacity-0">
+        <span className="min-w-[2.25rem] shrink-0 pl-1.5 text-right text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity group-hover:opacity-0">
           {age}
         </span>
       ) : null}

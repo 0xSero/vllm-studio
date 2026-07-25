@@ -5,6 +5,7 @@ import { MoreVertical, Play, Square } from "@/ui/icon-registry";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui/model-logo";
 import { ModelButton } from "@/ui";
+import { POPOVER_MENU_CLASS, POPOVER_SEPARATOR_CLASS } from "@/ui/popover";
 import { ModelRow, ModelStatus, type ModelStatusTone } from "./model-page";
 import { modelIdFromPath } from "@/lib/huggingface";
 import { engineNodeStyle, formatBackendLabel } from "@/features/recipes/recipe-labels";
@@ -148,29 +149,30 @@ export const RecipeRow = memo(function RecipeRow({
               <MoreVertical className="h-3 w-3" />
             </ModelButton>
             {isMenuOpen ? (
-              <div className="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+              <div className={`absolute right-0 z-50 mt-1 w-48 ${POPOVER_MENU_CLASS}`}>
                 <button
                   onClick={handleTogglePin}
-                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
+                  className="w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
                 >
                   {isPinned ? "Unpin" : "Pin"}
                 </button>
                 <button
                   onClick={handleEdit}
-                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
+                  className="w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
                 >
                   Edit
                 </button>
                 <button
                   onClick={handleAttachAgents}
-                  className="w-full px-3 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
+                  className="w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-md)] text-(--fg) hover:bg-(--color-menu-hover)"
                 >
                   Attach to local agents…
                 </button>
+                <div className={POPOVER_SEPARATOR_CLASS} aria-hidden />
                 <button
                   onClick={handleRequestDelete}
                   title={`Open delete confirmation for ${recipe.name}`}
-                  className="w-full border-t border-(--color-popover-border) px-3 py-2 text-left text-[length:var(--fs-md)] text-(--color-destructive) hover:bg-(--color-destructive)/10"
+                  className="w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-md)] text-(--color-destructive) hover:bg-(--color-destructive)/10"
                 >
                   Delete Serve…
                 </button>

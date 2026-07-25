@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import {
   Activity,
-  Code2,
   FolderTree,
   GitBranch,
   Globe2,
@@ -318,7 +317,6 @@ export function AgentBrowserPanel({
 const TAB_LABELS: Record<ComputerTab, string> = {
   status: "Status",
   tools: "Tools",
-  canvas: "Canvas",
   "side-chat": "Side chat",
   browser: "Browser",
   files: "Filesystem",
@@ -334,12 +332,6 @@ const TAB_OPTIONS: Array<{
   description: string;
   icon?: LucideIcon;
 }> = [
-  {
-    tab: "canvas",
-    label: "Canvas",
-    description: "Shared scratchboard for human and model",
-    icon: Code2,
-  },
   {
     tab: "side-chat",
     label: "Side chat",

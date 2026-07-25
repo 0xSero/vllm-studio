@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "@/ui/icon-registry";
+import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -46,14 +47,8 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/agent",
     label: "Workbench",
-    keywords: "agent chat projects browser terminal tools canvas files",
+    keywords: "agent chat projects browser terminal tools files",
     description: "Project-aware chat, terminals, files, and tools.",
-  },
-  {
-    href: "/agent/sessions",
-    label: "Chat history",
-    keywords: "history archived transcripts pi sessions runs",
-    description: "Search and inspect stored agent sessions.",
   },
   {
     href: "/settings",
@@ -195,7 +190,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]"
+        className={`relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col ${POPOVER_PANEL_CLASS}`}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault();

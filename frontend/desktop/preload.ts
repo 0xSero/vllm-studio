@@ -4,6 +4,7 @@ import type { DesktopBridge } from "./interfaces";
 const bridge: DesktopBridge = {
   getRuntime: () => ipcRenderer.invoke("desktop:get-runtime"),
   openExternal: (url) => ipcRenderer.invoke("desktop:open-external", url),
+  revealPath: (target) => ipcRenderer.invoke("desktop:reveal-path", target),
   getUpdateStatus: () => ipcRenderer.invoke("desktop:get-update-status"),
   checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),
   openDirectory: () => ipcRenderer.invoke("desktop:open-directory"),

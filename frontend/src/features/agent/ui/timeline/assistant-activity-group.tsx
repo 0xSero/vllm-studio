@@ -20,7 +20,7 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
   return (
     <details className="group min-w-0" open={open}>
       <summary
-        className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!open);
@@ -51,7 +51,7 @@ function ExploreAccordion({ blocks, live }: { blocks: ToolBlock[]; live: boolean
   return (
     <details className="group min-w-0" open={open}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setOpen((value) => !value);
@@ -138,7 +138,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
   return (
     <details className="group min-w-0" open={expanded}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserExpanded(!expanded);

@@ -41,7 +41,6 @@ export type UseSessionEngineDeps = {
   cwd: string;
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
-  canvasEnabled: boolean;
   onPiSessionIdChange?: (piSessionId: string) => void;
   /** Mutate a single session record. */
   updateSession: UpdateSession;
@@ -89,7 +88,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     cwd,
     browserToolEnabled,
     browserBackend,
-    canvasEnabled,
     onPiSessionIdChange,
     updateSession,
     selectionFor,
@@ -135,7 +133,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 browserToolEnabled: browserEnabledForTurn,
                 browserSessionId: runtime,
                 browserBackend,
-                canvasEnabled,
                 skills,
                 promptTemplates,
               }),
@@ -162,7 +159,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [
       browserToolEnabled,
       browserBackend,
-      canvasEnabled,
       cwd,
       modelId,
       thinkingLevel,
@@ -179,7 +175,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           activeTabId,
           browserToolEnabled,
           browserBackend,
-          canvasEnabled,
           cwd,
           modelId,
           thinkingLevel,
@@ -199,7 +194,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       cwd,
       browserToolEnabled,
       browserBackend,
-      canvasEnabled,
       onPiSessionIdChange,
       updateSession,
     ],
@@ -405,7 +399,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 browserToolEnabled,
                 browserSessionId: session.id,
                 browserBackend,
-                canvasEnabled,
                 skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
                 promptTemplates:
                   selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
@@ -438,7 +431,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [
       browserToolEnabled,
       browserBackend,
-      canvasEnabled,
       cwd,
       loadAndReplay,
       modelId,

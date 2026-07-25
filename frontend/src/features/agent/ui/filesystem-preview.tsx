@@ -86,28 +86,6 @@ function previewKindForPath(path: string): PreviewKind | null {
   return null;
 }
 
-export function detectPreviewKind(content: string): PreviewKind {
-  const trimmed = content.trimStart();
-  const hasMarkup = /<[A-Za-z]/.test(content);
-  if (
-    hasMarkup &&
-    (/(^|\n)\s*(import\s.+from|export\s+default|export\s+function)/.test(content) ||
-      /\bclassName=/.test(content))
-  ) {
-    return "jsx";
-  }
-  if (
-    /^<!doctype html/i.test(trimmed) ||
-    /^<html[\s>]/i.test(trimmed) ||
-    /^<(div|section|main|article|header|footer|nav|aside|h[1-6]|p|ul|ol|table|svg|body|head|span|button|a|img|figure|form|style)\b/i.test(
-      trimmed,
-    )
-  ) {
-    return "html";
-  }
-  return "md";
-}
-
 export function previewKindForOpenFile(openFile: string | null): PreviewKind | null {
   return openFile ? previewKindForPath(openFile) : null;
 }

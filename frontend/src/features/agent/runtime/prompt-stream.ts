@@ -45,7 +45,6 @@ export type PromptStreamDeps = {
   activeTabId: SessionId;
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
-  canvasEnabled: boolean;
   cwd: string;
   modelId: string;
   thinkingLevel: AgentThinkingLevel;
@@ -245,7 +244,6 @@ function promptTurnRequest(
     browserToolEnabled: context.browserEnabledForTurn,
     browserSessionId: context.runtime,
     browserBackend: deps.browserBackend,
-    canvasEnabled: deps.canvasEnabled,
     skills: context.skills,
     promptTemplates: context.promptTemplates,
   };

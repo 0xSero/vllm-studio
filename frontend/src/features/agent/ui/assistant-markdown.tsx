@@ -4,10 +4,9 @@ import React, { Children, isValidElement, memo, useCallback, useMemo, type React
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ExternalLink } from "@/ui/icon-registry";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useToolsActions } from "@/features/agent/tools/context";
-import { CopyablePathChip } from "@/features/agent/ui/copyable-path-chip";
+import type { ComputerTab } from "@/features/agent/tools/types";
 
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
@@ -86,14 +85,14 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
     .join(" ");
 
   return (
-    <div className="assistant-code-block group my-3 overflow-hidden rounded-xl border border-(--border) bg-(--color-surface)">
-      <div className="flex h-8 items-center justify-between border-b border-(--border) px-3">
-        <span className="font-mono text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
+    <div className="assistant-code-block group my-3 overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
+      <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3">
+        <span className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-4 py-3 text-[length:var(--codex-chat-code-font-size)] leading-[1.5]">
+      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3 py-2.5 text-[length:var(--fs-sm)] leading-[1.6]">
         <code className={codeClassName}>{code}</code>
       </pre>
     </div>
@@ -161,20 +160,37 @@ function normalizeLooseMarkdownEmphasis(text: string): string {
 
 type ToolHandlers = {
   setComputerOpen: (open: boolean) => void;
-  setComputerTab: (tab: "browser" | "files" | "status" | "canvas") => void;
+  setComputerTab: (tab: ComputerTab) => void;
   setBrowserUrl: (url: string, input?: string) => void;
 };
 
 function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
-  // Open a referenced file or URL in the in-app sidepanel browser. Local paths
-  // resolve to a file:// URL the browser renders directly; the chip's copy
-  // button stays independent (it only copies the raw path/link).
-  const openInBrowser = (raw: string) => {
-    const cleaned = raw
+  const stripPath = (raw: string) =>
+    raw
       .trim()
       .replace(/^`+|`+$/g, "")
+      .replace(/^file:\/\//, "")
       .replace(/:\d+(?::\d+)?$/, "");
-    const next = normalizeBrowserInput(cleaned, "");
+
+  // Clicking a file reference reveals it in Finder/Explorer. Only the desktop
+  // shell can do that; in a browser tab there is no OS file manager to reach,
+  // so we fall back to the in-app file:// view rather than doing nothing.
+  const revealFile = (raw: string) => {
+    const cleaned = stripPath(raw);
+    if (!cleaned) return;
+    const reveal = window.localStudioDesktop?.revealPath;
+    if (reveal) {
+      void reveal(cleaned).then((ok) => {
+        if (!ok) openInBrowser(cleaned);
+      }, () => openInBrowser(cleaned));
+      return;
+    }
+    openInBrowser(cleaned);
+  };
+
+  // Open a URL (or a local path we could not reveal) in the sidepanel browser.
+  const openInBrowser = (raw: string) => {
+    const next = normalizeBrowserInput(stripPath(raw), "");
     if (!next) return;
     tools.setComputerOpen(true);
     tools.setComputerTab("browser");
@@ -192,23 +208,12 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
         );
       }
       const value = nodeToPlainText(children).trim();
-      if (isFileReference(value)) {
-        return (
-          <CopyablePathChip value={value} onOpen={openInBrowser}>
-            {children}
-          </CopyablePathChip>
-        );
-      }
+      if (isFileReference(value)) return <FileLink onOpen={revealFile} value={value} />;
       return <code {...props}>{children}</code>;
     },
     a: ({ node: _n, href, children, ...props }) => {
-      const fileHref = typeof href === "string" && isFileReference(href);
-      if (fileHref) {
-        return (
-          <CopyablePathChip value={href} onOpen={openInBrowser}>
-            {children}
-          </CopyablePathChip>
-        );
+      if (typeof href === "string" && isFileReference(href)) {
+        return <FileLink onOpen={revealFile} value={href}>{children}</FileLink>;
       }
       if (!safeExternalHref(href)) return <span>{children}</span>;
       return (
@@ -226,20 +231,44 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
             tools.setComputerTab("browser");
             tools.setBrowserUrl(next, next);
           }}
-          className="chat-ref-chip"
           title={href}
         >
-          <ExternalLink className="chat-ref-chip-icon" aria-hidden />
-          <span className="chat-ref-chip-label">{children}</span>
+          {children}
         </a>
       );
     },
   };
 }
 
+// A file path renders as a plain blue link (monospace, so paths stay legible)
+// rather than a chip — no icon, no background, no inline copy button.
+function FileLink({
+  children,
+  onOpen,
+  value,
+}: {
+  children?: ReactNode;
+  onOpen: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <a
+      className="chat-file-link"
+      href={`file://${value}`}
+      onClick={(event) => {
+        event.preventDefault();
+        onOpen(value);
+      }}
+      title={`Reveal ${value}`}
+    >
+      {children ?? value}
+    </a>
+  );
+}
+
 function AssistantMarkdownInner({ text }: { text: string }) {
-  // Actions-only subscription: tools state churn (browser typing, canvas
-  // streaming, selections) never re-renders frozen markdown blocks.
+  // Actions-only subscription: tools state churn (browser typing, selections)
+  // never re-renders frozen markdown blocks.
   const tools = useToolsActions();
   const normalizedText = useMemo(() => normalizeLooseMarkdownEmphasis(text), [text]);
   // Stable `components` map: only changes when any of the tool callbacks it

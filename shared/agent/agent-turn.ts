@@ -76,7 +76,6 @@ export type AgentTurnRequest = {
   browserToolEnabled: boolean;
   browserSessionId?: string;
   browserBackend?: AgentBrowserBackend;
-  canvasEnabled: boolean;
   skills: ReturnType<typeof sanitizeComposerSkills>;
   promptTemplates: ReturnType<typeof sanitizeComposerPromptTemplates>;
   mode: AgentTurnMode;
@@ -151,7 +150,6 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       browserToolEnabled: boolField(body, "browserToolEnabled"),
       browserSessionId: browserSessionId.value,
       browserBackend,
-      canvasEnabled: boolField(body, "canvasEnabled"),
       skills: sanitizeComposerSkills(body.skills),
       promptTemplates: sanitizeComposerPromptTemplates(body.promptTemplates),
       mode,

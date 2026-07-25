@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDownUp, Check, Filter, Gauge, RefreshCw } from "@/ui/icon-registry";
 import { ModelButton, SearchInput } from "@/ui";
+import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { ModelSection, ModelRow, ModelValue, ModelStatus } from "./model-page";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";
@@ -162,7 +163,7 @@ function IconPopover({
             aria-hidden
             tabIndex={-1}
           />
-          <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-2xl border border-(--color-popover-border) bg-(--color-popover) py-1.5 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+          <div className={`absolute right-0 top-full z-50 mt-1 w-48 ${POPOVER_MENU_CLASS}`}>
             <div className="px-2.5 py-1.5 text-[length:var(--fs-xs)] font-medium uppercase tracking-wide text-(--ui-muted)">
               {label}
             </div>
@@ -201,7 +202,7 @@ function ListPopover({
                 onChange(opt.value);
                 close();
               }}
-              className="flex w-full items-center justify-between px-2.5 py-1.5 text-[length:var(--fs-sm)] transition-colors hover:bg-(--ui-hover)"
+              className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[length:var(--fs-sm)] transition-colors hover:bg-(--ui-hover)"
             >
               <span className={opt.value === value ? "text-(--ui-fg)" : "text-(--ui-muted)"}>
                 {opt.label}
