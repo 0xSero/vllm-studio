@@ -6,37 +6,54 @@
 # installing, which left a pile of 1.2 GB bundles in /Applications — every one
 # of them showing up in Launchpad as a separate "Local Studio" app.
 #
-#   Usage: scripts/install-desktop-app.sh [--no-backup]
+# There are exactly two installs, ever: "Local Studio" (built from main) and
+# "Local Studio Dev" (built from dev). Never a third.
+#
+#   Usage: scripts/install-desktop-app.sh [stable|dev] [--no-backup]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILT="$REPO_ROOT/frontend/dist-desktop/mac-arm64/Local Studio.app"
-TARGET="/Applications/Local Studio.app"
-ROLLBACK="/Applications/Local Studio.app.previous"
 
+channel="stable"
 keep_backup=1
-[[ "${1:-}" == "--no-backup" ]] && keep_backup=0
+for arg in "$@"; do
+  case "$arg" in
+    stable|dev) channel="$arg" ;;
+    --no-backup) keep_backup=0 ;;
+    *) echo "error: unknown argument $arg" >&2; exit 2 ;;
+  esac
+done
+
+if [[ "$channel" == "dev" ]]; then
+  APP_NAME="Local Studio Dev"
+  BUILT="$REPO_ROOT/frontend/dist-desktop-dev/mac-arm64/$APP_NAME.app"
+else
+  APP_NAME="Local Studio"
+  BUILT="$REPO_ROOT/frontend/dist-desktop/mac-arm64/$APP_NAME.app"
+fi
+TARGET="/Applications/$APP_NAME.app"
+ROLLBACK="/Applications/$APP_NAME.app.previous"
 
 if [[ ! -d "$BUILT" ]]; then
   echo "error: no built bundle at $BUILT" >&2
-  echo "       run: npm --prefix frontend run desktop:dist" >&2
+  echo "       run: npm --prefix frontend run desktop:dist${channel/stable/}" >&2
   exit 1
 fi
 
 # Refuse to install a bundle the packager left unsigned/incomplete.
-if [[ ! -x "$BUILT/Contents/MacOS/Local Studio" ]]; then
+if [[ ! -x "$BUILT/Contents/MacOS/$APP_NAME" ]]; then
   echo "error: built bundle has no executable — packaging did not finish" >&2
   exit 1
 fi
 
-echo "==> quitting Local Studio (if running)"
-osascript -e 'tell application "Local Studio" to quit' >/dev/null 2>&1 || true
+echo "==> quitting $APP_NAME (if running)"
+osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
 # Give the app a moment to release its files before we swap the bundle.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  pgrep -f "Local Studio.app/Contents/MacOS/Local Studio" >/dev/null || break
+  pgrep -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null || break
   sleep 0.5
 done
-pkill -f "Local Studio.app/Contents/MacOS/Local Studio" >/dev/null 2>&1 || true
+pkill -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
 
 # A left-over mounted DMG is why "the rebuild did nothing": `open -a` resolves
 # by bundle id and picks the HIGHEST version it can see, so a stale
@@ -45,7 +62,7 @@ while IFS= read -r vol; do
   [[ -z "$vol" ]] && continue
   echo "==> ejecting stale disk image $vol"
   hdiutil detach "$vol" -quiet || hdiutil detach "$vol" -force -quiet || true
-done < <(ls -d /Volumes/Local\ Studio* 2>/dev/null || true)
+done < <(ls -d /Volumes/"$APP_NAME"* 2>/dev/null || true)
 
 # Orphaned servers from an earlier run keep serving OLD code on :3000/:8081 and
 # the relaunched app happily reuses them, so the new build never actually runs.
