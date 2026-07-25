@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Fiber, Schema } from "effect";
+import { startComputeSupervisor } from "./modules/compute/supervisor";
 import { AppContextService, getModelsDirectoryState, type AppContext } from "./app-context";
 import { createControllerRuntime, type ControllerRuntime } from "./core/effect-runtime";
 import { parseBooleanFlag } from "./core/validation";
@@ -65,6 +66,13 @@ const program = Effect.scoped(
       context.logger.warn("Metrics collector disabled by LOCAL_STUDIO_DISABLE_METRICS");
     } else {
       yield* Effect.forkScoped(startMetricsCollector(context));
+    }
+    {
+      yield* Effect.forkScoped(
+        startComputeSupervisor(context.compute.service, (error) =>
+          context.logger.error("Compute supervisor error", { error: String(error) }),
+        ),
+      );
     }
     const server = yield* Effect.acquireRelease(serve(context, runtime), (resource) =>
       Effect.tryPromise({

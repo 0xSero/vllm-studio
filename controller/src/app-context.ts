@@ -14,6 +14,7 @@ import {
 } from "./modules/engines/process/launch-failure-budget";
 import { createLaunchState, type LaunchState } from "./modules/engines/process/launch-state";
 import { makeProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
+import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
@@ -40,6 +41,7 @@ export interface AppContext {
   processManager: ProcessManager;
   downloadManager: DownloadManager;
   engineService: EngineCoordinator;
+  compute: Compute;
   gpuLeaseRegistry: GpuLeaseRegistry;
   speechService: SpeechService;
   stores: {
@@ -180,6 +182,7 @@ export const makeAppContext = Effect.gen(function* () {
     lockDirectory: perUserGpuLeaseLockDirectory(),
   });
   const processManager = yield* makeProcessManager(config, logger, eventManager);
+  const compute = yield* initializeSync("compute.open", () => makeCompute(config, eventManager));
   const downloadManager = yield* initialize(
     "download-manager.open",
     DownloadManager.make(config, downloadStore, eventManager, logger),
@@ -229,6 +232,7 @@ export const makeAppContext = Effect.gen(function* () {
     processManager,
     downloadManager,
     engineService,
+    compute,
     gpuLeaseRegistry,
     speechService,
     stores: {
