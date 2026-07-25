@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import type { AppContext } from "../app-context";
 import type { ControllerRuntime } from "../core/effect-runtime";
 import { isHttpStatus } from "../core/errors";
+import { registerComputeRoutes } from "../modules/compute/routes";
 import { registerEngineRoutes } from "../modules/engines/routes";
 import { registerSystemRoutes } from "../modules/system/routes";
 import { registerModelsRoutes } from "../modules/models/routes";
@@ -31,7 +32,8 @@ import {
   type ControllerEnvironment,
 } from "./effect-handler";
 
-type ControllerApplication = ReturnType<typeof registerSystemRoutes> &
+type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
+  ReturnType<typeof registerSystemRoutes> &
   ReturnType<typeof registerEngineRoutes> &
   ReturnType<typeof registerModelsRoutes> &
   ReturnType<typeof registerStudioRoutes> &
@@ -89,6 +91,7 @@ export const createApp = (
 
   const routes = mergeRoutes(
     registerSystemRoutes(app, context),
+    registerComputeRoutes(app, context),
     registerEngineRoutes(app, context),
     registerModelsRoutes(app, context),
     registerStudioRoutes(app, context),
