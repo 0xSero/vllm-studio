@@ -65,11 +65,12 @@ jobs:
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
-          test -n "$APPLE_API_KEY_BASE64"
-          test -n "$APPLE_API_KEY_ID"
-          test -n "$APPLE_API_ISSUER"
-          test -n "$CSC_LINK"
-          test -n "$CSC_KEY_PASSWORD"
+          for name in APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER CSC_LINK CSC_KEY_PASSWORD; do
+            if [ -z "$(eval "printf '%s' \"\$$name\"")" ]; then
+              echo "::error::Repo secret $name is missing — releases cannot sign or notarize without it. Run scripts/setup-release-secrets.sh once to upload all five." >&2
+              exit 1
+            fi
+          done
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_path"
           chmod 600 "$key_path"
