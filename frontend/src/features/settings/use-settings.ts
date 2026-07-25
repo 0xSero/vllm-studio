@@ -13,7 +13,12 @@ import {
   setApiKey,
   setStoredBackendUrl,
 } from "@/lib/api/connection";
-import { normalizeControllerUrl } from "@/lib/api/controllers";
+import {
+  includeSavedController,
+  loadSavedControllers,
+  normalizeControllerUrl,
+  saveSavedControllers,
+} from "@/lib/api/controllers";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
@@ -42,6 +47,17 @@ const mergeApiSettings = (server?: Partial<ApiConnectionSettings>): ApiConnectio
     hasApiKey: Boolean(localApiKey) || Boolean(server?.hasApiKey),
   };
 };
+
+function syncActiveController(settings: ApiConnectionSettings): void {
+  const saved = loadSavedControllers();
+  const next = includeSavedController(saved, {
+    url: settings.backendUrl,
+    apiKey: getApiKey() || undefined,
+  });
+  if (next === saved) return;
+  saveSavedControllers(next);
+  scheduleDurableUiPreferencesSave();
+}
 
 export function useSettings() {
   // Stale-while-revalidate: seed from the last-loaded config so navigating to
@@ -74,7 +90,9 @@ export function useSettings() {
       const res = await fetch("/api/settings");
       if (res.ok) {
         const settings = (await res.json()) as Partial<ApiConnectionSettings>;
-        setApiSettings(mergeApiSettings(settings));
+        const merged = mergeApiSettings(settings);
+        setApiSettings(merged);
+        syncActiveController(merged);
         return;
       }
     } catch (e) {

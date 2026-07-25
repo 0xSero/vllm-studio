@@ -17,6 +17,7 @@ import { activeSession } from "@/features/agent/runtime/selectors";
 import { terminalOwnerFor } from "@/features/agent/terminal-owners";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
+import { deriveWorkbenchReadiness } from "@/features/agent/ui/workbench-readiness";
 
 export type WorkspacePaneRenderContext = {
   paneId: PaneId;
@@ -128,6 +129,8 @@ type WorkspacePaneProps = {
   view: WorkspacePaneView;
   models: AgentModel[];
   modelsLoading: boolean;
+  modelError: string;
+  controllerStatus: WorkspaceState["controllerStatus"];
   defaultModel: string;
   tools: ReturnType<typeof useTools>;
   dispatch: WorkspaceDispatch;
@@ -141,6 +144,8 @@ function sameWorkspacePaneProps(previous: WorkspacePaneProps, next: WorkspacePan
     sameWorkspacePaneView(previous.view, next.view) &&
     previous.models === next.models &&
     previous.modelsLoading === next.modelsLoading &&
+    previous.modelError === next.modelError &&
+    previous.controllerStatus === next.controllerStatus &&
     previous.defaultModel === next.defaultModel &&
     previous.tools.browser.enabled === next.tools.browser.enabled &&
     previous.tools.browser.backend === next.tools.browser.backend &&
@@ -163,6 +168,8 @@ const WorkspacePane = memo(function WorkspacePane({
   view,
   models,
   modelsLoading,
+  modelError,
+  controllerStatus,
   defaultModel,
   tools,
   dispatch,
@@ -171,6 +178,13 @@ const WorkspacePane = memo(function WorkspacePane({
   composerOnly,
 }: WorkspacePaneProps) {
   const sessions = view.session ? [view.session] : [];
+  const readiness = deriveWorkbenchReadiness({
+    models,
+    selectedModelId: view.modelId,
+    loading: modelsLoading,
+    error: modelError,
+    controllerStatus,
+  });
   return (
     <ChatPane
       paneId={view.paneId}
@@ -178,7 +192,8 @@ const WorkspacePane = memo(function WorkspacePane({
       modelName={view.model?.name ?? view.modelId ?? null}
       modelSupportsVision={view.model?.vision ?? false}
       modelThinkingLevels={view.model?.thinkingLevels ?? ["off"]}
-      modelsLoading={modelsLoading}
+      readiness={readiness}
+      onRetryModels={handles.reloadModels}
       contextWindow={view.model?.contextWindow ?? 0}
       cwd={view.cwd}
       projectName={view.project?.name ?? null}
@@ -249,6 +264,8 @@ export function renderWorkspacePane({
       view={view}
       models={state.models}
       modelsLoading={state.modelsLoading}
+      modelError={state.error}
+      controllerStatus={state.controllerStatus}
       defaultModel={state.selectedModel}
       tools={tools}
       dispatch={dispatch}

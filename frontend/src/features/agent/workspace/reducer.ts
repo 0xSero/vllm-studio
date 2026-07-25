@@ -25,13 +25,22 @@ function chooseModelId(
   currentModelId: string,
   preferredModelId?: string,
 ): string {
+  const ready = (model: AgentModel) => !model.controllerUrl || model.active;
+  if (preferredModelId && models.some((model) => model.id === preferredModelId && ready(model))) {
+    return preferredModelId;
+  }
+  if (currentModelId && models.some((model) => model.id === currentModelId && ready(model))) {
+    return currentModelId;
+  }
+  const firstReady = models.find(ready)?.id;
+  if (firstReady) return firstReady;
   if (preferredModelId && models.some((model) => model.id === preferredModelId)) {
     return preferredModelId;
   }
   if (currentModelId && models.some((model) => model.id === currentModelId)) {
     return currentModelId;
   }
-  return models.find((model) => model.active)?.id || models[0]?.id || "";
+  return models[0]?.id || "";
 }
 
 function reduceWorkspaceStatus(
@@ -53,6 +62,8 @@ function reduceWorkspaceStatus(
         models: action.models,
         selectedModel: chooseModelId(action.models, state.selectedModel, action.preferredModelId),
         modelsLoading: false,
+        controllerStatus:
+          action.controllerStatus === undefined ? state.controllerStatus : action.controllerStatus,
       };
     case "setSelectedModel":
       return { ...state, selectedModel: action.modelId };

@@ -30,6 +30,7 @@ type UseChatPaneSendFlowOptions = {
   cwd: string;
   engine: SessionEngine;
   modelId: string;
+  modelReady: boolean;
   modelSupportsVision: boolean;
   readingAttachments: boolean;
   resetComposerHeight: () => void;
@@ -48,6 +49,7 @@ export function useChatPaneSendFlow({
   cwd,
   engine,
   modelId,
+  modelReady,
   modelSupportsVision,
   readingAttachments,
   resetComposerHeight,
@@ -119,7 +121,12 @@ export function useChatPaneSendFlow({
     (rawText: string, targetTabId?: string) => {
       const targetId = targetTabId ?? activeTab?.id;
       if (!targetId) return Promise.resolve();
-      if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) {
+      if (
+        (!rawText.trim() && attachments.length === 0) ||
+        !modelId ||
+        !modelReady ||
+        readingAttachments
+      ) {
         return Promise.resolve();
       }
       const args = buildPromptArgs(targetId, rawText, browserToolEnabled);
@@ -140,6 +147,7 @@ export function useChatPaneSendFlow({
       clearAttachments,
       engine,
       modelId,
+      modelReady,
       readingAttachments,
       resetComposerHeight,
       setStickToBottom,
@@ -231,6 +239,10 @@ export function useChatPaneSendFlow({
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
         return Promise.resolve();
       }
+      if (!modelReady) {
+        updateTab(activeTab.id, (t) => ({ ...t, error: "Start this model before sending." }));
+        return Promise.resolve();
+      }
       return Effect.runPromise(
         Effect.gen(function* () {
           const acceptsControl = yield* Effect.tryPromise({
@@ -263,6 +275,7 @@ export function useChatPaneSendFlow({
       attachments.length,
       engine,
       modelId,
+      modelReady,
       queueAndSendControl,
       readingAttachments,
       runGuardedSubmit,
@@ -277,6 +290,10 @@ export function useChatPaneSendFlow({
     if (!text || isPlaceholderSessionTitle(text)) return Promise.resolve();
     if (!modelId) {
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
+      return Promise.resolve();
+    }
+    if (!modelReady) {
+      updateTab(activeTab.id, (t) => ({ ...t, error: "Start this model before sending." }));
       return Promise.resolve();
     }
     const runtime = activeTab.id;
@@ -310,6 +327,7 @@ export function useChatPaneSendFlow({
     cwd,
     engine,
     modelId,
+    modelReady,
     queueAndSendControl,
     runGuardedSubmit,
     submitPrompt,

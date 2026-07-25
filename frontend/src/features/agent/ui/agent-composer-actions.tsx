@@ -24,6 +24,7 @@ export function AgentComposerActions({
   onAbortTurn,
   onTranscript,
   modelSelector,
+  modelReady,
 }: {
   fileInputRef: RefObject<HTMLInputElement | null>;
   onAttachFiles: (files: FileList | null) => void;
@@ -41,6 +42,7 @@ export function AgentComposerActions({
   onAbortTurn: () => void;
   onTranscript: (text: string) => void;
   modelSelector?: ReactNode;
+  modelReady: boolean;
 }) {
   const inputHasText = Boolean(input.trim());
   const starting = status === "starting";
@@ -157,10 +159,12 @@ export function AgentComposerActions({
         ) : (
           <button
             type="submit"
-            disabled={(!inputHasText && attachmentsCount === 0) || readingAttachments}
+            disabled={
+              !modelReady || (!inputHasText && attachmentsCount === 0) || readingAttachments
+            }
             className="inline-flex !h-[30px] !min-h-[30px] !w-[30px] !min-w-[30px] shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:bg-(--hl3) disabled:opacity-100"
             aria-label="Send"
-            title="Send (Enter) · Queue (Tab)"
+            title={modelReady ? "Send (Enter) · Queue (Tab)" : "Start a model to send"}
           >
             {starting ? <Spinner size="sm" /> : <ArrowUp className="h-4 w-4 stroke-[2.25]" />}
           </button>

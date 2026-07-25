@@ -13,6 +13,7 @@ import type {
   AgentModel,
   PaneId,
   WorkspaceAction,
+  WorkspaceControllerStatus,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import {
@@ -35,7 +36,14 @@ type SetupCheck = { id: string; ok: boolean; guidance?: string };
 
 export type WorkspaceApi = {
   loadSetupChecks?: () => Promise<{ checks?: SetupCheck[] }>;
-  loadModels?: () => Promise<{ models?: AgentModel[]; error?: string } | AgentModel[]>;
+  loadModels?: () => Promise<
+    | {
+        models?: AgentModel[];
+        error?: string;
+        controllerStatus?: WorkspaceControllerStatus | null;
+      }
+    | AgentModel[]
+  >;
 };
 
 export type WorkspaceWindow = {
@@ -98,11 +106,25 @@ function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
 }
 
 function normalizeModelsPayload(
-  payload: { models?: AgentModel[]; error?: string } | AgentModel[],
-): { models: AgentModel[]; error?: string } {
+  payload:
+    | {
+        models?: AgentModel[];
+        error?: string;
+        controllerStatus?: WorkspaceControllerStatus | null;
+      }
+    | AgentModel[],
+): {
+  models: AgentModel[];
+  error?: string;
+  controllerStatus?: WorkspaceControllerStatus | null;
+} {
   return Array.isArray(payload)
     ? { models: payload }
-    : { models: payload.models ?? [], error: payload.error };
+    : {
+        models: payload.models ?? [],
+        error: payload.error,
+        controllerStatus: payload.controllerStatus,
+      };
 }
 
 function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
@@ -133,6 +155,7 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
             type: "setModels",
             models: normalized.models,
             preferredModelId: readDefaultAgentModel(deps.storage),
+            controllerStatus: normalized.controllerStatus,
           });
           if (normalized.models.length > 0) {
             deps.dispatch?.({ type: "setSetupWarning", warning: "" });

@@ -101,6 +101,12 @@ import {
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
+import { WorkbenchReadinessPanel } from "@/features/agent/ui/workbench-readiness-panel";
+import {
+  workbenchModelReady,
+  type WorkbenchReadiness,
+  type WorkbenchReadinessAction,
+} from "@/features/agent/ui/workbench-readiness";
 import {
   clearSessionGoal,
   respondExtensionUi,
@@ -126,16 +132,17 @@ function downloadTextFile(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-function EmptyPromptTimeline() {
+function EmptyPromptTimeline({
+  readiness,
+  onAction,
+}: {
+  readiness: WorkbenchReadiness;
+  onAction: (action: WorkbenchReadinessAction) => void;
+}) {
   return (
     <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
       <div className="agent-thread-shell mx-auto flex flex-1">
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
-            A dream is something you build for yourself.
-          </p>
-          <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
-        </div>
+        <WorkbenchReadinessPanel readiness={readiness} onAction={onAction} />
       </div>
     </div>
   );
@@ -162,6 +169,8 @@ function ChatTranscript({
   stickToBottom,
   setStickToBottom,
   running,
+  readiness,
+  onReadinessAction,
   onForkSession,
   loadEarlierHistory,
 }: {
@@ -172,6 +181,8 @@ function ChatTranscript({
   stickToBottom: boolean;
   setStickToBottom: (value: boolean) => void;
   running: boolean;
+  readiness: WorkbenchReadiness;
+  onReadinessAction: (action: WorkbenchReadinessAction) => void;
   onForkSession?: () => void;
   loadEarlierHistory: () => Promise<void>;
 }) {
@@ -181,7 +192,7 @@ function ChatTranscript({
   return (
     <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
       {showEmptyPrompt ? (
-        <EmptyPromptTimeline />
+        <EmptyPromptTimeline readiness={readiness} onAction={onReadinessAction} />
       ) : (
         <Timeline
           key={activeTab?.id ?? "empty"}
@@ -206,7 +217,8 @@ type Props = {
   modelName: string | null;
   modelSupportsVision: boolean;
   modelThinkingLevels: readonly AgentThinkingLevel[];
-  modelsLoading: boolean;
+  readiness: WorkbenchReadiness;
+  onRetryModels: () => void;
   contextWindow: number;
   cwd: string;
   projectName: string | null;
@@ -257,7 +269,8 @@ export function ChatPane({
   modelName,
   modelSupportsVision,
   modelThinkingLevels,
-  modelsLoading,
+  readiness,
+  onRetryModels,
   contextWindow,
   cwd,
   projectName,
@@ -289,6 +302,7 @@ export function ChatPane({
   composerOnly = false,
 }: Props) {
   const router = useRouter();
+  const modelReady = workbenchModelReady(readiness);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAppliedComposerHeightRef = useRef(0);
@@ -439,6 +453,24 @@ export function ChatPane({
     tools.setComputerTab("status");
     tools.setComputerOpen(true);
   }, [tools]);
+  const handleReadinessAction = useCallback(
+    (action: WorkbenchReadinessAction) => {
+      if (action === "retry") {
+        onRetryModels();
+        return;
+      }
+      if (action === "settings") {
+        router.push("/settings");
+        return;
+      }
+      if (action === "models") {
+        router.push("/configure?section=models&tab=serves#models");
+        return;
+      }
+      router.push("/");
+    },
+    [onRetryModels, router],
+  );
   const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
   const openDiffDrawer = useCallback(() => setDiffDrawerOpen(true), []);
   const closeDiffDrawer = useCallback(() => setDiffDrawerOpen(false), []);
@@ -589,6 +621,7 @@ export function ChatPane({
       cwd,
       engine,
       modelId,
+      modelReady,
       modelSupportsVision,
       readingAttachments,
       resetComposerHeight,
@@ -711,6 +744,8 @@ export function ChatPane({
         stickToBottom={stickToBottom}
         setStickToBottom={setStickToBottom}
         running={Boolean(running)}
+        readiness={readiness}
+        onReadinessAction={handleReadinessAction}
         onForkSession={onForkSession}
         loadEarlierHistory={loadEarlierHistory}
       />
@@ -740,6 +775,7 @@ export function ChatPane({
           mentionIndex={mentionIndex}
           mentionRows={mentionRows}
           modelSupportsVision={modelSupportsVision}
+          modelReady={modelReady}
           modelSelector={composerModelSelector}
           onAbortTurn={() => void abortTurn()}
           onAttachFiles={(files) => void attachFiles(files)}
@@ -764,7 +800,7 @@ export function ChatPane({
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
           onToggleCanvas={onToggleCanvas}
-          placeholder={composerVisual.placeholder}
+          placeholder={modelReady ? composerVisual.placeholder : readiness.placeholder}
           drawer={
             <ComposerProjectDrawer
               key={`${activeTabId}:${activePiSessionId ?? "new"}`}

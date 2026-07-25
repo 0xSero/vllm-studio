@@ -78,7 +78,8 @@ export function AgentModelPicker({
     : (reasoningLevels.at(-1) ?? "off");
   const reasoningLabel = REASONING_LABELS[effectiveReasoning];
   const triggerLabel = supportsReasoning ? `${modelLabel} ${reasoningLabel}` : modelLabel;
-  const selectedModelNotRunning = !loading && Boolean(active && active.active === false);
+  const selectedModelNotRunning =
+    !loading && Boolean(active?.controllerUrl && active.active === false);
   const close = useCallback(() => {
     setOpen(false);
     setView("root");
@@ -304,7 +305,7 @@ function ModelList({
                 : "No chat models are available."}
             </p>
             <Link
-              href="/models"
+              href="/configure?section=models&tab=serves#models"
               onClick={onClose}
               className="mt-2 inline-flex h-7 items-center rounded-lg bg-(--active) px-2.5 text-(--fg) hover:bg-(--hover)"
             >
@@ -469,6 +470,15 @@ function ModelOption({
         onClick={() => onSelect(model.id)}
         className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-[10px] pl-2.5 text-left focus-visible:outline-none active:translate-y-px"
       >
+        {model.controllerUrl ? (
+          <span
+            className={cx(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              model.active ? "bg-(--ok)" : "bg-(--warn)",
+            )}
+            title={model.active ? "Running" : "Stopped"}
+          />
+        ) : null}
         <span className="min-w-0 flex-1 truncate" title={label}>
           {label}
         </span>

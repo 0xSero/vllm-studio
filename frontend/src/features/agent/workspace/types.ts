@@ -10,6 +10,11 @@ export type { AgentModel } from "@/features/agent/models";
 
 export type WorkspaceLayout = Layout;
 
+export type WorkspaceControllerStatus = {
+  running: boolean;
+  launching: string | null;
+};
+
 export type { GitSummary } from "@/features/agent/projects/types";
 
 export type ChatPaneState = {
@@ -25,6 +30,7 @@ export type WorkspaceState = {
   models: AgentModel[];
   selectedModel: string;
   modelsLoading: boolean;
+  controllerStatus: WorkspaceControllerStatus | null;
   layout: WorkspaceLayout;
   panesById: ReadonlyMap<PaneId, PaneState>;
   focusedPaneId: PaneId;
@@ -49,7 +55,12 @@ export type WorkspaceHydration = Partial<WorkspaceState>;
 export type WorkspaceAction =
   | { type: "hydrate"; state: WorkspaceHydration; hydrated?: boolean }
   | { type: "setModelsLoading"; loading: boolean }
-  | { type: "setModels"; models: AgentModel[]; preferredModelId?: string }
+  | {
+      type: "setModels";
+      models: AgentModel[];
+      preferredModelId?: string;
+      controllerStatus?: WorkspaceControllerStatus | null;
+    }
   | { type: "setSelectedModel"; modelId: string }
   | { type: "setSetupWarning"; warning: string }
   | { type: "setError"; error: string }

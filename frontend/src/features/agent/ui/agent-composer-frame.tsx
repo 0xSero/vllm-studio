@@ -50,6 +50,7 @@ export type AgentComposerFrameProps = {
   mentionIndex: number;
   mentionRows: MentionRow[];
   modelSupportsVision: boolean;
+  modelReady: boolean;
   modelSelector?: ReactNode;
   onAbortTurn: () => void;
   onAttachFiles: (files: FileList | null) => void;
@@ -107,6 +108,7 @@ export function AgentComposerFrame({
   mentionIndex,
   mentionRows,
   modelSupportsVision,
+  modelReady,
   modelSelector,
   onAbortTurn,
   onAttachFiles,
@@ -232,6 +234,7 @@ export function AgentComposerFrame({
           onAbortTurn={onAbortTurn}
           onTranscript={onTranscript}
           modelSelector={modelSelector}
+          modelReady={modelReady}
         />
       </div>
       {showStatusBar ? (

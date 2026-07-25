@@ -46,6 +46,7 @@ export function createInitialState(): WorkspaceState {
     models: [],
     selectedModel: "",
     modelsLoading: true,
+    controllerStatus: null,
     layout: { kind: "leaf", paneId: "p-init" },
     panesById: new Map([["p-init", { sessionId: session.id }]]),
     focusedPaneId: "p-init",

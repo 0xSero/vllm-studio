@@ -89,6 +89,27 @@ export function saveSavedControllers(controllers: SavedController[]): SavedContr
   return next;
 }
 
+export function includeSavedController(
+  controllers: SavedController[],
+  controller: SavedController,
+): SavedController[] {
+  const url = normalizeControllerUrl(controller.url);
+  if (!url) return controllers;
+  if (controllers.some((entry) => normalizeControllerUrl(entry.url) === url)) {
+    return controllers;
+  }
+  const apiKey = controller.apiKey?.trim();
+  const name = controller.name?.trim();
+  return [
+    ...controllers,
+    {
+      url,
+      ...(apiKey ? { apiKey } : {}),
+      ...(name ? { name } : {}),
+    },
+  ];
+}
+
 export function getControllerApiKey(url: string): string {
   const normalized = normalizeControllerUrl(url);
   if (!normalized) return "";

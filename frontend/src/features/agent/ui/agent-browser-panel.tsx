@@ -57,6 +57,7 @@ type AgentBrowserPanelHandles = Pick<
   | "compactFocusedSession"
   | "updateDetachedSession"
   | "removeDetachedSession"
+  | "reloadModels"
 >;
 
 type AgentBrowserPanelProps = {
@@ -299,6 +300,7 @@ export function AgentBrowserPanel({
         onNavigateBrowser={navigateBrowser}
         onOpenSideChat={openSideChat}
         onOpenTerminal={openTerminalForFocusedSession}
+        onReloadModels={handles.reloadModels}
         onRenameSideChat={renameSideChat}
         onUpdateSideChatTabs={updateSideChatTabs}
         sessions={sessions}

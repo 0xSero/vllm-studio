@@ -20,6 +20,7 @@ import type {
   AgentModel,
   PaneId,
   WorkspaceAction,
+  WorkspaceControllerStatus,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { useProjects } from "@/features/agent/projects/context";
@@ -62,6 +63,7 @@ export type WorkspaceHandles = {
   ) => void;
   selectPaneModel: (paneId: PaneId, modelId: string) => void;
   setDefaultModel: (modelId: string) => void;
+  reloadModels: () => void;
   notifySessionsChanged: () => void;
   startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => void;
   initGitForActiveProject: () => Promise<void>;
@@ -128,14 +130,44 @@ async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?
   return payload;
 }
 
-function api(): WorkspaceEffectDeps["api"] {
+async function loadControllerStatus(): Promise<WorkspaceControllerStatus | null> {
+  const response = await fetch("/api/proxy/status", { cache: "no-store" });
+  if (!response.ok) return null;
+  const payload = await safeJson<{
+    running?: boolean;
+    launching?: string | null;
+  }>(response);
+  return {
+    running: payload.running === true,
+    launching:
+      typeof payload.launching === "string" && payload.launching.trim() ? payload.launching : null,
+  };
+}
+
+async function loadWorkbenchModelsPayload(): Promise<{
+  models?: AgentModel[];
+  error?: string;
+  controllerStatus?: WorkspaceControllerStatus | null;
+}> {
+  const [modelsResult, statusResult] = await Promise.allSettled([
+    loadAgentModelsPayload(),
+    loadControllerStatus(),
+  ]);
+  if (modelsResult.status === "rejected") throw modelsResult.reason;
+  return {
+    ...modelsResult.value,
+    controllerStatus: statusResult.status === "fulfilled" ? statusResult.value : null,
+  };
+}
+
+function workspaceApi(): WorkspaceEffectDeps["api"] {
   return {
     loadSetupChecks: async () => {
       const response = await fetch("/api/agent/setup-checks", { cache: "no-store" });
       return safeJson<{ checks?: Array<{ id: string; ok: boolean; guidance?: string }> }>(response);
     },
     loadModels: async () => {
-      return loadAgentModelsPayload();
+      return loadWorkbenchModelsPayload();
     },
   };
 }
@@ -173,7 +205,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       return {
         storage: ephemeralStorage ?? window.localStorage,
         window: createWorkspaceWindow(window),
-        api: api(),
+        api: workspaceApi(),
         dispatch: workspaceDispatch,
         queueReplay: queueSessionReplay,
         selectionFor: (id) => toolsRef.current.selectionFor(id),
@@ -194,47 +226,56 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
 
   const { dispatch } = controller;
 
+  const reloadModels = useCallback(() => {
+    dispatch({ type: "setModelsLoading", loading: true });
+    dispatch({ type: "setError", error: "" });
+    void loadWorkbenchModelsPayload()
+      .then((payload) => {
+        dispatch({
+          type: "setModels",
+          models: payload.models ?? [],
+          preferredModelId: readDefaultAgentModel(window.localStorage),
+          controllerStatus: payload.controllerStatus,
+        });
+      })
+      .catch((error) => {
+        dispatch({
+          type: "setError",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        dispatch({ type: "setModelsLoading", loading: false });
+      });
+  }, [dispatch]);
+
   useMountSubscription(() => {
     if (typeof window === "undefined") return;
-    const reload = () => {
-      dispatch({ type: "setModelsLoading", loading: true });
-      dispatch({ type: "setError", error: "" });
-      void loadAgentModelsPayload()
-        .then((models) => {
-          dispatch({
-            type: "setModels",
-            models: models.models ?? [],
-            preferredModelId: readDefaultAgentModel(window.localStorage),
-          });
-        })
-        .catch((error) => {
-          dispatch({
-            type: "setError",
-            error: error instanceof Error ? error.message : String(error),
-          });
-          dispatch({ type: "setModels", models: [] });
-        })
-        .finally(() => dispatch({ type: "setModelsLoading", loading: false }));
-    };
     const onStorage = (event: StorageEvent | Event) => {
       const key = (event as StorageEvent).key;
       if (key && key !== BACKEND_URL_STORAGE_KEY && key !== CONTROLLERS_STORAGE_KEY) return;
-      reload();
+      reloadModels();
     };
-    const recoverIfEmpty = () => {
-      if (stateRef.current.models.length === 0 && !stateRef.current.modelsLoading) reload();
+    const recoverIfUnavailable = () => {
+      const current = stateRef.current;
+      const hasReadyModel = current.models.some((model) => !model.controllerUrl || model.active);
+      if (!hasReadyModel && !current.modelsLoading) reloadModels();
     };
-    const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
+    const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfUnavailable, ms));
     window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", recoverIfEmpty);
-    window.addEventListener("online", recoverIfEmpty);
+    window.addEventListener("focus", recoverIfUnavailable);
+    window.addEventListener("online", recoverIfUnavailable);
     return () => {
       for (const t of retryTimers) window.clearTimeout(t);
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", recoverIfEmpty);
-      window.removeEventListener("online", recoverIfEmpty);
+      window.removeEventListener("focus", recoverIfUnavailable);
+      window.removeEventListener("online", recoverIfUnavailable);
     };
-  }, [dispatch]);
+  }, [reloadModels]);
+
+  useMountSubscription(() => {
+    if (!state.controllerStatus?.launching || state.modelsLoading) return;
+    const timer = window.setTimeout(reloadModels, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [reloadModels, state.controllerStatus?.launching, state.modelsLoading]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
@@ -293,6 +334,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         writeDefaultAgentModel(ephemeral ? createMemoryStorage() : window.localStorage, modelId);
         dispatch({ type: "setSelectedModel", modelId });
       },
+      reloadModels,
       notifySessionsChanged: () => dispatch({ type: "notifySessionsChanged" }),
       startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => {
         if (typeof window === "undefined") return;
@@ -343,7 +385,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         }
       },
     }),
-    [dispatch, ephemeral, getReplayQueue],
+    [dispatch, ephemeral, getReplayQueue, reloadModels],
   );
 
   useWorkspaceHydrationEffects({ dispatch, toolsRef, skipRestore: ephemeral });

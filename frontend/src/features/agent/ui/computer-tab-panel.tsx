@@ -17,6 +17,7 @@ import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { deriveWorkbenchReadiness } from "@/features/agent/ui/workbench-readiness";
 
 const LazyAgentBrowser = lazy(() =>
   import("@/features/agent/ui/agent-browser").then(({ AgentBrowser }) => ({
@@ -75,6 +76,7 @@ type ComputerTabPanelProps = {
   onNavigateBrowser: (value: string) => void;
   onOpenSideChat: (draft?: SideChatDraft) => void;
   onOpenTerminal: () => void;
+  onReloadModels: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
   sessions: Session[];
@@ -142,6 +144,7 @@ function SideChatTab({
   models,
   modelsLoading,
   onCloseSideChat,
+  onReloadModels,
   onRenameSideChat,
   onUpdateSideChatTabs,
   sideChatSession,
@@ -149,6 +152,13 @@ function SideChatTab({
 }: ComputerTabPanelProps) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
   const selectedModel = models.find((model) => model.id === modelId) ?? activeModel;
+  const readiness = deriveWorkbenchReadiness({
+    models,
+    selectedModelId: modelId,
+    loading: modelsLoading,
+    error: "",
+    controllerStatus: null,
+  });
   const cwd = sideChatSession.cwd ?? focusedSession?.cwd ?? activeProject?.path ?? "";
   const updateSession = useCallback<UpdateSession>(
     (sessionId, patch) =>
@@ -163,7 +173,8 @@ function SideChatTab({
         modelName={selectedModel?.name ?? modelId}
         modelSupportsVision={selectedModel?.vision ?? false}
         modelThinkingLevels={selectedModel?.thinkingLevels ?? ["off"]}
-        modelsLoading={modelsLoading}
+        readiness={readiness}
+        onRetryModels={onReloadModels}
         contextWindow={selectedModel?.contextWindow ?? 0}
         cwd={cwd}
         projectName={activeProject?.name ?? null}
