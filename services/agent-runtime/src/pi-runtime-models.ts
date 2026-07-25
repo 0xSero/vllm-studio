@@ -172,19 +172,24 @@ function normalizeControllerInput(input: PiControllerModelsRequest): PiControlle
   };
 }
 
-function mergeControllers(
+export function mergePiControllers(
   settings: ApiSettings,
   requested: PiControllerModelsRequest[] = [],
 ): PiControllerConfig[] {
   const requestedController = requested
     .map(normalizeControllerInput)
     .find((controller): controller is PiControllerConfig => controller !== null);
-  if (requestedController) return [requestedController];
   const primary = normalizeControllerInput({
     url: settings.backendUrl,
     apiKey: settings.apiKey,
     name: "primary",
   });
+  if (requestedController) {
+    if (!requestedController.apiKey && primary?.url === requestedController.url) {
+      return [{ ...requestedController, apiKey: primary.apiKey }];
+    }
+    return [requestedController];
+  }
   return primary ? [primary] : [];
 }
 
@@ -355,7 +360,7 @@ export async function refreshPiModels(
     requestedControllers && requestedControllers.length > 0
       ? requestedControllers
       : await loadPersistedControllers(agentDir);
-  const controllers = mergeControllers(settings, persisted);
+  const controllers = mergePiControllers(settings, persisted);
   await savePersistedControllers(agentDir, controllers);
   // A dead controller must not hide signed-in cloud providers: collect the
   // failure and only surface it when nothing else can serve models.
