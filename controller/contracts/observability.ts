@@ -33,7 +33,9 @@ export interface Metrics {
   avg_ttft_ms?: number;
   kv_cache_usage?: number;
   generation_throughput?: number;
+  generation_throughput_status?: "live" | "last" | "unavailable";
   prompt_throughput?: number;
+  prompt_throughput_status?: "live" | "last" | "unavailable";
   request_success?: number;
   generation_tokens_total?: number;
   prompt_tokens_total?: number;

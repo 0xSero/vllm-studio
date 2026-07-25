@@ -54,6 +54,11 @@ export type EngineMetricNames = {
   generationTokens: string[];
   promptThroughput: string[];
   generationThroughput: string[];
+  completedRequests: string[];
+  requestPromptTokens: string[];
+  requestGenerationTokens: string[];
+  promptDurationSeconds: string[];
+  generationDurationSeconds: string[];
   runningRequests: string[];
   pendingRequests: string[];
   kvCacheUsage: string[];
@@ -66,6 +71,14 @@ export const VLLM_METRIC_NAMES: EngineMetricNames = {
   generationTokens: ["vllm:generation_tokens_total"],
   promptThroughput: ["vllm:prompt_throughput", "vllm:prefill_throughput"],
   generationThroughput: ["vllm:gen_throughput", "vllm:generation_throughput"],
+  completedRequests: [
+    "vllm:e2e_request_latency_seconds_count",
+    "vllm:request_generation_tokens_count",
+  ],
+  requestPromptTokens: ["vllm:request_prompt_tokens_sum"],
+  requestGenerationTokens: ["vllm:request_generation_tokens_sum"],
+  promptDurationSeconds: ["vllm:request_prefill_time_seconds_sum"],
+  generationDurationSeconds: ["vllm:request_decode_time_seconds_sum"],
   runningRequests: ["vllm:num_requests_running"],
   pendingRequests: ["vllm:num_requests_waiting"],
   kvCacheUsage: ["vllm:kv_cache_usage_perc"],
@@ -82,6 +95,11 @@ export const SGLANG_METRIC_NAMES: EngineMetricNames = {
   ],
   promptThroughput: ["sglang:prompt_throughput", "sglang:prefill_throughput"],
   generationThroughput: ["sglang:gen_throughput", "sglang:generation_throughput"],
+  completedRequests: [],
+  requestPromptTokens: [],
+  requestGenerationTokens: [],
+  promptDurationSeconds: [],
+  generationDurationSeconds: [],
   runningRequests: ["sglang:num_running_reqs", "sglang:num_requests_running"],
   pendingRequests: [
     "sglang:num_queue_reqs",

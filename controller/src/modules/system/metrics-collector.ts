@@ -8,6 +8,7 @@ import {
   VLLM_METRIC_NAMES,
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
+import { enginePerformanceTracker, type ThroughputStatus } from "./engine-performance";
 import { LLAMACPP_TPS_STALE_MS, scrapeLlamacppThroughput } from "./llamacpp-throughput";
 import {
   bumpBestLower,
@@ -25,7 +26,6 @@ const METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS = 5;
 
 export const startMetricsCollector = (context: AppContext): Effect.Effect<never> => {
   let lastVllmMetrics: Record<string, number> = {};
-  let lastMetricsTime = 0;
   let lastRuntimeSummaryAt = 0;
   let lastLlamacppSampleAt = 0;
   let lastLlamacppSampleKey = "";
@@ -134,6 +134,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
 
       let promptThroughput = 0;
       let generationThroughput = 0;
+      let promptThroughputStatus: ThroughputStatus = "unavailable";
+      let generationThroughputStatus: ThroughputStatus = "unavailable";
+      let completedRequests = 0;
       let runningRequests = 0;
       let pendingRequests = 0;
       let kvCacheUsage = 0;
@@ -143,34 +146,22 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
 
       if (current.backend === "vllm" || current.backend === "sglang") {
         const vllmMetrics = yield* scrapeVllmMetrics(context.config.inference_port);
-        const now = Date.now() / 1000;
-        const elapsed =
-          lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
         const isSglang = current.backend === "sglang";
         const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
-        if (
-          elapsed > 0 &&
-          Object.keys(vllmMetrics).length > 0 &&
-          Object.keys(lastVllmMetrics).length > 0
-        ) {
-          const previousPromptTokens = firstMetric(lastVllmMetrics, names.promptTokens);
-          const currentPromptTokens = firstMetric(vllmMetrics, names.promptTokens);
-          const previousGenerationTokens = firstMetric(lastVllmMetrics, names.generationTokens);
-          const currentGenerationTokens = firstMetric(vllmMetrics, names.generationTokens);
-          if (currentPromptTokens > previousPromptTokens) {
-            promptThroughput = (currentPromptTokens - previousPromptTokens) / elapsed;
-          }
-          if (currentGenerationTokens > previousGenerationTokens) {
-            generationThroughput = (currentGenerationTokens - previousGenerationTokens) / elapsed;
-          }
-        }
-
-        promptThroughput = firstMetric(vllmMetrics, names.promptThroughput) || promptThroughput;
-        generationThroughput =
-          firstMetric(vllmMetrics, names.generationThroughput) || generationThroughput;
-
         runningRequests = firstMetric(vllmMetrics, names.runningRequests);
         pendingRequests = firstMetric(vllmMetrics, names.pendingRequests);
+        const performance = enginePerformanceTracker.observe({
+          key: `${modelId}:${current.pid}`,
+          metrics: vllmMetrics,
+          names,
+          pendingRequests,
+          runningRequests,
+        });
+        promptThroughput = performance.promptThroughput;
+        generationThroughput = performance.generationThroughput;
+        promptThroughputStatus = performance.promptThroughputStatus;
+        generationThroughputStatus = performance.generationThroughputStatus;
+        completedRequests = performance.completedRequests;
         kvCacheUsage = firstMetric(vllmMetrics, names.kvCacheUsage);
         promptTokensTotal = firstMetric(vllmMetrics, names.promptTokens);
         generationTokensTotal = firstMetric(vllmMetrics, names.generationTokens);
@@ -185,7 +176,6 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         }
 
         lastVllmMetrics = vllmMetrics;
-        lastMetricsTime = now;
 
         if (promptThroughput > 0 || generationThroughput > 0 || avgTtftMs > 0) {
           yield* context.stores.peakMetricsStore.updateIfBetterEffect(
@@ -197,7 +187,6 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         }
       } else if (current.backend === "llamacpp") {
         lastVllmMetrics = {};
-        lastMetricsTime = 0;
         const sample = yield* scrapeLlamacppThroughput(context, current);
         const isNewSample = Boolean(sample && sample.sampleKey !== lastLlamacppSampleKey);
         if (sample && isNewSample) {
@@ -221,9 +210,10 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         const isFresh = Date.now() - lastLlamacppSampleAt <= LLAMACPP_TPS_STALE_MS;
         promptThroughput = isFresh ? lastLlamacppPromptThroughput : 0;
         generationThroughput = isFresh ? lastLlamacppGenerationThroughput : 0;
+        promptThroughputStatus = isFresh ? "last" : "unavailable";
+        generationThroughputStatus = isFresh ? "last" : "unavailable";
       } else {
         lastVllmMetrics = {};
-        lastMetricsTime = 0;
         lastLlamacppSampleAt = 0;
         lastLlamacppSampleKey = "";
         lastLlamacppPromptThroughput = 0;
@@ -277,9 +267,13 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         prompt_tokens_total: promptTokensDisplay,
         generation_tokens_total: generationTokensDisplay,
         total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
-        total_requests: positiveOrUndefined(usageTotals?.total_requests),
+        total_requests:
+          positiveOrUndefined(completedRequests) ??
+          positiveOrUndefined(usageTotals?.total_requests),
         prompt_throughput: Math.round(promptThroughput * 10) / 10,
+        prompt_throughput_status: promptThroughputStatus,
         generation_throughput: Math.round(generationThroughput * 10) / 10,
+        generation_throughput_status: generationThroughputStatus,
         avg_ttft_ms: avgTtftDisplay,
         latency_avg: usageLatencyAvg,
         vram_used_gb: Math.round(totalVramUsedGb * 10) / 10,

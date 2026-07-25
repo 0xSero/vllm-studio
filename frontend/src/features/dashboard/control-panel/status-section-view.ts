@@ -25,10 +25,13 @@ export type MetricColumnView = {
 export type CompactMetricView = {
   label: string;
   value: string | null;
+  detail?: string;
+  detailTitle?: string;
 };
 
 type PeakKind = "generation" | "prefill" | "ttft";
 type PeakTier = "session" | "bestSession" | "all";
+type ThroughputSource = "live" | "last" | "peak" | "unavailable";
 
 const PEAK_FIELDS: Record<PeakKind, Record<PeakTier, readonly (keyof Metrics)[]>> = {
   generation: {
@@ -87,14 +90,14 @@ export function resolveStatusSectionView({
     modelName: resolveModelName(currentProcess, currentRecipe),
     sampleInput: {
       key: resolveModelSampleKey(currentProcess, currentRecipe),
-      generation: perf.genTps ?? 0,
+      generation: perf.genSample,
       generationPeak: peakFor(metrics, "generation") ?? perf.genTps ?? 0,
-      prefill: perf.prefillTps ?? 0,
+      prefill: perf.prefillSample,
       prefillPeak: peakFor(metrics, "prefill") ?? perf.prefillTps ?? 0,
       ttft: perf.ttftMs ?? 0,
       ttftPeak: peakFor(metrics, "ttft") ?? perf.ttftMs ?? 0,
-      requests: perf.sessions,
-      requestPeak: perf.peakReq || perf.sessions,
+      requests: perf.activeRequests + perf.queuedRequests,
+      requestPeak: perf.peakReq || perf.activeRequests + perf.queuedRequests,
       active: isRunning,
     },
   };
@@ -123,17 +126,49 @@ function resolveModelSampleKey(
 
 function resolvePerformanceMetrics(metrics: Metrics | null, gpus: GPU[]) {
   const gpuTotals = resolveGpuTotals(gpus);
+  const generation = resolveThroughput(metrics, "generation");
+  const prefill = resolveThroughput(metrics, "prefill");
   return {
-    genTps: firstPositive(metrics?.generation_throughput, metrics?.session_avg_generation),
-    prefillTps: firstPositive(metrics?.prompt_throughput, metrics?.session_avg_prefill),
+    genTps: generation.value,
+    genSample: generation.source === "peak" ? 0 : (generation.value ?? 0),
+    genSource: generation.source,
+    prefillTps: prefill.value,
+    prefillSample: prefill.source === "peak" ? 0 : (prefill.value ?? 0),
+    prefillSource: prefill.source,
     ttftMs: firstPositive(metrics?.avg_ttft_ms),
-    sessions: metrics?.running_requests ?? 0,
+    activeRequests: finiteCount(metrics?.running_requests),
+    queuedRequests: finiteCount(metrics?.pending_requests),
+    totalRequests: firstFiniteCount(metrics?.total_requests, metrics?.requests_total),
     peakReq: metrics?.session_peak_running_requests ?? 0,
     totalMemUsed: firstPositive(gpuTotals.memUsed, metrics?.vram_used_gb),
     vramCapacity: firstPositive(gpuTotals.memCapacity, metrics?.vram_capacity_gb),
     totalPower: firstPositive(gpuTotals.power, metrics?.current_power_watts),
     powerLimit: firstPositive(gpuTotals.powerLimit, metrics?.power_limit_watts),
   };
+}
+
+function resolveThroughput(
+  metrics: Metrics | null,
+  kind: Exclude<PeakKind, "ttft">,
+): { source: ThroughputSource; value: number | null } {
+  const current =
+    kind === "generation"
+      ? firstPositive(metrics?.generation_throughput, metrics?.session_avg_generation)
+      : firstPositive(metrics?.prompt_throughput, metrics?.session_avg_prefill);
+  const reportedStatus =
+    kind === "generation"
+      ? metrics?.generation_throughput_status
+      : metrics?.prompt_throughput_status;
+  if (current) {
+    const active =
+      finiteCount(metrics?.running_requests) + finiteCount(metrics?.pending_requests) > 0;
+    return {
+      source: reportedStatus === "live" || (reportedStatus !== "last" && active) ? "live" : "last",
+      value: current,
+    };
+  }
+  const peak = peakFor(metrics, kind);
+  return peak ? { source: "peak", value: peak } : { source: "unavailable", value: null };
 }
 
 function resolveGpuTotals(gpus: GPU[]) {
@@ -157,7 +192,7 @@ function metricColumnViews(
       label: "Decode",
       value: metricValue(perf.genTps, 1),
       unit: "tok/s",
-      ...peakDetailFor(metrics, "generation"),
+      ...throughputDetailFor(metrics, "generation", perf.genSource),
     },
     {
       label: "TTFT",
@@ -169,7 +204,7 @@ function metricColumnViews(
       label: "Prefill",
       value: metricValue(perf.prefillTps, 1),
       unit: "t/s",
-      ...peakDetailFor(metrics, "prefill"),
+      ...throughputDetailFor(metrics, "prefill", perf.prefillSource),
     },
   ];
 }
@@ -178,10 +213,33 @@ function compactMetricViews(
   perf: ReturnType<typeof resolvePerformanceMetrics>,
 ): CompactMetricView[] {
   return [
-    { label: "Requests", value: `${perf.sessions}/${perf.peakReq || perf.sessions}` },
+    {
+      label: "Requests",
+      value: perf.totalRequests === null ? null : perf.totalRequests.toLocaleString(),
+      detail: `${perf.activeRequests} active · ${perf.queuedRequests} queued`,
+      detailTitle:
+        perf.totalRequests === null
+          ? undefined
+          : `${perf.totalRequests.toLocaleString()} completed · ${perf.activeRequests} active · ${perf.queuedRequests} queued`,
+    },
     { label: "VRAM", value: ratioMetric(perf.totalMemUsed, perf.vramCapacity, "G", 1) },
     { label: "Power", value: ratioMetric(perf.totalPower, perf.powerLimit, "W") },
   ];
+}
+
+function throughputDetailFor(
+  metrics: Metrics | null,
+  kind: Exclude<PeakKind, "ttft">,
+  source: ThroughputSource,
+): { detail?: string; detailTitle?: string } {
+  const peak = peakDetailFor(metrics, kind);
+  if (source === "unavailable") return peak;
+  const sourceLabel =
+    source === "live" ? "live" : source === "last" ? "last measured" : "recorded peak";
+  return {
+    detail: source === "peak" || !peak.detail ? sourceLabel : `${sourceLabel} · ${peak.detail}`,
+    detailTitle: peak.detailTitle,
+  };
 }
 
 function readField(metrics: Metrics | null, field: keyof Metrics): number | null {
@@ -216,7 +274,7 @@ function peakDetailFor(metrics: Metrics | null, kind: PeakKind) {
 function metricValue(value: number | null, digits: number): string | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value.toFixed(digits)
-    : (0).toFixed(digits);
+    : null;
 }
 
 function ratioMetric(
@@ -277,6 +335,19 @@ function gpuMemoryTotal(gpu: GPU): number {
 function firstPositive(...values: Array<number | null | undefined>): number | null {
   for (const v of values) {
     if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  }
+  return null;
+}
+
+function finiteCount(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+}
+
+function firstFiniteCount(...values: Array<number | null | undefined>): number | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return Math.round(value);
+    }
   }
   return null;
 }

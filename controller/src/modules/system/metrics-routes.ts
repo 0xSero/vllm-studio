@@ -13,13 +13,9 @@ import {
   VLLM_METRIC_NAMES,
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
+import { enginePerformanceTracker } from "./engine-performance";
 import { firstMetric, positiveOrUndefined } from "./metrics-peaks";
 
-const throughputSamples = new Map<
-  string,
-  { promptTokens: number; genTokens: number; ts: number; promptTps: number; genTps: number }
->();
-const MIN_RATE_INTERVAL_MS = 1500;
 const BenchmarkQuerySchema = Schema.Struct({
   prompt_tokens: Schema.optionalKey(
     Schema.FiniteFromString.pipe(
@@ -95,42 +91,15 @@ const buildCurrentMetrics = (
     const usageTotals = usageAggregate?.totals;
     const promptTokensTotal = firstMetric(prometheus, names.promptTokens);
     const generationTokensTotal = firstMetric(prometheus, names.generationTokens);
-
-    let promptThroughput = isSglang ? firstMetric(prometheus, names.promptThroughput) : 0;
-    let generationThroughput = isSglang ? firstMetric(prometheus, names.generationThroughput) : 0;
-    if (!isSglang) {
-      const nowMs = Date.now();
-      const previous = throughputSamples.get(modelId);
-      if (previous && nowMs - previous.ts >= MIN_RATE_INTERVAL_MS) {
-        const elapsedSeconds = (nowMs - previous.ts) / 1000;
-        promptThroughput = Math.max(
-          0,
-          (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
-        );
-        generationThroughput = Math.max(
-          0,
-          (generationTokensTotal - previous.genTokens) / elapsedSeconds,
-        );
-        throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
-          ts: nowMs,
-          promptTps: promptThroughput,
-          genTps: generationThroughput,
-        });
-      } else if (previous) {
-        promptThroughput = previous.promptTps;
-        generationThroughput = previous.genTps;
-      } else {
-        throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
-          ts: nowMs,
-          promptTps: 0,
-          genTps: 0,
-        });
-      }
-    }
+    const runningRequests = firstMetric(prometheus, names.runningRequests);
+    const pendingRequests = firstMetric(prometheus, names.pendingRequests);
+    const performance = enginePerformanceTracker.observe({
+      key: `${modelId}:${current?.pid ?? "observed"}`,
+      metrics: prometheus,
+      names,
+      pendingRequests,
+      runningRequests,
+    });
     const ttftCount = prometheus[names.ttftCount] ?? 0;
     const avgTtftMs = ttftCount > 0 ? ((prometheus[names.ttftSum] ?? 0) / ttftCount) * 1000 : 0;
     const peakData = yield* context.stores.peakMetricsStore.getEffect(modelId);
@@ -142,8 +111,8 @@ const buildCurrentMetrics = (
       model_id: modelId,
       model_path: current?.model_path ?? null,
       served_model_name: current?.served_model_name ?? scrape.modelName ?? null,
-      running_requests: firstMetric(prometheus, names.runningRequests),
-      pending_requests: firstMetric(prometheus, names.pendingRequests),
+      running_requests: runningRequests,
+      pending_requests: pendingRequests,
       kv_cache_usage: firstMetric(prometheus, names.kvCacheUsage),
       prompt_tokens_total:
         positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens),
@@ -151,9 +120,13 @@ const buildCurrentMetrics = (
         positiveOrUndefined(generationTokensTotal) ??
         positiveOrUndefined(usageTotals?.completion_tokens),
       total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
-      total_requests: positiveOrUndefined(usageTotals?.total_requests),
-      prompt_throughput: promptThroughput,
-      generation_throughput: generationThroughput,
+      total_requests:
+        positiveOrUndefined(performance.completedRequests) ??
+        positiveOrUndefined(usageTotals?.total_requests),
+      prompt_throughput: performance.promptThroughput,
+      prompt_throughput_status: performance.promptThroughputStatus,
+      generation_throughput: performance.generationThroughput,
+      generation_throughput_status: performance.generationThroughputStatus,
       avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : usageAggregate?.ttft?.avg_ms,
       latency_avg: positiveOrUndefined(usageAggregate?.latency?.avg_ms),
       best_session_peak_id: bestSessionPeakData?.["session_id"] ?? null,
