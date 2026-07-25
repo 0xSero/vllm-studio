@@ -13,13 +13,13 @@ import type { AgentModel, WorkspaceState } from "@/features/agent/workspace/type
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
-import type { SessionId } from "@/features/agent/runtime/types";
 import { focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 
@@ -56,11 +56,11 @@ function workspaceClassName(mode: QuickPanelMode): string {
 }
 
 function workspaceSessionIdentity(session: ReturnType<typeof focusedSession>) {
-  if (!session) return { sessionId: null, viewKey: null, viewAlias: null };
+  if (!session) return { viewKey: null, viewAlias: null };
   if (!session.piSessionId) {
-    return { sessionId: session.id, viewKey: session.id, viewAlias: null };
+    return { viewKey: session.id, viewAlias: null };
   }
-  return { sessionId: session.id, viewKey: session.piSessionId, viewAlias: session.id };
+  return { viewKey: session.piSessionId, viewAlias: session.id };
 }
 
 export function shouldShowProjectEmptyState(
@@ -98,7 +98,6 @@ export function AgentWorkspaceShell({
   const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
   useActiveSessionEffects({
     ...activeSessionIdentity,
-    setActiveCanvasSession: tools.setActiveCanvasSession,
     setActiveComputerSession: tools.setActiveComputerSession,
   });
   const focusedModel =
@@ -313,7 +312,9 @@ function WorkspaceBanner({
   children: ReactNode;
 }) {
   return (
-    <div className="pointer-events-auto flex min-w-0 max-w-full items-start gap-2.5 rounded-xl border border-(--color-popover-border) bg-(--color-popover) px-3 py-2.5 text-[length:var(--fs-md)] text-(--fg) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+    <div
+      className={`pointer-events-auto flex min-w-0 max-w-full items-start gap-2.5 px-3 py-2.5 text-[length:var(--fs-md)] text-(--fg) ${POPOVER_SURFACE_CLASS}`}
+    >
       <span
         className={`mt-1 h-2 w-2 shrink-0 rounded-full ${tone === "error" ? "bg-(--err)" : "bg-(--warn)"}`}
         aria-hidden
@@ -355,24 +356,19 @@ function ProjectEmptyState() {
 }
 
 function useActiveSessionEffects({
-  sessionId,
   viewKey,
   viewAlias,
-  setActiveCanvasSession,
   setActiveComputerSession,
 }: {
-  sessionId: SessionId | null;
   viewKey: string | null;
   viewAlias: string | null;
-  setActiveCanvasSession: (id: SessionId | null) => void;
   setActiveComputerSession: ReturnType<typeof useTools>["setActiveComputerSession"];
 }): void {
   useMountSubscription(() => {
-    setActiveCanvasSession(sessionId);
     setActiveComputerSession(
       viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
     );
-  }, [sessionId, viewKey, viewAlias, setActiveCanvasSession, setActiveComputerSession]);
+  }, [viewKey, viewAlias, setActiveComputerSession]);
 }
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {

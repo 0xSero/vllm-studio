@@ -147,7 +147,7 @@ export function ComposerProjectDrawer({
   return (
     <section
       data-testid="composer-drawer"
-      className="relative z-0 mx-auto -mb-3 w-[calc(90%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border)/80 bg-(--fg)/[0.022] pb-3 text-[length:var(--fs-sm)] shadow-[var(--composer-elevation-inner)] backdrop-blur-sm [corner-shape:superellipse(1.5)]"
+      className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-3 text-[length:var(--fs-sm)] shadow-[var(--composer-elevation-inner)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
     >
       <button
         type="button"

@@ -102,7 +102,6 @@ function ensurePromptRuntimeEffect(
         browserSessionId: turn.browserSessionId,
         browserBackend: turn.browserBackend,
         planSessionId: resolved.sessionId,
-        canvasEnabled: turn.canvasEnabled,
         skills: turn.skills,
         promptTemplates: turn.promptTemplates,
       }),
@@ -298,7 +297,6 @@ type CompactRequest = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
   browserBackend?: "embedded" | "sitegeist";
-  canvasEnabled?: boolean;
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
@@ -348,7 +346,6 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
             browserSessionId:
               typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
             browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
-            canvasEnabled: body.canvasEnabled === true,
             skills,
             promptTemplates,
           }),

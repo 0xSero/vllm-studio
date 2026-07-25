@@ -18,7 +18,7 @@ export function AssistantActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) disabled:pointer-events-none disabled:opacity-30"
       aria-label={label}
       title={label}
     >

@@ -16,8 +16,6 @@ export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "local-studio.agent.computer.d
 export const COMPUTER_WIDTH_KEY = "local-studio.agent.computer.width";
 export const COMPUTER_TAB_KEY = "local-studio.agent.computer.tab";
 export const COMPUTER_TABS_KEY = "local-studio.agent.computer.tabs";
-export const COMPUTER_CANVAS_ENABLED_KEY = "local-studio.agent.computer.canvasEnabled";
-export const COMPUTER_CANVAS_TEXT_KEY = "local-studio.agent.computer.canvasText";
 
 export const DEFAULT_BROWSER_URL = "about:blank";
 export const DEFAULT_BROWSER_BACKEND: BrowserBackend = "embedded";
@@ -127,11 +125,9 @@ export function loadComputerState(): ComputerState {
   const storedTab = read(COMPUTER_TAB_KEY);
   const tab: ComputerTab = isComputerTab(storedTab) ? storedTab : "status";
   const storedTabs = readComputerTabs();
-  const canvasEnabled = read(COMPUTER_CANVAS_ENABLED_KEY) === "1";
   const persistedTabs = uniqueComputerTabs([
     "status",
     ...(storedTabs.length ? storedTabs : [tab]),
-    ...(canvasEnabled ? (["canvas"] as const) : []),
   ]);
   const tabs = persistedTabs.includes(tab)
     ? persistedTabs
@@ -141,8 +137,6 @@ export function loadComputerState(): ComputerState {
     tab,
     tabs,
     width: Number.isFinite(storedWidth) ? clampComputerWidth(storedWidth) : DEFAULT_COMPUTER_WIDTH,
-    canvasEnabled,
-    canvasText: read(COMPUTER_CANVAS_TEXT_KEY) ?? "",
   };
 }
 
@@ -205,12 +199,4 @@ export function writeComputerTabs(tabs: ComputerTab[]): void {
 
 export function writeComputerWidth(width: number): void {
   write(COMPUTER_WIDTH_KEY, String(clampComputerWidth(width)));
-}
-
-export function writeComputerCanvasEnabled(enabled: boolean): void {
-  write(COMPUTER_CANVAS_ENABLED_KEY, enabled ? "1" : "0");
-}
-
-export function writeComputerCanvasText(text: string): void {
-  write(COMPUTER_CANVAS_TEXT_KEY, text);
 }

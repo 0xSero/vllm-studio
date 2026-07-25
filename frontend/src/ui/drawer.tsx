@@ -80,7 +80,7 @@ export function DrawerHeader({
   return (
     <header
       className={cx(
-        "flex h-10 shrink-0 items-center gap-2 border-b border-(--color-popover-border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
+        "flex h-10 shrink-0 items-center gap-2 border-b border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
         className,
       )}
     >
@@ -115,7 +115,7 @@ export function DrawerFooter({
   return (
     <footer
       className={cx(
-        "flex h-11 shrink-0 items-center justify-between gap-3 border-t border-(--color-popover-border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
+        "flex h-11 shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
         className,
       )}
     >

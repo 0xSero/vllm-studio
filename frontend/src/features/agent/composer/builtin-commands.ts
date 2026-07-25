@@ -8,7 +8,6 @@ export type BuiltinComposerActions = {
   compact: () => void;
   openStatus: () => void;
   toggleBrowserTool: () => void;
-  toggleCanvas: () => void;
   openPlugins: () => void;
   openTerminal?: () => void;
   forkSession?: () => void;
@@ -55,7 +54,6 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
       ),
       ...command("status", "Status", "Open the status panel", actions.openStatus),
       ...command("browser", "Browser", "Toggle the browser tool", actions.toggleBrowserTool),
-      ...command("canvas", "Canvas", "Toggle the shared canvas", actions.toggleCanvas),
       ...command("plugins", "Plugins", "Manage plugins and connectors", actions.openPlugins),
       ...command("terminal", "Terminal", "Open the terminal", actions.openTerminal),
       ...command("fork", "Fork", "Fork this session into a new pane", actions.forkSession),

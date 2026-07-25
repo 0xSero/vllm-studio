@@ -111,7 +111,7 @@ export function Timeline({
         <div
           ref={setScroller}
           data-timeline-scroller
-          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-5 pb-0 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable]"
+          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-4 pb-0 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable] sm:px-5"
         >
           <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
             {hasEarlier && onLoadEarlier ? (
@@ -125,7 +125,7 @@ export function Timeline({
                 <div
                   key={message.id}
                   data-timeline-message-id={message.id}
-                  className={`${isGrouped ? "pt-2" : "pt-6"} ${isLast ? "pb-4" : ""}`}
+                  className={`${isGrouped ? "pt-2" : "pt-4 sm:pt-6"} ${isLast ? "pb-4" : ""}`}
                 >
                   <MemoMessage
                     message={message}
@@ -137,7 +137,7 @@ export function Timeline({
               );
             })}
             {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
-              <div className="pt-6 pb-4">
+              <div className="pt-4 pb-4 sm:pt-6">
                 <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
                   Thinking
                 </span>
@@ -190,7 +190,7 @@ function ScrollToBottomButton({ running, onClick }: { running: boolean; onClick:
     <button
       type="button"
       onClick={onClick}
-      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-(--border) bg-(--color-popover) px-3 py-1 text-[length:var(--fs-xs)] text-(--fg)/85 shadow-[0_6px_20px_rgba(0,0,0,0.35)] transition-colors hover:text-(--fg)"
+      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-(--color-popover-border) bg-(--color-popover) px-3 py-1 text-[length:var(--fs-xs)] text-(--fg)/85 shadow-[0_6px_20px_rgba(0,0,0,0.35)] transition-colors hover:text-(--fg)"
       aria-label="Scroll to latest"
     >
       {running ? "New messages" : "Latest"}

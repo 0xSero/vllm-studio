@@ -218,8 +218,6 @@ type Props = {
   browserBackend: BrowserBackend;
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
-  canvasEnabled: boolean;
-  onToggleCanvas: () => void;
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
@@ -269,8 +267,6 @@ export function ChatPane({
   browserBackend,
   onToggleBrowserBackend,
   onToggleBrowserTool,
-  canvasEnabled,
-  onToggleCanvas,
   isFocused,
   onFocus,
   onPiSessionIdChange,
@@ -421,7 +417,6 @@ export function ChatPane({
     cwd,
     browserToolEnabled,
     browserBackend,
-    canvasEnabled: tools.computer.canvasEnabled,
     onPiSessionIdChange: handlePiSessionIdChange,
     updateSession: updateTab,
     selectionFor: tools.selectionFor,
@@ -507,7 +502,6 @@ export function ChatPane({
           compact: () => void compactSession(),
           openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
-          toggleCanvas: onToggleCanvas,
           openPlugins: () => router.push("/integrations"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
@@ -529,7 +523,6 @@ export function ChatPane({
       exportSession,
       onForkSession,
       onToggleBrowserTool,
-      onToggleCanvas,
       openComputerStatus,
       openTerminalAction,
       router,
@@ -727,7 +720,6 @@ export function ChatPane({
           banner={composerVisual.banner}
           browserToolEnabled={browserToolEnabled}
           browserBackend={browserBackend}
-          canvasEnabled={canvasEnabled}
           composerDragActive={composerDragActive}
           contextWindow={effectiveContextWindow}
           currentContextTokens={currentContextTokens}
@@ -763,7 +755,6 @@ export function ChatPane({
           onTranscript={handleTranscript}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
-          onToggleCanvas={onToggleCanvas}
           placeholder={composerVisual.placeholder}
           drawer={
             <ComposerProjectDrawer

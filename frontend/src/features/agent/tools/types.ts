@@ -18,7 +18,6 @@ import type { SessionId } from "@/features/agent/runtime/types";
 export const COMPUTER_TAB_IDS = [
   "status",
   "tools",
-  "canvas",
   "side-chat",
   "browser",
   "files",
@@ -44,8 +43,6 @@ export type ComputerState = {
   tab: ComputerTab;
   tabs: ComputerTab[];
   width: number;
-  canvasEnabled: boolean;
-  canvasText: string;
 };
 
 export type FileOpenRequest = {

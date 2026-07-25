@@ -174,7 +174,6 @@ export type CompactSessionArgs = {
   browserToolEnabled: boolean;
   browserSessionId?: string;
   browserBackend?: BrowserBackend;
-  canvasEnabled?: boolean;
   skills: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
@@ -215,7 +214,6 @@ export type SubmitTurnArgs = {
   browserToolEnabled: boolean;
   browserSessionId?: string;
   browserBackend?: BrowserBackend;
-  canvasEnabled?: boolean;
   skills: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };

@@ -39,8 +39,6 @@ import {
   uniqueComputerTabs,
   writeBrowserBackend,
   writeBrowserEnabled,
-  writeComputerCanvasEnabled,
-  writeComputerCanvasText,
   writeComputerTab,
   writeComputerTabs,
   writeComputerWidth,
@@ -72,10 +70,6 @@ type ToolsActions = {
   closeComputerTab: (tab: ComputerTab) => void;
   setComputerWidth: (width: number) => void;
   setActiveComputerSession: (identity: SessionViewIdentity | null) => void;
-  setCanvasEnabled: (enabled: boolean) => void;
-  toggleCanvas: () => void;
-  setCanvasText: (text: string) => void;
-  setActiveCanvasSession: (sessionId: SessionId | null) => void;
   requestFileOpen: (path: string) => void;
   requestContextAttach: (request: { label: string; path?: string; content: string }) => void;
   /**
@@ -110,9 +104,6 @@ const ToolsRefContext = createContext<{ current: ToolsContextValue } | null>(nul
 
 type ToolsEffectsBridgeProps = {
   catalogueEnabled: boolean;
-  canvasEffectsEnabled: boolean;
-  setComputer: Dispatch<SetStateAction<ComputerState>>;
-  activeCanvasSessionId: SessionId | null;
   onCatalogueLoaded: (payload: {
     skills: ComposerSkillRef[];
     promptTemplates: ComposerPromptTemplateRef[];
@@ -130,17 +121,8 @@ function loadToolsEffectsBridge(): Promise<ToolsEffectsBridgeComponent> {
   return toolsEffectsBridgePromise;
 }
 
-function syncCanvasInBackground(
-  sessionId: SessionId | null,
-  payload: { enabled: boolean; text?: string },
-): void {
-  void import("@/features/agent/tools/canvas-effects").then((mod) => {
-    mod.runSyncCanvasEffect(sessionId, payload);
-  });
-}
-
 function LazyToolsEffectsBridge(props: ToolsEffectsBridgeProps) {
-  const enabled = props.catalogueEnabled || props.canvasEffectsEnabled;
+  const enabled = props.catalogueEnabled;
   const [ToolsEffectsBridge, setToolsEffectsBridge] = useState<ToolsEffectsBridgeComponent | null>(
     null,
   );
@@ -174,8 +156,6 @@ function buildInitialComputer(): ComputerState {
       tab: "status",
       tabs: ["status"],
       width: 0,
-      canvasEnabled: false,
-      canvasText: "",
     };
   }
   return loadComputerState();
@@ -184,7 +164,6 @@ function buildInitialComputer(): ComputerState {
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const catalogueEnabled = pathname === "/agent" || pathname === "/quick";
-  const canvasEffectsEnabled = pathname === "/agent" || pathname === "/quick";
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
   const activeComputerSessionRef = useRef<SessionViewIdentity | null>(null);
@@ -198,8 +177,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   >([]);
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   const [selectionVersion, setSelectionVersion] = useState(0);
-  const activeCanvasSessionRef = useRef<SessionId | null>(null);
-  const [activeCanvasSessionId, setActiveCanvasSessionIdState] = useState<SessionId | null>(null);
   const updateComputer = useCallback<Dispatch<SetStateAction<ComputerState>>>((update) => {
     setComputer((current) => {
       const next = typeof update === "function" ? update(current) : update;
@@ -224,11 +201,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
-
-  const setActiveCanvasSession = useCallback((sessionId: SessionId | null) => {
-    activeCanvasSessionRef.current = sessionId;
-    setActiveCanvasSessionIdState(sessionId);
-  }, []);
 
   const setBrowserEnabled = useCallback((enabled: boolean) => {
     setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
@@ -370,45 +342,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setCanvasEnabled = useCallback(
-    (enabled: boolean) => {
-      updateComputer((current) =>
-        current.canvasEnabled === enabled ? current : { ...current, canvasEnabled: enabled },
-      );
-      writeComputerCanvasEnabled(enabled);
-      syncCanvasInBackground(activeCanvasSessionRef.current, { enabled });
-    },
-    [updateComputer],
-  );
-
-  const toggleCanvas = useCallback(() => {
-    updateComputer((current) => {
-      const next = !current.canvasEnabled;
-      const tabs = next ? uniqueComputerTabs([...current.tabs, "canvas"]) : current.tabs;
-      writeComputerCanvasEnabled(next);
-      if (next) writeComputerTabs(tabs);
-      syncCanvasInBackground(activeCanvasSessionRef.current, { enabled: next });
-      return {
-        ...current,
-        canvasEnabled: next,
-        tabs,
-        tab: next ? "canvas" : current.tab === "canvas" ? "status" : current.tab,
-        open: next ? true : current.open,
-      };
-    });
-  }, [updateComputer]);
-
-  const setCanvasText = useCallback(
-    (text: string) => {
-      updateComputer((current) =>
-        current.canvasText === text ? current : { ...current, canvasText: text },
-      );
-      writeComputerCanvasText(text);
-      syncCanvasInBackground(activeCanvasSessionRef.current, { enabled: true, text });
-    },
-    [updateComputer],
-  );
-
   const requestFileOpen = useCallback(
     (path: string) => {
       const clean = path.trim();
@@ -502,10 +435,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       closeComputerTab,
       setComputerWidth,
       setActiveComputerSession,
-      setCanvasEnabled,
-      toggleCanvas,
-      setCanvasText,
-      setActiveCanvasSession,
       requestFileOpen,
       requestContextAttach,
       setSelection,
@@ -525,10 +454,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       closeComputerTab,
       setComputerWidth,
       setActiveComputerSession,
-      setCanvasEnabled,
-      toggleCanvas,
-      setCanvasText,
-      setActiveCanvasSession,
       requestFileOpen,
       requestContextAttach,
       setSelection,
@@ -566,9 +491,6 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
             <ToolsRefContext.Provider value={valueRef}>
               <LazyToolsEffectsBridge
                 catalogueEnabled={catalogueEnabled}
-                canvasEffectsEnabled={canvasEffectsEnabled}
-                setComputer={updateComputer}
-                activeCanvasSessionId={activeCanvasSessionId}
                 onCatalogueLoaded={handleCatalogueLoaded}
               />
               {children}
@@ -591,7 +513,7 @@ export function useToolsActions(): ToolsActions {
   return useToolsSlice(ToolsActionsContext, "useToolsActions");
 }
 
-/** Computer panel state (open/tab/tabs/width/canvas). */
+/** Computer panel state (open/tab/tabs/width). */
 export function useComputerTools(): ComputerState {
   return useToolsSlice(ComputerToolsContext, "useComputerTools");
 }

@@ -138,7 +138,7 @@ function ToolSummary({
   return (
     <details className="group min-w-0" open={expanded}>
       <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
+        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!expanded);
@@ -172,8 +172,8 @@ function ToolSummary({
   );
 }
 
-/* The Codex shell block: faint-bordered surface, `$ command` line, output
-   under a hairline, and a Success / Failed chip in the footer. */
+/* The shell block: a single flat terminal surface — `$ command` line, then
+   dim scrollback-style output. Failure tints the prompt; no chips, no rows. */
 function ShellBlock({
   command,
   output,
@@ -183,37 +183,36 @@ function ShellBlock({
   output: string | null;
   status: ToolBlock["status"];
 }) {
+  const failed = status === "error";
+  const trimmedOutput = output?.replace(/\s+$/, "") || null;
   return (
-    <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
-      <div className="flex items-start gap-2 px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/85">
-        <span className="select-none text-(--dim)/70">$</span>
-        <span className="min-w-0 whitespace-pre-wrap break-words">{command}</span>
+    <div
+      className={`overflow-hidden rounded-md border bg-(--color-input) ${
+        failed ? "border-(--err)/35" : "border-(--border)"
+      }`}
+    >
+      <div className="max-h-[340px] overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
+        <div className="flex items-start gap-2">
+          <span
+            className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
+          >
+            $
+          </span>
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-(--fg)/90">
+            {command}
+          </span>
+        </div>
+        {trimmedOutput ? (
+          <pre className="mt-2 whitespace-pre-wrap break-words text-(--fg)/55">{trimmedOutput}</pre>
+        ) : null}
       </div>
-      {output ? (
-        <pre className="max-h-[320px] overflow-auto border-t border-(--separator) px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
-          {output}
-        </pre>
-      ) : status !== "running" ? (
-        <div className="border-t border-(--separator) px-3 py-1.5 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--dim)/60">
-          No output
-        </div>
-      ) : null}
-      {status === "done" ? (
-        <div className="border-t border-(--separator) px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--ok)">
-          Success
-        </div>
-      ) : status === "error" ? (
-        <div className="border-t border-(--separator) px-3 py-1 text-[length:var(--fs-sm)] font-medium text-(--err)">
-          Failed
-        </div>
-      ) : null}
     </div>
   );
 }
 
 function ToolOutput({ children }: { children: ReactNode }) {
   return (
-    <pre className="max-h-[320px] max-w-full overflow-auto whitespace-pre-wrap rounded-lg border border-(--border) bg-(--color-input) px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)/60">
+    <pre className="max-h-[340px] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--border) bg-(--color-input) px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/65">
       {children}
     </pre>
   );
@@ -221,7 +220,7 @@ function ToolOutput({ children }: { children: ReactNode }) {
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   const className =
-    "max-h-[420px] max-w-full overflow-auto px-3 py-2 font-mono text-[length:var(--codex-chat-code-font-size)] leading-relaxed text-(--fg)";
+    "max-h-[420px] max-w-full overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/90";
 
   return (
     <pre className={className}>
@@ -249,8 +248,8 @@ const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
 function DiffPreviewSource({ body }: { body: string }) {
   const preview = parseDiffPreview(body);
   return (
-    <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
-      <div className="flex h-8 items-center justify-between border-b border-(--separator) px-3 text-[length:var(--fs-sm)]">
+    <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
+      <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3 text-[length:var(--fs-xs)]">
         <span className="text-(--dim)">Changes</span>
         <span className="flex items-center gap-2 font-mono">
           <span className="text-(--ok)">+{preview.additions}</span>
@@ -261,7 +260,7 @@ function DiffPreviewSource({ body }: { body: string }) {
         {preview.lines.map((line, index) => (
           <div
             key={`${index}:${line.kind}`}
-            className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
+            className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
           >
             <span
               className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_MARKER_STYLES[line.kind]}`}
@@ -386,7 +385,7 @@ function FileWritePreview({
       {patchContent ? (
         <DiffPreviewSource body={patchContent} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-(--border) bg-(--color-input)">
+        <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
           <div className="flex items-center justify-between gap-2 border-b border-(--separator) px-3 py-1.5 text-[length:var(--fs-sm)] text-(--dim)">
             <span className="truncate font-mono">
               {fileBasename(filePath) ?? sourceLang ?? "source"}
@@ -468,7 +467,7 @@ function BrowserPreview({ block }: { block: ToolBlock }) {
   return (
     <ToolSummary block={block} open={block.status === "running"}>
       {args ? (
-        <div className="mb-1.5 rounded-md border border-(--border) bg-(--color-input) px-2 py-1 font-mono text-[length:var(--codex-chat-code-font-size)] text-(--fg)/75">
+        <div className="mb-1.5 rounded-md border border-(--border) bg-(--color-input) px-3 py-1.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/75">
           {args}
         </div>
       ) : null}

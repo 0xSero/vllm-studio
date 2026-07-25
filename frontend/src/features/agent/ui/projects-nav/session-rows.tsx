@@ -369,6 +369,20 @@ export function ActiveSessionRow({
         }
       }}
       onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
+      // Archive is keyed on the pi session id, which an open tab only has once
+      // its thread exists; without it there is nothing on disk to archive.
+      onArchive={
+        session.threadId
+          ? () => {
+              const threadId = session.threadId as string;
+              void setSessionArchive(threadId, project, label, true)
+                .then(() => patchSessionPref(threadId, { hidden: undefined, pinned: undefined }))
+                .catch((error) => {
+                  console.warn("[agent] failed to archive session", error);
+                });
+            }
+          : undefined
+      }
       onRenameCommit={(trimmed) =>
         workspaceCommands().renameSession(
           session.paneId,

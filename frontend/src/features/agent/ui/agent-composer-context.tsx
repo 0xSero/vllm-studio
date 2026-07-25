@@ -5,7 +5,6 @@ import {
   Boxes,
   CircleDot,
   Download,
-  FilePenLine,
   FileText,
   Gauge,
   GitFork,
@@ -86,7 +85,7 @@ export function AgentMentionPicker({
   if (!mention) return null;
 
   return (
-    <div className="px-1.5">
+    <>
       {rows.length ? (
         <div className="grid gap-1">
           {rows.map((entry, index) => (
@@ -104,7 +103,7 @@ export function AgentMentionPicker({
           <span className="font-mono text-(--fg)">{mention.query || "…"}</span>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -231,7 +230,6 @@ const BUILTIN_COMMAND_ICONS: Record<string, typeof Slash> = {
   compact: CircleDot,
   status: Gauge,
   browser: Globe,
-  canvas: FilePenLine,
   plugins: Boxes,
   terminal: TerminalSquare,
   fork: GitFork,

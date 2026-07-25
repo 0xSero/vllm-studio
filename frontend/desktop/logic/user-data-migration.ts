@@ -20,8 +20,6 @@ const MIGRATED_USER_DATA_PATHS = [
   "Trust Tokens",
   "Trust Tokens-journal",
   "WebStorage",
-  "agent-canvas",
-  "agent-canvas.json",
   "agent-session-metadata.json",
   "api-settings.json",
   "chats.db",

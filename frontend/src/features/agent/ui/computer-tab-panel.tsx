@@ -23,11 +23,6 @@ const LazyAgentBrowser = lazy(() =>
     default: AgentBrowser,
   })),
 );
-const LazyCanvasPanel = lazy(() =>
-  import("@/features/agent/ui/canvas-panel").then(({ CanvasPanel }) => ({
-    default: CanvasPanel,
-  })),
-);
 const LazyComputerStatusPanel = lazy(() =>
   import("@/features/agent/ui/computer-status-panel").then(({ ComputerStatusPanel }) => ({
     default: ComputerStatusPanel,
@@ -87,7 +82,6 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
   const panels: Record<ComputerTab, ReactNode> = {
     status: <StatusTab {...props} />,
     tools: <ComputerLauncherPanel activeTab={props.tools.computer.tab} {...props} />,
-    canvas: <LazyCanvasPanel />,
     "side-chat": <SideChatTab {...props} />,
     browser: <BrowserTab {...props} />,
     files: <FilesTab cwd={focusedCwd} />,
@@ -182,8 +176,6 @@ function SideChatTab({
         browserBackend={tools.browser.backend}
         onToggleBrowserBackend={tools.toggleBrowserBackend}
         onToggleBrowserTool={() => tools.setComputerTab("browser")}
-        canvasEnabled={false}
-        onToggleCanvas={tools.toggleCanvas}
         isFocused
         onFocus={() => undefined}
         tabs={[sideChatSession]}

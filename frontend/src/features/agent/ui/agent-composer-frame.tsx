@@ -18,6 +18,7 @@ import type { QueuedMessage } from "@/features/agent/messages";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { ComposerBanner } from "@/features/agent/composer/composer-visual-state";
 import { Spinner } from "@/ui";
+import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import type { GitSummary } from "@/features/agent/projects/types";
 import { AgentAttachmentTray, type AgentComposerAttachment } from "./agent-attachment-tray";
 import { AgentComposerActions } from "./agent-composer-actions";
@@ -37,7 +38,6 @@ export type AgentComposerFrameProps = {
   banner: ComposerBanner | null;
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
-  canvasEnabled: boolean;
   composerDragActive: boolean;
   contextWindow: number;
   currentContextTokens: number;
@@ -73,7 +73,6 @@ export type AgentComposerFrameProps = {
   onTranscript: (text: string) => void;
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
-  onToggleCanvas: () => void;
   placeholder: string;
   drawer?: ReactNode;
   showStatusBar: boolean;
@@ -94,7 +93,6 @@ export function AgentComposerFrame({
   banner,
   browserToolEnabled,
   browserBackend,
-  canvasEnabled,
   composerDragActive,
   contextWindow,
   currentContextTokens,
@@ -130,7 +128,6 @@ export function AgentComposerFrame({
   onTranscript,
   onToggleBrowserBackend,
   onToggleBrowserTool,
-  onToggleCanvas,
   placeholder,
   drawer,
   showStatusBar,
@@ -154,7 +151,7 @@ export function AgentComposerFrame({
           ? "bg-transparent p-[calc(var(--space-base)*2)]"
           : dense
             ? "bg-(--agent-bg) px-3 pb-1 pt-1.5"
-            : "bg-transparent px-5 pb-2 pt-0",
+            : "bg-transparent px-3 pb-2 pt-0 sm:px-5",
       )}
     >
       <AgentQueuePanel
@@ -167,7 +164,7 @@ export function AgentComposerFrame({
         onSteer={onSteerQueued}
       />
       {banner ? (
-        <div className="mx-auto flex w-[90%] max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35">
+        <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35 sm:w-[90%]">
           <Spinner size="xs" />
           {banner.label}
         </div>
@@ -178,7 +175,7 @@ export function AgentComposerFrame({
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
         className={cx(
-          "agent-composer-box relative z-10 mx-auto w-[90%] max-w-[calc(var(--composer-w)*0.9)] overflow-visible rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-elevation)] backdrop-blur-lg transition-colors [corner-shape:superellipse(1.5)]",
+          "agent-composer-box relative z-10 mx-auto w-full max-w-[calc(var(--composer-w)*0.9)] overflow-visible rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-elevation)] backdrop-blur-lg transition-colors [corner-shape:superellipse(1.5)] sm:w-[90%]",
           composerDragActive && "outline outline-1 outline-(--link)/50",
         )}
       >
@@ -193,7 +190,7 @@ export function AgentComposerFrame({
           onRemove={onRemoveLoadedContext}
         />
         {mention ? (
-          <div className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-[20px] bg-(--composer) py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+          <div className={`absolute inset-x-0 bottom-full z-20 mb-2 ${POPOVER_MENU_CLASS}`}>
             <AgentMentionPicker
               mention={mention}
               rows={mentionRows}
@@ -227,8 +224,6 @@ export function AgentComposerFrame({
           browserBackend={browserBackend}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
-          canvasEnabled={canvasEnabled}
-          onToggleCanvas={onToggleCanvas}
           onAbortTurn={onAbortTurn}
           onTranscript={onTranscript}
           modelSelector={modelSelector}
@@ -248,7 +243,7 @@ export function AgentComposerFrame({
       ) : (
         <div
           aria-hidden="true"
-          className="mx-auto mt-2.5 h-4 w-[90%] max-w-[calc(var(--composer-w)*0.9)]"
+          className="mx-auto mt-2 h-3 w-full max-w-[calc(var(--composer-w)*0.9)] sm:mt-2.5 sm:h-4 sm:w-[90%]"
         />
       )}
     </form>

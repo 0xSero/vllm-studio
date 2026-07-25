@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 
 export function ModelsDropdown({
   recipes,
@@ -47,7 +48,7 @@ export function ModelsDropdown({
         Models ▾
       </button>
       {open ? (
-        <div className="absolute right-0 z-30 mt-1 w-[22rem] rounded-2xl border border-(--color-popover-border) bg-(--color-popover) shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+        <div className={`absolute right-0 z-30 mt-1 w-[22rem] ${POPOVER_PANEL_CLASS}`}>
           <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-(--border)">
             <input
               autoFocus

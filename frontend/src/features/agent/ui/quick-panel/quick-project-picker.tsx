@@ -3,6 +3,7 @@
 import { useState, type MouseEvent, type PointerEvent } from "react";
 import { Folder } from "@/ui/icons";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
+import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
 
 type Props = {
@@ -42,7 +43,9 @@ export function QuickProjectPicker({ projects }: Props) {
         <span className="truncate">{active?.name ?? "Choose project"}</span>
       </button>
       {open ? (
-        <div className="absolute top-full left-0 z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto rounded-2xl border border-(--color-popover-border) bg-(--color-popover) p-1.5 shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3),0px_0px_0px_0.5px_rgba(0,0,0,0.1)]">
+        <div
+          className={`absolute top-full left-0 z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto p-1.5 ${POPOVER_SURFACE_CLASS}`}
+        >
           {projects.projects.map((project) => (
             <button
               key={project.id}
@@ -52,7 +55,7 @@ export function QuickProjectPicker({ projects }: Props) {
                 setOpen(false);
               }}
               className={cx(
-                "flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs",
+                "flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
                 project.id === active?.id ? "bg-(--hover)/50" : "hover:bg-(--hover)",
               )}
             >

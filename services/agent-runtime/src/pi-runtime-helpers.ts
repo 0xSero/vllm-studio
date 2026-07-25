@@ -28,7 +28,6 @@ export type RuntimeStartOptions = {
   // Runtime (focused) session id, so the plan extension writes the plan the
   // Plan panel reads for the same session.
   planSessionId?: string;
-  canvasEnabled?: boolean;
   skills?: RuntimeSkillRef[];
   promptTemplates?: RuntimePromptTemplateRef[];
 };
@@ -140,10 +139,6 @@ export function resolveSitegeistBrowserExtensionPath(): string | null {
   );
 }
 
-export function resolveCanvasExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("canvas.ts", process.env.LOCAL_STUDIO_CANVAS_EXTENSION_PATH);
-}
-
 export function resolvePlanExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("plan.ts", process.env.LOCAL_STUDIO_PLAN_EXTENSION_PATH);
 }
@@ -222,10 +217,6 @@ export function resolveSitegeistBrowserSkillPath(): string | null {
   );
 }
 
-export function resolveCanvasSkillPath(): string | null {
-  return resolveBundledSkillPath("canvas", process.env.LOCAL_STUDIO_CANVAS_SKILL_PATH);
-}
-
 export function resolvePlanSkillPath(): string | null {
   return resolveBundledSkillPath("plan", process.env.LOCAL_STUDIO_PLAN_SKILL_PATH);
 }
@@ -243,7 +234,6 @@ export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string 
     browser: options.browserToolEnabled === true,
     browserBackend: browserBackend(options),
     browserSessionId: options.browserSessionId ?? "",
-    canvas: options.canvasEnabled === true,
     skills,
     promptTemplates,
   });
@@ -304,7 +294,6 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     agentPolicyExtensionPath,
     resolvePlanExtensionPath(),
     browserExtensionPath,
-    options.canvasEnabled === true ? resolveCanvasExtensionPath() : null,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
   ]);
@@ -317,7 +306,6 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
     ...selectedSkillPaths(options.skills ?? []),
     loadBrowser ? browserSkillPathFor(backend) : null,
     resolvePlanSkillPath(),
-    options.canvasEnabled === true ? resolveCanvasSkillPath() : null,
   ]);
 }
 

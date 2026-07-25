@@ -99,7 +99,6 @@ test("Pi preserves reasoning, skills, templates, and tools when restart options 
   const current = {
     thinkingLevel: "xhigh" as const,
     browserToolEnabled: true,
-    canvasEnabled: true,
     skills: [{ id: "skill-1", path: "/tmp/skill-1" }],
     promptTemplates: [{ id: "template-1", path: "/tmp/template-1" }],
   };

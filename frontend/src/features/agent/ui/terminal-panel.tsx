@@ -6,6 +6,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/features/agent/contracts";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout } from "@/lib/effect-timers";
+import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import {
   bumpTerminalFontSize,
   getTerminalFontSize,
@@ -24,14 +25,7 @@ export function preloadTerminalPanel(): void {
 
 export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef<TerminalRefs>({
-    term: null,
-    fit: null,
-    applyResize: null,
-    input: "",
-    running: false,
-    disposed: false,
-  });
+  const stateRef = useRef<TerminalRefs>(createTerminalRefs());
 
   useTerminalPanelEffects({
     containerRef,
@@ -69,13 +63,19 @@ type PtyBridge = {
   onExit(
     listener: (id: string, info: { exitCode: number; signal: number | null }) => void,
   ): () => void;
+  /** Web bridge only: replay re-delivered on stream reconnect. */
+  onSnapshot?(listener: (id: string, replay: string) => void): () => void;
+  /** Web bridge only: stop streaming (the shell keeps running server-side). */
+  detach?(id: string): void;
 };
 
 function getPtyBridge(): PtyBridge | null {
   if (typeof window === "undefined") return null;
   const bridge = (window as unknown as { localStudioDesktop?: { terminal?: PtyBridge } })
     .localStudioDesktop?.terminal;
-  return bridge ?? null;
+  // Prefer the Electron bridge (local PTY); otherwise the web bridge reaches
+  // the agent runtime's server-side PTY over the authenticated proxy.
+  return bridge ?? webPtyBridge;
 }
 
 type TerminalRefs = {
@@ -86,6 +86,93 @@ type TerminalRefs = {
   running: boolean;
   disposed: boolean;
 };
+
+function createTerminalRefs(): TerminalRefs {
+  return { term: null, fit: null, applyResize: null, input: "", running: false, disposed: false };
+}
+
+/* ── Keep-alive registry ────────────────────────────────────────────────────
+   Terminal instances survive React unmounts: the xterm lives inside a holder
+   <div> owned by this module, and mounting a TerminalPanel for the same
+   ownerKey re-parents the holder instead of rebuilding the terminal. Route
+   changes (Workbench → Status → back) therefore keep scrollback and live
+   output. A bounded LRU caps memory; evicted instances are disposed, and the
+   server-side shell keeps running for a replay-based reattach. */
+
+type CachedTerminal = {
+  holder: HTMLDivElement;
+  refs: TerminalRefs;
+  cleanup: (() => void) | null;
+  booted: boolean;
+  dead: boolean;
+  lastUsed: number;
+  sessionId: string | null;
+};
+
+const KEEP_ALIVE_LIMIT = 4;
+const terminalCache = new Map<string, CachedTerminal>();
+
+function disposeCached(entry: CachedTerminal): void {
+  entry.refs.disposed = true;
+  entry.cleanup?.();
+  entry.cleanup = null;
+  entry.refs.term?.dispose();
+  entry.refs.term = null;
+  entry.refs.fit = null;
+  entry.refs.applyResize = null;
+  if (entry.sessionId) getPtyBridge()?.detach?.(entry.sessionId);
+  entry.holder.remove();
+}
+
+function evictStaleTerminals(activeKey: string): void {
+  if (terminalCache.size <= KEEP_ALIVE_LIMIT) return;
+  const candidates = [...terminalCache.entries()]
+    .filter(([key, entry]) => key !== activeKey && !entry.holder.isConnected)
+    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+  while (terminalCache.size > KEEP_ALIVE_LIMIT && candidates.length > 0) {
+    const [key, entry] = candidates.shift()!;
+    disposeCached(entry);
+    terminalCache.delete(key);
+  }
+}
+
+function acquireCachedTerminal(ownerKey: string): CachedTerminal {
+  const existing = terminalCache.get(ownerKey);
+  // A dead entry (shell exited) or one already mounted elsewhere (two panes
+  // showing the same terminal) can't be re-parented — rebuild fresh.
+  if (existing && !existing.dead && !existing.holder.isConnected) {
+    existing.lastUsed = Date.now();
+    return existing;
+  }
+  if (existing && (existing.dead || !existing.holder.isConnected)) {
+    disposeCached(existing);
+    terminalCache.delete(ownerKey);
+  } else if (existing) {
+    // Holder still mounted in another pane: give this mount an ephemeral
+    // instance keyed uniquely so both render independently.
+    const entry = createCacheEntry();
+    return entry;
+  }
+  const entry = createCacheEntry();
+  terminalCache.set(ownerKey, entry);
+  evictStaleTerminals(ownerKey);
+  return entry;
+}
+
+function createCacheEntry(): CachedTerminal {
+  const holder = document.createElement("div");
+  holder.style.width = "100%";
+  holder.style.height = "100%";
+  return {
+    holder,
+    refs: createTerminalRefs(),
+    cleanup: null,
+    booted: false,
+    dead: false,
+    lastUsed: Date.now(),
+    sessionId: null,
+  };
+}
 
 type FallbackSession = {
   input: string;
@@ -102,6 +189,7 @@ type PtyBootOptions = {
   element: HTMLDivElement;
   cwd: string | null;
   ownerKey: string;
+  entry: CachedTerminal;
 };
 
 function resolveTerminalFont(cssVar: (name: string) => string): string {
@@ -172,16 +260,25 @@ function runTerminalAction(action: TerminalAction, refs: TerminalRefs): void {
   dispatch[action]();
 }
 
-function terminalKeyHandler(stateRef: RefObject<TerminalRefs>): (event: KeyboardEvent) => boolean {
+function terminalKeyHandler(refs: TerminalRefs): (event: KeyboardEvent) => boolean {
   return (event) => {
     if (event.type !== "keydown") return true;
     const action = matchTerminalAction(event, getTerminalKeybinds());
     if (!action) return true;
     event.preventDefault();
     event.stopPropagation();
-    runTerminalAction(action, stateRef.current);
+    runTerminalAction(action, refs);
     return false;
   };
+}
+
+function refreshTerminalPresentation(entry: CachedTerminal, container: HTMLDivElement): void {
+  const term = entry.refs.term;
+  if (!term) return;
+  const styles = getComputedStyle(container);
+  const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
+  term.options.theme = buildTerminalTheme(cssVar);
+  term.options.fontSize = getTerminalFontSize();
 }
 
 function useTerminalPanelEffects({
@@ -196,81 +293,32 @@ function useTerminalPanelEffects({
   stateRef: RefObject<TerminalRefs>;
 }): void {
   useMountSubscription(() => {
-    const refs = stateRef.current;
-    refs.disposed = false;
-    refs.input = "";
-    refs.running = false;
-    let cleanupTerminal: (() => void) | null = null;
+    const container = containerRef.current;
+    if (!container) return () => {};
+    const entry = acquireCachedTerminal(ownerKey);
+    container.appendChild(entry.holder);
+    stateRef.current = entry.refs;
 
-    async function boot() {
-      const element = containerRef.current;
-      if (!element) return;
-      const [{ Terminal }, { FitAddon }, webLinksModule] = await Promise.all([
-        import("@xterm/xterm"),
-        import("@xterm/addon-fit"),
-        import("@xterm/addon-web-links").catch(() => null),
-      ]);
-      if (refs.disposed) return;
-      const styles = getComputedStyle(element);
-      const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
-      const fontFamily = resolveTerminalFont(cssVar);
-      const term = new Terminal({
-        cursorBlink: true,
-        cursorStyle: "block",
-        convertEol: false,
-        // 10k lines is still deep history; 50k made every kept-alive terminal
-        // hold a multi-MB buffer, which compounds across the mounted MRU set.
-        scrollback: 10_000,
-        allowProposedApi: true,
-        macOptionIsMeta: true,
-        rightClickSelectsWord: true,
-        smoothScrollDuration: 80,
-        minimumContrastRatio: 3,
-        fontFamily,
-        fontSize: getTerminalFontSize(),
-        fontWeightBold: "600",
-        lineHeight: 1.2,
-        letterSpacing: 0,
-        theme: buildTerminalTheme(cssVar),
-      });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      loadWebLinksAddon(term, webLinksModule);
-      term.attachCustomKeyEventHandler(terminalKeyHandler(stateRef));
-      term.open(element);
-      fit.fit();
-      refs.term = term;
-      refs.fit = fit;
-
-      const pty = getPtyBridge();
-      if (pty) {
-        try {
-          cleanupTerminal = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey });
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "unknown";
-          term.writeln(`\x1b[33mPTY unavailable: ${reason}\x1b[0m`);
-          term.writeln("\x1b[33mFalling back to non-interactive shell.\x1b[0m");
-          cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
-        }
-      } else {
-        term.writeln("\x1b[33mNo desktop PTY bridge — using web fallback (no TUI).\x1b[0m");
-        cleanupTerminal = bootFallback(term, fit, refs, element, cwd);
-      }
-
+    if (entry.booted) {
+      // Re-parented an already-live terminal: refresh theme/font (they may
+      // have changed while detached), fit to the new box, and focus.
+      refreshTerminalPresentation(entry, container);
       effectTimeout(() => {
-        if (!refs.disposed) term.focus();
+        if (!entry.refs.disposed) {
+          entry.refs.applyResize?.();
+          entry.refs.term?.focus();
+        }
       }, 0);
+    } else {
+      entry.booted = true;
+      void bootTerminal(entry, container, cwd, ownerKey);
     }
 
-    void boot();
-
     return () => {
-      refs.disposed = true;
-      cleanupTerminal?.();
-      refs.term?.dispose();
-      refs.term = null;
-      refs.fit = null;
-      refs.applyResize = null;
+      entry.lastUsed = Date.now();
+      entry.holder.remove();
+      // No dispose: the instance stays warm in the registry for the next
+      // mount; evictStaleTerminals bounds how many stay alive.
     };
   }, [containerRef, cwd, ownerKey, stateRef]);
 
@@ -286,6 +334,71 @@ function useTerminalPanelEffects({
   );
 }
 
+async function bootTerminal(
+  entry: CachedTerminal,
+  container: HTMLDivElement,
+  cwd: string | null,
+  ownerKey: string,
+): Promise<void> {
+  const refs = entry.refs;
+  const element = entry.holder;
+  const [{ Terminal }, { FitAddon }, webLinksModule] = await Promise.all([
+    import("@xterm/xterm"),
+    import("@xterm/addon-fit"),
+    import("@xterm/addon-web-links").catch(() => null),
+  ]);
+  if (refs.disposed) return;
+  const styles = getComputedStyle(container);
+  const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
+  const fontFamily = resolveTerminalFont(cssVar);
+  const term = new Terminal({
+    cursorBlink: true,
+    cursorStyle: "block",
+    convertEol: false,
+    // 10k lines is still deep history; 50k made every kept-alive terminal
+    // hold a multi-MB buffer, which compounds across the mounted MRU set.
+    scrollback: 10_000,
+    allowProposedApi: true,
+    macOptionIsMeta: true,
+    rightClickSelectsWord: true,
+    smoothScrollDuration: 80,
+    minimumContrastRatio: 3,
+    fontFamily,
+    fontSize: getTerminalFontSize(),
+    fontWeightBold: "600",
+    lineHeight: 1.2,
+    letterSpacing: 0,
+    theme: buildTerminalTheme(cssVar),
+  });
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  loadWebLinksAddon(term, webLinksModule);
+  term.attachCustomKeyEventHandler(terminalKeyHandler(refs));
+  term.open(element);
+  fit.fit();
+  refs.term = term;
+  refs.fit = fit;
+
+  const pty = getPtyBridge();
+  if (pty) {
+    try {
+      entry.cleanup = await bootPty({ pty, term, fit, refs, element, cwd, ownerKey, entry });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown";
+      term.writeln(`\x1b[33mPTY unavailable: ${reason}\x1b[0m`);
+      term.writeln("\x1b[33mFalling back to non-interactive shell.\x1b[0m");
+      entry.cleanup = bootFallback(term, fit, refs, element, cwd);
+    }
+  } else {
+    term.writeln("\x1b[33mNo PTY bridge available.\x1b[0m");
+    entry.cleanup = bootFallback(term, fit, refs, element, cwd);
+  }
+
+  effectTimeout(() => {
+    if (!refs.disposed && element.isConnected) term.focus();
+  }, 0);
+}
+
 async function bootPty({
   pty,
   term,
@@ -294,6 +407,7 @@ async function bootPty({
   element,
   cwd,
   ownerKey,
+  entry,
 }: PtyBootOptions): Promise<() => void> {
   const { cols, rows } = term;
   let currentId: string | null = null;
@@ -309,39 +423,51 @@ async function bootPty({
     }
     if (sessionId === currentId && !refs.disposed) term.write(chunk);
   });
+  const writeExit = (info: { exitCode: number; signal: number | null }) => {
+    term.writeln(
+      `\r\n\x1b[90m[process exited: code=${info.exitCode}${info.signal ? ` signal=${info.signal}` : ""}]\x1b[0m`,
+    );
+    entry.dead = true;
+  };
   const exitDisposer = pty.onExit((sessionId, info) => {
     if (!currentId) {
       queuedExits.push({ sessionId, info });
       return;
     }
     if (sessionId !== currentId || refs.disposed) return;
-    term.writeln(
-      `\r\n\x1b[90m[process exited: code=${info.exitCode}${info.signal ? ` signal=${info.signal}` : ""}]\x1b[0m`,
-    );
+    writeExit(info);
   });
+  // Web bridge: a stream reconnect re-delivers the full replay — reset the
+  // terminal first so nothing duplicates.
+  const snapshotDisposer =
+    pty.onSnapshot?.((sessionId, replay) => {
+      if (!currentId || sessionId !== currentId || refs.disposed) return;
+      term.reset();
+      if (replay) term.write(replay);
+    }) ?? null;
+
   const { id, replay } = await pty.open({ cwd: cwd ?? undefined, cols, rows, ownerKey });
   if (refs.disposed) {
     dataDisposer();
     exitDisposer();
+    snapshotDisposer?.();
     return () => {};
   }
   currentId = id;
+  entry.sessionId = id;
   if (replay) term.write(replay);
   for (const item of queuedData) {
     if (item.sessionId === id && !refs.disposed) term.write(item.chunk);
   }
   for (const item of queuedExits) {
     if (item.sessionId !== id || refs.disposed) continue;
-    const { info } = item;
-    term.writeln(
-      `\r\n\x1b[90m[process exited: code=${info.exitCode}${info.signal ? ` signal=${info.signal}` : ""}]\x1b[0m`,
-    );
+    writeExit(item.info);
   }
   const dataSub = term.onData((data) => {
     void pty.write(id, data);
   });
   refs.applyResize = () => {
-    if (refs.disposed) return;
+    if (refs.disposed || !element.isConnected) return;
     try {
       fit.fit();
       void pty.resize(id, term.cols, term.rows);
@@ -352,6 +478,7 @@ async function bootPty({
   return () => {
     dataDisposer();
     exitDisposer();
+    snapshotDisposer?.();
     dataSub.dispose();
     resizeObserver.disconnect();
   };
