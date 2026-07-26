@@ -1,9 +1,7 @@
 "use client";
 
-import { ChevronRight, Cpu } from "@/ui/icon-registry";
-import { Button, Card, Checkbox } from "@/ui";
+import { Button, Checkbox } from "@/ui";
 import { SettingsGroup, SettingsNotice } from "@/features/settings/settings-ui";
-import { FactGrid } from "@/features/setup/fact-grid";
 import {
   MANAGED_RUNTIME_BACKENDS,
   ManagedRuntimeInstallRows,
@@ -48,45 +46,30 @@ export function StepHardware({
     )
     .slice(0, 8);
 
-  return (
-    <div className="grid gap-6">
-      <Card padding="lg" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Cpu className="h-5 w-5 text-(--hl1)" />
-          <h2 className="text-lg font-medium">Hardware Check</h2>
-        </div>
-        <FactGrid
-          items={[
-            { label: "CPU", value: hardware.cpu },
-            { label: "Memory", value: hardware.memory },
-            { label: "GPU", value: hardware.gpu },
-            { label: "VRAM", value: hardware.vram },
-          ]}
-        />
-      </Card>
+  const facts: readonly [string, string][] = [
+    ["CPU", hardware.cpu],
+    ["Memory", hardware.memory],
+    ["GPU", hardware.gpu],
+    ["VRAM", hardware.vram],
+  ];
 
-      <Card padding="lg" className="space-y-4">
-        <Checkbox
-          checked={hardwareConfirmed}
-          onChange={setHardwareConfirmed}
-          className="rounded-lg border border-(--ui-border) bg-(--ui-surface)/40 px-4 py-3"
-          label="Configure models and runtimes on this controller."
-          labelClassName="font-normal"
-        />
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={continueFromHardware}
-            disabled={!hardwareConfirmed || upgrading}
-            icon={<ChevronRight className="h-4 w-4" />}
+  return (
+    <div className="space-y-6">
+      <div className="overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/40">
+        {facts.map(([label, value]) => (
+          <div
+            key={label}
+            className="flex items-baseline justify-between border-b border-(--ui-border)/60 px-5 py-3 last:border-b-0"
           >
-            Choose a model
-          </Button>
-        </div>
-      </Card>
+            <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">{label}</span>
+            <span className="font-mono text-[length:var(--fs-sm)] text-(--fg)">{value}</span>
+          </div>
+        ))}
+      </div>
 
       <SettingsGroup
-        title="Runtime setup"
-        description="Controller-managed Python environments for guided inference on the active target."
+        title="Runtimes"
+        description="Managed engines for this hardware. Install what the model you pick needs — or let the next step decide."
       >
         <ManagedRuntimeInstallRows
           backends={managedBackends}
@@ -107,6 +90,18 @@ export function StepHardware({
           </SettingsNotice>
         )}
       </SettingsGroup>
+
+      <div className="flex items-center justify-between gap-4">
+        <Checkbox
+          checked={hardwareConfirmed}
+          onChange={setHardwareConfirmed}
+          label="This is the machine that will run models."
+          labelClassName="font-normal"
+        />
+        <Button onClick={continueFromHardware} disabled={!hardwareConfirmed || upgrading}>
+          Continue
+        </Button>
+      </div>
     </div>
   );
 }

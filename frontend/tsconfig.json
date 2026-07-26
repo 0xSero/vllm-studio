@@ -26,7 +26,8 @@
       "@local-studio/agent-runtime": ["../services/agent-runtime/src/index.ts"],
       "@local-studio/agent-runtime/*": ["../services/agent-runtime/src/*.ts"],
       "@local-studio/contracts/*": ["../controller/contracts/*.ts"],
-      "@shared/agent/*": ["../shared/agent/*.ts"]
+      "@shared/agent/*": ["../shared/agent/*.ts"],
+      "@shared/*": ["../shared/*"]
     }
   },
   "include": [
