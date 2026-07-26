@@ -101,6 +101,10 @@ export type AppStore = AppSlice &
   ThemeSlice & {
     desktopSidebarPinnedOpen: boolean;
     setDesktopSidebarPinnedOpen: (open: boolean) => void;
+    // Phone-only navigation drawer. Lives in the store because the agent chat
+    // header owns the hamburger there, while the drawer itself is in the shell.
+    mobileNavOpen: boolean;
+    setMobileNavOpen: (open: boolean) => void;
   };
 
 const createAppStoreImpl: StateCreator<AppStore, [], [], AppStore> = (set, ...args) => ({
@@ -108,6 +112,8 @@ const createAppStoreImpl: StateCreator<AppStore, [], [], AppStore> = (set, ...ar
   ...createThemeSlice(set, ...args),
   desktopSidebarPinnedOpen: true,
   setDesktopSidebarPinnedOpen: (desktopSidebarPinnedOpen) => set({ desktopSidebarPinnedOpen }),
+  mobileNavOpen: false,
+  setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
 });
 
 const storage = createJSONStorage(() =>

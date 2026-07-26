@@ -45,6 +45,11 @@ type DurableSessionManager = Pick<
   "appendCustomEntry" | "getCwd" | "getEntries" | "getSessionFile" | "getSessionId"
 >;
 
+/** Appended to the system prompt for vision-capable models. Kept as an extra
+ *  section rather than a replacement so first-party extensions still apply. */
+const VISION_GUIDANCE =
+  "When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.";
+
 const messageText = (message: unknown): string | null => {
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
   const record = message as Record<string, unknown>;
@@ -302,19 +307,20 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                           agentDir,
                           modelRuntime: sharedModelRuntime,
                           resourceLoaderOptions: {
-                            additionalSkillPaths: selectedModel.vision ? [] : sessionOptions.skills,
-                            additionalExtensionPaths: selectedModel.vision
-                              ? []
-                              : sessionOptions.extensionPaths,
+                            additionalSkillPaths: sessionOptions.skills,
+                            additionalExtensionPaths: sessionOptions.extensionPaths,
                             additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+                            // Vision guidance is APPENDED, not substituted. This branch used to
+                            // set noExtensions/noSkills/noContextFiles and replace the whole
+                            // system prompt, which silently disabled every first-party extension
+                            // (session goal, artifact policy, plan, subagents) on any
+                            // vision-capable model — i.e. on the primary model.
                             ...(selectedModel.vision
                               ? {
-                                  noExtensions: true,
-                                  noSkills: true,
-                                  noContextFiles: true,
-                                  systemPromptOverride: () =>
-                                    "You are a precise visual reasoning assistant. When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.",
-                                  appendSystemPromptOverride: () => [],
+                                  appendSystemPromptOverride: (base: string[]) => [
+                                    ...base,
+                                    VISION_GUIDANCE,
+                                  ],
                                 }
                               : {}),
                           },

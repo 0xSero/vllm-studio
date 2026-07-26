@@ -17,7 +17,10 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Local Studio",
   description: "Model management for vLLM and SGLang",
-  manifest: "/manifest.json",
+  // The manifest link is written by hand in <head> below: it needs
+  // crossorigin="use-credentials" (Next's `manifest` field can't set it), or an
+  // access-gated deployment serves the login page instead of the manifest and
+  // the installed app falls back to a letter icon.
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -80,6 +83,7 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="zai-dark" suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" href="/mocks/logo-1.svg" type="image/svg+xml" />
         <meta name="mobile-web-app-capable" content="yes" />

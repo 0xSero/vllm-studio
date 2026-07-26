@@ -127,6 +127,16 @@ sync_frontend() {
   step "Syncing frontend"
   sync_dir frontend/src/ "$REMOTE_DIR/frontend/src/"
   sync_dir frontend/scripts/ "$REMOTE_DIR/frontend/scripts/" 2>/dev/null || true
+  # start-standalone.mjs copies public/ into .next/standalone at boot, so
+  # manifest/icon changes only land if public/ ships too. No --delete here:
+  # remote public/ holds assets that were never checked in.
+  rsync -az --exclude 'node_modules' -e "ssh $SSH_OPTS" \
+    frontend/public/ "$REMOTE:$REMOTE_DIR/frontend/public/" 2>/dev/null || true
+  # pi extensions / MCP servers / plugins / skills are runtime resources: the
+  # agent-runtime resolves them from frontend/desktop/resources at turn time.
+  # Until this was added the remote ran a months-stale extension set.
+  rsync -az --exclude 'node_modules' --exclude '*.test.ts' -e "ssh $SSH_OPTS" \
+    frontend/desktop/resources/ "$REMOTE:$REMOTE_DIR/frontend/desktop/resources/" 2>/dev/null || true
   local frontend_files=(
     frontend/package.json
     frontend/package-lock.json

@@ -40,11 +40,12 @@
     "typecheck": "tsc --noEmit",
     "typecheck:desktop": "tsc -p desktop/tsconfig.json",
     "check:cycles": "madge --extensions ts,tsx --circular src",
-    "check:static": "npm run lint && npm run typecheck && npm run typecheck:desktop && npm run check:cycles && npm run check:ui-structure",
+    "check:static": "npm run lint && npm run typecheck && npm run typecheck:desktop && npm run typecheck:extensions && npm run check:cycles && npm run check:ui-structure",
     "test": "bun test src desktop",
     "test:e2e": "playwright test --config e2e/controller-agent.config.ts",
     "check:quality": "node scripts/validate-package-json.mjs && npm run check:static && npm run test && npm run check:cleanup && npm run build",
-    "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck"
+    "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck",
+    "typecheck:extensions": "tsc -p desktop/resources/pi-extensions/tsconfig.json"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.80.8",

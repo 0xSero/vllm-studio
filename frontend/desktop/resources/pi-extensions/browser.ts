@@ -35,13 +35,13 @@ function failedToolResult(
 async function callBrowserAction(
   verb: string,
   payload: Record<string, unknown>,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BROWSER_TOOL_TIMEOUT_MS);
   const abort = () => controller.abort();
-  signal.addEventListener("abort", abort, { once: true });
-  if (signal.aborted) controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const response = await fetch(`${FRONTEND_BASE}/api/agent/browser/${verb}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,7 +51,7 @@ async function callBrowserAction(
     signal: controller.signal,
   }).finally(() => {
     clearTimeout(timeout);
-    signal.removeEventListener("abort", abort);
+    signal?.removeEventListener("abort", abort);
   });
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
@@ -69,7 +69,7 @@ async function callBrowserAction(
 async function safeBrowserAction(
   verb: string,
   payload: Record<string, unknown>,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   try {
     return await callBrowserAction(verb, payload, signal);

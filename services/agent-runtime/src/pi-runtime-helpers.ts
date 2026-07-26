@@ -95,34 +95,39 @@ export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unk
   });
 }
 
-// Locate bundled first-party extensions in both development checkouts and packaged
-// Electron resource directories. Environment overrides keep this testable and
-// let desktop packaging repair paths without changing runtime code.
+// Bundled desktop resources live at <repo>/frontend/desktop/resources/<kind>/.
+// Resolution has to work from three different working directories: the repo
+// root (dev), frontend/ (next build), and services/agent-runtime — the deployed
+// systemd unit's WorkingDirectory. The old ladder only ever tried one "..", so
+// on the server EVERY bundled extension, MCP server and skill silently failed
+// to resolve and none of them loaded. Walk up instead of enumerating.
+function resolveBundledResourcePath(kind: string, name: string, override?: string): string | null {
+  if (override && existsSync(override)) return override;
+  if (process.resourcesPath) {
+    const packaged = path.join(process.resourcesPath, "desktop", "resources", kind, name);
+    if (existsSync(packaged)) return packaged;
+  }
+  let dir = process.cwd();
+  for (let depth = 0; depth < 5; depth += 1) {
+    for (const prefix of [
+      ["frontend", "desktop", "resources"],
+      ["desktop", "resources"],
+    ]) {
+      const candidate = path.join(dir, ...prefix, kind, name);
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 export function resolveBundledPiExtensionPath(
   fileName: string,
   envOverride?: string,
 ): string | null {
-  const candidates = [
-    envOverride,
-    process.resourcesPath
-      ? path.join(process.resourcesPath, "desktop", "resources", "pi-extensions", fileName)
-      : null,
-    path.resolve(process.cwd(), "frontend", "desktop", "resources", "pi-extensions", fileName),
-    path.resolve(process.cwd(), "desktop", "resources", "pi-extensions", fileName),
-    path.resolve(
-      process.cwd(),
-      "..",
-      "frontend",
-      "desktop",
-      "resources",
-      "pi-extensions",
-      fileName,
-    ),
-  ].filter((value): value is string => Boolean(value));
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  return resolveBundledResourcePath("pi-extensions", fileName, envOverride);
 }
 
 export function resolveBrowserExtensionPath(): string | null {
@@ -145,18 +150,7 @@ export function resolvePlanExtensionPath(): string | null {
 
 /** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
 export function resolveBundledMcpServerPath(fileName: string): string | null {
-  const candidates = [
-    process.resourcesPath
-      ? path.join(process.resourcesPath, "desktop", "resources", "mcp", fileName)
-      : null,
-    path.resolve(process.cwd(), "frontend", "desktop", "resources", "mcp", fileName),
-    path.resolve(process.cwd(), "desktop", "resources", "mcp", fileName),
-    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "mcp", fileName),
-  ].filter((value): value is string => Boolean(value));
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  return resolveBundledResourcePath("mcp", fileName);
 }
 
 export function resolveConnectorsExtensionPath(): string | null {
@@ -164,6 +158,10 @@ export function resolveConnectorsExtensionPath(): string | null {
     "connectors.ts",
     process.env.LOCAL_STUDIO_CONNECTORS_EXTENSION_PATH,
   );
+}
+
+export function resolveGoalExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("goal.ts", process.env.LOCAL_STUDIO_GOAL_EXTENSION_PATH);
 }
 
 export function resolveSubagentsExtensionPath(): string | null {
@@ -191,19 +189,7 @@ export function resolveAgentPolicyExtensionPath(): string | null {
 // matching tool surface is ON so it can be appended to the SDK skill list and
 // teach the model how/when to use those tools.
 function resolveBundledSkillPath(name: string, override?: string): string | null {
-  const candidates = [
-    override,
-    process.resourcesPath
-      ? path.join(process.resourcesPath, "desktop", "resources", "skills", name)
-      : null,
-    path.resolve(process.cwd(), "frontend", "desktop", "resources", "skills", name),
-    path.resolve(process.cwd(), "desktop", "resources", "skills", name),
-    path.resolve(process.cwd(), "..", "frontend", "desktop", "resources", "skills", name),
-  ].filter((value): value is string => Boolean(value));
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  return resolveBundledResourcePath("skills", name, override);
 }
 
 export function resolveBrowserSkillPath(): string | null {
@@ -296,6 +282,8 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     browserExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
+    // Puts the session objective in the system prompt of every turn.
+    resolveGoalExtensionPath(),
   ]);
 }
 

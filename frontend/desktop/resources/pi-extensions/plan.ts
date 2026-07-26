@@ -29,13 +29,13 @@ function planUrl(): string {
 async function callPlan(
   method: "GET" | "POST",
   body: Record<string, unknown> | null,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<{ markdown?: string; updatedAt?: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PLAN_TOOL_TIMEOUT_MS);
   const abort = () => controller.abort();
-  signal.addEventListener("abort", abort, { once: true });
-  if (signal.aborted) controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const response = await fetch(planUrl(), {
     method,
     headers: method === "POST" ? { "Content-Type": "application/json" } : undefined,
@@ -43,7 +43,7 @@ async function callPlan(
     signal: controller.signal,
   }).finally(() => {
     clearTimeout(timeout);
-    signal.removeEventListener("abort", abort);
+    signal?.removeEventListener("abort", abort);
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
   return (await response.json()) as { markdown?: string; updatedAt?: string };

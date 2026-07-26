@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { type ComponentType } from "react";
-import { Activity, Clock, MessageSquare, Rows2, ServerCog, TrendingUp } from "@/ui/icon-registry";
+import { Activity, Clock, MessageSquare, ServerCog, TrendingUp } from "@/ui/icon-registry";
 
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 
+// Sessions has no nav row: the Search command palette is the session list.
 export const tabs = [
   { href: "/", label: "Status", icon: Activity },
   { href: "/agent", label: "Workbench", icon: MessageSquare },
-  { href: "/agent/sessions", label: "Sessions", icon: Rows2 },
   { href: "/agent/automations", label: "Automations", icon: Clock },
   { href: "/configure", label: "Configure", icon: ServerCog },
   { href: "/usage", label: "Usage", icon: TrendingUp },
@@ -17,7 +17,6 @@ export const tabs = [
 
 export function mobilePageTitle(pathname: string): string {
   if (pathname.startsWith("/agent/automations")) return "Automations";
-  if (pathname.startsWith("/agent/sessions")) return "Sessions";
   if (pathname.startsWith("/agent")) return "Workbench";
   if (pathname.startsWith("/logs")) return "Logs";
   const tab = tabs.find((entry) => isRouteActive(pathname, entry.href));
@@ -29,11 +28,7 @@ export function isRouteActive(pathname: string, href: string): boolean {
     return pathname === "/";
   }
   if (href === "/agent") {
-    return (
-      pathname.startsWith("/agent") &&
-      !pathname.startsWith("/agent/automations") &&
-      !pathname.startsWith("/agent/sessions")
-    );
+    return pathname.startsWith("/agent") && !pathname.startsWith("/agent/automations");
   }
   if (href === "/settings") {
     return pathname.startsWith("/settings");
@@ -69,13 +64,11 @@ export function NavItemMobile({
       href={href}
       prefetch={false}
       onClick={onClick}
-      className={`mb-1 flex h-12 items-center gap-3 border-l-2 px-2 text-sm font-medium transition-colors ${
-        active
-          ? "border-(--accent) text-(--fg)"
-          : "border-transparent text-(--dim) hover:text-(--fg)"
+      className={`flex h-12 items-center gap-4 rounded-xl px-3 text-[17px] transition-colors ${
+        active ? "bg-(--active) font-medium text-(--fg)" : "text-(--fg)/80 active:bg-(--hover)"
       }`}
     >
-      <Icon className="h-5 w-5 shrink-0" />
+      <Icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.6} />
       <span>{label}</span>
     </Link>
   );

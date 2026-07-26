@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { PanelRightClose, PanelRightOpen, TerminalSquare } from "@/ui/icon-registry";
+import { Menu, PanelRightFilled, PanelRightHollow, TerminalSquare } from "@/ui/icon-registry";
+import { useAppStore } from "@/store";
 import { MenuItem } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
@@ -47,9 +48,10 @@ export function AgentChatPaneHeader({
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const ref = useRef<HTMLDivElement>(null);
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
   useClickOutside(ref, open, () => setOpen(false));
   const reasoningVisible = useReasoningVisible();
-  const RightPanelIcon = rightPanelOpen ? PanelRightClose : PanelRightOpen;
+  const RightPanelIcon = rightPanelOpen ? PanelRightFilled : PanelRightHollow;
   const startRename = () => {
     setDraftTitle(title);
     setRenaming(true);
@@ -61,8 +63,18 @@ export function AgentChatPaneHeader({
     setRenaming(false);
   };
   return (
-    <div className="grid h-[var(--h-toolbar-pane)] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border) bg-(--color-header) py-0 pl-4 pr-2 text-xs">
-      <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
+    <div className="grid h-[var(--h-toolbar-pane)] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-(--border) bg-(--color-header) py-0 pl-3 pr-2 text-xs md:pl-4">
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(true)}
+          className="-ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg) md:hidden"
+          aria-label="Open navigation menu"
+          aria-controls="mobile-navigation-drawer"
+        >
+          <Menu className="pointer-events-none h-[18px] w-[18px]" />
+        </button>
+        <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
         {renaming ? (
           <input
             autoFocus
@@ -81,7 +93,7 @@ export function AgentChatPaneHeader({
           />
         ) : (
           <span
-            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-base)] font-medium leading-none text-(--fg)"
+            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-md)] font-medium leading-none text-(--fg) md:text-[length:var(--fs-base)]"
             title={title}
           >
             {title}
@@ -143,6 +155,7 @@ export function AgentChatPaneHeader({
             </MenuItem>
           </div>
         ) : null}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {canClose ? (
@@ -170,7 +183,7 @@ export function AgentChatPaneHeader({
             onFocus={preloadTerminalPanel}
             onClick={onOpenTerminal}
             aria-pressed={terminalOpen}
-            className={`relative z-10 -my-1 inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+            className={`relative z-10 -my-1 hidden h-8 w-8 items-center justify-center rounded-lg md:inline-flex ${
               terminalOpen
                 ? "bg-(--active) text-(--fg)"
                 : "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"

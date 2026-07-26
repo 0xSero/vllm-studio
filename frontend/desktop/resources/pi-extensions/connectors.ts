@@ -53,13 +53,13 @@ async function callConnectorTool(
   connectorId: string,
   tool: string,
   args: Record<string, unknown>,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
   const abort = () => controller.abort();
-  signal.addEventListener("abort", abort, { once: true });
-  if (signal.aborted) controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   try {
     const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
       method: "POST",
@@ -86,7 +86,7 @@ async function callConnectorTool(
     });
   } finally {
     clearTimeout(timeout);
-    signal.removeEventListener("abort", abort);
+    signal?.removeEventListener("abort", abort);
   }
 }
 

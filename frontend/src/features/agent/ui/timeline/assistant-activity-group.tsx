@@ -144,10 +144,14 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
           setUserExpanded(!expanded);
         }}
       >
+        {/* "Working" is a fixed short word and must never shrink, but the
+            collapsed summary grows with the turn ("Ran 20 commands · edited 13
+            files · …") and will not fit a phone column — let it truncate
+            instead of forcing the row wider than the thread. */}
         <span
-          className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
-            working || live ? "codex-shimmer-text" : "text-(--fg)/48"
-          }`}
+          className={`text-[length:var(--fs-base)] font-normal leading-5 ${
+            working || live ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate"
+          } ${working || live ? "" : "text-(--fg)/48"}`}
         >
           {working || live ? "Working" : summary}
         </span>
@@ -155,9 +159,9 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
           <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--dim)/70">
             {preview}
           </span>
-        ) : (
+        ) : working || live ? (
           <span className="min-w-0 flex-1" />
-        )}
+        ) : null}
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {expanded ? (

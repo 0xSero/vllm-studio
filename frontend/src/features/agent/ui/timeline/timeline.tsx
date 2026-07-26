@@ -229,6 +229,8 @@ function PromptMarkers({
     [messages],
   );
   const viewportHeight = useScrollerViewportHeight(scroller);
+  const promptIds = useMemo(() => prompts.map((prompt) => prompt.id), [prompts]);
+  const activeId = useActivePromptId(scroller, promptIds);
   if (!scroller || prompts.length === 0) return null;
   const maxCount = Math.max(
     1,
@@ -237,7 +239,15 @@ function PromptMarkers({
         (PROMPT_MARKER_HEIGHT_PX + PROMPT_MARKER_GAP_PX),
     ),
   );
-  const visible = prompts.length > maxCount ? prompts.slice(-maxCount) : prompts;
+  // The rail shows a window of prompts. It normally sits at the newest end, but
+  // slides back so the prompt you have scrolled to stays represented.
+  const activeIndex = activeId ? prompts.findIndex((prompt) => prompt.id === activeId) : -1;
+  let windowStart = Math.max(0, prompts.length - maxCount);
+  if (activeIndex >= 0 && activeIndex < windowStart) {
+    windowStart = Math.max(0, activeIndex - Math.floor(maxCount / 2));
+  }
+  const visible =
+    prompts.length > maxCount ? prompts.slice(windowStart, windowStart + maxCount) : prompts;
   const scrollToPrompt = (id: string) => {
     const node = Array.from(
       scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
@@ -246,14 +256,14 @@ function PromptMarkers({
   };
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
-      {visible.map((marker, index) => {
+      {visible.map((marker) => {
         const active = hoveredId === marker.id;
         return (
           <button
             key={marker.id}
             type="button"
             className="prompt-minimap-marker"
-            data-current={index === visible.length - 1 ? "true" : undefined}
+            data-current={marker.id === activeId ? "true" : undefined}
             aria-label={`Scroll to prompt: ${marker.label}`}
             onMouseEnter={() => setHoveredId(marker.id)}
             onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
@@ -277,6 +287,56 @@ function PromptMarkers({
       })}
     </nav>
   );
+}
+
+/** How far below the top of the viewport a prompt has to be before it counts as
+ *  the one you are reading. Roughly one header's worth of slack. */
+const ACTIVE_PROMPT_OFFSET_PX = 96;
+
+/** Scroll-spy for the prompt rail: which prompt is currently in view. The rail
+ *  used to hardcode the highlight to the newest marker, so scrolling back
+ *  through a long thread left the indicator stuck at the end. */
+function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[]): string | null {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!scroller) return () => undefined;
+      // Scroll fires far faster than we can usefully re-render; coalesce to one
+      // read per frame.
+      let frame = 0;
+      const notify = () => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          onStoreChange();
+        });
+      };
+      scroller.addEventListener("scroll", notify, { passive: true });
+      const resizeObserver = new ResizeObserver(notify);
+      resizeObserver.observe(scroller);
+      return () => {
+        scroller.removeEventListener("scroll", notify);
+        resizeObserver.disconnect();
+        if (frame) cancelAnimationFrame(frame);
+      };
+    },
+    [scroller],
+  );
+  const getSnapshot = useCallback(() => {
+    if (!scroller || promptIds.length === 0) return null;
+    const threshold = scroller.getBoundingClientRect().top + ACTIVE_PROMPT_OFFSET_PX;
+    const wanted = new Set(promptIds);
+    let active: string | null = null;
+    // One ordered pass over the rendered messages: the last prompt whose top has
+    // crossed the threshold is the one being read.
+    for (const node of scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]")) {
+      const id = node.dataset.timelineMessageId;
+      if (!id || !wanted.has(id)) continue;
+      if (node.getBoundingClientRect().top > threshold) break;
+      active = id;
+    }
+    return active ?? promptIds[0] ?? null;
+  }, [promptIds, scroller]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
 function useScrollerViewportHeight(scroller: HTMLDivElement | null): number {

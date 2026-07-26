@@ -28,6 +28,14 @@ export {
   FolderOpen,
 } from "./icons";
 
+// Sidebar toggles — see panel-toggle-icons.tsx for why these are not lucide's.
+export {
+  PanelLeftFilled,
+  PanelLeftHollow,
+  PanelRightFilled,
+  PanelRightHollow,
+} from "./panel-toggle-icons";
+
 // Lucide-react re-exports — all icons used across the app
 export {
   Activity,

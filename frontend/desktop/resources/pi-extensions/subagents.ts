@@ -57,8 +57,8 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
       const abort = () => controller.abort();
-      signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) controller.abort();
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) controller.abort();
       try {
         const response = await fetch(`${FRONTEND_BASE}/api/agent/subagents`, {
           method: "POST",
@@ -91,7 +91,7 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
         return textResult(`Subagent failed: ${message}`, { failed: true, name: args.name });
       } finally {
         clearTimeout(timeout);
-        signal.removeEventListener("abort", abort);
+        signal?.removeEventListener("abort", abort);
       }
     },
   });

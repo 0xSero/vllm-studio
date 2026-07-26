@@ -22,7 +22,11 @@ import {
   type SessionsCommandComponent,
 } from "@/features/shell/left-sidebar-lazy";
 import { MobileNavigationDrawer } from "@/features/shell/left-sidebar-mobile-drawer";
-import { mobilePageTitle, routeHidesAppSidebar } from "@/features/shell/left-sidebar-nav";
+import {
+  isRouteActive,
+  mobilePageTitle,
+  routeHidesAppSidebar,
+} from "@/features/shell/left-sidebar-nav";
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
@@ -37,18 +41,28 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const hidesAppSidebar = routeHidesAppSidebar(pathname);
   const projectsNavImmediate = pathname.startsWith("/agent");
-  const { desktopSidebarPinnedOpen, setDesktopSidebarPinnedOpen, sidebarWidth, setSidebarWidth } =
-    useAppStore(
-      useShallow((s) => ({
-        desktopSidebarPinnedOpen: s.desktopSidebarPinnedOpen,
-        setDesktopSidebarPinnedOpen: s.setDesktopSidebarPinnedOpen,
-        sidebarWidth: s.sidebarWidth,
-        setSidebarWidth: s.setSidebarWidth,
-      })),
-    );
+  const {
+    desktopSidebarPinnedOpen,
+    setDesktopSidebarPinnedOpen,
+    sidebarWidth,
+    setSidebarWidth,
+    mobileMenuOpen,
+    setMobileMenuOpen,
+  } = useAppStore(
+    useShallow((s) => ({
+      desktopSidebarPinnedOpen: s.desktopSidebarPinnedOpen,
+      setDesktopSidebarPinnedOpen: s.setDesktopSidebarPinnedOpen,
+      sidebarWidth: s.sidebarWidth,
+      setSidebarWidth: s.setSidebarWidth,
+      mobileMenuOpen: s.mobileNavOpen,
+      setMobileMenuOpen: s.setMobileNavOpen,
+    })),
+  );
   const isExpanded = desktopSidebarPinnedOpen;
   const clampedSidebarWidth = clampSidebarWidth(sidebarWidth);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // The chat session carries its own header (hamburger + right-panel toggle),
+  // so the app topbar would be a second stacked row there.
+  const chatSessionRoute = isRouteActive(pathname, "/agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const activeSessions = useOpenSessions();
   const [sidebarResizing, setSidebarResizing] = useState(false);
@@ -66,7 +80,13 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mobileMenuOpen]);
+  }, [mobileMenuOpen, setMobileMenuOpen]);
+
+  // Navigating anywhere dismisses the drawer — it covers the whole screen, so
+  // leaving it open over the destination is never what you want.
+  useMountSubscription(() => {
+    setMobileMenuOpen(false);
+  }, [pathname, setMobileMenuOpen]);
 
   useMountSubscription(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -167,25 +187,27 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         onOpenSearch={() => setSearchOpen(true)}
       />
 
-      <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
-        <Link href="/" className="flex min-w-0 items-center gap-2.5">
-          <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
-            {mobilePageTitle(pathname)}
-          </span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(true)}
-            className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md border-0 bg-transparent text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
-            aria-label="Open navigation menu"
-            aria-expanded={mobileMenuOpen}
-            aria-controls="mobile-navigation-drawer"
-          >
-            <Menu className="h-[18px] w-[18px]" />
-          </button>
+      {chatSessionRoute ? null : (
+        <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
+          <Link href="/" className="flex min-w-0 items-center gap-2.5">
+            <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
+              {mobilePageTitle(pathname)}
+            </span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="flex !h-8 !min-h-8 !w-8 !min-w-8 items-center justify-center rounded-md border-0 bg-transparent text-(--dim) transition-colors hover:bg-(--surface) hover:text-(--fg)"
+              aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-navigation-drawer"
+            >
+              <Menu className="h-[18px] w-[18px]" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {mobileMenuOpen ? (
         <MobileNavigationDrawer
@@ -204,7 +226,10 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         />
       ) : null}
 
-      <main className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0">
+      <main
+        data-no-topbar={chatSessionRoute ? "true" : undefined}
+        className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0"
+      >
         {children}
       </main>
     </div>

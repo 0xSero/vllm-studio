@@ -8,8 +8,8 @@ import {
   ChevronRight,
   Search as SearchIcon,
   Settings,
-  PanelLeftOpen,
-  PanelLeftClose,
+  PanelLeftHollow,
+  PanelLeftFilled,
 } from "@/ui/icon-registry";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
@@ -76,7 +76,7 @@ export function DesktopSidebar({
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+            <PanelLeftHollow className="h-4 w-4" strokeWidth={1.75} />
           </button>
         </div>
       ) : null}
@@ -94,7 +94,7 @@ export function DesktopSidebar({
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
               >
-                <PanelLeftClose className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <PanelLeftFilled className="h-3.5 w-3.5" strokeWidth={1.75} />
               </button>
               <button
                 onClick={() => window.history.back()}

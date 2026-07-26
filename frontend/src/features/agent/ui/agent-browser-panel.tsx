@@ -9,13 +9,14 @@ import {
   ListChecks,
   MessageSquarePlus,
   PanelRight,
-  PanelRightClose,
+  PanelRightFilled,
   Plus,
   ScanSearch,
   TerminalSquare,
   type LucideIcon,
 } from "@/ui/icon-registry";
 import { CloseIcon } from "@/ui/icons";
+import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
 import {
   rememberPersistentTerminalOwner,
   removePersistentTerminalOwner,
@@ -271,6 +272,7 @@ export function AgentBrowserPanel({
         onMouseDown={startComputerResize}
         className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--fg)/8"
       />
+      <MobileSheetGrip label="Close panel" onDismiss={() => tools.setComputerOpen(false)} />
       <ComputerHeader
         tab={tools.computer.tab}
         openTabs={tools.computer.tabs}
@@ -401,7 +403,9 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    <div className="relative flex h-11 shrink-0 items-center gap-1.5 border-b border-(--border) bg-(--color-header) px-2 text-[length:var(--fs-sm)]">
+    // Same height token as the chat pane header (and as ComputerPanelFallback):
+    // a hardcoded h-11 here sat 4px taller than the session header beside it.
+    <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1.5 border-b border-(--border) bg-(--color-header) px-2 text-[length:var(--fs-sm)]">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
@@ -507,7 +511,7 @@ function ComputerHeader({
           title="Close controller panel"
           aria-label="Close controller panel"
         >
-          <PanelRightClose className="pointer-events-none h-3.5 w-3.5" />
+          <PanelRightFilled className="pointer-events-none h-3.5 w-3.5" />
         </button>
       </div>
     </div>

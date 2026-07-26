@@ -147,15 +147,15 @@ export function ComposerProjectDrawer({
   return (
     <section
       data-testid="composer-drawer"
-      className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-3 text-[length:var(--fs-sm)] shadow-[var(--composer-elevation-inner)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
+      className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-2 text-[length:var(--fs-xs)] shadow-[var(--composer-elevation-inner)] md:pb-3 md:text-[length:var(--fs-sm)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
     >
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="flex h-8 w-full items-center gap-2.5 px-3 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03]"
+        className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03] md:h-8 md:gap-2.5 md:px-3"
       >
-        <FolderOpen className="h-4 w-4 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4" strokeWidth={1.7} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {goal && !open ? (
           <span className="min-w-0 max-w-[45%] truncate text-(--fg)/40" title={goal.objective}>
