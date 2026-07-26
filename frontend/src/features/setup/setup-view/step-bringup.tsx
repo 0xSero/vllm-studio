@@ -59,9 +59,7 @@ export function StepBringup({
 }) {
   const download = activeDownload ?? downloads[0] ?? null;
   const downloadDone = step > 3 || download?.status === "completed";
-  const downloadState: ChecklistState = downloadDone ? "done" : step === 3 ? "active" : "pending";
-  const serveState: ChecklistState = step > 4 ? "done" : step === 4 ? "active" : "pending";
-  const verifyState: ChecklistState = step === 5 ? "active" : "pending";
+  const { downloadState, serveState, verifyState } = checklistStates(step, downloadDone);
   const percent = progressPercent(download);
 
   return (
@@ -78,58 +76,15 @@ export function StepBringup({
           ) : null
         }
       >
-        {download ? (
-          <div className="space-y-3">
-            <ProgressBar progress={percent} />
-            <div className="flex items-center justify-between font-mono text-[11px] text-(--ui-muted)">
-              <span>
-                {formatBytes(download.downloaded_bytes)} / {formatBytes(download.total_bytes ?? 0)}
-                {download.speed_bytes_per_second
-                  ? ` · ${formatBytes(download.speed_bytes_per_second)}/s`
-                  : ""}
-              </span>
-              <span>{percent}%</span>
-            </div>
-            <div className="flex gap-2">
-              {download.status === "downloading" ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => pauseDownload(download.id)}
-                  icon={<Pause className="h-3 w-3" />}
-                >
-                  Pause
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => resumeDownload(download.id)}
-                  icon={<Play className="h-3 w-3" />}
-                >
-                  Resume
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => cancelDownload(download.id)}
-                icon={<X className="h-3 w-3" />}
-              >
-                Cancel
-              </Button>
-              {downloadDone ? (
-                <Button size="sm" onClick={continueToLaunch}>
-                  Continue
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-            <Spinner size="xs" /> Waiting for the transfer to register…
-          </div>
-        )}
+        <DownloadProgress
+          download={download}
+          percent={percent}
+          downloadDone={downloadDone}
+          onPause={pauseDownload}
+          onResume={resumeDownload}
+          onCancel={cancelDownload}
+          onContinue={continueToLaunch}
+        />
       </ChecklistRow>
 
       <ChecklistRow
@@ -137,52 +92,16 @@ export function StepBringup({
         title={`Serve with ${backend}`}
         meta={serveState === "done" ? "running" : null}
       >
-        <div className="space-y-3">
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-            Creates the launch recipe and starts the engine. Cold starts compile kernels — the
-            first launch is the slowest one.
-          </p>
-          {launchError ? (
-            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-(--err)/40 bg-(--err)/5 p-3 font-mono text-[11px] text-(--err)">
-              {launchError}
-            </pre>
-          ) : null}
-          <Button
-            onClick={configureAndLaunch}
-            disabled={configuringRecipe}
-            icon={configuringRecipe ? <Spinner size="xs" /> : undefined}
-          >
-            {configuringRecipe ? "Launching…" : launchError ? "Retry launch" : "Launch"}
-          </Button>
-        </div>
+        <ServeStep
+          launchError={launchError}
+          configuringRecipe={configuringRecipe}
+          onLaunch={configureAndLaunch}
+        />
       </ChecklistRow>
 
       <ChecklistRow state={verifyState} title="First tokens" meta={null}>
         <div className="space-y-3">
-          {benchmarkResult ? (
-            <div className="flex items-baseline gap-6 font-mono tabular-nums">
-              <div>
-                <div className="text-[length:var(--fs-xl)] text-(--fg)">
-                  {benchmarkResult.generation_tps.toFixed(1)}
-                  <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
-                </div>
-                <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">decode</div>
-              </div>
-              <div>
-                <div className="text-[length:var(--fs-xl)] text-(--fg)">
-                  {benchmarkResult.total_time_s.toFixed(1)}
-                  <span className="ml-1 text-[11px] text-(--ui-muted)">s</span>
-                </div>
-                <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">
-                  {benchmarkResult.completion_tokens} tokens
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-              One real request through the API proves the whole path.
-            </p>
-          )}
+          <BenchmarkReadout result={benchmarkResult} />
           {benchmarkError ? <div className="text-xs text-(--err)">{benchmarkError}</div> : null}
           <div className="flex gap-2">
             <Button
@@ -196,7 +115,11 @@ export function StepBringup({
             </Button>
             {benchmarkResult ? (
               <>
-                <Button size="sm" onClick={openChat} icon={<MessageSquare className="h-3.5 w-3.5" />}>
+                <Button
+                  size="sm"
+                  onClick={openChat}
+                  icon={<MessageSquare className="h-3.5 w-3.5" />}
+                >
                   Open chat
                 </Button>
                 <Button variant="secondary" size="sm" onClick={openDashboard}>
@@ -207,6 +130,155 @@ export function StepBringup({
           </div>
         </div>
       </ChecklistRow>
+    </div>
+  );
+}
+
+/** Transfer progress plus its pause/resume/cancel controls. */
+function DownloadProgress({
+  download,
+  percent,
+  downloadDone,
+  onPause,
+  onResume,
+  onCancel,
+  onContinue,
+}: {
+  download: ModelDownload | null;
+  percent: number;
+  downloadDone: boolean;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  onCancel: (id: string) => void;
+  onContinue: () => void;
+}) {
+  if (!download) {
+    return (
+      <div className="flex items-center gap-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+        <Spinner size="xs" /> Waiting for the transfer to register…
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <ProgressBar progress={percent} />
+      <div className="flex items-center justify-between font-mono text-[11px] text-(--ui-muted)">
+        <span>
+          {formatBytes(download.downloaded_bytes)} / {formatBytes(download.total_bytes ?? 0)}
+          {download.speed_bytes_per_second
+            ? ` · ${formatBytes(download.speed_bytes_per_second)}/s`
+            : ""}
+        </span>
+        <span>{percent}%</span>
+      </div>
+      <div className="flex gap-2">
+        {download.status === "downloading" ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onPause(download.id)}
+            icon={<Pause className="h-3 w-3" />}
+          >
+            Pause
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onResume(download.id)}
+            icon={<Play className="h-3 w-3" />}
+          >
+            Resume
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onCancel(download.id)}
+          icon={<X className="h-3 w-3" />}
+        >
+          Cancel
+        </Button>
+        {downloadDone ? (
+          <Button size="sm" onClick={onContinue}>
+            Continue
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Decode rate and latency once the first real request has come back. */
+function BenchmarkReadout({ result }: { result: SetupBenchmarkResult | null }) {
+  if (!result) {
+    return (
+      <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+        One real request through the API proves the whole path.
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-baseline gap-6 font-mono tabular-nums">
+      <div>
+        <div className="text-[length:var(--fs-xl)] text-(--fg)">
+          {result.generation_tps.toFixed(1)}
+          <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
+        </div>
+        <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">decode</div>
+      </div>
+      <div>
+        <div className="text-[length:var(--fs-xl)] text-(--fg)">
+          {result.total_time_s.toFixed(1)}
+          <span className="ml-1 text-[11px] text-(--ui-muted)">s</span>
+        </div>
+        <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">
+          {result.completion_tokens} tokens
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function checklistStates(
+  step: number,
+  downloadDone: boolean,
+): { downloadState: ChecklistState; serveState: ChecklistState; verifyState: ChecklistState } {
+  return {
+    downloadState: downloadDone ? "done" : step === 3 ? "active" : "pending",
+    serveState: step > 4 ? "done" : step === 4 ? "active" : "pending",
+    verifyState: step === 5 ? "active" : "pending",
+  };
+}
+
+/** Recipe creation plus engine launch, with the last failure kept visible. */
+function ServeStep({
+  launchError,
+  configuringRecipe,
+  onLaunch,
+}: {
+  launchError: string | null;
+  configuringRecipe: boolean;
+  onLaunch: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+        Creates the launch recipe and starts the engine. Cold starts compile kernels — the first
+        launch is the slowest one.
+      </p>
+      {launchError ? (
+        <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-(--err)/40 bg-(--err)/5 p-3 font-mono text-[11px] text-(--err)">
+          {launchError}
+        </pre>
+      ) : null}
+      <Button
+        onClick={onLaunch}
+        disabled={configuringRecipe}
+        icon={configuringRecipe ? <Spinner size="xs" /> : undefined}
+      >
+        {configuringRecipe ? "Launching…" : launchError ? "Retry launch" : "Launch"}
+      </Button>
     </div>
   );
 }
