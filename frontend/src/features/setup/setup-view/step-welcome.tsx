@@ -1,7 +1,6 @@
 "use client";
 
-import { ChevronRight, Rocket } from "@/ui/icon-registry";
-import { Button, Card, Input, StatusPill, Spinner } from "@/ui";
+import { Button, Input, Spinner } from "@/ui";
 import type { StudioDiagnostics, StudioSettings } from "@/lib/types";
 
 export function StepWelcome({
@@ -19,50 +18,43 @@ export function StepWelcome({
   saveSettings: () => void;
   savingSettings: boolean;
 }) {
-  const controllerLabel = diagnostics
+  const target = diagnostics
     ? [
         diagnostics.platform,
         diagnostics.arch,
-        diagnostics.gpus.length ? `${diagnostics.gpus.length} GPU` : null,
+        diagnostics.gpus.length ? `${diagnostics.gpus.length} GPU` : "no GPU",
+        diagnostics.memory_total ? `${Math.round(diagnostics.memory_total / 1024 ** 3)} GB` : null,
       ]
         .filter(Boolean)
         .join(" · ")
-    : "controller pending";
+    : null;
 
   return (
-    <Card padding="lg" className="space-y-5">
-      <div className="flex items-center gap-3">
-        <Rocket className="h-5 w-5 text-(--hl1)" />
-        <h2 className="text-lg font-medium">Choose your controller storage</h2>
+    <div className="rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/40 p-6">
+      <div className="flex items-center justify-between border-b border-(--ui-border)/60 pb-4">
+        <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">This machine</span>
+        <span className="font-mono text-[length:var(--fs-sm)] text-(--fg)">
+          {target ?? <Spinner size="xs" />}
+        </span>
       </div>
-      <p className="text-sm text-(--dim)">
-        The active controller owns model weights, runtimes, and launches. This desktop stays the
-        control surface, even when the controller is another machine.
-      </p>
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--ui-border) bg-(--ui-hover)/30 px-3 py-2 text-sm">
-        <span className="text-(--dim)">Setup target</span>
-        <StatusPill tone={diagnostics ? "info" : "warning"}>{controllerLabel}</StatusPill>
-      </div>
-      <div>
+      <div className="pt-5">
         <Input
-          label="Model weights directory"
+          label="Where model weights live"
           value={modelsDir}
           onChange={(event) => setModelsDir(event.target.value)}
-          placeholder="/mnt/llm_models"
+          placeholder="/models"
         />
-        {settings?.config_path && (
-          <div className="text-xs text-(--dim) mt-2">Controller config: {settings.config_path}</div>
-        )}
+        {settings?.config_path ? (
+          <p className="mt-2 truncate font-mono text-[10px] text-(--ui-muted)">
+            {settings.config_path}
+          </p>
+        ) : null}
       </div>
-      <div className="flex items-center justify-end gap-3">
-        <Button
-          onClick={saveSettings}
-          disabled={savingSettings}
-          icon={savingSettings ? <Spinner /> : <ChevronRight className="h-4 w-4" />}
-        >
-          Inspect hardware
+      <div className="mt-6 flex justify-end">
+        <Button onClick={saveSettings} disabled={savingSettings}>
+          {savingSettings ? "Saving…" : "Continue"}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }

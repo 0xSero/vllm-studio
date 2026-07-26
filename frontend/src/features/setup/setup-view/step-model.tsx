@@ -1,75 +1,81 @@
 "use client";
 
-import { useCallback } from "react";
-import { ChevronLeft, DownloadCloud, Zap } from "@/ui/icon-registry";
-import { Button, Card, Input, Select } from "@/ui";
-import type { ModelDownload, StarterPreset } from "@/lib/types";
+import { useCallback, useMemo, useState } from "react";
+import { DownloadCloud, Zap } from "@/ui/icon-registry";
+import { Button, Input, Select, Spinner } from "@/ui";
+import type { ModelDownload, StarterPreset, StudioDiagnostics } from "@/lib/types";
 import type { ModelIndexVariant } from "@/lib/api/studio";
 import { TierSection, useModelIndex } from "@/features/recipes/recipes-content/picks-shared";
+import { setupRecommendations, type SetupRecommendation } from "../recommendations";
 import type { GgufFileOption } from "../setup-model-files";
 
 const NO_DOWNLOADS: Map<string, ModelDownload> = new Map();
 const NO_STARTING: Set<string> = new Set();
 
-function ModelIndexCatalog({
-  presetsCount,
-  maxVram,
-  beginVariantDownload,
+/**
+ * Model selection, benchmark-led: the first thing shown is the pareto frontier of
+ * configs we have actually measured that fit this rig (size x 1.5 headroom), each with
+ * its expected decode speed. The generic catalog and the raw HF input stay available,
+ * but they are the fallback, not the greeting.
+ */
+
+function RecommendationRow({
+  recommendation,
+  onDownload,
 }: {
-  presetsCount: number;
-  maxVram: number;
-  beginVariantDownload: (modelId: string, allowPatterns?: string[]) => void;
+  recommendation: SetupRecommendation;
+  onDownload: (hfId: string) => void;
 }) {
-  const { data } = useModelIndex();
-  const tiers = data?.tiers ?? [];
-
-  const handleDownload = useCallback(
-    (variant: ModelIndexVariant) =>
-      beginVariantDownload(
-        variant.repo,
-        variant.allow_patterns?.length ? variant.allow_patterns : undefined,
-      ),
-    [beginVariantDownload],
-  );
-
-  if (tiers.length === 0) return null;
-
-  const modelCount = tiers.reduce((count, tier) => count + tier.models.length, 0);
-
+  const quantBadge = recommendation.quant.toUpperCase();
   return (
-    <details className="group" open={presetsCount === 0}>
-      <summary className="flex cursor-pointer items-center justify-between list-none">
+    <div className="group flex items-center gap-4 border-b border-(--ui-border)/60 px-4 py-3 transition-colors last:border-b-0 hover:bg-(--ui-hover)/40">
+      <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm text-(--dim) uppercase tracking-wider">
-            {presetsCount > 0 ? "More models" : "Curated catalog"}
+          <span className="truncate text-[length:var(--fs-md)] text-(--fg)">
+            {recommendation.name}
           </span>
-          <span className="text-xs text-(--dim)">
-            {modelCount} models in {tiers.length} {tiers.length === 1 ? "tier" : "tiers"}
+          <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-(--ui-muted)">
+            {quantBadge}
           </span>
         </div>
-        <span className="text-xs text-(--dim)">
-          Detected VRAM: {maxVram ? `${maxVram.toFixed(1)} GB` : "CPU"}
-        </span>
-      </summary>
-      <div className="mt-4 space-y-5">
-        {tiers.map((tier) => (
-          <TierSection
-            key={tier.id}
-            tier={tier}
-            poolGb={maxVram}
-            downloadsByModel={NO_DOWNLOADS}
-            startingModelIds={NO_STARTING}
-            onDownload={handleDownload}
-          />
-        ))}
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-(--ui-muted)">
+          <span>{recommendation.filesize}</span>
+          <span>·</span>
+          <span>needs ~{recommendation.requiredGb} GB</span>
+          {recommendation.measuredOnThisClass ? (
+            <>
+              <span>·</span>
+              <span className="text-(--ui-success)">measured on your class</span>
+            </>
+          ) : null}
+        </div>
       </div>
-    </details>
+      {recommendation.rigDecodeTps !== null ? (
+        <div className="shrink-0 text-right">
+          <div className="font-mono text-[length:var(--fs-md)] tabular-nums text-(--fg)">
+            {Math.round(recommendation.rigDecodeTps)}
+            <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
+          </div>
+          {recommendation.engine ? (
+            <div className="font-mono text-[10px] uppercase text-(--ui-muted)">
+              {recommendation.engine}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <Button
+        size="sm"
+        onClick={() => onDownload(recommendation.hfId)}
+        icon={<DownloadCloud className="h-3.5 w-3.5" />}
+      >
+        Get
+      </Button>
+    </div>
   );
 }
 
-function PresetCard({
+function RemotePresetRow({
   preset,
-  beginPresetSetup,
   remoteApiKey,
   setRemoteApiKey,
   connectingRemote,
@@ -77,73 +83,43 @@ function PresetCard({
   connectRemotePreset,
 }: {
   preset: StarterPreset;
-  beginPresetSetup: (preset: StarterPreset) => void;
   remoteApiKey: string;
   setRemoteApiKey: (value: string) => void;
   connectingRemote: boolean;
   remoteError: string | null;
   connectRemotePreset: (preset: StarterPreset) => void;
 }) {
-  const isRemote = preset.kind === "remote";
   return (
-    <Card padding="md">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{preset.name}</div>
-        <span className="text-[10px] uppercase tracking-wider text-(--dim)">
-          {isRemote ? "remote" : (preset.backend ?? "local")}
+    <div className="rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/25 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[length:var(--fs-md)] text-(--fg)">{preset.name}</div>
+          <div className="truncate font-mono text-[11px] text-(--ui-muted)">
+            {preset.remote?.model}
+          </div>
+        </div>
+        <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[10px] uppercase text-(--ui-muted)">
+          remote
         </span>
       </div>
-      <div className="font-mono text-[11px] text-(--dim)">
-        {preset.model_id ?? preset.remote?.model}
+      <div className="mt-3 flex gap-2">
+        <Input
+          type="password"
+          value={remoteApiKey}
+          onChange={(event) => setRemoteApiKey(event.target.value)}
+          placeholder="API key"
+        />
+        <Button
+          size="sm"
+          onClick={() => connectRemotePreset(preset)}
+          disabled={connectingRemote}
+          icon={connectingRemote ? <Spinner size="xs" /> : <Zap className="h-3.5 w-3.5" />}
+        >
+          {connectingRemote ? "Connecting" : "Connect"}
+        </Button>
       </div>
-      <p className="text-xs text-(--dim) mt-2">{preset.description}</p>
-      {!isRemote && (
-        <>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-[0.08em] text-(--dim) mt-3">
-            <span>{preset.size_gb ? `${preset.size_gb} GB` : "—"}</span>
-            {preset.min_vram_gb ? (
-              <>
-                <span>·</span>
-                <span>{preset.min_vram_gb} GB VRAM</span>
-              </>
-            ) : null}
-            {preset.fits === false && (
-              <>
-                <span>·</span>
-                <span className="text-(--err)">tight fit</span>
-              </>
-            )}
-          </div>
-          <Button
-            size="sm"
-            onClick={() => beginPresetSetup(preset)}
-            className="mt-3"
-            icon={<DownloadCloud className="h-3.5 w-3.5" />}
-          >
-            Download
-          </Button>
-        </>
-      )}
-      {isRemote && (
-        <div className="mt-3 space-y-2">
-          <Input
-            type="password"
-            value={remoteApiKey}
-            onChange={(event) => setRemoteApiKey(event.target.value)}
-            placeholder="API key"
-          />
-          {remoteError && <div className="text-xs text-(--err)">{remoteError}</div>}
-          <Button
-            size="sm"
-            onClick={() => connectRemotePreset(preset)}
-            disabled={connectingRemote}
-            icon={<Zap className="h-3.5 w-3.5" />}
-          >
-            {connectingRemote ? "Connecting…" : "Connect"}
-          </Button>
-        </div>
-      )}
-    </Card>
+      {remoteError ? <div className="mt-2 text-xs text-(--err)">{remoteError}</div> : null}
+    </div>
   );
 }
 
@@ -155,6 +131,7 @@ export function StepModel({
   connectingRemote,
   remoteError,
   connectRemotePreset,
+  diagnostics,
   maxVram,
   manualModelId,
   setManualModelId,
@@ -164,7 +141,6 @@ export function StepModel({
   resolvingManualModel,
   beginVariantDownload,
   submitManualModel,
-  setStep,
 }: {
   presets: StarterPreset[];
   beginPresetSetup: (preset: StarterPreset) => void;
@@ -173,6 +149,7 @@ export function StepModel({
   connectingRemote: boolean;
   remoteError: string | null;
   connectRemotePreset: (preset: StarterPreset) => void;
+  diagnostics: StudioDiagnostics | null;
   maxVram: number;
   manualModelId: string;
   setManualModelId: (value: string) => void;
@@ -182,55 +159,120 @@ export function StepModel({
   resolvingManualModel: boolean;
   beginVariantDownload: (modelId: string, allowPatterns?: string[]) => void;
   submitManualModel: () => void;
-  setStep: (step: number) => void;
 }) {
+  const recommendations = useMemo(
+    () => setupRecommendations(diagnostics, maxVram),
+    [diagnostics, maxVram],
+  );
+  const [showCatalog, setShowCatalog] = useState(recommendations.length === 0);
+  const { data: catalog } = useModelIndex();
+  const tiers = catalog?.tiers ?? [];
+  const remotePresets = presets.filter((preset) => preset.kind === "remote");
+  const localPresets = presets.filter((preset) => preset.kind !== "remote");
+
+  const handleRecommendationDownload = useCallback(
+    (hfId: string) => {
+      // Prefer the preset pipeline when one exists for this repo (it carries launch
+      // config); otherwise download the repo directly.
+      const preset = localPresets.find((candidate) => candidate.model_id === hfId);
+      if (preset) beginPresetSetup(preset);
+      else beginVariantDownload(hfId);
+    },
+    [localPresets, beginPresetSetup, beginVariantDownload],
+  );
+
+  const handleCatalogDownload = useCallback(
+    (variant: ModelIndexVariant) =>
+      beginVariantDownload(
+        variant.repo,
+        variant.allow_patterns?.length ? variant.allow_patterns : undefined,
+      ),
+    [beginVariantDownload],
+  );
+
   return (
-    <div className="space-y-6">
-      {presets.length > 0 && (
-        <Card padding="lg">
-          <div className="text-sm text-(--dim) uppercase tracking-wider">Recommended paths</div>
-          <h2 className="text-lg font-medium">Choose a starting point</h2>
-          <div className="grid md:grid-cols-3 gap-4 mt-4">
-            {presets.map((preset) => (
-              <PresetCard
-                key={preset.id}
-                preset={preset}
-                beginPresetSetup={beginPresetSetup}
-                remoteApiKey={remoteApiKey}
-                setRemoteApiKey={setRemoteApiKey}
-                connectingRemote={connectingRemote}
-                remoteError={remoteError}
-                connectRemotePreset={connectRemotePreset}
+    <div className="space-y-8">
+      {recommendations.length > 0 ? (
+        <div>
+          <div className="mb-2 flex items-baseline justify-between px-1">
+            <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted)">
+              Measured on hardware like yours
+            </span>
+            <span className="font-mono text-[11px] text-(--ui-muted)">
+              {maxVram > 0 ? `${Math.round(maxVram)} GB pool` : null}
+            </span>
+          </div>
+          <div className="overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/25">
+            {recommendations.map((recommendation) => (
+              <RecommendationRow
+                key={recommendation.hfId}
+                recommendation={recommendation}
+                onDownload={handleRecommendationDownload}
               />
             ))}
           </div>
-        </Card>
-      )}
+        </div>
+      ) : null}
 
-      <ModelIndexCatalog
-        presetsCount={presets.length}
-        maxVram={maxVram}
-        beginVariantDownload={beginVariantDownload}
-      />
+      {remotePresets.length > 0 ? (
+        <div className="space-y-2">
+          {remotePresets.map((preset) => (
+            <RemotePresetRow
+              key={preset.id}
+              preset={preset}
+              remoteApiKey={remoteApiKey}
+              setRemoteApiKey={setRemoteApiKey}
+              connectingRemote={connectingRemote}
+              remoteError={remoteError}
+              connectRemotePreset={connectRemotePreset}
+            />
+          ))}
+        </div>
+      ) : null}
 
-      <Card padding="lg">
-        <div className="text-sm text-(--dim) uppercase tracking-wider">Hugging Face</div>
-        <h3 className="text-lg font-medium">Use an exact model ID</h3>
-        <div className="flex flex-col sm:flex-row gap-3 mt-3">
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowCatalog((value) => !value)}
+          className="px-1 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted) transition-colors hover:text-(--fg)"
+        >
+          {showCatalog ? "Hide full catalog" : "Browse the full catalog"}
+        </button>
+        {showCatalog ? (
+          <div className="mt-3 space-y-5">
+            {tiers.map((tier) => (
+              <TierSection
+                key={tier.id}
+                tier={tier}
+                poolGb={maxVram}
+                downloadsByModel={NO_DOWNLOADS}
+                startingModelIds={NO_STARTING}
+                onDownload={handleCatalogDownload}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <div className="mb-2 px-1 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted)">
+          Or any Hugging Face repo
+        </div>
+        <div className="flex gap-2">
           <div className="flex-1">
             <Input
               value={manualModelId}
               onChange={(event) => setManualModelId(event.target.value)}
-              placeholder="e.g. meta-llama/Llama-3.1-8B-Instruct"
+              placeholder="org/model-name"
             />
           </div>
           <Button
             variant="secondary"
             onClick={submitManualModel}
             disabled={resolvingManualModel}
-            icon={<DownloadCloud className="h-4 w-4" />}
+            icon={resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />}
           >
-            {resolvingManualModel ? "Inspecting…" : "Download"}
+            {resolvingManualModel ? "Inspecting" : "Download"}
           </Button>
         </div>
         {manualGgufOptions.length > 1 ? (
@@ -242,23 +284,9 @@ export function StepModel({
               placeholder="Choose one quantization"
               options={manualGgufOptions}
             />
-            <p className="mt-2 text-xs text-(--dim)">
-              This repository contains multiple weight variants. Local Studio downloads only the
-              file you select.
-            </p>
           </div>
         ) : null}
-        <div className="flex items-center gap-3 mt-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setStep(1)}
-            icon={<ChevronLeft className="h-3.5 w-3.5" />}
-          >
-            Back
-          </Button>
-        </div>
-      </Card>
+      </div>
     </div>
   );
 }
