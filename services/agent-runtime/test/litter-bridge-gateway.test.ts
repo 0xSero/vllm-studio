@@ -1393,6 +1393,21 @@ test("published handoff metadata is private and removed only by its owner", () =
   const metadata = JSON.parse(readFileSync(filepath, "utf8")) as Record<string, unknown>;
   assert.equal(metadata.url, "http://127.0.0.1:54321/api/litter-bridge/v1");
   assert.equal(statSync(filepath).mode & 0o777, 0o600);
+
+  // The descriptor publishes this instance's own pi runtime so external
+  // consumers launch the matching binary + data dir instead of guessing.
+  assert.equal(metadata.piAgentDir, path.resolve(path.join(directory, "pi-agent")));
+  const piRuntime = metadata.piRuntime as
+    | { program: string; args: string[]; env: Record<string, string> }
+    | undefined;
+  assert.ok(piRuntime, "descriptor should publish piRuntime");
+  assert.equal(piRuntime.program, process.execPath);
+  assert.equal(piRuntime.args.length, 1);
+  assert.ok(
+    piRuntime.args[0].endsWith(path.join("dist", "cli.js")),
+    `piRuntime.args should point at the pi CLI, got ${piRuntime.args[0]}`,
+  );
+
   gateway.dispose();
   assert.throws(() => statSync(filepath));
 });
