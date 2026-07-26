@@ -386,19 +386,7 @@ export function createSessionRuntimeController(
         ]),
     );
     const sessions = binding?.getSessions() ?? [];
-    // A piSessionId held by 2+ open sessions (forked/duplicated tab, pref copy,
-    // or the mid-turn adoption window before one settles) can't disambiguate
-    // which session a runtime entry belongs to. Trusting the pi reverse-index
-    // there would let ONE runtime entry promote/idle AND repoint every session
-    // sharing the id — direct two-session crosstalk. Collect the collided ids so
-    // we fall back to the unambiguous direct runtime match for them.
-    const sharedPiIds = new Set<string>();
-    const seenPiIds = new Set<string>();
-    for (const session of sessions) {
-      if (!session.piSessionId) continue;
-      if (seenPiIds.has(session.piSessionId)) sharedPiIds.add(session.piSessionId);
-      else seenPiIds.add(session.piSessionId);
-    }
+    const sharedPiIds = collidingPiSessionIds(sessions);
     for (const session of sessions.filter((entry) => entry.status !== "loading")) {
       const connectionKey = connectionKeyFor(session);
       const direct = byRuntime.get(connectionKey);
@@ -418,28 +406,52 @@ export function createSessionRuntimeController(
         // branch inside the grace window UNLESS a newer turn was accepted after
         // the finish (a genuine restart supersedes the finish and must recover).
         if (withinFinishGrace(session.id, fetchStartedAt)) continue;
-        const patch = patchRuntimeStatus(status);
-        const nextConnectionKey = piMatch?.serverKey ?? connectionKey;
-        if (nextConnectionKey !== connectionKey) {
-          adoptConnectionKey(
-            session,
-            nextConnectionKey,
-            status.piSessionId ?? session.piSessionId ?? null,
-          );
-        }
-        commit(session.id, (current) => {
-          const nextStatus = current.status === "stopping" ? "stopping" : "running";
-          if (sameRuntimePatch(current, patch, nextStatus)) return current;
-          return {
-            ...current,
-            ...patch,
-            status: nextStatus,
-          };
-        });
+        promoteFromRuntimeList(session, status, connectionKey, piMatch?.serverKey);
       } else if (session.status === "running" || session.status === "stopping") {
         idleFromRuntimeList(session, status, fetchStartedAt);
       }
     }
+  };
+
+  // A piSessionId held by 2+ open sessions (forked/duplicated tab, pref copy, or
+  // the mid-turn adoption window before one settles) can't disambiguate which
+  // session a runtime entry belongs to. Trusting the pi reverse-index there
+  // would let ONE runtime entry promote/idle AND repoint every session sharing
+  // the id — direct two-session crosstalk. Collect the collided ids so the
+  // caller falls back to the unambiguous direct runtime match for them.
+  const collidingPiSessionIds = (sessions: readonly Session[]): Set<string> => {
+    const shared = new Set<string>();
+    const seen = new Set<string>();
+    for (const session of sessions) {
+      if (!session.piSessionId) continue;
+      if (seen.has(session.piSessionId)) shared.add(session.piSessionId);
+      else seen.add(session.piSessionId);
+    }
+    return shared;
+  };
+
+  // The runtime reports this session as active: adopt a new connection key if
+  // the pi match moved it, then promote to running unless it is stopping.
+  const promoteFromRuntimeList = (
+    session: Session,
+    status: RuntimeStatus,
+    connectionKey: string,
+    matchedServerKey: string | undefined,
+  ) => {
+    const patch = patchRuntimeStatus(status);
+    const nextConnectionKey = matchedServerKey ?? connectionKey;
+    if (nextConnectionKey !== connectionKey) {
+      adoptConnectionKey(
+        session,
+        nextConnectionKey,
+        status.piSessionId ?? session.piSessionId ?? null,
+      );
+    }
+    commit(session.id, (current) => {
+      const nextStatus = current.status === "stopping" ? "stopping" : "running";
+      if (sameRuntimePatch(current, patch, nextStatus)) return current;
+      return { ...current, ...patch, status: nextStatus };
+    });
   };
 
   // Only a session the runtime once acknowledged (status "running") may be
