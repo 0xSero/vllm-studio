@@ -10,7 +10,7 @@ import type {
   RuntimeBackendInfo,
   RuntimeTarget,
 } from "@local-studio/contracts/system";
-import { detectBackend, listProcesses } from "../process/process-utilities";
+import { detectBackend, listProcesses } from "./process-scan";
 import { makeRuntimeTarget } from "./runtime-target-factory";
 import { managedLlamaServerPath } from "./managed-llamacpp";
 import {

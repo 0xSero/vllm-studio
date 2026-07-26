@@ -94,7 +94,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
             running: Boolean(current),
             process: current,
             inference_port: context.config.inference_port,
-            launching: context.launchState.getLaunchingRecipeId(),
+            launching: context.bridge.launchingRecipeId(),
             launch_failures: context.launchFailureBudget.listActive(),
           });
         }),

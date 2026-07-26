@@ -443,22 +443,8 @@ for (const model of withRuns) {
   });
 }
 
-/* Derived hardware: any class whose pool covers size*1.5 also fits (untested). */
-const allTargets = new Map();
-for (const row of hardwareRows) {
-  const target = hardwareTarget(row.hardwareKey, row.displayName, false);
-  if (target.minMemoryGb > 0) allTargets.set(row.hardwareKey, target);
-}
-for (const entry of entries.values()) {
-  const needed = entry.filesizeGb * 1.5;
-  const tested = new Set(entry.hardware.map((target) => target.id));
-  for (const target of allTargets.values()) {
-    if (!tested.has(target.id) && target.minMemoryGb >= needed) {
-      entry.hardware.push(target);
-    }
-  }
-  entry.hardware.sort((a, b) => a.minMemoryGb - b.minMemoryGb);
-}
+// Only tested hardware is stored; "would fit" classes are derived at load time from
+// filesizeGb (requiredPoolGb in shared/model-recommendations.ts), not materialized.
 
 /* Rank: pareto layers over (best decode tps, quality). Models missing quality rank
    after the frontier of measured-quality models, ordered by decode. */
@@ -511,7 +497,14 @@ const file = {
   models: output,
 };
 
-writeFileSync(OUT_PATH, `${JSON.stringify(file, null, 2)}\n`);
+// One line per model: readable diffs without 15k lines of pretty-printed JSON.
+const body = Object.entries(output)
+  .map(([key, value]) => `    ${JSON.stringify(key)}: ${JSON.stringify(value)}`)
+  .join(",\n");
+writeFileSync(
+  OUT_PATH,
+  `{\n  "version": ${file.version},\n  "updated": ${JSON.stringify(file.updated)},\n  "source": ${JSON.stringify(file.source)},\n  "models": {\n${body}\n  }\n}\n`,
+);
 console.log(`wrote ${Object.keys(output).length} entries -> ${OUT_PATH}`);
 const measured = [...entries.values()].filter((entry) => !entry._sizeEstimated).length;
 console.log(`sizes: ${measured} measured, ${entries.size - measured} estimated`);

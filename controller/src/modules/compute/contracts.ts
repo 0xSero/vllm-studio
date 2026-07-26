@@ -163,7 +163,10 @@ export type HandleReference =
       readonly startToken: string | null;
     }
   | { readonly kind: "docker"; readonly container: string }
-  | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string };
+  | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string }
+  /** A device hold with no supervised process — e.g. the speech worker claims its GPU
+   *  through the lease shim. Always "alive"; freed only by explicit release. */
+  | { readonly kind: "pinned"; readonly holder: string };
 
 /**
  * The single source of truth for a running deployment, persisted as one JSON file per

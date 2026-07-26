@@ -4,7 +4,7 @@ import type { AppContext } from "../../app-context";
 import { buildSseHeaders } from "../../http/sse";
 import type { ProviderRouteConfig } from "../../services/provider-routing";
 import type { Recipe } from "../models/types";
-import { getDefaultReasoningParser } from "../engines/process/model-runtime-defaults";
+import { getDefaultReasoningParser } from "../compute/recipe-defaults";
 import { shouldBufferImplicitReasoningContent } from "./reasoning";
 import { recordStreamingInferenceUsage } from "./inference-accounting";
 import { createToolCallStream, type StreamUsage } from "./tool-call-stream";

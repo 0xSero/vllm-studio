@@ -48,13 +48,6 @@ interface EngineProcessInfo extends PublicProcessInfo {
 
 export type { EngineProcessInfo as ProcessInfo };
 
-export interface LaunchResult {
-  success: boolean;
-  pid: number | null;
-  message: string;
-  log_file: string | null;
-}
-
 export type GpuInfo = Omit<GPU, "id"> & Required<Pick<GPU, "power_draw" | "power_limit">>;
 
 export type SystemConfigResponse = ConfigData;

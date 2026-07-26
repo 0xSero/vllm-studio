@@ -23,7 +23,7 @@ export const registerRecipeRoutes = defineRoutes((app, context) => {
         Effect.gen(function* () {
           const recipes = yield* context.stores.recipeStore.list();
           const current = yield* getObservedProcess("recipes.list");
-          const launchingId = context.launchState.getLaunchingRecipeId();
+          const launchingId = context.bridge.launchingRecipeId();
           const result = recipes.map((recipe) => {
             const crashLoop = context.launchFailureBudget.get(recipe.id);
             let status = crashLoop?.blocked ? "error" : "stopped";
@@ -63,7 +63,7 @@ export const registerRecipeRoutes = defineRoutes((app, context) => {
           yield* context.stores.recipeStore
             .save(recipe)
             .pipe(Effect.mapError((error) => badRequest(error.message)));
-          context.engineService.resetLaunchFailureBudget(recipe.id);
+          context.launchFailureBudget.reset(recipe.id);
           yield* publish(new Event(CONTROLLER_EVENTS.RECIPE_CREATED, { recipe }));
           return ctx.json({ success: true, id: recipe.id });
         }),
@@ -84,7 +84,7 @@ export const registerRecipeRoutes = defineRoutes((app, context) => {
           yield* context.stores.recipeStore
             .save(recipe)
             .pipe(Effect.mapError((error) => badRequest(error.message)));
-          context.engineService.resetLaunchFailureBudget(recipe.id);
+          context.launchFailureBudget.reset(recipe.id);
           yield* publish(new Event(CONTROLLER_EVENTS.RECIPE_UPDATED, { recipe }));
           return ctx.json({ success: true, id: recipe.id });
         }),
@@ -100,7 +100,7 @@ export const registerRecipeRoutes = defineRoutes((app, context) => {
           if (!(yield* context.stores.recipeStore.delete(recipeId))) {
             return yield* Effect.fail(notFound("Recipe not found"));
           }
-          context.engineService.resetLaunchFailureBudget(recipeId);
+          context.launchFailureBudget.reset(recipeId);
           yield* context.eventManager.publish(
             new Event(CONTROLLER_EVENTS.RECIPE_DELETED, { recipe_id: recipeId }),
           );

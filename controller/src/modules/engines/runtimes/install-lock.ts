@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import type { Config } from "../../../config/env";
 import type { EngineBackend } from "@local-studio/contracts/system";
 import { ENGINE_INSTALL_TIMEOUT_MS } from "../configs";
-import { pidExists } from "../process/process-utilities";
+import { pidExists } from "./pid-exists";
 
 interface EngineInstallLock {
   path: string;

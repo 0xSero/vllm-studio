@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { DownloadCloud, Zap } from "@/ui/icon-registry";
 import { Button, Input, Select, Spinner } from "@/ui";
 import type { ModelDownload, StarterPreset, StudioDiagnostics } from "@/lib/types";
 import type { ModelIndexVariant } from "@/lib/api/studio";
 import { TierSection, useModelIndex } from "@/features/recipes/recipes-content/picks-shared";
-import { setupRecommendations, type SetupRecommendation } from "../recommendations";
+import { useSetupRecommendations, type SetupRecommendation } from "../recommendations";
 import type { GgufFileOption } from "../setup-model-files";
 
 const NO_DOWNLOADS: Map<string, ModelDownload> = new Map();
@@ -50,10 +50,10 @@ function RecommendationRow({
           ) : null}
         </div>
       </div>
-      {recommendation.rigDecodeTps !== null ? (
+      {recommendation.decodeTps !== null ? (
         <div className="shrink-0 text-right">
           <div className="font-mono text-[length:var(--fs-md)] tabular-nums text-(--fg)">
-            {Math.round(recommendation.rigDecodeTps)}
+            {Math.round(recommendation.decodeTps)}
             <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
           </div>
           {recommendation.engine ? (
@@ -160,11 +160,8 @@ export function StepModel({
   beginVariantDownload: (modelId: string, allowPatterns?: string[]) => void;
   submitManualModel: () => void;
 }) {
-  const recommendations = useMemo(
-    () => setupRecommendations(diagnostics, maxVram),
-    [diagnostics, maxVram],
-  );
-  const [showCatalog, setShowCatalog] = useState(recommendations.length === 0);
+  const recommendations = useSetupRecommendations(diagnostics, maxVram);
+  const [showCatalog, setShowCatalog] = useState(false);
   const { data: catalog } = useModelIndex();
   const tiers = catalog?.tiers ?? [];
   const remotePresets = presets.filter((preset) => preset.kind === "remote");
