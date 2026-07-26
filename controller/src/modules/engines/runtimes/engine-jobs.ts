@@ -23,7 +23,7 @@ import {
   type ManagedPythonBackend,
   type InstallProgressUpdate,
 } from "./managed-venv";
-import { pidExists } from "../process/process-utilities";
+import { pidExists } from "./pid-exists";
 
 export { managedVenvPath } from "./managed-venv";
 

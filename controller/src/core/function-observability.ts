@@ -48,7 +48,7 @@ export const observeControllerFunction = <A, E, R>(
 export const findObservedInferenceProcess = (
   context: AppContext,
   label: string,
-): ReturnType<AppContext["processManager"]["findInferenceProcess"]> =>
+): ReturnType<AppContext["bridge"]["findInferenceProcess"]> =>
   observeControllerFunction(context, `${label}.findInferenceProcess`, () =>
-    context.processManager.findInferenceProcess(context.config.inference_port),
+    context.bridge.findInferenceProcess(),
   );

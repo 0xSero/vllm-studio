@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "@/ui/icon-registry";
-import { Alert, AppPage, Button, Card, PageContainer, PageHeader, Spinner } from "@/ui";
+import { Alert, Spinner } from "@/ui";
 import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
 import type {
   EngineJob,
@@ -11,11 +11,9 @@ import type {
   StudioDiagnostics,
   StudioSettings,
 } from "@/lib/types";
-import { SetupStepper } from "./setup-stepper";
-import { StepBenchmark } from "./step-benchmark";
-import { StepDownload } from "./step-download";
+import { SetupShell, type SetupSurface } from "./setup-shell";
+import { StepBringup } from "./step-bringup";
 import { StepHardware } from "./step-hardware";
-import { StepLaunch } from "./step-launch";
 import { StepModel } from "./step-model";
 import { StepWelcome } from "./step-welcome";
 import type { GgufFileOption } from "../setup-model-files";
@@ -83,186 +81,121 @@ interface SetupViewProps {
   skipSetup: () => void;
 }
 
-export function SetupView({
-  step,
-  setStep,
-  loading,
-  error,
-  loadWarning,
-  settings,
-  modelsDir,
-  setModelsDir,
-  diagnostics,
-  presets,
-  selectedPreset,
-  beginPresetSetup,
-  remoteApiKey,
-  setRemoteApiKey,
-  connectingRemote,
-  remoteError,
-  connectRemotePreset,
-  runtimeTargets,
-  runtimeJobs,
-  maxVram,
-  selectedModel,
-  manualModelId,
-  setManualModelId,
-  manualGgufOptions,
-  manualGgufFile,
-  setManualGgufFile,
-  resolvingManualModel,
-  savingSettings,
-  upgrading,
-  hardwareConfirmed,
-  setHardwareConfirmed,
-  downloads,
-  activeDownload,
-  pauseDownload,
-  resumeDownload,
-  cancelDownload,
-  saveSettings,
-  installRuntime,
-  updateRuntimeTarget,
-  beginVariantDownload,
-  submitManualModel,
-  continueFromHardware,
-  configuringRecipe,
-  launchError,
-  createdRecipeId,
-  configureAndLaunch,
-  benchmarking,
-  benchmarkResult,
-  benchmarkError,
-  runSetupBenchmark,
-  openChat,
-  openDashboard,
-  skipSetup,
-}: SetupViewProps) {
+/** Six wizard steps rendered as three surfaces: where things live, what to run, and a
+ *  live bring-up checklist. The state machine in use-setup is untouched. */
+const SURFACES: readonly (SetupSurface & { readonly steps: readonly number[] })[] = [
+  {
+    steps: [0, 1],
+    eyebrow: "Step 1 of 3 — Station",
+    title: "Set up your station",
+    sub: "Where weights live, and what this machine can run.",
+  },
+  {
+    steps: [2],
+    eyebrow: "Step 2 of 3 — Model",
+    title: "Pick a model",
+    sub: "Measured picks first — real launches on hardware like yours, with the speeds we saw.",
+  },
+  {
+    steps: [3, 4, 5],
+    eyebrow: "Step 3 of 3 — Bring-up",
+    title: "Bring it online",
+    sub: "Download, serve, first tokens.",
+  },
+];
+
+export function SetupView(props: SetupViewProps) {
+  const { step, loading, error, loadWarning, skipSetup } = props;
+  const surfaceIndex = SURFACES.findIndex((surface) => surface.steps.includes(step));
+  const surface = SURFACES[surfaceIndex] ?? SURFACES[0];
+
   return (
-    <AppPage className="min-h-screen">
-      <PageContainer width="lg">
-        <PageHeader
-          eyebrow="Local Studio onboarding"
-          title="Build your local AI station"
-          description="One guided path from controller hardware to a verified Serve and working agent."
-          actions={
-            <Button variant="secondary" size="sm" onClick={skipSetup}>
-              Skip for now
-            </Button>
-          }
-        />
-        <div className="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <SetupStepper step={step} />
-          <div className="min-w-0">
-            {loading ? (
-              <Card padding="lg" className="flex items-center gap-3">
-                <Spinner size="lg" className="text-(--dim)" />
-                <span className="text-sm text-(--dim)">Inspecting the active controller…</span>
-              </Card>
-            ) : null}
+    <SetupShell
+      surfaceIndex={Math.max(0, surfaceIndex)}
+      surfaceCount={SURFACES.length}
+      surface={surface}
+      onSkip={skipSetup}
+    >
+      {error ? (
+        <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
+          <SetupErrorBody error={error} />
+        </Alert>
+      ) : null}
+      {loadWarning && !error ? (
+        <Alert variant="warning" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
+          {loadWarning}
+        </Alert>
+      ) : null}
 
-            {error ? (
-              <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
-                <SetupErrorBody error={error} />
-              </Alert>
-            ) : null}
-
-            {loadWarning && !error ? (
-              <Alert
-                variant="warning"
-                icon={<AlertTriangle className="h-4 w-4" />}
-                className="mb-6"
-              >
-                {loadWarning}
-              </Alert>
-            ) : null}
-
-            {!loading && step === 0 ? (
-              <StepWelcome
-                modelsDir={modelsDir}
-                setModelsDir={setModelsDir}
-                settings={settings}
-                diagnostics={diagnostics}
-                saveSettings={saveSettings}
-                savingSettings={savingSettings}
-              />
-            ) : null}
-
-            {!loading && step === 1 ? (
-              <StepHardware
-                diagnostics={diagnostics}
-                runtimeTargets={runtimeTargets}
-                runtimeJobs={runtimeJobs}
-                installRuntime={installRuntime}
-                updateRuntimeTarget={updateRuntimeTarget}
-                upgrading={upgrading}
-                hardwareConfirmed={hardwareConfirmed}
-                setHardwareConfirmed={setHardwareConfirmed}
-                continueFromHardware={continueFromHardware}
-              />
-            ) : null}
-
-            {!loading && step === 2 ? (
-              <StepModel
-                presets={presets}
-                beginPresetSetup={beginPresetSetup}
-                remoteApiKey={remoteApiKey}
-                setRemoteApiKey={setRemoteApiKey}
-                connectingRemote={connectingRemote}
-                remoteError={remoteError}
-                connectRemotePreset={connectRemotePreset}
-                maxVram={maxVram}
-                manualModelId={manualModelId}
-                setManualModelId={setManualModelId}
-                manualGgufOptions={manualGgufOptions}
-                manualGgufFile={manualGgufFile}
-                setManualGgufFile={setManualGgufFile}
-                resolvingManualModel={resolvingManualModel}
-                beginVariantDownload={beginVariantDownload}
-                submitManualModel={submitManualModel}
-                setStep={setStep}
-              />
-            ) : null}
-
-            {!loading && step === 3 ? (
-              <StepDownload
-                selectedModel={selectedModel}
-                modelsDir={modelsDir}
-                downloads={downloads}
-                activeDownload={activeDownload}
-                pauseDownload={pauseDownload}
-                resumeDownload={resumeDownload}
-                cancelDownload={cancelDownload}
-                continueToLaunch={() => setStep(4)}
-                backToModels={() => setStep(2)}
-              />
-            ) : null}
-
-            {!loading && step === 4 ? (
-              <StepLaunch
-                backend={selectedPreset?.backend ?? "vllm"}
-                selectedModel={selectedModel}
-                createdRecipeId={createdRecipeId}
-                configuringRecipe={configuringRecipe}
-                launchError={launchError}
-                configureAndLaunch={configureAndLaunch}
-              />
-            ) : null}
-
-            {!loading && step === 5 ? (
-              <StepBenchmark
-                benchmarking={benchmarking}
-                benchmarkResult={benchmarkResult}
-                benchmarkError={benchmarkError}
-                runSetupBenchmark={runSetupBenchmark}
-                openChat={openChat}
-                openDashboard={openDashboard}
-              />
-            ) : null}
-          </div>
+      {loading ? (
+        <div className="flex items-center gap-3 py-10 text-(--ui-muted)">
+          <Spinner size="lg" />
+          <span className="text-[length:var(--fs-sm)]">Inspecting the active controller…</span>
         </div>
-      </PageContainer>
-    </AppPage>
+      ) : step === 0 ? (
+        <StepWelcome
+          modelsDir={props.modelsDir}
+          setModelsDir={props.setModelsDir}
+          settings={props.settings}
+          diagnostics={props.diagnostics}
+          saveSettings={props.saveSettings}
+          savingSettings={props.savingSettings}
+        />
+      ) : step === 1 ? (
+        <StepHardware
+          diagnostics={props.diagnostics}
+          runtimeTargets={props.runtimeTargets}
+          runtimeJobs={props.runtimeJobs}
+          installRuntime={props.installRuntime}
+          updateRuntimeTarget={props.updateRuntimeTarget}
+          upgrading={props.upgrading}
+          hardwareConfirmed={props.hardwareConfirmed}
+          setHardwareConfirmed={props.setHardwareConfirmed}
+          continueFromHardware={props.continueFromHardware}
+        />
+      ) : step === 2 ? (
+        <StepModel
+          presets={props.presets}
+          beginPresetSetup={props.beginPresetSetup}
+          remoteApiKey={props.remoteApiKey}
+          setRemoteApiKey={props.setRemoteApiKey}
+          connectingRemote={props.connectingRemote}
+          remoteError={props.remoteError}
+          connectRemotePreset={props.connectRemotePreset}
+          diagnostics={props.diagnostics}
+          maxVram={props.maxVram}
+          manualModelId={props.manualModelId}
+          setManualModelId={props.setManualModelId}
+          manualGgufOptions={props.manualGgufOptions}
+          manualGgufFile={props.manualGgufFile}
+          setManualGgufFile={props.setManualGgufFile}
+          resolvingManualModel={props.resolvingManualModel}
+          beginVariantDownload={props.beginVariantDownload}
+          submitManualModel={props.submitManualModel}
+        />
+      ) : (
+        <StepBringup
+          step={step}
+          selectedModel={props.selectedModel}
+          downloads={props.downloads}
+          activeDownload={props.activeDownload}
+          pauseDownload={props.pauseDownload}
+          resumeDownload={props.resumeDownload}
+          cancelDownload={props.cancelDownload}
+          continueToLaunch={() => props.setStep(4)}
+          backend={props.selectedPreset?.backend ?? "vllm"}
+          configuringRecipe={props.configuringRecipe}
+          launchError={props.launchError}
+          configureAndLaunch={props.configureAndLaunch}
+          benchmarking={props.benchmarking}
+          benchmarkResult={props.benchmarkResult}
+          benchmarkError={props.benchmarkError}
+          runSetupBenchmark={props.runSetupBenchmark}
+          openChat={props.openChat}
+          openDashboard={props.openDashboard}
+        />
+      )}
+    </SetupShell>
   );
 }
 

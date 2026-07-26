@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { Schema, type Effect } from "effect";
 import type { Config } from "../../config/env";
-import type { Recipe, ProcessInfo } from "../models/types";
+import type { ProcessInfo } from "../models/types";
 import type {
   EngineBackend,
   RuntimeBackendInfo,
@@ -51,12 +51,8 @@ export interface EngineSpec {
 
   readonly healthPath: string;
   readonly cliBinary: string | null;
-  buildCommand: (recipe: Recipe, config: Config) => string[];
   managedPackageSpec: (version?: string | null) => string;
   install: (options: InstallOptions) => Effect.Effect<RuntimeUpgradeResult, EngineOperationError>;
-  detectInvocation: (args: string[]) => boolean;
-  extractModelPath: (args: string[]) => string | null;
-  extractServedModelName: (args: string[]) => string | null;
   probeBinary?: (binary: string) => Effect.Effect<BinaryProbeResult, EngineOperationError>;
   resolvePythonPath?: (config: Config) => string | null;
   getRuntimeInfo?: (
@@ -74,14 +70,5 @@ const SPECS: Record<EngineBackend, EngineSpec> = {
 };
 
 export const getEngineSpec = (backend: EngineBackend): EngineSpec => SPECS[backend];
-
-export const ALL_ENGINE_SPECS: readonly EngineSpec[] = Object.values(SPECS);
-
-export const detectEngineFromArguments = (args: string[]): EngineBackend | null => {
-  for (const spec of ALL_ENGINE_SPECS) {
-    if (spec.detectInvocation(args)) return spec.id;
-  }
-  return null;
-};
 
 export { vllmSpec, sglangSpec, llamacppSpec, mlxSpec };

@@ -7,6 +7,7 @@ export type EngineScrape = {
   modelName: string | null;
   hasVllm: boolean;
   hasSglang: boolean;
+  hasLlamacpp: boolean;
 };
 
 const emptyScrape = (): EngineScrape => ({
@@ -15,6 +16,7 @@ const emptyScrape = (): EngineScrape => ({
   modelName: null,
   hasVllm: false,
   hasSglang: false,
+  hasLlamacpp: false,
 });
 
 const parseEngineMetrics = (status: number, text: string): EngineScrape => {
@@ -25,6 +27,7 @@ const parseEngineMetrics = (status: number, text: string): EngineScrape => {
     if (line.startsWith("#") || line.trim().length === 0) continue;
     if (!scrape.hasVllm && line.startsWith("vllm:")) scrape.hasVllm = true;
     if (!scrape.hasSglang && line.startsWith("sglang:")) scrape.hasSglang = true;
+    if (!scrape.hasLlamacpp && line.startsWith("llamacpp:")) scrape.hasLlamacpp = true;
     if (!scrape.modelName) {
       const label = line.match(/(?:served_model_name|model_name)="([^"]+)"/);
       if (label?.[1]) scrape.modelName = label[1];
@@ -91,4 +94,19 @@ export const SGLANG_METRIC_NAMES: EngineMetricNames = {
   kvCacheUsage: ["sglang:token_usage", "sglang:kv_cache_usage_perc"],
   ttftSum: "sglang:time_to_first_token_seconds_sum",
   ttftCount: "sglang:time_to_first_token_seconds_count",
+};
+
+// llama-server --metrics (bridge launches pass it by default). Throughput comes from the
+// gauge names; token totals drive the same counter-delta math as vLLM/SGLang. There is
+// no TTFT histogram, so those names resolve to nothing and TTFT stays 0.
+export const LLAMACPP_METRIC_NAMES: EngineMetricNames = {
+  promptTokens: ["llamacpp:prompt_tokens_total"],
+  generationTokens: ["llamacpp:tokens_predicted_total"],
+  promptThroughput: ["llamacpp:prompt_tokens_seconds"],
+  generationThroughput: ["llamacpp:predicted_tokens_seconds"],
+  runningRequests: ["llamacpp:requests_processing"],
+  pendingRequests: ["llamacpp:requests_deferred"],
+  kvCacheUsage: ["llamacpp:kv_cache_usage_ratio"],
+  ttftSum: "llamacpp:time_to_first_token_seconds_sum",
+  ttftCount: "llamacpp:time_to_first_token_seconds_count",
 };

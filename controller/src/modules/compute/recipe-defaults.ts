@@ -1,4 +1,4 @@
-import type { Recipe } from "../../models/types";
+import type { Recipe } from "../models/types";
 
 type ParserName = string | undefined;
 

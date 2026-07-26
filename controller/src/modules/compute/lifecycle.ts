@@ -10,6 +10,7 @@ import type {
   ServingOptions,
 } from "./contracts";
 import { fetchLocal } from "../../http/local-fetch";
+import { applyDevices } from "./engines/devices";
 import { engineSpec, planLaunch, supportsRuntime } from "./engines/registry";
 import { toEvent } from "./failures";
 import type { Launcher } from "./launchers/launcher";
@@ -22,6 +23,14 @@ import type { InstanceStore } from "./instances/store";
  */
 
 const STOP_GRACE_MS = 20_000;
+
+/** Operators tune cold-start budgets per box (large MoE + AOT compile can exceed any
+ *  default); the legacy env override keeps working. */
+const readyDeadlineOverrideMs = (): number | null => {
+  const raw = process.env["LOCAL_STUDIO_READY_TIMEOUT_MS"];
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
 const HEALTH_PROBE_TIMEOUT_MS = 3_000;
 
 export interface ComputeDeps {
@@ -38,6 +47,12 @@ export interface ComputeLaunchInput {
   readonly recipeId: string;
   readonly runtime: RuntimeKind;
   readonly deviceCount: number;
+  /** Pin the launch to these devices (recipe GPU selectors); default = any free. */
+  readonly devices?: readonly DeviceId[];
+  /** Serve on exactly this port (legacy inference_port); default = engine base scan. */
+  readonly portOverride?: number;
+  /** Verbatim launch argv (recipe custom launch command); replaces the engine plan. */
+  readonly commandOverride?: readonly string[];
   readonly modelPath: string;
   readonly servedModelName: string;
   readonly options: ServingOptions;
@@ -66,8 +81,12 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
 
   const launcherOf = (record: InstanceRecord): Launcher => deps.launcherFor(record.runtime);
 
-  const recordAlive = (record: InstanceRecord): Effect.Effect<boolean> =>
-    record.ref === null ? Effect.succeed(false) : launcherOf(record).alive(record.ref);
+  const recordAlive = (record: InstanceRecord): Effect.Effect<boolean> => {
+    if (record.ref === null) return Effect.succeed(false);
+    // Pinned holds have no supervised process; they live until explicitly released.
+    if (record.ref.kind === "pinned") return Effect.succeed(true);
+    return launcherOf(record).alive(record.ref);
+  };
 
   const healthy = (record: InstanceRecord): Effect.Effect<boolean> =>
     Effect.gen(function* () {
@@ -175,7 +194,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
       }
 
       cancelRequested.delete(input.name);
-      const candidates = yield* deps.freeDevices();
+      const candidates = input.devices ?? (yield* deps.freeDevices());
       const record = yield* deps.store.reserve(
         {
           name: input.name,
@@ -184,29 +203,47 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
           recipeId: input.recipeId,
           runtime: input.runtime,
           candidates,
-          need: Math.min(input.deviceCount, Math.max(candidates.length, 0)),
-          shareable: host.unifiedMemory,
+          need: input.devices
+            ? input.devices.length
+            : Math.min(input.deviceCount, Math.max(candidates.length, 0)),
+          shareable: host.unifiedMemory && !input.devices,
           basePort: spec.defaultPort,
-          readyDeadlineMs: spec.health.readyDeadlineMs,
+          ...(input.portOverride !== undefined ? { exactPort: input.portOverride } : {}),
+          readyDeadlineMs: readyDeadlineOverrideMs() ?? spec.health.readyDeadlineMs,
         },
         recordAlive,
       );
 
       yield* deps.onEvent(record.name, "launching", `${input.engine} on :${record.port}`);
 
-      const plan = planLaunch({
-        engine: input.engine,
-        host,
-        runtime: input.runtime,
-        devices: record.devices,
-        port: record.port,
-        modelPath: input.modelPath,
-        servedModelName: input.servedModelName,
-        options: input.options,
-        extraArgs: input.extraArgs,
-        env: input.env,
-        binary: input.binary ?? spec.defaultBinary,
-      });
+      const plan = input.commandOverride
+        ? // A custom launch command is used verbatim — the recipe author owns the argv;
+          // only device selection is still folded in.
+          applyDevices(
+            {
+              kind: input.runtime,
+              argv: [...input.commandOverride],
+              env: input.env,
+              ports: [{ container: record.port, host: record.port }],
+              mounts: [],
+              devices: record.devices,
+              health: spec.health,
+            },
+            host.accelerator,
+          )
+        : planLaunch({
+            engine: input.engine,
+            host,
+            runtime: input.runtime,
+            devices: record.devices,
+            port: record.port,
+            modelPath: input.modelPath,
+            servedModelName: input.servedModelName,
+            options: input.options,
+            extraArgs: input.extraArgs,
+            env: input.env,
+            binary: input.binary ?? spec.defaultBinary,
+          });
 
       const reference = yield* deps
         .launcherFor(input.runtime)
@@ -252,6 +289,8 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     Effect.gen(function* () {
       let reaped = 0;
       for (const record of deps.store.all()) {
+        // Pinned holds are freed by explicit release, never by the reaper.
+        if (record.ref?.kind === "pinned") continue;
         // A reservation that never got a handle is a crashed launch; give it a minute.
         if (record.ref === null) {
           const age = Date.now() - Date.parse(record.startedAt);

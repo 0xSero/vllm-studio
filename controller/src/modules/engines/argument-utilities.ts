@@ -4,15 +4,6 @@
  * engine-spec.ts and process-utilities.ts.
  */
 
-export const extractFlag = (args: string[], flag: string): string | undefined => {
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === flag && index + 1 < args.length) {
-      return args[index + 1];
-    }
-  }
-  return undefined;
-};
-
 export const getExtraArgument = (
   extraArguments: Record<string, unknown>,
   key: string,
@@ -49,10 +40,3 @@ export const hasCliServeInvocation = (args: string[], cliName: string): boolean 
 };
 
 /** Find the positional argument after a "serve" subcommand (vLLM/SGLang CLI pattern). */
-export const positionalAfterServe = (args: string[]): string | null => {
-  const serveIndex = args.indexOf("serve");
-  if (serveIndex < 0 || serveIndex + 1 >= args.length) return null;
-  const candidate = args[serveIndex + 1];
-  if (candidate && !candidate.startsWith("-")) return candidate;
-  return null;
-};

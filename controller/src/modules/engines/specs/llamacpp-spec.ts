@@ -7,13 +7,7 @@ import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
-import {
-  appendSerializedArguments,
-  getExtraArgument,
-  type ExtraArgumentSerializer,
-} from "../process/backend-builder";
-import { stripForeignFlagKeys } from "@local-studio/contracts/engine-args";
-import { extractFlag } from "../argument-utilities";
+import { getExtraArgument } from "../argument-utilities";
 import type { ConfigHelpResult, EngineSpec, InstallOptions } from "../engine-spec";
 import {
   getUpgradeCommandFromEnvironment,
@@ -52,65 +46,6 @@ export const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
   return resolveBinary("llama-server") ?? (existsSync(managed) ? managed : "llama-server");
 };
 
-const serializeLlamacppArgument: ExtraArgumentSerializer = (flag, _key, value) => {
-  if (value === true) return [flag];
-  if (value === false || value === undefined || value === null || value === "") return [];
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) =>
-      entry === undefined || entry === null || entry === "" ? [] : [flag, String(entry)],
-    );
-  }
-  if (typeof value === "object") return [flag, JSON.stringify(value)];
-  return [flag, String(value)];
-};
-
-export const appendLlamacppArguments = (
-  command: string[],
-  extraArguments: Record<string, unknown>,
-): string[] => appendSerializedArguments(command, extraArguments, serializeLlamacppArgument);
-
-export const buildLlamacppRecipeArguments = (recipe: Recipe): string[] => {
-  const command: string[] = [];
-  command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
-  if (recipe.served_model_name) {
-    command.push("--alias", recipe.served_model_name);
-  }
-  const ctxOverride = getExtraArgument(recipe.extra_args, "ctx-size");
-  if (!ctxOverride && recipe.max_model_len > 0) {
-    command.push("--ctx-size", String(recipe.max_model_len));
-  }
-  return appendLlamacppArguments(command, stripForeignFlagKeys("llamacpp", recipe.extra_args));
-};
-
-const buildLlamacppCommand = (recipe: Recipe, config: Config): string[] => [
-  resolveLlamaBinary(recipe, config),
-  ...buildLlamacppRecipeArguments(recipe),
-];
-
-const managedPackageSpec = (_version?: string | null): string => {
-  return "configured llama.cpp upgrade command";
-};
-
-const detectInvocation = (args: string[]): boolean => {
-  const joined = args.join(" ");
-  if (
-    joined.includes("llama-server") ||
-    joined.includes("llama.cpp") ||
-    (args[0]?.includes("llama") && joined.includes("-m "))
-  ) {
-    return true;
-  }
-  return false;
-};
-
-const extractModelPath = (args: string[]): string | null => {
-  return extractFlag(args, "-m") ?? extractFlag(args, "--model") ?? null;
-};
-
-const extractServedModelName = (args: string[]): string | null => {
-  return extractFlag(args, "--alias") ?? extractFlag(args, "-a") ?? null;
-};
-
 const getRuntimeInfo = (
   config: Config,
   _runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
@@ -141,16 +76,14 @@ const installLlamacpp = (options: InstallOptions): Effect.Effect<RuntimeUpgradeR
   return installManagedLlamacpp(options);
 };
 
+const managedPackageSpec = (_version?: string | null): string => "llama.cpp";
+
 export const llamacppSpec: EngineSpec = {
   id: "llamacpp",
   healthPath: "/health",
   cliBinary: "llama-server",
-  buildCommand: buildLlamacppCommand,
   managedPackageSpec,
   install: installLlamacpp,
-  detectInvocation,
-  extractModelPath,
-  extractServedModelName,
   getRuntimeInfo,
   getConfigHelp,
 };
