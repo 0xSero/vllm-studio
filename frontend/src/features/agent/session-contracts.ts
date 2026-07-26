@@ -5,8 +5,6 @@ export type ActiveSession = Pick<
   "projectId" | "cwd" | "paneId" | "id" | "threadId" | "title" | "status" | "focused" | "updatedAt"
 >;
 
-export type SessionSortField = "updatedAt" | "projectName";
-
 export function indexOpenByThreadId(
   activeSessions: readonly ActiveSession[],
 ): Map<string, ActiveSession> {

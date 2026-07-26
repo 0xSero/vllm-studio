@@ -29,6 +29,7 @@ import {
   setSessionArchive,
   hrefWithOpenNonce,
 } from "./helpers";
+import { PinButton, SidebarRail } from "./nav-chrome";
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
 
@@ -44,6 +45,9 @@ export function ProjectRow({
   prefs,
   excludedIds,
   icon = "folder",
+  pinned = false,
+  onTogglePin,
+  dragging = false,
   reorderDraggable = false,
   onReorderDragStart,
   onReorderDragEnd,
@@ -59,11 +63,14 @@ export function ProjectRow({
   prefs: SessionPrefs;
   excludedIds: ReadonlySet<string>;
   icon?: "folder" | "chat";
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  dragging?: boolean;
   reorderDraggable?: boolean;
   onReorderDragStart?: () => void;
   onReorderDragEnd?: () => void;
   onReorderDragOver?: (event: DragEvent) => void;
-  onReorderDrop?: () => void;
+  onReorderDrop?: (event: DragEvent) => void;
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
   const handleToggle = () => {
@@ -78,7 +85,7 @@ export function ProjectRow({
   return (
     <div className="flex flex-col">
       <div
-        className="group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-1.5 text-(--fg) transition-colors hover:bg-(--hover)"
+        className={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-1.5 text-(--fg) transition-[color,background-color,opacity] hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
         draggable={reorderDraggable}
         onDragStart={onReorderDragStart}
         onDragEnd={onReorderDragEnd}
@@ -89,7 +96,9 @@ export function ProjectRow({
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-8 text-left"
+          className={`flex min-w-0 flex-1 items-center gap-2 px-0 text-left ${
+            pinned ? "pr-[62px]" : "pr-8 group-hover:pr-[62px]"
+          }`}
         >
           {icon === "chat" ? (
             <ChatIcon className="h-3.5 w-3.5 shrink-0 opacity-70 transition-opacity group-hover:opacity-90" />
@@ -112,7 +121,30 @@ export function ProjectRow({
             />
           ) : null}
         </button>
-        <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+        <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+          {onTogglePin ? (
+            <PinButton
+              pinned={pinned}
+              onToggle={onTogglePin}
+              target={project.name}
+              placement="inline"
+            />
+          ) : null}
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRemove();
+              }}
+              className="flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity hover:text-(--err) group-hover:opacity-100"
+              title="Remove from list"
+              aria-label="Remove project"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
           <NewChatPlusButton
             project={project}
             label={`New task in ${project.name}`}
@@ -120,21 +152,6 @@ export function ProjectRow({
             onNavigateStart={onNewChatStart}
           />
         </div>
-        {onRemove ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onRemove();
-            }}
-            className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 text-(--dim)/55 opacity-0 hover:text-(--err) group-hover:opacity-100"
-            title="Remove from list"
-            aria-label="Remove project"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
       </div>
       {missingErrorVisible && !project.exists ? (
         <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-md)] text-(--err)">
@@ -235,7 +252,7 @@ export function ProjectSessions({
   const hasMore = orderedRows.length > visibleLimit || (sessions?.length ?? 0) > visibleLimit;
 
   return (
-    <div className="ml-[17px] flex flex-col border-l border-(--border) pl-1">
+    <SidebarRail>
       {loading && !sessions ? (
         <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">Loading...</div>
       ) : orderedRows.length === 0 ? (
@@ -278,7 +295,7 @@ export function ProjectSessions({
           Show more
         </button>
       ) : null}
-    </div>
+    </SidebarRail>
   );
 }
 

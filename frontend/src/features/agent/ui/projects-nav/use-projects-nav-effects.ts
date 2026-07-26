@@ -1,9 +1,5 @@
-import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
-import type { AggregatedSession } from "@shared/agent/session-summary";
+import { useCallback, useSyncExternalStore } from "react";
 
-import { safeJson } from "@/features/agent/safe-json";
-import type { Project as ProjectEntry } from "@/features/agent/projects/types";
-import type { SessionSummary } from "@/features/agent/session-summary";
 import {
   ADD_PROJECT_EVENT,
   SESSION_PREFS_CHANGED_EVENT,
@@ -15,12 +11,6 @@ import {
   type SessionPrefs,
 } from "@/features/agent/messages/prefs";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-
-type PinnedSession = SessionSummary & { project: ProjectEntry };
-
-function uniquePinnedSessions(sessions: readonly PinnedSession[]): PinnedSession[] {
-  return [...new Map(sessions.map((session) => [session.id, session])).values()];
-}
 
 let cachedSessionPrefs: SessionPrefs = {};
 let cachedSessionPrefsKey = "";
@@ -88,63 +78,6 @@ export function useProjectsNavAddProjectEffect(handleAddProject: () => void): vo
     window.addEventListener(ADD_PROJECT_EVENT, handleAddProject);
     return () => window.removeEventListener(ADD_PROJECT_EVENT, handleAddProject);
   }, [handleAddProject]);
-}
-
-export function usePinnedSessionsEffect({
-  expanded,
-  hiddenPrefIdsKey,
-  pinnedPrefIdsKey,
-  projects,
-  setPinnedSessions,
-}: {
-  expanded: boolean;
-  hiddenPrefIdsKey: string;
-  pinnedPrefIdsKey: string;
-  projects: ProjectEntry[];
-  setPinnedSessions: Dispatch<SetStateAction<PinnedSession[]>>;
-}): void {
-  useMountSubscription(() => {
-    if (!expanded || projects.length === 0) {
-      queueMicrotask(() => setPinnedSessions([]));
-      return;
-    }
-    if (!pinnedPrefIdsKey) {
-      queueMicrotask(() => setPinnedSessions([]));
-      return;
-    }
-    let cancelled = false;
-    const pinnedIdsList = pinnedPrefIdsKey.split("\u0000").filter(Boolean);
-    const pinnedIds = new Set(pinnedIdsList);
-    const hiddenIds = new Set(hiddenPrefIdsKey.split("\u0000").filter(Boolean));
-    const idsParam = encodeURIComponent(pinnedIdsList.join(","));
-    const projectsById = new Map(projects.map((project) => [project.id, project]));
-    (async () => {
-      try {
-        const response = await fetch(`/api/agent/sessions/all?since=30d&ids=${idsParam}`, {
-          cache: "no-store",
-        });
-        const payload = await safeJson<{ sessions?: AggregatedSession[] }>(response);
-        const rows = (payload.sessions ?? []).flatMap((session) => {
-          const project = projectsById.get(session.projectId);
-          return project && pinnedIds.has(session.id) && !hiddenIds.has(session.id)
-            ? [{ ...session, project }]
-            : [];
-        });
-        if (!cancelled) {
-          setPinnedSessions(
-            uniquePinnedSessions(rows).sort(
-              (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-            ),
-          );
-        }
-      } catch {
-        if (!cancelled) setPinnedSessions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded, hiddenPrefIdsKey, pinnedPrefIdsKey, projects, setPinnedSessions]);
 }
 
 const SESSIONS_RELOAD_DEBOUNCE_MS = 300;
