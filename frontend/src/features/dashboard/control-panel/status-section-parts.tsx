@@ -61,7 +61,7 @@ export function StatusHeader({
           isStatusLoading={isStatusLoading}
         />
         <h1
-          className="mt-1.5 truncate text-[length:var(--fs-3xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg)"
+          className="mt-1.5 truncate text-[length:var(--fs-2xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) sm:text-[length:var(--fs-3xl)]"
           title={modelName || ""}
         >
           {modelName}
@@ -225,7 +225,7 @@ export function StatusMetricStrip({
   metricColumns: MetricColumnView[];
 }) {
   return (
-    <dl className="mt-5 grid w-full grid-cols-2 gap-x-8 gap-y-4 border-b border-(--separator) pb-5 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="mt-4 grid w-full grid-cols-3 gap-x-4 gap-y-3 border-b border-(--separator) pb-4 sm:mt-5 sm:gap-x-8 sm:gap-y-4 sm:pb-5 lg:grid-cols-6">
       {metricColumns.map((metric) => (
         <MetricCell
           key={metric.label}
@@ -259,7 +259,7 @@ function MetricCell({
   return (
     <div className="min-w-0 overflow-hidden">
       <dt className="truncate text-[length:var(--fs-xs)] text-(--dim)">{label}</dt>
-      <dd className="mt-1 flex min-w-0 items-baseline gap-1 text-[length:var(--fs-2xl)] font-semibold leading-none tabular-nums text-(--fg)">
+      <dd className="mt-1 flex min-w-0 items-baseline gap-1 text-[length:var(--fs-lg)] font-semibold leading-none tabular-nums text-(--fg) sm:text-[length:var(--fs-2xl)]">
         <span className="truncate" title={value}>
           {value}
         </span>

@@ -79,8 +79,8 @@ export function useMetricSamples({
 
 export function MetricTrends({ samples, peaks }: { samples: MetricSample[]; peaks: MetricPeak }) {
   return (
-    <div className="mt-6 border-t border-(--separator) pt-3">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <div className="mt-4 border-t border-(--separator) pt-3 sm:mt-6">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
         <TrendPanel
           label="Throughput (tok/s)"
           meta="Last 30 minutes"
@@ -127,7 +127,7 @@ function TrendPanel({
         <span className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">{label}</span>
         <span className="text-[length:var(--fs-xs)] text-(--dim)/45">{meta}</span>
       </div>
-      <div className="h-28">
+      <div className="h-20 sm:h-28">
         <Sparkline lines={lines} overlays={overlays} />
       </div>
     </div>

@@ -149,10 +149,16 @@ export function proxy(request: NextRequest) {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-XSS-Protection", "1; mode=block");
   response.headers.set("Referrer-Policy", "no-referrer");
+  // `secure` must follow the scheme the browser actually sees (cloudflared
+  // forwards https as x-forwarded-proto) — a Secure cookie over plain-http
+  // Tailscale access is silently dropped and every mutation then fails CSRF.
+  const effectiveProto =
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase() ||
+    request.nextUrl.protocol.replace(/:$/, "");
   response.cookies.set(CSRF_COOKIE, PROCESS_CSRF_TOKEN, {
     httpOnly: false,
     sameSite: "strict",
-    secure: boundary.remote,
+    secure: effectiveProto === "https",
     path: "/",
   });
 

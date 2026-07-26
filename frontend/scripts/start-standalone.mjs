@@ -79,7 +79,7 @@ const server = spawn(process.execPath, ["server.js"], {
   stdio: "inherit",
   env: {
     ...process.env,
-    HOSTNAME: "127.0.0.1",
+    HOSTNAME: process.env.HOSTNAME || "127.0.0.1",
     PORT: String(port),
     LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || resolve(projectRoot, ".."),
     LOCAL_STUDIO_AGENT_RUNTIME_URL: runtimeUrl,

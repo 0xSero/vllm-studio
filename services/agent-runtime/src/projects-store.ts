@@ -1,5 +1,5 @@
 import path from "node:path";
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { CHATS_PROJECT_ID } from "../../../shared/agent/project-ids";
 // Shared implementation lives under frontend/desktop/ because the desktop
@@ -11,10 +11,32 @@ import {
 
 export type { ProjectEntry };
 
+const PROJECTS_RELATIVE = path.join("data", "agentfs", "projects.json");
+
+// The projects store is canonical for both the frontend (which proxies
+// /api/agent/projects here) and the Litter bridge. It must resolve to the same
+// <repo>/data/agentfs/projects.json regardless of which subdirectory the
+// process runs from — the frontend standalone server, `bun run src/…`, and the
+// agent-runtime systemd unit (cwd services/agent-runtime) all differ. Anchoring
+// on process.cwd()/.. only worked for the frontend and silently gave the
+// runtime an empty store (services/data/…), which broke bridge session_list
+// and session_create. Walk up to the repo root instead.
 function projectsFilePath(): string {
   if (process.env.LOCAL_STUDIO_PROJECTS_FILE) return process.env.LOCAL_STUDIO_PROJECTS_FILE;
-  // Anchor at <repo>/data/agentfs/projects.json (mirror existing agentfs pattern).
-  return path.resolve(process.cwd(), "..", "data", "agentfs", "projects.json");
+  let dir = process.cwd();
+  let firstRepoRoot: string | null = null;
+  for (let depth = 0; depth < 8; depth += 1) {
+    const candidate = path.join(dir, PROJECTS_RELATIVE);
+    // Prefer an existing store; otherwise remember the topmost repo root so a
+    // fresh install writes it at the repo, not a nested package dir.
+    if (existsSync(candidate)) return candidate;
+    if (firstRepoRoot === null && existsSync(path.join(dir, ".git"))) firstRepoRoot = dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  const root = firstRepoRoot ?? path.resolve(process.cwd(), "..");
+  return path.join(root, PROJECTS_RELATIVE);
 }
 
 const store = createProjectsStore({

@@ -127,7 +127,7 @@ function ActivityStrip({ logs }: DashboardLayoutProps) {
         <div className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">Controller logs</div>
         <div className="text-[length:var(--fs-xs)] text-(--dim)/70">{tail.length} lines</div>
       </div>
-      <div className="max-h-[34rem] min-h-[18rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80">
+      <div className="max-h-[20rem] min-h-[10rem] overflow-y-auto border border-(--border)/45 bg-(--surface)/40 p-3 font-mono text-[length:var(--fs-xs)] leading-5 text-(--dim)/80 sm:max-h-[34rem] sm:min-h-[18rem]">
         {tail.length > 0 ? (
           tail.map((line, index) => (
             <div key={`${index}-${line}`} className="truncate">
