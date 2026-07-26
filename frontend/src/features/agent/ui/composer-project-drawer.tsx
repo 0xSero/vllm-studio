@@ -155,7 +155,10 @@ export function ComposerProjectDrawer({
         aria-expanded={open}
         className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03] md:h-8 md:gap-2.5 md:px-3"
       >
-        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4" strokeWidth={1.7} />
+        <FolderOpen
+          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
+          strokeWidth={1.7}
+        />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {goal && !open ? (
           <span className="min-w-0 max-w-[45%] truncate text-(--fg)/40" title={goal.objective}>
@@ -175,174 +178,263 @@ export function ComposerProjectDrawer({
       {open ? (
         <div className="flex flex-col gap-0.5 px-1.5 pt-1">
           {goal ? (
-            <div className="rounded-[14px] bg-(--fg)/[0.03] px-2.5 py-2">
-              <div className="flex items-center gap-2">
-                <Target
-                  className={cx(
-                    "h-4 w-4 shrink-0",
-                    goal.status === "active"
-                      ? "text-(--fg)/56"
-                      : goal.status === "blocked"
-                        ? "text-(--err)"
-                        : "text-(--fg)/34",
-                  )}
-                />
-                <span className="min-w-0 flex-1 truncate font-medium text-(--fg)/82">
-                  {STATUS_LABEL[goal.status]}
-                </span>
-                <span className="shrink-0 tabular-nums text-(--fg)/40">
-                  {formatElapsed(goal.createdAt)}
-                  {goal.turnBudget ? ` · ${goal.turnsUsed}/${goal.turnBudget}` : ""}
-                </span>
-                <button
-                  type="button"
-                  onClick={startEditing}
-                  className={iconButtonClass}
-                  aria-label="Edit goal"
-                  title="Edit goal"
-                >
-                  <FilePenLine className="h-3.5 w-3.5" />
-                </button>
-                {!terminal ? (
-                  <button
-                    type="button"
-                    onClick={() => void patchGoal({ status: paused ? "active" : "paused" })}
-                    className={iconButtonClass}
-                    aria-label={paused ? "Resume goal" : "Pause goal"}
-                    title={paused ? "Resume goal" : "Pause goal"}
-                  >
-                    {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void removeGoal()}
-                  className={iconButtonClass}
-                  aria-label="Clear goal"
-                  title="Clear goal"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              {editing ? (
-                <div className="pt-1.5">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") setEditing(false);
-                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                        event.preventDefault();
-                        void saveObjective();
-                      }
-                    }}
-                    rows={2}
-                    autoFocus
-                    className="max-h-28 min-h-14 w-full resize-none rounded-xl border border-(--border) bg-transparent px-2.5 py-2 leading-relaxed text-(--fg)/72 outline-none placeholder:text-(--fg)/30"
-                    aria-label="Goal objective"
-                  />
-                  <div className="flex justify-end gap-1 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(false)}
-                      className={iconButtonClass}
-                      aria-label="Cancel editing goal"
-                      title="Cancel"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void saveObjective()}
-                      disabled={!draft.trim()}
-                      className={`${iconButtonClass} bg-(--fg)/90 text-(--bg) hover:bg-(--fg) hover:text-(--bg) disabled:opacity-35`}
-                      aria-label="Save goal"
-                      title="Save goal"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="pt-1 leading-[1.55] text-(--fg)/48">{goal.objective}</p>
-              )}
-            </div>
+            <GoalCard
+              goal={goal}
+              editing={editing}
+              draft={draft}
+              onDraftChange={setDraft}
+              onStartEditing={startEditing}
+              onCancelEditing={() => setEditing(false)}
+              onSave={() => void saveObjective()}
+              onTogglePause={() => void patchGoal({ status: paused ? "active" : "paused" })}
+              onRemove={() => void removeGoal()}
+            />
           ) : null}
-          {gitSummary?.isRepo ? (
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onOpenDiff();
-              }}
-              className={cx(listRowClass, "hover:bg-(--hover)")}
-              title="View changes"
-            >
-              <GitBranchIcon className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" />
-              <span className="min-w-0 flex-1 truncate text-(--fg)/72">
-                {gitBranch ?? gitSummary.branch ?? "git"}
-              </span>
-              <span className="flex shrink-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums">
-                <span className="text-(--ok)">+{gitSummary.additions}</span>
-                <span className="text-(--err)">-{gitSummary.deletions}</span>
-                {gitSummary.statusCount > 0 ? (
-                  <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
-                ) : null}
-              </span>
-            </button>
-          ) : gitSummary && !gitSummary.isRepo && onInitGit ? (
-            <button
-              type="button"
-              onClick={onInitGit}
-              className={cx(listRowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
-            >
-              <GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
-              Initialize git
-            </button>
-          ) : null}
-          {canPickProject ? (
-            <div className="flex max-h-56 flex-col overflow-y-auto">
-              {projects.projects.map((project) => {
-                const active = project.id === (activeProject?.id ?? null);
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => pickProject(project)}
-                    className={cx(listRowClass, active ? "bg-(--hover)/60" : "hover:bg-(--hover)")}
-                  >
-                    <span
-                      className={cx(
-                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                        active ? "bg-(--accent)" : "bg-(--dim)/35",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-(--fg)/78">{project.name}</span>
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={addProject}
-                className={cx(
-                  listRowClass,
-                  "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82",
-                )}
-              >
-                <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                Add project…
-              </button>
-            </div>
-          ) : (
-            <div className={cx(listRowClass, "text-(--fg)/56")}>
-              <FolderOpen className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} />
-              <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--fs-xs)]">
-                {cwd || "No working directory"}
-              </span>
-            </div>
-          )}
+          <GitRow
+            gitSummary={gitSummary}
+            gitBranch={gitBranch}
+            onInitGit={onInitGit}
+            onOpenDiff={() => {
+              setOpen(false);
+              onOpenDiff();
+            }}
+          />
+          <ProjectList
+            canPickProject={canPickProject}
+            cwd={cwd}
+            projects={projects.projects}
+            activeProjectId={activeProject?.id ?? null}
+            onPick={pickProject}
+            onAdd={addProject}
+          />
         </div>
       ) : null}
     </section>
+  );
+}
+
+function GitRow({
+  gitSummary,
+  gitBranch,
+  onInitGit,
+  onOpenDiff,
+}: {
+  gitSummary?: GitSummary | null;
+  gitBranch?: string | null;
+  onInitGit?: () => void;
+  onOpenDiff: () => void;
+}) {
+  if (gitSummary?.isRepo) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenDiff}
+        className={cx(listRowClass, "hover:bg-(--hover)")}
+        title="View changes"
+      >
+        <GitBranchIcon className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" />
+        <span className="min-w-0 flex-1 truncate text-(--fg)/72">
+          {gitBranch ?? gitSummary.branch ?? "git"}
+        </span>
+        <span className="flex shrink-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums">
+          <span className="text-(--ok)">+{gitSummary.additions}</span>
+          <span className="text-(--err)">-{gitSummary.deletions}</span>
+          {gitSummary.statusCount > 0 ? (
+            <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
+          ) : null}
+        </span>
+      </button>
+    );
+  }
+  if (gitSummary && !gitSummary.isRepo && onInitGit) {
+    return (
+      <button
+        type="button"
+        onClick={onInitGit}
+        className={cx(listRowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
+      >
+        <GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
+        Initialize git
+      </button>
+    );
+  }
+  return null;
+}
+
+function ProjectList({
+  canPickProject,
+  cwd,
+  projects,
+  activeProjectId,
+  onPick,
+  onAdd,
+}: {
+  canPickProject: boolean;
+  cwd: string;
+  projects: Project[];
+  activeProjectId: string | null;
+  onPick: (project: Project) => void;
+  onAdd: () => void;
+}) {
+  if (!canPickProject) {
+    return (
+      <div className={cx(listRowClass, "text-(--fg)/56")}>
+        <FolderOpen className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} />
+        <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--fs-xs)]">
+          {cwd || "No working directory"}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex max-h-56 flex-col overflow-y-auto">
+      {projects.map((project) => {
+        const active = project.id === activeProjectId;
+        return (
+          <button
+            key={project.id}
+            type="button"
+            onClick={() => onPick(project)}
+            className={cx(listRowClass, active ? "bg-(--hover)/60" : "hover:bg-(--hover)")}
+          >
+            <span
+              className={cx(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                active ? "bg-(--accent)" : "bg-(--dim)/35",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate text-(--fg)/78">{project.name}</span>
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        onClick={onAdd}
+        className={cx(listRowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
+      >
+        <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+        Add project…
+      </button>
+    </div>
+  );
+}
+
+function GoalCard({
+  goal,
+  editing,
+  draft,
+  onDraftChange,
+  onStartEditing,
+  onCancelEditing,
+  onSave,
+  onTogglePause,
+  onRemove,
+}: {
+  goal: SessionGoal;
+  editing: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onStartEditing: () => void;
+  onCancelEditing: () => void;
+  onSave: () => void;
+  onTogglePause: () => void;
+  onRemove: () => void;
+}) {
+  const paused = goal.status === "paused";
+  const terminal =
+    goal.status === "complete" || goal.status === "blocked" || goal.status === "budget_limited";
+  return (
+    <div className="rounded-[14px] bg-(--fg)/[0.03] px-2.5 py-2">
+      <div className="flex items-center gap-2">
+        <Target
+          className={cx(
+            "h-4 w-4 shrink-0",
+            goal.status === "active"
+              ? "text-(--fg)/56"
+              : goal.status === "blocked"
+                ? "text-(--err)"
+                : "text-(--fg)/34",
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate font-medium text-(--fg)/82">
+          {STATUS_LABEL[goal.status]}
+        </span>
+        <span className="shrink-0 tabular-nums text-(--fg)/40">
+          {formatElapsed(goal.createdAt)}
+          {goal.turnBudget ? ` · ${goal.turnsUsed}/${goal.turnBudget}` : ""}
+        </span>
+        <button
+          type="button"
+          onClick={onStartEditing}
+          className={iconButtonClass}
+          aria-label="Edit goal"
+          title="Edit goal"
+        >
+          <FilePenLine className="h-3.5 w-3.5" />
+        </button>
+        {!terminal ? (
+          <button
+            type="button"
+            onClick={onTogglePause}
+            className={iconButtonClass}
+            aria-label={paused ? "Resume goal" : "Pause goal"}
+            title={paused ? "Resume goal" : "Pause goal"}
+          >
+            {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onRemove}
+          className={iconButtonClass}
+          aria-label="Clear goal"
+          title="Clear goal"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {editing ? (
+        <div className="pt-1.5">
+          <textarea
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") onCancelEditing();
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                onSave();
+              }
+            }}
+            rows={2}
+            autoFocus
+            className="max-h-28 min-h-14 w-full resize-none rounded-xl border border-(--border) bg-transparent px-2.5 py-2 leading-relaxed text-(--fg)/72 outline-none placeholder:text-(--fg)/30"
+            aria-label="Goal objective"
+          />
+          <div className="flex justify-end gap-1 pt-1">
+            <button
+              type="button"
+              onClick={onCancelEditing}
+              className={iconButtonClass}
+              aria-label="Cancel editing goal"
+              title="Cancel"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!draft.trim()}
+              className={`${iconButtonClass} bg-(--fg)/90 text-(--bg) hover:bg-(--fg) hover:text-(--bg) disabled:opacity-35`}
+              aria-label="Save goal"
+              title="Save goal"
+            >
+              <Save className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="pt-1 leading-[1.55] text-(--fg)/48">{goal.objective}</p>
+      )}
+    </div>
   );
 }
