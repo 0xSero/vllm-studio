@@ -52,56 +52,93 @@ export function splitAllowedValues(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-export function evaluateRequestBoundary(input: RequestBoundaryInput): RequestBoundaryResult {
+type HostDecision =
+  | { readonly ok: false; readonly failure: RequestBoundaryResult }
+  | { readonly ok: true; readonly effectiveHost: string; readonly remote: boolean };
+
+/** Which host this request is really for, and whether it reached us from off-box. */
+function resolveHost(input: RequestBoundaryInput): HostDecision {
   const host = normalizedHost(input.host);
   const forwardedHost = input.forwardedHost ? normalizedHost(input.forwardedHost) : null;
   const allowedHosts = new Set(input.allowedTailscaleHosts.map((entry) => entry.toLowerCase()));
-  if (!host || (!isLoopbackHost(host) && !allowedHosts.has(host))) {
-    return { ok: false, status: 421, error: "Host is not allowed" };
+  const allowed = (candidate: string) => isLoopbackHost(candidate) || allowedHosts.has(candidate);
+
+  if (!host || !allowed(host)) {
+    return { ok: false, failure: { ok: false, status: 421, error: "Host is not allowed" } };
   }
   if (input.forwardedHost && !forwardedHost) {
-    return { ok: false, status: 421, error: "Forwarded host is invalid" };
+    return { ok: false, failure: { ok: false, status: 421, error: "Forwarded host is invalid" } };
   }
-  if (forwardedHost && !isLoopbackHost(forwardedHost) && !allowedHosts.has(forwardedHost)) {
-    return { ok: false, status: 421, error: "Forwarded host is not allowed" };
+  if (forwardedHost && !allowed(forwardedHost)) {
+    return {
+      ok: false,
+      failure: { ok: false, status: 421, error: "Forwarded host is not allowed" },
+    };
   }
   const effectiveHost = forwardedHost ?? host;
-  const remote = !isLoopbackHost(effectiveHost);
-  if (remote && input.allowedTailscaleUsers.length > 0) {
-    const allowedUsers = new Set(input.allowedTailscaleUsers.map((entry) => entry.toLowerCase()));
-    const user = input.tailscaleUser?.trim().toLowerCase() ?? "";
-    if (!allowedUsers.has(user))
-      return { ok: false, status: 403, error: "Tailscale user is not allowed" };
-  }
-  if (!isMutation(input.method)) return { ok: true, remote };
-  if (input.fetchSite?.toLowerCase() === "cross-site") {
-    return { ok: false, status: 403, error: "Cross-site mutation rejected" };
-  }
+  return { ok: true, effectiveHost, remote: !isLoopbackHost(effectiveHost) };
+}
+
+/** Tailscale identity gate. Only applies to remote callers, and only when an
+ *  allowlist is configured. */
+function rejectedUser(input: RequestBoundaryInput, remote: boolean): RequestBoundaryResult | null {
+  if (!remote || input.allowedTailscaleUsers.length === 0) return null;
+  const allowedUsers = new Set(input.allowedTailscaleUsers.map((entry) => entry.toLowerCase()));
+  const user = input.tailscaleUser?.trim().toLowerCase() ?? "";
+  if (allowedUsers.has(user)) return null;
+  return { ok: false, status: 403, error: "Tailscale user is not allowed" };
+}
+
+/** The Origin header must name the same host and scheme we are serving. */
+function rejectedOrigin(
+  input: RequestBoundaryInput,
+  effectiveHost: string,
+  remote: boolean,
+): RequestBoundaryResult | null {
+  if (!input.origin) return null;
   const protocol = remote
     ? input.forwardedProto?.split(",")[0]?.trim().toLowerCase() || "https"
     : input.requestProtocol.replace(/:$/, "").toLowerCase();
-  if (input.origin) {
-    try {
-      const origin = new URL(input.origin);
-      if (origin.host.toLowerCase() !== effectiveHost || origin.protocol !== `${protocol}:`) {
-        return { ok: false, status: 403, error: "Origin is not allowed" };
-      }
-    } catch {
-      return { ok: false, status: 403, error: "Origin is invalid" };
+  try {
+    const origin = new URL(input.origin);
+    if (origin.host.toLowerCase() !== effectiveHost || origin.protocol !== `${protocol}:`) {
+      return { ok: false, status: 403, error: "Origin is not allowed" };
     }
+  } catch {
+    return { ok: false, status: 403, error: "Origin is invalid" };
   }
-  // CSRF only defends against a *browser* replaying ambient credentials from
-  // another origin. Our own server-to-server callers (the pi tool extensions:
-  // browser_*, plan_*) POST from Node with no cookie jar and no origin, so they
-  // could never satisfy a double-submit token — and every browser attaches at
-  // least one of Origin/Sec-Fetch-Site to a cross-origin mutation, so the
-  // absence of both is proof this is not a browser. Skipping the token check
-  // there is what makes the agent's own tools work; the host allowlist,
-  // cross-site rejection and the access-token guard still apply.
+  return null;
+}
+
+/** CSRF only defends against a *browser* replaying ambient credentials from
+ *  another origin. Our own server-to-server callers (the pi tool extensions:
+ *  browser_*, plan_*) POST from Node with no cookie jar and no origin, so they
+ *  could never satisfy a double-submit token — and every browser attaches at
+ *  least one of Origin/Sec-Fetch-Site to a cross-origin mutation, so the
+ *  absence of both is proof this is not a browser. Skipping the token check
+ *  there is what makes the agent's own tools work; the host allowlist,
+ *  cross-site rejection and the access-token guard still apply. */
+function rejectedCsrf(input: RequestBoundaryInput): RequestBoundaryResult | null {
   const fromBrowser = Boolean(input.origin) || Boolean(input.fetchSite);
-  if (!fromBrowser) return { ok: true, remote };
-  if (input.csrfCookie !== input.csrfToken || input.csrfHeader !== input.csrfToken) {
-    return { ok: false, status: 403, error: "CSRF validation failed" };
+  if (!fromBrowser) return null;
+  if (input.csrfCookie === input.csrfToken && input.csrfHeader === input.csrfToken) return null;
+  return { ok: false, status: 403, error: "CSRF validation failed" };
+}
+
+export function evaluateRequestBoundary(input: RequestBoundaryInput): RequestBoundaryResult {
+  const hostDecision = resolveHost(input);
+  if (!hostDecision.ok) return hostDecision.failure;
+  const { effectiveHost, remote } = hostDecision;
+
+  const userRejection = rejectedUser(input, remote);
+  if (userRejection) return userRejection;
+
+  if (!isMutation(input.method)) return { ok: true, remote };
+
+  if (input.fetchSite?.toLowerCase() === "cross-site") {
+    return { ok: false, status: 403, error: "Cross-site mutation rejected" };
   }
-  return { ok: true, remote };
+  return (
+    rejectedOrigin(input, effectiveHost, remote) ?? rejectedCsrf(input) ?? { ok: true, remote }
+  );
 }
