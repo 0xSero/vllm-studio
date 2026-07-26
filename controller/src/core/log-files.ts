@@ -183,26 +183,6 @@ export const cleanupLogFiles = (
   return { deleted: deletedPaths.length };
 };
 
-export const readFileTailBytes = (path: string, maxBytes: number): string => {
-  try {
-    const stat = statSync(path);
-    const size = stat.size;
-    if (size <= 0) return "";
-
-    const toRead = Math.min(size, maxBytes);
-    const offset = Math.max(0, size - toRead);
-    const fd = openSync(path, "r");
-    try {
-      const buf = Buffer.allocUnsafe(toRead);
-      const read = readSync(fd, buf, 0, toRead, offset);
-      return buf.slice(0, read).toString("utf-8");
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return "";
-  }
-};
 
 export const tailFileLines = (
   path: string,

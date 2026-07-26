@@ -1,22 +1,9 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { Effect } from "effect";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
-import type { ProcessInfo, Recipe } from "../../models/types";
+import type { ProcessInfo } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
-import {
-  getDefaultReasoningParser,
-  getDefaultToolCallParser,
-} from "../process/model-runtime-defaults";
-import { appendExtraArguments, getExtraArgument, getPythonPath } from "../process/backend-builder";
-import { stripForeignFlagKeys } from "@local-studio/contracts/engine-args";
-import {
-  extractFlag,
-  hasCliServeInvocation,
-  hasModuleInvocation,
-  positionalAfterServe,
-} from "../argument-utilities";
 import type {
   BinaryProbeResult,
   ConfigHelpResult,
@@ -37,96 +24,8 @@ import {
   resolvePythonFromScript,
 } from "../runtimes/runtime-target-probes";
 
-const resolveSglangCliBinary = (pythonPath: string | null): string | null => {
-  if (!pythonPath) return null;
-  const sglangBin = join(dirname(pythonPath), "sglang");
-  return existsSync(sglangBin) ? sglangBin : null;
-};
-
-export const buildSglangRecipeArguments = (recipe: Recipe): string[] => {
-  const command: string[] = ["--model-path", recipe.model_path];
-  command.push("--host", recipe.host, "--port", String(recipe.port));
-
-  if (recipe.served_model_name) {
-    command.push("--served-model-name", recipe.served_model_name);
-  }
-  if (recipe.tensor_parallel_size > 1) {
-    command.push("--tensor-parallel-size", String(recipe.tensor_parallel_size));
-  }
-  if (recipe.pipeline_parallel_size > 1) {
-    command.push("--pipeline-parallel-size", String(recipe.pipeline_parallel_size));
-  }
-  command.push("--context-length", String(recipe.max_model_len));
-  command.push("--mem-fraction-static", String(recipe.gpu_memory_utilization));
-  if (recipe.max_num_seqs > 0) {
-    command.push("--max-running-requests", String(recipe.max_num_seqs));
-  }
-  if (recipe.trust_remote_code) {
-    command.push("--trust-remote-code");
-  }
-  if (recipe.quantization) {
-    command.push("--quantization", recipe.quantization);
-  }
-  if (recipe.dtype) {
-    command.push("--dtype", recipe.dtype);
-  }
-  if (recipe.kv_cache_dtype && recipe.kv_cache_dtype !== "auto") {
-    command.push("--kv-cache-dtype", recipe.kv_cache_dtype);
-  }
-  if (getExtraArgument(recipe.extra_args, "enable-metrics") === undefined) {
-    command.push("--enable-metrics");
-  }
-
-  const toolCallParser =
-    recipe.tool_call_parser !== null ? recipe.tool_call_parser : getDefaultToolCallParser(recipe);
-  if (toolCallParser) {
-    command.push("--tool-call-parser", toolCallParser);
-  }
-  const reasoningParser =
-    recipe.reasoning_parser !== null ? recipe.reasoning_parser : getDefaultReasoningParser(recipe);
-  if (reasoningParser) {
-    command.push("--reasoning-parser", reasoningParser);
-  }
-
-  return appendExtraArguments(command, stripForeignFlagKeys("sglang", recipe.extra_args));
-};
-
-const buildSglangCommand = (recipe: Recipe, config: Config): string[] => {
-  const recipePython = getPythonPath(recipe) ?? null;
-  const managedPython = managedVenvPython(config, "sglang");
-  const resolvedManagedPython = existsSync(managedPython) ? managedPython : null;
-  const python = recipePython || config.sglang_python || resolvedManagedPython || "python";
-  const cliBinary =
-    resolveSglangCliBinary(recipePython) ??
-    resolveSglangCliBinary(config.sglang_python ?? null) ??
-    resolveSglangCliBinary(resolvedManagedPython);
-  const head =
-    cliBinary && existsSync(cliBinary)
-      ? [cliBinary, "serve"]
-      : [python, "-m", "sglang.launch_server"];
-  return [...head, ...buildSglangRecipeArguments(recipe)];
-};
-
 const managedPackageSpec = (version?: string | null): string =>
   normalizePackageSpec("sglang[all]", version);
-
-const detectInvocation = (args: string[]): boolean => {
-  if (hasModuleInvocation(args, "sglang.launch_server")) return true;
-  if (hasCliServeInvocation(args, "sglang")) return true;
-  return false;
-};
-
-const extractModelPath = (args: string[]): string | null => {
-  const flagModelPath = extractFlag(args, "--model-path");
-  if (flagModelPath) return flagModelPath;
-  const flagModel = extractFlag(args, "--model");
-  if (flagModel) return flagModel;
-  return positionalAfterServe(args);
-};
-
-const extractServedModelName = (args: string[]): string | null => {
-  return extractFlag(args, "--served-model-name") ?? null;
-};
 
 const probeBinary = (binary: string): Effect.Effect<BinaryProbeResult> =>
   Effect.gen(function* () {
@@ -241,12 +140,8 @@ export const sglangSpec: EngineSpec = {
   id: "sglang",
   healthPath: "/health",
   cliBinary: "sglang",
-  buildCommand: buildSglangCommand,
   managedPackageSpec,
   install: installSglang,
-  detectInvocation,
-  extractModelPath,
-  extractServedModelName,
   probeBinary,
   resolvePythonPath,
   getRuntimeInfo,

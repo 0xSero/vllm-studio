@@ -1,43 +1,14 @@
 import { existsSync } from "node:fs";
 import { Effect } from "effect";
 import type { Config } from "../../../config/env";
-import type { ProcessInfo, Recipe } from "../../models/types";
+import type { ProcessInfo } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
-import { appendExtraArguments, getPythonPath } from "../process/backend-builder";
-import { stripForeignFlagKeys } from "@local-studio/contracts/engine-args";
-import { extractFlag, hasModuleInvocation } from "../argument-utilities";
 import type { EngineSpec, InstallOptions } from "../engine-spec";
 import { installIntoManagedVenv, managedVenvPython } from "../runtimes/managed-venv";
 import { probeBackendRuntime, probeRunningProcessPython } from "../runtimes/runtime-target-probes";
 
-const buildMlxCommand = (recipe: Recipe, config: Config): string[] => {
-  const managedPython = managedVenvPython(config, "mlx");
-  const python =
-    getPythonPath(recipe) ||
-    config.mlx_python ||
-    (existsSync(managedPython) ? managedPython : "python3");
-  const command = [python, "-m", "mlx_lm.server"];
-  command.push("--model", recipe.model_path, "--host", recipe.host, "--port", String(recipe.port));
-  return appendExtraArguments(command, stripForeignFlagKeys("mlx", recipe.extra_args));
-};
-
 const managedPackageSpec = (_version?: string | null): string => {
   return "mlx-lm";
-};
-
-const detectInvocation = (args: string[]): boolean => {
-  const joined = args.join(" ");
-  if (joined.includes("mlx_lm.server") || joined.includes("mlx-lm")) return true;
-  if (hasModuleInvocation(args, "mlx_lm.server")) return true;
-  return false;
-};
-
-const extractModelPath = (args: string[]): string | null => {
-  return extractFlag(args, "--model") ?? null;
-};
-
-const extractServedModelName = (_args: string[]): string | null => {
-  return null;
 };
 
 const resolvePythonPath = (config: Config): string | null => {
@@ -90,12 +61,8 @@ export const mlxSpec: EngineSpec = {
   id: "mlx",
   healthPath: "/v1/models",
   cliBinary: null,
-  buildCommand: buildMlxCommand,
   managedPackageSpec,
   install: installMlx,
-  detectInvocation,
-  extractModelPath,
-  extractServedModelName,
   resolvePythonPath,
   getRuntimeInfo,
 };

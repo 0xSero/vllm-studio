@@ -59,6 +59,9 @@ export interface Reservation {
    *  instead of leasing it exclusively. */
   readonly shareable: boolean;
   readonly basePort: number;
+  /** Reserve exactly this port (legacy inference_port semantics) instead of scanning
+   *  upward from basePort; fails when something else already holds it. */
+  readonly exactPort?: number;
   readonly readyDeadlineMs: number;
 }
 
@@ -237,6 +240,19 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
             free: free.length,
           });
         }
+        let port: number;
+        if (reservation.exactPort !== undefined) {
+          const takenByRecord = all().some((record) => record.port === reservation.exactPort);
+          if (takenByRecord || !portIsBindable(reservation.exactPort)) {
+            return yield* Effect.fail<LaunchFailure>({
+              kind: "spawn-failed",
+              detail: `port ${reservation.exactPort} is already in use`,
+            });
+          }
+          port = reservation.exactPort;
+        } else {
+          port = allocatePort(reservation.basePort);
+        }
         const now = Date.now();
         const reserved: InstanceRecord = {
           name: reservation.name,
@@ -245,7 +261,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
           recipeId: reservation.recipeId,
           runtime: reservation.runtime,
           ref: null,
-          port: allocatePort(reservation.basePort),
+          port,
           devices: free.slice(0, reservation.need),
           nonce: randomUUID(),
           startedAt: new Date(now).toISOString(),

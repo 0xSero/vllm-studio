@@ -7,24 +7,18 @@ import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
 import { primaryLogPathFor } from "./core/log-files";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
 import { DownloadStore } from "./modules/engines/downloads/download-store";
-import { EngineCoordinator } from "./modules/engines/engine-coordinator";
 import {
   createLaunchFailureBudget,
   type LaunchFailureBudget,
-} from "./modules/engines/process/launch-failure-budget";
-import { createLaunchState, type LaunchState } from "./modules/engines/process/launch-state";
-import { makeProcessManager, type ProcessManager } from "./modules/engines/process/process-manager";
+} from "./modules/engines/launch-failure-budget";
+import { createComputeBridge, type ComputeBridge } from "./modules/compute/bridge";
 import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { SpeechService } from "./modules/speech/service";
 import { EventManager } from "./modules/system/event-manager";
-import {
-  createGpuLeaseRegistry,
-  perUserGpuLeaseLockDirectory,
-  type GpuLeaseRegistry,
-} from "./modules/system/gpu-leases";
+import { createGpuLeaseRegistry, type GpuLeaseRegistry } from "./modules/system/gpu-leases";
 import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics-store";
 import { getGpuInfo } from "./modules/system/platform/gpu";
 import { ControllerRequestStore } from "./stores/controller-request-store";
@@ -36,12 +30,10 @@ export interface AppContext {
   config: Config;
   logger: Logger;
   eventManager: EventManager;
-  launchState: LaunchState;
   launchFailureBudget: LaunchFailureBudget;
-  processManager: ProcessManager;
   downloadManager: DownloadManager;
-  engineService: EngineCoordinator;
   compute: Compute;
+  bridge: ComputeBridge;
   gpuLeaseRegistry: GpuLeaseRegistry;
   speechService: SpeechService;
   stores: {
@@ -176,31 +168,25 @@ export const makeAppContext = Effect.gen(function* () {
     lifetimeMetricsStore.ensureFirstStartedEffect(),
   );
 
-  const launchState = createLaunchState();
   const launchFailureBudget = createLaunchFailureBudget();
-  const gpuLeaseRegistry = createGpuLeaseRegistry({
-    lockDirectory: perUserGpuLeaseLockDirectory(),
-  });
-  const processManager = yield* makeProcessManager(config, logger, eventManager);
   const compute = yield* initializeSync("compute.open", () => makeCompute(config, eventManager));
+  const bridge = createComputeBridge({
+    config,
+    compute: compute.service,
+    store: compute.store,
+    getRecipe: (recipeId) => recipeStore.get(recipeId),
+  });
+  const gpuLeaseRegistry = createGpuLeaseRegistry({
+    store: compute.store,
+    recordAlive: (record) =>
+      compute.service.stateOf(record).pipe(Effect.map((state) => state !== "exited")),
+  });
   const downloadManager = yield* initialize(
     "download-manager.open",
     DownloadManager.make(config, downloadStore, eventManager, logger),
   );
   yield* Effect.acquireRelease(Effect.void, () =>
     releaseSafely("runtime-info.shutdown", logger, shutdownRuntimeInfo()),
-  );
-  const engineService = new EngineCoordinator({
-    config,
-    eventManager,
-    processManager,
-    recipeStore,
-    launchFailureBudget,
-    gpuLeaseRegistry,
-    gpuInfo: getGpuInfo,
-  });
-  yield* Effect.acquireRelease(Effect.succeed(engineService), (resource) =>
-    releaseSafely("engine-coordinator.shutdown", logger, resource.shutdown()),
   );
   yield* Effect.acquireRelease(Effect.void, () =>
     releaseSafely("engine-jobs.shutdown", logger, shutdownEngineJobs()),
@@ -215,7 +201,12 @@ export const makeAppContext = Effect.gen(function* () {
         new SpeechService({
           dataDirectory: config.data_dir,
           databasePath: dbPath,
-          engine: engineService,
+          engine: {
+            getCurrentProcess: (): ReturnType<ComputeBridge["findInferenceProcess"]> =>
+              bridge.findInferenceProcess(),
+            getCurrentRecipe: (): ReturnType<ComputeBridge["getCurrentRecipe"]> =>
+              bridge.getCurrentRecipe(),
+          },
           gpuLeaseRegistry,
           gpuInfo: getGpuInfo,
         }),
@@ -227,12 +218,10 @@ export const makeAppContext = Effect.gen(function* () {
     config,
     logger,
     eventManager,
-    launchState,
     launchFailureBudget,
-    processManager,
     downloadManager,
-    engineService,
     compute,
+    bridge,
     gpuLeaseRegistry,
     speechService,
     stores: {

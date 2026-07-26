@@ -29,4 +29,4 @@ export type {
   CompatibilityReport,
 } from "@local-studio/contracts/system";
 
-export type { LaunchResult, ProcessInfo, Recipe, GpuInfo } from "../models/types";
+export type { ProcessInfo, Recipe, GpuInfo } from "../models/types";
