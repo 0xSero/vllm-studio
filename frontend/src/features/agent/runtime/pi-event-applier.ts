@@ -46,41 +46,47 @@ export type SessionStreamContext = {
  * a session. The only side channel is `ctx.liveAssistantIds` (see above).
  * Callers dispatch the returned session in a single state commit.
  */
+/** Extension-driven prompts (select/confirm/input/editor). Every field is
+ *  length-capped because it comes straight off the wire and lands in the DOM. */
+function reduceExtensionUiRequestEvent(
+  session: Session,
+  event: Record<string, unknown>,
+): Session | null {
+  if (event.type !== "extension_ui_request") return null;
+  const method = event.method;
+  const known =
+    method === "select" || method === "confirm" || method === "input" || method === "editor";
+  if (typeof event.requestId !== "string" || typeof event.title !== "string" || !known) return null;
+  return {
+    ...session,
+    extensionUiRequest: {
+      requestId: event.requestId,
+      method,
+      title: event.title.slice(0, 500),
+      ...(typeof event.message === "string" ? { message: event.message.slice(0, 4_000) } : {}),
+      ...(typeof event.placeholder === "string"
+        ? { placeholder: event.placeholder.slice(0, 500) }
+        : {}),
+      ...(typeof event.prefill === "string" ? { prefill: event.prefill.slice(0, 32_000) } : {}),
+      ...(Array.isArray(event.options)
+        ? {
+            options: event.options
+              .filter((option): option is string => typeof option === "string")
+              .slice(0, 100)
+              .map((option) => option.slice(0, 1_000)),
+          }
+        : {}),
+    },
+  };
+}
+
 export function reduceSessionEvent(
   session: Session,
   ctx: SessionStreamContext,
   event: Record<string, unknown>,
 ): Session {
-  if (event.type === "extension_ui_request") {
-    const method = event.method;
-    if (
-      typeof event.requestId === "string" &&
-      typeof event.title === "string" &&
-      (method === "select" || method === "confirm" || method === "input" || method === "editor")
-    ) {
-      return {
-        ...session,
-        extensionUiRequest: {
-          requestId: event.requestId,
-          method,
-          title: event.title.slice(0, 500),
-          ...(typeof event.message === "string" ? { message: event.message.slice(0, 4_000) } : {}),
-          ...(typeof event.placeholder === "string"
-            ? { placeholder: event.placeholder.slice(0, 500) }
-            : {}),
-          ...(typeof event.prefill === "string" ? { prefill: event.prefill.slice(0, 32_000) } : {}),
-          ...(Array.isArray(event.options)
-            ? {
-                options: event.options
-                  .filter((option): option is string => typeof option === "string")
-                  .slice(0, 100)
-                  .map((option) => option.slice(0, 1_000)),
-              }
-            : {}),
-        },
-      };
-    }
-  }
+  const afterExtensionUi = reduceExtensionUiRequestEvent(session, event);
+  if (afterExtensionUi) return afterExtensionUi;
 
   if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
     return { ...session, error: event.message.slice(0, 4_000) };
