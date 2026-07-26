@@ -69,7 +69,7 @@ const buildCurrentMetrics = (
     };
 
     const scrape = yield* scrapeEngineMetrics(context.config.inference_port, 1500);
-    const engineActive = scrape.hasVllm || scrape.hasSglang;
+    const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp;
 
     if (!current && !engineActive) {
       return {

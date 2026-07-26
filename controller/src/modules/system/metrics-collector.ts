@@ -5,10 +5,10 @@ import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import type { UsageAggregate } from "../../stores/inference-request-store";
 import {
   SGLANG_METRIC_NAMES,
+  LLAMACPP_METRIC_NAMES,
   VLLM_METRIC_NAMES,
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
-import { LLAMACPP_TPS_STALE_MS, scrapeLlamacppThroughput } from "./llamacpp-throughput";
 import {
   bumpBestLower,
   bumpPeak,
@@ -27,10 +27,6 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
   let lastVllmMetrics: Record<string, number> = {};
   let lastMetricsTime = 0;
   let lastRuntimeSummaryAt = 0;
-  let lastLlamacppSampleAt = 0;
-  let lastLlamacppSampleKey = "";
-  let lastLlamacppPromptThroughput = 0;
-  let lastLlamacppGenerationThroughput = 0;
   let sessionModelId: string | null = null;
   let sessionPeakId: string | null = null;
   let sessionPeaks: SessionPeaks = emptyPeaks();
@@ -139,13 +135,21 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       let generationTokensTotal = 0;
       let avgTtftMs = 0;
 
-      if (current.backend === "vllm" || current.backend === "sglang") {
+      if (
+        current.backend === "vllm" ||
+        current.backend === "sglang" ||
+        current.backend === "llamacpp"
+      ) {
         const vllmMetrics = yield* scrapeVllmMetrics(context.config.inference_port);
         const now = Date.now() / 1000;
         const elapsed =
           lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
-        const isSglang = current.backend === "sglang";
-        const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
+        const names =
+          current.backend === "sglang"
+            ? SGLANG_METRIC_NAMES
+            : current.backend === "llamacpp"
+              ? LLAMACPP_METRIC_NAMES
+              : VLLM_METRIC_NAMES;
         if (
           elapsed > 0 &&
           Object.keys(vllmMetrics).length > 0 &&
@@ -193,39 +197,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
             avgTtftMs > 0 ? avgTtftMs : undefined,
           );
         }
-      } else if (current.backend === "llamacpp") {
-        lastVllmMetrics = {};
-        lastMetricsTime = 0;
-        const sample = yield* scrapeLlamacppThroughput(context, current);
-        const isNewSample = Boolean(sample && sample.sampleKey !== lastLlamacppSampleKey);
-        if (sample && isNewSample) {
-          lastLlamacppSampleAt = Date.now();
-          lastLlamacppSampleKey = sample.sampleKey;
-          if (sample.promptTps > 0) {
-            lastLlamacppPromptThroughput = sample.promptTps;
-          }
-          if (sample.generationTps > 0) {
-            lastLlamacppGenerationThroughput = sample.generationTps;
-          }
-
-          yield* context.stores.peakMetricsStore.updateIfBetterEffect(
-            modelId,
-            sample.promptTps > 0 ? sample.promptTps : undefined,
-            sample.generationTps > 0 ? sample.generationTps : undefined,
-            undefined,
-          );
-        }
-
-        const isFresh = Date.now() - lastLlamacppSampleAt <= LLAMACPP_TPS_STALE_MS;
-        promptThroughput = isFresh ? lastLlamacppPromptThroughput : 0;
-        generationThroughput = isFresh ? lastLlamacppGenerationThroughput : 0;
       } else {
         lastVllmMetrics = {};
         lastMetricsTime = 0;
-        lastLlamacppSampleAt = 0;
-        lastLlamacppSampleKey = "";
-        lastLlamacppPromptThroughput = 0;
-        lastLlamacppGenerationThroughput = 0;
       }
 
       bumpPeak(sessionPeaks, "prompt_throughput", promptThroughput);
