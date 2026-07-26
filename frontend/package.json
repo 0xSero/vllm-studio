@@ -50,7 +50,7 @@
   "dependencies": {
     "@earendil-works/pi-ai": "0.80.8",
     "@earendil-works/pi-coding-agent": "0.80.8",
-    "@hono/node-server": "1.19.14",
+    "@hono/node-server": "^2.0.12",
     "@local-studio/agent-runtime": "file:../services/agent-runtime",
     "@local-studio/contracts": "file:../controller/contracts",
     "@lydell/node-pty": "1.2.0-beta.12",
@@ -60,12 +60,12 @@
     "@xterm/xterm": "6.1.0-beta.285",
     "chromium-bidi": "0.12.0",
     "effect": "4.0.0-beta.90",
-    "electron-updater": "6.8.3",
+    "electron-updater": "6.8.9",
     "highlight.js": "11.11.1",
     "hono": "4.12.30",
     "lucide-react": "0.561.0",
     "mermaid": "^11.16.0",
-    "next": "16.2.7",
+    "next": "16.2.12",
     "playwright-core": "1.61.1",
     "proper-lockfile": "4.1.2",
     "qrcode.react": "4.2.0",
@@ -102,7 +102,15 @@
     "typescript": "5.9.3"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.23",
+    "fast-uri": "^3.1.4",
+    "sharp": "^0.35.3",
+    "dompurify": "^3.4.12",
+    "protobufjs": "^7.6.5",
+    "tar": "^7.5.21",
+    "minimatch@^10": {
+      "brace-expansion": "^5.0.8"
+    }
   },
   "main": "desktop/dist/main.js",
   "allowScripts": {
