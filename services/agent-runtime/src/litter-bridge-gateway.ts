@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
 import {
   LITTER_BRIDGE_PROTOCOL_VERSION,
@@ -33,6 +34,9 @@ import {
   LitterBridgeControllerSnapshotRequestSchema,
   LitterBridgeControllerSnapshotSchema,
   LitterBridgeErrorResultSchema,
+  LitterBridgeSessionCreateAckSchema,
+  LitterBridgeSessionCreateRequestSchema,
+  LitterBridgeSessionCreateResultSchema,
   LitterBridgeSessionListPageSchema,
   LitterBridgeSessionListRequestSchema,
   LitterBridgeSessionPageSchema,
@@ -55,6 +59,8 @@ import {
   type LitterBridgeSessionDescriptor,
   type LitterBridgeSessionListCursor,
   type LitterBridgeSessionListPage,
+  type LitterBridgeSessionCreateRequest,
+  type LitterBridgeSessionCreateResult,
   type LitterBridgeSessionListRequest,
   type LitterBridgeSessionMetadata,
   type LitterBridgeSessionPage,
@@ -131,6 +137,11 @@ type GatewayOptions = {
   mutationLeaseMs?: number;
   mutationRetentionMs?: number;
 };
+type GatewayPiRuntime = {
+  program: string;
+  args: string[];
+  env: Record<string, string>;
+};
 type GatewayMetadata = {
   protocolVersion: 1;
   url: string;
@@ -139,6 +150,12 @@ type GatewayMetadata = {
   controllerId: string;
   pid: number;
   issuedAt: string;
+  // The running instance's own Pi data dir and launch command. External
+  // consumers (the KittyLitter daemon) use these to run pi against the same
+  // version and data dir that this instance owns, instead of guessing a
+  // possibly-stale install path. Optional so older readers ignore them.
+  piAgentDir?: string;
+  piRuntime?: GatewayPiRuntime;
 };
 type Section<T> = {
   value: T | null;
@@ -149,6 +166,7 @@ type SignedGatewayRequest =
   | LitterBridgeControllerSnapshotRequest
   | LitterBridgeSessionListRequest
   | LitterBridgeSessionReadRequest
+  | LitterBridgeSessionCreateRequest
   | LitterBridgeAgentTurnRequest;
 type TurnRuntimeEntry = {
   sessionId: string;
@@ -274,6 +292,45 @@ const writePrivateJson = (filepath: string, value: unknown): void => {
 
 const controllerIdFile = (dataDir: string): string => path.join(dataDir, "litter-controller-id");
 const metadataFile = (dataDir: string): string => path.join(dataDir, "litter-bridge.json");
+
+/**
+ * Resolve the Pi agent directory this instance is actually using, matching the
+ * precedence the runtime itself applies.
+ */
+const resolvePiAgentDir = (dataDir: string): string => {
+  const explicit = process.env.PI_CODING_AGENT_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.resolve(path.join(dataDir, "pi-agent"));
+};
+
+/**
+ * Resolve the command an external consumer should run to launch the *same*
+ * `pi-coding-agent` this instance uses: this process's own executable (under
+ * Electron that means `ELECTRON_RUN_AS_NODE`) plus the CLI entry.
+ *
+ * Resolution goes through `import.meta.resolve`, which uses the same module
+ * graph that already loaded pi as a library — so it works whether the package
+ * is hoisted next to the agent-runtime (dev) or in a sibling subtree of the
+ * desktop bundle, where a `createRequire` walk from this module would miss it.
+ * `dist/cli.js` is derived as a sibling of the package's main entry because the
+ * package's `exports` map does not expose the `dist/cli.js` subpath directly.
+ * Returns null on any failure so the descriptor omits `piRuntime` and consumers
+ * fall back to discovery rather than getting a broken command.
+ */
+const resolvePiRuntime = (): GatewayPiRuntime | null => {
+  try {
+    const mainUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
+    const distDir = path.dirname(fileURLToPath(mainUrl));
+    const cli = path.join(distDir, "cli.js");
+    const env: Record<string, string> = {};
+    if (process.versions.electron) {
+      env.ELECTRON_RUN_AS_NODE = "1";
+    }
+    return { program: process.execPath, args: [cli], env };
+  } catch {
+    return null;
+  }
+};
 
 const loadControllerId = (dataDir: string): string => {
   const filepath = controllerIdFile(dataDir);
@@ -496,6 +553,24 @@ const materializeAgentTurnResult = (
     });
   }
   return Schema.decodeUnknownSync(LitterBridgeAgentTurnResultSchema)({
+    ...decoded,
+    requestId,
+    error: { ...decoded.error, requestId },
+  });
+};
+
+const materializeSessionCreateResult = (
+  stored: unknown,
+  requestId: string,
+): LitterBridgeSessionCreateResult => {
+  const decoded = Schema.decodeUnknownSync(LitterBridgeSessionCreateResultSchema)(stored);
+  if (decoded.type === "session_create_ack") {
+    return Schema.decodeUnknownSync(LitterBridgeSessionCreateResultSchema)({
+      ...decoded,
+      requestId,
+    });
+  }
+  return Schema.decodeUnknownSync(LitterBridgeSessionCreateResultSchema)({
     ...decoded,
     requestId,
     error: { ...decoded.error, requestId },
@@ -2803,6 +2878,339 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     }
   };
 
+  // Build the create ack by reading back the freshly-written session file. The
+  // new session id is server-minted, so the descriptor is authoritative from
+  // disk; if the file isn't yet visible to inventory (project-cwd variant
+  // race) we fall back to a minimal descriptor derived from the dispatch.
+  const buildSessionCreateAck = (input: {
+    requestId: string;
+    request: LitterBridgeSessionCreateRequest;
+    dispatchId: string;
+    sessionId: string;
+    cwd: string;
+    modelId: string;
+    acceptedAt: string;
+  }) => {
+    const canonicalSession = {
+      kind: "external_session" as const,
+      authority: "local-studio" as const,
+      installationId: controllerId,
+      sessionId: input.sessionId,
+    };
+    let metadata: LitterBridgeSessionMetadata;
+    let revision = 0;
+    let active = true;
+    try {
+      const resolved = resolveSessionFile(input.sessionId, projects(), roots);
+      metadata = readSessionMetadata(resolved);
+      revision = resolved.revision;
+      active = activeSessionIds().has(input.sessionId);
+    } catch {
+      const nowIso = now().toISOString();
+      metadata = {
+        title: input.request.title,
+        cwd: input.cwd,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        modelId: input.modelId,
+        providerId: null,
+      };
+    }
+    return Schema.decodeUnknownSync(LitterBridgeSessionCreateAckSchema)({
+      type: "session_create_ack",
+      protocolVersion: LITTER_BRIDGE_PROTOCOL_VERSION,
+      requestId: input.requestId,
+      idempotencyKey: input.request.auth.idempotencyKey,
+      dispatchId: input.dispatchId,
+      canonicalSession,
+      descriptor: {
+        session: canonicalSession,
+        metadata,
+        revision,
+        archived: false,
+        active,
+      },
+      messageId: input.request.messageId,
+      contentHash: input.request.contentHash,
+      piSessionId: input.sessionId,
+      modelId: input.modelId,
+      outcome: "accepted",
+      acceptedAt: input.acceptedAt,
+    });
+  };
+
+  const handleSessionCreate = async (
+    request: LitterBridgeSessionCreateRequest,
+  ): Promise<Response> => {
+    const requestId = request.auth.requestId;
+    if (litterBridgeSha256Utf8(request.content) !== request.contentHash) {
+      return jsonError(
+        "integrity_failed",
+        "Prompt content hash does not match the signed request",
+        requestId,
+        422,
+      );
+    }
+    // The target cwd must canonicalize to a currently-trusted live project —
+    // mobile can only create sessions inside projects the host already trusts.
+    const requestedCwd = (() => {
+      try {
+        return realpathSync.native(path.resolve(request.cwd));
+      } catch {
+        return null;
+      }
+    })();
+    const project = requestedCwd
+      ? liveProjects(projects()).find((entry) => entry.cwd === requestedCwd)
+      : null;
+    if (!project) {
+      return jsonError(
+        "forbidden",
+        "Working directory is not an allowed project",
+        requestId,
+        403,
+      );
+    }
+    const modelId = boundedString(request.modelId);
+    if (!modelId) {
+      return jsonError(
+        "invalid_request",
+        "A model id is required to create a session",
+        requestId,
+        400,
+      );
+    }
+    const identity: MutationIdentity = {
+      controllerId,
+      deviceId: request.auth.device.deviceId,
+      idempotencyKey: request.auth.idempotencyKey,
+    };
+    let stopLeaseRenewal: (() => void) | null = null;
+    try {
+      const ledger = getMutationLedger();
+      const reservation = ledger.reserve(identity, request.auth.bodyHash, mutationOwnerId);
+      if (reservation.kind === "cached") {
+        return Response.json(
+          materializeSessionCreateResult(reservation.stored.result, requestId),
+          { status: reservation.stored.status },
+        );
+      }
+      if (reservation.kind === "mismatch") {
+        return jsonError(
+          "integrity_failed",
+          "Idempotency key was already used for another signed request",
+          requestId,
+          409,
+        );
+      }
+      if (reservation.kind === "busy") {
+        return jsonRateLimited(
+          "Session creation is already in progress",
+          requestId,
+          reservation.retryAfterMs,
+        );
+      }
+      if (reservation.kind === "reconcile") {
+        // A prior attempt marked a dispatch but crashed before settling. Verify
+        // the same request and recover the outcome from the transcript.
+        const correlation = reservation.correlation;
+        if (
+          correlation.messageId !== request.messageId ||
+          correlation.contentHash !== request.contentHash
+        ) {
+          return jsonError("integrity_failed", "Dispatch correlation is invalid", requestId, 409);
+        }
+        let evidence: { acceptedAt: string } | null;
+        try {
+          evidence = reconcileAgentTurnTranscript(correlation);
+        } catch (error) {
+          if (error instanceof SessionReadError) {
+            return jsonError(error.code, error.message, requestId, 409, true);
+          }
+          throw error;
+        }
+        if (!evidence) {
+          return jsonError(
+            "internal",
+            "Session creation outcome is indeterminate; retry",
+            requestId,
+            409,
+            true,
+          );
+        }
+        const ack = buildSessionCreateAck({
+          requestId,
+          request,
+          dispatchId: correlation.dispatchId,
+          sessionId: correlation.sessionId,
+          cwd: project.cwd,
+          modelId: correlation.modelId,
+          acceptedAt: evidence.acceptedAt,
+        });
+        ledger.settleDispatched(
+          identity,
+          request.auth.bodyHash,
+          correlation.dispatchId,
+          "accepted",
+          { status: 200, result: ack },
+        );
+        return Response.json(ack);
+      }
+
+      const lease = reservation.lease;
+      let leaseLost = false;
+      const renewal = setInterval(
+        () => {
+          try {
+            if (!ledger.renew(identity, request.auth.bodyHash, lease)) leaseLost = true;
+          } catch {
+            leaseLost = true;
+          }
+        },
+        Math.max(1_000, Math.floor(ledger.leaseMs / 3)),
+      );
+      renewal.unref?.();
+      const stopRenewal = (): void => clearInterval(renewal);
+      stopLeaseRenewal = stopRenewal;
+      const rejectRetryable = (
+        code: LitterBridgeErrorCode,
+        message: string,
+        status: number,
+      ): Response => {
+        stopRenewal();
+        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
+        return jsonError(code, message, requestId, status, true);
+      };
+
+      const runtimeAffinity = `litter-create-${litterBridgeSha256Utf8(
+        canonicalLitterBridgeJson([
+          "litter-create-runtime-v1",
+          controllerId,
+          request.auth.device.deviceId,
+          request.auth.idempotencyKey,
+        ]),
+      )}`;
+      const target = turnRuntime.getSessionForLookup(runtimeAffinity, null);
+      try {
+        await target.session.ensureStarted(modelId, project.cwd, null);
+      } catch {
+        return rejectRetryable(
+          "agent_runtime_unavailable",
+          "Session runtime could not start the selected model",
+          503,
+        );
+      }
+      const status = target.session.status;
+      if (leaseLost) {
+        stopRenewal();
+        return jsonError(
+          "rate_limited",
+          "Session preparation lease was lost before dispatch",
+          requestId,
+          409,
+          true,
+        );
+      }
+      const newSessionId = boundedString(status.piSessionId);
+      if (
+        !status.running ||
+        !newSessionId ||
+        status.cwd !== project.cwd ||
+        status.modelId !== modelId
+      ) {
+        return rejectRetryable(
+          "integrity_failed",
+          "Runtime session identity is inconsistent",
+          409,
+        );
+      }
+      const dispatchId = randomUUID();
+      let boundary: PiDurablePromptBoundary;
+      try {
+        boundary = await acceptAgentTurnPrompt(target.session, request.content, {
+          dispatchId,
+          messageId: request.messageId,
+          contentHash: request.contentHash,
+        });
+      } catch (error) {
+        stopRenewal();
+        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
+        if (error instanceof AgentTurnPreflightRejected) {
+          return jsonError(
+            "agent_runtime_unavailable",
+            "Prompt preflight was rejected by the session runtime",
+            requestId,
+            503,
+            true,
+          );
+        }
+        return jsonError(
+          "internal",
+          "Session creation outcome is indeterminate; retry",
+          requestId,
+          500,
+          true,
+        );
+      }
+      if (
+        boundary.dispatchId !== dispatchId ||
+        boundedString(boundary.piSessionId) !== newSessionId ||
+        boundary.cwd !== project.cwd ||
+        boundary.modelId !== modelId
+      ) {
+        stopRenewal();
+        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
+        return jsonError(
+          "integrity_failed",
+          "Durable prompt boundary identity changed",
+          requestId,
+          409,
+          true,
+        );
+      }
+      // Record the dispatch correlation (reserved → dispatching) before we
+      // settle: it satisfies the ledger state machine and lets a crashed retry
+      // reconcile from the transcript. The session file now exists (the prompt
+      // wrote it), so the correlation carries its authoritative path.
+      const correlation: MutationCorrelation = {
+        dispatchId,
+        sessionId: newSessionId,
+        sessionFile: boundary.sessionFile,
+        messageId: request.messageId,
+        contentHash: request.contentHash,
+        baseRevision: 0,
+        baseOffset: 0,
+        modelId,
+        dispatchedAt: now().toISOString(),
+      };
+      ledger.markDispatching(identity, request.auth.bodyHash, lease, correlation);
+      const acknowledgement = buildSessionCreateAck({
+        requestId,
+        request,
+        dispatchId,
+        sessionId: newSessionId,
+        cwd: project.cwd,
+        modelId,
+        acceptedAt: boundary.acceptedAt,
+      });
+      stopRenewal();
+      ledger.settleDispatched(identity, request.auth.bodyHash, dispatchId, "accepted", {
+        status: 200,
+        result: acknowledgement,
+      });
+      return Response.json(acknowledgement);
+    } catch (error) {
+      console.error(
+        `[agent-runtime] litter session_create failed: ${
+          error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error)
+        }`,
+      );
+      return jsonError("internal", "Session creation failed closed", requestId, 500);
+    } finally {
+      stopLeaseRenewal?.();
+    }
+  };
+
   const handle = async (request: Request): Promise<Response> => {
     const providedSecret = request.headers.get(SECRET_HEADER) ?? "";
     if (!safeSecretEqual(secret, providedSecret)) {
@@ -2824,6 +3232,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         parsed = Schema.decodeUnknownSync(LitterBridgeSessionReadRequestSchema)(body.value);
       } else if (isRecord(body.value) && body.value.type === "agent_turn_request") {
         parsed = Schema.decodeUnknownSync(LitterBridgeAgentTurnRequestSchema)(body.value);
+      } else if (isRecord(body.value) && body.value.type === "session_create_request") {
+        parsed = Schema.decodeUnknownSync(LitterBridgeSessionCreateRequestSchema)(body.value);
       } else {
         throw new Error("Unsupported request");
       }
@@ -2838,7 +3248,11 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     const requestNow = now();
     const verified = verifyLitterBridgeRequest(parsed, requestNow);
     if (!verified.ok) return verified.response;
-    if (parsed.type === "controller_snapshot_request" && parsed.controllerId !== controllerId) {
+    if (
+      (parsed.type === "controller_snapshot_request" ||
+        parsed.type === "session_create_request") &&
+      parsed.controllerId !== controllerId
+    ) {
       return jsonError("not_found", "Controller identity was not found", requestId, 404);
     }
     if (
@@ -2851,6 +3265,9 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     }
     if (parsed.type === "agent_turn_request") {
       return handleAgentTurn(parsed);
+    }
+    if (parsed.type === "session_create_request") {
+      return handleSessionCreate(parsed);
     }
     const nowMs = requestNow.getTime();
     pruneReplay(nowMs);
@@ -2895,6 +3312,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
       throw new Error("Invalid Litter bridge port");
     }
+    const piRuntime = resolvePiRuntime();
     published = {
       protocolVersion: LITTER_BRIDGE_PROTOCOL_VERSION,
       url: `http://127.0.0.1:${port}${ROUTE_PATH}`,
@@ -2903,6 +3321,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       controllerId,
       pid: process.pid,
       issuedAt: now().toISOString(),
+      piAgentDir: resolvePiAgentDir(dataDir),
+      ...(piRuntime ? { piRuntime } : {}),
     };
     writePrivateJson(metadataFile(dataDir), published);
   };
