@@ -1,4 +1,4 @@
-import type { EngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
 import { health, noMetrics, plan, serverArguments, supported, unsupported, type Spelling } from "./shared";
 
 const READY_DEADLINE_MS = 300_000;
@@ -17,7 +17,7 @@ const supports = (host: HostProfile): EngineSupport => {
   return supported("process");
 };
 
-export const mlx: EngineSpec = {
+export const mlx: ComputeEngineSpec = {
   id: "mlx",
   defaultBinary: "mlx_lm.server",
   defaultPort: 8080,

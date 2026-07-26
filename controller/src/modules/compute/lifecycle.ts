@@ -6,7 +6,7 @@ import type {
   InstanceRecord,
   InstanceState,
   LaunchFailure,
-  RuntimeKind,
+  EngineRuntimeKind,
   ServingOptions,
 } from "./contracts";
 import { fetchLocal } from "../../http/local-fetch";
@@ -35,7 +35,7 @@ const HEALTH_PROBE_TIMEOUT_MS = 3_000;
 
 export interface ComputeDeps {
   readonly store: InstanceStore;
-  readonly launcherFor: (runtime: RuntimeKind) => Launcher;
+  readonly launcherFor: (runtime: EngineRuntimeKind) => Launcher;
   readonly host: () => Effect.Effect<HostProfile>;
   readonly freeDevices: () => Effect.Effect<readonly DeviceId[]>;
   readonly onEvent: (name: string, stage: string, message: string) => Effect.Effect<void>;
@@ -45,7 +45,7 @@ export interface ComputeLaunchInput {
   readonly name: string;
   readonly engine: EngineId;
   readonly recipeId: string;
-  readonly runtime: RuntimeKind;
+  readonly runtime: EngineRuntimeKind;
   readonly deviceCount: number;
   /** Pin the launch to these devices (recipe GPU selectors); default = any free. */
   readonly devices?: readonly DeviceId[];

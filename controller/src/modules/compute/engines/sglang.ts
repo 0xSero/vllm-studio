@@ -1,4 +1,4 @@
-import type { EngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
 import {
   health,
   plan,
@@ -39,7 +39,7 @@ const supports = (host: HostProfile): EngineSupport => {
   return host.dockerGpu ? supported("process", "docker") : supported("process");
 };
 
-export const sglang: EngineSpec = {
+export const sglang: ComputeEngineSpec = {
   id: "sglang",
   defaultBinary: "sglang",
   defaultPort: 30000,

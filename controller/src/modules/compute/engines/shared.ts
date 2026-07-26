@@ -4,7 +4,7 @@ import type {
   LaunchPlan,
   LaunchRequest,
   MetricMap,
-  RuntimeKind,
+  EngineRuntimeKind,
   ServingOptions,
 } from "../contracts";
 
@@ -19,7 +19,7 @@ export const health = (path: string, readyDeadlineMs: number, intervalMs = 2_000
 });
 
 export const unsupported = (reason: string): EngineSupport => ({ ok: false, reason });
-export const supported = (...runtimes: RuntimeKind[]): EngineSupport => ({ ok: true, runtimes });
+export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({ ok: true, runtimes });
 
 export const noMetrics: MetricMap = {
   requestsRunning: [],

@@ -15,7 +15,7 @@ import type {
   InstanceRecord,
   LaunchFailure,
   NodeId,
-  RuntimeKind,
+  EngineRuntimeKind,
 } from "../contracts";
 
 /**
@@ -51,7 +51,7 @@ export interface Reservation {
   readonly nodeId: NodeId;
   readonly engine: EngineId;
   readonly recipeId: string;
-  readonly runtime: RuntimeKind;
+  readonly runtime: EngineRuntimeKind;
   readonly candidates: readonly DeviceId[];
   readonly need: number;
   /** Unified-memory accelerators (Apple Silicon, DGX Spark) are shared by design: the

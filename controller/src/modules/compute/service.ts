@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import type { Config } from "../../config/env";
 import { runCommandAsyncEffect } from "../../core/command";
 import type { EventManager } from "../system/event-manager";
-import type { DeviceId, HostProfile, RuntimeKind } from "./contracts";
+import type { DeviceId, HostProfile, EngineRuntimeKind } from "./contracts";
 import { makeTelemetry, profileFrom, type Telemetry } from "./devices/snapshot";
 import { makeInstanceStore, type InstanceStore } from "./instances/store";
 import { makeDockerLauncher } from "./launchers/docker";
@@ -75,7 +75,7 @@ export const makeCompute = (config: Config, eventManager: EventManager): Compute
     });
 
   const processLauncher = makeProcessLauncher(store.logPath);
-  const launcherFor = (runtime: RuntimeKind): Launcher =>
+  const launcherFor = (runtime: EngineRuntimeKind): Launcher =>
     runtime === "docker"
       ? makeDockerLauncher(lastProfile?.accelerator ?? "cuda")
       : processLauncher;

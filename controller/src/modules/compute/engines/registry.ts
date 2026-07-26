@@ -1,11 +1,11 @@
 import type {
   EngineId,
-  EngineSpec,
+  ComputeEngineSpec,
   EngineSupport,
   HostProfile,
   LaunchPlan,
   LaunchRequest,
-  RuntimeKind,
+  EngineRuntimeKind,
 } from "../contracts";
 import { applyDevices } from "./devices";
 import { exllamav3 } from "./exllamav3";
@@ -14,7 +14,7 @@ import { mlx } from "./mlx";
 import { sglang } from "./sglang";
 import { vllm } from "./vllm";
 
-const SPECS: Readonly<Record<EngineId, EngineSpec>> = {
+const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
   vllm,
   sglang,
   llamacpp,
@@ -22,9 +22,9 @@ const SPECS: Readonly<Record<EngineId, EngineSpec>> = {
   exllamav3,
 };
 
-export const engineSpec = (id: EngineId): EngineSpec => SPECS[id];
+export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];
 
-export const allEngineSpecs: readonly EngineSpec[] = Object.values(SPECS);
+export const allEngineSpecs: readonly ComputeEngineSpec[] = Object.values(SPECS);
 
 /** Engines this host can actually run, with the runtimes available for each. */
 export const availableEngines = (
@@ -35,7 +35,7 @@ export const availableEngines = (
 export const supportsRuntime = (
   id: EngineId,
   host: HostProfile,
-  runtime: RuntimeKind,
+  runtime: EngineRuntimeKind,
 ): boolean => {
   const support = SPECS[id].supports(host);
   return support.ok && support.runtimes.includes(runtime);

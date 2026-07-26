@@ -1,4 +1,4 @@
-import type { EngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
 import {
   health,
   plan,
@@ -36,7 +36,7 @@ const image = (host: HostProfile): string | null => {
 const supports = (host: HostProfile): EngineSupport =>
   host.dockerGpu && host.platform !== "darwin" ? supported("process", "docker") : supported("process");
 
-export const llamacpp: EngineSpec = {
+export const llamacpp: ComputeEngineSpec = {
   id: "llamacpp",
   defaultBinary: "llama-server",
   defaultPort: 8081,

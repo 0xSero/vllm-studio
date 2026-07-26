@@ -24,7 +24,10 @@ export const ENGINE_IDS: readonly EngineId[] = [
 ] as const;
 
 export type Accelerator = "cuda" | "rocm" | "metal" | "xpu" | "cpu";
-export type RuntimeKind = "process" | "docker";
+/** Where an engine runs. Distinct from the installer-facing `RuntimeKind` in
+ *  controller/contracts/system.ts ("venv" | "docker" | "binary" | "system"),
+ *  which describes how a runtime was installed, not how a job is launched. */
+export type EngineRuntimeKind = "process" | "docker";
 export type HostPlatform = "linux" | "darwin" | "win32";
 export type HostArch = "x64" | "arm64";
 
@@ -52,7 +55,7 @@ export interface HostProfile {
 /* ── engines ─────────────────────────────────────────────────────────────── */
 
 export type EngineSupport =
-  | { readonly ok: true; readonly runtimes: readonly RuntimeKind[] }
+  | { readonly ok: true; readonly runtimes: readonly EngineRuntimeKind[] }
   | { readonly ok: false; readonly reason: string };
 
 export interface HealthCheck {
@@ -91,7 +94,7 @@ export interface Mount {
  * CUDA_VISIBLE_DEVICES or `--gpus`; `applyDevices` does, once, for every engine.
  */
 export interface LaunchPlan {
-  readonly kind: RuntimeKind;
+  readonly kind: EngineRuntimeKind;
   /** process: [binary, ...args]. docker: the container's entrypoint args. */
   readonly argv: readonly string[];
   readonly image?: string;
@@ -127,7 +130,7 @@ export interface ServingOptions {
 export interface LaunchRequest {
   readonly engine: EngineId;
   readonly host: HostProfile;
-  readonly runtime: RuntimeKind;
+  readonly runtime: EngineRuntimeKind;
   readonly devices: readonly DeviceId[];
   readonly port: number;
   /** Absolute path to the model directory, or the .gguf file for llama.cpp. */
@@ -141,7 +144,10 @@ export interface LaunchRequest {
   readonly binary: string;
 }
 
-export interface EngineSpec {
+/** An engine as the compute layer sees it: what it supports, how to plan a
+ *  launch, how to check it. Named apart from the legacy engines module's
+ *  EngineSpec (install/probe/runtime-info), which it will eventually replace. */
+export interface ComputeEngineSpec {
   readonly id: EngineId;
   readonly supports: (host: HostProfile) => EngineSupport;
   readonly plan: (request: LaunchRequest) => LaunchPlan;
@@ -178,7 +184,7 @@ export interface InstanceRecord {
   readonly nodeId: NodeId;
   readonly engine: EngineId;
   readonly recipeId: string;
-  readonly runtime: RuntimeKind;
+  readonly runtime: EngineRuntimeKind;
   /** null while the record is a reservation and nothing has spawned yet. */
   readonly ref: HandleReference | null;
   readonly port: number;

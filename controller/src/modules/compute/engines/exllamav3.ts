@@ -1,4 +1,4 @@
-import type { EngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
 import { health, noMetrics, plan, serverArguments, supported, unsupported, type Spelling } from "./shared";
 
 const READY_DEADLINE_MS = 900_000;
@@ -26,7 +26,7 @@ const supports = (host: HostProfile): EngineSupport => {
   return supported("process");
 };
 
-export const exllamav3: EngineSpec = {
+export const exllamav3: ComputeEngineSpec = {
   id: "exllamav3",
   defaultBinary: "tabbyapi",
   defaultPort: 5000,

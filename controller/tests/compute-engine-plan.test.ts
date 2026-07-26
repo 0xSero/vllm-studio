@@ -3,7 +3,7 @@ import type {
   Accelerator,
   HostProfile,
   LaunchRequest,
-  RuntimeKind,
+  EngineRuntimeKind,
   ServingOptions,
 } from "../src/modules/compute/contracts";
 import { ENGINE_IDS } from "../src/modules/compute/contracts";
@@ -221,7 +221,7 @@ describe("supports() gates by host", () => {
     readonly engine: (typeof ENGINE_IDS)[number];
     readonly host: HostProfile;
     readonly ok: boolean;
-    readonly runtime?: RuntimeKind;
+    readonly runtime?: EngineRuntimeKind;
   }[] = [
     { engine: "vllm", host: host({ accelerator: "cuda" }), ok: true, runtime: "process" },
     { engine: "vllm", host: host({ platform: "darwin", accelerator: "metal" }), ok: false },
