@@ -1,7 +1,15 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
@@ -76,6 +84,9 @@ import {
   useChatPaneRuntimeHandle,
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
+import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
+import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
 import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
@@ -97,6 +108,7 @@ import {
   rememberPersistentTerminalOwner,
   selectPersistentTerminalOwner,
   usePersistentTerminalOwners,
+  type TerminalOwnersSnapshot,
 } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
@@ -379,13 +391,14 @@ export function ChatPane({
     setMention,
     textareaRef,
   });
+  const composerInput = activeTab?.input ?? "";
   const resetComposerHeight = useCallback(() => {
     if (textareaRef.current) textareaRef.current.style.height = "";
     lastAppliedComposerHeightRef.current = 0;
     lastComposerValueLengthRef.current = 0;
   }, []);
   useComposerTextareaHeightSync({
-    value: activeTab?.input ?? "",
+    value: composerInput,
     textareaRef,
     lastAppliedComposerHeightRef,
     lastComposerValueLengthRef,
@@ -456,34 +469,8 @@ export function ChatPane({
       activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
     [activeTab, tools],
   );
-  const [goalRevision, setGoalRevision] = useState(0);
   const activePiSessionId = piSessionIdOf(activeTab);
-  const goalAction = useCallback(
-    async (args: string): Promise<string | null> => {
-      const piSessionId = activePiSessionId;
-      if (!piSessionId) return "Send a first message, then set a goal for this session.";
-      if (!args) return "Usage: /goal <objective> — or /goal pause · resume · clear";
-      const verb = args.split(/\s+/)[0]?.toLowerCase() ?? "";
-      try {
-        if (verb === "clear") {
-          await clearSessionGoal(piSessionId);
-        } else if (verb === "pause" || verb === "resume") {
-          await updateSessionGoal(piSessionId, { status: verb === "pause" ? "paused" : "active" });
-        } else {
-          await updateSessionGoal(piSessionId, {
-            objective: args,
-            status: "active",
-            resetTurns: true,
-          });
-        }
-        setGoalRevision((value) => value + 1);
-        return null;
-      } catch {
-        return "Failed to update the goal.";
-      }
-    },
-    [activePiSessionId],
-  );
+  const { goalRevision, goalAction } = useGoalCommand(activePiSessionId);
   const handleProjectPicked = useCallback(
     (project: Project) => {
       if (!activeTab || activeTab.messages.length > 0) return;
@@ -544,35 +531,17 @@ export function ChatPane({
     mention,
     skillRows: tools.skillCatalogue,
   });
-  const runCommandInvocation = useCallback(
-    async (invocation: SlashInvocation) => {
-      if (!activeTab) return;
-      const execution = commandRegistry.execute(invocation, commandContext);
-      if (!execution) return;
-      const tabId = activeTab.id;
-      const outcome = await execution;
-      if (outcome.kind === "error") {
-        updateTab(tabId, (tab) => ({ ...tab, error: outcome.message }));
-      } else {
-        const nextInput = outcome.kind === "set-input" ? outcome.input : "";
-        updateTab(tabId, (tab) => ({ ...tab, input: nextInput, error: "" }));
-        if (!nextInput) resetComposerHeight();
-      }
-      setMention(null);
-      requestAnimationFrame(() => textareaRef.current?.focus());
-    },
-    [activeTab, commandContext, commandRegistry, resetComposerHeight, updateTab],
-  );
-  const handleSelectMention = useCallback(
-    (entry: MentionRow): Promise<void> => {
-      if (entry.kind === "command" && activeTab && mention) {
-        const args = consumeComposerMention(activeTab.input, mention).trim();
-        return runCommandInvocation({ name: entry.row.name, args });
-      }
-      return selectMentionRow(entry);
-    },
-    [activeTab, mention, runCommandInvocation, selectMentionRow],
-  );
+  const { runCommandInvocation, handleSelectMention } = useComposerCommandHandlers({
+    activeTab,
+    commandRegistry,
+    commandContext,
+    mention,
+    setMention,
+    resetComposerHeight,
+    textareaRef,
+    updateTab,
+    selectMentionRow,
+  });
   const { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn } =
     useChatPaneSendFlow({
       activeTab,
@@ -622,39 +591,15 @@ export function ChatPane({
     },
     [activeTab, commandContext, commandRegistry, runCommandInvocation, sendMessage],
   );
-  const handleTranscript = useCallback(
-    (transcript: string) => {
-      if (!activeTab) return;
-      const current = activeTab.input.trimEnd();
-      const next = current ? `${current} ${transcript}` : transcript;
-      updateTab(activeTab.id, (tab) => ({ ...tab, input: next }));
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-        textarea.focus();
-        textarea.setSelectionRange(next.length, next.length);
-      });
-    },
-    [activeTab, updateTab],
-  );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
     [activeTabId, engine],
   );
-  const handleExtensionUiResponse = useCallback(
-    (response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
-      const request = activeTab?.extensionUiRequest;
-      if (!activeTab || !request) return;
-      updateTab(activeTab.id, (session) => ({ ...session, extensionUiRequest: undefined }));
-      void respondExtensionUi(activeTab.id, request.requestId, response).catch((error) => {
-        updateTab(activeTab.id, (session) => ({
-          ...session,
-          error: error instanceof Error ? error.message : "Extension response failed",
-        }));
-      });
-    },
-    [activeTab, updateTab],
-  );
+  const { handleTranscript, handleExtensionUiResponse } = useChatPaneComposerActions({
+    activeTab,
+    updateTab,
+    textareaRef,
+  });
   const composerVisual = deriveComposerVisual({
     compacting,
     hasMessages: (activeTab?.messages.length ?? 0) > 0,
@@ -665,37 +610,29 @@ export function ChatPane({
       data-pane-id={paneId}
       className={chatPaneClassName(composerOnly)}
     >
-      {activeTab?.extensionUiRequest ? (
-        <ExtensionUiDialog
-          request={activeTab.extensionUiRequest}
-          onRespond={handleExtensionUiResponse}
-        />
-      ) : null}
-      {showHeader ? (
-        <AgentChatPaneHeader
-          title={displayedSessionTitle}
-          pinned={sessionPinned}
-          rightPanelOpen={rightPanelOpen}
-          canFork={Boolean(onForkSession)}
-          canClose={Boolean(onClose)}
-          canExport={canExport}
-          onTogglePinned={togglePinnedSession}
-          onRename={renameActiveSession}
-          onFork={onForkSession}
-          onOpenTerminal={openTerminalAction}
-          terminalOpen={terminalView}
-          onExport={exportSession}
-          onClose={onClose}
-          onToggleRightPanel={onToggleRightPanel}
-        />
-      ) : null}
-      <div className={terminalView ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-        <PersistentTerminals
-          active={terminalView}
-          activeOwnerKey={terminalSnapshot.activeOwnerKey}
-          terminals={terminalSnapshot.owners}
-        />
-      </div>
+      <ChatPaneChrome
+        extensionUiRequest={activeTab?.extensionUiRequest}
+        onExtensionUiRespond={handleExtensionUiResponse}
+        showHeader={showHeader}
+        terminalView={terminalView}
+        terminalSnapshot={terminalSnapshot}
+        header={{
+          title: displayedSessionTitle,
+          pinned: sessionPinned,
+          rightPanelOpen,
+          canFork: Boolean(onForkSession),
+          canClose: Boolean(onClose),
+          canExport,
+          onTogglePinned: togglePinnedSession,
+          onRename: renameActiveSession,
+          onFork: onForkSession,
+          onOpenTerminal: openTerminalAction,
+          terminalOpen: terminalView,
+          onExport: exportSession,
+          onClose,
+          onToggleRightPanel,
+        }}
+      />
       <ChatTranscript
         composerOnly={composerOnly}
         terminalView={terminalView}
@@ -727,7 +664,7 @@ export function ChatPane({
           fileInputRef={fileInputRef}
           gitBranch={gitBranch}
           gitSummary={gitSummary}
-          input={activeTab?.input ?? ""}
+          input={composerInput}
           mention={mention}
           mentionIndex={mentionIndex}
           mentionRows={mentionRows}
@@ -757,8 +694,8 @@ export function ChatPane({
           onToggleBrowserTool={onToggleBrowserTool}
           placeholder={composerVisual.placeholder}
           drawer={
-            <ComposerProjectDrawer
-              key={`${activeTabId}:${activePiSessionId ?? "new"}`}
+            <SessionProjectDrawer
+              tabId={activeTabId}
               piSessionId={activePiSessionId}
               revision={goalRevision}
               projectName={projectName}
@@ -767,7 +704,8 @@ export function ChatPane({
               gitSummary={gitSummary}
               onInitGit={onInitGit}
               onOpenDiff={openDiffDrawer}
-              canPickProject={composerVisual.showProjectRow && !running}
+              showProjectRow={composerVisual.showProjectRow}
+              running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
             />
           }
@@ -785,5 +723,68 @@ export function ChatPane({
         />
       </div>
     </section>
+  );
+}
+
+/** The pane's fixed furniture: a pending extension prompt, the header, and the
+ *  terminal surface that swaps places with the transcript. Kept out of ChatPane
+ *  so the container reads as state and wiring rather than layout. */
+function ChatPaneChrome({
+  extensionUiRequest,
+  onExtensionUiRespond,
+  showHeader,
+  terminalView,
+  terminalSnapshot,
+  header,
+}: {
+  extensionUiRequest: SessionTab["extensionUiRequest"];
+  onExtensionUiRespond: (response: {
+    value?: string;
+    confirmed?: boolean;
+    cancelled?: boolean;
+  }) => void;
+  showHeader: boolean;
+  terminalView: boolean;
+  terminalSnapshot: TerminalOwnersSnapshot;
+  header: ComponentProps<typeof AgentChatPaneHeader>;
+}) {
+  return (
+    <>
+      {extensionUiRequest ? (
+        <ExtensionUiDialog request={extensionUiRequest} onRespond={onExtensionUiRespond} />
+      ) : null}
+      {showHeader ? <AgentChatPaneHeader {...header} /> : null}
+      <div className={terminalView ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+        <PersistentTerminals
+          active={terminalView}
+          activeOwnerKey={terminalSnapshot.activeOwnerKey}
+          terminals={terminalSnapshot.owners}
+        />
+      </div>
+    </>
+  );
+}
+
+/** Remounts per session so the goal poll and project selection never carry
+ *  across tabs, and hides project switching while a turn is in flight. */
+function SessionProjectDrawer({
+  tabId,
+  piSessionId,
+  showProjectRow,
+  running,
+  ...rest
+}: Omit<ComponentProps<typeof ComposerProjectDrawer>, "canPickProject" | "piSessionId"> & {
+  tabId: string | null;
+  piSessionId: string | null;
+  showProjectRow: boolean;
+  running: boolean;
+}) {
+  return (
+    <ComposerProjectDrawer
+      key={`${tabId}:${piSessionId ?? "new"}`}
+      piSessionId={piSessionId}
+      canPickProject={showProjectRow && !running}
+      {...rest}
+    />
   );
 }
