@@ -41,6 +41,13 @@ import {
   handleGoalPut,
 } from "./http/automation-handlers";
 import { handleSubagentRun, handleSubagentsList } from "./http/subagent-handlers";
+import {
+  handlePtyClose,
+  handlePtyInput,
+  handlePtyOpen,
+  handlePtyResize,
+  handlePtyStream,
+} from "./http/pty-handlers";
 import { createLitterBridgeGateway } from "./litter-bridge-gateway";
 import { handleAgentModels } from "./http/model-handlers";
 import {
@@ -106,6 +113,12 @@ app.post("/api/agent/providers/:providerId/login", (c) =>
 app.post("/api/agent/providers/:providerId/logout", (c) =>
   handleProviderLogout(c.req.param("providerId")),
 );
+
+app.post("/api/agent/terminal/pty/open", (c) => handlePtyOpen(c.req.raw));
+app.get("/api/agent/terminal/pty/stream", (c) => handlePtyStream(c.req.raw));
+app.post("/api/agent/terminal/pty/input", (c) => handlePtyInput(c.req.raw));
+app.post("/api/agent/terminal/pty/resize", (c) => handlePtyResize(c.req.raw));
+app.post("/api/agent/terminal/pty/close", (c) => handlePtyClose(c.req.raw));
 
 app.get("/api/agent/browser/fetch", (c) => handleBrowserFetch(c.req.raw));
 app.get("/api/agent/browser/frame", () => handleBrowserFrame());

@@ -591,12 +591,52 @@ export const LitterBridgeAgentTurnResultSchema = Schema.Union([
   LitterBridgeErrorResultSchema,
 ]).pipe(strict);
 
+// Create a brand-new Local Studio session from a mobile device. Unlike
+// agent_turn (which requires a session file to already exist), this mints a
+// fresh pi session under `cwd` and writes its first prompt so the session
+// materializes on disk and appears in session_list on every device. The
+// session id is server-minted; the ack returns the canonical identity.
+export const LitterBridgeSessionCreateRequestSchema = Schema.Struct({
+  type: Schema.Literal("session_create_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  auth: SessionsWriteAuthSchema,
+  controllerId: IdentifierSchema,
+  cwd: IdentifierSchema,
+  modelId: Schema.NullOr(IdentifierSchema),
+  title: Schema.NullOr(ShortTextSchema),
+  messageId: IdentifierSchema,
+  content: Schema.NonEmptyString.pipe(Schema.check(Schema.isMaxLength(100_000))),
+  contentHash: Sha256Schema,
+}).pipe(strict);
+
+export const LitterBridgeSessionCreateAckSchema = Schema.Struct({
+  type: Schema.Literal("session_create_ack"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  requestId: IdentifierSchema,
+  idempotencyKey: IdentifierSchema,
+  dispatchId: IdentifierSchema,
+  canonicalSession: LitterBridgeExternalSessionIdentitySchema,
+  descriptor: LitterBridgeSessionDescriptorSchema,
+  messageId: IdentifierSchema,
+  contentHash: Sha256Schema,
+  piSessionId: IdentifierSchema,
+  modelId: IdentifierSchema,
+  outcome: Schema.Literal("accepted"),
+  acceptedAt: TimestampSchema,
+}).pipe(strict);
+
+export const LitterBridgeSessionCreateResultSchema = Schema.Union([
+  LitterBridgeSessionCreateAckSchema,
+  LitterBridgeErrorResultSchema,
+]).pipe(strict);
+
 export const LitterBridgeRequestSchema = Schema.Union([
   LitterBridgeControllerSnapshotRequestSchema,
   LitterBridgeControllerActionRequestSchema,
   LitterBridgeSessionListRequestSchema,
   LitterBridgeSessionReadRequestSchema,
   LitterBridgeSessionTransferEnvelopeSchema,
+  LitterBridgeSessionCreateRequestSchema,
   LitterBridgeAgentTurnRequestSchema,
 ]).pipe(strict);
 
@@ -653,4 +693,8 @@ export type LitterBridgeConflictResult = typeof LitterBridgeConflictResultSchema
 export type LitterBridgeForkResult = typeof LitterBridgeForkResultSchema.Type;
 export type LitterBridgeSessionTransferResult = typeof LitterBridgeSessionTransferResultSchema.Type;
 export type LitterBridgeAgentTurnResult = typeof LitterBridgeAgentTurnResultSchema.Type;
+export type LitterBridgeSessionCreateRequest =
+  typeof LitterBridgeSessionCreateRequestSchema.Type;
+export type LitterBridgeSessionCreateAck = typeof LitterBridgeSessionCreateAckSchema.Type;
+export type LitterBridgeSessionCreateResult = typeof LitterBridgeSessionCreateResultSchema.Type;
 export type LitterBridgeRequest = typeof LitterBridgeRequestSchema.Type;
