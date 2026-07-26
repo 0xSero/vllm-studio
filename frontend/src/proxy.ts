@@ -85,66 +85,65 @@ export function proxy(request: NextRequest) {
   if (denied) return denied;
 
   const start = Date.now();
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set(CSRF_BOOTSTRAP_HEADER, PROCESS_CSRF_TOKEN);
+  const response = NextResponse.next({ request: { headers: forwardedHeaders } });
 
-  const clientIp =
+  writeAccessLog(request, Date.now() - start);
+  applySecurityHeaders(request, response);
+  return response;
+}
+
+/** Client IP as seen through Cloudflare, a reverse proxy, or neither. */
+function clientIpOf(request: NextRequest): string {
+  return (
     request.headers.get("CF-Connecting-IP") ||
     request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
     request.headers.get("X-Real-IP") ||
-    "unknown";
+    "unknown"
+  );
+}
 
-  const method = request.method;
-  const path = request.nextUrl.pathname;
+/** Credentials routinely arrive as query parameters; they must never be logged. */
+function redactedQuery(request: NextRequest): string {
   const sanitizedUrl = request.nextUrl.clone();
   for (const sensitiveKey of ["api_key", "key", "token", "access_token"]) {
     if (sanitizedUrl.searchParams.has(sensitiveKey)) {
       sanitizedUrl.searchParams.set(sensitiveKey, "[redacted]");
     }
   }
-  const query = sanitizedUrl.search || "";
-  const userAgent = request.headers.get("User-Agent")?.slice(0, 100) || "unknown";
-  const rawReferer = request.headers.get("Referer") || "-";
-  const referer = (() => {
-    if (rawReferer === "-") return "-";
-    try {
-      const parsed = new URL(rawReferer);
-      return `${parsed.origin}${parsed.pathname}`.slice(0, 200);
-    } catch {
-      return "[invalid]";
-    }
-  })();
+  return sanitizedUrl.search || "";
+}
 
-  const authHeader = request.headers.get("Authorization") || "";
-  const hasAuth = Boolean(authHeader);
+/** Origin + path only: a full referer can carry query secrets of its own. */
+function safeReferer(request: NextRequest): string {
+  const raw = request.headers.get("Referer") || "-";
+  if (raw === "-") return "-";
+  try {
+    const parsed = new URL(raw);
+    return `${parsed.origin}${parsed.pathname}`.slice(0, 200);
+  } catch {
+    return "[invalid]";
+  }
+}
 
-  const country = request.headers.get("CF-IPCountry") || "-";
-
-  const forwardedHeaders = new Headers(request.headers);
-  forwardedHeaders.set(CSRF_BOOTSTRAP_HEADER, PROCESS_CSRF_TOKEN);
-  const response = NextResponse.next({ request: { headers: forwardedHeaders } });
-
-  const duration = Date.now() - start;
-
-  const timestamp = new Date().toISOString();
+function writeAccessLog(request: NextRequest, duration: number): void {
+  if (process.env.LOCAL_STUDIO_ACCESS_LOGS !== "true") return;
+  const referer = safeReferer(request);
   const logParts = [
-    `ip=${clientIp}`,
-    `country=${country}`,
-    `method=${method}`,
-    `path=${path}${query}`,
+    `ip=${clientIpOf(request)}`,
+    `country=${request.headers.get("CF-IPCountry") || "-"}`,
+    `method=${request.method}`,
+    `path=${request.nextUrl.pathname}${redactedQuery(request)}`,
     `duration=${duration}ms`,
-    `auth=${hasAuth ? "present" : "none"}`,
-    `ua=${userAgent}`,
+    `auth=${request.headers.get("Authorization") ? "present" : "none"}`,
+    `ua=${request.headers.get("User-Agent")?.slice(0, 100) || "unknown"}`,
   ];
+  if (referer !== "-") logParts.push(`referer=${referer}`);
+  console.log(`${new Date().toISOString()} ACCESS ${logParts.join(" | ")}`);
+}
 
-  if (referer !== "-") {
-    logParts.push(`referer=${referer}`);
-  }
-
-  const logMsg = `${timestamp} ACCESS ${logParts.join(" | ")}`;
-
-  if (process.env.LOCAL_STUDIO_ACCESS_LOGS === "true") {
-    console.log(logMsg);
-  }
-
+function applySecurityHeaders(request: NextRequest, response: NextResponse): void {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-XSS-Protection", "1; mode=block");
@@ -161,8 +160,6 @@ export function proxy(request: NextRequest) {
     secure: effectiveProto === "https",
     path: "/",
   });
-
-  return response;
 }
 
 export default proxy;
