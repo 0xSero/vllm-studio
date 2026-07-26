@@ -249,12 +249,12 @@
   margin: 0.75rem 0;
 }
 
-/* Inline code, Codex-exact: foreground@10% pill, 6px×2px padding, no border. */
+/* Inline code: quiet — a whisper of background, tight padding, no chunky pill. */
 .chat-markdown :not(pre) > code {
-  padding: 2px 6px;
-  border-radius: var(--rad-sm);
-  background: color-mix(in srgb, var(--fg) 14%, transparent);
-  color: color-mix(in srgb, var(--fg) 94%, transparent);
+  padding: 0.5px 4px;
+  border-radius: var(--rad-xs);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: color-mix(in srgb, var(--fg) 96%, transparent);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   font-family:
