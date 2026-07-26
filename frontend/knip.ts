@@ -21,7 +21,6 @@ const config = {
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
     "chromium-bidi",
-    "playwright-core",
     "proper-lockfile",
     "semver",
     "@types/proper-lockfile",
