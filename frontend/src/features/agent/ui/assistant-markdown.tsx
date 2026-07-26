@@ -11,6 +11,11 @@ import type { ComputerTab } from "@/features/agent/tools/types";
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
 
+// Directory references (`mockups/`, `ops/glm52-vision/`) carry no extension but end in
+// a slash; reveal them the same way. Branch-like names without a trailing slash stay
+// plain — `feat/some-branch` is not a path we can open.
+const DIRECTORY_REF_PATTERN = /^(?:~\/|\.{1,2}\/|\/)?[\w.-]+(?:\/[\w.-]+)*\/$/;
+
 function nodeToPlainText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(nodeToPlainText).join("");
@@ -22,7 +27,7 @@ function isFileReference(value: string | undefined): value is string {
   if (!value) return false;
   const clean = value.trim();
   if (/^https?:\/\//i.test(clean)) return false;
-  return FILE_REF_PATTERN.test(clean);
+  return FILE_REF_PATTERN.test(clean) || DIRECTORY_REF_PATTERN.test(clean);
 }
 
 class MarkdownErrorBoundary extends React.Component<
