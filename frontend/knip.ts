@@ -20,6 +20,11 @@ const config = {
     "@local-studio/agent-runtime",
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
+    // Declared here but imported from services/agent-runtime (browser-host).
+    // knip only sees that importer locally, through the node_modules symlink
+    // the frontend postinstall creates. CI has no symlink, so it reports the
+    // dependency as unused and fails the job — the ignore has to stay.
+    "playwright-core",
     "chromium-bidi",
     "proper-lockfile",
     "semver",
