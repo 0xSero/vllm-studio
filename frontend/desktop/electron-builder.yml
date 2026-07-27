@@ -52,6 +52,10 @@ extraResources:
     to: app/agent-runtime/node_modules/@silvia-odwyer/photon-node
   - from: ../services/agent-runtime/dist/node_modules/undici
     to: app/agent-runtime/node_modules/undici
+  # Server-side terminals: node-pty is dynamically required by pty-service, so
+  # it ships as real files next to standalone.mjs (native addon, cannot bundle).
+  - from: ../services/agent-runtime/dist/node_modules/@lydell
+    to: app/agent-runtime/node_modules/@lydell
   - from: .next/standalone
     to: app/frontend/.next/standalone
     filter:

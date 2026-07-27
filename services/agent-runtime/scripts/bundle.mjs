@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync,
+  readdirSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,11 @@ const runtimePackages = [
   "devtools-protocol",
   "@silvia-odwyer/photon-node",
   "undici",
+  // pty-service loads node-pty with a dynamic require at runtime, so the
+  // bundler never sees it — it has to travel as real files. Without these the
+  // packaged app's every terminal open failed with "Cannot find module
+  // '@lydell/node-pty'" while the UI kept re-opening the dead terminal.
+  "@lydell/node-pty",
 ];
 
 rmSync(distDir, { recursive: true, force: true });
@@ -39,6 +45,15 @@ const build = spawnSync(
 
 if (build.status !== 0) {
   throw new Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
+}
+
+// The platform package carries the native prebuild; copy whichever ones the
+// build machine has installed (darwin-arm64 locally, linux-x64 in CI).
+const lydellDir = path.join(packageDir, "node_modules", "@lydell");
+if (existsSync(lydellDir)) {
+  for (const entry of readdirSync(lydellDir)) {
+    if (entry.startsWith("node-pty-")) runtimePackages.push(`@lydell/${entry}`);
+  }
 }
 
 for (const packageName of runtimePackages) {
