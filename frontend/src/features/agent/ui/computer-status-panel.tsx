@@ -55,6 +55,7 @@ export function ComputerStatusPanel({
       setCompacting(false);
     }
   };
+  const usageRows = sessionUsageRows(focusedSession);
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
       <SessionSummary
@@ -84,6 +85,12 @@ export function ComputerStatusPanel({
         </StatusActionRow>
         <StatusRows rows={sessionBottomRows(totals)} />
       </StatusSection>
+
+      {usageRows.length > 0 ? (
+        <StatusSection title="Usage">
+          <StatusRows rows={usageRows} />
+        </StatusSection>
+      ) : null}
 
       <UsedSkillsSection skills={sessionSkills} />
 
@@ -132,16 +139,56 @@ function sessionTokenCount(session: Session | null): number {
 }
 
 function sessionTopRows(activeModel: AgentModel | null, session: Session | null): StatusRowData[] {
-  const sessionTokens = sessionTokenCount(session);
   const contextWindow = activeModel?.contextWindow ?? 0;
+  // Prefer the runtime's own context reading: tokenStats is only the last
+  // model call, so it reads far too low on a session mid-turn.
+  const contextTokens = session?.contextUsage?.tokens ?? sessionTokenCount(session);
+  const percent = session?.contextUsage?.percent;
   return [
     { label: "State", value: session?.status ?? "idle" },
     { label: "Model", value: activeModel?.name ?? session?.modelId ?? "No model" },
     {
       label: "Context",
-      value: `${formatTokenCount(sessionTokens)} / ${formatTokenCount(contextWindow)}`,
+      value: `${formatTokenCount(contextTokens)} / ${formatTokenCount(contextWindow)}${
+        typeof percent === "number" ? ` · ${Math.round(percent)}%` : ""
+      }`,
     },
   ];
+}
+
+/** Lifetime spend. The context row above shows what the model can currently
+ *  see; these rows show what the session has actually cost, which compaction
+ *  does not reset and a tail-loaded transcript cannot reconstruct. */
+function sessionUsageRows(session: Session | null): StatusRowData[] {
+  const usage = session?.usageTotals;
+  if (!usage) return [];
+  const rows: StatusRowData[] = [
+    { label: "Total tokens", value: formatTokenCount(usage.total) },
+    {
+      label: "In / out",
+      value: `${formatTokenCount(usage.input)} / ${formatTokenCount(usage.output)}`,
+    },
+  ];
+  if (usage.cacheRead > 0 || usage.cacheWrite > 0) {
+    rows.push({
+      label: "Cache r/w",
+      value: `${formatTokenCount(usage.cacheRead)} / ${formatTokenCount(usage.cacheWrite)}`,
+    });
+  }
+  if (usage.reasoning > 0) {
+    rows.push({ label: "Reasoning", value: formatTokenCount(usage.reasoning) });
+  }
+  rows.push({
+    label: "Model calls",
+    value:
+      usage.compactions > 0
+        ? `${usage.calls} · ${usage.compactions} compaction${usage.compactions === 1 ? "" : "s"}`
+        : `${usage.calls}`,
+  });
+  if (usage.cost > 0) {
+    rows.push({ label: "Cost", value: `$${usage.cost.toFixed(usage.cost < 1 ? 4 : 2)}` });
+  }
+  return rows;
 }
 
 function sessionBottomRows(totals: StatusTotals): StatusRowData[] {

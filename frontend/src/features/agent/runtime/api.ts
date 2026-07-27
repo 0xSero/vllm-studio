@@ -109,11 +109,26 @@ export function respondExtensionUi(
   );
 }
 
+/** What the session has spent over its whole life. Distinct from the context
+ *  window, which compaction resets — this does not. */
+export type SessionUsageTotals = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  total: number;
+  cost: number;
+  calls: number;
+  compactions: number;
+};
+
 export type CanonicalSessionMeta = {
   title: string | null;
   modelId: string | null;
   startedAt: string | null;
   piSessionId: string | null;
+  usage?: SessionUsageTotals | null;
 };
 
 export type CanonicalSessionResult = {

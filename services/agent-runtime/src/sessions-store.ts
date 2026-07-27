@@ -20,6 +20,11 @@ import { resolveDataDir } from "./data-dir";
 import { cleanSessionTitle } from "../../../shared/agent/session-title";
 import { readSessionListMetadata } from "./session-metadata-store";
 import type { SessionSummary } from "../../../shared/agent/session-summary";
+import {
+  emptyUsageTotals,
+  readSessionUsageTotals,
+  type SessionUsageTotals,
+} from "./session-usage";
 export type { SessionSummary } from "../../../shared/agent/session-summary";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
@@ -420,6 +425,10 @@ export type LoadSessionMeta = {
   modelId: string | null;
   startedAt: string | null;
   piSessionId: string | null;
+  // Lifetime spend for the whole rollout, not just the returned page. A tail
+  // load only returns recent events, but what the session cost includes every
+  // turn that compaction has since discarded.
+  usage: SessionUsageTotals;
 };
 
 export type LoadSessionResult = {
@@ -570,6 +579,7 @@ async function readSessionHead(
     title: null,
     modelId: null,
     startedAt: null,
+    usage: emptyUsageTotals(),
     piSessionId: null,
   };
   const stream = createReadStream(filepath, { encoding: "utf-8" });
@@ -712,7 +722,13 @@ export async function loadSession(
   // needs) and return real session metadata from the head-scan. Paged `before`
   // loads are continuations — no header, no meta.
   if (!paging) {
-    const { headerEvents, meta } = await readSessionHead(filepath);
+    // The head-scan and the usage scan read opposite ends of the same file for
+    // different reasons; run them together so an initial open pays one wait.
+    const [{ headerEvents, meta }, usage] = await Promise.all([
+      readSessionHead(filepath),
+      readSessionUsageTotals(filepath),
+    ]);
+    meta.usage = usage;
     const hasHeader = events.some((event) => event.type === "session");
     return {
       events: activeBranchEvents(filepath, hasHeader ? events : [...headerEvents, ...events]),

@@ -297,6 +297,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               title: meta?.title ?? title ?? session.title,
               startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
               tokenStats: tokenStats ?? undefined,
+              // Lifetime spend is computed server-side from the whole rollout,
+              // so it survives both compaction and the tail load's cutoff.
+              usageTotals: meta?.usage ?? session.usageTotals,
               contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
               status: runtimeActive ? "running" : "idle",
               activeAssistantId: undefined,
