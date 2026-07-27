@@ -29,7 +29,7 @@ import {
   type DiffPreviewLine,
 } from "@/features/agent/ui/timeline/diff-preview-model";
 
-const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
+export const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
   edit: FilePenLine,
   search: Search,
   read: FileText,

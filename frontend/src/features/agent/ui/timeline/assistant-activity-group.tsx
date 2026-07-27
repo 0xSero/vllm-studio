@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from "react";
 import { ChevronRight } from "@/ui/icon-registry";
 import type { ThinkingBlock, ToolBlock } from "@/features/agent/messages";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
-import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
+import { TOOL_ICONS, ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
 import {
   buildActivityItems,
   exploreCounts,
@@ -156,8 +156,20 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
           {working || live ? "Working" : summary}
         </span>
         {!expanded && (working || live) && preview ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--dim)/70">
-            {preview}
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-(--dim)/70">
+            {(() => {
+              const PreviewIcon = TOOL_ICONS[preview.kind];
+              return (
+                <PreviewIcon
+                  className="h-3.5 w-3.5 shrink-0 opacity-80"
+                  strokeWidth={1.6}
+                  aria-label={preview.verb}
+                />
+              );
+            })()}
+            <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5">
+              {preview.detail || preview.verb}
+            </span>
           </span>
         ) : working || live ? (
           <span className="min-w-0 flex-1" />
