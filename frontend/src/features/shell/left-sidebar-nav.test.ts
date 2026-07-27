@@ -11,7 +11,6 @@ describe("left sidebar navigation", () => {
       tabs.map((tab) => [tab.href, tab.label]),
       [
         ["/", "Status"],
-        ["/agent", "Workbench"],
         ["/agent/automations", "Automations"],
         ["/configure", "Configure"],
         ["/usage", "Usage"],
@@ -28,7 +27,7 @@ describe("left sidebar navigation", () => {
 
   test("uses destination titles on mobile", () => {
     assert.equal(mobilePageTitle("/agent/automations"), "Automations");
-    assert.equal(mobilePageTitle("/agent/session-1"), "Workbench");
+    assert.equal(mobilePageTitle("/agent/session-1"), "Tasks");
   });
 
   test("keeps session history steppers compact", () => {

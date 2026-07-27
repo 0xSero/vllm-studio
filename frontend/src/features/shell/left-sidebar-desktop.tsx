@@ -130,11 +130,11 @@ export function DesktopSidebar({
                 href="/agent?new=1"
                 prefetch={false}
                 className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
-                title="New chat"
+                title="New task"
               >
                 <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />
                 <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
-                  New chat
+                  New task
                 </span>
               </Link>
               {tabs.map((tab) => (
