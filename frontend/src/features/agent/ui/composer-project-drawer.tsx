@@ -5,6 +5,7 @@ import {
   ChevronDown,
   FilePenLine,
   FolderOpen,
+  ListChecks,
   Pause,
   Play,
   Plus,
@@ -21,6 +22,8 @@ import { clearSessionGoal, loadSessionGoal, updateSessionGoal } from "@/features
 import type { GoalStatus, SessionGoal, SessionGoalPatch } from "@shared/agent/session-goal";
 import { ADD_PROJECT_EVENT } from "@/lib/workspace-events";
 import { cx } from "@/ui/utils";
+import { QueuedMessageStack } from "@/features/agent/ui/queued-message-stack";
+import type { QueuedMessage } from "@/features/agent/messages";
 
 const STATUS_LABEL: Record<GoalStatus, string> = {
   active: "Pursuing goal",
@@ -58,6 +61,11 @@ export function ComposerProjectDrawer({
   onOpenDiff,
   canPickProject,
   onProjectPicked,
+  queueItems,
+  running,
+  onEditQueued,
+  onRemoveQueued,
+  onSteerQueued,
 }: {
   piSessionId: string | null;
   revision: number;
@@ -69,6 +77,11 @@ export function ComposerProjectDrawer({
   onOpenDiff: () => void;
   canPickProject: boolean;
   onProjectPicked: (project: Project) => void;
+  queueItems: QueuedMessage[];
+  running: boolean;
+  onEditQueued: (queueId: string, text: string) => void;
+  onRemoveQueued: (queueId: string) => void;
+  onSteerQueued: (queueId: string) => void;
 }) {
   const projects = useProjects();
   const [open, setOpen] = useState(false);
@@ -115,6 +128,7 @@ export function ComposerProjectDrawer({
 
   const activeProject = projects.findByPath(cwd) ?? projects.selectedProject;
   const label = projectName ?? activeProject?.name ?? "Choose project";
+  const hasQueue = queueItems.length > 0;
   const paused = goal?.status === "paused";
   const terminal =
     goal?.status === "complete" || goal?.status === "blocked" || goal?.status === "budget_limited";
@@ -149,32 +163,24 @@ export function ComposerProjectDrawer({
       data-testid="composer-drawer"
       className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-2 text-[length:var(--fs-xs)] shadow-[var(--composer-elevation-inner)] md:pb-3 md:text-[length:var(--fs-sm)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
     >
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03] md:h-8 md:gap-2.5 md:px-3"
-      >
-        <FolderOpen
-          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
-          strokeWidth={1.7}
-        />
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {goal && !open ? (
-          <span className="min-w-0 max-w-[45%] truncate text-(--fg)/40" title={goal.objective}>
-            {goal.objective}
-          </span>
-        ) : null}
-        {goal ? (
-          <ChevronDown
-            className={cx(
-              "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
-              open && "rotate-180",
-            )}
-            strokeWidth={1.75}
+      <DrawerSummaryButton
+        open={open}
+        onToggle={() => setOpen((value) => !value)}
+        label={label}
+        queueCount={queueItems.length}
+        goalObjective={goal?.objective ?? null}
+      />
+      {hasQueue ? (
+        <div className="px-1.5 pb-0.5">
+          <QueuedMessageStack
+            items={queueItems}
+            running={running}
+            onEdit={onEditQueued}
+            onRemove={onRemoveQueued}
+            onSteer={onSteerQueued}
           />
-        ) : null}
-      </button>
+        </div>
+      ) : null}
       {open ? (
         <div className="flex flex-col gap-0.5 px-1.5 pt-1">
           {goal ? (
@@ -436,5 +442,61 @@ function GoalCard({
         <p className="pt-1 leading-[1.55] text-(--fg)/48">{goal.objective}</p>
       )}
     </div>
+  );
+}
+
+/** The always-visible drawer row. It names the project normally, and steps
+ *  aside for the queue count while messages are waiting — that backlog is the
+ *  more urgent thing to know. */
+function DrawerSummaryButton({
+  open,
+  onToggle,
+  label,
+  queueCount,
+  goalObjective,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+  queueCount: number;
+  goalObjective: string | null;
+}) {
+  const hasQueue = queueCount > 0;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03] md:h-8 md:gap-2.5 md:px-3"
+    >
+      {hasQueue ? (
+        <ListChecks
+          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
+          strokeWidth={1.7}
+        />
+      ) : (
+        <FolderOpen
+          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
+          strokeWidth={1.7}
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate">
+        {hasQueue ? `${queueCount} queued message${queueCount === 1 ? "" : "s"}` : label}
+      </span>
+      {goalObjective && !open && !hasQueue ? (
+        <span className="min-w-0 max-w-[45%] truncate text-(--fg)/40" title={goalObjective}>
+          {goalObjective}
+        </span>
+      ) : null}
+      {goalObjective || hasQueue ? (
+        <ChevronDown
+          className={cx(
+            "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
+            open && "rotate-180",
+          )}
+          strokeWidth={1.75}
+        />
+      ) : null}
+    </button>
   );
 }

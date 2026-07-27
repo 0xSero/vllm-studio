@@ -707,6 +707,10 @@ export function ChatPane({
               showProjectRow={composerVisual.showProjectRow}
               running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
+              queueItems={visibleQueueItems}
+              onEditQueued={editQueued}
+              onRemoveQueued={removeQueued}
+              onSteerQueued={(queueId) => void steerQueued(queueId)}
             />
           }
           showStatusBar={!composerVisual.showProjectRow}
@@ -784,6 +788,7 @@ function SessionProjectDrawer({
       key={`${tabId}:${piSessionId ?? "new"}`}
       piSessionId={piSessionId}
       canPickProject={showProjectRow && !running}
+      running={running}
       {...rest}
     />
   );

@@ -188,8 +188,11 @@ export function replayCursorAfterRuntimeHydration(
   return matchesSession || activeUnclaimed ? runtimeStatus.eventSeq : undefined;
 }
 
+/** Everything still waiting, follow-ups and steers alike. Steers used to be
+ *  hidden because they had no home in the UI; the drawer stack shows them with
+ *  an arrow so a promoted message stays visible until it is delivered. */
 export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
-  return queue.filter((item) => item.mode === "follow_up");
+  return queue.filter((item) => !item.sent);
 }
 
 export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {

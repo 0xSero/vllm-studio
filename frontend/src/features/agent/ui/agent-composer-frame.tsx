@@ -30,7 +30,6 @@ import {
 } from "./agent-composer-context";
 import { AgentComposerStatusBar } from "./agent-composer-status-bar";
 import { AgentComposerTextArea } from "./agent-composer-textarea";
-import { AgentQueuePanel } from "./agent-queue-panel";
 import { cx } from "@/ui/utils";
 
 export type AgentComposerFrameProps = {
@@ -154,15 +153,6 @@ export function AgentComposerFrame({
             : "bg-transparent px-3 pb-2 pt-0 sm:px-5",
       )}
     >
-      <AgentQueuePanel
-        items={queueItems}
-        expanded={queueExpanded}
-        running={running}
-        onExpandedChange={onQueueExpandedChange}
-        onEdit={onEditQueued}
-        onRemove={onRemoveQueued}
-        onSteer={onSteerQueued}
-      />
       {banner ? (
         <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35 sm:w-[90%]">
           <Spinner size="xs" />
