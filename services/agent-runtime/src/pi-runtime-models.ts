@@ -48,6 +48,23 @@ type PiProviderConfig = {
 
 type UserPiProviders = Record<string, PiProviderConfig>;
 
+/** Strip any prefixes this writer has already applied.
+ *
+ *  When PI_CODING_AGENT_DIR points at Local Studio's own data dir — which it
+ *  does for the desktop app — the file we read here is the file we write. Every
+ *  pass therefore re-prefixed providers that were already prefixed, so
+ *  "vibeproxy-claude" became "user-pi-vibeproxy-claude", then
+ *  "user-pi-user-pi-vibeproxy-claude", growing by one hop per launch. Observed
+ *  in the wild at 26 nested hops and a 466 KB models.json.
+ *
+ *  Collapsing on read makes the merge idempotent and self-heals files that have
+ *  already grown. */
+function baseProviderName(name: string): string {
+  let base = name;
+  while (base.startsWith(USER_PI_PREFIX)) base = base.slice(USER_PI_PREFIX.length);
+  return base;
+}
+
 async function loadUserPiProviders(): Promise<UserPiProviders> {
   const modelsPath = userPiModelsPath();
   if (!existsSync(modelsPath)) return {};
@@ -56,7 +73,18 @@ async function loadUserPiProviders(): Promise<UserPiProviders> {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const providers = (parsed as { providers?: unknown }).providers;
     if (!providers || typeof providers !== "object" || Array.isArray(providers)) return {};
-    return providers as UserPiProviders;
+    const collapsed: UserPiProviders = {};
+    for (const [name, config] of Object.entries(providers as UserPiProviders)) {
+      const base = baseProviderName(name);
+      // Our own controller providers are regenerated from the live controller
+      // every pass; reading them back would duplicate them under a user-pi name
+      // the moment the controller went away. Test the COLLAPSED name — a prior
+      // pass has already produced "user-pi-local-studio" in the wild, which is
+      // our own provider wearing a user-pi hat.
+      if (!base || base === PROVIDER_ID || base.startsWith(`${PROVIDER_ID}-`)) continue;
+      collapsed[base] = config;
+    }
+    return collapsed;
   } catch {
     return {};
   }
