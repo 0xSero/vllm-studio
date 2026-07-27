@@ -119,8 +119,8 @@ export function AgentComposerActions({
               <button
                 type="submit"
                 className="inline-flex !h-[30px] !min-h-[30px] !w-[30px] !min-w-[30px] shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85"
-                aria-label="Steer current task"
-                title="Steer current task (Enter) · Queue instead (Tab)"
+                aria-label="Steer current task now"
+                title="Steer current task now (Alt+Enter) · Enter queues it instead"
               >
                 <ArrowUp className="h-4 w-4 stroke-[2.25]" />
               </button>
@@ -142,7 +142,7 @@ export function AgentComposerActions({
             disabled={(!inputHasText && attachmentsCount === 0) || readingAttachments}
             className="inline-flex !h-[30px] !min-h-[30px] !w-[30px] !min-w-[30px] shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:bg-(--hl3) disabled:opacity-100"
             aria-label="Send"
-            title="Send (Enter) · Queue (Tab)"
+            title="Send (Enter)"
           >
             {starting ? <Spinner size="sm" /> : <ArrowUp className="h-4 w-4 stroke-[2.25]" />}
           </button>

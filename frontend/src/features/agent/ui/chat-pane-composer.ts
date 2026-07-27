@@ -239,30 +239,47 @@ export function useComposerTextareaBehavior({
     ],
   );
 
+  /** Arrow/Escape/accept keys while the @-mention or /-command popup is open.
+   *  Returns true when the key was consumed by the popup. */
+  const handleMentionKey = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionIndex((index) => {
+          if (mentionRows.length === 0) return 0;
+          const delta = event.key === "ArrowDown" ? 1 : -1;
+          return (index + delta + mentionRows.length) % mentionRows.length;
+        });
+        return true;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMention(null);
+        return true;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && mentionRows[mentionIndex]) {
+        event.preventDefault();
+        void selectMentionRow(mentionRows[mentionIndex]);
+        return true;
+      }
+      return false;
+    },
+    [mentionIndex, mentionRows, selectMentionRow, setMention, setMentionIndex],
+  );
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (mention) {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          setMentionIndex((index) => {
-            if (mentionRows.length === 0) return 0;
-            const delta = event.key === "ArrowDown" ? 1 : -1;
-            return (index + delta + mentionRows.length) % mentionRows.length;
-          });
-          return;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setMention(null);
-          return;
-        }
-        if ((event.key === "Enter" || event.key === "Tab") && mentionRows[mentionIndex]) {
-          event.preventDefault();
-          void selectMentionRow(mentionRows[mentionIndex]);
-          return;
-        }
-      }
+      if (mention && handleMentionKey(event)) return;
+      // While a turn is running, Enter QUEUES rather than steers. Steering
+      // interrupts the agent's plan mid-flight, so it stays a deliberate act
+      // (the composer's ↑ button, or promoting an item in the queue stack).
+      // Alt+Enter keeps the one-key steer for anyone who wants it.
       if (event.key === "Enter" && !event.shiftKey) {
+        if (running && !event.altKey && activeTab?.input.trim()) {
+          event.preventDefault();
+          void queueMessage();
+          return;
+        }
         event.preventDefault();
         event.currentTarget.form?.requestSubmit();
         return;
@@ -280,18 +297,7 @@ export function useComposerTextareaBehavior({
         }
       }
     },
-    [
-      abortTurn,
-      activeTab,
-      mention,
-      mentionIndex,
-      mentionRows,
-      queueMessage,
-      running,
-      selectMentionRow,
-      setMention,
-      setMentionIndex,
-    ],
+    [abortTurn, activeTab, handleMentionKey, mention, queueMessage, running],
   );
 
   return {
