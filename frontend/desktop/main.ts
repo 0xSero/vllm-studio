@@ -233,17 +233,36 @@ function registerIpcHandlers(): void {
   // a crafted markdown link cannot point the renderer at /etc or a mounted disk.
   ipcMain.handle("desktop:reveal-path", async (_, target: unknown) => {
     if (typeof target !== "string" || !target.trim()) return false;
-    let resolved: string;
-    try {
-      resolved = realpathSync.native(target.trim());
-    } catch {
-      return false;
+    const raw = target.trim();
+
+    // Assistant output cites files the way people write them — repo-relative,
+    // "services/agent-runtime/src/foo.ts". Passing that straight to realpath
+    // resolves it against the MAIN PROCESS cwd, which is the app bundle, so it
+    // threw and the renderer silently fell back to opening the path in the
+    // in-app browser. Try it as given, then against each known project root.
+    const candidates = [raw];
+    if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
+      for (const project of listProjectsWithMeta()) {
+        if (project.path) candidates.push(path.join(project.path, raw));
+      }
     }
+
     const home = realpathSync.native(app.getPath("home"));
-    const relative = path.relative(home, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
-    shell.showItemInFolder(resolved);
-    return true;
+    for (const candidate of candidates) {
+      let resolved: string;
+      try {
+        resolved = realpathSync.native(candidate);
+      } catch {
+        continue;
+      }
+      // Still confined to the user's home tree, so a crafted markdown link
+      // cannot point the renderer at /etc or a mounted disk.
+      const relative = path.relative(home, resolved);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+      shell.showItemInFolder(resolved);
+      return true;
+    }
+    return false;
   });
 
   ipcMain.handle("desktop:get-update-status", async () => getUpdateState());
