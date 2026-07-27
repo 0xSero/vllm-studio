@@ -541,18 +541,27 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     });
   }
 
-  abort(): Promise<void> {
+  /** Stop the current run and hand back whatever was still queued.
+   *
+   *  clearQueue() returns the texts precisely so they are not lost — pi's own
+   *  TUI puts them back in the editor. Discarding them meant a stop silently
+   *  destroyed every message the user had lined up. */
+  abort(): Promise<{ steering: string[]; followUp: string[] }> {
     return Effect.runPromise(
       Effect.tryPromise({
         try: async () => {
           const session = this.runtime?.session;
-          if (!session) return;
-          session.clearQueue();
+          if (!session) return { steering: [], followUp: [] };
+          const cleared = session.clearQueue();
           await session.abort();
           await session.waitForIdle();
+          return {
+            steering: [...(cleared?.steering ?? [])],
+            followUp: [...(cleared?.followUp ?? [])],
+          };
         },
         catch: () => undefined,
-      }).pipe(Effect.catch(() => Effect.void)),
+      }).pipe(Effect.catch(() => Effect.succeed({ steering: [], followUp: [] }))),
     );
   }
 

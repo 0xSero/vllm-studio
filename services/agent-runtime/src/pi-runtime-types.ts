@@ -79,7 +79,9 @@ export interface PiAgentSession {
   ): Promise<PiDurablePromptBoundary>;
   steer(message: string, images?: AgentImageInput[]): Promise<void>;
   followUp(message: string, images?: AgentImageInput[]): Promise<void>;
-  abort(): Promise<void>;
+  /** Resolves with the messages that were still queued, so the caller can
+   *  restore them rather than losing them to the stop. */
+  abort(): Promise<{ steering: string[]; followUp: string[] }>;
   compact(customInstructions?: string): Promise<unknown>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;

@@ -257,8 +257,10 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
   const sessionId =
     typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : "default";
-  await piRuntimeManager.getSession(sessionId).abort();
-  return Response.json({ ok: true });
+  // Surface what the stop cleared so the client can put those messages back in
+  // front of the user instead of dropping them on the floor.
+  const cleared = await piRuntimeManager.getSession(sessionId).abort();
+  return Response.json({ ok: true, cleared });
 }
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
