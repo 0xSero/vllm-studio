@@ -24,6 +24,8 @@ export {
   SitegeistIcon,
   PanelIcon,
   MoreIcon,
+  PinIcon,
+  PinOffIcon,
   Folder,
   FolderOpen,
 } from "./icons";
@@ -81,6 +83,7 @@ export {
   FolderTree,
   Gauge,
   GitBranch,
+  GitPullRequest,
   GitFork,
   Globe,
   Globe2,
