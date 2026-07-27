@@ -26,7 +26,18 @@ type HarnessTask = {
   human_title?: string;
   artifacts?: Array<{ name?: string; path?: string }>;
   events?: Array<{ seq?: number; summary?: string; checkpoint?: string }>;
-  metadata?: { demo?: { enabled?: boolean; model_used?: boolean; workspace?: string } };
+  metadata?: {
+    demo?: { enabled?: boolean; model_used?: boolean; workspace?: string };
+    integration?: {
+      kind?: string;
+      route_id?: string;
+      model_id?: string;
+      node?: string;
+      runtime?: string;
+      model_used?: boolean;
+      connected_workspace_mutated?: boolean;
+    };
+  };
 };
 
 type RoutesResponse = { routes?: HarnessRoute[]; selection?: { policy?: string } };
@@ -51,9 +62,12 @@ function formatContext(tokens: number): string {
   return `${tokens} context`;
 }
 
+// The page coordinates route, task, event, and evidence state in one operator surface.
+// eslint-disable-next-line complexity
 export default function HarnessPage() {
   const [routes, setRoutes] = useState<HarnessRoute[]>([]);
   const [selectionPolicy, setSelectionPolicy] = useState("harness_decides");
+  const [selectedRoute, setSelectedRoute] = useState("auto");
   const [task, setTask] = useState<HarnessTask | null>(null);
   const [events, setEvents] = useState<HarnessTask["events"]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +139,31 @@ export default function HarnessPage() {
       setEvents(nextTask?.events ?? []);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Canary could not start");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const runAnalysis = async () => {
+    setRunning(true);
+    setError("");
+    try {
+      const payload = await readJson<TaskResponse & { task?: HarnessTask }>("/api/harness/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "read_only_analysis",
+          ...(selectedRoute === "auto" ? {} : { route_id: selectedRoute }),
+          objective:
+            "Use the selected cluster vLLM route to confirm the Harness execution boundary. " +
+            "Report the selected model and explain that this analysis is read-only; do not change files.",
+        }),
+      });
+      const nextTask = payload.task ?? null;
+      setTask(nextTask);
+      setEvents(nextTask?.events ?? []);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Model analysis could not start");
     } finally {
       setRunning(false);
     }
@@ -227,8 +266,39 @@ export default function HarnessPage() {
                 value="Operator UI and model/chat surface"
               />
               <div className="rounded-xl bg-(--ui-fg)/5 p-3 text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
-                The canary is intentionally credential-free and isolated. It proves the client path
-                without sending work to vLLM or changing your connected project.
+                The safe canary is credential-free. Model analysis uses the selected vLLM route in a
+                temporary isolated workspace with write tools disabled.
+              </div>
+              <div className="rounded-xl border border-(--ui-border) p-3">
+                <label
+                  htmlFor="harness-route"
+                  className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)"
+                >
+                  Model route
+                </label>
+                <select
+                  id="harness-route"
+                  value={selectedRoute}
+                  onChange={(event) => setSelectedRoute(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
+                >
+                  <option value="auto">Auto: Node1 primary, Node2 overflow</option>
+                  {routes.map((route) => (
+                    <option key={route.id} value={route.id} disabled={route.status !== "ready"}>
+                      {route.node} · {route.model_id} ({route.status})
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  className="mt-3 w-full"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Play className="h-3.5 w-3.5" />}
+                  loading={running}
+                  onClick={() => void runAnalysis()}
+                >
+                  Run vLLM analysis
+                </Button>
               </div>
             </div>
           </Card>
@@ -253,6 +323,21 @@ export default function HarnessPage() {
                 <p className="mt-3 text-[length:var(--fs-sm)] text-(--ui-fg)">
                   {task.summary ?? task.human_title}
                 </p>
+                {task.metadata?.integration ? (
+                  <div className="mt-3 flex flex-wrap gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                    <span>
+                      {task.metadata.integration.node} · {task.metadata.integration.model_id}
+                    </span>
+                    <span>{task.metadata.integration.runtime}</span>
+                    <span>read-only</span>
+                    <span>
+                      workspace{" "}
+                      {task.metadata.integration.connected_workspace_mutated
+                        ? "changed"
+                        : "unchanged"}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="mt-4 space-y-2">
                   {(events ?? []).slice(-6).map((event, index) => (
                     <div
