@@ -1382,6 +1382,9 @@ test("independent controller failures produce an explicit degraded partial snaps
 
 test("published handoff metadata is private and removed only by its owner", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "local-studio-litter-gateway-"));
+  const savedPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
+  delete process.env.PI_CODING_AGENT_DIR;
+  try {
   const gateway = createLitterBridgeGateway({
     secret: SECRET,
     controllerId: CONTROLLER_ID,
@@ -1410,6 +1413,10 @@ test("published handoff metadata is private and removed only by its owner", () =
 
   gateway.dispose();
   assert.throws(() => statSync(filepath));
+  } finally {
+    if (savedPiCodingAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = savedPiCodingAgentDir;
+  }
 });
 
 test("signed agent.turn reports retryAfterMs when a concurrent reservation is in flight", async () => {
