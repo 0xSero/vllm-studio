@@ -107,17 +107,14 @@ export function SessionNavRow({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <PinButton
-        pinned={Boolean(pref.pinned)}
-        onToggle={() => onPatchPref({ pinned: !pref.pinned })}
-        target="session"
-        placement="rail"
-      />
       <SessionOpenTarget
         canDoubleClickRename={canDoubleClickRename}
         href={href}
         isRunning={isRunning}
         unseen={unseen}
+        finished={finished}
+        pinned={Boolean(pref.pinned)}
+        timestamp={timestamp}
         label={label}
         onDragStart={onDragStart}
         onOpen={onOpen}
@@ -128,6 +125,11 @@ export function SessionNavRow({
         ref={menuRef}
         className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5"
       >
+        <PinButton
+          pinned={Boolean(pref.pinned)}
+          onToggle={() => onPatchPref({ pinned: !pref.pinned })}
+          target="session"
+        />
         <button
           type="button"
           onClick={(event) => {
