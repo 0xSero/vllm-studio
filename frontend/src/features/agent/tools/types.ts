@@ -22,6 +22,7 @@ export const COMPUTER_TAB_IDS = [
   "browser",
   "files",
   "diff",
+  "pr",
   "terminal",
   "plan",
   "inspector",

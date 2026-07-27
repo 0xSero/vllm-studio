@@ -4,6 +4,7 @@ import { Suspense, lazy, useCallback, type ReactNode } from "react";
 import {
   FolderTree,
   GitBranch,
+  GitPullRequest,
   Globe2,
   ListChecks,
   MessageSquarePlus,
@@ -36,6 +37,11 @@ const LazyFilesystemPanel = lazy(() =>
 const LazyGitDiffPanel = lazy(() =>
   import("@/features/agent/ui/git-diff-panel").then(({ GitDiffPanel }) => ({
     default: GitDiffPanel,
+  })),
+);
+const LazyPrPanel = lazy(() =>
+  import("@/features/agent/ui/pr-panel").then(({ PrPanel }) => ({
+    default: PrPanel,
   })),
 );
 const LazyPlanPanel = lazy(() =>
@@ -86,6 +92,7 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
     browser: <BrowserTab {...props} />,
     files: <FilesTab cwd={focusedCwd} />,
     diff: <LazyGitDiffPanel cwd={focusedCwd} />,
+    pr: <LazyPrPanel cwd={focusedCwd} />,
     plan: (
       <LazyPlanPanel
         sessionId={props.focusedSession?.id ?? null}
@@ -265,6 +272,13 @@ function ComputerLauncherPanel({
       description: "View code changes",
       icon: GitBranch,
       onClick: () => tools.setComputerTab("diff"),
+    },
+    {
+      key: "pr",
+      title: "PR",
+      description: "Pull request status and merge",
+      icon: GitPullRequest,
+      onClick: () => tools.setComputerTab("pr"),
     },
     {
       key: "inspector",
