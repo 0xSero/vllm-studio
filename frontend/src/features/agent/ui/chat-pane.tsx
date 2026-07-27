@@ -51,14 +51,6 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
   return <SubagentChips piSessionId={piSessionId} />;
 }
 
-function effectiveThinkingLevel(
-  levels: readonly AgentThinkingLevel[],
-  saved: AgentThinkingLevel | undefined,
-): AgentThinkingLevel {
-  if (saved && levels.includes(saved)) return saved;
-  if (levels.includes("high")) return "high";
-  return levels.at(-1) ?? "off";
-}
 import {
   useComposerLoadedContext,
   useComposerMentionRows,
@@ -95,6 +87,11 @@ import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
+import {
+  loadThinkingLevelDefault,
+  pickThinkingLevel,
+  setThinkingLevelDefault,
+} from "@/features/agent/messages/thinking-level-pref";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,
@@ -406,11 +403,21 @@ export function ChatPane({
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
-  const thinkingLevel = effectiveThinkingLevel(modelThinkingLevels, activeTab?.thinkingLevel);
+  // Per-session choice wins; a fresh session (no saved level) falls back to the
+  // level the user last picked, then the model's "high" default. This stops new
+  // sessions from always snapping back to High (issue #277).
+  const thinkingLevel = pickThinkingLevel(
+    modelThinkingLevels,
+    activeTab?.thinkingLevel,
+    loadThinkingLevelDefault(),
+  );
   const selectThinkingLevel = useCallback(
     (level: AgentThinkingLevel) => {
       if (!activeTab || running) return;
+      // Persist on the session (survives turns + reloads) and remember it as the
+      // default for the next fresh session.
       updateTab(activeTab.id, (session) => ({ ...session, thinkingLevel: level }));
+      setThinkingLevelDefault(level);
     },
     [activeTab, running, updateTab],
   );
