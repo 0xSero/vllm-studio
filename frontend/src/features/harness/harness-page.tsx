@@ -41,7 +41,11 @@ type HarnessTask = {
 };
 
 type RoutesResponse = { routes?: HarnessRoute[]; selection?: { policy?: string } };
-type TaskResponse = { task?: HarnessTask; current?: HarnessTask; events?: HarnessTask["events"] };
+type TaskResponse = Partial<HarnessTask> & {
+  task?: HarnessTask;
+  current?: HarnessTask;
+  events?: HarnessTask["events"];
+};
 
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: "no-store" });
@@ -85,7 +89,7 @@ export default function HarnessPage() {
       ? `/api/harness/tasks/${encodeURIComponent(taskId)}`
       : "/api/harness/tasks/current";
     const payload = await readJson<TaskResponse>(target);
-    const nextTask = payload.task ?? payload.current ?? null;
+    const nextTask = payload.task ?? (payload.id ? payload : (payload.current ?? null));
     setTask(nextTask);
     if (nextTask?.id) {
       const eventPayload = await readJson<TaskResponse>(
@@ -114,12 +118,23 @@ export default function HarnessPage() {
 
   useMountSubscription(() => {
     if (!task?.id || ["done", "stopped", "blocked"].includes(task.status ?? "")) return;
-    const timer = window.setTimeout(() => {
-      void loadTask(task.id).catch((nextError) =>
-        setError(nextError instanceof Error ? nextError.message : "Task refresh failed"),
-      );
-    }, 3000);
-    return () => window.clearTimeout(timer);
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = () => {
+      timer = window.setTimeout(async () => {
+        try {
+          await loadTask(task.id!);
+        } catch (nextError) {
+          setError(nextError instanceof Error ? nextError.message : "Task refresh failed");
+        }
+        if (!stopped) poll();
+      }, 3000);
+    };
+    poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [loadTask, task?.id, task?.status]);
 
   const runCanary = async () => {

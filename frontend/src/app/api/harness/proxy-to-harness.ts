@@ -1,11 +1,30 @@
 import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
 
-const HOP_BY_HOP_REQUEST_HEADERS = ["host", "connection", "content-length", "accept-encoding"];
+const UPSTREAM_REQUEST_HEADERS_TO_REMOVE = [
+  "host",
+  "connection",
+  "content-length",
+  "accept-encoding",
+  // The Harness server validates browser-origin requests against its own
+  // listener. These headers describe the browser-to-Local-Studio hop and must
+  // not be replayed on the trusted Local-Studio-to-Harness hop.
+  "origin",
+  "sec-fetch-dest",
+  "sec-fetch-mode",
+  "sec-fetch-site",
+  "sec-fetch-user",
+];
 const DEFAULT_HARNESS_URL = "http://127.0.0.1:8771";
 
 export function harnessBaseUrl(): string {
   const raw = process.env.LOCAL_STUDIO_HARNESS_URL?.trim();
   return (raw || DEFAULT_HARNESS_URL).replace(/\/+$/, "");
+}
+
+export function upstreamRequestHeaders(requestHeaders: Headers): Headers {
+  const headers = new Headers(requestHeaders);
+  for (const name of UPSTREAM_REQUEST_HEADERS_TO_REMOVE) headers.delete(name);
+  return headers;
 }
 
 export async function proxyToHarness(
@@ -16,8 +35,7 @@ export async function proxyToHarness(
   const targetPath = path.map((part) => encodeURIComponent(part)).join("/");
   const sourceUrl = new URL(request.url);
   const target = `${harnessBaseUrl()}/v1/${targetPath}${sourceUrl.search}`;
-  const headers = new Headers(request.headers);
-  for (const name of HOP_BY_HOP_REQUEST_HEADERS) headers.delete(name);
+  const headers = upstreamRequestHeaders(request.headers);
 
   let body: ArrayBuffer | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
