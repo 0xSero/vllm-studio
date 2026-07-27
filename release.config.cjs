@@ -50,18 +50,11 @@ module.exports = {
       },
     ],
     [
-      "@semantic-release/exec",
-      {
-        prepareCmd:
-          "node scripts/build-desktop-release.mjs --version ${nextRelease.version} --commit \"$RELEASE_SHA\"",
-        publishCmd:
-          "node scripts/assert-release-main.mjs --commit \"$RELEASE_SHA\"",
-      },
-    ],
-    [
       "@semantic-release/github",
       {
         assets: [{ path: "release-staging/*" }],
+        successComment: false,
+        failComment: false,
       },
     ],
   ],

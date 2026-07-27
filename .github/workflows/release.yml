@@ -10,15 +10,14 @@ concurrency:
   group: release-main
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-
 jobs:
-  release:
+  build:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: macos-15
+    permissions:
+      contents: read
+    outputs:
+      release_version: ${{ steps.next-release.outputs.version }}
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
@@ -57,43 +56,157 @@ jobs:
         working-directory: ./frontend
         run: npm ci --legacy-peer-deps
 
-      - name: Configure Apple notarization
+      - id: next-release
+        name: Determine release version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          npx --yes \
+            --package semantic-release@24.2.7 \
+            --package @semantic-release/commit-analyzer@13.0.1 \
+            --package @semantic-release/release-notes-generator@14.1.0 \
+            --package @semantic-release/github@11.0.6 \
+            --package conventional-changelog-conventionalcommits@8.0.0 \
+            semantic-release --dry-run 2>&1 | tee semantic-release.log
+          version="$(sed -nE 's/.*The next release version is ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' semantic-release.log | tail -1)"
+          if [ -n "$version" ]; then
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build unsigned release app
+        if: steps.next-release.outputs.version != ''
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: >-
+          npm --prefix frontend run desktop:pack --
+          --config.mac.identity=null
+          --config.mac.hardenedRuntime=false
+          --config.extraMetadata.version=${{ steps.next-release.outputs.version }}
+          --config.extraMetadata.localStudioCommit=${{ github.event.workflow_run.head_sha }}
+
+      - name: Archive unsigned release app
+        if: steps.next-release.outputs.version != ''
+        run: >-
+          ditto -c -k --keepParent
+          "frontend/dist-desktop/mac-arm64/Local Studio.app"
+          "local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.next-release.outputs.version != ''
+        with:
+          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
+          path: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    needs: build
+    if: needs.build.outputs.release_version != ''
+    runs-on: macos-15
+    permissions:
+      contents: read
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Select tested main revision
+        run: git checkout -B main "$RELEASE_SHA"
+
+      - name: Reject stale release revision
+        run: node scripts/assert-release-main.mjs --commit "$RELEASE_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Install signing dependencies
+        working-directory: ./frontend
+        run: npm ci --ignore-scripts --legacy-peer-deps
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/unsigned-release
+
+      - name: Extract unsigned release app
+        run: >-
+          ditto -x -k
+          "${{ runner.temp }}/unsigned-release/local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip"
+          "${{ runner.temp }}/unsigned-release/app"
+
+      - name: Sign and notarize release assets
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-        run: |
-          for name in APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER CSC_LINK CSC_KEY_PASSWORD; do
-            if [ -z "$(eval "printf '%s' \"\$$name\"")" ]; then
-              echo "::error::Repo secret $name is missing — releases cannot sign or notarize without it. Run scripts/setup-release-secrets.sh once to upload all five." >&2
-              exit 1
-            fi
-          done
-          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
-          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_path"
-          chmod 600 "$key_path"
-          echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
+        run: >-
+          node scripts/sign-desktop-release.mjs
+          --version ${{ needs.build.outputs.release_version }}
+          --commit "$RELEASE_SHA"
+          --prepackaged "${{ runner.temp }}/unsigned-release/app/Local Studio.app"
+
+      - name: Stage signed release assets
+        run: >-
+          node scripts/stage-desktop-release.mjs
+          --version ${{ needs.build.outputs.release_version }}
+          --commit "$RELEASE_SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          path: release-staging/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [build, sign]
+    if: needs.build.outputs.release_version != ''
+    runs-on: macos-15
+    permissions:
+      contents: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Select tested main revision
+        run: git checkout -B main "$RELEASE_SHA"
+
+      - name: Reject stale release revision
+        run: node scripts/assert-release-main.mjs --commit "$RELEASE_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          path: release-staging
 
       - name: Configure git author
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Release
+      - name: Publish release
         env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          npx -y \
-            -p semantic-release@24 \
-            -p @semantic-release/commit-analyzer \
-            -p @semantic-release/exec \
-            -p @semantic-release/release-notes-generator \
-            -p @semantic-release/github \
-            -p conventional-changelog-conventionalcommits@8 \
+          npx --yes \
+            --package semantic-release@24.2.7 \
+            --package @semantic-release/commit-analyzer@13.0.1 \
+            --package @semantic-release/release-notes-generator@14.1.0 \
+            --package @semantic-release/github@11.0.6 \
+            --package conventional-changelog-conventionalcommits@8.0.0 \
             semantic-release
