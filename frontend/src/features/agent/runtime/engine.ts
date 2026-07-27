@@ -444,7 +444,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       tab: { status: Session["status"]; piSessionId?: string | null },
       runtime: string,
     ): Promise<boolean> => {
-      if (tab.status !== "running" && tab.status !== "starting") return false;
+      // "stopping" counts: the composer still draws itself as running there, and
+      // a turn being torn down can still take a follow-up for the next one.
+      if (tab.status !== "running" && tab.status !== "starting" && tab.status !== "stopping") {
+        return false;
+      }
       const status = await loadRuntimeStatusCb(runtime, tab.piSessionId).catch(() => null);
       return runtimeStatusAcceptsControl(status, tab.piSessionId);
     },

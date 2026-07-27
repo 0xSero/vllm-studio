@@ -233,9 +233,12 @@ export function useChatPaneSendFlow({
       }
       return Effect.runPromise(
         Effect.gen(function* () {
+          // Fail open, same reasoning as runtimeStatusAcceptsControl: a probe
+          // that throws tells us nothing, and guessing "not running" mid-turn
+          // silently reroutes the message into a fresh prompt.
           const acceptsControl = yield* Effect.tryPromise({
             try: () => engine.acceptsControl(activeTab, runtime),
-            catch: () => false,
+            catch: () => running,
           });
           if (acceptsControl) {
             if (!text) return;
@@ -284,7 +287,7 @@ export function useChatPaneSendFlow({
       Effect.gen(function* () {
         const acceptsControl = yield* Effect.tryPromise({
           try: () => engine.acceptsControl(activeTab, runtime),
-          catch: () => false,
+          catch: () => running,
         });
         if (acceptsControl) {
           yield* Effect.tryPromise({
