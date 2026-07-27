@@ -608,7 +608,9 @@ function reduceUserMessageEvent(
       activeAssistantId: nextAssistantId,
       messages: [
         ...session.messages.map((message) =>
-          message.id === pending.id ? { ...message, pending: false } : message,
+          message.id === pending.id
+            ? { ...message, pending: false, awaitingEcho: false }
+            : message,
         ),
         { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
       ],
@@ -634,24 +636,49 @@ function reduceUserMessageEvent(
   };
 }
 
-// The optimistic steer bubble awaiting its runtime echo: a still-pending user
+// The optimistic steer bubble awaiting its runtime echo: an un-echoed user
 // message whose text matches what Pi just delivered to the model.
+//
+// This keys off `awaitingEcho`, not `pending`. `pending` is cleared at
+// agent_end for styling reasons, and agent_end fires once per low-level run —
+// several times per prompt under auto-retry or compaction. Keying the dedupe
+// on it meant that with two steers in flight, both lost their marker, both
+// echoes missed, and both messages were appended a second time.
 function findPendingUserMessage(messages: ChatMessage[], text: string): ChatMessage | undefined {
   const target = text.trim();
   return [...messages]
     .reverse()
     .find(
       (message) =>
-        message.role === "user" && message.pending === true && message.text.trim() === target,
+        message.role === "user" &&
+        (message.awaitingEcho === true || message.pending === true) &&
+        message.text.trim() === target,
     );
 }
 
+/** Un-dim steer bubbles at the end of a run: delivered or not, a stuck-dimmed
+ *  message reads as broken. Deliberately leaves `awaitingEcho` intact — the
+ *  echo may still be in flight, and that marker is the only thing standing
+ *  between a late echo and a duplicated bubble. */
 function clearPendingUserMessages(session: Session): Session {
   if (!session.messages.some((message) => message.pending)) return session;
   return {
     ...session,
     messages: session.messages.map((message) =>
       message.pending ? { ...message, pending: false } : message,
+    ),
+  };
+}
+
+/** Once the whole prompt has settled no further echo is coming, so any bubble
+ *  still waiting for one never got matched and must stop shadowing later
+ *  messages that happen to share its text. */
+export function clearAwaitingEchoUserMessages(session: Session): Session {
+  if (!session.messages.some((message) => message.awaitingEcho)) return session;
+  return {
+    ...session,
+    messages: session.messages.map((message) =>
+      message.awaitingEcho ? { ...message, awaitingEcho: false } : message,
     ),
   };
 }

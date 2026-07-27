@@ -21,6 +21,7 @@ import {
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
 import {
+  clearAwaitingEchoUserMessages,
   reduceSessionEvent,
   type SessionStreamContext,
 } from "@/features/agent/runtime/pi-event-applier";
@@ -288,7 +289,7 @@ export function createSessionRuntimeController(
       // together.
       coalescer.flushNow(sessionId);
       applyEvent(sessionId, payload.event, payload.seq, (session) => ({
-        ...settleTurn(session),
+        ...clearAwaitingEchoUserMessages(settleTurn(session)),
         piSessionId: eventId || session.piSessionId,
       }));
       // The turn is over: drop any mid-stream user-message redirect. The

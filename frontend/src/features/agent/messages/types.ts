@@ -59,7 +59,17 @@ export type ChatMessage = {
   // injected it into the running turn. Rendered dimmed until the runtime echoes
   // it back (the model is now seeing it), at which point this clears. Transient
   // UI state, never persisted.
+  //
+  // PURELY VISUAL. It is cleared at agent_end so a delivered-or-not steer stops
+  // reading as stuck-dimmed — which is why the echo matcher must not use it as
+  // its dedupe key. Use `awaitingEcho` for that.
   pending?: boolean;
+  // This user bubble was inserted optimistically and has not yet been matched
+  // to its runtime echo, so an echo carrying the same text is that bubble
+  // arriving rather than a new message. Survives agent_end (which can fire
+  // several times per prompt via auto-retry and compaction) and is only swept
+  // at agent_settled. Transient UI state, never persisted.
+  awaitingEcho?: boolean;
   timestamp?: string;
 };
 

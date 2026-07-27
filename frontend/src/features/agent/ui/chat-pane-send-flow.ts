@@ -172,7 +172,14 @@ export function useChatPaneSendFlow({
         messages: pendingSteerId
           ? [
               ...t.messages,
-              { id: pendingSteerId, role: "user", text, pending: true, timestamp: nowLabel() },
+              {
+              id: pendingSteerId,
+              role: "user",
+              text,
+              pending: true,
+              awaitingEcho: true,
+              timestamp: nowLabel(),
+            },
             ]
           : t.messages,
       }));

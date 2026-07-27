@@ -41,3 +41,53 @@ test("malformed extension UI requests are ignored", () => {
   });
   assert.equal(next, current);
 });
+
+// --- steer echo dedupe -------------------------------------------------------
+
+const steerBubble = (id: string, text: string) => ({
+  id,
+  role: "user" as const,
+  text,
+  pending: true,
+  awaitingEcho: true,
+});
+
+const userEcho = (text: string) => ({
+  type: "message_end",
+  message: { role: "user", content: [{ type: "text", text }] },
+});
+
+const userCount = (messages: { role: string; text: string }[], text: string) =>
+  messages.filter((message) => message.role === "user" && message.text === text).length;
+
+test("a steer echo matches its optimistic bubble instead of duplicating it", () => {
+  const current: Session = { ...session(), messages: [steerBubble("user_a", "check this")] };
+  const next = reduceSessionEvent(current, context(), userEcho("check this"));
+  assert.equal(userCount(next.messages, "check this"), 1);
+  assert.equal(next.messages[0].pending, false);
+  assert.equal(next.messages[0].awaitingEcho, false);
+});
+
+// The regression: agent_end fires once per low-level run — several times per
+// prompt under auto-retry or compaction — and used to clear the flag the echo
+// matcher keyed on. With two steers in flight both echoes then missed, and each
+// message was appended a second time.
+test("steer echoes still match after agent_end has un-dimmed the bubbles", () => {
+  let current: Session = {
+    ...session(),
+    messages: [steerBubble("user_a", "check this"), steerBubble("user_b", "codex session")],
+  };
+
+  current = reduceSessionEvent(current, context(), { type: "agent_end" });
+  assert.equal(
+    current.messages.every((message) => message.pending !== true),
+    true,
+    "agent_end should un-dim the bubbles",
+  );
+
+  current = reduceSessionEvent(current, context(), userEcho("check this"));
+  current = reduceSessionEvent(current, context(), userEcho("codex session"));
+
+  assert.equal(userCount(current.messages, "check this"), 1);
+  assert.equal(userCount(current.messages, "codex session"), 1);
+});
