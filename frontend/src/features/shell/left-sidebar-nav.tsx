@@ -95,8 +95,8 @@ export function NavItemDesktop({
       }`}
     >
       <Icon
-        className={`h-3.5 w-3.5 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
-        strokeWidth={1.75}
+        className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        strokeWidth={1.6}
       />
       <span className="text-[length:var(--fs-md)] whitespace-nowrap">{label}</span>
     </Link>

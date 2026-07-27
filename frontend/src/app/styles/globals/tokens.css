@@ -600,6 +600,10 @@
   --sidebar-w: 275px;
   --sidebar-w-collapsed: 48px;
   --sidebar-row-height: 30px;
+  /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
+     anywhere in the sidebar. That reads as a wall of text rather than a list.
+     Costs 2px per row and no change to the row itself. */
+  --sidebar-row-gap: 2px;
   --sidebar-row-radius: 10px;
   --sidebar-padding-x: 8px;
   --row-h: 36px;

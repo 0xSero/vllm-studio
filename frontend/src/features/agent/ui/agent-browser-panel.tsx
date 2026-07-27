@@ -403,10 +403,8 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    // Same height token as the chat pane header (and as ComputerPanelFallback):
-    // a hardcoded h-11 here sat 4px taller than the session header beside it.
-    <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1.5 border-b border-(--border) bg-(--color-header) px-2 text-[length:var(--fs-sm)]">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
+    <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1 border-b border-(--border) bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden px-0.5 [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
           const Icon = meta.icon;
@@ -414,10 +412,10 @@ function ComputerHeader({
           return (
             <div
               key={openTab}
-              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
+              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-xl transition-[background-color,color] duration-150 ${
                 tab === openTab
-                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
+                  ? "bg-(--color-surface-hover) text-(--fg)"
+                  : "text-(--dim)/80 hover:bg-(--hover)/70 hover:text-(--fg)/85"
               }`}
               title={meta.label}
             >
@@ -426,10 +424,10 @@ function ComputerHeader({
                 onClick={() =>
                   openTab === "terminal" ? onOpenCurrentTerminal() : onSelectTab(openTab)
                 }
-                className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
+                className="inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-xl pl-2.5 pr-1.5 text-left"
               >
-                {Icon ? <Icon className="pointer-events-none h-3 w-3 shrink-0" /> : null}
-                <span className="max-w-[7rem] truncate">{meta.label}</span>
+                {Icon ? <Icon className="pointer-events-none h-3.5 w-3.5 shrink-0" /> : null}
+                <span className="max-w-[8rem] truncate">{meta.label}</span>
               </button>
               {canClose ? (
                 <button
@@ -438,7 +436,9 @@ function ComputerHeader({
                     event.stopPropagation();
                     onCloseTab(openTab);
                   }}
-                  className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
+                  className={`inline-flex h-8 w-7 items-center justify-center rounded-xl text-(--dim)/65 opacity-0 transition-[background-color,color,opacity] duration-150 hover:bg-(--fg)/8 hover:text-(--fg)/80 group-hover:opacity-100 focus-visible:opacity-100 ${
+                    tab === openTab ? "opacity-100" : ""
+                  }`}
                   aria-label={`Close ${meta.label}`}
                   title={`Close ${meta.label}`}
                 >
@@ -455,20 +455,20 @@ function ComputerHeader({
           return (
             <div
               key={owner.mountKey}
-              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
+              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-xl transition-[background-color,color] duration-150 ${
                 selected
-                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
+                  ? "bg-(--color-surface-hover) text-(--fg)"
+                  : "text-(--dim)/80 hover:bg-(--hover)/70 hover:text-(--fg)/85"
               }`}
               title={shortcut ? `${label} (${shortcut})` : label}
             >
               <button
                 type="button"
                 onClick={() => onSelectTerminalOwner(owner.mountKey)}
-                className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
+                className="inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-xl pl-2.5 pr-1.5 text-left"
               >
-                <TerminalSquare className="pointer-events-none h-3 w-3 shrink-0" />
-                <span className="max-w-[7rem] truncate">{label}</span>
+                <TerminalSquare className="pointer-events-none h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[8rem] truncate">{label}</span>
                 {shortcut ? (
                   <span className="text-[length:var(--fs-2xs)] text-(--dim)/70">{shortcut}</span>
                 ) : null}
@@ -479,7 +479,9 @@ function ComputerHeader({
                   event.stopPropagation();
                   onCloseTerminalOwner(owner.mountKey);
                 }}
-                className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
+                className={`inline-flex h-8 w-7 items-center justify-center rounded-xl text-(--dim)/65 opacity-0 transition-[background-color,color,opacity] duration-150 hover:bg-(--fg)/8 hover:text-(--fg)/80 group-hover:opacity-100 focus-visible:opacity-100 ${
+                  selected ? "opacity-100" : ""
+                }`}
                 aria-label={`Close ${label}`}
                 title={`Close ${label}`}
               >
@@ -493,10 +495,10 @@ function ComputerHeader({
         <button
           type="button"
           onClick={onShowLauncher}
-          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-[background-color,color] duration-150 ${
             tab === "tools"
-              ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-              : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
+              ? "bg-(--color-surface-hover) text-(--fg)"
+              : "text-(--dim)/80 hover:bg-(--hover)/70 hover:text-(--fg)/85"
           }`}
           title="Show tools"
           aria-label="Show tools"
@@ -507,7 +509,7 @@ function ComputerHeader({
         <button
           type="button"
           onClick={onClosePanel}
-          className="relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          className="relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-(--dim)/80 transition-[background-color,color] duration-150 hover:bg-(--hover)/70 hover:text-(--fg)"
           title="Close controller panel"
           aria-label="Close controller panel"
         >

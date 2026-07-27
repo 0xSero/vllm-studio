@@ -23,7 +23,6 @@ import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
   mergeActiveSessionPref,
   patchActiveSessionPref,
-  relativeAge,
   rememberAgentSessionNavTitle,
   setAgentSessionDragData,
   setSessionArchive,
@@ -373,7 +372,6 @@ export function ActiveSessionRow({
       pref={pref}
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.title)}
-      age={relativeAge(session.startedAt ?? session.updatedAt)}
       rowClass={rowClass}
       href={`/agent?project=${encodeURIComponent(project.id)}${
         session.threadId ? `&session=${encodeURIComponent(session.threadId)}&replace=1` : ""
@@ -466,7 +464,6 @@ export function SessionRow({
       pref={pref}
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
-      age={relativeAge(session.startedAt)}
       isRunning={isRunning}
       unseen={unseen}
       rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-0 text-(--fg)/85 transition-[color,background-color,opacity] hover:bg-(--hover) hover:text-(--fg) ${dragging ? "opacity-45" : ""}`}

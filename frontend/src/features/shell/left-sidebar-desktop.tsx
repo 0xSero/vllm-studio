@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search as SearchIcon,
+  SquarePen,
   Settings,
   PanelLeftHollow,
   PanelLeftFilled,
@@ -112,24 +113,30 @@ export function DesktopSidebar({
               >
                 <ChevronRight className="h-3 w-3" strokeWidth={1.75} />
               </button>
+              {/* Search is an icon here rather than a row of its own: it reclaims
+                  a full row for the content the sidebar actually exists to list. */}
+              <button
+                onClick={onOpenSearch}
+                className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                title="Search sessions (⌘K)"
+                aria-label="Search sessions"
+              >
+                <SearchIcon className="h-4 w-4" strokeWidth={1.75} />
+              </button>
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
-              <button
-                type="button"
-                onClick={onOpenSearch}
-                className="mb-0.5 flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
-                title="Search sessions (⌘K)"
+            <nav className="flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
+              <Link
+                href="/agent?new=1"
+                prefetch={false}
+                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
+                title="New chat"
               >
-                <SearchIcon className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.75} />
+                <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />
                 <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
-                  Search
+                  New chat
                 </span>
-              </button>
-
-              <div className="pb-1 pt-5 px-2 text-[length:var(--fs-sm)] font-normal text-(--hl2)">
-                Workspace
-              </div>
+              </Link>
               {tabs.map((tab) => (
                 <NavItemDesktop
                   key={tab.href}
@@ -148,7 +155,7 @@ export function DesktopSidebar({
               ) : null}
             </nav>
 
-            <div className="shrink-0 border-t border-(--separator) bg-(--sidebar-bg) px-[var(--sidebar-padding-x)] py-2">
+            <div className="shrink-0 bg-(--sidebar-bg) px-[var(--sidebar-padding-x)] pb-2 pt-1">
               <ProfileFooter settingsActive={isRouteActive(pathname, "/settings")} />
             </div>
           </>

@@ -17,7 +17,6 @@ type SessionNavRowProps = {
   pref: SessionPref;
   label: string;
   initialDraft: string;
-  age: string;
   rowClass: string;
   renameRowClass?: string;
   href?: string;
@@ -42,7 +41,6 @@ export function SessionNavRow({
   pref,
   label,
   initialDraft,
-  age,
   rowClass,
   renameRowClass = rowClass,
   href,
@@ -116,7 +114,6 @@ export function SessionNavRow({
         placement="rail"
       />
       <SessionOpenTarget
-        age={age}
         canDoubleClickRename={canDoubleClickRename}
         href={href}
         isRunning={isRunning}
@@ -202,7 +199,6 @@ function RenameInput({
 }
 
 function SessionOpenTarget({
-  age,
   canDoubleClickRename,
   href,
   isRunning,
@@ -213,7 +209,6 @@ function SessionOpenTarget({
   onRememberTitle,
   onStartRename,
 }: {
-  age: string;
   canDoubleClickRename: boolean;
   href?: string;
   isRunning: boolean;
@@ -234,7 +229,7 @@ function SessionOpenTarget({
       }
     : {};
   const content = (
-    <SessionRowContent age={age} isRunning={isRunning} unseen={unseen} label={label} />
+    <SessionRowContent isRunning={isRunning} unseen={unseen} label={label} />
   );
 
   if (href) {
@@ -279,12 +274,10 @@ function SessionOpenTarget({
 }
 
 function SessionRowContent({
-  age,
   isRunning,
   unseen,
   label,
 }: {
-  age: string;
   isRunning: boolean;
   unseen: boolean;
   label: string;
@@ -306,11 +299,10 @@ function SessionRowContent({
           title="Unseen activity"
         />
       ) : null}
-      {age ? (
-        <span className="min-w-[2.25rem] shrink-0 pl-1.5 text-right text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity group-hover:opacity-0">
-          {age}
-        </span>
-      ) : null}
+      {/* No age column. It rendered on every row at rest and hid itself on
+          hover — exactly backwards, since hover is when you want detail. The
+          running spinner and unseen dot above already carry the only status
+          worth scanning for; the age lives in the row's tooltip. */}
     </>
   );
 }
