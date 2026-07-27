@@ -129,7 +129,7 @@ export function AgentComposerActions({
               type="button"
               onClick={onAbortTurn}
               disabled={starting || stopping}
-              className={`inline-flex shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:opacity-30 ${inputHasText ? "!h-6 !min-h-6 !w-6 !min-w-6" : "!h-[30px] !min-h-[30px] !w-[30px] !min-w-[30px]"}`}
+              className="inline-flex !h-[30px] !min-h-[30px] !w-[30px] !min-w-[30px] shrink-0 items-center justify-center rounded-full bg-(--fg) text-(--bg) transition-opacity hover:opacity-85 disabled:opacity-30"
               aria-label="Stop"
               title="Stop (Esc)"
             >
