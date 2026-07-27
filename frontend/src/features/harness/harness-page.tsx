@@ -295,6 +295,7 @@ export default function HarnessPage() {
                   size="sm"
                   icon={<Play className="h-3.5 w-3.5" />}
                   loading={running}
+                  disabled={running}
                   onClick={() => void runAnalysis()}
                 >
                   Run vLLM analysis
