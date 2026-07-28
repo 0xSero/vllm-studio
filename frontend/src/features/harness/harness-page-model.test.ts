@@ -75,7 +75,13 @@ describe("resolveTaskEnvelope", () => {
 
 describe("isTerminalTaskStatus", () => {
   test("matches the Harness durable terminal set exactly", () => {
-    assert.deepEqual([...TERMINAL_TASK_STATUSES].sort(), ["blocked", "done", "failed", "stopped"]);
+    assert.deepEqual([...TERMINAL_TASK_STATUSES].sort(), [
+      "blocked",
+      "complete",
+      "done",
+      "failed",
+      "stopped",
+    ]);
     for (const status of TERMINAL_TASK_STATUSES) {
       assert.equal(isTerminalTaskStatus(status), true);
     }
