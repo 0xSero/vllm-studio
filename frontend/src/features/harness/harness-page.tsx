@@ -410,6 +410,7 @@ export default function HarnessPage() {
     setupLoading: goalLoading,
     activeTaskStatus: managedTask?.status,
   });
+  const showStartBlocker = Boolean(startBlocker && !goalError && !error);
   const goalOutcome = describeGoalOutcome(managedTask);
 
   const runCanary = async () => {
@@ -508,7 +509,7 @@ export default function HarnessPage() {
                 rows={5}
                 placeholder="Describe the outcome in plain language, for example: Review the Local Studio integration, make a bounded improvement, and verify it end to end."
                 aria-describedby={
-                  startBlocker
+                  showStartBlocker
                     ? "harness-goal-hint harness-goal-blocker"
                     : "harness-goal-hint"
                 }
@@ -782,7 +783,7 @@ export default function HarnessPage() {
               {goalError ? <ErrorBox className="mt-4">{goalError}</ErrorBox> : null}
               {!goalError && error ? <ErrorBox className="mt-4">{error}</ErrorBox> : null}
 
-              {startBlocker && !goalError && !error ? (
+              {showStartBlocker ? (
                 <p
                   id="harness-goal-blocker"
                   className="mt-4 text-[length:var(--fs-sm)] text-(--ui-muted)"
@@ -800,7 +801,7 @@ export default function HarnessPage() {
                   // Loading and in-flight states disable the control; other
                   // reasons are reported by startGoal so they can be read.
                   disabled={goalBusy || goalLoading}
-                  aria-describedby={startBlocker ? "harness-goal-blocker" : undefined}
+                  aria-describedby={showStartBlocker ? "harness-goal-blocker" : undefined}
                   onClick={() => void startGoal()}
                 >
                   Start goal
