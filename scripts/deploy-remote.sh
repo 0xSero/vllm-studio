@@ -223,11 +223,15 @@ build_frontend_local() {
 
   step "Syncing frontend build"
   remote "rm -rf $REMOTE_DIR_SHELL/frontend/.next/standalone/data"
+  # Same tolerance as sync_dir: --delete cannot remove non-empty dirs whose
+  # contents are excluded, rsync exits 23, and with stderr silenced the whole
+  # deploy died here without printing why.
   rsync -az --delete \
     --exclude 'cache' \
     --exclude 'standalone/data' \
     -e "ssh $SSH_OPTS" \
-    frontend/.next/ "$REMOTE:$REMOTE_DIR/frontend/.next/" 2>/dev/null
+    frontend/.next/ "$REMOTE:$REMOTE_DIR/frontend/.next/" 2>&1 |
+    grep -v 'cannot delete non-empty directory' || true
   ok ".next/ → remote"
 }
 
