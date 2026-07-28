@@ -127,7 +127,14 @@ export function SessionNavRow({
       />
       <div
         ref={menuRef}
-        className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-md bg-[inherit]"
+        // Hidden as a WHOLE at rest: with per-button hiding only, the empty
+        // container still painted its inherited background — on the focused
+        // row that rendered a blank pill on top of the spinner and date.
+        className={`absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-md bg-[inherit] transition-opacity duration-150 ${
+          menuOpen
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        }`}
       >
         <PinButton
           pinned={Boolean(pref.pinned)}
