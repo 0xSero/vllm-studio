@@ -3,6 +3,7 @@
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
     "chromium-bidi",
+    "fast-check",
     "playwright-core",
     "proper-lockfile",
     "semver",
