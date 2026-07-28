@@ -271,9 +271,10 @@ export function useComposerTextareaBehavior({
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention && handleMentionKey(event)) return;
       // While a turn is running, Enter QUEUES rather than steers. Steering
-      // interrupts the agent's plan mid-flight, so it stays a deliberate act
-      // (the composer's ↑ button, or promoting an item in the queue stack).
-      // Alt+Enter keeps the one-key steer for anyone who wants it.
+      // interrupts the agent's plan mid-flight, so it stays a deliberate act —
+      // the drawer's "Interrupt now" button, promoting an item in the queue
+      // stack, or Alt+Enter. Tab used to queue too; it is back to moving focus,
+      // since the drawer now offers both choices as buttons.
       if (event.key === "Enter" && !event.shiftKey) {
         if (running && !event.altKey && activeTab?.input.trim()) {
           event.preventDefault();
@@ -282,12 +283,6 @@ export function useComposerTextareaBehavior({
         }
         event.preventDefault();
         event.currentTarget.form?.requestSubmit();
-        return;
-      }
-      if (event.key === "Tab" && !event.shiftKey) {
-        if (!activeTab?.input.trim()) return;
-        event.preventDefault();
-        void queueMessage();
         return;
       }
       if (event.key === "Escape" || (event.key === "." && (event.metaKey || event.ctrlKey))) {

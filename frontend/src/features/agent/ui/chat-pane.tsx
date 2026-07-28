@@ -728,6 +728,9 @@ export function ChatPane({
               running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
               queueItems={visibleQueueItems}
+              composerText={activeTab?.input ?? ""}
+              onQueueMessage={() => void queueMessage()}
+              onSteerMessage={() => void sendMessage(SYNTHETIC_SUBMIT)}
               onEditQueued={editQueued}
               onRemoveQueued={removeQueued}
               onSteerQueued={(queueId) => void steerQueued(queueId)}
@@ -793,6 +796,10 @@ function ChatPaneChrome({
 
 /** Remounts per session so the goal poll and project selection never carry
  *  across tabs, and hides project switching while a turn is in flight. */
+// The drawer's Interrupt button has no form event of its own, and sendMessage
+// only ever uses the event to cancel the browser's native submit.
+const SYNTHETIC_SUBMIT = { preventDefault: () => {} } as unknown as FormEvent;
+
 function SessionProjectDrawer({
   tabId,
   piSessionId,

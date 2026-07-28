@@ -9,7 +9,7 @@
 // with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentSettledEvent } from "@shared/agent/pi-events";
-import { drainQueueAfterAgentEnd, piSessionIdFromEvent } from "@/features/agent/messages";
+import { piSessionIdFromEvent } from "@/features/agent/messages";
 import {
   listRuntimeSessions,
   loadRuntimeStatus,
@@ -309,14 +309,10 @@ export function createSessionRuntimeController(
       // this (now settled) bubble, so the next bubble renders empty — tool
       // calls and reasoning land off-screen and no final content appears.
       dropLiveTarget(sessionId);
-      // Queue display reconciliation only: Pi drains its own follow_up queue
-      // server-side, so locally we just drop the drained head and any
-      // already-sent items from the visible queue.
-      commit(sessionId, (session) =>
-        (session.queue ?? []).length === 0
-          ? session
-          : { ...session, queue: drainQueueAfterAgentEnd(session.queue ?? []).remaining },
-      );
+      // The queue is NOT touched here. Pi owns it: it drains its own follow_up
+      // queue server-side and tells us what happened through the delivered user
+      // echo and `queue_update`. Dropping items at settle just erased the stack
+      // a beat before pi delivered them.
       return;
     }
 
