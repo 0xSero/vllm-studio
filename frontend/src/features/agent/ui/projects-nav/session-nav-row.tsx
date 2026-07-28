@@ -241,7 +241,10 @@ function SessionOpenTarget({
       }
     : {};
   const targetClass = `flex min-w-0 flex-1 items-center gap-1 ${
-    pinned ? "pr-8" : "pr-2"
+    // One padding for every section — pinned rows used to reserve pr-8 for an
+    // always-visible pin that no longer renders at rest, which pushed their
+    // dates to a different column than task rows.
+    "pr-2"
   } group-hover:pr-[52px] group-has-[:focus-visible]:pr-[52px]`;
   const content = (
     <SessionRowContent
@@ -310,7 +313,7 @@ function SessionRowContent({
   const age = relativeAge(timestamp);
   return (
     <>
-      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-md)] font-normal leading-5">
+      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
         {label}
       </span>
       {isRunning ? (
@@ -329,7 +332,7 @@ function SessionRowContent({
         />
       ) : null}
       {age ? (
-        <span className="shrink-0 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
+        <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
           {age}
         </span>
       ) : null}
