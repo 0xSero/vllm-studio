@@ -68,6 +68,10 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
               source: "core",
               icon: "command" as const,
               run: async (args: string) => {
+                // Picked from the menu with nothing typed yet: seed the composer
+                // instead of erroring. A usage-string error here landed on
+                // tab.error, which nothing renders — the row looked dead.
+                if (!args.trim()) return { kind: "set-input" as const, input: "/goal " };
                 const message = await actions.goal?.(args.trim());
                 return message ? { kind: "error" as const, message } : { kind: "handled" as const };
               },

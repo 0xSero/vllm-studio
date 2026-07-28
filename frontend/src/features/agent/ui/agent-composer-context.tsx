@@ -11,6 +11,7 @@ import {
   Globe,
   Slash,
   Sparkles,
+  Target,
   TerminalSquare,
 } from "@/ui/icon-registry";
 import type {
@@ -227,6 +228,7 @@ const COMMAND_ICONS: Record<ComposerCommand["icon"], typeof Slash> = {
 
 // Codex leads each command row with a semantic glyph, not a uniform slash.
 const BUILTIN_COMMAND_ICONS: Record<string, typeof Slash> = {
+  goal: Target,
   compact: CircleDot,
   status: Gauge,
   browser: Globe,
