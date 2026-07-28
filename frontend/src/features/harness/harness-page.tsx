@@ -507,7 +507,11 @@ export default function HarnessPage() {
                 }}
                 rows={5}
                 placeholder="Describe the outcome in plain language, for example: Review the Local Studio integration, make a bounded improvement, and verify it end to end."
-                aria-describedby="harness-goal-hint"
+                aria-describedby={
+                  startBlocker
+                    ? "harness-goal-hint harness-goal-blocker"
+                    : "harness-goal-hint"
+                }
                 aria-invalid={Boolean(goalError && !goal.trim())}
                 className="mt-2 block w-full resize-y rounded-xl border border-(--ui-border) bg-(--ui-bg) px-3 py-3 text-[length:var(--fs-md)] leading-relaxed text-(--ui-fg) outline-none transition focus:border-(--ui-accent) focus:ring-2 focus:ring-(--ui-accent)/20"
                 disabled={goalBusy}
@@ -776,8 +780,9 @@ export default function HarnessPage() {
               ) : null}
 
               {goalError ? <ErrorBox className="mt-4">{goalError}</ErrorBox> : null}
+              {!goalError && error ? <ErrorBox className="mt-4">{error}</ErrorBox> : null}
 
-              {startBlocker && !goalError ? (
+              {startBlocker && !goalError && !error ? (
                 <p
                   id="harness-goal-blocker"
                   className="mt-4 text-[length:var(--fs-sm)] text-(--ui-muted)"
@@ -999,8 +1004,6 @@ export default function HarnessPage() {
               Run safe canary
             </Button>
           </div>
-          {error ? <ErrorBox className="mt-3">{error}</ErrorBox> : null}
-
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.8fr)]">
           <Card
             title="Live route registry"
