@@ -1,24 +1,20 @@
 import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
 
-const UPSTREAM_REQUEST_HEADERS_TO_REMOVE = [
-  "host",
-  "connection",
-  "content-length",
-  "accept-encoding",
-  // The Harness server validates browser-origin requests against its own
-  // listener. These headers describe the browser-to-Local-Studio hop and must
-  // not be replayed on the trusted Local-Studio-to-Harness hop.
-  // Stripping them here is safe because the browser hop is already enforced
-  // before this route runs: src/proxy.ts applies evaluateRequestBoundary
-  // (host allowlist, cross-site rejection, Origin match, CSRF double-submit;
-  // see src/lib/security/request-boundary.ts and its tests) and the route
-  // handler re-checks the access token via requireApiAccess. Do not add a
-  // second origin gate here, and do not stop stripping these headers.
-  "origin",
-  "sec-fetch-dest",
-  "sec-fetch-mode",
-  "sec-fetch-site",
-  "sec-fetch-user",
+const UPSTREAM_REQUEST_HEADER_ALLOWLIST = [
+  "accept",
+  "content-type",
+  "if-match",
+  "if-none-match",
+  "last-event-id",
+  "x-request-id",
+];
+const DOWNSTREAM_RESPONSE_HEADER_ALLOWLIST = [
+  "cache-control",
+  "content-type",
+  "etag",
+  "last-modified",
+  "retry-after",
+  "x-request-id",
 ];
 const DEFAULT_HARNESS_URL = "http://127.0.0.1:8771";
 const DEFAULT_PROVIDER_HARNESS_URL = "http://127.0.0.1:8772";
@@ -36,9 +32,34 @@ export function harnessBaseUrl(target: HarnessTarget = "managed"): string {
 }
 
 export function upstreamRequestHeaders(requestHeaders: Headers): Headers {
-  const headers = new Headers(requestHeaders);
-  for (const name of UPSTREAM_REQUEST_HEADERS_TO_REMOVE) headers.delete(name);
+  const headers = new Headers();
+  for (const name of UPSTREAM_REQUEST_HEADER_ALLOWLIST) {
+    const value = requestHeaders.get(name);
+    if (value !== null) headers.set(name, value);
+  }
   return headers;
+}
+
+export function downstreamResponseHeaders(upstreamHeaders: Headers): Headers {
+  const headers = new Headers();
+  for (const name of DOWNSTREAM_RESPONSE_HEADER_ALLOWLIST) {
+    const value = upstreamHeaders.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  return headers;
+}
+
+function harnessPathSegment(part: string): string {
+  let decoded = part;
+  try {
+    decoded = decodeURIComponent(part);
+  } catch {
+    throw new TypeError("Harness path contains invalid encoding");
+  }
+  if (decoded === "." || decoded === "..") {
+    throw new TypeError("Harness path cannot contain dot segments");
+  }
+  return encodeURIComponent(part);
 }
 
 export function harnessTargetUrl(
@@ -46,7 +67,7 @@ export function harnessTargetUrl(
   namespace: "v1" | "api" = "v1",
   target: HarnessTarget = "managed",
 ): string {
-  const targetPath = path.map((part) => encodeURIComponent(part)).join("/");
+  const targetPath = path.map(harnessPathSegment).join("/");
   return `${harnessBaseUrl(target)}/${namespace}/${targetPath}`;
 }
 
@@ -58,7 +79,15 @@ async function proxyToHarnessNamespace(
   bodyLimitBytes = 256 * 1024,
 ): Promise<Response> {
   const sourceUrl = new URL(request.url);
-  const upstreamTarget = `${harnessTargetUrl(path, namespace, target)}${sourceUrl.search}`;
+  let upstreamTarget: string;
+  try {
+    upstreamTarget = `${harnessTargetUrl(path, namespace, target)}${sourceUrl.search}`;
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Harness path is invalid" },
+      { status: 400 },
+    );
+  }
   const headers = upstreamRequestHeaders(request.headers);
 
   let body: ArrayBuffer | undefined;
@@ -90,13 +119,9 @@ async function proxyToHarnessNamespace(
     );
   }
 
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.delete("content-length");
-  responseHeaders.delete("content-encoding");
-  responseHeaders.delete("transfer-encoding");
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: responseHeaders,
+    headers: downstreamResponseHeaders(upstream.headers),
   });
 }
 
