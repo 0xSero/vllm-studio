@@ -31,6 +31,8 @@ import {
 import { AgentComposerStatusBar } from "./agent-composer-status-bar";
 import { AgentComposerTextArea } from "./agent-composer-textarea";
 import { cx } from "@/ui/utils";
+import { Target } from "@/ui/icon-registry";
+import { CloseIcon } from "@/ui/icons";
 
 export type AgentComposerFrameProps = {
   attachments: AgentComposerAttachment[];
@@ -73,6 +75,8 @@ export type AgentComposerFrameProps = {
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   placeholder: string;
+  goalMode?: boolean;
+  onExitGoalMode?: () => void;
   drawer?: ReactNode;
   showStatusBar: boolean;
   promptTemplates: ComposerPromptTemplateRef[];
@@ -128,6 +132,8 @@ export function AgentComposerFrame({
   onToggleBrowserBackend,
   onToggleBrowserTool,
   placeholder,
+  goalMode = false,
+  onExitGoalMode,
   drawer,
   showStatusBar,
   promptTemplates,
@@ -179,6 +185,25 @@ export function AgentComposerFrame({
           promptTemplates={promptTemplates}
           onRemove={onRemoveLoadedContext}
         />
+        {goalMode ? (
+          <div className="flex items-center gap-1.5 px-3 pt-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 py-0.5 pl-2 pr-1 text-[length:var(--fs-sm)] font-medium text-amber-500">
+              <Target className="size-3.5" aria-hidden />
+              Goal
+              <button
+                type="button"
+                onClick={onExitGoalMode}
+                aria-label="Exit goal mode"
+                className="rounded-full p-0.5 text-amber-500/70 transition-colors hover:bg-amber-500/15 hover:text-amber-400"
+              >
+                <CloseIcon className="size-3" />
+              </button>
+            </span>
+            <span className="text-[length:var(--fs-sm)] text-(--fg)/40">
+              Enter sends this as the session objective
+            </span>
+          </div>
+        ) : null}
         {mention ? (
           <div className={`absolute inset-x-0 bottom-full z-20 mb-2 ${POPOVER_MENU_CLASS}`}>
             <AgentMentionPicker
