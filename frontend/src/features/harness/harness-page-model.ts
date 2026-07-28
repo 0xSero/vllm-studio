@@ -100,6 +100,7 @@ export function resolveTaskEnvelope(payload: TaskResponse): HarnessTask | null {
 // Unknown/future statuses are treated as active so we keep polling — the safe
 // default for states we have never seen.
 export const TERMINAL_TASK_STATUSES: ReadonlySet<string> = new Set([
+  "complete",
   "done",
   "stopped",
   "blocked",

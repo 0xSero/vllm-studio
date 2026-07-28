@@ -51,8 +51,10 @@ type ManagedModesResponse = {
   execution_profiles?: ManagedProfile[];
 };
 type ManagedSetupResponse = {
+  allowed_api_key_envs?: string[];
   suggested_check?: string;
   verification_command?: string;
+  verification_contract?: { shell?: boolean; summary?: string };
   workspace?: string;
   worker?: { label?: string; type?: string };
   configured?: boolean;
@@ -307,6 +309,10 @@ export default function HarnessPage() {
   };
 
   const runManagedAction = async (action: "stop" | "continue" | "accept") => {
+    if (!managedTask?.id) {
+      setGoalError("The current goal changed. Refresh before trying that action again.");
+      return;
+    }
     setGoalBusy(true);
     setGoalError("");
     try {
@@ -315,7 +321,10 @@ export default function HarnessPage() {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(action === "continue" ? { feedback: goalFeedback.trim() } : {}),
+          body: JSON.stringify({
+            task_id: managedTask.id,
+            ...(action === "continue" ? { feedback: goalFeedback.trim() } : {}),
+          }),
         },
       );
       const nextTask = managedTaskFromResponse(payload);
@@ -380,7 +389,15 @@ export default function HarnessPage() {
     label: "Managed goal loop",
     best_for: "Runs through the configured managed worker and keeps durable task state.",
   };
-  const providerModeOptions = managedModes.length ? managedModes : [];
+  const providerModeOptions = managedModes.length
+    ? managedModes
+    : [
+        {
+          key: goalMode || "quick",
+          label: "Standard goal loop",
+          best_for: "Plan, act, verify, and keep working until the goal reaches a terminal result.",
+        },
+      ];
   const selectedMode =
     goalBackend === "provider"
       ? (providerModeOptions.find((mode) => mode.key === goalMode) ?? providerModeOptions[0])
@@ -407,7 +424,7 @@ export default function HarnessPage() {
           objective: "Verify the Local Studio to Agentic Harness task boundary",
         }),
       });
-      const nextTask = payload.task ?? null;
+      const nextTask = resolveTaskEnvelope(payload);
       setTask(nextTask);
       setEvents(nextTask?.events ?? []);
     } catch (nextError) {
@@ -432,7 +449,7 @@ export default function HarnessPage() {
             "Report the selected model and explain that this analysis is read-only; do not change files.",
         }),
       });
-      const nextTask = payload.task ?? null;
+      const nextTask = resolveTaskEnvelope(payload);
       setTask(nextTask);
       setEvents(nextTask?.events ?? []);
     } catch (nextError) {
@@ -446,34 +463,21 @@ export default function HarnessPage() {
     <AppPage>
       <PageContainer width="lg" className="pt-6 sm:pt-8">
         <PageHeader
-          eyebrow="Agentic Harness"
-          title="Cluster execution"
-          description="Local Studio is the operator surface. Harness owns task state, routing, events, and evidence."
+          eyebrow="Goals"
+          title="What should your agent accomplish?"
+          description="Describe the result in plain language. The harness will keep working, verify the outcome, and ask only when it needs your decision."
           actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="icon"
-                size="md"
-                aria-label="Refresh Harness"
-                title="Refresh"
-                onClick={() => void refresh()}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Play className="h-3.5 w-3.5" />}
-                loading={running}
-                onClick={() => void runCanary()}
-              >
-                Run safe canary
-              </Button>
-            </div>
+            <Button
+              variant="icon"
+              size="md"
+              aria-label="Refresh goals"
+              title="Refresh"
+              onClick={() => void refresh()}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           }
         />
-
-        {error ? <ErrorBox className="mb-5">{error}</ErrorBox> : null}
 
         <Card
           className="mb-4"
@@ -673,15 +677,23 @@ export default function HarnessPage() {
                       />
                     </label>
                     <label className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-                      API key environment variable
-                      <input
+                      Saved credential
+                      <select
                         value={providerApiKeyEnv}
                         onChange={(event) => setProviderApiKeyEnv(event.target.value)}
-                        placeholder="OPENAI_API_KEY (optional)"
-                        autoComplete="off"
                         className="mt-1 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
                         disabled={providerBusy || goalBusy}
-                      />
+                      >
+                        <option value="">No saved credential</option>
+                        {(managedSetup?.allowed_api_key_envs ?? []).map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="mt-1 block leading-relaxed">
+                        Only credential names approved by this installation are available.
+                      </span>
                     </label>
                     <label className="text-[length:var(--fs-xs)] text-(--ui-muted)">
                       Session API key
@@ -706,9 +718,10 @@ export default function HarnessPage() {
                       disabled={providerBusy || goalBusy}
                     />
                     <span className="mt-1 block leading-relaxed">
-                      {providerVerificationCommand.trim()
-                        ? "This is the check saved with this provider setup and used to verify provider goals."
-                        : "Saving requires a check. If this workspace already has one, it will appear here after setup loads."}
+                      {managedSetup?.verification_contract?.summary ??
+                        (providerVerificationCommand.trim()
+                          ? "This check is saved with the provider setup and verifies each goal."
+                          : "Saving requires a check. If this workspace already has one, it will appear here after setup loads.")}
                     </span>
                   </label>
                   <label className="mt-3 flex items-start gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
@@ -967,7 +980,28 @@ export default function HarnessPage() {
           ) : null}
         </Card>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.8fr)]">
+        <details className="rounded-xl border border-(--ui-border) p-4">
+          <summary className="cursor-pointer text-[length:var(--fs-sm)] font-medium text-(--ui-fg)">
+            Advanced diagnostics
+          </summary>
+          <p className="mt-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+            Inspect routes, run a credential-free boundary check, or test a read-only model route.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Play className="h-3.5 w-3.5" />}
+              loading={running}
+              disabled={running}
+              onClick={() => void runCanary()}
+            >
+              Run safe canary
+            </Button>
+          </div>
+          {error ? <ErrorBox className="mt-3">{error}</ErrorBox> : null}
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.8fr)]">
           <Card
             title="Live route registry"
             description={`Harness-owned live probes · selection policy: ${selectionPolicy}`}
@@ -1068,13 +1102,13 @@ export default function HarnessPage() {
               </div>
             </div>
           </Card>
-        </div>
+          </div>
 
-        <Card
-          className="mt-4"
-          title="Harness task"
-          description="The safe canary uses the real Harness lifecycle and returns task evidence through the integration API."
-        >
+          <Card
+            className="mt-4"
+            title="Diagnostic task"
+            description="Canary and read-only model checks return task evidence through the integration API."
+          >
           {!task?.id ? (
             <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">No task loaded.</p>
           ) : (
@@ -1136,7 +1170,8 @@ export default function HarnessPage() {
               </div>
             </div>
           )}
-        </Card>
+          </Card>
+        </details>
       </PageContainer>
     </AppPage>
   );
