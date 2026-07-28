@@ -127,7 +127,7 @@ export function SessionNavRow({
       />
       <div
         ref={menuRef}
-        className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5"
+        className="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-md bg-[inherit]"
       >
         <PinButton
           pinned={Boolean(pref.pinned)}
@@ -329,7 +329,9 @@ function SessionRowContent({
         />
       ) : null}
       {age ? (
-        <span className="shrink-0 text-[length:var(--fs-sm)] tabular-nums text-(--hl2)">{age}</span>
+        <span className="shrink-0 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
+          {age}
+        </span>
       ) : null}
     </>
   );

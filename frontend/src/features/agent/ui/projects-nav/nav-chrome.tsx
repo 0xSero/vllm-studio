@@ -26,10 +26,13 @@ export function PinButton({
       }}
       aria-label={pinned ? `Unpin ${target}` : `Pin ${target}`}
       title={pinned ? "Unpin" : "Pin"}
-      className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,color] hover:text-(--fg) ${
-        pinned
-          ? "text-(--fg)/75 opacity-100"
-          : "text-(--dim)/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+      // Hidden at rest even when pinned — living in the Pinned section already
+      // says so, and an always-on glyph collided with the date column. On hover
+      // it slides in from the left over the trailing text with a fade.
+      className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,transform,color] duration-150 hover:text-(--fg) ${
+        pinned ? "text-(--fg)/75" : "text-(--dim)/70"
+      } ${
+        "-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"
       }`}
     >
       <PinIcon className="pointer-events-none h-3 w-3" />
