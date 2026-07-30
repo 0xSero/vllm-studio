@@ -94,6 +94,7 @@ export interface DesktopBridge {
   getRuntime(): Promise<{
     platform: NodeJS.Platform;
     appVersion: string;
+    packaged: boolean;
     chromeVersion: string;
     electronVersion: string;
   }>;

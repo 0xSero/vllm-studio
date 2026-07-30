@@ -271,6 +271,7 @@ export function ProjectSessions({
                   pref={prefs[row.session.id] ?? {}}
                   isRunning={row.activity === "running"}
                   unseen={row.activity === "unseen"}
+                  finished={row.activity === "finished"}
                 />
               )}
               {subagents?.length ? (
@@ -420,6 +421,7 @@ export function ActiveSessionRow({
       onDrop={onReorderDrop}
       isRunning={activity === "running"}
       unseen={activity === "unseen" && !isFocused}
+      finished={activity === "finished" && !isFocused}
       canDoubleClickRename
       renameInputClass="text-[length:var(--fs-xs)]"
     />
@@ -432,6 +434,7 @@ export function SessionRow({
   pref,
   isRunning = false,
   unseen = false,
+  finished = false,
   dragging = false,
   onReorderDragStart,
   onReorderDragEnd,
@@ -443,6 +446,7 @@ export function SessionRow({
   pref: SessionPref;
   isRunning?: boolean;
   unseen?: boolean;
+  finished?: boolean;
   dragging?: boolean;
   onReorderDragStart?: () => void;
   onReorderDragEnd?: () => void;
@@ -461,6 +465,7 @@ export function SessionRow({
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
       isRunning={isRunning}
       unseen={unseen}
+      finished={finished}
       rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-0 text-(--fg)/85 transition-[color,background-color,opacity] hover:bg-(--hover) hover:text-(--fg) ${dragging ? "opacity-45" : ""}`}
       renameRowClass="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] bg-(--surface)/40 pl-3 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&replace=1`}

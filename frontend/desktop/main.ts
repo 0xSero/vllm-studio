@@ -254,6 +254,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("desktop:get-runtime", async () => ({
     platform: process.platform,
     appVersion: app.getVersion(),
+    packaged: app.isPackaged,
     chromeVersion: process.versions.chrome,
     electronVersion: process.versions.electron,
   }));

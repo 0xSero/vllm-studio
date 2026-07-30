@@ -8,7 +8,7 @@ import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref, relativeAge } from "./helpers";
+import { hrefWithOpenNonce, navigateToSessionHref } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
@@ -33,7 +33,6 @@ type SessionNavRowProps = {
   isRunning?: boolean;
   unseen?: boolean;
   finished?: boolean;
-  timestamp?: string | null;
   canDoubleClickRename?: boolean;
   showClearAction?: boolean;
   renameInputClass?: string;
@@ -58,6 +57,7 @@ export function SessionNavRow({
   onContextMenu = false,
   isRunning = false,
   unseen = false,
+  finished = false,
   canDoubleClickRename = false,
   showClearAction = false,
   renameInputClass = "text-[length:var(--fs-md)]",
@@ -119,6 +119,7 @@ export function SessionNavRow({
         href={href}
         isRunning={isRunning}
         unseen={unseen}
+        finished={finished}
         label={label}
         onDragStart={onDragStart}
         onOpen={onOpen}
@@ -204,6 +205,7 @@ function SessionOpenTarget({
   href,
   isRunning,
   unseen,
+  finished,
   label,
   onDragStart,
   onOpen,
@@ -214,6 +216,7 @@ function SessionOpenTarget({
   href?: string;
   isRunning: boolean;
   unseen: boolean;
+  finished: boolean;
   label: string;
   onDragStart: (event: DragEvent) => void;
   onOpen?: (href: string) => void;
@@ -230,7 +233,7 @@ function SessionOpenTarget({
       }
     : {};
   const content = (
-    <SessionRowContent isRunning={isRunning} unseen={unseen} label={label} />
+    <SessionRowContent isRunning={isRunning} unseen={unseen} finished={finished} label={label} />
   );
 
   if (href) {
@@ -277,10 +280,12 @@ function SessionOpenTarget({
 function SessionRowContent({
   isRunning,
   unseen,
+  finished,
   label,
 }: {
   isRunning: boolean;
   unseen: boolean;
+  finished: boolean;
   label: string;
 }) {
   return (
@@ -293,6 +298,12 @@ function SessionRowContent({
           size="xs"
           className="mr-1 shrink-0 text-(--link) transition-opacity group-hover:opacity-0"
         />
+      ) : finished ? (
+        <span
+          className="mr-1 h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok) transition-opacity group-hover:opacity-0"
+          aria-label="Finished while away"
+          title="Finished while away"
+        />
       ) : unseen ? (
         <span
           className="mr-1 h-1.5 w-1.5 shrink-0 rounded-full bg-(--link) transition-opacity group-hover:opacity-0"
@@ -300,10 +311,8 @@ function SessionRowContent({
           title="Unseen activity"
         />
       ) : null}
-      {/* No age column. It rendered on every row at rest and hid itself on
-          hover — exactly backwards, since hover is when you want detail. The
-          running spinner and unseen dot above already carry the only status
-          worth scanning for; the age lives in the row's tooltip. */}
+      {/* No age column: the spinner and dots above carry the only status
+          worth scanning for. */}
     </>
   );
 }

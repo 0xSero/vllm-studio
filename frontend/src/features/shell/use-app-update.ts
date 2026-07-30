@@ -79,7 +79,9 @@ export function useAppUpdate(): AppUpdate {
     void bridge()
       .getRuntime?.()
       .then((runtime) => {
-        if (!cancelled) setCurrentVersion(runtime.appVersion);
+        // An unpackaged dev run reports the repo's package.json version, which
+        // trails every published release — it must not claim an update.
+        if (!cancelled && runtime.packaged) setCurrentVersion(runtime.appVersion);
       })
       .catch(() => undefined);
     syncDesktopPhase();

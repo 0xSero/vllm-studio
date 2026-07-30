@@ -23,7 +23,7 @@ function UpdateButton() {
       onClick={update.startUpdate}
       title={label}
       aria-label={label}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--link) text-white transition-opacity hover:opacity-85"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--color-primary) text-(--color-primary-foreground) transition-opacity hover:opacity-85"
     >
       {update.phase === "working" ? (
         <Spinner size="xs" />

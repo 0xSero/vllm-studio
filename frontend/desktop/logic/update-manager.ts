@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { isDevChannelBuild } from "../app-identity";
 import { autoUpdater } from "electron-updater";
 import { DESKTOP_CONFIG } from "../configs";
 import type { DesktopUpdateSnapshot } from "../types";
@@ -71,6 +72,18 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     return disabledState;
   }
 
+  // Dev-channel builds install via the dev mirror, never the stable releases —
+  // the default GitHub feed would happily "update" them onto stable. An
+  // explicit LOCAL_STUDIO_UPDATE_URL override still wins for feed testing.
+  if (isDevChannelBuild && !resolveFeedUrl()) {
+    const devChannelState = {
+      status: "idle",
+      message: "Dev-channel builds do not auto-update from stable releases",
+    } satisfies DesktopUpdateSnapshot;
+    setUpdateState(devChannelState);
+    return devChannelState;
+  }
+
   ensureFeedConfigured();
 
   if (!app.isPackaged && !force) {
@@ -85,7 +98,12 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
   try {
     setUpdateState({ status: "checking" });
     autoUpdater.allowPrerelease = false;
-    await autoUpdater.checkForUpdates();
+    const result = await autoUpdater.checkForUpdates();
+    // An unpackaged app resolves null without emitting any status event; leave
+    // "checking" behind and the renderer would poll forever.
+    if (!result && latestUpdateState.status === "checking") {
+      setUpdateState({ status: "idle", message: "Updater unavailable in this build" });
+    }
     return latestUpdateState;
   } catch (error) {
     const errorState = {
@@ -100,6 +118,12 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
 export function initializeAutoUpdates(): void {
   if (DESKTOP_CONFIG.disableAutoUpdate) {
     log.warn("Auto update disabled by environment flag");
+    return;
+  }
+
+  if (isDevChannelBuild && !resolveFeedUrl()) {
+    setUpdateState({ status: "idle", message: "Dev channel: auto-update disabled" });
+    log.info("[update] Dev-channel build; skipping stable release feed");
     return;
   }
 

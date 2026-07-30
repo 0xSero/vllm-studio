@@ -9,6 +9,9 @@ import { useAppUpdate } from "@/features/shell/use-app-update";
 // plus a one-click update against the newest GitHub release.
 export function AppVersionSection() {
   const update = useAppUpdate();
+  // No installed-version signal (web build or dev run): offer the plain
+  // download whenever the newest release is known.
+  const webDownload = !update.currentVersion && update.downloadUrl;
   const onLatest = update.currentVersion && update.latestVersion && !update.updateAvailable;
   const description = update.updateAvailable
     ? update.phase === "ready"
@@ -20,7 +23,7 @@ export function AppVersionSection() {
         ? `Latest release: v${update.latestVersion}.`
         : "Release check unavailable.";
   return (
-    <SettingsGroup title="Application" description="Local Studio desktop app.">
+    <SettingsGroup title="Application" description="Version and updates.">
       <SettingsRow
         label="Version"
         description={description}
@@ -30,7 +33,7 @@ export function AppVersionSection() {
           </SettingsValue>
         }
         actions={
-          update.updateAvailable ? (
+          update.updateAvailable || webDownload ? (
             <SettingsButton onClick={update.startUpdate} tone="primary">
               {update.phase === "working" ? (
                 <Spinner size="xs" />
@@ -39,7 +42,7 @@ export function AppVersionSection() {
               ) : (
                 <Download className="h-3 w-3" />
               )}
-              {update.phase === "ready" ? "Restart to update" : "Update"}
+              {update.phase === "ready" ? "Restart to update" : webDownload ? "Download" : "Update"}
             </SettingsButton>
           ) : undefined
         }
