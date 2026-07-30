@@ -15,9 +15,12 @@ describe("assertWorkspaceRoot", () => {
   });
 
   // macOS resolves /etc and /var into /private, which used to slip past the
-  // literal system-root list and let the fs routes serve /etc/passwd.
+  // literal system-root list and let the fs routes serve /etc/passwd. The
+  // /private/* spellings only exist on darwin, so only assert them there.
   test("rejects system directories through their symlinked real paths", () => {
-    for (const root of ["/etc", "/var", "/private/etc", "/private/var", "/usr", "/bin"]) {
+    const roots = ["/etc", "/var", "/usr", "/bin"];
+    if (process.platform === "darwin") roots.push("/private/etc", "/private/var");
+    for (const root of roots) {
       assert.throws(
         () => assertWorkspaceRoot(root),
         /not an allowed workspace root/,

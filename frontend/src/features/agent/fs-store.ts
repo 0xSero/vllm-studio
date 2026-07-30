@@ -185,6 +185,11 @@ export async function readFileBytes(
 ): Promise<{ bytes: Buffer; size: number; modifiedAt: Date }> {
   const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
+  // Redundant with ensureInside, but stated in a form static analysis can
+  // verify: the realpath'd target sits under the realpath'd root.
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("Path escapes project root");
+  }
   const stats = await fs.stat(target);
   if (!stats.isFile()) throw new Error("Not a file");
   if (stats.size > maxBytes) throw new Error("File is too large to serve");
