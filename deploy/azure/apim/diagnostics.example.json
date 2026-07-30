@@ -1,0 +1,45 @@
+{
+  "alwaysLog": "allErrors",
+  "backend": {
+    "request": {
+      "body": {
+        "bytes": 0
+      },
+      "headers": ["x-correlation-id"]
+    },
+    "response": {
+      "body": {
+        "bytes": 0
+      },
+      "headers": [
+        "content-type",
+        "x-correlation-id",
+        "x-ms-input-tokens",
+        "x-ms-output-tokens",
+        "x-ms-total-tokens"
+      ]
+    }
+  },
+  "frontend": {
+    "request": {
+      "body": {
+        "bytes": 0
+      },
+      "headers": ["x-correlation-id"]
+    },
+    "response": {
+      "body": {
+        "bytes": 0
+      },
+      "headers": ["content-type", "x-correlation-id", "retry-after", "x-ratelimit-remaining"]
+    }
+  },
+  "httpCorrelationProtocol": "W3C",
+  "logClientIp": false,
+  "metrics": true,
+  "sampling": {
+    "percentage": 100,
+    "samplingType": "fixed"
+  },
+  "verbosity": "information"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "cortAIx",
+  "short_name": "cortAIx",
+  "description": "cortAIx — Artificial Intelligence by Thales",
+  "theme_color": "#2B276D",
+  "background_color": "#1B1945",
+  "display": "standalone",
+  "icons": [
+    { "src": "brand/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "brand/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "brand/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

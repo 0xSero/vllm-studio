@@ -1,6 +1,7 @@
 "use client";
 
 import { Settings, SquarePen, X } from "@/ui/icon-registry";
+import { ApplianceBrandMark } from "@/features/shell/appliance-brand-mark";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
@@ -33,8 +34,8 @@ export function MobileNavigationDrawer({
         className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-full flex-col bg-(--bg) md:w-[min(22rem,88vw)] md:border-l md:border-(--border)"
       >
         <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 px-4">
-          <div className="min-w-0 truncate text-[22px] font-semibold tracking-[-0.01em] text-(--fg)">
-            Local Studio
+          <div className="min-w-0">
+            <ApplianceBrandMark />
           </div>
           <button
             type="button"

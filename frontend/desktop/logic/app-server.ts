@@ -163,7 +163,12 @@ export async function startFrontendServer(
       port: Number(new URL(DESKTOP_CONFIG.devServerUrl).port || "3000"),
       url: DESKTOP_CONFIG.devServerUrl,
     };
-    const agentRuntime = await startAgentRuntime({ frontendUrl: runtime.url, preferredPort: 8081 });
+    const agentRuntime = await startAgentRuntime({
+      frontendUrl: runtime.url,
+      preferredPort: 8081,
+      lifecycleToken: process.env.LOCAL_STUDIO_AGENT_LIFECYCLE_TOKEN || "",
+      onSpawn: (child) => registerOAuthVault(child, DESKTOP_CONFIG.userDataDir),
+    });
     return { agentRuntime, runtime };
   }
 
@@ -195,7 +200,10 @@ export async function startFrontendServer(
   const port = await resolveStablePort(options.port ?? readPersistedPort());
   persistPort(port);
   const url = `http://127.0.0.1:${port}`;
-  const agentRuntime = await startAgentRuntime({ frontendUrl: url });
+  const agentRuntime = await startAgentRuntime({
+    frontendUrl: url,
+    onSpawn: (child) => registerOAuthVault(child, DESKTOP_CONFIG.userDataDir),
+  });
 
   log.info(`Starting embedded frontend server from ${serverScript} on ${url}`);
 
@@ -225,6 +233,9 @@ export async function startFrontendServer(
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_AGENT_RUNTIME_URL: agentRuntime.url,
+      LOCAL_STUDIO_AGENT_LIFECYCLE_TOKEN: agentRuntime.lifecycleToken,
+      LOCAL_STUDIO_PROVISIONING_TOKEN: agentRuntime.lifecycleToken,
+      LOCAL_STUDIO_AGENT_RUNTIME_INSTANCE_ID: agentRuntime.instanceId,
       LOCAL_STUDIO_FRONTEND_BASE: url,
     },
   });

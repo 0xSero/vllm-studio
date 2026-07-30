@@ -11,6 +11,7 @@ describe("left sidebar navigation", () => {
       tabs.map((tab) => [tab.href, tab.label]),
       [
         ["/", "Status"],
+        ["/science", "Science"],
         ["/agent/automations", "Automations"],
         ["/configure", "Configure"],
         ["/usage", "Usage"],
@@ -28,11 +29,32 @@ describe("left sidebar navigation", () => {
   test("uses destination titles on mobile", () => {
     assert.equal(mobilePageTitle("/agent/automations"), "Automations");
     assert.equal(mobilePageTitle("/agent/session-1"), "Tasks");
+    assert.equal(mobilePageTitle("/science"), "Scientific workbench");
   });
 
   test("keeps session history steppers compact", () => {
     assert.match(desktopSidebar, /HISTORY_STEPPER_CLASS[\s\S]*h-6 w-6/);
     assert.match(desktopSidebar, /ChevronLeft className="h-3 w-3"/);
     assert.match(desktopSidebar, /ChevronRight className="h-3 w-3"/);
+  });
+
+  test("renders the appliance brand from authoritative mode-specific assets", () => {
+    const mark = readFileSync(new URL("./appliance-brand-mark.tsx", import.meta.url), "utf8");
+    const tokens = readFileSync(
+      new URL("../../app/styles/globals/tokens.css", import.meta.url),
+      "utf8",
+    );
+
+    for (const field of [
+      "logoLightPath",
+      "logoDarkPath",
+      "logoHighContrastPath",
+      "logoForcedColorsPath",
+    ]) {
+      assert.match(mark, new RegExp(`BRAND_PROFILE\\.${field}`));
+    }
+    assert.match(mark, /role="img"/);
+    assert.match(mark, /aria-label=\{BRAND_PROFILE\.appName\}/);
+    assert.match(tokens, /\.appliance-brand-mark__forced-colors/);
   });
 });

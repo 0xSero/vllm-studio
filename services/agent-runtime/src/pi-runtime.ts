@@ -366,9 +366,11 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                       catch: (error) => error,
                     });
                     const activeToolNames =
-                      options.toolAccess === "read_only"
-                        ? ["read", "grep", "find", "ls"]
-                        : created.session.getAllTools().map((tool) => tool.name);
+                      options.toolAccess === "none"
+                        ? []
+                        : options.toolAccess === "read_only"
+                          ? ["read", "grep", "find", "ls"]
+                          : created.session.getAllTools().map((tool) => tool.name);
                     created.session.setActiveToolsByName(activeToolNames);
                     yield* Effect.tryPromise({
                       try: () =>

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getApiSettings } from "@local-studio/agent-runtime/settings-service";
+import { readControllerCredential } from "@local-studio/agent-runtime/controller-credential-store";
 import type { ClientInfo } from "./proxy-logging";
 
 const OVERRIDE_ALLOWLIST_ENV_KEY = "LOCAL_STUDIO_PROXY_OVERRIDE_ALLOWLIST";
@@ -127,7 +128,7 @@ export async function resolveProxyTarget(
   }
 
   return {
-    apiKey: settings.apiKey,
+    apiKey: overrideUrl ? await readControllerCredential(overrideUrl) : settings.apiKey,
     backendUrl: overrideUrl ?? defaultBackendUrl,
     blockedOverrideCleared: false,
     defaultBackendUrl,

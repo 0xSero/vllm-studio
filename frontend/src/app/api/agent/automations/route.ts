@@ -6,13 +6,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   return proxyToAgentRuntime(request);
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   return proxyToAgentRuntime(request);
 }

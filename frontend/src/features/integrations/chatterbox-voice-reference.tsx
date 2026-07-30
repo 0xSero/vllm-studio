@@ -5,6 +5,7 @@ import { Effect, Fiber } from "effect";
 import { Button, FormField, Input, SegmentedControl } from "@/ui";
 import { Mic, Square, Upload } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 
 type ReferenceMode = "upload" | "record";
 
@@ -277,7 +278,7 @@ export function VoiceReferencePicker({
                   ? "Waiting for microphone"
                   : controller.recording
                     ? "Listening"
-                    : "Record in Local Studio"}
+                    : `Record in ${BRAND_PROFILE.appName}`}
               </div>
               <div className="mt-1 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
                 {controller.requesting

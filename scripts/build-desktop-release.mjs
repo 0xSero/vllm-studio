@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveApplianceProfile } from "../shared/agent/appliance-profile.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontend = path.join(root, "frontend");
@@ -23,14 +24,10 @@ function run(command, args, options = {}) {
 function hasNotarizationCredentials() {
   const keychain = Boolean(process.env.APPLE_KEYCHAIN_PROFILE);
   const apiKey = Boolean(
-    process.env.APPLE_API_KEY &&
-      process.env.APPLE_API_KEY_ID &&
-      process.env.APPLE_API_ISSUER,
+    process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER,
   );
   const appleId = Boolean(
-    process.env.APPLE_ID &&
-      process.env.APPLE_APP_SPECIFIC_PASSWORD &&
-      process.env.APPLE_TEAM_ID,
+    process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID,
   );
   return keychain || apiKey || appleId;
 }
@@ -41,11 +38,7 @@ function notarytoolCredentials() {
     if (process.env.APPLE_KEYCHAIN) args.push("--keychain", process.env.APPLE_KEYCHAIN);
     return args;
   }
-  if (
-    process.env.APPLE_API_KEY &&
-    process.env.APPLE_API_KEY_ID &&
-    process.env.APPLE_API_ISSUER
-  ) {
+  if (process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER) {
     return [
       "--key",
       process.env.APPLE_API_KEY,
@@ -66,6 +59,7 @@ function notarytoolCredentials() {
 }
 
 export function buildDesktopRelease(args = process.argv.slice(2)) {
+  const appliance = resolveApplianceProfile();
   const version = valueAfter(args, "--version")?.trim();
   const commit = valueAfter(args, "--commit")?.trim().toLowerCase();
   if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
@@ -103,16 +97,22 @@ export function buildDesktopRelease(args = process.argv.slice(2)) {
 
   process.env.LOCAL_STUDIO_RELEASE_VERSION = version;
   process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit;
+  process.env.LOCAL_STUDIO_APPLIANCE = appliance.applianceId;
+  process.env.LOCAL_STUDIO_BRAND_APP_ID = appliance.desktopAppId;
+  process.env.LOCAL_STUDIO_BRAND_APP_NAME = appliance.appName;
 
   run("npm", ["--prefix", "frontend", "run", "desktop:build"]);
-  run(path.join(frontend, "node_modules", ".bin", "electron-builder"), [
-    "--config",
-    "desktop/electron-builder.yml",
-    "--config.mac.notarize=true",
-    `--config.extraMetadata.version=${version}`,
-    `--config.extraMetadata.localStudioCommit=${commit}`,
-  ], { cwd: frontend });
-  const dmg = path.join(output, `Local Studio-${version}-arm64.dmg`);
+  run(
+    "node",
+    [
+      "scripts/run-electron-builder.mjs",
+      "dist-notarized",
+      `--config.extraMetadata.version=${version}`,
+      `--config.extraMetadata.localStudioCommit=${commit}`,
+    ],
+    { cwd: frontend },
+  );
+  const dmg = path.join(output, `${appliance.appName}-${version}-arm64.dmg`);
   run("xcrun", [
     "notarytool",
     "submit",
@@ -134,15 +134,9 @@ export function buildDesktopRelease(args = process.argv.slice(2)) {
     "--verbose=4",
     dmg,
   ]);
-  run("node", [
-    "scripts/stage-desktop-release.mjs",
-    "--version",
-    version,
-    "--commit",
-    commit,
-  ]);
+  run("node", ["scripts/stage-desktop-release.mjs", "--version", version, "--commit", commit]);
 
-  console.log(`Built notarized Local Studio ${version} from ${commit}`);
+  console.log(`Built notarized ${appliance.appName} ${version} from ${commit}`);
 }
 
 buildDesktopRelease();

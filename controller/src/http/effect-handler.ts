@@ -2,11 +2,19 @@ import type { Context, Handler, MiddlewareHandler, Next, TypedResponse } from "h
 import { Cause, Exit, type Effect } from "effect";
 import type { AppContextService } from "../app-context";
 import type { ControllerRuntime } from "../core/effect-runtime";
+import type { NormalizedPrincipal } from "@local-studio/contracts/enterprise-auth";
+import type { IncomingMessage } from "node:http";
 
 export type ControllerEffect<A, E = never> = Effect.Effect<A, E, AppContextService>;
 export type ControllerEnvironment = {
+  Bindings: {
+    incoming?: IncomingMessage;
+  };
   Variables: {
     controllerRuntime: ControllerRuntime;
+    enterprisePrincipal?: NormalizedPrincipal;
+    enterpriseBearerToken?: string;
+    workloadSpiffeId?: string;
   };
 };
 

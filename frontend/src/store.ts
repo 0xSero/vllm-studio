@@ -12,10 +12,16 @@ import {
   type ThemeId,
 } from "@/lib/themes";
 import {
+  applyContrastModeToDocument,
+  DEFAULT_THEME_ID,
   applyFontFamilyToDocument,
   applyFontSizeToDocument,
   applyStoredUiControls,
+  applyStoredCustomThemeTokens,
+  APP_STORE_KEY,
   applyThemeToDocument,
+  resolveThemeId,
+  type ContrastMode,
 } from "@/lib/theme-runtime";
 
 // --- App slice ---
@@ -72,15 +78,18 @@ export interface ThemeSlice {
   themeId: ThemeId;
   fontFamilyId: FontFamilyId;
   fontSizeId: FontSizeId;
+  contrastMode: ContrastMode;
   setThemeId: (themeId: ThemeId) => void;
   setFontFamilyId: (fontFamilyId: FontFamilyId) => void;
   setFontSizeId: (fontSizeId: FontSizeId) => void;
+  setContrastMode: (contrastMode: ContrastMode) => void;
 }
 
 const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => ({
-  themeId: "zai-dark",
+  themeId: DEFAULT_THEME_ID,
   fontFamilyId: DEFAULT_FONT_FAMILY_ID,
   fontSizeId: DEFAULT_FONT_SIZE_ID,
+  contrastMode: "auto",
   setThemeId: (themeId: ThemeId) => {
     const appliedThemeId = applyThemeToDocument(themeId);
     set({ themeId: appliedThemeId });
@@ -92,6 +101,10 @@ const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => 
   setFontSizeId: (fontSizeId: FontSizeId) => {
     const appliedFontSizeId = applyFontSizeToDocument(fontSizeId);
     set({ fontSizeId: appliedFontSizeId });
+  },
+  setContrastMode: (contrastMode: ContrastMode) => {
+    const appliedContrastMode = applyContrastModeToDocument(contrastMode);
+    set({ contrastMode: appliedContrastMode });
   },
 });
 
@@ -130,6 +143,7 @@ export const useAppStore = create<AppStore>()(
         themeId: state.themeId,
         fontFamilyId: state.fontFamilyId,
         fontSizeId: state.fontSizeId,
+        contrastMode: state.contrastMode,
         desktopSidebarPinnedOpen: state.desktopSidebarPinnedOpen,
         sidebarCollapsed: state.sidebar.collapsed,
         sidebarWidth: state.sidebarWidth,
@@ -142,6 +156,7 @@ export const useAppStore = create<AppStore>()(
         return {
           ...current,
           ...persistedStore,
+          themeId: resolveThemeId(persistedRecord.themeId),
           sidebarWidth:
             persistedRecord.sidebarWidth === 240 ||
             persistedRecord.sidebarWidth === 220 ||
@@ -156,9 +171,13 @@ export const useAppStore = create<AppStore>()(
         };
       },
       onRehydrateStorage: () => (state) => {
-        if (state?.themeId) state.setThemeId(state.themeId);
+        if (state?.themeId) {
+          state.setThemeId(state.themeId);
+          applyStoredCustomThemeTokens(state.themeId);
+        }
         if (state?.fontFamilyId) state.setFontFamilyId(state.fontFamilyId);
         if (state?.fontSizeId) state.setFontSizeId(state.fontSizeId);
+        state?.setContrastMode(state?.contrastMode ?? "auto");
         applyStoredUiControls();
       },
     }),
@@ -168,8 +187,14 @@ export const useAppStore = create<AppStore>()(
 
 if (typeof window !== "undefined") {
   void (async () => {
+    const hasLocalState = window.localStorage.getItem(APP_STORE_KEY) !== null;
+    if (hasLocalState) {
+      await useAppStore.persist.rehydrate();
+    }
     await hydrateDurableUiPreferences();
-    await useAppStore.persist.rehydrate();
+    if (!hasLocalState) {
+      await useAppStore.persist.rehydrate();
+    }
     scheduleDurableUiPreferencesSave();
     useAppStore.subscribe(() => scheduleDurableUiPreferencesSave());
   })();

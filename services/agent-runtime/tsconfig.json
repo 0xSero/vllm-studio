@@ -16,6 +16,7 @@
       "effect": ["../../frontend/node_modules/effect/dist/index"],
       "playwright-core": ["../../frontend/node_modules/playwright-core"],
       "hono": ["../../frontend/node_modules/hono"],
+      "@local-studio/agent-runtime/*": ["./src/*.ts"],
       "@hono/node-server": ["../../frontend/node_modules/@hono/node-server"],
       "@earendil-works/pi-ai": ["../../frontend/node_modules/@earendil-works/pi-ai"],
       "@earendil-works/pi-coding-agent": [

@@ -10,7 +10,6 @@ type DesktopUiPreferencesBridge = {
 const DURABLE_EXACT_KEYS = new Set([
   "local-studio-state",
   "local-studio.customThemeTokens",
-  CONTROLLERS_STORAGE_KEY,
   "local-studio-setup-complete",
   BACKEND_URL_STORAGE_KEY,
 ]);
@@ -66,6 +65,7 @@ function collectDurableUiPreferences(): Record<string, string> {
     const value = window.localStorage.getItem(key);
     if (typeof value === "string") out[key] = value;
   }
+  delete out[CONTROLLERS_STORAGE_KEY];
   return out;
 }
 
@@ -133,7 +133,7 @@ function preferenceUrl(preference: ControllerPreference): string | null {
 function preferredString(
   current: ControllerPreference | undefined,
   incoming: ControllerPreference,
-  key: "apiKey" | "name",
+  key: "name",
 ): unknown {
   const currentValue = current?.[key];
   return typeof currentValue === "string" && currentValue.trim() ? currentValue : incoming[key];
@@ -146,7 +146,6 @@ function mergedControllerPreference(
   return {
     ...incoming,
     ...(current ?? {}),
-    apiKey: preferredString(current, incoming, "apiKey"),
     name: preferredString(current, incoming, "name"),
   };
 }

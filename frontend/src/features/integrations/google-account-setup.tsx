@@ -3,6 +3,7 @@
 import type { GoogleAccountView } from "@local-studio/agent-runtime/google-account-contract";
 import { Alert, Button, FormField, Input } from "@/ui";
 import { ExternalLink } from "@/ui/icon-registry";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { openExternal } from "./google-account-model";
 
 export function GoogleAccountSetup({
@@ -77,7 +78,7 @@ export function GoogleAccountSetup({
       )}
       {awaiting ? (
         <Alert variant="success">
-          Finish consent in your browser. Local Studio is checking for the connection.
+          Finish consent in your browser. {BRAND_PROFILE.appName} is checking for the connection.
         </Alert>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">

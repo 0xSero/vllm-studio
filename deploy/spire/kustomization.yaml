@@ -1,0 +1,61 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - workloads.yaml
+  - tensorprime-network-policy.yaml
+configMapGenerator:
+  - name: tensorprime-connection-profile
+    namespace: local-studio
+    files:
+      - tensorprime-connection-profile.json
+generatorOptions:
+  disableNameSuffixHash: true
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: local-studio-controller
+      namespace: local-studio
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOCAL_STUDIO_TENSORPRIME_PROFILE
+          value: /etc/local-studio/tensorprime/tensorprime-connection-profile.json
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: tensorprime-profile
+          mountPath: /etc/local-studio/tensorprime
+          readOnly: true
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: tensorprime-profile
+          configMap:
+            name: tensorprime-connection-profile
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: local-studio-agent-runtime
+      namespace: local-studio
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOCAL_STUDIO_TENSORPRIME_PROFILE
+          value: /etc/local-studio/tensorprime/tensorprime-connection-profile.json
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: tensorprime-profile
+          mountPath: /etc/local-studio/tensorprime
+          readOnly: true
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: tensorprime-profile
+          configMap:
+            name: tensorprime-connection-profile

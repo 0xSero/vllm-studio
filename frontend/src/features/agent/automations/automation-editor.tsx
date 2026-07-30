@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button, FormField, Input, Select, Textarea } from "@/ui";
 import { Clock, Pause, Play, Plus, Trash2, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import type { Automation, AutomationSchedule } from "@shared/agent/automation";
 import type { AutomationModel } from "./automation-api";
 import {
@@ -124,7 +125,7 @@ export function AutomationEditor({
             <FormField
               label="Task"
               required
-              description="Local Studio sends this instruction to the selected model on every run."
+              description={`${BRAND_PROFILE.appName} sends this instruction to the selected model on every run.`}
             >
               <Textarea
                 value={draft.prompt}
@@ -171,7 +172,7 @@ export function AutomationEditor({
             </FormField>
             <FormField
               label="Working directory"
-              description="Optional. Leave empty to use the Local Studio default."
+              description={`Optional. Leave empty to use the ${BRAND_PROFILE.appName} default.`}
             >
               <Input
                 value={draft.cwd}
@@ -222,7 +223,7 @@ function EditorHeader({
   onToggleStatus: () => void;
 }) {
   const statusText = creating
-    ? "Set up the work once, then let Local Studio run it."
+    ? `Set up the work once, then let ${BRAND_PROFILE.appName} run it.`
     : automation?.status === "paused"
       ? "Paused"
       : `Next run ${relativeTime(automation?.nextRunAt ?? null)}`;
@@ -301,16 +302,26 @@ function ExamplePicker({
 }
 
 function RunHistory({ automation }: { automation: Automation }) {
+  type RunHistoryEntry = {
+    at: string;
+    outcome: string;
+    piSessionId: string | null;
+    projectId: string | null;
+    error?: string | null;
+    summary?: string | null;
+  };
+  const runs = automation.runs as ReadonlyArray<RunHistoryEntry>;
+
   return (
     <div className="border-t border-(--ui-separator) pt-5">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">Run history</h3>
         <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-          {automation.runs.length} {automation.runs.length === 1 ? "run" : "runs"}
+          {runs.length} {runs.length === 1 ? "run" : "runs"}
         </span>
       </div>
       <div className="divide-y divide-(--ui-separator) border-y border-(--ui-separator)">
-        {automation.runs.map((run, index) => {
+        {runs.map((run, index) => {
           const transcriptHref =
             run.piSessionId && run.projectId
               ? `/agent?project=${encodeURIComponent(run.projectId)}&session=${encodeURIComponent(run.piSessionId)}&replace=1`

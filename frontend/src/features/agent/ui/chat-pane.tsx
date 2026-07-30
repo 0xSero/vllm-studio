@@ -434,7 +434,7 @@ export function ChatPane({
     activeTabId,
     modelId,
     thinkingLevel,
-    toolAccess: "full",
+    toolAccess: modelId.startsWith("user-pi-tensorprime/") ? "none" : "full",
     cwd,
     browserToolEnabled,
     browserBackend,

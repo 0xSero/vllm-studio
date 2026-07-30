@@ -1,0 +1,86 @@
+global:
+  openshift: false
+  spire:
+    clusterName: cortaix-factory
+    trustDomain: tprime.vlans.ca
+    caSubject:
+      country: CA
+      organization: Thales
+      commonName: tprime.vlans.ca
+    recommendations:
+      enabled: true
+    strictMode: true
+    namespaces:
+      create: true
+spire-server:
+  controllerManager:
+    enabled: true
+    identities:
+      clusterSPIFFEIDs:
+        default:
+          enabled: false
+        oidc-discovery-provider:
+          enabled: false
+        test-keys:
+          enabled: false
+        spike-bootstrap:
+          enabled: false
+        spike-keeper:
+          enabled: false
+        spike-nexus:
+          enabled: false
+        spike-pilot:
+          enabled: false
+        local-studio-frontend:
+          enabled: true
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/local-studio-frontend
+          namespaceSelector:
+            matchLabels:
+              local-studio.io/workload-identity: enabled
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+          workloadSelectorTemplates:
+            - k8s:sa:local-studio-frontend
+          jwtTTL: 5m
+          ttl: 1h
+        local-studio-controller:
+          enabled: true
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/local-studio-controller
+          namespaceSelector:
+            matchLabels:
+              local-studio.io/workload-identity: enabled
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+          workloadSelectorTemplates:
+            - k8s:sa:local-studio-controller
+          jwtTTL: 5m
+          ttl: 1h
+        local-studio-agent-runtime:
+          enabled: true
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/local-studio-agent-runtime
+          namespaceSelector:
+            matchLabels:
+              local-studio.io/workload-identity: enabled
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: agent-runtime
+          workloadSelectorTemplates:
+            - k8s:sa:local-studio-agent-runtime
+          jwtTTL: 5m
+          ttl: 1h
+spire-agent:
+  enabled: true
+spiffe-csi-driver:
+  enabled: true
+spiffe-oidc-discovery-provider:
+  enabled: false
+tornjak-frontend:
+  enabled: false
+spike-keeper:
+  enabled: false
+spike-nexus:
+  enabled: false
+spike-pilot:
+  enabled: false

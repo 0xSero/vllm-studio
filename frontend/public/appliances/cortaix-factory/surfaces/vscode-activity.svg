@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="cortAIx VS Code activity">
+  <title>cortAIx — VS Code activity bar</title>
+  <g transform="translate(4,4) scale(0.0390625)">
+    <defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2B276D"/><stop offset="1" stop-color="#1B1945"/></linearGradient></defs>
+    <rect width="1024" height="1024" rx="230" fill="url(#t)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"/>
+      <path d="M252,322 L363,724" stroke-width="112"/>
+      <path d="M174,580 L330,580" stroke-width="92"/>
+      <path d="M512,300 L512,724" stroke-width="112"/>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"/>
+      <path d="M622,461 L922,716" stroke-width="103"/>
+    </g>
+  </g>
+  </g>
+</svg>

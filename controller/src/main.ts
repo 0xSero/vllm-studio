@@ -1,11 +1,20 @@
 import { Cause, Effect, Exit, Fiber, Schema } from "effect";
+import { createAdaptorServer } from "@hono/node-server";
+import { createServer as createHttpsServer } from "node:https";
 import { startComputeSupervisor } from "./modules/compute/supervisor";
+import { startWorkbenchReconciler } from "./modules/workbench/reconciler";
 import { AppContextService, getModelsDirectoryState, type AppContext } from "./app-context";
 import { createControllerRuntime, type ControllerRuntime } from "./core/effect-runtime";
 import { parseBooleanFlag } from "./core/validation";
 import { createApp } from "./http/app";
 import { startMetricsCollector } from "./modules/system/metrics-collector";
 import { detectGpuMonitoringTool } from "./modules/system/platform/gpu";
+import {
+  loadWorkloadIdentityConfig,
+  resolveX509MtlsMode,
+} from "@local-studio/agent-runtime/spiffe-config";
+import { X509SvidSource, spiffeServerTlsOptions } from "@local-studio/agent-runtime/spiffe-x509";
+import type { WorkloadIdentityConfig } from "@local-studio/contracts/workload-identity";
 
 class ControllerStartupError extends Schema.TaggedErrorClass<ControllerStartupError>()(
   "ControllerStartupError",
@@ -41,22 +50,77 @@ const logBootSummary = (context: AppContext, port: number): Effect.Effect<void> 
     Effect.asVoid,
   );
 
+type ControllerServer = {
+  port: number;
+  stop: () => Promise<void>;
+};
+
+const secureServer = (
+  app: ReturnType<typeof createApp>,
+  context: AppContext,
+  workload: WorkloadIdentityConfig,
+): Effect.Effect<ControllerServer, unknown> =>
+  Effect.tryPromise({
+    try: async () => {
+      const source = new X509SvidSource(workload, workload.controller_id);
+      source.start();
+      const snapshot = await source.ready();
+      const server = createAdaptorServer({
+        fetch: app.fetch,
+        hostname: context.config.host,
+        createServer: createHttpsServer,
+        serverOptions: spiffeServerTlsOptions(snapshot),
+      });
+      const unsubscribe = source.subscribe((next) => {
+        if (!next) {
+          (server as { closeAllConnections?: () => void }).closeAllConnections?.();
+          server.close(() => process.exit(1));
+          return;
+        }
+        if ("setSecureContext" in server) server.setSecureContext(spiffeServerTlsOptions(next));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(context.config.port, context.config.host, () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      const address = server.address();
+      return {
+        port: typeof address === "object" && address ? address.port : context.config.port,
+        stop: () =>
+          new Promise<void>((resolve, reject) => {
+            unsubscribe();
+            source.stop();
+            server.close((error) => (error ? reject(error) : resolve()));
+          }),
+      };
+    },
+    catch: (error) => error,
+  });
+
 const serve = (
   context: AppContext,
   runtime: ControllerRuntime,
-): Effect.Effect<ReturnType<typeof Bun.serve>, ControllerStartupError> =>
-  Effect.try({
-    try: () => {
-      const app = createApp(context, runtime);
-      return Bun.serve({
-        port: context.config.port,
-        hostname: context.config.host,
-        fetch: app.fetch,
-        idleTimeout: 120,
-      });
-    },
-    catch: (source) => startupError("server.start", source),
-  });
+): Effect.Effect<ControllerServer, ControllerStartupError> =>
+  Effect.suspend(() => {
+    const app = createApp(context, runtime);
+    const workload = loadWorkloadIdentityConfig();
+    if (workload && resolveX509MtlsMode(workload) !== "disabled") {
+      return secureServer(app, context, workload);
+    }
+    const server = Bun.serve({
+      port: context.config.port,
+      hostname: context.config.host,
+      fetch: app.fetch,
+      idleTimeout: 120,
+    });
+    return Effect.succeed({
+      port: server.port ?? context.config.port,
+      stop: () => server.stop(),
+    });
+  }).pipe(Effect.mapError((source) => startupError("server.start", source)));
 
 const runtime = createControllerRuntime();
 const program = Effect.scoped(
@@ -74,6 +138,9 @@ const program = Effect.scoped(
         ),
       );
     }
+    {
+      yield* Effect.forkScoped(startWorkbenchReconciler(context));
+    }
     const server = yield* Effect.acquireRelease(serve(context, runtime), (resource) =>
       Effect.tryPromise({
         try: () => resource.stop(),
@@ -87,7 +154,7 @@ const program = Effect.scoped(
       ),
     );
     context.logger.info(`Controller listening on ${context.config.host}:${server.port}`);
-    yield* logBootSummary(context, server.port ?? context.config.port);
+    yield* logBootSummary(context, server.port);
     return yield* Effect.never;
   }),
 );

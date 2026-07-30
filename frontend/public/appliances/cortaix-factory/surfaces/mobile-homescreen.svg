@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 220" width="180" height="220" role="img" aria-label="cortAIx mobile home screen">
+  <title>cortAIx — mobile home screen</title>
+  <rect width="180" height="220" rx="24" fill="#0F1230"/>
+  <g transform="translate(42,36) scale(0.09375)">
+    <defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2B276D"/><stop offset="1" stop-color="#1B1945"/></linearGradient></defs>
+    <rect width="1024" height="1024" rx="230" fill="url(#t)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"/>
+      <path d="M252,322 L363,724" stroke-width="112"/>
+      <path d="M174,580 L330,580" stroke-width="92"/>
+      <path d="M512,300 L512,724" stroke-width="112"/>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"/>
+      <path d="M622,461 L922,716" stroke-width="103"/>
+    </g>
+  </g>
+  </g>
+  <text x="90" y="160" text-anchor="middle" font-family="Roboto, system-ui, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF">cortAIx</text>
+  <text x="90" y="180" text-anchor="middle" font-family="Roboto, system-ui, sans-serif" font-size="11" fill="#8A94B8">Factory</text>
+</svg>

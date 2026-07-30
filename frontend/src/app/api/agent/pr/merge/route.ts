@@ -35,13 +35,16 @@ async function validateBody(request: NextRequest): Promise<Response | null> {
   try {
     assertWorkspaceRoot(path.resolve(cwd));
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "cwd is not an allowed workspace", 403);
+    return jsonError(
+      error instanceof Error ? error.message : "cwd is not an allowed workspace",
+      403,
+    );
   }
   return null;
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const denied = requireApiAccess(request) ?? denyCrossSite(request);
+  const denied = (await requireApiAccess(request)) ?? denyCrossSite(request);
   if (denied) return denied;
   const invalid = await validateBody(request);
   if (invalid) return invalid;

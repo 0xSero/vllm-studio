@@ -12,7 +12,9 @@
 // This file is retained as the shared, pure section builder (and its tests).
 // It is no longer registered as a runtime extension.
 
-const MARKER = "Local Studio session goal:";
+const brandAppName = process.env.LOCAL_STUDIO_BRAND_APP_NAME?.trim() || "Local Studio";
+const MARKER = `${brandAppName} session goal:`;
+const LEGACY_MARKER = "Local Studio session goal:";
 
 /** Statuses where the goal should steer the turn. A paused/complete/blocked
  *  goal stays in the store (so the UI can show and resume it) but must not keep
@@ -48,7 +50,9 @@ export function goalSystemPromptSection(goal: SessionGoal): string | null {
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
     if (status === "budget_limited") {
-      lines.push("The budget is spent. Summarise progress and what remains; do not start new work.");
+      lines.push(
+        "The budget is spent. Summarise progress and what remains; do not start new work.",
+      );
     }
   } else if (turnsUsed > 0) {
     lines.push("", `Turns spent on this goal so far: ${turnsUsed}.`);

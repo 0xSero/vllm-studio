@@ -41,7 +41,7 @@ const startScript = path.resolve(__dirname, "..", "scripts", "start-standalone.m
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["controller-agent.spec.ts"],
+  testMatch: ["controller-agent.spec.ts", "setup-commissioning.spec.ts", "theme-light.spec.ts"],
   outputDir: "../test-results/controller-agent",
   workers: 1,
   retries: 0,
@@ -66,6 +66,9 @@ export default defineConfig({
       command: [
         `PORT=${frontendPort}`,
         `HOME=${homeDir}`,
+        "LOCAL_STUDIO_APPLIANCE=cortaix-factory",
+        "LOCAL_STUDIO_DESKTOP=1",
+        "LOCAL_STUDIO_AGENT_ONBOARDING_TOKEN=controller-agent-e2e",
         `LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:${runtimePort}`,
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
         `node ${startScript}`,

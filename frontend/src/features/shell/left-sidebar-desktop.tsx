@@ -13,6 +13,7 @@ import {
   PanelLeftFilled,
 } from "@/ui/icon-registry";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
+import { ApplianceBrandMark } from "@/features/shell/appliance-brand-mark";
 import {
   NavItemDesktop,
   ProjectsNavPlaceholder,
@@ -70,7 +71,8 @@ export function DesktopSidebar({
         />
       ) : null}
       {!isExpanded ? (
-        <div className="flex h-[var(--h-toolbar)] shrink-0 items-center justify-center">
+        <div className="flex shrink-0 flex-col items-center gap-2 py-2">
+          <ApplianceBrandMark compact />
           <button
             onClick={() => onSetPinnedOpen(true)}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
@@ -88,7 +90,10 @@ export function DesktopSidebar({
       >
         {isExpanded ? (
           <>
-            <div className="sticky top-0 z-50 flex h-[var(--h-toolbar)] shrink-0 items-center gap-1 bg-(--sidebar-bg) px-2">
+            <div className="sticky top-0 z-50 flex h-14 shrink-0 items-center gap-2 border-b border-(--separator) bg-(--sidebar-bg) px-3">
+              <span className="min-w-0 flex-1 overflow-hidden">
+                <ApplianceBrandMark />
+              </span>
               <button
                 onClick={() => onSetPinnedOpen(false)}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"

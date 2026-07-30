@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="32" height="32" role="img" aria-label="cortAIx"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2B276D"></stop><stop offset="1" stop-color="#1B1945"></stop></linearGradient></defs><rect width="1024" height="1024" rx="210" fill="url(#t)"></rect>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"></path>
+      <path d="M252,322 L363,724" stroke-width="112"></path>
+      <path d="M174,580 L330,580" stroke-width="92"></path>
+      <path d="M512,300 L512,724" stroke-width="112"></path>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"></path>
+      <path d="M622,461 L922,716" stroke-width="103"></path>
+    </g>
+  </g>
+</svg>

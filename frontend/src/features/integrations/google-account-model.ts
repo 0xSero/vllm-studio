@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import type { GoogleAccountView } from "@local-studio/agent-runtime/google-account-contract";
 import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 
 export const GoogleCancellationResponseSchema = Schema.Struct({
   cancelled: Schema.Literal(true),
@@ -27,7 +28,7 @@ export async function openExternal(url: string): Promise<void> {
   const bridge = window.localStudioDesktop?.openExternal;
   if (bridge && (await bridge(url))) return;
   if (!window.open(url, "_blank", "noopener,noreferrer")) {
-    throw new Error("Local Studio could not open the Google sign-in page");
+    throw new Error(`${BRAND_PROFILE.appName} could not open the Google sign-in page`);
   }
 }
 

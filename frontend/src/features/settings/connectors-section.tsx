@@ -20,6 +20,7 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 
 interface CatalogEntry {
   id: string;
@@ -61,7 +62,7 @@ const CATALOG: CatalogEntry[] = [
   {
     id: "computer",
     name: "Remote computer",
-    company: "Local Studio",
+    company: BRAND_PROFILE.appName,
     description: "Run commands and work with files over SSH on another machine.",
     transport: "stdio",
     command: "node",

@@ -107,16 +107,17 @@ export function SectionNav<Id extends string = string>({
 }) {
   return (
     <nav aria-label={label} className="pb-1">
-      <div className="flex flex-wrap gap-1 lg:flex-col lg:flex-nowrap">
+      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:flex lg:flex-col lg:flex-nowrap">
         {items.map((item) => {
           const active = activeItem === item.id;
           return (
             <button
               key={item.id}
               type="button"
+              aria-current={active ? "page" : undefined}
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-9 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
+                "group grid min-h-11 w-full min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99]",
                 active
                   ? "bg-(--ui-active) text-(--ui-fg)"
                   : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",

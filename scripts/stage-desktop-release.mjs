@@ -1,15 +1,9 @@
 import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveApplianceProfile } from "../shared/agent/appliance-profile.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontend = path.join(root, "frontend");
@@ -30,8 +24,8 @@ function valueAfter(args, name) {
   return index === -1 ? undefined : args[index + 1];
 }
 
-function releaseAssetNames(version) {
-  const base = `Local Studio-${version}-arm64`;
+function releaseAssetNames(appName, version) {
+  const base = `${appName}-${version}-arm64`;
   return [
     `${base}.dmg`,
     `${base}.dmg.blockmap`,
@@ -55,11 +49,11 @@ function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
-function packagedMetadata() {
+function packagedMetadata(appName) {
   const archive = path.join(
     output,
     "mac-arm64",
-    "Local Studio.app",
+    `${appName}.app`,
     "Contents",
     "Resources",
     "app.asar",
@@ -70,6 +64,8 @@ function packagedMetadata() {
 }
 
 export function stageDesktopRelease(args = process.argv.slice(2)) {
+  const appliance = resolveApplianceProfile();
+  const releaseSlug = appliance.appName.replaceAll(" ", "-");
   const version = valueAfter(args, "--version")?.trim() || frontendVersion();
   const commit = valueAfter(args, "--commit")?.trim().toLowerCase();
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
@@ -79,7 +75,7 @@ export function stageDesktopRelease(args = process.argv.slice(2)) {
     throw new Error("--commit must be a full Git commit SHA");
   }
 
-  const metadata = packagedMetadata();
+  const metadata = packagedMetadata(appliance.appName);
   if (metadata.version !== version) {
     throw new Error(`Packaged version ${metadata.version} does not match release ${version}`);
   }
@@ -89,7 +85,7 @@ export function stageDesktopRelease(args = process.argv.slice(2)) {
     );
   }
 
-  const names = releaseAssetNames(version);
+  const names = releaseAssetNames(appliance.appName, version);
   const assets = names.map((name) => [
     requireAsset(name),
     path.join(staging, releaseAssetName(name)),
@@ -99,31 +95,29 @@ export function stageDesktopRelease(args = process.argv.slice(2)) {
   mkdirSync(staging, { recursive: true });
   for (const [source, destination] of assets) copyFileSync(source, destination);
   copyFileSync(
-    requireAsset(`Local Studio-${version}-arm64.dmg`),
-    path.join(staging, "Local-Studio-arm64.dmg"),
+    requireAsset(`${appliance.appName}-${version}-arm64.dmg`),
+    path.join(staging, `${releaseSlug}-arm64.dmg`),
   );
 
-  const stagedNames = [
-    ...names.map(releaseAssetName),
-    "Local-Studio-arm64.dmg",
-  ];
+  const stagedNames = [...names.map(releaseAssetName), `${releaseSlug}-arm64.dmg`];
   const manifest = {
     schemaVersion: 1,
+    applianceId: appliance.applianceId,
+    appName: appliance.appName,
     version,
     commit,
     assets: Object.fromEntries(
-      stagedNames.map((name) => [
-        name,
-        { sha256: sha256(path.join(staging, name)) },
-      ]),
+      stagedNames.map((name) => [name, { sha256: sha256(path.join(staging, name)) }]),
     ),
   };
   writeFileSync(
-    path.join(staging, "Local-Studio-release.json"),
+    path.join(staging, `${releaseSlug}-release.json`),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
 
-  console.log(`Staged ${stagedNames.length + 1} Local Studio ${version} assets in ${staging}`);
+  console.log(
+    `Staged ${stagedNames.length + 1} ${appliance.appName} ${version} assets in ${staging}`,
+  );
   return manifest;
 }
 

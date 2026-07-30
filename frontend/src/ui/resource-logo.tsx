@@ -1,8 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { hfAvatarUrl } from "@/lib/huggingface";
 import { cx } from "./utils";
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const localBrandSourcePattern = new RegExp(escapeRegExp(BRAND_PROFILE.appName), "i");
 
 const FALLBACK_COLORS = ["#3B82F6", "#14B8A6", "#8B5CF6", "#F59E0B", "#EF4444", "#64748B"] as const;
 
@@ -83,7 +88,7 @@ const inferredImageUrl = (
   company?: string | null,
 ): string | null => {
   const source = `${identity} ${label} ${company ?? ""}`;
-  if (/local studio/i.test(source)) return "/icons/icon-192.png";
+  if (localBrandSourcePattern.test(source)) return "/icons/icon-192.png";
   const owner = LOGO_OWNERS.find(([pattern]) => pattern.test(source))?.[1];
   return owner ? hfAvatarUrl(identity, owner) : null;
 };

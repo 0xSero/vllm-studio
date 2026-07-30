@@ -3,10 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const frontendDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const servicesDir = path.join(path.dirname(frontendDir), "services");
-const linkPath = path.join(servicesDir, "node_modules");
+const workspaceDir = path.dirname(frontendDir);
+const linkPaths = [
+  path.join(workspaceDir, "services", "node_modules"),
+  path.join(workspaceDir, "shared", "node_modules"),
+];
 
-const existingEntryKind = () => {
+const existingEntryKind = (linkPath) => {
   try {
     const stat = lstatSync(linkPath);
     if (stat.isSymbolicLink()) return "link";
@@ -16,25 +19,26 @@ const existingEntryKind = () => {
   }
 };
 
-const removeExistingEntry = () => {
+const removeExistingEntry = (linkPath) => {
   rmSync(linkPath, { recursive: true, force: true });
 };
 
-const createLink = () => {
+const createLink = (linkPath) => {
   if (process.platform === "win32") {
     symlinkSync(path.join(frontendDir, "node_modules"), linkPath, "junction");
     return;
   }
-  symlinkSync(path.join("..", "frontend", "node_modules"), linkPath, "dir");
+  const relativeTarget = path.relative(path.dirname(linkPath), path.join(frontendDir, "node_modules"));
+  symlinkSync(relativeTarget, linkPath, "dir");
 };
 
-mkdirSync(servicesDir, { recursive: true });
-const kind = existingEntryKind();
-if (kind === "directory") {
-  console.error(
-    `[link-services-node-modules] ${linkPath} is a real directory; leaving it alone.`,
-  );
-  process.exit(0);
+for (const linkPath of linkPaths) {
+  mkdirSync(path.dirname(linkPath), { recursive: true });
+  const kind = existingEntryKind(linkPath);
+  if (kind === "directory") {
+    console.error(`[link-services-node-modules] ${linkPath} is a real directory; leaving it alone.`);
+    continue;
+  }
+  if (kind !== "missing") removeExistingEntry(linkPath);
+  createLink(linkPath);
 }
-if (kind !== "missing") removeExistingEntry();
-createLink();

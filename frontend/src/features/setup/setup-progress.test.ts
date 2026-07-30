@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { decodeSetupProgress } from "./setup-progress";
+
+const setupHook = readFileSync(new URL("./use-setup.ts", import.meta.url), "utf8");
 
 describe("setup progress", () => {
   test("restores valid progress and clamps the step", () => {
@@ -26,5 +29,14 @@ describe("setup progress", () => {
       selectedPreset: null,
       createdRecipeId: null,
     });
+  });
+
+  test("restores browser persistence only after hydration", () => {
+    assert.doesNotMatch(setupHook, /useState\(loadSetupProgress\)/);
+    assert.match(
+      setupHook,
+      /useMountSubscription\(\(\) => \{\s+const progress = loadSetupProgress\(\)/,
+    );
+    assert.match(setupHook, /const \[step, setStepState\] = useState\(0\)/);
   });
 });

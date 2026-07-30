@@ -15,6 +15,8 @@ export type ThemeId =
   | "zai-violet"
   | "zai-emerald"
   | "zai-rose"
+  | "cortaix-light"
+  | "cortaix-dark"
   | "absolutely-dark"
   | "raycast-dark"
   | "midnight"
@@ -90,6 +92,32 @@ const ZAI_DARK: ThemeTokens = {
   err: "#ff6764",
 };
 
+const CORTAIX_LIGHT: ThemeTokens = {
+  bg: "#f7f7f9",
+  fg: "#131319",
+  dim: "#5d607e",
+  border: "#1313191f",
+  surface: "#ffffff",
+  accent: "#041295",
+  hl1: "#5d607e",
+  hl2: "#797d9c",
+  hl3: "#5d607e",
+  err: "#e01e00",
+};
+
+const CORTAIX_DARK: ThemeTokens = {
+  bg: "#131319",
+  fg: "#f7f7f9",
+  dim: "#9a9db5",
+  border: "#f7f7f924",
+  surface: "#24252f",
+  accent: "#9ba1d5",
+  hl1: "#bcbece",
+  hl2: "#9a9db5",
+  hl3: "#9a9db5",
+  err: "#ec7866",
+};
+
 // Accent variants keep the canonical dark surfaces; only the brand
 // accent + hl1 (the data/links color) shift.
 const skyAccent = (base: ThemeTokens): ThemeTokens => ({
@@ -141,6 +169,20 @@ const lightTheme = (bg: string, fg: string, surface: string, accent: string): Th
 });
 
 export const THEMES: ThemeMeta[] = [
+  createTheme(
+    "cortaix-dark",
+    "cortAIx dark",
+    "Operational dark mode for cortAIx Factory",
+    "Appliance",
+    CORTAIX_DARK,
+  ),
+  createTheme(
+    "cortaix-light",
+    "cortAIx light",
+    "Bluegrey operator mode for cortAIx Factory",
+    "Appliance",
+    CORTAIX_LIGHT,
+  ),
   createTheme(
     "zai-dark",
     "Studio Dark",

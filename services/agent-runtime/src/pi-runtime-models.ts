@@ -13,6 +13,7 @@ import {
 } from "../../../shared/agent/models";
 import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "../../../shared/agent/agent-turn";
 import { resolveModelVision } from "../../../controller/contracts/model-capabilities";
+import { normalizeOpenAIBaseUrl, openAIEndpoint } from "../../../shared/agent/openai-endpoint";
 
 const PROVIDER_ID = "local-studio";
 const USER_PI_PREFIX = "user-pi-";
@@ -184,13 +185,15 @@ function qualifyModelId(providerId: string, rawId: string): string {
   return providerId === PROVIDER_ID ? rawId : `${providerId}/${rawId}`;
 }
 
-function normalizeBackendUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
-}
-
 function normalizeControllerInput(input: PiControllerModelsRequest): PiControllerConfig | null {
-  const url = normalizeBackendUrl(input.url || "");
-  if (!url) return null;
+  const rawUrl = input.url?.trim() ?? "";
+  if (!rawUrl) return null;
+  let url: string;
+  try {
+    url = normalizeOpenAIBaseUrl(rawUrl);
+  } catch {
+    return null;
+  }
   const apiKey = input.apiKey?.trim() ?? "";
   const name = input.name?.trim();
   return {
@@ -256,12 +259,17 @@ async function fetchModelsFromController(
   index: number,
   multipleControllers: boolean,
 ): Promise<ControllerModels> {
-  const backendUrl = normalizeBackendUrl(controller.url);
+  const backendUrl = normalizeOpenAIBaseUrl(controller.url);
   const headers: HeadersInit = { Accept: "application/json" };
   if (controller.apiKey) headers.Authorization = `Bearer ${controller.apiKey}`;
-  const response = await fetch(`${backendUrl}/v1/models`, { headers, cache: "no-store" });
+  const modelsUrl = openAIEndpoint(backendUrl, "models");
+  const response = await fetch(modelsUrl, {
+    headers,
+    cache: "no-store",
+    redirect: "error",
+  });
   if (!response.ok) {
-    throw new Error(`${backendUrl}/v1/models failed with HTTP ${response.status}`);
+    throw new Error(`${modelsUrl} failed with HTTP ${response.status}`);
   }
   const payload = (await response.json()) as unknown;
   const providerId = providerIdForController(controller, index);
@@ -329,7 +337,7 @@ async function writePiModelsConfig(
     controllerModels.map(({ controller, models, providerId }) => [
       providerId,
       {
-        baseUrl: `${controller.url}/v1`,
+        baseUrl: normalizeOpenAIBaseUrl(controller.url),
         api: "openai-completions",
         apiKey: controller.apiKey || "local-studio",
         authHeader: Boolean(controller.apiKey),
@@ -422,8 +430,12 @@ export async function refreshPiModels(
 // hub re-reads it before listing (locally here, in the handler over HTTP).
 async function collectProviderAgentModels(): Promise<AgentModel[]> {
   if (isAgentRuntimeProcess()) {
-    await reloadProviderHub().catch(() => undefined);
-    return listProviderAgentModels();
+    return Promise.race([
+      reloadProviderHub()
+        .then(() => listProviderAgentModels())
+        .catch(() => []),
+      new Promise<AgentModel[]>((resolve) => setTimeout(() => resolve([]), 5_000)),
+    ]);
   }
   const base = (process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL || "http://127.0.0.1:8081").replace(
     /\/+$/,

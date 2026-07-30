@@ -160,6 +160,20 @@ export function resolveConnectorsExtensionPath(): string | null {
   );
 }
 
+export function resolveNotebooksExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "notebooks.ts",
+    process.env.LOCAL_STUDIO_NOTEBOOKS_EXTENSION_PATH,
+  );
+}
+
+export function resolveFastCrwSearchExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "fastcrw-search.ts",
+    process.env.LOCAL_STUDIO_FASTCRW_SEARCH_EXTENSION_PATH,
+  );
+}
+
 export function resolveSubagentsExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
     "subagents.ts",
@@ -285,6 +299,8 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     browserExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
+    resolveNotebooksExtensionPath(),
+    resolveFastCrwSearchExtensionPath(),
     // Lets the agent create/list/delete scheduled automations.
     resolveAutomationsExtensionPath(),
     // NOTE: session-goal injection is no longer a bundled extension — it runs

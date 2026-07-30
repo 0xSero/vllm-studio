@@ -35,7 +35,7 @@ function assertTerminalCwd(
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const { cwd, error } = assertTerminalCwd(request);
   if (error) return error;

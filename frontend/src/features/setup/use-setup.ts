@@ -33,13 +33,13 @@ import { selectSetupDownload } from "./setup-downloads";
 import { ggufFileOptions, manualDownloadPreset, type GgufFileOption } from "./setup-model-files";
 import { loadSetupProgress, updateSetupProgress } from "./setup-progress";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
+import type { ApimClientFields } from "./setup-view/step-model";
 
 type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
 
 export function useSetup() {
   const router = useRouter();
-  const [initialProgress] = useState(loadSetupProgress);
-  const [step, setStepState] = useState(initialProgress.step);
+  const [step, setStepState] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadWarning, setLoadWarning] = useState<string | null>(null);
@@ -47,30 +47,35 @@ export function useSetup() {
   const [modelsDir, setModelsDir] = useState("");
   const [diagnostics, setDiagnostics] = useState<StudioDiagnostics | null>(null);
   const [presets, setPresets] = useState<StarterPreset[]>([]);
-  const [selectedPreset, setSelectedPreset] = useState<StarterPreset | null>(
-    initialProgress.selectedPreset,
-  );
+  const [selectedPreset, setSelectedPreset] = useState<StarterPreset | null>(null);
   const [remoteApiKey, setRemoteApiKey] = useState("");
+  const [remoteSubscriptionKey, setRemoteSubscriptionKey] = useState({ header: "", value: "" });
   const [connectingRemote, setConnectingRemote] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [runtimeTargets, setRuntimeTargets] = useState<RuntimeTarget[]>([]);
   const [runtimeJobs, setRuntimeJobs] = useState<EngineJob[]>([]);
   const [maxVram, setMaxVram] = useState(0);
-  const [selectedModel, setSelectedModel] = useState(initialProgress.selectedModel);
-  const [manualModelId, setManualModelIdState] = useState(initialProgress.manualModelId);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [manualModelId, setManualModelIdState] = useState("");
   const [manualGgufOptions, setManualGgufOptions] = useState<GgufFileOption[]>([]);
   const [manualGgufFile, setManualGgufFile] = useState("");
   const [resolvingManualModel, setResolvingManualModel] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
-  const [hardwareConfirmed, setHardwareConfirmedState] = useState(
-    initialProgress.hardwareConfirmed,
-  );
+  const [hardwareConfirmed, setHardwareConfirmedState] = useState(false);
   const [configuringRecipe, setConfiguringRecipe] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
-  const [createdRecipeId, setCreatedRecipeIdState] = useState<string | null>(
-    initialProgress.createdRecipeId,
-  );
+  const [createdRecipeId, setCreatedRecipeIdState] = useState<string | null>(null);
+
+  useMountSubscription(() => {
+    const progress = loadSetupProgress();
+    setStepState(progress.step);
+    setHardwareConfirmedState(progress.hardwareConfirmed);
+    setSelectedModel(progress.selectedModel);
+    setManualModelIdState(progress.manualModelId);
+    setSelectedPreset(progress.selectedPreset);
+    setCreatedRecipeIdState(progress.createdRecipeId);
+  }, []);
 
   const setStep = useCallback((value: number) => {
     setStepState(value);
@@ -243,25 +248,47 @@ export function useSetup() {
   );
 
   const connectRemotePreset = useCallback(
-    (preset: StarterPreset) => {
+    (preset: StarterPreset, apimClientFields?: ApimClientFields) => {
       const remote = preset.remote;
       if (preset.kind !== "remote" || !remote) return Promise.resolve();
       const apiKey = remoteApiKey.trim();
-      if (!apiKey) {
+      if (remote.authentication === "api_key" && !apiKey) {
         setRemoteError("An API key is required to connect.");
+        return Promise.resolve();
+      }
+      if (
+        remote.authentication === "apim_client" &&
+        apimClientFields &&
+        !apimClientFields.client_secret.trim()
+      ) {
+        setRemoteError("A client secret is required to connect.");
         return Promise.resolve();
       }
       setConnectingRemote(true);
       setRemoteError(null);
+      const subscriptionKey =
+        remoteSubscriptionKey.header.trim() && remoteSubscriptionKey.value.trim()
+          ? {
+              header: remoteSubscriptionKey.header.trim(),
+              value: remoteSubscriptionKey.value.trim(),
+            }
+          : undefined;
       return Effect.runPromise(
-        connectRemotePresetEffect(preset, remote, apiKey, {
-          setRemoteError,
-          setConnectingRemote,
-          openAgentChat: () => router.push("/agent?new=1"),
-        }),
+        connectRemotePresetEffect(
+          preset,
+          remote,
+          apiKey,
+          subscriptionKey,
+          {
+            setRemoteError,
+            setConnectingRemote,
+            openAgentChat: () => router.push("/agent?new=1"),
+          },
+          apimClientFields,
+        ),
       );
     },
-    [remoteApiKey, router],
+    [remoteApiKey, remoteSubscriptionKey, router],
   );
 
   const submitManualModel = useCallback(async () => {
@@ -324,7 +351,11 @@ export function useSetup() {
     router.push("/");
   }, [router]);
 
-  const skipSetup = useCallback(() => {
+  const exitSetup = useCallback(() => {
+    router.push("/");
+  }, [router]);
+
+  const completeSetup = useCallback(() => {
     markSetupComplete();
     router.push("/");
   }, [router]);
@@ -344,6 +375,8 @@ export function useSetup() {
     beginPresetSetup,
     remoteApiKey,
     setRemoteApiKey,
+    remoteSubscriptionKey,
+    setRemoteSubscriptionKey,
     connectingRemote,
     remoteError,
     connectRemotePreset,
@@ -383,6 +416,7 @@ export function useSetup() {
     runSetupBenchmark,
     openChat,
     openDashboard,
-    skipSetup,
+    exitSetup,
+    completeSetup,
   };
 }

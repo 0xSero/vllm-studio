@@ -1,4 +1,5 @@
 import type { Backend, RuntimeTarget, ServeRuntime, ServeRuntimeKind } from "@/lib/types";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import {
   defaultRuntimeForBackend,
   isManagedServeRuntimeTarget,
@@ -59,7 +60,9 @@ export const runtimeOptionsFor = (
     {
       id: runtimeId(defaultRuntime),
       label: defaultRuntime.label ?? `Managed ${ENGINE_LABEL[backend]}`,
-      detail: managed?.version ? `managed venv · ${managed.version}` : "managed by Local Studio",
+      detail: managed?.version
+        ? `managed venv · ${managed.version}`
+        : `managed by ${BRAND_PROFILE.appName}`,
       runtime: defaultRuntime,
       installed: backend === "llamacpp" ? Boolean(managed) : Boolean(managed?.installed),
       canInstall: backend !== "llamacpp" && !managed?.installed,

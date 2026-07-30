@@ -20,13 +20,16 @@ function validateCwd(rawCwd: string | null): Response | null {
   try {
     assertWorkspaceRoot(path.resolve(cwd));
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "cwd is not an allowed workspace", 403);
+    return jsonError(
+      error instanceof Error ? error.message : "cwd is not an allowed workspace",
+      403,
+    );
   }
   return null;
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const invalid = validateCwd(request.nextUrl.searchParams.get("cwd"));
   if (invalid) return invalid;

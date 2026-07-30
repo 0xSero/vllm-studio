@@ -1,10 +1,11 @@
-const CACHE_NAME = 'local-studio-v9';
+const CACHE_NAME = 'local-studio-v10';
 const STATIC_ASSETS = [
   '/',
   '/chat',
   '/recipes',
   '/logs',
   '/manifest.json',
+  '/manifest.webmanifest',
 ];
 
 // Install event - cache static assets

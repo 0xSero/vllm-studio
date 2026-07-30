@@ -586,7 +586,7 @@ async function run(): Promise<void> {
     // (port in use, unwritable userData, missing server.js, slow-start timeout).
     try {
       dialog.showErrorBox(
-        "Local Studio failed to start",
+        `${app.getName()} failed to start`,
         `${error instanceof Error ? error.message : String(error)}\n\nSee the app logs for details.`,
       );
     } catch {

@@ -1,0 +1,91 @@
+openapi: 3.0.3
+info:
+  title: Local Studio governed AI gateway
+  version: 1.0.0
+servers:
+  - url: https://gateway.example.com/ai/v1
+paths:
+  /models:
+    get:
+      operationId: models-list
+      responses:
+        "200":
+          description: Allowlist-filtered model catalog
+  /chat/completions:
+    post:
+      operationId: chat-completions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelRequest"
+      responses:
+        "200":
+          description: Chat completion
+  /responses:
+    post:
+      operationId: responses-create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelRequest"
+      responses:
+        "200":
+          description: Model response
+  /agents:
+    get:
+      operationId: agents-list
+      responses:
+        "200":
+          description: Allowlist-filtered project-agent catalog
+  /agents/{agentId}/invoke:
+    post:
+      operationId: agent-invoke
+      parameters:
+        - in: path
+          name: agentId
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              additionalProperties: false
+              properties:
+                input: {}
+                conversation_id:
+                  type: string
+                  maxLength: 256
+      responses:
+        "200":
+          description: Agent response
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ModelRequest:
+      type: object
+      required: [model]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          minLength: 1
+          maxLength: 256
+        stream:
+          type: boolean
+security:
+  - bearerAuth: []

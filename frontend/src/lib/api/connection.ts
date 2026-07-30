@@ -8,7 +8,6 @@ import { getControllerApiKey, normalizeControllerUrl } from "./controllers";
 // --- Env-derived defaults ---
 
 const LOCAL_BACKEND_FALLBACK = "http://localhost:8080";
-const CLIENT_PROXY_FALLBACK = "/api/proxy";
 
 /**
  * Server-side API client base URL.
@@ -25,16 +24,6 @@ export const resolveApiServerBaseUrl = (): string =>
 // agent runtime package's settings service can share it; re-exported here for
 // frontend callers.
 export { resolveSettingsDefaultBackendUrl } from "@shared/agent/backend-url";
-
-/**
- * Client-side controller event stream base URL.
- */
-export const resolveControllerEventsBaseUrl = (): string =>
-  pickFirstNonEmpty(
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-    process.env.LOCAL_STUDIO_BACKEND_URL,
-    process.env.BACKEND_URL,
-  ) ?? CLIENT_PROXY_FALLBACK;
 
 // --- Browser-stored backend URL ---
 

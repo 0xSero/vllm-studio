@@ -1,11 +1,20 @@
 import { config as loadEnvironment } from "dotenv";
 import { Schema } from "effect";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 import { parseBooleanFlag } from "../core/validation";
+import {
+  EnterpriseAuthConfigSchema,
+  type EnterpriseAuthConfig,
+} from "@local-studio/contracts/enterprise-auth";
+import {
+  normalizeKubernetesApiUrl,
+  prepareKubernetesConnection,
+} from "../modules/environment/configuration";
+import { ProviderSecretStore } from "../services/provider-secret-store";
 
 const positiveIntegerSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
 
@@ -25,6 +34,16 @@ export interface Config {
   mlx_python?: string;
   strict_openai_models: boolean;
   providers: ProviderConfig[];
+  enterprise_auth?: EnterpriseAuthConfig;
+  kuberay_api_url?: string;
+  kuberay_token_file?: string;
+  kuberay_ca_file?: string;
+  scientific_receipt_signing_key?: string;
+  notebook_root: string;
+  notebook_python: string;
+  notebook_smolvm: string;
+  notebook_node_image: string;
+  notebook_python_image: string;
 }
 
 export const loadDotEnvironment = (): string | undefined => {
@@ -43,6 +62,21 @@ export const loadDotEnvironment = (): string | undefined => {
 
 const defaultModelsDirectory = (): string =>
   process.platform === "win32" ? join(homedir(), "models") : "/models";
+
+const defaultNotebookPython = (): string => {
+  for (const directory of (process.env["PATH"] ?? "").split(delimiter)) {
+    const executable = join(directory, process.platform === "win32" ? "jupyter.exe" : "jupyter");
+    if (!existsSync(executable)) continue;
+    try {
+      const firstLine = readFileSync(executable, "utf8").split(/\r?\n/u)[0] ?? "";
+      const interpreter = firstLine.startsWith("#!") ? firstLine.slice(2).trim() : "";
+      if (interpreter && existsSync(interpreter)) return interpreter;
+    } catch {
+      continue;
+    }
+  }
+  return "python3";
+};
 
 export const createConfig = (): Config => {
   loadDotEnvironment();
@@ -102,6 +136,16 @@ export const createConfig = (): Config => {
     LOCAL_STUDIO_LLAMA_BIN: Schema.optional(Schema.String),
     LOCAL_STUDIO_MLX_PYTHON: Schema.optional(Schema.String),
     LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
+    LOCAL_STUDIO_KUBERAY_API_URL: Schema.optional(Schema.String),
+    LOCAL_STUDIO_KUBERAY_TOKEN_FILE: Schema.optional(Schema.String),
+    LOCAL_STUDIO_KUBERAY_CA_FILE: Schema.optional(Schema.String),
+    LOCAL_STUDIO_SCIENTIFIC_RECEIPT_SIGNING_KEY: Schema.optional(Schema.String),
+    LOCAL_STUDIO_NOTEBOOK_ROOT: Schema.optional(Schema.String),
+    LOCAL_STUDIO_NOTEBOOK_PYTHON: Schema.optional(Schema.String),
+    LOCAL_STUDIO_NOTEBOOK_SMOLVM: Schema.optional(Schema.String),
+    LOCAL_STUDIO_NOTEBOOK_NODE_IMAGE: Schema.optional(Schema.String),
+    LOCAL_STUDIO_NOTEBOOK_PYTHON_IMAGE: Schema.optional(Schema.String),
+    LOCAL_STUDIO_ENTERPRISE_AUTH_CONFIG: Schema.optional(Schema.String),
   });
 
   const coercePositiveInteger = (
@@ -146,6 +190,17 @@ export const createConfig = (): Config => {
     strict_openai_models: strictOpenAIModelsEnabled,
     cors_origins: parseCorsOrigins(parsed.LOCAL_STUDIO_CORS_ORIGINS),
     providers: [],
+    notebook_root: parsed.LOCAL_STUDIO_NOTEBOOK_ROOT
+      ? resolve(parsed.LOCAL_STUDIO_NOTEBOOK_ROOT)
+      : resolve(dataDirectory, "notebooks"),
+    notebook_python: parsed.LOCAL_STUDIO_NOTEBOOK_PYTHON?.trim() || defaultNotebookPython(),
+    notebook_smolvm: parsed.LOCAL_STUDIO_NOTEBOOK_SMOLVM?.trim() || "smolvm",
+    notebook_node_image:
+      parsed.LOCAL_STUDIO_NOTEBOOK_NODE_IMAGE?.trim() ||
+      resolve(dataDirectory, "node-notebook-image.tar"),
+    notebook_python_image:
+      parsed.LOCAL_STUDIO_NOTEBOOK_PYTHON_IMAGE?.trim() ||
+      resolve(dataDirectory, "python-notebook-image.tar"),
   };
 
   if (parsed.LOCAL_STUDIO_API_KEY) {
@@ -168,14 +223,58 @@ export const createConfig = (): Config => {
   if (parsed.LOCAL_STUDIO_MLX_PYTHON) {
     config.mlx_python = parsed.LOCAL_STUDIO_MLX_PYTHON;
   }
+  if (parsed.LOCAL_STUDIO_KUBERAY_API_URL?.trim()) {
+    config.kuberay_api_url = normalizeKubernetesApiUrl(parsed.LOCAL_STUDIO_KUBERAY_API_URL);
+  }
+  if (parsed.LOCAL_STUDIO_KUBERAY_TOKEN_FILE?.trim()) {
+    config.kuberay_token_file = resolve(parsed.LOCAL_STUDIO_KUBERAY_TOKEN_FILE);
+  }
+  if (parsed.LOCAL_STUDIO_KUBERAY_CA_FILE?.trim()) {
+    config.kuberay_ca_file = resolve(parsed.LOCAL_STUDIO_KUBERAY_CA_FILE);
+  }
+  if (parsed.LOCAL_STUDIO_SCIENTIFIC_RECEIPT_SIGNING_KEY?.trim()) {
+    config.scientific_receipt_signing_key =
+      parsed.LOCAL_STUDIO_SCIENTIFIC_RECEIPT_SIGNING_KEY.trim();
+  }
+  if (parsed.LOCAL_STUDIO_ENTERPRISE_AUTH_CONFIG?.trim()) {
+    const authPath = resolve(parsed.LOCAL_STUDIO_ENTERPRISE_AUTH_CONFIG);
+    const authDocument = JSON.parse(readFileSync(authPath, "utf8")) as unknown;
+    config.enterprise_auth = Schema.decodeUnknownSync(EnterpriseAuthConfigSchema)(authDocument);
+  }
 
-  const persisted = loadPersistedConfig(config.data_dir);
+  const providerSecrets = new ProviderSecretStore(
+    config.data_dir,
+    !isLoopbackHost(host) ||
+      (config.enterprise_auth !== undefined && config.enterprise_auth.mode !== "local"),
+  );
+  const persisted = loadPersistedConfig(config.data_dir, providerSecrets);
   if (persisted.models_dir) {
     config.models_dir = resolve(persisted.models_dir);
   }
 
   if (Array.isArray(persisted.providers)) {
     config.providers = persisted.providers;
+  }
+  if (persisted.kubernetes_connection) {
+    const connection = prepareKubernetesConnection(
+      persisted.kubernetes_connection,
+      config.data_dir,
+      {
+        ...(config.kuberay_api_url ? { apiUrl: config.kuberay_api_url } : {}),
+        ...(config.kuberay_token_file ? { tokenFile: config.kuberay_token_file } : {}),
+        ...(config.kuberay_ca_file ? { caFile: config.kuberay_ca_file } : {}),
+      },
+    ).runtime;
+    if (connection.enabled) {
+      config.kuberay_api_url = connection.api_url;
+      config.kuberay_token_file = connection.token_file;
+      if (connection.ca_file) config.kuberay_ca_file = connection.ca_file;
+      else delete config.kuberay_ca_file;
+    } else {
+      delete config.kuberay_api_url;
+      delete config.kuberay_token_file;
+      delete config.kuberay_ca_file;
+    }
   }
 
   return config;

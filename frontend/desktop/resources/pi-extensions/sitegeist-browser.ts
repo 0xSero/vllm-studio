@@ -1,4 +1,4 @@
-// Sitegeist browser tool extension for Local Studio.
+// Sitegeist browser tool extension for the desktop app.
 //
 // Registers Pi `sitegeist_*` tools that each make one HTTP JSON-RPC 2.0 call to
 // the local sitegeist relay (`${SITEGEIST_RELAY_URL}/rpc`), which forwards to the

@@ -11,6 +11,7 @@ import {
   profileImageFromFile,
   useLocalProfile,
 } from "@/features/shell/local-profile";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { QrCode } from "@/features/shell/qr-code";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsButton, SettingsGroup, SettingsLink } from "./settings-ui";
@@ -195,7 +196,7 @@ function PhonePairingSettings() {
           <p className="mt-1.5 max-w-md text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
             Download and open KittyLitter on your phone, then use its scanner on this QR code. The
             QR code and copied JSON grant access to all agents enabled on this controller, not only
-            Local Studio. Share them only with devices you trust.
+            {BRAND_PROFILE.appName}. Share them only with devices you trust.
           </p>
           <div className="mt-5 flex min-w-0 flex-wrap items-center gap-2">
             <SettingsLink

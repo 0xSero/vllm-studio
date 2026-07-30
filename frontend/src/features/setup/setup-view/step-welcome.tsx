@@ -30,7 +30,7 @@ export function StepWelcome({
     : null;
 
   return (
-    <div className="rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/40 p-6">
+    <div className="border border-(--ui-border) bg-(--ui-surface) p-5 sm:p-6">
       <div className="flex items-center justify-between border-b border-(--ui-border)/60 pb-4">
         <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">This machine</span>
         <span className="font-mono text-[length:var(--fs-sm)] text-(--fg)">
@@ -45,7 +45,7 @@ export function StepWelcome({
           placeholder="/models"
         />
         {settings?.config_path ? (
-          <p className="mt-2 truncate font-mono text-[10px] text-(--ui-muted)">
+          <p className="mt-2 truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
             {settings.config_path}
           </p>
         ) : null}

@@ -14,7 +14,7 @@ function expandTilde(target: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let body: unknown;
   try {

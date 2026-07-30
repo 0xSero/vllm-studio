@@ -12,9 +12,13 @@ import {
 } from "@/ui/icon-registry";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import {
+  getControllerApiKey,
+  getControllerCredentialPersistence,
   loadSavedControllers,
   normalizeControllerUrl,
+  removeControllerCredential,
   saveSavedControllers,
+  subscribeControllerCredentialPersistence,
   type SavedController,
 } from "@/lib/api/controllers";
 import {
@@ -115,6 +119,11 @@ export function ApiConnectionSection({
   const censorUrls = useApiUrlCensored();
 
   const activeId = useMemo(() => normalizeControllerUrl(activeUrl), [activeUrl]);
+  const credentialPersistence = useSyncExternalStore(
+    subscribeControllerCredentialPersistence,
+    () => getControllerCredentialPersistence(activeId),
+    () => null,
+  );
   const persist = setEntries;
   const toggleReveal = (id: string) =>
     setRevealed((current) => ({ ...current, [id]: !current[id] }));
@@ -123,21 +132,22 @@ export function ApiConnectionSection({
     // Switching never deletes anything — every row stays in the list.
     // Clear the runtime key when the target has none, so the previous
     // controller's key isn't leaked to this controller's host.
-    if (entry.apiKey) setApiKey(entry.apiKey);
+    const controllerApiKey = entry.apiKey ?? getControllerApiKey(entry.url);
+    if (controllerApiKey) setApiKey(controllerApiKey);
     else clearApiKey();
     setStoredBackendUrl(entry.url);
     onApiSettingsChange({
       ...apiSettings,
       backendUrl: entry.url,
-      apiKey: entry.apiKey ?? "",
-      hasApiKey: Boolean(entry.apiKey),
+      apiKey: controllerApiKey,
+      hasApiKey: entry.hasApiKey === true || Boolean(controllerApiKey),
     });
     void fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         backendUrl: entry.url,
-        apiKey: entry.apiKey ?? "",
+        apiKey: controllerApiKey,
       }),
     }).finally(() => {
       if (typeof window !== "undefined") {
@@ -191,6 +201,7 @@ export function ApiConnectionSection({
               }}
               onRemove={() => {
                 const remaining = entries.filter((row) => row.id !== entry.id);
+                removeControllerCredential(entry.url);
                 persist(remaining);
                 if (entry.id === activeId && remaining[0]) activate(remaining[0]);
               }}
@@ -261,7 +272,28 @@ export function ApiConnectionSection({
       >
         <SettingsRow
           label="Active connection check"
-          description={statusMessage || "Ready to test"}
+          description={
+            credentialPersistence?.state === "failed"
+              ? credentialPersistence.detail
+              : statusMessage || credentialPersistence?.detail || "Ready to test"
+          }
+          status={
+            credentialPersistence ? (
+              <StatusPill
+                tone={
+                  credentialPersistence.state === "stored"
+                    ? "good"
+                    : credentialPersistence.state === "removed"
+                      ? "default"
+                      : credentialPersistence.state === "failed"
+                        ? "danger"
+                        : "info"
+                }
+              >
+                {credentialPersistence.state}
+              </StatusPill>
+            ) : null
+          }
           actions={
             <>
               <SettingsButton onClick={onTestConnection} disabled={testing || apiSettingsLoading}>

@@ -1,6 +1,6 @@
 import { safeStorage } from "electron";
 import { randomUUID } from "node:crypto";
-import { chmod, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, lstat, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -37,6 +37,10 @@ function isVaultRequest(value: unknown): value is VaultRequest {
 
 async function readVault(file: string): Promise<Record<string, string>> {
   if (!existsSync(file)) return {};
+  const metadata = await lstat(file);
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1) {
+    throw new Error("OAuth vault file is unsafe");
+  }
   const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("OAuth vault is invalid");
@@ -49,28 +53,71 @@ async function readVault(file: string): Promise<Record<string, string>> {
   );
 }
 
+async function syncDirectory(value: string): Promise<void> {
+  try {
+    const handle = await open(value, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch (source) {
+    const code = (source as NodeJS.ErrnoException).code;
+    if (
+      process.platform === "win32" &&
+      ["EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")
+    ) {
+      return;
+    }
+    throw source;
+  }
+}
+
 async function writeVault(file: string, vault: Record<string, string>): Promise<void> {
   const temporary = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(temporary, JSON.stringify(vault, null, 2), { mode: 0o600 });
-  await chmod(temporary, 0o600);
-  await rename(temporary, file);
-  await chmod(file, 0o600);
+  try {
+    await writeFile(temporary, JSON.stringify(vault, null, 2), { mode: 0o600 });
+    await chmod(temporary, 0o600);
+    const handle = await open(temporary, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporary, file);
+    await chmod(file, 0o600);
+    await syncDirectory(path.dirname(file));
+  } catch (source) {
+    await unlink(temporary).catch(() => undefined);
+    throw source;
+  }
 }
 
 function vaultOperation(file: string, request: VaultRequest): Promise<string | undefined> {
   const operation = vaultAccess.then(async () => {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure storage is unavailable");
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+      throw new Error("Secure storage is unavailable");
+    }
+    if (process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text") {
+      throw new Error("Native Linux secret storage is unavailable");
+    }
     const vault = await readVault(file);
     if (request.operation === "read") {
       const encrypted = vault[request.key];
       if (!encrypted) return undefined;
-      const decrypted = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
-      if (decrypted.length > 1_000_000) throw new Error("OAuth vault value is too large");
-      return decrypted;
+      const decrypted = await safeStorage.decryptStringAsync(Buffer.from(encrypted, "base64"));
+      if (decrypted.result.length > 1_000_000) throw new Error("OAuth vault value is too large");
+      if (decrypted.shouldReEncrypt) {
+        vault[request.key] = (await safeStorage.encryptStringAsync(decrypted.result)).toString(
+          "base64",
+        );
+        await writeVault(file, vault);
+      }
+      return decrypted.result;
     }
     if (request.operation === "write") {
       if (request.value === undefined) throw new Error("Vault value is required");
-      vault[request.key] = safeStorage.encryptString(request.value).toString("base64");
+      vault[request.key] = (await safeStorage.encryptStringAsync(request.value)).toString("base64");
     } else {
       delete vault[request.key];
     }

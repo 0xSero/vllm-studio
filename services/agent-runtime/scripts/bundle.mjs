@@ -19,6 +19,39 @@ const runtimePackages = [
   // packaged app's every terminal open failed with "Cannot find module
   // '@lydell/node-pty'" while the UI kept re-opening the dead terminal.
   "@lydell/node-pty",
+  "@grpc/grpc-js",
+  "@grpc/proto-loader",
+  "@js-sdsl/ordered-map",
+  "@protobufjs/aspromise",
+  "@protobufjs/base64",
+  "@protobufjs/codegen",
+  "@protobufjs/eventemitter",
+  "@protobufjs/fetch",
+  "@protobufjs/float",
+  "@protobufjs/path",
+  "@protobufjs/pool",
+  "@protobufjs/utf8",
+  "@types/node",
+  "ansi-regex",
+  "ansi-styles",
+  "cliui",
+  "color-convert",
+  "color-name",
+  "emoji-regex",
+  "escalade",
+  "get-caller-file",
+  "is-fullwidth-code-point",
+  "lodash.camelcase",
+  "long",
+  "protobufjs",
+  "require-directory",
+  "string-width",
+  "strip-ansi",
+  "undici-types",
+  "wrap-ansi",
+  "y18n",
+  "yargs",
+  "yargs-parser",
 ];
 
 rmSync(distDir, { recursive: true, force: true });
@@ -38,6 +71,10 @@ const build = spawnSync(
     "@silvia-odwyer/photon-node",
     "--external",
     "undici",
+    "--external",
+    "@grpc/grpc-js",
+    "--external",
+    "protobufjs",
     "--outfile=dist/standalone.mjs",
   ],
   { cwd: packageDir, stdio: "inherit" },
@@ -58,9 +95,21 @@ if (existsSync(lydellDir)) {
 
 for (const packageName of runtimePackages) {
   const segments = packageName.split("/");
-  const source = path.join(packageDir, "node_modules", ...segments);
+  const source = [
+    path.join(packageDir, "node_modules", ...segments),
+    path.join(packageDir, "..", "node_modules", ...segments),
+    path.join(
+      packageDir,
+      "..",
+      "node_modules",
+      "@earendil-works",
+      "pi-coding-agent",
+      "node_modules",
+      ...segments,
+    ),
+  ].find((candidate) => existsSync(path.join(candidate, "package.json")));
   const destination = path.join(distDir, "node_modules", ...segments);
-  if (!existsSync(path.join(source, "package.json"))) {
+  if (!source) {
     throw new Error(`Missing browser runtime package: ${packageName}`);
   }
   mkdirSync(path.dirname(destination), { recursive: true });

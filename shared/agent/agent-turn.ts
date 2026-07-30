@@ -47,7 +47,7 @@ export function boolField(record: Record<string, unknown>, key: string): boolean
 }
 
 export type AgentBrowserBackend = "embedded" | "sitegeist";
-export type AgentToolAccess = "read_only" | "full";
+export type AgentToolAccess = "none" | "read_only" | "full";
 
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
 export type AgentStreamingBehavior = "steer" | "followUp";
@@ -146,7 +146,8 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       images: images.value,
       cwd: cwd.value,
       piSessionId: piSessionId.value ?? null,
-      toolAccess: body.toolAccess === "full" ? "full" : "read_only",
+      toolAccess:
+        body.toolAccess === "none" ? "none" : body.toolAccess === "full" ? "full" : "read_only",
       browserToolEnabled: boolField(body, "browserToolEnabled"),
       browserSessionId: browserSessionId.value,
       browserBackend,

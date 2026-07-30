@@ -55,7 +55,7 @@ export async function GET(
 ): Promise<Response> {
   const { action } = await context.params;
   if (action !== "stream") return jsonError("Unknown action", 404);
-  const denied = requireApiAccess(request) ?? denyCrossSite(request);
+  const denied = (await requireApiAccess(request)) ?? denyCrossSite(request);
   if (denied) return denied;
   return proxyToAgentRuntime(request);
 }
@@ -66,7 +66,7 @@ export async function POST(
 ): Promise<Response> {
   const { action } = await context.params;
   if (!POST_ACTIONS.has(action)) return jsonError("Unknown action", 404);
-  const denied = requireApiAccess(request) ?? denyCrossSite(request);
+  const denied = (await requireApiAccess(request)) ?? denyCrossSite(request);
   if (denied) return denied;
   if (action === "open") {
     const invalid = await validateOpenBody(request);

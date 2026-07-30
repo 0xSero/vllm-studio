@@ -27,6 +27,9 @@ import {
   mobilePageTitle,
   routeHidesAppSidebar,
 } from "@/features/shell/left-sidebar-nav";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
+import { AuthorityFooter } from "@/features/shell/authority-footer";
+import { ApplianceBrandMark } from "@/features/shell/appliance-brand-mark";
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
@@ -166,30 +169,37 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
 
-  if (hidesAppSidebar) {
-    return <div className="h-full w-full">{children}</div>;
-  }
-
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
-      <DesktopSidebar
-        pathname={pathname}
-        isExpanded={isExpanded}
-        width={clampedSidebarWidth}
-        resizing={sidebarResizing}
-        projectsNavReady={projectsNavReady}
-        ProjectsNavSection={ProjectsNavSection}
-        onStartResize={startSidebarResize}
-        onRevealProjectsNav={() => {
-          if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
-        }}
-        onSetPinnedOpen={setDesktopSidebarPinnedOpen}
-        onOpenSearch={() => setSearchOpen(true)}
-      />
+      {BRAND_PROFILE.applianceId === "cortaix-factory" ? (
+        <a
+          href="#main-content"
+          className="fixed left-3 top-3 z-[100] -translate-y-20 bg-(--bg) px-3 py-2 text-(--fg) focus:translate-y-0"
+        >
+          Skip to content
+        </a>
+      ) : null}
+      {hidesAppSidebar ? null : (
+        <DesktopSidebar
+          pathname={pathname}
+          isExpanded={isExpanded}
+          width={clampedSidebarWidth}
+          resizing={sidebarResizing}
+          projectsNavReady={projectsNavReady}
+          ProjectsNavSection={ProjectsNavSection}
+          onStartResize={startSidebarResize}
+          onRevealProjectsNav={() => {
+            if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
+          }}
+          onSetPinnedOpen={setDesktopSidebarPinnedOpen}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
+      )}
 
-      {chatSessionRoute ? null : (
+      {hidesAppSidebar || chatSessionRoute ? null : (
         <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2.5">
+            <ApplianceBrandMark compact />
             <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
               {mobilePageTitle(pathname)}
             </span>
@@ -209,7 +219,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {mobileMenuOpen ? (
+      {!hidesAppSidebar && mobileMenuOpen ? (
         <MobileNavigationDrawer
           pathname={pathname}
           projectsNavReady={projectsNavReady}
@@ -226,12 +236,17 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         />
       ) : null}
 
-      <main
-        data-no-topbar={chatSessionRoute ? "true" : undefined}
-        className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0"
-      >
-        {children}
-      </main>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          data-no-topbar={chatSessionRoute ? "true" : undefined}
+          className="mobile-pwa-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-(--agent-bg) md:pt-0"
+        >
+          {children}
+        </main>
+        <AuthorityFooter />
+      </div>
     </div>
   );
 }

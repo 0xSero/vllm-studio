@@ -202,10 +202,10 @@ export function useSettings() {
         savedRemotely = true;
       } else {
         const err = await res.json().catch(() => ({}));
-        setStatusMessage(err.error || "Saved locally");
+        setStatusMessage(err.error || "Controller credential was not durably stored");
       }
     } catch {
-      setStatusMessage("Saved locally");
+      setStatusMessage("Controller credential was not durably stored");
     } finally {
       setSaving(false);
     }
@@ -219,9 +219,8 @@ export function useSettings() {
       loadConfig();
     }
 
-    // Avoid showing a hard error when only the server-side save failed.
     if (!savedRemotely) {
-      setConnectionStatus("unknown");
+      setConnectionStatus("error");
     }
   }, [apiSettings, loadConfig, persistLocalApiSettings]);
 

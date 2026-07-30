@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 288" width="256" height="288" role="img" aria-label="cortAIx Skill">
+  <title>cortAIx Skill</title>
+  <rect width="256" height="288" rx="16" fill="#FFFFFF" stroke="#D8DAE6" stroke-width="2"/>
+  <rect x="24" y="24" width="88" height="88" rx="20" fill="#2B276D"/>
+  <g transform="translate(24,24) scale(0.0859375)">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"/>
+      <path d="M252,322 L363,724" stroke-width="112"/>
+      <path d="M174,580 L330,580" stroke-width="92"/>
+      <path d="M512,300 L512,724" stroke-width="112"/>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"/>
+      <path d="M622,461 L922,716" stroke-width="103"/>
+    </g>
+  </g>
+  </g>
+  <text x="24" y="140" font-family="Roboto, system-ui, sans-serif" font-size="11" font-weight="500" fill="#5D607E" letter-spacing="0.1em">SKILL</text>
+  <text x="24" y="168" font-family="Roboto, system-ui, sans-serif" font-size="18" font-weight="700" fill="#131319">cortAIx Factory</text>
+  <text x="24" y="192" font-family="Roboto, system-ui, sans-serif" font-size="13" fill="#5D607E">Trusted-AI operator skill</text>
+  <rect x="24" y="220" width="64" height="24" rx="4" fill="#EEF7FB"/>
+  <text x="36" y="236" font-family="Roboto Mono, ui-monospace, monospace" font-size="11" font-weight="500" fill="#0584B7">v2.0</text>
+</svg>

@@ -21,6 +21,7 @@ const StarterPresetSchema = Schema.Struct({
     Schema.Struct({
       base_url: Schema.String,
       model: Schema.String,
+      authentication: Schema.optional(Schema.Literals(["none", "api_key"])),
     }),
   ),
   fits: Schema.optional(Schema.Boolean),
@@ -56,10 +57,17 @@ const DEFAULT_SETUP_PROGRESS: SetupProgress = {
 export function decodeSetupProgress(value: unknown): SetupProgress {
   try {
     const decoded = Schema.decodeUnknownSync(SetupProgressSchema)(value);
+    const selectedPreset =
+      decoded.selectedPreset?.remote && !decoded.selectedPreset.remote.authentication
+        ? {
+            ...decoded.selectedPreset,
+            remote: { ...decoded.selectedPreset.remote, authentication: "api_key" as const },
+          }
+        : decoded.selectedPreset;
     return {
       ...decoded,
       step: Math.max(0, Math.min(5, Math.trunc(decoded.step))),
-      selectedPreset: decoded.selectedPreset as StarterPreset | null,
+      selectedPreset: selectedPreset as StarterPreset | null,
     };
   } catch {
     return DEFAULT_SETUP_PROGRESS;

@@ -1,4 +1,4 @@
-// Connector bridge extension for Local Studio.
+// Connector bridge extension for the desktop app.
 //
 // At session start it asks the frontend for the tool inventory of every
 // enabled connector (MCP servers configured in Settings → Connectors) and
@@ -39,7 +39,11 @@ const textResult = (text: string, details: Record<string, unknown>): ToolResult 
 
 /** Render an MCP tools/call result (content blocks) as plain text. */
 const renderMcpResult = (result: unknown): string => {
-  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { content?: unknown[] }).content)
+  ) {
     const blocks = (result as { content: Array<{ type?: string; text?: string }> }).content;
     const texts = blocks
       .map((block) => (block.type === "text" && block.text ? block.text : JSON.stringify(block)))

@@ -1,5 +1,5 @@
-appId: org.local.studio.desktop
-productName: Local Studio
+appId: ${env.LOCAL_STUDIO_BRAND_APP_ID}
+productName: ${env.LOCAL_STUDIO_BRAND_APP_NAME}
 asar: true
 
 afterPack: ./scripts/electron-builder-after-pack.mjs
@@ -110,9 +110,11 @@ mac:
     - target: dmg
       arch:
         - arm64
+        - x64
     - target: zip
       arch:
         - arm64
+        - x64
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: desktop/resources/entitlements.mac.plist
@@ -131,4 +133,7 @@ win:
 
 linux:
   target:
-    - AppImage
+    - target: AppImage
+      arch:
+        - x64
+        - arm64

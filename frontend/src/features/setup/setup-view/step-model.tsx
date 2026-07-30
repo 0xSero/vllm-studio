@@ -9,6 +9,28 @@ import { TierSection, useModelIndex } from "@/features/recipes/recipes-content/p
 import { useSetupRecommendations, type SetupRecommendation } from "../recommendations";
 import type { GgufFileOption } from "../setup-model-files";
 
+export interface ApimClientFields {
+  issuer_id: string;
+  client_id: string;
+  client_secret: string;
+  token_endpoint: string;
+  audience: string;
+  scopes: string;
+  path_style: "openai" | "azure";
+  api_version: string;
+}
+
+const apimClientFieldsFromPreset = (preset: StarterPreset): ApimClientFields => ({
+  issuer_id: preset.remote?.issuer_id ?? "",
+  client_id: preset.remote?.client_id ?? "",
+  client_secret: "",
+  token_endpoint: preset.remote?.token_endpoint ?? "",
+  audience: preset.remote?.audience ?? "",
+  scopes: preset.remote?.scopes?.join(" ") ?? "",
+  path_style: preset.remote?.path_style ?? "openai",
+  api_version: preset.remote?.api_version ?? "",
+});
+
 const NO_DOWNLOADS: Map<string, ModelDownload> = new Map();
 const NO_STARTING: Set<string> = new Set();
 
@@ -78,6 +100,8 @@ function RemotePresetRow({
   preset,
   remoteApiKey,
   setRemoteApiKey,
+  remoteSubscriptionKey,
+  setRemoteSubscriptionKey,
   connectingRemote,
   remoteError,
   connectRemotePreset,
@@ -85,40 +109,194 @@ function RemotePresetRow({
   preset: StarterPreset;
   remoteApiKey: string;
   setRemoteApiKey: (value: string) => void;
+  remoteSubscriptionKey: { header: string; value: string };
+  setRemoteSubscriptionKey: (value: { header: string; value: string }) => void;
   connectingRemote: boolean;
   remoteError: string | null;
-  connectRemotePreset: (preset: StarterPreset) => void;
+  connectRemotePreset: (preset: StarterPreset, apimClientFields?: ApimClientFields) => void;
 }) {
+  const isApimClient = preset.remote?.authentication === "apim_client";
+  const [apimFields, setApimFields] = useState<ApimClientFields>(() =>
+    apimClientFieldsFromPreset(preset),
+  );
+  const authLabel =
+    preset.remote?.authentication === "none"
+      ? "Keyless"
+      : preset.remote?.authentication === "api_key"
+        ? "API key"
+        : "APIM client credentials";
+  const handleConnect = () => {
+    if (isApimClient) {
+      connectRemotePreset(preset, apimFields);
+    } else {
+      connectRemotePreset(preset);
+    }
+  };
   return (
-    <div className="rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/25 px-4 py-3">
+    <div className="border border-(--ui-border) bg-(--ui-surface) px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[length:var(--fs-md)] text-(--fg)">{preset.name}</div>
           <div className="truncate font-mono text-[11px] text-(--ui-muted)">
             {preset.remote?.model}
           </div>
+          <div className="font-mono text-[11px] text-(--ui-muted)">
+            Authentication · {authLabel}
+          </div>
         </div>
         <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[10px] uppercase text-(--ui-muted)">
           remote
         </span>
       </div>
-      <div className="mt-3 flex gap-2">
-        <Input
-          type="password"
-          value={remoteApiKey}
-          onChange={(event) => setRemoteApiKey(event.target.value)}
-          placeholder="API key"
-        />
-        <Button
-          size="sm"
-          onClick={() => connectRemotePreset(preset)}
-          disabled={connectingRemote}
-          icon={connectingRemote ? <Spinner size="xs" /> : <Zap className="h-3.5 w-3.5" />}
-        >
-          {connectingRemote ? "Connecting" : "Connect"}
-        </Button>
-      </div>
-      {remoteError ? <div className="mt-2 text-xs text-(--err)">{remoteError}</div> : null}
+      {isApimClient ? (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Input
+              value={apimFields.issuer_id}
+              onChange={(event) => setApimFields({ ...apimFields, issuer_id: event.target.value })}
+              placeholder="Issuer ID"
+            />
+            <Input
+              value={apimFields.client_id}
+              onChange={(event) => setApimFields({ ...apimFields, client_id: event.target.value })}
+              placeholder="Client ID"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              value={apimFields.client_secret}
+              onChange={(event) =>
+                setApimFields({ ...apimFields, client_secret: event.target.value })
+              }
+              placeholder="Client secret"
+            />
+            <Input
+              value={apimFields.token_endpoint}
+              onChange={(event) =>
+                setApimFields({ ...apimFields, token_endpoint: event.target.value })
+              }
+              placeholder="Token endpoint"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={apimFields.audience}
+              onChange={(event) => setApimFields({ ...apimFields, audience: event.target.value })}
+              placeholder="Audience"
+            />
+            <Input
+              value={apimFields.scopes}
+              onChange={(event) => setApimFields({ ...apimFields, scopes: event.target.value })}
+              placeholder="Scopes (space-separated)"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select
+              value={apimFields.path_style}
+              onChange={(event) =>
+                setApimFields({
+                  ...apimFields,
+                  path_style: event.target.value as "openai" | "azure",
+                })
+              }
+              placeholder="Path style"
+              options={[
+                { value: "openai", label: "OpenAI" },
+                { value: "azure", label: "Azure" },
+              ]}
+            />
+            <Input
+              value={apimFields.api_version}
+              onChange={(event) =>
+                setApimFields({ ...apimFields, api_version: event.target.value })
+              }
+              placeholder="API version (optional)"
+            />
+            <Button
+              size="sm"
+              onClick={handleConnect}
+              disabled={connectingRemote}
+              icon={connectingRemote ? <Spinner size="xs" /> : <Zap className="h-3.5 w-3.5" />}
+            >
+              {connectingRemote ? "Verifying" : "Verify and connect"}
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={remoteSubscriptionKey.header}
+              onChange={(event) =>
+                setRemoteSubscriptionKey({
+                  ...remoteSubscriptionKey,
+                  header: event.target.value,
+                })
+              }
+              placeholder="Subscription header (optional)"
+            />
+            <Input
+              type="password"
+              value={remoteSubscriptionKey.value}
+              onChange={(event) =>
+                setRemoteSubscriptionKey({
+                  ...remoteSubscriptionKey,
+                  value: event.target.value,
+                })
+              }
+              placeholder="Subscription key (optional)"
+            />
+          </div>
+          {remoteError ? <div className="mt-2 text-xs text-(--err)">{remoteError}</div> : null}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex gap-2">
+            {preset.remote?.authentication === "api_key" ? (
+              <Input
+                type="password"
+                value={remoteApiKey}
+                onChange={(event) => setRemoteApiKey(event.target.value)}
+                placeholder="API key"
+              />
+            ) : (
+              <div className="flex min-h-11 flex-1 items-center border border-(--ui-border) px-3 font-mono text-[11px] text-(--ui-muted)">
+                No credential is sent
+              </div>
+            )}
+            <Button
+              size="sm"
+              onClick={handleConnect}
+              disabled={connectingRemote}
+              icon={connectingRemote ? <Spinner size="xs" /> : <Zap className="h-3.5 w-3.5" />}
+            >
+              {connectingRemote ? "Verifying" : "Verify and connect"}
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={remoteSubscriptionKey.header}
+              onChange={(event) =>
+                setRemoteSubscriptionKey({
+                  ...remoteSubscriptionKey,
+                  header: event.target.value,
+                })
+              }
+              placeholder="Subscription header (optional)"
+            />
+            <Input
+              type="password"
+              value={remoteSubscriptionKey.value}
+              onChange={(event) =>
+                setRemoteSubscriptionKey({
+                  ...remoteSubscriptionKey,
+                  value: event.target.value,
+                })
+              }
+              placeholder="Subscription key (optional)"
+            />
+          </div>
+          {remoteError ? <div className="mt-2 text-xs text-(--err)">{remoteError}</div> : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -128,6 +306,8 @@ export function StepModel({
   beginPresetSetup,
   remoteApiKey,
   setRemoteApiKey,
+  remoteSubscriptionKey,
+  setRemoteSubscriptionKey,
   connectingRemote,
   remoteError,
   connectRemotePreset,
@@ -146,9 +326,11 @@ export function StepModel({
   beginPresetSetup: (preset: StarterPreset) => void;
   remoteApiKey: string;
   setRemoteApiKey: (value: string) => void;
+  remoteSubscriptionKey: { header: string; value: string };
+  setRemoteSubscriptionKey: (value: { header: string; value: string }) => void;
   connectingRemote: boolean;
   remoteError: string | null;
-  connectRemotePreset: (preset: StarterPreset) => void;
+  connectRemotePreset: (preset: StarterPreset, apimClientFields?: ApimClientFields) => void;
   diagnostics: StudioDiagnostics | null;
   maxVram: number;
   manualModelId: string;
@@ -199,7 +381,7 @@ export function StepModel({
               {maxVram > 0 ? `${Math.round(maxVram)} GB pool` : null}
             </span>
           </div>
-          <div className="overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/25">
+          <div className="overflow-hidden border border-(--ui-border) bg-(--ui-surface)">
             {recommendations.map((recommendation) => (
               <RecommendationRow
                 key={recommendation.hfId}
@@ -219,6 +401,8 @@ export function StepModel({
               preset={preset}
               remoteApiKey={remoteApiKey}
               setRemoteApiKey={setRemoteApiKey}
+              remoteSubscriptionKey={remoteSubscriptionKey}
+              setRemoteSubscriptionKey={setRemoteSubscriptionKey}
               connectingRemote={connectingRemote}
               remoteError={remoteError}
               connectRemotePreset={connectRemotePreset}
@@ -267,7 +451,9 @@ export function StepModel({
             variant="secondary"
             onClick={submitManualModel}
             disabled={resolvingManualModel}
-            icon={resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />}
+            icon={
+              resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />
+            }
           >
             {resolvingManualModel ? "Inspecting" : "Download"}
           </Button>

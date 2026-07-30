@@ -1,0 +1,226 @@
+<policies>
+  <inbound>
+    <base />
+    <set-variable name="correlation-id" value="@(context.RequestId.ToString())" />
+    <set-header name="x-correlation-id" exists-action="override">
+      <value>@((string)context.Variables["correlation-id"])</value>
+    </set-header>
+    <choose>
+      <when condition="@{ var header = context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;, &quot;&quot;); var token = header.StartsWith(&quot;Bearer &quot;) ? header.Substring(7).AsJwt() : null; return token != null &amp;&amp; token.Issuer == &quot;{{entra-issuer}}&quot;; }">
+        <validate-azure-ad-token tenant-id="{{entra-tenant-id}}" header-name="Authorization" output-token-variable-name="validated-jwt" failed-validation-httpcode="401" failed-validation-error-message="Invalid Entra token">
+          <audiences>
+            <audience>{{apim-api-audience}}</audience>
+          </audiences>
+        </validate-azure-ad-token>
+        <set-variable name="issuer-kind" value="entra" />
+      </when>
+      <otherwise>
+        <validate-jwt header-name="Authorization" output-token-variable-name="validated-jwt" failed-validation-httpcode="401" failed-validation-error-message="Invalid Keycloak token" require-expiration-time="true" require-signed-tokens="true">
+          <openid-config url="{{keycloak-openid-configuration}}" />
+          <audiences>
+            <audience>{{apim-api-audience}}</audience>
+          </audiences>
+          <issuers>
+            <issuer>{{keycloak-issuer}}</issuer>
+          </issuers>
+        </validate-jwt>
+        <set-variable name="issuer-kind" value="keycloak" />
+      </otherwise>
+    </choose>
+    <set-variable name="subject" value="@(((Jwt)context.Variables[&quot;validated-jwt&quot;]).Claims.GetValueOrDefault(&quot;sub&quot;, &quot;&quot;))" />
+    <set-variable name="tenant" value="@{ var jwt = (Jwt)context.Variables[&quot;validated-jwt&quot;]; return jwt.Claims.GetValueOrDefault(&quot;tid&quot;, jwt.Claims.GetValueOrDefault(&quot;tenant&quot;, &quot;&quot;)); }" />
+    <set-variable name="clearance" value="@(((Jwt)context.Variables[&quot;validated-jwt&quot;]).Claims.GetValueOrDefault(&quot;{{clearance-claim}}&quot;, &quot;&quot;))" />
+    <choose>
+      <when condition="@((string)context.Variables[&quot;subject&quot;] == &quot;&quot; || (string)context.Variables[&quot;tenant&quot;] != &quot;{{accepted-tenant}}&quot;)">
+        <trace source="local-studio-ai-gateway" severity="warning">
+          <message>@("denied reason=tenant correlation=" + (string)context.Variables["correlation-id"])</message>
+          <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+          <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+        </trace>
+        <return-response>
+          <set-status code="403" reason="Tenant denied" />
+          <set-header name="x-correlation-id" exists-action="override">
+            <value>@((string)context.Variables["correlation-id"])</value>
+          </set-header>
+          <set-body>{"error":"Tenant authorization denied"}</set-body>
+        </return-response>
+      </when>
+      <when condition="@((string)context.Variables[&quot;clearance&quot;] != &quot;C2&quot;)">
+        <trace source="local-studio-ai-gateway" severity="warning">
+          <message>@("denied reason=clearance correlation=" + (string)context.Variables["correlation-id"])</message>
+          <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+          <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+        </trace>
+        <return-response>
+          <set-status code="403" reason="Clearance denied" />
+          <set-header name="x-correlation-id" exists-action="override">
+            <value>@((string)context.Variables["correlation-id"])</value>
+          </set-header>
+          <set-body>{"error":"C2 clearance required"}</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <set-variable name="roles" value="@(((Jwt)context.Variables[&quot;validated-jwt&quot;]).Claims.GetValueOrDefault((string)context.Variables[&quot;issuer-kind&quot;] == &quot;entra&quot; ? &quot;{{entra-role-claim}}&quot; : &quot;{{keycloak-role-claim}}&quot;, new string[0]))" />
+    <choose>
+      <when condition="@{ var roles = (string[])context.Variables[&quot;roles&quot;]; var agent = context.Operation.Id == &quot;agents-list&quot; || context.Operation.Id == &quot;agent-invoke&quot;; var allowed = agent ? &quot;{{agent-operation-roles}}&quot; : &quot;{{model-operation-roles}}&quot;; return !roles.Any(role =&gt; allowed.Split(',').Contains(role)); }">
+        <trace source="local-studio-ai-gateway" severity="warning">
+          <message>@("denied reason=role correlation=" + (string)context.Variables["correlation-id"])</message>
+          <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+          <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+        </trace>
+        <return-response>
+          <set-status code="403" reason="Role denied" />
+          <set-header name="x-correlation-id" exists-action="override">
+            <value>@((string)context.Variables["correlation-id"])</value>
+          </set-header>
+          <set-body>{"error":"Operation authorization denied"}</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <rate-limit-by-key calls="{{request-quota-calls}}" renewal-period="60" counter-key="@((string)context.Variables[&quot;tenant&quot;] + &quot;:&quot; + (string)context.Variables[&quot;subject&quot;] + &quot;:&quot; + context.Operation.Id)" remaining-calls-header-name="x-ratelimit-remaining" retry-after-header-name="retry-after" />
+    <choose>
+      <when condition="@(context.Request.Method == &quot;POST&quot;)">
+        <validate-content unspecified-content-type-action="prevent" max-size="{{request-max-bytes}}" size-exceeded-action="prevent" errors-variable-name="request-validation-errors" />
+      </when>
+    </choose>
+    <choose>
+      <when condition="@(context.Operation.Id == &quot;chat-completions&quot; || context.Operation.Id == &quot;responses-create&quot;)">
+        <set-variable name="request-json" value="@(context.Request.Body.As&lt;JObject&gt;(preserveContent: true))" />
+        <choose>
+          <when condition="@{ var model = ((JObject)context.Variables[&quot;request-json&quot;])[&quot;model&quot;]?.ToString() ?? &quot;&quot;; return !&quot;{{allowed-models}}&quot;.Split(',').Contains(model); }">
+            <trace source="local-studio-ai-gateway" severity="warning">
+              <message>@("denied reason=model correlation=" + (string)context.Variables["correlation-id"])</message>
+              <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+              <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+            </trace>
+            <return-response>
+              <set-status code="403" reason="Model denied" />
+              <set-header name="x-correlation-id" exists-action="override">
+                <value>@((string)context.Variables["correlation-id"])</value>
+              </set-header>
+              <set-body>{"error":"Model is not admitted"}</set-body>
+            </return-response>
+          </when>
+        </choose>
+        <llm-token-limit tokens-per-minute="{{token-quota-per-minute}}" counter-key="@((string)context.Variables[&quot;tenant&quot;] + &quot;:&quot; + (string)context.Variables[&quot;subject&quot;])" estimate-prompt-tokens="true" tokens-consumed-header-name="x-ms-total-tokens" />
+        <choose>
+          <when condition="@(((JObject)context.Variables[&quot;request-json&quot;])[&quot;stream&quot;]?.Value&lt;bool&gt;() != true)">
+            <llm-emit-token-metric namespace="LocalStudio">
+              <dimension name="Tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+              <dimension name="Operation" value="@(context.Operation.Id)" />
+              <dimension name="Model" value="@(((JObject)context.Variables[&quot;request-json&quot;])[&quot;model&quot;]?.ToString() ?? &quot;unknown&quot;)" />
+            </llm-emit-token-metric>
+          </when>
+        </choose>
+      </when>
+      <when condition="@(context.Operation.Id == &quot;agent-invoke&quot;)">
+        <choose>
+          <when condition="@(!&quot;{{allowed-agents}}&quot;.Split(',').Contains(context.Request.MatchedParameters[&quot;agentId&quot;]))">
+            <trace source="local-studio-ai-gateway" severity="warning">
+              <message>@("denied reason=agent correlation=" + (string)context.Variables["correlation-id"])</message>
+              <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+              <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+            </trace>
+            <return-response>
+              <set-status code="403" reason="Agent denied" />
+              <set-header name="x-correlation-id" exists-action="override">
+                <value>@((string)context.Variables["correlation-id"])</value>
+              </set-header>
+              <set-body>{"error":"Agent is not admitted"}</set-body>
+            </return-response>
+          </when>
+        </choose>
+        <llm-token-limit tokens-per-minute="{{token-quota-per-minute}}" counter-key="@((string)context.Variables[&quot;tenant&quot;] + &quot;:&quot; + (string)context.Variables[&quot;subject&quot;])" estimate-prompt-tokens="true" tokens-consumed-header-name="x-ms-total-tokens" />
+      </when>
+    </choose>
+    <choose>
+      <when condition="@(context.Request.Method == &quot;POST&quot;)">
+        <llm-content-safety backend-id="{{content-safety-backend-id}}" shield-prompt="true" enforce-on-completions="true">
+          <categories output-type="EightSeverityLevels">
+            <category name="Hate" threshold="{{content-safety-threshold}}" />
+            <category name="Sexual" threshold="{{content-safety-threshold}}" />
+            <category name="SelfHarm" threshold="{{content-safety-threshold}}" />
+            <category name="Violence" threshold="{{content-safety-threshold}}" />
+          </categories>
+        </llm-content-safety>
+      </when>
+    </choose>
+    <choose>
+      <when condition="@(context.Operation.Id == &quot;models-list&quot;)">
+        <rewrite-uri template="/openai/v1/models" copy-unmatched-params="false" />
+      </when>
+      <when condition="@(context.Operation.Id == &quot;chat-completions&quot;)">
+        <rewrite-uri template="/openai/v1/chat/completions" copy-unmatched-params="false" />
+      </when>
+      <when condition="@(context.Operation.Id == &quot;responses-create&quot;)">
+        <rewrite-uri template="/openai/v1/responses" copy-unmatched-params="false" />
+      </when>
+      <when condition="@(context.Operation.Id == &quot;agents-list&quot;)">
+        <rewrite-uri template="/agents" copy-unmatched-params="false" />
+        <set-query-parameter name="api-version" exists-action="override">
+          <value>v1</value>
+        </set-query-parameter>
+      </when>
+      <when condition="@(context.Operation.Id == &quot;agent-invoke&quot;)">
+        <set-variable name="agent-input" value="@(context.Request.Body.As&lt;JObject&gt;(preserveContent: true))" />
+        <set-body>@{ var body = (JObject)context.Variables["agent-input"]; body["agent_reference"] = new JObject(new JProperty("name", context.Request.MatchedParameters["agentId"]), new JProperty("type", "agent_reference")); body.Remove("conversation_id"); return body.ToString(); }</set-body>
+        <rewrite-uri template="/openai/v1/responses" copy-unmatched-params="false" />
+        <llm-emit-token-metric namespace="LocalStudio">
+          <dimension name="Tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+          <dimension name="Operation" value="@(context.Operation.Id)" />
+          <dimension name="Agent" value="@(context.Request.MatchedParameters[&quot;agentId&quot;])" />
+        </llm-emit-token-metric>
+      </when>
+      <otherwise>
+        <trace source="local-studio-ai-gateway" severity="warning">
+          <message>@("denied reason=operation correlation=" + (string)context.Variables["correlation-id"])</message>
+          <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+          <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+        </trace>
+        <return-response>
+          <set-status code="404" reason="Operation not found" />
+          <set-header name="x-correlation-id" exists-action="override">
+            <value>@((string)context.Variables["correlation-id"])</value>
+          </set-header>
+        </return-response>
+      </otherwise>
+    </choose>
+    <trace source="local-studio-ai-gateway" severity="information">
+      <message>@("admitted operation=" + context.Operation.Id + " correlation=" + (string)context.Variables["correlation-id"])</message>
+      <metadata name="tenant" value="@((string)context.Variables[&quot;tenant&quot;])" />
+      <metadata name="subject" value="@((string)context.Variables[&quot;subject&quot;])" />
+    </trace>
+    <set-header name="Authorization" exists-action="delete" />
+    <set-header name="Proxy-Authorization" exists-action="delete" />
+    <set-header name="api-key" exists-action="delete" />
+    <set-header name="x-api-key" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-header name="x-functions-key" exists-action="delete" />
+    <set-header name="Cookie" exists-action="delete" />
+    <authentication-managed-identity resource="https://ai.azure.com" output-token-variable-name="foundry-token" ignore-error="false" />
+    <set-header name="Authorization" exists-action="override">
+      <value>@("Bearer " + (string)context.Variables["foundry-token"])</value>
+    </set-header>
+    <set-backend-service backend-id="{{foundry-backend-id}}" />
+  </inbound>
+  <backend>
+    <forward-request timeout="120" buffer-response="false" />
+  </backend>
+  <outbound>
+    <set-header name="x-correlation-id" exists-action="override">
+      <value>@(context.Variables.GetValueOrDefault&lt;string&gt;("correlation-id", context.RequestId.ToString()))</value>
+    </set-header>
+    <choose>
+      <when condition="@(context.Operation.Id == &quot;models-list&quot; || context.Operation.Id == &quot;agents-list&quot;)">
+        <set-body>@{ var body = context.Response.Body.As&lt;JObject&gt;(preserveContent: true); var source = body["data"] as JArray ?? body["value"] as JArray ?? new JArray(); var allowed = (context.Operation.Id == "models-list" ? "{{allowed-models}}" : "{{allowed-agents}}").Split(','); body["data"] = new JArray(source.Where(item =&gt; allowed.Contains(item["id"]?.ToString() ?? item["name"]?.ToString() ?? ""))); body.Remove("value"); return body.ToString(); }</set-body>
+      </when>
+    </choose>
+    <base />
+  </outbound>
+  <on-error>
+    <set-header name="x-correlation-id" exists-action="override">
+      <value>@(context.Variables.GetValueOrDefault&lt;string&gt;("correlation-id", context.RequestId.ToString()))</value>
+    </set-header>
+    <base />
+  </on-error>
+</policies>

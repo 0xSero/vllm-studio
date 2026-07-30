@@ -10,6 +10,7 @@ import { expect, test, type Page } from "@playwright/test";
 test.describe.configure({ mode: "serial" });
 
 const MODELS_PAGE = "/configure?integration=models#integrations";
+const APP_NAME = "cortAIx Factory";
 
 async function openModelsTab(page: Page): Promise<void> {
   await page.goto(MODELS_PAGE);
@@ -20,11 +21,18 @@ async function openModelsTab(page: Page): Promise<void> {
 
 test("configure lists the provider catalog", async ({ page }) => {
   await openModelsTab(page);
+  await expect(page).toHaveTitle("cortAIx Factory");
+  await expect(page.locator("html")).toHaveAttribute("data-appliance", "cortaix-factory");
+  await expect(page.getByText("cortAIx Factory", { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId("provider-add-e2e-cloud")).toBeVisible();
   await expect(page.getByTestId("provider-add-anthropic")).toBeVisible();
   await expect(page.getByTestId("provider-add-openai-codex")).toBeVisible();
-  await expect(page.getByTestId("provider-add-anthropic").getByRole("button", { name: "Sign in" })).toBeVisible();
-  await expect(page.getByTestId("provider-add-anthropic").getByRole("button", { name: "API key" })).toBeVisible();
+  await expect(
+    page.getByTestId("provider-add-anthropic").getByRole("button", { name: "Sign in" }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("provider-add-anthropic").getByRole("button", { name: "API key" }),
+  ).toBeVisible();
 });
 
 test("signs in to a provider with OAuth in the browser", async ({ page, context }) => {
@@ -39,7 +47,7 @@ test("signs in to a provider with OAuth in the browser", async ({ page, context 
   const approval = await context.newPage();
   await approval.goto(authUrl as string);
   await approval.getByRole("button", { name: "Approve" }).click();
-  await expect(approval.getByText("Approved — return to Local Studio.")).toBeVisible();
+  await expect(approval.getByText(`Approved — return to ${APP_NAME}.`)).toBeVisible();
   await approval.close();
 
   await expect(page.getByTestId("provider-login-success")).toBeVisible({ timeout: 20_000 });
@@ -77,7 +85,10 @@ test("provider models join the picker and chat streams through the cloud", async
 test("signs out of the OAuth provider", async ({ page }) => {
   await openModelsTab(page);
   await expect(page.getByTestId("provider-row-e2e-cloud")).toBeVisible();
-  await page.getByTestId("provider-row-e2e-cloud").getByRole("button", { name: "Sign out" }).click();
+  await page
+    .getByTestId("provider-row-e2e-cloud")
+    .getByRole("button", { name: "Sign out" })
+    .click();
   await expect(page.getByTestId("provider-row-e2e-cloud")).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByTestId("provider-add-e2e-cloud")).toBeVisible();
 });
@@ -99,7 +110,10 @@ test("connects a builtin provider with an API key", async ({ page }) => {
   await expect(page.getByTestId("provider-row-fireworks")).toContainText("API key");
 
   await test.step("Sign out again", async () => {
-    await page.getByTestId("provider-row-fireworks").getByRole("button", { name: "Sign out" }).click();
+    await page
+      .getByTestId("provider-row-fireworks")
+      .getByRole("button", { name: "Sign out" })
+      .click();
     await expect(page.getByTestId("provider-row-fireworks")).toHaveCount(0, { timeout: 15_000 });
   });
 });

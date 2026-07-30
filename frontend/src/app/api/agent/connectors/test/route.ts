@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let body: typeof ConnectorTestInputSchema.Type;
   try {

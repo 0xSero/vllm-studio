@@ -3,6 +3,8 @@
 // pipeline (login job -> auth_url -> browser approval -> credential persisted
 // to auth.json -> Bearer on model requests) against fake-cloud.mjs.
 
+import { APP_NAME } from "./appliance.mjs";
+
 const BASE = (process.env.LOCAL_STUDIO_E2E_FAKE_CLOUD || "http://127.0.0.1:43213").replace(
   /\/+$/,
   "",
@@ -40,7 +42,7 @@ const providers = {
         const state = Math.random().toString(36).slice(2);
         callbacks.onAuth({
           url: `${BASE}/authorize?state=${state}`,
-          instructions: "Approve Local Studio in your browser.",
+          instructions: `Approve ${APP_NAME} in your browser.`,
         });
         for (let attempt = 0; attempt < 480; attempt += 1) {
           if (callbacks.signal?.aborted) throw new Error("Login cancelled");

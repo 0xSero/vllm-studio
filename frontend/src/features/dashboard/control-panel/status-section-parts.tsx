@@ -6,6 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 import { ModelStopConfirm } from "@/features/dashboard/model-stop-confirm";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
 import type { ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
+import { DARK_THEME_ID, isLightThemeId, LIGHT_THEME_ID } from "@/lib/theme-runtime";
 import { useAppStore } from "@/store";
 import { ModelsDropdown } from "./status-section-models-dropdown";
 import type { CompactMetricView, MetricColumnView } from "./status-section-view";
@@ -175,17 +176,12 @@ function HeaderThemeToggle() {
   const { themeId, setThemeId } = useAppStore(
     useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
   );
-  const isDark =
-    themeId === "zai-dark" ||
-    themeId === "zai-sky" ||
-    themeId === "zai-violet" ||
-    themeId === "zai-emerald" ||
-    themeId === "zai-rose";
+  const isDark = !isLightThemeId(themeId);
   const Icon = isDark ? Sun : Moon;
   return (
     <button
       type="button"
-      onClick={() => setThemeId(isDark ? "zai-light" : "zai-dark")}
+      onClick={() => setThemeId(isDark ? LIGHT_THEME_ID : DARK_THEME_ID)}
       className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
       title={isDark ? "Light mode" : "Dark mode"}
     >

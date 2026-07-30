@@ -1,11 +1,99 @@
 export const CONTROLLERS_STORAGE_KEY = "local-studio.controllers";
 const LEGACY_CONTROLLERS_STORAGE_KEY = [["v", "llm-studio"].join(""), "controllers"].join(".");
 export const CONTROLLERS_CHANGED_EVENT = "vllm:controllers-changed";
+export const CONTROLLER_CREDENTIAL_PERSISTENCE_EVENT =
+  "local-studio:controller-credential-persistence";
 
 export type SavedController = {
   url: string;
   apiKey?: string;
+  hasApiKey?: boolean;
   name?: string;
+};
+
+const runtimeControllerKeys = new Map<string, string>();
+const credentialPersistence = new Map<string, ControllerCredentialPersistence>();
+
+export type ControllerCredentialPersistence = {
+  url: string;
+  state: "pending" | "stored" | "removed" | "failed";
+  detail: string;
+};
+
+const updateCredentialPersistence = (
+  url: string,
+  state: ControllerCredentialPersistence["state"],
+  detail: string,
+): void => {
+  const persistence = { url, state, detail };
+  credentialPersistence.set(url, persistence);
+  window.dispatchEvent(
+    new CustomEvent(CONTROLLER_CREDENTIAL_PERSISTENCE_EVENT, { detail: persistence }),
+  );
+};
+
+export const getControllerCredentialPersistence = (
+  url: string,
+): ControllerCredentialPersistence | null =>
+  credentialPersistence.get(normalizeControllerUrl(url)) ?? null;
+
+export const subscribeControllerCredentialPersistence = (callback: () => void): (() => void) => {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(CONTROLLER_CREDENTIAL_PERSISTENCE_EVENT, callback);
+  return () => window.removeEventListener(CONTROLLER_CREDENTIAL_PERSISTENCE_EVENT, callback);
+};
+
+const persistControllerCredential = (url: string, apiKey: string, attempt = 0): void => {
+  if (!apiKey) return;
+  runtimeControllerKeys.set(url, apiKey);
+  updateCredentialPersistence(url, "pending", "Storing controller credential");
+  void fetch("/api/settings/controller-credential", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backendUrl: url, apiKey }),
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error("Controller credential persistence failed");
+      updateCredentialPersistence(url, "stored", "Controller credential stored");
+    })
+    .catch(() => {
+      if (attempt < 2) {
+        window.setTimeout(() => persistControllerCredential(url, apiKey, attempt + 1), 250);
+        return;
+      }
+      updateCredentialPersistence(
+        url,
+        "failed",
+        "Controller credential is available only until this application exits",
+      );
+    });
+};
+
+export const removeControllerCredential = (url: string, attempt = 0): void => {
+  const normalized = normalizeControllerUrl(url);
+  if (!normalized) return;
+  runtimeControllerKeys.delete(normalized);
+  updateCredentialPersistence(normalized, "pending", "Removing controller credential");
+  void fetch("/api/settings/controller-credential", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backendUrl: normalized, apiKey: "" }),
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error("Controller credential removal failed");
+      updateCredentialPersistence(normalized, "removed", "Controller credential removed");
+    })
+    .catch(() => {
+      if (attempt < 2) {
+        window.setTimeout(() => removeControllerCredential(normalized, attempt + 1), 250);
+        return;
+      }
+      updateCredentialPersistence(
+        normalized,
+        "failed",
+        "Controller metadata was removed but its durable credential could not be removed",
+      );
+    });
 };
 
 export function normalizeControllerUrl(url: string): string {
@@ -32,9 +120,11 @@ function parseSavedController(entry: unknown): SavedController | null {
   const url = typeof record.url === "string" ? normalizeControllerUrl(record.url) : "";
   if (!url) return null;
   const apiKey = typeof record.apiKey === "string" ? record.apiKey.trim() : "";
+  const hasApiKey = record.hasApiKey === true || Boolean(apiKey);
   const name = typeof record.name === "string" ? record.name.trim() : "";
   const out: SavedController = { url };
-  if (apiKey) out.apiKey = apiKey;
+  if (apiKey) persistControllerCredential(url, apiKey);
+  if (hasApiKey) out.hasApiKey = true;
   if (name) out.name = name;
   return out;
 }
@@ -73,10 +163,11 @@ export function saveSavedControllers(controllers: SavedController[]): SavedContr
   for (const controller of controllers) {
     const url = normalizeControllerUrl(controller.url);
     if (!url) continue;
-    const apiKey = controller.apiKey?.trim();
+    const apiKey = controller.apiKey?.trim() || runtimeControllerKeys.get(url);
     const name = controller.name?.trim();
     const out: SavedController = { url };
-    if (apiKey) out.apiKey = apiKey;
+    if (apiKey) persistControllerCredential(url, apiKey);
+    if (apiKey || controller.hasApiKey) out.hasApiKey = true;
     if (name) out.name = name;
     byUrl.set(url, out);
   }
@@ -95,6 +186,8 @@ export function getControllerApiKey(url: string): string {
   return (
     loadSavedControllers().find(
       (controller) => normalizeControllerUrl(controller.url) === normalized,
-    )?.apiKey ?? ""
+    )?.apiKey ??
+    runtimeControllerKeys.get(normalized) ??
+    ""
   );
 }

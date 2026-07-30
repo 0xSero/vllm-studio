@@ -1,47 +1,40 @@
-// Shared, runtime-agnostic access-control logic for the frontend.
-//
-// The frontend serves an in-process coding agent with shell/filesystem tools,
-// so its API surface is privileged: reaching it is equivalent to code execution
-// on the host. Access is therefore gated by an opt-in shared secret. The default
-// posture is safe-by-default — open for local development and the embedded
-// desktop app, and locked when running as a production web server without an
-// explicit token or opt-out. This mirrors the controller's bind/auth policy.
-//
-// This module imports nothing Node-specific so it can run in both the Edge
-// middleware and Node route handlers; the constant-time comparison here is a
-// pure-JS fallback. Node route guards use node:crypto timingSafeEqual instead.
-
 export const STUDIO_TOKEN_HEADER = "x-local-studio-token";
 export const STUDIO_TOKEN_COOKIE = "local_studio_token";
 
 export type AccessDecision =
-  | { kind: "allow"; reason: "desktop" | "development" | "no-token" }
-  | { kind: "require-token"; token: string };
+  | { kind: "allow"; reason: "desktop" | "development" }
+  | { kind: "require-token"; token: string }
+  | { kind: "optional-oidc" }
+  | { kind: "require-oidc" }
+  | { kind: "misconfigured" };
+
+export type AccessPostureInput = {
+  enterpriseMode?: "local" | "optional_oidc" | "required_oidc" | null;
+  enterpriseConfigPath?: string;
+  desktop?: string;
+  nodeEnv?: string;
+  frontendToken?: string;
+};
 
 function trimmedEnv(name: string): string {
   const value = process.env[name];
   return typeof value === "string" ? value.trim() : "";
 }
 
-// Resolve the access posture from environment. Pure function of env so the edge
-// middleware and the node route guards always agree.
-//
-// Gating is OPT-IN: the app is open by default (so a fresh local/desktop setup
-// is unchanged), and only requires a token once LOCAL_STUDIO_FRONTEND_TOKEN is
-// set. Set the token when serving the frontend on an untrusted network.
-export function resolveAccessPosture(): AccessDecision {
-  // The desktop app embeds a loopback-only Next server — always open, even if a
-  // token is set elsewhere in the environment.
-  if (trimmedEnv("LOCAL_STUDIO_DATA_DIR")) return { kind: "allow", reason: "desktop" };
-  // Local development (`next dev`) is loopback and single-user.
-  if (process.env.NODE_ENV !== "production") return { kind: "allow", reason: "development" };
-  const token = trimmedEnv("LOCAL_STUDIO_FRONTEND_TOKEN");
-  if (token) return { kind: "require-token", token };
-  // No token configured: open. Setting the token is the opt-in to gating.
-  return { kind: "allow", reason: "no-token" };
+export function resolveAccessPosture(input: AccessPostureInput = {}): AccessDecision {
+  const enterpriseMode = input.enterpriseMode;
+  if (enterpriseMode === "required_oidc") return { kind: "require-oidc" };
+  if (enterpriseMode === "optional_oidc") return { kind: "optional-oidc" };
+  const enterpriseConfigPath =
+    input.enterpriseConfigPath ?? trimmedEnv("LOCAL_STUDIO_ENTERPRISE_AUTH_CONFIG");
+  if (enterpriseMode !== "local" && enterpriseConfigPath) return { kind: "require-oidc" };
+  const desktop = input.desktop ?? trimmedEnv("LOCAL_STUDIO_DESKTOP");
+  if (desktop === "1" || desktop === "true") return { kind: "allow", reason: "desktop" };
+  const nodeEnv = input.nodeEnv ?? process.env.NODE_ENV;
+  if (nodeEnv !== "production") return { kind: "allow", reason: "development" };
+  return { kind: "misconfigured" };
 }
 
-// Constant-time string comparison usable in both Edge and Node runtimes.
 export function timingSafeStringEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

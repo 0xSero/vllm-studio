@@ -1,0 +1,408 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-studio
+  labels:
+    local-studio.io/workload-identity: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-studio-frontend
+  namespace: local-studio
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-studio-controller
+  namespace: local-studio
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-studio-agent-runtime
+  namespace: local-studio
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-studio-workload-identity
+  namespace: local-studio
+data:
+  workload-identity.json: |
+    {
+      "mode": "required",
+      "x509_mtls": "required",
+      "endpoint": "unix:///run/spiffe/workload/spire-agent.sock",
+      "trust_domain": "tprime.vlans.ca",
+      "frontend_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-frontend",
+      "controller_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-controller",
+      "agent_runtime_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-agent-runtime",
+      "agent_runtime_audience": "local-studio-agent-runtime",
+      "controller_audience": "local-studio-controller"
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-studio-controller
+  namespace: local-studio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: local-studio
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-studio
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: local-studio-controller
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: local-studio/controller:2.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOCAL_STUDIO_HOST
+              value: 0.0.0.0
+            - name: LOCAL_STUDIO_PORT
+              value: "8080"
+            - name: LOCAL_STUDIO_DATA_DIR
+              value: /var/lib/local-studio
+            - name: LOCAL_STUDIO_MODELS_DIR
+              value: /models
+            - name: LOCAL_STUDIO_AGENT_RUNTIME_URL
+              value: https://local-studio-agent-runtime:8081
+            - name: LOCAL_STUDIO_SPIFFE_CONFIG
+              value: /etc/local-studio/workload-identity.json
+            - name: TMPDIR
+              value: /tmp
+          ports:
+            - name: https
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: https
+          livenessProbe:
+            tcpSocket:
+              port: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: workload-api
+              mountPath: /run/spiffe/workload
+              readOnly: true
+            - name: workload-config
+              mountPath: /etc/local-studio
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/local-studio
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: workload-config
+          configMap:
+            name: local-studio-workload-identity
+        - name: data
+          emptyDir: {}
+        - name: models
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-studio-controller
+  namespace: local-studio
+spec:
+  selector:
+    app.kubernetes.io/name: local-studio
+    app.kubernetes.io/component: controller
+  ports:
+    - name: https
+      port: 8080
+      targetPort: https
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-studio-agent-runtime
+  namespace: local-studio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: local-studio
+      app.kubernetes.io/component: agent-runtime
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-studio
+        app.kubernetes.io/component: agent-runtime
+    spec:
+      serviceAccountName: local-studio-agent-runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent-runtime
+          image: local-studio/agent-runtime:2.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOCAL_STUDIO_AGENT_RUNTIME_HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "8081"
+            - name: LOCAL_STUDIO_DATA_DIR
+              value: /var/lib/local-studio
+            - name: LOCAL_STUDIO_CONTROLLER_URL
+              value: https://local-studio-controller:8080
+            - name: BACKEND_URL
+              value: https://local-studio-controller:8080
+            - name: LOCAL_STUDIO_SPIFFE_CONFIG
+              value: /etc/local-studio/workload-identity.json
+            - name: TMPDIR
+              value: /tmp
+          ports:
+            - name: https
+              containerPort: 8081
+          readinessProbe:
+            tcpSocket:
+              port: https
+          livenessProbe:
+            tcpSocket:
+              port: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: workload-api
+              mountPath: /run/spiffe/workload
+              readOnly: true
+            - name: workload-config
+              mountPath: /etc/local-studio
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/local-studio
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: workload-config
+          configMap:
+            name: local-studio-workload-identity
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-studio-agent-runtime
+  namespace: local-studio
+spec:
+  selector:
+    app.kubernetes.io/name: local-studio
+    app.kubernetes.io/component: agent-runtime
+  ports:
+    - name: https
+      port: 8081
+      targetPort: https
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-studio-frontend
+  namespace: local-studio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: local-studio
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-studio
+        app.kubernetes.io/component: frontend
+    spec:
+      serviceAccountName: local-studio-frontend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: local-studio/frontend:2.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "3000"
+            - name: LOCAL_STUDIO_DATA_DIR
+              value: /var/lib/local-studio
+            - name: LOCAL_STUDIO_AGENT_RUNTIME_URL
+              value: https://local-studio-agent-runtime:8081
+            - name: BACKEND_URL
+              value: https://local-studio-controller:8080
+            - name: LOCAL_STUDIO_SPIFFE_CONFIG
+              value: /etc/local-studio/workload-identity.json
+            - name: TMPDIR
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: workload-api
+              mountPath: /run/spiffe/workload
+              readOnly: true
+            - name: workload-config
+              mountPath: /etc/local-studio
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/local-studio
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: workload-config
+          configMap:
+            name: local-studio-workload-identity
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-studio-frontend
+  namespace: local-studio
+spec:
+  selector:
+    app.kubernetes.io/name: local-studio
+    app.kubernetes.io/component: frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: local-studio-default-deny
+  namespace: local-studio
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: local-studio-internal
+  namespace: local-studio
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - frontend
+          - controller
+          - agent-runtime
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - frontend
+                  - controller
+                  - agent-runtime
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - frontend
+                  - controller
+                  - agent-runtime
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

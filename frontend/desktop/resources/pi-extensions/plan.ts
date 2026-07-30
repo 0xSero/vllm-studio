@@ -1,4 +1,4 @@
-// Plan tool extension for Local Studio.
+// Plan tool extension for the desktop app.
 //
 // Gives Pi a structured task plan it can read and rewrite. The renderer shows
 // and edits the same document in the right-hand "Plan" panel through
@@ -16,6 +16,7 @@ type ToolResult = {
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const PLAN_SESSION_ID = process.env.LOCAL_STUDIO_PLAN_SESSION_ID ?? "";
 const PLAN_TOOL_TIMEOUT_MS = 20_000;
+const brandAppName = process.env.LOCAL_STUDIO_BRAND_APP_NAME?.trim() || "Local Studio";
 
 function result(text: string, details: Record<string, unknown> = {}): ToolResult {
   return { content: [{ type: "text", text }], details };
@@ -53,8 +54,7 @@ export default function registerPlanExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "plan_read",
     label: "Plan: Read",
-    description:
-      "Read the shared Local Studio task plan (a Markdown checklist shown in the Plan panel). Call this at the start of a multi-step task to pick up an existing plan and its progress.",
+    description: `Read the shared ${brandAppName} task plan (a Markdown checklist shown in the Plan panel). Call this at the start of a multi-step task to pick up an existing plan and its progress.`,
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       try {
@@ -70,8 +70,7 @@ export default function registerPlanExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "plan_write",
     label: "Plan: Write",
-    description:
-      "Replace the shared Local Studio task plan shown in the Plan panel. Provide the FULL Markdown document. Use a `### To-dos` heading followed by checkbox lines: `- [ ]` pending, `- [/]` in progress, `- [x]` completed, `- [-]` cancelled. Keep exactly one item in progress. Call this whenever the plan or the status of a step changes.",
+    description: `Replace the shared ${brandAppName} task plan shown in the Plan panel. Provide the FULL Markdown document. Use a \`### To-dos\` heading followed by checkbox lines: \`- [ ]\` pending, \`- [/]\` in progress, \`- [x]\` completed, \`- [-]\` cancelled. Keep exactly one item in progress. Call this whenever the plan or the status of a step changes.`,
     parameters: Type.Object({
       markdown: Type.String({
         description: "Full replacement plan Markdown (a `### To-dos` checkbox list).",

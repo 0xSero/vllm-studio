@@ -9,7 +9,7 @@ const config = {
     "desktop/**/*.test.ts",
   ],
   project: ["src/**/*.{ts,tsx}", "desktop/**/*.{ts,tsx}"],
-  ignore: [".next/**", "node_modules/**"],
+  ignore: [".next/**", ".next-dev/**", "node_modules/**"],
   ignoreIssues: {
     "desktop/interfaces.ts": ["types"],
   },
@@ -35,6 +35,7 @@ const config = {
     "fast-check",
     "@types/proper-lockfile",
     "@types/semver",
+    "electron-builder",
   ],
   ignoreExportsUsedInFile: true,
 };

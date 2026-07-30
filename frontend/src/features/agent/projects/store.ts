@@ -51,9 +51,9 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
   let started = false;
   let lastGitFetch: string | null = null;
   let snapshot: ProjectsSnapshot = {
-    projects: applyProjectOrder(readCachedProjects()),
+    projects: [],
     loaded: false,
-    selectedId: readSelection(),
+    selectedId: null,
     gitSummaries: new Map(),
   };
 
@@ -117,6 +117,11 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
   const start = (): void => {
     if (started) return;
     started = true;
+    const projects = applyProjectOrder(readCachedProjects());
+    const selectedId = readSelection();
+    if (projects.length > 0 || selectedId) {
+      update({ ...snapshot, projects, selectedId });
+    }
     void refresh();
   };
 

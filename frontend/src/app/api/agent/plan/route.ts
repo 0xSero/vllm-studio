@@ -6,14 +6,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const sessionId = request.nextUrl.searchParams.get("sessionId");
   return Response.json(await readAgentPlan(sessionId));
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const sessionId = request.nextUrl.searchParams.get("sessionId");
   const body = (await request.json().catch(() => null)) as {

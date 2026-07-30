@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "id": "tensorprime-phase0",
+  "phase": "phase0",
+  "trust_domain": "tprime.vlans.ca",
+  "spiffe_id_template": "spiffe://tprime.vlans.ca/ns/{namespace}/sa/{serviceaccount}",
+  "workload_api": {
+    "csi_driver": "csi.spiffe.io",
+    "mount_path": "/run/spiffe/workload",
+    "socket_path": "/run/spiffe/workload/spire-agent.sock",
+    "endpoint": "unix:///run/spiffe/workload/spire-agent.sock"
+  },
+  "x509_svid": {
+    "ttl_seconds": 3600,
+    "rotation": "workload-api-stream",
+    "persistence": "memory-only"
+  },
+  "capabilities": {
+    "svid_issuance": "available",
+    "svid_rotation": "available",
+    "service_mtls_enforcement": "not-configured",
+    "ray_tls": "not-configured"
+  },
+  "identities": [
+    {
+      "component": "frontend",
+      "namespace": "local-studio",
+      "service_account": "local-studio-frontend",
+      "spiffe_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-frontend"
+    },
+    {
+      "component": "controller",
+      "namespace": "local-studio",
+      "service_account": "local-studio-controller",
+      "spiffe_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-controller"
+    },
+    {
+      "component": "agent-runtime",
+      "namespace": "local-studio",
+      "service_account": "local-studio-agent-runtime",
+      "spiffe_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-agent-runtime"
+    }
+  ],
+  "services": [
+    {
+      "id": "ray-client",
+      "kind": "ray-client",
+      "scope": "in-cluster",
+      "protocol": "grpc",
+      "url": "grpc://raycluster-kuberay-head-svc.kuberay-system:10001",
+      "host_header": null,
+      "openai_compatible": false,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "ray-dashboard",
+      "kind": "ray-dashboard",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://raycluster-kuberay-head-svc.kuberay-system:8265",
+      "host_header": null,
+      "openai_compatible": false,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "ray-serve",
+      "kind": "ray-serve",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://raycluster-kuberay-head-svc.kuberay-system:8000",
+      "host_header": null,
+      "openai_compatible": false,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "vllm-gemma4",
+      "kind": "vllm",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://gemma4.cortaix-llm-inference:80",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "vllm-qwen3-next",
+      "kind": "vllm",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://qwen3-next.cortaix-llm-inference:80",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "litellm-gateway",
+      "kind": "litellm",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://litellm-gateway.cortaix-llm-inference:4000",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "embedding-http",
+      "kind": "embedding-http",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://bge-embed.cortaix-llm-inference:7997",
+      "host_header": null,
+      "openai_compatible": false,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "embedding-grpc",
+      "kind": "embedding-grpc",
+      "scope": "in-cluster",
+      "protocol": "grpc",
+      "url": "grpc://bge-embed-grpc.cortaix-llm-inference:8080",
+      "host_header": null,
+      "openai_compatible": false,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "whisper-asr",
+      "kind": "asr",
+      "scope": "in-cluster",
+      "protocol": "http",
+      "url": "http://whisper-asr.cortaix-llm-inference:8000",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "gemma4-external",
+      "kind": "vllm",
+      "scope": "external",
+      "protocol": "http",
+      "url": "http://172.18.7.201:80",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "qwen3-next-external",
+      "kind": "vllm",
+      "scope": "external",
+      "protocol": "http",
+      "url": "http://172.18.7.202:80",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "platform-api-external",
+      "kind": "unified-api",
+      "scope": "external",
+      "protocol": "http",
+      "url": "http://172.18.7.204:80",
+      "host_header": "api.tprime.vlans.ca",
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    },
+    {
+      "id": "llm-api-external",
+      "kind": "unified-api",
+      "scope": "external",
+      "protocol": "http",
+      "url": "http://172.18.7.206:80",
+      "host_header": null,
+      "openai_compatible": true,
+      "transport_security": "plaintext",
+      "server_mtls_enforced": false
+    }
+  ]
+}

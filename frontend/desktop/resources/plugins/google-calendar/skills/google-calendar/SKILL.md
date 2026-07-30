@@ -1,6 +1,6 @@
 ---
 name: google-calendar
-description: Inspect the connected Google Calendar account with Local Studio's read-only tools.
+description: Inspect the connected Google Calendar account with read-only tools.
 ---
 
 # Google Calendar

@@ -11,11 +11,15 @@ import { resolveAugmentedPath } from "../helpers/resolve-path";
 export type AgentRuntimeHandle = {
   process?: ChildProcess;
   url: string;
+  lifecycleToken: string;
+  instanceId: string;
 };
 
 type StartAgentRuntimeOptions = {
   frontendUrl: string;
   preferredPort?: number;
+  lifecycleToken?: string;
+  onSpawn?: (child: ChildProcess) => void;
 };
 
 let currentAgentRuntime: ChildProcess | null = null;
@@ -42,12 +46,12 @@ function agentRuntimeEntry(): string {
       );
 }
 
-async function isAgentRuntimeHealthy(url: string): Promise<boolean> {
+async function isAgentRuntimeHealthy(url: string, instanceId: string): Promise<boolean> {
   try {
     const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1_000) });
     if (!response.ok) return false;
-    const payload = (await response.json()) as { service?: unknown };
-    return payload.service === "local-studio-agent-runtime";
+    const payload = (await response.json()) as { service?: unknown; instanceId?: unknown };
+    return payload.service === "local-studio-agent-runtime" && payload.instanceId === instanceId;
   } catch {
     return false;
   }
@@ -56,6 +60,7 @@ async function isAgentRuntimeHealthy(url: string): Promise<boolean> {
 async function waitForAgentRuntime(
   child: ChildProcess,
   url: string,
+  instanceId: string,
   timeoutMs: number,
 ): Promise<void> {
   const startedAt = Date.now();
@@ -63,7 +68,7 @@ async function waitForAgentRuntime(
     if (child.exitCode !== null) {
       throw new Error(`Agent runtime exited with code ${child.exitCode}`);
     }
-    if (await isAgentRuntimeHealthy(url)) return;
+    if (await isAgentRuntimeHealthy(url, instanceId)) return;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`Timed out waiting for agent runtime: ${url}`);
@@ -92,12 +97,6 @@ async function stopChild(child: ChildProcess): Promise<void> {
 export async function startAgentRuntime(
   options: StartAgentRuntimeOptions,
 ): Promise<AgentRuntimeHandle> {
-  const preferredUrl = options.preferredPort ? `http://127.0.0.1:${options.preferredPort}` : null;
-  if (preferredUrl && (await isAgentRuntimeHealthy(preferredUrl))) {
-    log.info(`Using agent runtime at ${preferredUrl}`);
-    return { url: preferredUrl };
-  }
-
   const entry = agentRuntimeEntry();
   if (!existsSync(entry)) {
     throw new Error(`Missing agent runtime bundle: ${entry}`);
@@ -106,6 +105,11 @@ export async function startAgentRuntime(
   const port = await resolveStablePort(options.preferredPort);
   const url = `http://127.0.0.1:${port}`;
   const litterBridgeSecret = randomBytes(32).toString("base64url");
+  const lifecycleToken =
+    options.lifecycleToken === undefined
+      ? randomBytes(32).toString("base64url")
+      : options.lifecycleToken.trim();
+  const instanceId = randomBytes(16).toString("hex");
   const child = fork(entry, {
     stdio: "pipe",
     detached: false,
@@ -119,9 +123,14 @@ export async function startAgentRuntime(
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_FRONTEND_BASE: options.frontendUrl,
+      LOCAL_STUDIO_DESKTOP: "1",
       LOCAL_STUDIO_LITTER_BRIDGE_SECRET: litterBridgeSecret,
+      ...(lifecycleToken ? { LOCAL_STUDIO_AGENT_LIFECYCLE_TOKEN: lifecycleToken } : {}),
+      ...(lifecycleToken ? { LOCAL_STUDIO_PROVISIONING_TOKEN: lifecycleToken } : {}),
+      LOCAL_STUDIO_AGENT_RUNTIME_INSTANCE_ID: instanceId,
     },
   });
+  options.onSpawn?.(child);
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
     log.info(`agent-runtime: ${String(chunk).trim()}`);
@@ -135,8 +144,8 @@ export async function startAgentRuntime(
 
   currentAgentRuntime = child;
   try {
-    await waitForAgentRuntime(child, url, DESKTOP_CONFIG.startupTimeoutMs);
-    return { process: child, url };
+    await waitForAgentRuntime(child, url, instanceId, DESKTOP_CONFIG.startupTimeoutMs);
+    return { process: child, url, lifecycleToken, instanceId };
   } catch (error) {
     await stopChild(child);
     throw error;

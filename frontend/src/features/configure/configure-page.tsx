@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
 import { RecipesContent } from "@/features/recipes/recipes-content/recipes-content";
 import { IntegrationsContent } from "@/features/integrations/integrations-page";
@@ -20,6 +21,7 @@ import { ServerContent } from "@/features/logs/server-view";
 import { useConfigure } from "./use-configure";
 import { RigsSection } from "./rigs-section";
 import { configureSectionFromHash, type ConfigureSectionId } from "./configure-navigation";
+import { ConnectedModelsSection } from "./connected-models-section";
 
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
@@ -159,7 +161,7 @@ export default function ConfigurePage() {
           <section>
             <h2 className="text-[length:var(--fs-xl)] font-medium text-(--ui-fg)">Configuration</h2>
             <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
-              Everything Local Studio needs to run models, in one place.
+              Everything {BRAND_PROFILE.appName} needs to run models, in one place.
             </p>
             <div className="mt-4 divide-y divide-(--ui-separator) overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-surface)">
               <OverviewRow
@@ -209,7 +211,12 @@ export default function ConfigurePage() {
 
       {section === "rig" ? <RigsSection state={state} /> : null}
 
-      {section === "models" ? <RecipesContent embedded /> : null}
+      {section === "models" ? (
+        <div className="space-y-8">
+          <ConnectedModelsSection />
+          <RecipesContent embedded />
+        </div>
+      ) : null}
       {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>

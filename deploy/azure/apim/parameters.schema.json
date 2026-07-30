@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-studio.invalid/schemas/azure-apim-deployment-parameters.json",
+  "title": "Standard APIM deployment parameters",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "contentVersion", "parameters"],
+  "properties": {
+    "$schema": {
+      "const": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+    },
+    "contentVersion": {
+      "const": "1.0.0.0"
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiRevision",
+        "apiRevisionDescription",
+        "apimServiceName",
+        "appInsightsLoggerResourceId",
+        "bootstrapRevision",
+        "contentSafetyAccountName",
+        "contentSafetyEndpoint",
+        "contentSafetyResourceGroupName",
+        "foundryAccountName",
+        "foundryResourceGroupName",
+        "keyVaultName",
+        "keyVaultNamedValues",
+        "keyVaultResourceGroupName",
+        "namedValues"
+      ],
+      "properties": {
+        "apiId": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "apiRevision": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "apiRevisionDescription": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "apimServiceName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "appInsightsLoggerResourceId": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "bootstrapRevision": {
+          "$ref": "#/$defs/booleanParameter"
+        },
+        "contentSafetyAccountName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "contentSafetyEndpoint": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "contentSafetyResourceGroupName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "contentSafetySubscriptionId": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "foundryAccountName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "foundryResourceGroupName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "foundrySubscriptionId": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "keyVaultName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "keyVaultNamedValues": {
+          "$ref": "#/$defs/objectParameter"
+        },
+        "keyVaultResourceGroupName": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "keyVaultSubscriptionId": {
+          "$ref": "#/$defs/stringParameter"
+        },
+        "namedValues": {
+          "$ref": "#/$defs/objectParameter"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "booleanParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "boolean"
+        }
+      }
+    },
+    "objectParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "object"
+        }
+      }
+    },
+    "stringParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

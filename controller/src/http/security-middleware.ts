@@ -2,7 +2,13 @@ import { timingSafeEqual } from "node:crypto";
 import { Effect } from "effect";
 import type { MiddlewareHandler, Next } from "hono";
 import type { AppContext } from "../app-context";
+import type {
+  EnterpriseEntitlement,
+  NormalizedPrincipal,
+} from "@local-studio/contracts/enterprise-auth";
 import { effectMiddleware } from "./effect-handler";
+import { EnterpriseTokenVerifier, hasEntitlement } from "./enterprise-auth";
+import { emitControllerEnterpriseAudit } from "./enterprise-audit";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const PUBLIC_PATHS = new Set<string>(["/health"]);
@@ -86,10 +92,24 @@ const rateLimitKey = (path: string, method: string, clientIp: string): string =>
 const nextEffect = (next: Next): Effect.Effect<void, unknown> =>
   Effect.tryPromise({ try: next, catch: (error) => error });
 
+export const requiredEntitlement = (method: string, path: string): EnterpriseEntitlement | null => {
+  if (path.startsWith("/environment/")) return "configuration:write";
+  if (path.startsWith("/studio/providers")) return "configuration:write";
+  if (path.startsWith("/ai/v1/agents")) return "agent:invoke";
+  if (path.startsWith("/ai/v1/")) return "model:invoke";
+  if (!path.startsWith("/workbench/")) return null;
+  if (path.includes("/ray-jobs") || path.includes("/compute-leases")) return "ray:admit";
+  if (method === "GET") return "notebook:read";
+  return "notebook:execute";
+};
+
+const isC2 = (principal: NormalizedPrincipal): boolean => principal.clearance === "C2";
+
 export function createMutatingAuthMiddleware(context: AppContext): MiddlewareHandler {
   return effectMiddleware((ctx, next) =>
     Effect.suspend(() => {
       if (isPublicRequest(ctx.req.method, ctx.req.path)) return nextEffect(next);
+      if (ctx.get("enterprisePrincipal")) return nextEffect(next);
       const expectedApiKey = context.config.api_key?.trim();
       if (!expectedApiKey) return nextEffect(next);
       const providedToken = extractAuthToken((name) => ctx.req.header(name));
@@ -98,6 +118,78 @@ export function createMutatingAuthMiddleware(context: AppContext): MiddlewareHan
       return Effect.succeed(ctx.json({ detail: "Unauthorized" }, { status: 401 }));
     }),
   );
+}
+
+export function createEnterpriseAuthMiddleware(context: AppContext): MiddlewareHandler {
+  const config = context.config.enterprise_auth;
+  if (!config || config.mode === "local") {
+    return effectMiddleware((_ctx, next) => nextEffect(next));
+  }
+  const verifier = new EnterpriseTokenVerifier(config);
+  return effectMiddleware((ctx, next) => {
+    if (isPublicRequest(ctx.req.method, ctx.req.path)) return nextEffect(next);
+    const token = extractAuthToken((name) => ctx.req.header(name));
+    if (!token || token.split(".").length !== 3) {
+      if (config.mode === "optional_oidc") return nextEffect(next);
+      ctx.header("WWW-Authenticate", 'Bearer realm="local-studio-enterprise"');
+      return Effect.succeed(ctx.json({ detail: "Enterprise sign-in required" }, { status: 401 }));
+    }
+    return verifier.verify(token).pipe(
+      Effect.catch(() => Effect.succeed(undefined)),
+      Effect.flatMap((principal) => {
+        if (!principal) {
+          ctx.header("WWW-Authenticate", 'Bearer error="invalid_token"');
+          return Effect.succeed(ctx.json({ detail: "Invalid enterprise token" }, { status: 401 }));
+        }
+        ctx.set("enterprisePrincipal", principal);
+        ctx.set("enterpriseBearerToken", token);
+        const entitlement = requiredEntitlement(ctx.req.method, ctx.req.path);
+        if (entitlement && !hasEntitlement(principal, entitlement)) {
+          emitControllerEnterpriseAudit({
+            event: "authorization_denied",
+            principal,
+            operation: `${ctx.req.method} ${ctx.req.path}`,
+            reason: `missing_entitlement:${entitlement}`,
+          });
+          return Effect.succeed(
+            ctx.json({ detail: "Enterprise authorization denied" }, { status: 403 }),
+          );
+        }
+        if (
+          entitlement === "ray:admit" &&
+          (!principal.roles.includes("scientist") || !isC2(principal))
+        ) {
+          emitControllerEnterpriseAudit({
+            event: "authorization_denied",
+            principal,
+            operation: `${ctx.req.method} ${ctx.req.path}`,
+            reason: "ray_requires_scientist_c2",
+          });
+          return Effect.succeed(
+            ctx.json(
+              { detail: "Ray admission requires scientist role and C2 clearance" },
+              { status: 403 },
+            ),
+          );
+        }
+        if (ctx.req.method !== "GET" && ctx.req.path.startsWith("/workbench/notebooks")) {
+          emitControllerEnterpriseAudit({
+            event: "notebook_mutation",
+            principal,
+            operation: `${ctx.req.method} ${ctx.req.path}`,
+          });
+        }
+        if (ctx.req.method !== "GET" && entitlement === "ray:admit") {
+          emitControllerEnterpriseAudit({
+            event: "ray_admission",
+            principal,
+            operation: `${ctx.req.method} ${ctx.req.path}`,
+          });
+        }
+        return nextEffect(next);
+      }),
+    );
+  });
 }
 
 export function createMutatingRateLimitMiddleware(

@@ -18,7 +18,8 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@local-studio/contracts/*": ["./contracts/*.ts"]
+      "@local-studio/contracts/*": ["./contracts/*.ts"],
+      "@local-studio/agent-runtime/*": ["../services/agent-runtime/src/*.ts"]
     }
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "contracts/**/*.ts", "tests/**/*.ts"]

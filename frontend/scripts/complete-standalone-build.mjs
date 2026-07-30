@@ -61,6 +61,33 @@ for (const dependencyPath of runtimeDependencyPaths) {
   }
 }
 
+const nestedRuntimeDependencies = [
+  [
+    "node_modules/@earendil-works/pi-ai",
+    "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
+  ],
+  [
+    "node_modules/typebox",
+    "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox",
+  ],
+];
+
+for (const [sourcePath, destinationPath] of nestedRuntimeDependencies) {
+  const destination = resolve(standaloneRoot, destinationPath);
+  if (existsSync(destination)) continue;
+  cpSync(resolve(projectRoot, sourcePath), destination, { recursive: true });
+}
+
+const piAiManifest = JSON.parse(
+  readFileSync(resolve(projectRoot, "node_modules/@earendil-works/pi-ai/package.json"), "utf8"),
+);
+for (const dependency of Object.keys(piAiManifest.dependencies ?? {})) {
+  const dependencyPath = resolve(projectRoot, "node_modules", dependency);
+  const destination = resolve(standaloneRoot, "node_modules", dependency);
+  if (existsSync(destination)) continue;
+  cpSync(dependencyPath, destination, { recursive: true });
+}
+
 const tracedPiPackageDirectory = resolve(standaloneRoot, ".next/node_modules/@earendil-works");
 if (existsSync(tracedPiPackageDirectory)) {
   const packageTargets = new Map([

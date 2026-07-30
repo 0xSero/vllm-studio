@@ -11,13 +11,21 @@ import {
   type ThemeMeta,
   type ThemeTokens,
 } from "@/lib/themes";
-import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
+import {
+  clearCustomThemeTokens,
+  applyTokensToDocument,
+  applyUiControl,
+  DARK_THEME_ID,
+  isLightThemeId,
+  LIGHT_THEME_ID,
+  readCustomThemeTokens,
+  writeCustomThemeTokens,
+  type ContrastMode,
+} from "@/lib/theme-runtime";
 import { ColorField, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
 import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
-
-const CUSTOM_THEME_TOKEN_KEY = "local-studio.customThemeTokens";
-const LIGHT_THEME_ID = "zai-light";
-const DARK_THEME_ID = "zai-dark";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -27,21 +35,45 @@ const MODE_ITEMS: SegmentedItem<ThemeMode>[] = [
   { id: "system", label: "System", icon: <Laptop className="h-3.5 w-3.5" /> },
 ];
 
-function readCustomTokens(): ThemeTokens | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_THEME_TOKEN_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ThemeTokens;
-  } catch {
-    return null;
-  }
+export function availableThemeModes(allowedThemeIds: readonly string[]): ThemeMode[] {
+  return allowedThemeIds.includes("cortaix-light") && allowedThemeIds.includes("cortaix-dark")
+    ? ["light", "dark"]
+    : ["light", "dark", "system"];
 }
 
-function writeCustomTokens(tokens: ThemeTokens) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(CUSTOM_THEME_TOKEN_KEY, JSON.stringify(tokens));
+export function selectedThemeMode(themeId: ThemeMeta["id"]): Exclude<ThemeMode, "system"> {
+  return isLightThemeId(themeId) ? "light" : "dark";
 }
+
+export function availableAppearanceThemes(
+  themes: readonly ThemeMeta[],
+  allowedThemeIds: readonly string[],
+): ThemeMeta[] {
+  if (allowedThemeIds.length === 0) return [...themes];
+  const allowed = new Set(allowedThemeIds);
+  return themes.filter((theme) => allowed.has(theme.id));
+}
+
+export function appearanceThemeSelection(themeId: ThemeMeta["id"]): {
+  themeId: ThemeMeta["id"];
+  tokens: ThemeTokens;
+  isCustomActive: false;
+} | null {
+  const theme = THEME_BY_ID.get(themeId);
+  return theme
+    ? {
+        themeId: theme.id,
+        tokens: theme.tokens,
+        isCustomActive: false,
+      }
+    : null;
+}
+
+const CONTRAST_ITEMS: SegmentedItem<ContrastMode>[] = [
+  { id: "auto", label: "Follow system" },
+  { id: "standard", label: "Standard" },
+  { id: "high", label: "High contrast" },
+];
 
 function matchesQuery(theme: ThemeMeta, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -51,27 +83,6 @@ function matchesQuery(theme: ThemeMeta, query: string): boolean {
     theme.group.toLowerCase().includes(q) ||
     theme.description.toLowerCase().includes(q)
   );
-}
-
-function isLightTheme(theme: ThemeMeta): boolean {
-  const bg = theme.tokens.bg;
-  const hslLightness = /hsl\([^,]+,[^,]+,\s*([\d.]+)%/i.exec(bg);
-  if (hslLightness) return Number(hslLightness[1]) > 50;
-  if (typeof document !== "undefined") {
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (ctx) {
-      ctx.fillStyle = bg;
-      const hex = ctx.fillStyle as string;
-      const n = Number.parseInt(hex.slice(1), 16);
-      if (Number.isFinite(n)) {
-        const r = (n >> 16) & 255;
-        const g = (n >> 8) & 255;
-        const b = n & 255;
-        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
-      }
-    }
-  }
-  return false;
 }
 
 function readVarString(name: string, fallback: string): string {
@@ -108,6 +119,8 @@ export function AppearanceSettings() {
   const setFontFamilyId = useAppStore((s) => s.setFontFamilyId);
   const fontSizeId = useAppStore((s) => s.fontSizeId);
   const setFontSizeId = useAppStore((s) => s.setFontSizeId);
+  const contrastMode = useAppStore((s) => s.contrastMode);
+  const setContrastMode = useAppStore((s) => s.setContrastMode);
 
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(["Classic"]));
@@ -151,13 +164,15 @@ export function AppearanceSettings() {
 
   const currentTheme = THEME_BY_ID.get(themeId) ?? THEMES[0];
 
-  const [mode, setMode] = useState<ThemeMode>(() =>
-    isLightTheme(currentTheme) ? "light" : "dark",
+  const mode = selectedThemeMode(themeId);
+  const modeItems = MODE_ITEMS.filter((item) =>
+    availableThemeModes(BRAND_PROFILE.allowedThemeIds).includes(item.id),
   );
+  const supportsSystemMode = modeItems.some((item) => item.id === "system");
 
   const groups = useMemo(() => {
     const map = new Map<string, ThemeMeta[]>();
-    for (const theme of THEMES) {
+    for (const theme of availableAppearanceThemes(THEMES, BRAND_PROFILE.allowedThemeIds)) {
       if (!matchesQuery(theme, query)) continue;
       const list = map.get(theme.group) ?? [];
       list.push(theme);
@@ -185,10 +200,15 @@ export function AppearanceSettings() {
   };
 
   const baseTokens = currentTheme.tokens;
-  const [customTokens, setCustomTokens] = useState<ThemeTokens>(
-    () => readCustomTokens() ?? baseTokens,
-  );
+  const [customTokens, setCustomTokens] = useState<ThemeTokens>(baseTokens);
   const [isCustomActive, setIsCustomActive] = useState(false);
+
+  useMountSubscription(() => {
+    const storedCustomTokens = readCustomThemeTokens(themeId);
+    if (!storedCustomTokens) return;
+    setCustomTokens(storedCustomTokens);
+    setIsCustomActive(true);
+  }, [themeId]);
 
   const [prevThemeId, setPrevThemeId] = useState(themeId);
   if (themeId !== prevThemeId) {
@@ -197,35 +217,45 @@ export function AppearanceSettings() {
     setIsCustomActive(false);
   }
 
-  const patchToken = useCallback((key: keyof ThemeTokens, value: string) => {
-    setCustomTokens((prev) => {
-      const next = { ...prev, [key]: value };
-      writeCustomTokens(next);
-      applyTokensToDocument(next);
-      setIsCustomActive(true);
-      return next;
-    });
-  }, []);
+  const patchToken = useCallback(
+    (key: keyof ThemeTokens, value: string) => {
+      setCustomTokens((prev) => {
+        const next = { ...prev, [key]: value };
+        writeCustomThemeTokens(themeId, next);
+        applyTokensToDocument(next);
+        setIsCustomActive(true);
+        return next;
+      });
+    },
+    [themeId],
+  );
 
   const resetTokens = () => {
     setCustomTokens(baseTokens);
-    writeCustomTokens(baseTokens);
+    clearCustomThemeTokens();
     applyTokensToDocument(baseTokens);
     setIsCustomActive(false);
   };
 
+  const selectTheme = (nextThemeId: ThemeMeta["id"]) => {
+    const selection = appearanceThemeSelection(nextThemeId);
+    if (!selection) return;
+    setThemeId(selection.themeId);
+    setCustomTokens(selection.tokens);
+    clearCustomThemeTokens();
+    setIsCustomActive(selection.isCustomActive);
+  };
+
   const applyMode = (next: ThemeMode) => {
-    setMode(next);
-    if (next === "light") setThemeId(LIGHT_THEME_ID);
-    else if (next === "dark") setThemeId(DARK_THEME_ID);
+    if (next === "light") selectTheme(LIGHT_THEME_ID);
+    else if (next === "dark") selectTheme(DARK_THEME_ID);
     else {
       const prefersDark =
         typeof window !== "undefined" &&
         typeof window.matchMedia === "function" &&
         window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setThemeId(prefersDark ? DARK_THEME_ID : LIGHT_THEME_ID);
+      selectTheme(prefersDark ? DARK_THEME_ID : LIGHT_THEME_ID);
     }
-    setIsCustomActive(false);
   };
 
   const editorTokens: Array<{ key: keyof ThemeTokens; label: string; description?: string }> = [
@@ -241,9 +271,19 @@ export function AppearanceSettings() {
     <div>
       <SettingsGroup
         title="Theme"
-        description="Use light, dark, or match your system."
+        description={
+          supportsSystemMode
+            ? "Use light, dark, or follow your system."
+            : "Choose the appliance light or dark mode."
+        }
         actions={
-          <SegmentedControl items={MODE_ITEMS} value={mode} onChange={applyMode} size="sm" />
+          <SegmentedControl
+            items={modeItems}
+            value={mode}
+            onChange={applyMode}
+            size="sm"
+            ariaLabel="Color mode"
+          />
         }
       >
         <SettingsRow
@@ -256,11 +296,24 @@ export function AppearanceSettings() {
                 {isCustomActive ? " · edited" : ""}
               </span>
               <ThemeSwatches theme={currentTheme} />
-              <span className="inline-flex items-center gap-1 text-[length:var(--fs-sm)] text-(--ui-success)">
+              <span className="inline-flex items-center gap-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
                 <Check className="h-3 w-3" />
-                active
+                selected
               </span>
             </div>
+          }
+        />
+        <SettingsRow
+          label="Contrast"
+          description="Set high-contrast mode explicitly or follow system accessibility settings."
+          control={
+            <SegmentedControl
+              items={CONTRAST_ITEMS}
+              value={contrastMode}
+              onChange={setContrastMode}
+              size="sm"
+              ariaLabel="Contrast mode"
+            />
           }
         />
       </SettingsGroup>
@@ -333,7 +386,7 @@ export function AppearanceSettings() {
         />
         <SettingsRow
           label="UI font size"
-          description="Base size for the Local Studio UI"
+          description={`Base size for the ${BRAND_PROFILE.appName} UI`}
           control={
             <div className="flex w-full items-center gap-3">
               <Slider
@@ -513,7 +566,7 @@ export function AppearanceSettings() {
                           <button
                             key={theme.id}
                             type="button"
-                            onClick={() => setThemeId(theme.id)}
+                            onClick={() => selectTheme(theme.id)}
                             className={`flex w-full items-center justify-between gap-4 px-3.5 py-2 text-left transition-colors ${
                               active ? "bg-(--ui-hover)" : "hover:bg-(--ui-hover)"
                             }`}
@@ -529,7 +582,7 @@ export function AppearanceSettings() {
                             <div className="flex shrink-0 items-center gap-2">
                               <ThemeSwatches theme={theme} />
                               {active && !isCustomActive ? (
-                                <Check className="h-3.5 w-3.5 text-(--ui-success)" />
+                                <Check className="h-3.5 w-3.5 text-(--ui-muted)" />
                               ) : null}
                             </div>
                           </button>

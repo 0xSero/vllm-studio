@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" width="200" height="40" role="img" aria-label="cortAIx Factory">
+  <title>cortAIx Factory — GUI sidebar</title>
+  <g transform="translate(0,0) scale(0.0390625)">
+    <rect width="1024" height="1024" rx="230" fill="#2B276D"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"/>
+      <path d="M252,322 L363,724" stroke-width="112"/>
+      <path d="M174,580 L330,580" stroke-width="92"/>
+      <path d="M512,300 L512,724" stroke-width="112"/>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"/>
+      <path d="M622,461 L922,716" stroke-width="103"/>
+    </g>
+  </g>
+  </g>
+  <text x="48" y="26" font-family="Nunito Sans, Roboto, sans-serif" font-weight="900" font-size="20" letter-spacing="-0.04em">
+    <tspan fill="#7C90D8">cort</tspan><tspan fill="#9B9FE6">AI</tspan><tspan fill="#4CD3EE">x</tspan>
+  </text>
+</svg>

@@ -11,5 +11,7 @@ export const notFound = (detail: string): HttpStatus => new HttpStatus({ status:
 
 export const badRequest = (detail: string): HttpStatus => new HttpStatus({ status: 400, detail });
 
+export const forbidden = (detail: string): HttpStatus => new HttpStatus({ status: 403, detail });
+
 export const serviceUnavailable = (detail: string): HttpStatus =>
   new HttpStatus({ status: 503, detail });

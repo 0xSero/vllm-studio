@@ -1,0 +1,20 @@
+{
+  "accepted-tenant": "00000000-0000-0000-0000-000000000000",
+  "allowed-agents": "research-assistant",
+  "allowed-models": "gpt-4.1",
+  "agent-operation-roles": "LocalStudio.Scientist,LocalStudio.AgentAdmin,LocalStudio.PlatformAdmin",
+  "apim-api-audience": "api://local-studio",
+  "clearance-claim": "local_studio_clearance",
+  "content-safety-threshold": "4",
+  "entra-issuer": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+  "entra-role-claim": "roles",
+  "entra-tenant-id": "00000000-0000-0000-0000-000000000000",
+  "foundry-project-endpoint": "https://replace-foundry-account.services.ai.azure.com/api/projects/project",
+  "keycloak-issuer": "https://keycloak.example.com/realms/local-studio",
+  "keycloak-openid-configuration": "https://keycloak.example.com/realms/local-studio/.well-known/openid-configuration",
+  "keycloak-role-claim": "local_studio_roles",
+  "model-operation-roles": "LocalStudio.Scientist,LocalStudio.Operator,LocalStudio.AgentAdmin,LocalStudio.PlatformAdmin",
+  "request-max-bytes": "1048576",
+  "request-quota-calls": "60",
+  "token-quota-per-minute": "50000"
+}

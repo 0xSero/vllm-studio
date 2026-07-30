@@ -47,8 +47,48 @@ async function resolveModelImages(core: ApiCore, recipe: RecipeWithStatus, model
   return inferVisionSupport(`${modelId} ${recipe.name} ${recipe.model_path}`);
 }
 
+async function attachRemoteModel(input: {
+  remoteModel: object;
+  modelId: string;
+  targets: LocalAgentId[];
+}) {
+  const candidate = input.remoteModel as Record<string, unknown>;
+  if (
+    typeof candidate["baseUrl"] !== "string" ||
+    !/^https?:\/\//.test(candidate["baseUrl"]) ||
+    typeof candidate["displayName"] !== "string"
+  ) {
+    return jsonError("remoteModel requires an HTTP baseUrl and displayName");
+  }
+  const contextWindow =
+    typeof candidate["contextWindow"] === "number" &&
+    Number.isInteger(candidate["contextWindow"]) &&
+    candidate["contextWindow"] > 0
+      ? candidate["contextWindow"]
+      : 131072;
+  try {
+    const results = await attachModelToAgents({
+      home: os.homedir(),
+      targets: input.targets,
+      model: {
+        modelId: input.modelId,
+        displayName: candidate["displayName"],
+        baseUrl: candidate["baseUrl"].replace(/\/+$/, ""),
+        apiKey: "local-studio",
+        contextWindow,
+        maxTokens: contextWindow,
+        reasoning: candidate["reasoning"] !== false,
+        images: candidate["images"] === true,
+      },
+    });
+    return NextResponse.json({ results });
+  } catch (error) {
+    return jsonError(errorMessage(error, "Failed to attach remote model to local agents"), 500);
+  }
+}
+
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
 
   let body: unknown;
@@ -57,7 +97,11 @@ export async function POST(request: NextRequest) {
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const { modelId, targets } = (body ?? {}) as { modelId?: unknown; targets?: unknown };
+  const { modelId, targets, remoteModel } = (body ?? {}) as {
+    modelId?: unknown;
+    targets?: unknown;
+    remoteModel?: unknown;
+  };
   if (typeof modelId !== "string" || !modelId.trim()) {
     return jsonError("modelId is required");
   }
@@ -65,6 +109,10 @@ export async function POST(request: NextRequest) {
     return jsonError(
       "targets must be a non-empty array of agent ids (pi, opencode, droid, hermes, omp)",
     );
+  }
+
+  if (remoteModel && typeof remoteModel === "object" && !Array.isArray(remoteModel)) {
+    return attachRemoteModel({ remoteModel, modelId, targets });
   }
 
   const settings = await getApiSettings();

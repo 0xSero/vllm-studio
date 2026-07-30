@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "apiRevision": {
+      "value": "2"
+    },
+    "apiRevisionDescription": {
+      "value": "Governed Foundry gateway"
+    },
+    "apimServiceName": {
+      "value": "replace-apim-name"
+    },
+    "appInsightsLoggerResourceId": {
+      "value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/replace-rg/providers/Microsoft.ApiManagement/service/replace-apim-name/loggers/applicationinsights"
+    },
+    "bootstrapRevision": {
+      "value": false
+    },
+    "contentSafetyAccountName": {
+      "value": "replace-content-safety"
+    },
+    "contentSafetyEndpoint": {
+      "value": "https://replace-content-safety.cognitiveservices.azure.com"
+    },
+    "contentSafetyResourceGroupName": {
+      "value": "replace-content-safety-rg"
+    },
+    "foundryAccountName": {
+      "value": "replace-foundry-account"
+    },
+    "foundryResourceGroupName": {
+      "value": "replace-foundry-rg"
+    },
+    "keyVaultName": {
+      "value": "replace-key-vault"
+    },
+    "keyVaultNamedValues": {
+      "value": {}
+    },
+    "keyVaultResourceGroupName": {
+      "value": "replace-key-vault-rg"
+    },
+    "namedValues": {
+      "value": {
+        "accepted-tenant": "00000000-0000-0000-0000-000000000000",
+        "allowed-agents": "research-assistant",
+        "allowed-models": "gpt-4.1",
+        "agent-operation-roles": "LocalStudio.Scientist,LocalStudio.AgentAdmin,LocalStudio.PlatformAdmin",
+        "apim-api-audience": "api://local-studio",
+        "clearance-claim": "local_studio_clearance",
+        "content-safety-threshold": "4",
+        "entra-issuer": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+        "entra-role-claim": "roles",
+        "entra-tenant-id": "00000000-0000-0000-0000-000000000000",
+        "foundry-project-endpoint": "https://replace-foundry-account.services.ai.azure.com/api/projects/project",
+        "keycloak-issuer": "https://keycloak.example.com/realms/local-studio",
+        "keycloak-openid-configuration": "https://keycloak.example.com/realms/local-studio/.well-known/openid-configuration",
+        "keycloak-role-claim": "local_studio_roles",
+        "model-operation-roles": "LocalStudio.Scientist,LocalStudio.Operator,LocalStudio.AgentAdmin,LocalStudio.PlatformAdmin",
+        "request-max-bytes": "1048576",
+        "request-quota-calls": "60",
+        "token-quota-per-minute": "50000"
+      }
+    }
+  }
+}

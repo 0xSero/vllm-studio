@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   try {
     const update = (await request.json()) as Partial<ApiSettings>;

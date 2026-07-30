@@ -2,12 +2,14 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
+import type { NormalizedPrincipal } from "@local-studio/contracts/enterprise-auth";
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import {
   controlTargetHasActiveTurn,
   isAgentThinkingLevel,
   parseAgentTurnRequest,
   type AgentThinkingLevel,
+  type AgentToolAccess,
   type AgentTurnCommandResult,
   type AgentTurnRequest,
 } from "../../../../shared/agent/agent-turn";
@@ -28,6 +30,7 @@ import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
 import { errorMessage, jsonError } from "./helpers";
+import { emitEnterpriseAgentEvidence } from "../enterprise-evidence";
 import {
   initialRuntimeStatusPhase,
   replayAfterCursor,
@@ -176,11 +179,17 @@ function commandResult(
   };
 }
 
-export function handleAgentTurn(request: Request): Promise<Response> {
-  return Effect.runPromise(turnRouteEffect(request));
+export function handleAgentTurn(
+  request: Request,
+  principal?: NormalizedPrincipal,
+): Promise<Response> {
+  return Effect.runPromise(turnRouteEffect(request, principal));
 }
 
-function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
+function turnRouteEffect(
+  request: Request,
+  principal?: NormalizedPrincipal,
+): Effect.Effect<Response, unknown> {
   return Effect.gen(function* () {
     const body = yield* Effect.promise(() =>
       readJsonRequestWithinLimit(request, AGENT_TURN_BODY_LIMIT_BYTES),
@@ -204,6 +213,13 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
           error: "Runtime session is no longer active.",
         };
         return Response.json(result, { status: 409 });
+      }
+      if (principal) {
+        emitEnterpriseAgentEvidence(principal, {
+          operation: `agent.turn.${turn.mode}`,
+          session_id: resolved.sessionId,
+          model_id: turn.modelId,
+        });
       }
 
       if (turn.mode === "prompt") {
@@ -292,7 +308,7 @@ type CompactRequest = {
   sessionId?: string;
   modelId?: string;
   thinkingLevel?: AgentThinkingLevel;
-  toolAccess?: "read_only" | "full";
+  toolAccess?: AgentToolAccess;
   cwd?: string;
   piSessionId?: string | null;
   customInstructions?: string;
@@ -343,7 +359,12 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
         try: () =>
           session.ensureStarted(modelId, cwd, piSessionId, {
             thinkingLevel: body.thinkingLevel,
-            toolAccess: body.toolAccess === "full" ? "full" : "read_only",
+            toolAccess:
+              body.toolAccess === "none"
+                ? "none"
+                : body.toolAccess === "full"
+                  ? "full"
+                  : "read_only",
             browserToolEnabled: body.browserToolEnabled === true,
             browserSessionId:
               typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,

@@ -13,6 +13,7 @@ import { RecipeModal } from "../recipe-modal/recipe-modal";
 import { ExploreTab } from "./explore-tab";
 import { DownloadsTab } from "./downloads-tab";
 import { PicksTab } from "./picks-tab";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 
 type Props = {
   embedded?: boolean;
@@ -156,7 +157,7 @@ export function RecipesContentView(props: Props) {
         <TabbedPage
           eyebrow="Model library"
           title="Models"
-          description="Manage model profiles, downloads, and the model marketplace available to Local Studio."
+          description={`Manage model profiles, downloads, and the model marketplace available to ${BRAND_PROFILE.appName}.`}
           width="md"
           tabs={MODEL_TABS}
           activeTab={tab}

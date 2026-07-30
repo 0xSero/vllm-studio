@@ -2,9 +2,16 @@ import { app } from "electron";
 import path from "node:path";
 
 const DEFAULT_DEV_SERVER_URL = "http://127.0.0.1:3000";
+const DEFAULT_APP_NAME = "Local Studio";
+const configuredAppName = process.env.LOCAL_STUDIO_BRAND_APP_NAME?.trim();
 
 export const DESKTOP_CONFIG = {
-  appName: "Local Studio",
+  appName:
+    configuredAppName && configuredAppName.length > 0
+      ? configuredAppName
+      : app.isPackaged
+        ? app.getName()
+        : DEFAULT_APP_NAME,
   minimumWindow: { width: 1200, height: 760 },
   preferredWindow: { width: 1520, height: 980 },
   startupTimeoutMs: 45_000,

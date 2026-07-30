@@ -3,6 +3,7 @@
 import type { SpeechStatus, SpeechVoiceProfile } from "@local-studio/contracts/speech";
 import { Button, Checkbox, FormField, Input, StatusPill } from "@/ui";
 import { Trash2 } from "@/ui/icon-registry";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { formattedVoiceDuration, type PendingAction } from "./chatterbox-voice-model";
 import { useVoiceReference, VoiceReferencePicker } from "./chatterbox-voice-reference";
 
@@ -168,7 +169,7 @@ export function VoiceCreator({
             onChange={onConsent}
             disabled={pending !== null}
             label="I confirm this is my own voice and consent to cloning it on this controller."
-            description="Local Studio rejects voice profiles without this explicit confirmation."
+            description={`${BRAND_PROFILE.appName} rejects voice profiles without this explicit confirmation.`}
           />
           <Button onClick={() => void save()} loading={pending === "create"} disabled={!canCreate}>
             Save voice profile

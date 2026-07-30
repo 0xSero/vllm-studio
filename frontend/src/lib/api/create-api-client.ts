@@ -5,6 +5,8 @@ import { createRecipesApi } from "./recipes";
 import { createStudioApi } from "./studio";
 import { createSpeechApi } from "./speech";
 import { createSystemApi } from "./system";
+import { createWorkbenchApi } from "./workbench";
+import { createEnvironmentApi } from "./environment";
 
 export function createApiClient(params: {
   baseUrl: string;
@@ -20,6 +22,8 @@ export function createApiClient(params: {
     ...createStudioApi(core),
     ...createRigsApi(core),
     ...createSpeechApi(core),
+    ...createWorkbenchApi(core),
+    ...createEnvironmentApi(core),
     healthPoll: (timeoutMs?: number) => core.healthPoll(timeoutMs),
   };
 }

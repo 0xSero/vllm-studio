@@ -1,10 +1,17 @@
 // Server-side API settings service: the single owner of reading, writing,
 // merging, and masking the persisted `<dataDir>/api-settings.json` file.
 
-import { chmod, readFile, rename, writeFile } from "fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, open, readFile, rename, unlink, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { resolveSettingsDefaultBackendUrl } from "../../../shared/agent/backend-url";
 import { resolveDataDir, resolveSettingsFilePath } from "./data-dir";
+import {
+  controllerCredentialReference,
+  controllerCredentialStorageStatus,
+  readControllerCredential,
+  writeControllerCredential,
+} from "./controller-credential-store";
 
 export interface ApiSettings {
   backendUrl: string;
@@ -12,6 +19,11 @@ export interface ApiSettings {
   voiceUrl: string;
   voiceModel: string;
 }
+
+type PersistedApiSettings = Omit<ApiSettings, "apiKey"> & {
+  credentialRef?: string;
+  apiKey?: string;
+};
 
 /** Marker substring used to mask secrets in UI surfaces. */
 const MASKED_KEY_MARKER = "••••";
@@ -24,34 +36,86 @@ const DEFAULT_SETTINGS: ApiSettings = {
     process.env.VOICE_MODEL || process.env.NEXT_PUBLIC_VOICE_MODEL || "whisper-large-v3-turbo",
 };
 
+const syncDirectory = async (value: string): Promise<void> => {
+  try {
+    const handle = await open(value, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch (source) {
+    const code = (source as NodeJS.ErrnoException).code;
+    if (
+      process.platform === "win32" &&
+      ["EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")
+    ) {
+      return;
+    }
+    throw source;
+  }
+};
+
 export async function getApiSettings(): Promise<ApiSettings> {
   const settingsFile = resolveSettingsFilePath();
   if (!existsSync(settingsFile)) return DEFAULT_SETTINGS;
+  let saved: Partial<PersistedApiSettings>;
   try {
-    const saved = JSON.parse(await readFile(settingsFile, "utf-8")) as Partial<ApiSettings>;
-    return {
-      backendUrl: saved.backendUrl || DEFAULT_SETTINGS.backendUrl,
-      apiKey: saved.apiKey || DEFAULT_SETTINGS.apiKey,
-      voiceUrl: saved.voiceUrl || DEFAULT_SETTINGS.voiceUrl,
-      voiceModel: saved.voiceModel || DEFAULT_SETTINGS.voiceModel,
-    };
+    saved = JSON.parse(await readFile(settingsFile, "utf-8")) as Partial<PersistedApiSettings>;
   } catch (error) {
     console.error(`[API Settings] Failed to read ${settingsFile}:`, error);
     return DEFAULT_SETTINGS;
   }
+  const backendUrl = saved.backendUrl || DEFAULT_SETTINGS.backendUrl;
+  const legacyApiKey = saved.apiKey?.trim() ?? "";
+  if (legacyApiKey) {
+    await writeControllerCredential(backendUrl, legacyApiKey);
+    await saveSettingsMetadata({
+      backendUrl,
+      voiceUrl: saved.voiceUrl || DEFAULT_SETTINGS.voiceUrl,
+      voiceModel: saved.voiceModel || DEFAULT_SETTINGS.voiceModel,
+      credentialRef: controllerCredentialReference(backendUrl),
+    });
+  }
+  return {
+    backendUrl,
+    apiKey: (await readControllerCredential(backendUrl)) || legacyApiKey || DEFAULT_SETTINGS.apiKey,
+    voiceUrl: saved.voiceUrl || DEFAULT_SETTINGS.voiceUrl,
+    voiceModel: saved.voiceModel || DEFAULT_SETTINGS.voiceModel,
+  };
+}
+
+async function saveSettingsMetadata(settings: PersistedApiSettings): Promise<void> {
+  resolveDataDir();
+  const settingsFile = resolveSettingsFilePath();
+  const { apiKey: _apiKey, ...metadata } = settings;
+  const payload = JSON.stringify(metadata, null, 2);
+  const tempFile = `${settingsFile}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    await writeFile(tempFile, payload, "utf-8");
+    await chmod(tempFile, 0o600).catch(() => undefined);
+    const temporaryHandle = await open(tempFile, "r");
+    try {
+      await temporaryHandle.sync();
+    } finally {
+      await temporaryHandle.close();
+    }
+    await rename(tempFile, settingsFile);
+    await syncDirectory(resolveDataDir());
+  } catch (source) {
+    await unlink(tempFile).catch(() => undefined);
+    throw source;
+  }
 }
 
 export async function saveApiSettings(settings: ApiSettings): Promise<void> {
-  resolveDataDir();
-  const settingsFile = resolveSettingsFilePath();
-  const payload = JSON.stringify(settings, null, 2);
-  // Write-then-rename: a crash mid-write would truncate the file, and
-  // getApiSettings swallows the parse error and returns defaults — silently
-  // wiping the persisted API key and backend URL.
-  const tempFile = `${settingsFile}.tmp-${process.pid}`;
-  await writeFile(tempFile, payload, "utf-8");
-  await chmod(tempFile, 0o600).catch(() => undefined);
-  await rename(tempFile, settingsFile);
+  await writeControllerCredential(settings.backendUrl, settings.apiKey);
+  await saveSettingsMetadata({
+    backendUrl: settings.backendUrl,
+    credentialRef: controllerCredentialReference(settings.backendUrl),
+    voiceUrl: settings.voiceUrl,
+    voiceModel: settings.voiceModel,
+  });
 }
 
 // Mask API key for display (show first 4 and last 4 chars)
@@ -85,10 +149,14 @@ export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise
   }
 
   const current = await getApiSettings();
+  const nextBackendUrl = backendUrl || current.backendUrl;
+  const existingTargetCredential =
+    nextBackendUrl === current.backendUrl
+      ? current.apiKey
+      : await readControllerCredential(nextBackendUrl);
   const next: ApiSettings = {
-    backendUrl: backendUrl || current.backendUrl,
-    // Only update API key if explicitly provided (not the masked value).
-    apiKey: apiKey && !apiKey.includes(MASKED_KEY_MARKER) ? apiKey : current.apiKey,
+    backendUrl: nextBackendUrl,
+    apiKey: apiKey && !apiKey.includes(MASKED_KEY_MARKER) ? apiKey : existingTargetCredential,
     voiceUrl: voiceUrl || current.voiceUrl,
     voiceModel: voiceModel || current.voiceModel,
   };
@@ -103,6 +171,7 @@ export function maskedSettingsView(settings: ApiSettings) {
     backendUrl: settings.backendUrl,
     apiKey: maskApiKey(settings.apiKey),
     hasApiKey: Boolean(settings.apiKey),
+    credentialStorage: controllerCredentialStorageStatus(),
     voiceUrl: settings.voiceUrl,
     voiceModel: settings.voiceModel,
   };

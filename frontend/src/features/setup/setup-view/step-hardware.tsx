@@ -55,7 +55,7 @@ export function StepHardware({
 
   return (
     <div className="space-y-6">
-      <div className="overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface)/40">
+      <div className="overflow-hidden border border-(--ui-border) bg-(--ui-surface)">
         {facts.map(([label, value]) => (
           <div
             key={label}

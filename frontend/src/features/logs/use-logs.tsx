@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import api from "@/lib/api/client";
-import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -128,9 +128,8 @@ export function useLogs() {
       eventSourceRef.current = null;
     }
 
-    const apiKey = getApiKey();
     const base = `/api/proxy/logs/${encodeURIComponent(selectedSession)}/stream`;
-    const url = apiKey ? `${base}?tail=0&api_key=${encodeURIComponent(apiKey)}` : `${base}?tail=0`;
+    const url = `${base}?tail=0`;
 
     const es = new EventSource(url);
     eventSourceRef.current = es;

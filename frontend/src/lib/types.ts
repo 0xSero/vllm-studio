@@ -128,7 +128,18 @@ export interface StarterPreset {
   backend?: "vllm" | "llamacpp";
   gguf_file?: string;
   recipe_overrides?: Record<string, unknown>;
-  remote?: { base_url: string; model: string };
+  remote?: {
+    base_url: string;
+    model: string;
+    authentication: "none" | "api_key" | "apim_client";
+    issuer_id?: string;
+    audience?: string;
+    scopes?: string[];
+    token_endpoint?: string;
+    client_id?: string;
+    path_style?: "openai" | "azure";
+    api_version?: string;
+  };
   fits?: boolean;
 }
 

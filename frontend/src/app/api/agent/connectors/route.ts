@@ -16,14 +16,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const connectors = await listConnectors();
   return NextResponse.json({ connectors: connectors.map(toConnectorView) });
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let body: typeof ConnectorUpsertInputSchema.Type;
   try {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   const id = request.nextUrl.searchParams.get("id") ?? "";
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });

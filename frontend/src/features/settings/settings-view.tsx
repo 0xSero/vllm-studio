@@ -8,6 +8,7 @@ import {
   type LucideIcon,
   Paintbrush,
   ServerCog,
+  ShieldCheck,
   Smartphone,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
@@ -21,6 +22,7 @@ import { EnginesSection } from "./engines-section";
 import { ServicesSettings, SystemDetails, SystemOverview } from "./system-settings-section";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ProfileSettings } from "./profile-settings";
+import { EnterpriseAccessSection } from "./enterprise-access-section";
 interface SettingsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -44,6 +46,12 @@ const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 const SECTIONS: SettingsSectionDef[] = [
   ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
   ["connection", "General", "Controller connections and API access.", Cable],
+  [
+    "enterprise",
+    "Enterprise access",
+    "OIDC identity, roles, clearance, and trusted gateways.",
+    ShieldCheck,
+  ],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
   ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
   ["terminal", "Shortcuts", "Quick panel and terminal key bindings.", Keyboard],
@@ -57,10 +65,11 @@ const SECTIONS: SettingsSectionDef[] = [
 }));
 const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
-const normalizeSectionId = (value: string): SettingsSectionId | null => {
-  if (isSectionId(value)) return value;
-  if (value === "desktop") return "terminal";
-  if (value === "engines" || value === "services") return "system";
+export const settingsSectionFromHash = (hash: string): SettingsSectionId | null => {
+  const section = hash.replace(/^#/, "");
+  if (isSectionId(section)) return section;
+  if (section === "desktop") return "terminal";
+  if (section === "engines" || section === "services") return "system";
   return null;
 };
 export function SettingsView({
@@ -85,21 +94,25 @@ export function SettingsView({
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("connection");
   useMountSubscription(() => {
     const onHashChange = () => {
-      const hash = window.location.hash.replace("#", "");
-      const normalized = normalizeSectionId(hash);
+      const normalized = settingsSectionFromHash(window.location.hash);
       if (!normalized) return;
       setActiveSection(normalized);
       if (normalized === "system") onSystemSectionActive();
     };
     onHashChange();
     window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    window.addEventListener("popstate", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("popstate", onHashChange);
+    };
   }, []);
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
     if (section === "system") onSystemSectionActive();
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${section}`);
+      const nextHash = `#${section}`;
+      if (window.location.hash !== nextHash) window.history.pushState(null, "", nextHash);
     }
   };
   const layoutStatus = useMemo(() => {
@@ -133,6 +146,7 @@ export function SettingsView({
         />
       ) : null}
       {activeSection === "profile" ? <ProfileSettings /> : null}
+      {activeSection === "enterprise" ? <EnterpriseAccessSection /> : null}
       {activeSection === "system" ? (
         <div className="space-y-10">
           <SystemOverview

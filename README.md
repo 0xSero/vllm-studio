@@ -90,15 +90,21 @@ Start the controller (listens on `127.0.0.1:8080`, data dir + SQLite created
 automatically, model weights in `LOCAL_STUDIO_MODELS_DIR`, default `/models`):
 
 ```bash
-cd controller && bun install && bun src/main.ts
+cd controller && bun install
 ```
 
 Start the frontend in a second terminal, then open
 <http://localhost:3000/setup>:
 
 ```bash
-cd frontend && npm ci && npm run dev
+cd frontend && npm ci
+cd .. && npm run dev
 ```
+
+The root command reserves ports `3000`, `8080`, and `8081` and stops before launch
+when another stack owns any of them. Use `npm run dev:frontend` when the controller
+and agent runtime are managed separately. Development output is isolated in
+`frontend/.next-dev`, so `npm run check` cannot invalidate a running dev server.
 
 `npm ci` runs a postinstall patch against `@earendil-works/pi-ai`. If that step
 prints a warning, agent streaming may misrender. The setup wizard walks through

@@ -19,7 +19,7 @@ const ConnectorToolCallSchema = Schema.Struct({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   await Effect.runPromise(refreshEnabledPluginConnectors());
   const connectors = await enabledConnectors();
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let body: typeof ConnectorToolCallSchema.Type;
   try {

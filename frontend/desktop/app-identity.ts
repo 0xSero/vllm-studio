@@ -4,26 +4,42 @@ import { readFileSync } from "node:fs";
 import { migrateLegacyUserData } from "./logic/user-data-migration";
 import { mirrorStableUserData } from "./logic/dev-channel-mirror";
 
-const CANONICAL_APP_NAME = "Local Studio";
 const LEGACY_BRANDED_APP_NAME = ["v", "LLM Studio"].join("");
 const LEGACY_USER_DATA_NAMES = [LEGACY_BRANDED_APP_NAME, "frontend"];
 const devAppName = process.env.LOCAL_STUDIO_DESKTOP_APP_NAME?.trim();
+const configuredDevAppName = process.env.LOCAL_STUDIO_DESKTOP_DEV_APP_NAME?.trim();
 const devUserDataDir = process.env.LOCAL_STUDIO_DESKTOP_USER_DATA_DIR?.trim();
 // A packaged build must know its own channel without depending on the
 // environment it happens to be launched from: electron-builder stamps
 // `localStudioChannel` into the bundled package.json via extraMetadata.
-function packagedChannel(): string | undefined {
-  if (!app.isPackaged) return undefined;
+function packagedIdentity(): {
+  channel?: string;
+  appName?: string;
+  devAppName?: string;
+} {
+  if (!app.isPackaged) return {};
   try {
     const metaPath = path.join(app.getAppPath(), "package.json");
-    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as { localStudioChannel?: unknown };
-    return typeof meta.localStudioChannel === "string" ? meta.localStudioChannel : undefined;
+    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
+    return {
+      channel: typeof meta.localStudioChannel === "string" ? meta.localStudioChannel : undefined,
+      appName:
+        typeof meta.localStudioBrandAppName === "string" ? meta.localStudioBrandAppName : undefined,
+      devAppName:
+        typeof meta.localStudioBrandDevAppName === "string"
+          ? meta.localStudioBrandDevAppName
+          : undefined,
+    };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
-const releaseChannel = (process.env.LOCAL_STUDIO_DESKTOP_CHANNEL ?? packagedChannel())
+const packaged = packagedIdentity();
+const canonicalAppName =
+  process.env.LOCAL_STUDIO_BRAND_APP_NAME?.trim() || packaged.appName || "Local Studio";
+const CANONICAL_APP_NAME = canonicalAppName;
+const releaseChannel = (process.env.LOCAL_STUDIO_DESKTOP_CHANNEL ?? packaged.channel)
   ?.trim()
   .toLowerCase();
 
@@ -31,7 +47,12 @@ const releaseChannel = (process.env.LOCAL_STUDIO_DESKTOP_CHANNEL ?? packagedChan
 // (built from main). The dev channel is packaged under its own app id, product
 // name and user-data dir, so the two installs never collide and Launch Services
 // can never resolve one when you asked for the other.
-const DEV_APP_NAME = `${CANONICAL_APP_NAME} Dev`;
+const DEV_APP_NAME =
+  configuredDevAppName && configuredDevAppName.length > 0
+    ? configuredDevAppName
+    : packaged.devAppName
+      ? packaged.devAppName
+      : `${CANONICAL_APP_NAME} Dev`;
 const isDevChannel = releaseChannel === "dev";
 const nonStablePackagedChannel =
   app.isPackaged && releaseChannel !== undefined && releaseChannel !== "" && !isDevChannel;

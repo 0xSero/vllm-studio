@@ -14,13 +14,20 @@ import { registerModelsRoutes } from "../modules/models/routes";
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
 import { registerAudioRoutes } from "../modules/audio/routes";
+import { registerScientificWorkbenchRoutes } from "../modules/workbench/routes";
 import { registerSpeechRoutes } from "../modules/speech/routes";
+import { registerMachineRoutes } from "../modules/machines/routes";
+import { registerFoundryRoutes } from "../modules/foundry/routes";
+import { registerEnvironmentRoutes } from "../modules/environment/routes";
 import { documentRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
   createMutatingAuthMiddleware,
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
+  createEnterpriseAuthMiddleware,
 } from "./security-middleware";
+import { createSpiffeAuthMiddleware } from "./spiffe-auth";
+import { controllerWorkloadEvidence } from "./spiffe-evidence";
 import {
   createControllerRequestObservabilityMiddleware,
   TELEMETRY_SKIP_PATHS,
@@ -39,7 +46,11 @@ type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
   ReturnType<typeof registerStudioRoutes> &
   ReturnType<typeof registerSpeechRoutes> &
   ReturnType<typeof registerAudioRoutes> &
-  ReturnType<typeof registerAllProxyRoutes>;
+  ReturnType<typeof registerScientificWorkbenchRoutes> &
+  ReturnType<typeof registerMachineRoutes> &
+  ReturnType<typeof registerAllProxyRoutes> &
+  ReturnType<typeof registerFoundryRoutes> &
+  ReturnType<typeof registerEnvironmentRoutes>;
 
 export const createApp = (
   context: AppContext,
@@ -55,7 +66,12 @@ export const createApp = (
     cors({
       origin: (origin) => (allowedCorsOrigins.includes(origin) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Authorization", "Content-Type", "X-API-Key"],
+      allowHeaders: [
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        "X-Local-Studio-Scientific-Submission-ID",
+      ],
       exposeHeaders: [
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
@@ -85,6 +101,8 @@ export const createApp = (
   );
 
   app.use("*", createControllerRequestObservabilityMiddleware(context));
+  app.use("*", createSpiffeAuthMiddleware());
+  app.use("*", createEnterpriseAuthMiddleware(context));
   app.use("*", createMutatingRateLimitMiddleware(context));
   app.use("*", createReadRateLimitMiddleware(context));
   app.use("*", createMutatingAuthMiddleware(context));
@@ -97,7 +115,15 @@ export const createApp = (
     registerStudioRoutes(app, context),
     registerSpeechRoutes(app, context),
     registerAudioRoutes(app, context),
+    registerScientificWorkbenchRoutes(app, context),
+    registerMachineRoutes(app, context),
+    registerFoundryRoutes(app, context),
+    registerEnvironmentRoutes(app, context),
     registerAllProxyRoutes(app, context),
+    app.get(
+      "/environment/workload-identity",
+      effectHandler((ctx) => controllerWorkloadEvidence(ctx.req.raw.signal)),
+    ),
     app.get(
       "/health",
       documentRoute,

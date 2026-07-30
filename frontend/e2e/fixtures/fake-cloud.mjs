@@ -5,6 +5,7 @@
 
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { APP_NAME } from "./appliance.mjs";
 
 const PORT = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 43213;
 
@@ -56,7 +57,7 @@ function approvalPage(state) {
   return `<!doctype html><html><body style="font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh;margin:0">
   <form method="POST" action="/approve?state=${encodeURIComponent(state)}" style="text-align:center;border:1px solid #333;padding:32px 40px">
     <h1 style="font-size:18px;margin:0 0 8px">E2E Cloud</h1>
-    <p style="color:#999;margin:0 0 20px">Local Studio is requesting access to your E2E Cloud account.</p>
+    <p style="color:#999;margin:0 0 20px">${APP_NAME} is requesting access to your E2E Cloud account.</p>
     <button type="submit" style="background:#4ade80;color:#111;border:0;padding:8px 24px;font-size:14px;cursor:pointer">Approve</button>
   </form></body></html>`;
 }
@@ -115,7 +116,7 @@ async function handleOAuth(req, res, url) {
     return html(
       res,
       200,
-      `<body style="font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh"><p>Approved — return to Local Studio.</p></body>`,
+      `<body style="font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh"><p>Approved — return to ${APP_NAME}.</p></body>`,
     );
   }
   if (url.pathname === "/poll") {

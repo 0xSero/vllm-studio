@@ -38,6 +38,7 @@ data/
 node_modules/
 services/node_modules
 .next/
+.next-dev/
 .turbo/
 
 # IDE
@@ -97,3 +98,6 @@ frontend/dist-desktop-dev/
 frontend/dist-installers/
 .vercel
 .env*
+# CocoIndex Code (ccc)
+/.cocoindex_code/
+/shared/node_modules

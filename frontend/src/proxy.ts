@@ -13,8 +13,20 @@ import {
   evaluateRequestBoundary,
   splitAllowedValues,
 } from "@/lib/security/request-boundary";
+import { enterpriseAuthConfig } from "@/lib/auth/enterprise-config";
+import {
+  ENTERPRISE_SESSION_COOKIE,
+  getEnterpriseSession,
+  type EnterpriseSession,
+} from "@/lib/auth/enterprise-session";
+import type { EnterpriseAuthConfig } from "@local-studio/contracts/enterprise-auth";
+import {
+  enterpriseOperationDenial,
+  enterpriseOperationPolicy,
+} from "@local-studio/contracts/enterprise-authorization";
+import { acquireEnterpriseAccessToken } from "@/lib/auth/token-broker";
+import { requestUsesHttps } from "@/lib/auth/request-context";
 
-const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const PROCESS_CSRF_TOKEN = crypto.randomUUID();
 
 function denyResponse(isApi: boolean, status: number, message: string): NextResponse {
@@ -27,38 +39,129 @@ function denyResponse(isApi: boolean, status: number, message: string): NextResp
   return new NextResponse(message, { status });
 }
 
-function enforceAccess(request: NextRequest): NextResponse | null {
-  const posture = resolveAccessPosture();
-  if (posture.kind === "allow") return null;
+type AccessEvaluation = {
+  denied: NextResponse | null;
+  session?: EnterpriseSession;
+  previousSessionId?: string;
+};
 
+async function enforceEnterpriseAccess(
+  request: NextRequest,
+  config: EnterpriseAuthConfig | null,
+  optional: boolean,
+): Promise<AccessEvaluation> {
+  const sessionId = request.cookies.get(ENTERPRISE_SESSION_COOKIE)?.value;
+  const existingSession = await getEnterpriseSession(sessionId, config);
+  let session = existingSession;
+  if (session) {
+    try {
+      session = (await acquireEnterpriseAccessToken(session)).session;
+    } catch {
+      session = null;
+    }
+  }
+  const policy = enterpriseOperationPolicy(request.method, request.nextUrl.pathname);
+  if (session) {
+    if (policy && enterpriseOperationDenial(session.principal, policy)) {
+      return {
+        denied: denyResponse(true, 403, "Enterprise authorization denied"),
+        session,
+        ...(sessionId && session.id !== sessionId ? { previousSessionId: sessionId } : {}),
+      };
+    }
+    return {
+      denied: null,
+      session,
+      ...(sessionId && session.id !== sessionId ? { previousSessionId: sessionId } : {}),
+    };
+  }
+  if (optional && !sessionId && !policy) return { denied: null };
+  const url = request.nextUrl;
+  let response: NextResponse;
+  if (url.pathname.startsWith("/api/")) {
+    response = denyResponse(true, 401, "Enterprise sign-in required");
+  } else {
+    const issuerId = config?.issuers[0]?.id;
+    if (!issuerId) {
+      response = denyResponse(false, 503, "Enterprise issuer is not configured");
+    } else {
+      const login = new URL(`/api/auth/login/${encodeURIComponent(issuerId)}`, request.url);
+      login.searchParams.set("returnTo", `${url.pathname}${url.search}`);
+      response = NextResponse.redirect(login);
+    }
+  }
+  if (sessionId) response.cookies.delete(ENTERPRISE_SESSION_COOKIE);
+  return { denied: response };
+}
+
+async function evaluateAccess(
+  request: NextRequest,
+  config: EnterpriseAuthConfig | null = enterpriseAuthConfig(),
+): Promise<AccessEvaluation> {
   const url = request.nextUrl;
   const isApi = url.pathname.startsWith("/api/");
-
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && timingSafeStringEqual(queryToken.trim(), posture.token)) {
-    const clean = url.clone();
-    clean.searchParams.delete("token");
-    const redirect = NextResponse.redirect(clean);
-    redirect.cookies.set(STUDIO_TOKEN_COOKIE, posture.token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: url.protocol === "https:",
-      path: "/",
-      maxAge: TOKEN_MAX_AGE_SECONDS,
-    });
-    return redirect;
+  if (
+    url.pathname.startsWith("/api/auth/") ||
+    url.pathname === "/api/health" ||
+    url.pathname === "/api/desktop-health"
+  ) {
+    return { denied: null };
+  }
+  const posture = resolveAccessPosture({ enterpriseMode: config?.mode ?? null });
+  if (posture.kind === "allow") return { denied: null };
+  if (posture.kind === "misconfigured") {
+    return {
+      denied: denyResponse(isApi, 503, "Shared deployment authentication is not configured"),
+    };
+  }
+  if (posture.kind === "require-oidc" || posture.kind === "optional-oidc") {
+    return enforceEnterpriseAccess(request, config, posture.kind === "optional-oidc");
   }
 
   const presented = presentedToken(
     request.headers.get(STUDIO_TOKEN_HEADER),
     request.cookies.get(STUDIO_TOKEN_COOKIE)?.value,
   );
-  if (presented && timingSafeStringEqual(presented, posture.token)) return null;
+  if (presented && timingSafeStringEqual(presented, posture.token)) return { denied: null };
 
-  return denyResponse(isApi, 401, "Unauthorized");
+  return { denied: denyResponse(isApi, 401, "Unauthorized") };
 }
 
-export function proxy(request: NextRequest) {
+export async function enforceAccess(
+  request: NextRequest,
+  config: EnterpriseAuthConfig | null = enterpriseAuthConfig(),
+): Promise<NextResponse | null> {
+  const access = await evaluateAccess(request, config);
+  if (access.denied && access.session && access.previousSessionId) {
+    setEnterpriseSessionCookie(access.denied, request, access.session);
+  }
+  return access.denied;
+}
+
+const withEnterpriseSessionCookie = (cookie: string, sessionId: string): string => {
+  const entries = cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry && !entry.startsWith(`${ENTERPRISE_SESSION_COOKIE}=`));
+  entries.push(`${ENTERPRISE_SESSION_COOKIE}=${sessionId}`);
+  return entries.join("; ");
+};
+
+const setEnterpriseSessionCookie = (
+  response: NextResponse,
+  request: NextRequest,
+  session: EnterpriseSession,
+): void => {
+  response.cookies.set(ENTERPRISE_SESSION_COOKIE, session.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: requestUsesHttps(request),
+    path: "/",
+    maxAge: Math.max(Math.floor((session.absoluteExpiresAt - Date.now()) / 1000), 1),
+  });
+};
+
+export async function proxy(request: NextRequest) {
   const boundary = evaluateRequestBoundary({
     method: request.method,
     host: request.headers.get("host"),
@@ -81,13 +184,27 @@ export function proxy(request: NextRequest) {
       boundary.error,
     );
   }
-  const denied = enforceAccess(request);
-  if (denied) return denied;
+  const access = await evaluateAccess(request);
+  if (access.denied) {
+    if (access.session && access.previousSessionId) {
+      setEnterpriseSessionCookie(access.denied, request, access.session);
+    }
+    return access.denied;
+  }
 
   const start = Date.now();
   const forwardedHeaders = new Headers(request.headers);
   forwardedHeaders.set(CSRF_BOOTSTRAP_HEADER, PROCESS_CSRF_TOKEN);
+  if (access.session && access.previousSessionId) {
+    forwardedHeaders.set(
+      "cookie",
+      withEnterpriseSessionCookie(request.headers.get("cookie") ?? "", access.session.id),
+    );
+  }
   const response = NextResponse.next({ request: { headers: forwardedHeaders } });
+  if (access.session && access.previousSessionId) {
+    setEnterpriseSessionCookie(response, request, access.session);
+  }
 
   writeAccessLog(request, Date.now() - start);
   applySecurityHeaders(request, response);

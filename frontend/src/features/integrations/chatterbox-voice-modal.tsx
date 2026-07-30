@@ -3,6 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import api from "@/lib/api/client";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { Alert, Button, UiModal, UiModalHeader } from "@/ui";
 import { AudioLines, X } from "@/ui/icon-registry";
 import { VoiceCreator } from "./chatterbox-voice-creator";
@@ -20,7 +21,7 @@ export function ChatterboxVoiceModal({ onClose }: { onClose: () => void }) {
   const [pendingDelete, setPendingDelete] = useState("");
   const [voiceId, setVoiceId] = useState("");
   const [previewText, setPreviewText] = useState(
-    "Local Studio is ready. This voice was generated privately on my workstation.",
+    `${BRAND_PROFILE.appName} is ready. This voice was generated privately on my workstation.`,
   );
   const [preview, setPreview] = useState<{ url: string; voiceId: string } | null>(null);
   const previewUrlRef = useRef("");
@@ -220,7 +221,7 @@ export function ChatterboxVoiceModal({ onClose }: { onClose: () => void }) {
         <div className="border-b border-(--ui-border) px-6 py-4">
           <Alert variant="info">
             Voice cloning runs on your dedicated GPU. Reference audio stays encrypted on the
-            selected controller; previews stream directly back to Local Studio.
+            selected controller; previews stream directly back to {BRAND_PROFILE.appName}.
           </Alert>
           {storeError && status ? (
             <Alert variant="warning" className="mt-3">

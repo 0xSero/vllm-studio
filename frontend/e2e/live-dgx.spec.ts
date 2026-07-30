@@ -10,7 +10,7 @@ import {
   selectLiveController,
 } from "./live-controller";
 
-test("Local Studio renders and talks to the live DS4 DGX Spark", async ({ page, context }) => {
+test("the desktop app renders and talks to the live DS4 DGX Spark", async ({ page, context }) => {
   await selectLiveController(context, page);
 
   await test.step("Render the live DGX Spark status", async () => {
@@ -43,7 +43,7 @@ test("Local Studio renders and talks to the live DS4 DGX Spark", async ({ page, 
     );
   });
 
-  await test.step("Run two DS4 turns through Local Studio", async () => {
+  await test.step("Run two DS4 turns through the desktop app", async () => {
     const config = await readLiveControllerConfig(page);
     const beforeId = newestLiveControllerRequestId(config);
     const beforeCount = liveControllerRequestCount(config);

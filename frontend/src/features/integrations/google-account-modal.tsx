@@ -17,6 +17,7 @@ import {
   openExternal,
   sharedClientWarning,
 } from "./google-account-model";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { GoogleAccountLoadState } from "./google-account-load-state";
 import { ConnectedGoogleAccount } from "./google-account-connected";
 import { GoogleAccountSetup } from "./google-account-setup";
@@ -252,8 +253,8 @@ export function GoogleAccountModal({
       <div className="space-y-5 px-6 py-5">
         <Alert variant="info">
           Google&apos;s first-party Workspace MCP is in developer preview. Add a Desktop OAuth
-          client once; Local Studio encrypts it with the desktop keychain and exposes only declared
-          read-only tools.
+          client once; {BRAND_PROFILE.appName} encrypts it with the desktop keychain and exposes
+          only declared read-only tools.
         </Alert>
         {content}
         {error && account ? <Alert variant="error">{error}</Alert> : null}

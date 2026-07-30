@@ -45,6 +45,21 @@ export const STUDIO_STARTER_PRESETS: StudioStarterPreset[] = [
     },
   },
   {
+    id: "tensorprime",
+    name: "TensorPrime",
+    description:
+      "Connect the governed vLLM and llm-d endpoint. Commissioning verifies the live model catalog before activation.",
+    kind: "remote",
+    tags: ["remote", "governed", "keyless"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "http://api.tprime.vlans.ca",
+      model: "qwen3-next-80b-a3b-nvfp4",
+      authentication: "none",
+    },
+  },
+  {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
     description:
@@ -56,6 +71,7 @@ export const STUDIO_STARTER_PRESETS: StudioStarterPreset[] = [
     remote: {
       base_url: "http://pop-os-1.tailadb2c1.ts.net:8080/v1",
       model: "deepseek-v4-flash",
+      authentication: "api_key",
     },
   },
 ];

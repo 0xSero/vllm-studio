@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { Button, ErrorBox, UiModal, UiModalHeader } from "@/ui";
 import { Folder } from "@/ui/icons";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { useProjectDirectoryPickerModalEffects } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import type { DirectoryBrowserEntry, DirectoryBrowserPayload } from "./types";
 
@@ -61,7 +62,7 @@ export function ProjectDirectoryPickerModal({
       />
       <div className="space-y-4 p-5 text-sm text-(--fg)">
         <p className="text-xs leading-5 text-(--dim)">
-          Browse folders on the machine running Local Studio, or paste an absolute path.
+          Browse folders on the machine running {BRAND_PROFILE.appName}, or paste an absolute path.
         </p>
         <div className="flex gap-2">
           <input

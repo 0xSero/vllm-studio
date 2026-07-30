@@ -5,6 +5,7 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/features/agent/contracts";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { effectTimeout } from "@/lib/effect-timers";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import {
@@ -533,7 +534,7 @@ function handleTerminalData(
 }
 
 function writeIntro(term: XTerm, cwd: string | null) {
-  term.writeln("\x1b[90mLocal Studio terminal (fallback mode — no TUI)\x1b[0m");
+  term.writeln(`\x1b[90m${BRAND_PROFILE.appName} terminal (fallback mode — no TUI)\x1b[0m`);
   if (!cwd) term.writeln("\x1b[31mNo working directory.\x1b[0m");
   writePrompt(term, cwd);
 }

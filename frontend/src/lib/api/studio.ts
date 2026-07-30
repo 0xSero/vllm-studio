@@ -18,6 +18,18 @@ import type {
   RuntimeTarget,
 } from "../types";
 import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
+import type { ProviderAuthentication } from "@local-studio/contracts/enterprise-auth";
+import type { ProviderPathStyle } from "@shared/agent/openai-endpoint";
+
+export interface ProviderSubscriptionKeyPayload {
+  header: string;
+  value: string;
+}
+
+export interface ProviderSubscriptionKey {
+  header: string;
+  secret_ref: string;
+}
 
 export type {
   ModelIndexModel,
@@ -33,6 +45,20 @@ export interface StudioModelsRoot {
   sources?: string[];
   recipe_ids?: string[];
 }
+
+const ProviderCatalogSchema = Schema.Struct({
+  provider: Schema.String,
+  models: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optional(Schema.String),
+    }),
+  ),
+});
+
+const ProviderCatalogsSchema = Schema.Struct({
+  providers: Schema.Array(ProviderCatalogSchema),
+});
 
 export interface VllmRuntimeInfo {
   installed: boolean;
@@ -147,6 +173,10 @@ export function createStudioApi(core: ApiCore) {
         base_url: string;
         enabled: boolean;
         has_api_key: boolean;
+        authentication: ProviderAuthentication;
+        subscription_key?: ProviderSubscriptionKey;
+        path_style?: ProviderPathStyle;
+        api_version?: string;
       }>;
     }> => core.request("/studio/providers"),
 
@@ -154,8 +184,13 @@ export function createStudioApi(core: ApiCore) {
       id: string;
       name: string;
       base_url: string;
-      api_key: string;
+      api_key?: string;
+      client_secret?: string;
+      subscription_key?: ProviderSubscriptionKeyPayload;
       enabled?: boolean;
+      authentication?: ProviderAuthentication;
+      path_style?: ProviderPathStyle;
+      api_version?: string;
     }): Promise<{
       success: boolean;
       provider: {
@@ -164,6 +199,10 @@ export function createStudioApi(core: ApiCore) {
         base_url: string;
         enabled: boolean;
         has_api_key: boolean;
+        authentication: ProviderAuthentication;
+        subscription_key?: ProviderSubscriptionKey;
+        path_style?: ProviderPathStyle;
+        api_version?: string;
       };
     }> =>
       core.request("/studio/providers", {
@@ -177,7 +216,12 @@ export function createStudioApi(core: ApiCore) {
         name?: string;
         base_url?: string;
         api_key?: string;
+        client_secret?: string;
+        subscription_key?: ProviderSubscriptionKeyPayload;
         enabled?: boolean;
+        authentication?: ProviderAuthentication;
+        path_style?: ProviderPathStyle;
+        api_version?: string;
       },
     ): Promise<{
       success: boolean;
@@ -187,6 +231,10 @@ export function createStudioApi(core: ApiCore) {
         base_url: string;
         enabled: boolean;
         has_api_key: boolean;
+        authentication: ProviderAuthentication;
+        subscription_key?: ProviderSubscriptionKey;
+        path_style?: ProviderPathStyle;
+        api_version?: string;
       };
     }> =>
       core.request(`/studio/providers/${encodePathSegments(id)}`, {
@@ -199,12 +247,36 @@ export function createStudioApi(core: ApiCore) {
         method: "DELETE",
       }),
 
-    getProviderModels: (): Promise<{
-      providers: Array<{
+    probeProvider: async (payload: {
+      id: string;
+      name: string;
+      base_url: string;
+      api_key?: string;
+      client_secret?: string;
+      subscription_key?: ProviderSubscriptionKeyPayload;
+      authentication?: ProviderAuthentication;
+      path_style?: ProviderPathStyle;
+      api_version?: string;
+    }): Promise<{
+      provider: string;
+      models: ReadonlyArray<{ id: string; name?: string }>;
+    }> =>
+      Schema.decodeUnknownSync(ProviderCatalogSchema)(
+        await core.request("/studio/providers/probe", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+      ),
+
+    getProviderModels: async (): Promise<{
+      providers: ReadonlyArray<{
         provider: string;
-        models: Array<{ id: string; name?: string }>;
+        models: ReadonlyArray<{ id: string; name?: string }>;
       }>;
-    }> => core.request("/studio/provider-models"),
+    }> =>
+      Schema.decodeUnknownSync(ProviderCatalogsSchema)(
+        await core.request("/studio/provider-models"),
+      ),
 
     getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.request("/runtime/vllm"),
 

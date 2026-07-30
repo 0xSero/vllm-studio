@@ -1,4 +1,4 @@
-// Subagent tool for Local Studio.
+// Subagent tool for the desktop app.
 //
 // Registers a `subagent` tool that spawns an independent child agent session
 // in the runtime (same project, own context) and returns its final report as

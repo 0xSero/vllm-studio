@@ -1,0 +1,42 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: local-studio-tensorprime-egress
+  namespace: local-studio
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - controller
+          - agent-runtime
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kuberay-system
+      ports:
+        - protocol: TCP
+          port: 10001
+        - protocol: TCP
+          port: 8265
+        - protocol: TCP
+          port: 8000
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cortaix-llm-inference
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 4000
+        - protocol: TCP
+          port: 7997
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8000

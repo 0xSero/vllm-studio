@@ -1,0 +1,17 @@
+{
+  "api_id": "local-studio-ai",
+  "approved_revision": "2",
+  "approval_reference": "replace-approved-change-record",
+  "approved_at": "2099-01-01T00:00:00Z",
+  "approval_expires_at": "2099-01-01T01:00:00Z",
+  "policy_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "parameters_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "required_checks": [
+    "configuration-pairing",
+    "content-safety",
+    "managed-identity",
+    "negative-authorization",
+    "streaming",
+    "telemetry"
+  ]
+}

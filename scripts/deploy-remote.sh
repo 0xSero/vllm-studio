@@ -262,6 +262,15 @@ if [[ -z "$node_bin" ]]; then
   exit 1
 fi
 mkdir -p ~/.config/systemd/user
+mkdir -p ~/.config/local-studio
+credential_file=$HOME/.config/local-studio/agent-runtime.env
+if [[ ! -s "$credential_file" ]]; then
+  umask 077
+  lifecycle_token=$("$node_bin" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')
+  printf 'LOCAL_STUDIO_AGENT_LIFECYCLE_TOKEN=%s\nLOCAL_STUDIO_PROVISIONING_TOKEN=%s\n' \
+    "$lifecycle_token" "$lifecycle_token" > "$credential_file"
+fi
+chmod 600 "$credential_file"
 sed -e "s|@APP_DIR@|$remote_dir|g" -e "s|@NODE@|$node_bin|g" \
   "$remote_dir/scripts/systemd/local-studio-agent-runtime.service" \
   > ~/.config/systemd/user/local-studio-agent-runtime.service
@@ -363,6 +372,9 @@ restart_managed_frontend() {
   systemctl --user cat "$frontend_service" >/dev/null 2>&1 || return 1
   [[ -f "$unit_file" ]] || return 1
   systemctl --user stop "$frontend_service" || return 1
+  mkdir -p "$drop_in_dir"
+  printf '[Service]\nEnvironmentFile=%%h/.config/local-studio/agent-runtime.env\n' \
+    > "$drop_in_dir/zz-local-studio-agent-runtime.conf"
   sed -i \
     's/vllm-studio-controller\.service/local-studio-controller-8080.service/g' \
     "$unit_file" || return 1
@@ -390,6 +402,9 @@ restart_detached_frontend() {
   sleep 1
   export BACKEND_URL=http://localhost:8080
   export LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081
+  set -a
+  source "$HOME/.config/local-studio/agent-runtime.env"
+  set +a
   nohup node scripts/start-standalone.mjs > /tmp/frontend-stdout.log 2>&1 &
 }
 

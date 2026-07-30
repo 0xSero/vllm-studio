@@ -1,0 +1,11 @@
+{
+  "mode": "required",
+  "x509_mtls": "required",
+  "endpoint": "unix:///run/spiffe/workload/spire-agent.sock",
+  "trust_domain": "tprime.vlans.ca",
+  "frontend_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-frontend",
+  "controller_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-controller",
+  "agent_runtime_id": "spiffe://tprime.vlans.ca/ns/local-studio/sa/local-studio-agent-runtime",
+  "agent_runtime_audience": "local-studio-agent-runtime",
+  "controller_audience": "local-studio-controller"
+}

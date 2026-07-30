@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const PluginActivationSchema = Schema.Struct({ enabled: Schema.Boolean });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let body: typeof PluginActivationSchema.Type;
   try {

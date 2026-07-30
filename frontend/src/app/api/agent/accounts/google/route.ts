@@ -41,7 +41,7 @@ function closeGoogleConnections(): void {
 }
 
 export async function GET(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   try {
     return NextResponse.json({ account: await Effect.runPromise(getGoogleAccount()) });
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let input: typeof GoogleClientInputSchema.Type;
   try {
@@ -70,7 +70,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = requireApiAccess(request);
+  const denied = await requireApiAccess(request);
   if (denied) return denied;
   let input: typeof GoogleAccountInputSchema.Type;
   try {

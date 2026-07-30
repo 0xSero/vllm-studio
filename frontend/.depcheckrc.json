@@ -21,6 +21,7 @@
     "knip",
     "lint-staged",
     "concurrently",
+    "cross-env",
     "electron-builder",
     "madge"
   ],

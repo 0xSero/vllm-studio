@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { LeftSidebar } from "@/features/shell/left-sidebar";
 import { getThemeBootstrapScript } from "@/lib/theme-runtime";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { Providers } from "./providers";
 
 export const viewport: Viewport = {
@@ -11,12 +12,12 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#0a0a0a",
+  themeColor: BRAND_PROFILE.themeColor,
 };
 
 export const metadata: Metadata = {
-  title: "Local Studio",
-  description: "Model management for vLLM and SGLang",
+  title: BRAND_PROFILE.appName,
+  description: BRAND_PROFILE.description,
   // The manifest link is written by hand in <head> below: it needs
   // crossorigin="use-credentials" (Next's `manifest` field can't set it), or an
   // access-gated deployment serves the login page instead of the manifest and
@@ -24,15 +25,15 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Local Studio",
+    title: BRAND_PROFILE.appName,
   },
   icons: {
     icon: [
-      { url: "/mocks/logo-1.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: BRAND_PROFILE.iconSvgPath, type: "image/svg+xml" },
+      { url: BRAND_PROFILE.icon192Path, sizes: "192x192", type: "image/png" },
+      { url: BRAND_PROFILE.icon512Path, sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: BRAND_PROFILE.appleTouchIconPath, sizes: "180x180", type: "image/png" }],
   },
 };
 
@@ -81,11 +82,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="zai-dark" suppressHydrationWarning>
+    <html
+      lang="en"
+      data-appliance={BRAND_PROFILE.applianceId}
+      data-theme={BRAND_PROFILE.defaultThemeId}
+      suppressHydrationWarning
+    >
       <head>
-        <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <link rel="icon" href="/mocks/logo-1.svg" type="image/svg+xml" />
+        <link rel="manifest" href={BRAND_PROFILE.manifestPath} crossOrigin="use-credentials" />
+        <link rel="apple-touch-icon" href={BRAND_PROFILE.appleTouchIconPath} />
+        <link rel="icon" href={BRAND_PROFILE.iconSvgPath} type="image/svg+xml" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body>

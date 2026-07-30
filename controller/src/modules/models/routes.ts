@@ -44,6 +44,7 @@ import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../http/local-fetch";
+import { discoverProviderModels, providerIsDiscoverable } from "../../services/provider-routing";
 
 function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
@@ -133,6 +134,39 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
                 vision: resolveModelVision({ identifiers: [inferredId] }),
               },
             });
+          }
+
+          const providerCatalogs = yield* Effect.forEach(
+            context.config.providers.filter(providerIsDiscoverable),
+            (provider) => {
+              const bearer = ctx.get("enterpriseBearerToken");
+              return discoverProviderModels(provider, fetch, {
+                secretStore: context.providerSecretStore,
+                principal: ctx.get("enterprisePrincipal"),
+                ...(bearer ? { verifiedBearerToken: bearer } : {}),
+                signal: ctx.req.raw.signal,
+              }).pipe(Effect.option);
+            },
+            { concurrency: 4 },
+          );
+          const knownModelIds = new Set(models.map(({ id }) => id));
+          for (const result of providerCatalogs) {
+            if (result._tag !== "Some") continue;
+            for (const remoteModel of result.value.models) {
+              const modelId = `${result.value.provider}/${remoteModel.id}`;
+              if (knownModelIds.has(modelId)) continue;
+              knownModelIds.add(modelId);
+              models.push({
+                id: modelId,
+                object: "model",
+                created: now,
+                owned_by: result.value.provider,
+                active: true,
+                metadata: {
+                  vision: resolveModelVision({ identifiers: [remoteModel.id] }),
+                },
+              });
+            }
           }
 
           const payload: OpenAIModelList = { object: "list", data: models };

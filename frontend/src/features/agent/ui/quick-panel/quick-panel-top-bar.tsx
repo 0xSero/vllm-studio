@@ -2,6 +2,7 @@
 
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import { ExternalLink, X } from "@/ui/icon-registry";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -41,8 +42,8 @@ export function QuickPanelTopBar({
             onClick={() =>
               void getQuickPanelBridge()?.focusMainAndNavigate(projectId, sessionId ?? undefined)
             }
-            title="Open in Local Studio"
-            aria-label="Open in Local Studio"
+            title={`Open in ${BRAND_PROFILE.appName}`}
+            aria-label={`Open in ${BRAND_PROFILE.appName}`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
           >
             <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />

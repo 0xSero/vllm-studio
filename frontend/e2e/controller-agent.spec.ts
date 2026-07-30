@@ -7,7 +7,6 @@ test("Pi defaults to the active controller and reveals other models on request",
   const picker = page.getByRole("button", { name: /^Model:/ }).first();
   await expect(picker).toBeEnabled({ timeout: 60_000 });
   await expect(picker).toHaveAccessibleName(/controller-model/);
-  await expect(page.getByRole("button", { name: "Pi tools: read only" })).toBeVisible();
   await picker.click();
   await page.getByRole("menuitem", { name: /^Model\b/ }).click();
   await expect(page.getByRole("menuitemradio", { name: "controller-model" })).toBeVisible();

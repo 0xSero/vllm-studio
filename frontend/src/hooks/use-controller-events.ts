@@ -7,11 +7,7 @@ import {
   isControllerStreamEventType,
 } from "@/lib/controller-events-contract";
 import { useCallback, useRef, useState } from "react";
-import {
-  BACKEND_URL_CHANGED_EVENT,
-  getApiKey,
-  resolveControllerEventsBaseUrl,
-} from "@/lib/api/connection";
+import { BACKEND_URL_CHANGED_EVENT } from "@/lib/api/connection";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 interface SSEPayload<T = unknown> {
@@ -19,7 +15,7 @@ interface SSEPayload<T = unknown> {
   timestamp: string;
 }
 
-export function useControllerEvents(apiBaseUrl: string = resolveControllerEventsBaseUrl()) {
+export function useControllerEvents(apiBaseUrl: string = "/api/proxy") {
   const eventSourceRef = useRef<EventSource | null>(null);
   const [backendRevision, setBackendRevision] = useState(0);
 
@@ -39,10 +35,7 @@ export function useControllerEvents(apiBaseUrl: string = resolveControllerEvents
     }
   }, []);
 
-  const apiKey = getApiKey();
-  const sseUrl = apiKey
-    ? `${apiBaseUrl}/events?api_key=${encodeURIComponent(apiKey)}`
-    : `${apiBaseUrl}/events`;
+  const sseUrl = `${apiBaseUrl}/events`;
 
   useMountSubscription(() => {
     if (eventSourceRef.current) {

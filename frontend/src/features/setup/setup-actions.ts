@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { Dispatch, SetStateAction } from "react";
 import api from "@/lib/api/client";
+import type { ProviderAuthentication } from "@local-studio/contracts/enterprise-auth";
 import type {
   EngineBackend,
   EngineJob,
@@ -16,6 +17,7 @@ import { buildStarterRecipe } from "./setup-helpers";
 import { clearSetupProgress } from "./setup-progress";
 import { finishRuntimeJobEffect, requestEffect } from "./use-setup-effects";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
+import type { ApimClientFields } from "./setup-view/step-model";
 
 export const markSetupComplete = (): void => {
   try {
@@ -136,6 +138,7 @@ export function connectRemotePresetEffect(
   preset: StarterPreset,
   remote: NonNullable<StarterPreset["remote"]>,
   apiKey: string,
+  subscriptionKey: { header: string; value: string } | undefined,
   {
     setRemoteError,
     setConnectingRemote,
@@ -145,14 +148,62 @@ export function connectRemotePresetEffect(
     setConnectingRemote: Dispatch<SetStateAction<boolean>>;
     openAgentChat: () => void;
   },
+  apimClientFields?: ApimClientFields,
 ) {
   return Effect.gen(function* () {
+    const isApimClient = remote.authentication === "apim_client";
+    const authentication: ProviderAuthentication =
+      isApimClient && apimClientFields
+        ? {
+            type: "apim_client",
+            issuer_id: apimClientFields.issuer_id.trim(),
+            audience: apimClientFields.audience.trim(),
+            scopes: apimClientFields.scopes.split(/\s+/u).filter(Boolean),
+            token_endpoint: apimClientFields.token_endpoint.trim(),
+            client_id: apimClientFields.client_id.trim(),
+          }
+        : remote.authentication === "none"
+          ? { type: "none" }
+          : { type: "api_key" };
+    const pathStyle = isApimClient ? apimClientFields?.path_style : undefined;
+    const apiVersion = isApimClient ? apimClientFields?.api_version.trim() || undefined : undefined;
+    const clientSecret = isApimClient
+      ? apimClientFields?.client_secret.trim() || undefined
+      : undefined;
+    const catalog = yield* requestEffect(() =>
+      api.probeProvider({
+        id: preset.id,
+        name: preset.name,
+        base_url: remote.base_url,
+        api_key: apiKey,
+        client_secret: clientSecret,
+        subscription_key: subscriptionKey,
+        authentication,
+        ...(pathStyle ? { path_style: pathStyle } : {}),
+        ...(apiVersion ? { api_version: apiVersion } : {}),
+      }),
+    );
+    if (!catalog.models.some((model) => model.id === remote.model)) {
+      return yield* Effect.fail(
+        new Error(`Provider did not advertise the required model "${remote.model}"`),
+      );
+    }
     const existing = yield* requestEffect(() => api.getProviders()).pipe(
       Effect.catch(() => Effect.succeed({ providers: [] })),
     );
     const alreadyThere = existing.providers.some((provider) => provider.id === preset.id);
     if (alreadyThere) {
-      yield* requestEffect(() => api.updateProvider(preset.id, { api_key: apiKey, enabled: true }));
+      yield* requestEffect(() =>
+        api.updateProvider(preset.id, {
+          api_key: apiKey,
+          client_secret: clientSecret,
+          subscription_key: subscriptionKey,
+          enabled: true,
+          authentication,
+          ...(pathStyle ? { path_style: pathStyle } : {}),
+          ...(apiVersion ? { api_version: apiVersion } : {}),
+        }),
+      );
     } else {
       yield* requestEffect(() =>
         api.createProvider({
@@ -160,6 +211,11 @@ export function connectRemotePresetEffect(
           name: preset.name,
           base_url: remote.base_url,
           api_key: apiKey,
+          client_secret: clientSecret,
+          subscription_key: subscriptionKey,
+          authentication,
+          ...(pathStyle ? { path_style: pathStyle } : {}),
+          ...(apiVersion ? { api_version: apiVersion } : {}),
         }),
       );
     }

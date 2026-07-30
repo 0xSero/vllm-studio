@@ -9,6 +9,7 @@ import {
 import { Button, Checkbox, FormField, Input, Select, Textarea } from "@/ui";
 import { cx } from "@/ui/utils";
 import { ResourceDrawer } from "@/ui/resource-drawer";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import type { RigHardwareType, RigNode, RigNodeRole } from "@/lib/types";
 import type { RigNodePayload } from "@/lib/api/rigs";
 import { HardwareArt } from "./hardware-art";
@@ -180,7 +181,7 @@ export function NodeFormModal({
           <FormField
             label="Machine name"
             required
-            description="A friendly name shown in Local Studio."
+            description={`A friendly name shown in ${BRAND_PROFILE.appName}.`}
           >
             <Input
               value={form.name}
@@ -232,7 +233,7 @@ export function NodeFormModal({
                 GPU details
               </h3>
               <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                Optional capacity information for a machine Local Studio cannot detect.
+                Optional capacity information for a machine {BRAND_PROFILE.appName} cannot detect.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

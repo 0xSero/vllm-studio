@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="cortAIx"><g transform="translate(512,512) scale(0.72) translate(-512,-512)">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M141,724 L252,322" stroke-width="112"></path>
+      <path d="M252,322 L363,724" stroke-width="112"></path>
+      <path d="M174,580 L330,580" stroke-width="92"></path>
+      <path d="M512,300 L512,724" stroke-width="112"></path>
+    </g>
+    <g stroke="#00B2DC">
+      <path d="M622,716 L922,461" stroke-width="103"></path>
+      <path d="M622,461 L922,716" stroke-width="103"></path>
+    </g>
+  </g>
+</g></svg>

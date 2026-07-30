@@ -1,6 +1,6 @@
 ---
 name: gmail
-description: Search and read the connected Gmail account with Local Studio's read-only tools.
+description: Search and read the connected Gmail account with read-only tools.
 ---
 
 # Gmail

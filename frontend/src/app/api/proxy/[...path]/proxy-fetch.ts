@@ -60,14 +60,15 @@ export function buildFallbackTargetUrl({
 }
 
 export function getForwardedSearchParams(request: NextRequest): {
-  apiKeyQuery: string | null;
+  credentialQueryPresent: boolean;
   searchParams: string;
 } {
   const url = new URL(request.url);
   const forwardedParams = new URLSearchParams(url.searchParams);
-  const apiKeyQuery = forwardedParams.get("api_key");
-  if (apiKeyQuery) forwardedParams.delete("api_key");
-  return { apiKeyQuery, searchParams: forwardedParams.toString() };
+  const credentialKeys = ["api_key", "key", "token", "access_token", "auth_token"];
+  const credentialQueryPresent = credentialKeys.some((key) => forwardedParams.has(key));
+  for (const key of credentialKeys) forwardedParams.delete(key);
+  return { credentialQueryPresent, searchParams: forwardedParams.toString() };
 }
 
 const DEFAULT_REQUEST_BODY_LIMIT = 32 * 1024 * 1024;
@@ -120,24 +121,23 @@ export const readProxyRequestBody = async (
   return body;
 };
 
-export function buildProxyRequestHeaders(
-  request: NextRequest,
-  apiKey: string,
-  apiKeyQuery: string | null,
-  allowQueryApiKey: boolean,
-): Headers {
+export function buildProxyRequestHeaders(request: NextRequest, apiKey: string): Headers {
   const headers = new Headers();
   const accept = request.headers.get("accept");
   const contentType = request.headers.get("content-type");
   const incomingAuth = request.headers.get("authorization");
   const suppressAuth = request.headers.get("x-backend-suppress-auth") === "1";
+  const scientificSubmissionId = request.headers
+    .get("x-local-studio-scientific-submission-id")
+    ?.trim();
   if (accept) headers.set("Accept", accept);
   if (contentType) headers.set("Content-Type", contentType);
+  if (scientificSubmissionId && /^[A-Za-z0-9._:-]{1,128}$/u.test(scientificSubmissionId)) {
+    headers.set("X-Local-Studio-Scientific-Submission-ID", scientificSubmissionId);
+  }
   if (suppressAuth) return headers;
   if (incomingAuth) headers.set("Authorization", incomingAuth);
-  else if (allowQueryApiKey && apiKeyQuery) headers.set("Authorization", `Bearer ${apiKeyQuery}`);
   else if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
-  else if (apiKeyQuery) headers.set("Authorization", `Bearer ${apiKeyQuery}`);
   return headers;
 }
 
@@ -151,6 +151,7 @@ export async function fetchWithOptionalFallback(
     path: string[];
     overrideUsed: boolean;
     strictOverride: boolean;
+    fetcher?: (url: string, init: RequestInit) => Promise<Response>;
   },
 ): Promise<{ response: Response; usedFallback: boolean }> {
   const canFallback = Boolean(
@@ -169,7 +170,11 @@ export async function fetchWithOptionalFallback(
       // Do not auto-follow redirects: a compromised/misbehaving upstream must
       // not be able to bounce the proxy (with its bearer key) to an arbitrary
       // location. Redirects are surfaced to the caller as-is.
-      return await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
+      return await (context.fetcher ?? fetch)(url, {
+        ...init,
+        signal: controller.signal,
+        redirect: "manual",
+      });
     } finally {
       clearTimeout(timeoutId);
     }

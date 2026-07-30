@@ -8,8 +8,8 @@ import type { Recipe } from "../models/types";
 import { buildInferenceUrl } from "../../http/local-fetch";
 import {
   DEFAULT_CHAT_PROVIDER,
-  parseProviderModel,
-  resolveProviderConfig,
+  resolveProviderModelRoute,
+  type ProviderRouteConfig,
 } from "../../services/provider-routing";
 import { normalizeChatMessageContentParts, normalizeToolRequest } from "./content-normalizer";
 import {
@@ -27,6 +27,12 @@ import {
   type OpenAIUsage,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
+import { providerChatEndpoint } from "../../../../shared/agent/openai-endpoint";
+import {
+  resolveProviderHeaders,
+  type ProviderAuthenticationContext,
+} from "../../services/provider-authentication";
+import { assertProviderOutboundUrl } from "../../services/provider-boundary";
 
 export interface ModelNotRunningError {
   error: { message: string; type: "model_not_running"; code: "model_not_running" };
@@ -105,43 +111,61 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
   const resolveChatUpstream = (
     requestedModel: string | null,
     parsed: Record<string, unknown>,
-  ): {
-    upstreamUrl: string;
-    headers: Record<string, string>;
-    requestProvider: string;
-    providerRouting: ReturnType<typeof resolveProviderConfig>;
-    rewroteModel: boolean;
-  } => {
-    const providerModel = requestedModel
-      ? parseProviderModel(requestedModel)
-      : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
-    const requestProvider = providerModel.provider;
-    const providerRouting =
-      requestProvider !== DEFAULT_CHAT_PROVIDER
-        ? resolveProviderConfig(requestProvider, {
-            providers: context.config.providers,
-          })
-        : null;
-    let rewroteModel = false;
-    if (providerRouting && requestedModel) {
-      parsed["model"] = providerModel.modelId;
-      rewroteModel = true;
-    }
-    const upstreamUrl =
-      providerRouting && requestedModel
-        ? `${providerRouting.baseUrl.replace(/\/+$/, "")}/v1/chat/completions`
-        : buildInferenceUrl(context, "/v1/chat/completions");
-    const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(providerRouting
-        ? { Authorization: `Bearer ${providerRouting.apiKey}` }
-        : inferenceKey
-          ? { Authorization: `Bearer ${inferenceKey}` }
-          : {}),
-    };
-    return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
-  };
+    matchedRecipe: Recipe | null,
+    authenticationContext: ProviderAuthenticationContext,
+  ): Effect.Effect<
+    {
+      upstreamUrl: string;
+      headers: Record<string, string>;
+      requestProvider: string;
+      providerRouting: ProviderRouteConfig | null;
+      rewroteModel: boolean;
+    },
+    HttpStatus
+  > =>
+    Effect.gen(function* () {
+      const route = resolveProviderModelRoute(
+        requestedModel ?? "",
+        { providers: context.config.providers },
+        Boolean(matchedRecipe),
+      );
+      if (route.kind === "unavailable") {
+        return yield* Effect.fail(notFound(`Provider unavailable: ${route.provider}`));
+      }
+      const requestProvider = route.provider;
+      const providerRouting = route.kind === "remote" ? route.config : null;
+      let rewroteModel = false;
+      if (providerRouting && requestedModel) {
+        parsed["model"] = route.modelId;
+        rewroteModel = true;
+      }
+      const upstreamUrl =
+        providerRouting && requestedModel
+          ? providerChatEndpoint(
+              yield* assertProviderOutboundUrl(providerRouting.baseUrl).pipe(
+                Effect.mapError(() => notFound(`Provider unavailable: ${requestProvider}`)),
+              ),
+              route.modelId,
+              providerRouting.provider.path_style,
+              providerRouting.provider.api_version,
+            )
+          : buildInferenceUrl(context, "/v1/chat/completions");
+      const providerHeaders = providerRouting
+        ? yield* resolveProviderHeaders(providerRouting.provider, authenticationContext).pipe(
+            Effect.mapError(() => notFound(`Provider unavailable: ${requestProvider}`)),
+          )
+        : {};
+      const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(providerRouting
+          ? providerHeaders
+          : inferenceKey
+            ? { Authorization: `Bearer ${inferenceKey}` }
+            : {}),
+      };
+      return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
+    });
 
   const gateOnRunningModel = (
     matchedRecipe: Recipe,
@@ -212,8 +236,14 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           const bodyBuffer = bodyRead.value;
           const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
             yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
+          const verifiedBearerToken = ctx.get("enterpriseBearerToken");
           const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
-            resolveChatUpstream(requestedModel, parsed);
+            yield* resolveChatUpstream(requestedModel, parsed, matchedRecipe, {
+              secretStore: context.providerSecretStore,
+              principal: ctx.get("enterprisePrincipal"),
+              ...(verifiedBearerToken ? { verifiedBearerToken } : {}),
+              signal: ctx.req.raw.signal,
+            });
           const sourceHeader =
             ctx.req.header("x-vllm-source") ??
             ctx.req.header("x-source") ??
@@ -257,6 +287,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
                   headers,
                   body: finalBody,
                   signal: AbortSignal.any([clientSignal, signal]),
+                  redirect: "error",
                 }),
               catch: (source) => source,
             }).pipe(

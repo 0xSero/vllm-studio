@@ -19,6 +19,7 @@ writeFileSync(path.join(dataDir, "api-settings.json"), "{}\n");
 const providersModule = path.resolve(__dirname, "fixtures", "e2e-providers.mjs");
 const fakeCloudScript = path.resolve(__dirname, "fixtures", "fake-cloud.mjs");
 const startStandaloneScript = path.resolve(__dirname, "..", "scripts", "start-standalone.mjs");
+const appliance = "cortaix-factory";
 
 export default defineConfig({
   testDir: ".",
@@ -49,7 +50,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `PORT=${cloudPort} node ${fakeCloudScript}`,
+      command: `PORT=${cloudPort} LOCAL_STUDIO_APPLIANCE=${appliance} node ${fakeCloudScript}`,
       url: `http://127.0.0.1:${cloudPort}/health`,
       timeout: 15_000,
       reuseExistingServer: false,
@@ -62,6 +63,7 @@ export default defineConfig({
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
         `LOCAL_STUDIO_E2E_PROVIDERS=${providersModule}`,
         `LOCAL_STUDIO_E2E_FAKE_CLOUD=http://127.0.0.1:${cloudPort}`,
+        `LOCAL_STUDIO_APPLIANCE=${appliance}`,
         `node ${startStandaloneScript}`,
       ].join(" "),
       url: `${baseURL}/api/desktop-health`,

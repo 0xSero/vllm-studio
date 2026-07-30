@@ -165,6 +165,7 @@ const upstreamStream = (
           headers: parameters.headers,
           body: parameters.body,
           signal: AbortSignal.any([parameters.clientSignal, signal]),
+          redirect: "error",
         }),
       catch: (source) =>
         new ChatCompletionsStreamError({

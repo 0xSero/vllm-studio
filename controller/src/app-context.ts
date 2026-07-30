@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { copyFile, mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Context, Effect, Layer, Schema } from "effect";
 import { createConfig, type Config } from "./config/env";
 import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
@@ -25,6 +26,11 @@ import { ControllerRequestStore } from "./stores/controller-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { RigStore } from "./stores/rig-store";
+import { ScientificWorkbenchStore } from "./modules/workbench/store";
+import { KubeRayGateway } from "./modules/workbench/kuberay-gateway";
+import { NotebookGateway } from "./modules/workbench/notebook-gateway";
+import { MachineEnrollmentService } from "./modules/machines/enrollment-service";
+import { ProviderSecretStore } from "./services/provider-secret-store";
 
 export interface AppContext {
   config: Config;
@@ -36,6 +42,10 @@ export interface AppContext {
   bridge: ComputeBridge;
   gpuLeaseRegistry: GpuLeaseRegistry;
   speechService: SpeechService;
+  kubeRayGateway: KubeRayGateway | null;
+  notebookGateway: NotebookGateway;
+  machineEnrollmentService: MachineEnrollmentService;
+  providerSecretStore: ProviderSecretStore;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -45,6 +55,7 @@ export interface AppContext {
     controllerSettingsStore: ControllerSettingsStore;
     controllerRequestStore: ControllerRequestStore;
     rigStore: RigStore;
+    scientificWorkbenchStore: ScientificWorkbenchStore;
   };
 }
 
@@ -102,6 +113,16 @@ const ensureModelsDirectory = (modelsDirectory: string): Effect.Effect<ModelsDir
 
 export const makeAppContext = Effect.gen(function* () {
   const config = yield* initializeSync("config.load", createConfig);
+  const loopback = ["127.0.0.1", "::1", "localhost"].includes(config.host.toLowerCase());
+  const providerSecretStore = yield* initializeSync(
+    "provider-secret-store.open",
+    () =>
+      new ProviderSecretStore(
+        config.data_dir,
+        !loopback ||
+          (config.enterprise_auth !== undefined && config.enterprise_auth.mode !== "local"),
+      ),
+  );
   yield* initialize(
     "data-directory.create",
     Effect.tryPromise({
@@ -163,6 +184,80 @@ export const makeAppContext = Effect.gen(function* () {
     initializeSync("rig-store.open", () => new RigStore(dbPath)),
     (resource) => releaseSafely("rig-store.close", logger, resource.close()),
   );
+  const scientificWorkbenchStore = yield* Effect.acquireRelease(
+    initializeSync("scientific-workbench-store.open", () => new ScientificWorkbenchStore(dbPath)),
+    (resource) => releaseSafely("scientific-workbench-store.close", logger, resource.close()),
+  );
+  const kubeRayGateway =
+    config.kuberay_api_url && config.kuberay_token_file
+      ? new KubeRayGateway({
+          apiUrl: config.kuberay_api_url,
+          tokenFile: config.kuberay_token_file,
+          ...(config.kuberay_ca_file ? { caFile: config.kuberay_ca_file } : {}),
+        })
+      : null;
+  yield* initialize(
+    "scientific-workbench.notebook-root",
+    Effect.tryPromise({
+      try: () => mkdir(config.notebook_root, { recursive: true }),
+      catch: (source) => source,
+    }),
+  );
+  const sampleNotebook = resolve(config.notebook_root, "agent-collaboration.ipynb");
+  if (!existsSync(sampleNotebook)) {
+    const bundledSample = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../assets/notebooks/agent-collaboration.ipynb",
+    );
+    yield* initialize(
+      "scientific-workbench.sample-notebook",
+      Effect.tryPromise({
+        try: () => copyFile(bundledSample, sampleNotebook),
+        catch: (source) => source,
+      }),
+    );
+  }
+  const pythonSmolvmSample = resolve(
+    config.notebook_root,
+    "agent-collaboration-python-smolvm.ipynb",
+  );
+  if (!existsSync(pythonSmolvmSample)) {
+    const bundledSample = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../assets/notebooks/agent-collaboration.ipynb",
+    );
+    yield* initialize(
+      "scientific-workbench.python-smolvm-sample-notebook",
+      Effect.tryPromise({
+        try: () => copyFile(bundledSample, pythonSmolvmSample),
+        catch: (source) => source,
+      }),
+    );
+  }
+  const nodeSampleNotebook = resolve(config.notebook_root, "agent-collaboration-node.ipynb");
+  if (!existsSync(nodeSampleNotebook)) {
+    const bundledNodeSample = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../assets/notebooks/agent-collaboration-node.ipynb",
+    );
+    yield* initialize(
+      "scientific-workbench.node-sample-notebook",
+      Effect.tryPromise({
+        try: () => copyFile(bundledNodeSample, nodeSampleNotebook),
+        catch: (source) => source,
+      }),
+    );
+  }
+  const notebookGateway = new NotebookGateway(
+    config.notebook_root,
+    config.notebook_python,
+    undefined,
+    config.notebook_smolvm,
+    config.notebook_node_image,
+    undefined,
+    config.notebook_python_image,
+  );
+  const machineEnrollmentService = new MachineEnrollmentService(config.data_dir);
   yield* initialize(
     "lifetime-metrics-store.initialize",
     lifetimeMetricsStore.ensureFirstStartedEffect(),
@@ -224,6 +319,10 @@ export const makeAppContext = Effect.gen(function* () {
     bridge,
     gpuLeaseRegistry,
     speechService,
+    kubeRayGateway,
+    notebookGateway,
+    machineEnrollmentService,
+    providerSecretStore,
     stores: {
       recipeStore,
       downloadStore,
@@ -233,6 +332,7 @@ export const makeAppContext = Effect.gen(function* () {
       controllerSettingsStore,
       controllerRequestStore,
       rigStore,
+      scientificWorkbenchStore,
     },
   } satisfies AppContext;
 });

@@ -6,6 +6,7 @@ import {
   type QuickPanelHotkeyState,
 } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
 
 const MODIFIER_CODES = new Set([
@@ -194,8 +195,8 @@ export function QuickPanelSettings() {
       {bridgeAvailable === false ? (
         <div className="px-3 py-2">
           <SettingsNotice tone="default">
-            The quick panel is part of the Local Studio desktop app. Open Settings there to
-            configure its hotkey.
+            The quick panel is part of the {BRAND_PROFILE.appName} desktop app. Open Settings there
+            to configure its hotkey.
           </SettingsNotice>
         </div>
       ) : (

@@ -4,8 +4,8 @@
 # frontend's runtime + browser routes proxy here when
 # LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081 is set in the frontend's
 # environment — the pass-through case that lets SSE flush through Next's
-# standalone server. The server binds 127.0.0.1 only (no auth of its own; the
-# Next layer keeps enforcing requireApiAccess before proxying).
+# standalone server. The server binds 127.0.0.1 and lifecycle/provisioning
+# mutations require the credential supplied through the environment file.
 #
 # Installed by scripts/deploy-remote.sh (agent-runtime block), which replaces
 # the @APP_DIR@ and @NODE@ placeholders with the remote project path and the
@@ -24,6 +24,7 @@ WorkingDirectory=@APP_DIR@/services/agent-runtime
 ExecStart=@NODE@ dist/server.js
 Environment=PORT=8081
 Environment=PI_CODING_AGENT_DIR=%h/.local-studio/pi-agent
+EnvironmentFile=%h/.config/local-studio/agent-runtime.env
 # Same data dir the frontend uses for api-settings.json, if customized:
 # Environment=LOCAL_STUDIO_DATA_DIR=%h/.local-studio
 Restart=on-failure

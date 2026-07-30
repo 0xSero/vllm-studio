@@ -12,6 +12,7 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { BRAND_PROFILE } from "@/lib/brand-profile";
 
 const SkillSchema = Schema.Struct({
   id: Schema.String,
@@ -162,7 +163,7 @@ export function SkillsSection() {
     <>
       <ModelSection
         title="Skills"
-        description="Reusable instruction sets discovered across Local Studio, Codex, Claude, Pi, Factory, and OpenCode."
+        description={`Reusable instruction sets discovered across ${BRAND_PROFILE.appName}, Codex, Claude, Pi, Factory, and OpenCode.`}
         actions={
           <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
             {loaded ? `${visibleSkills.length} of ${skills.length}` : "discovering"}

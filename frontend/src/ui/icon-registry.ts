@@ -80,6 +80,7 @@ export {
   FileSearch,
   FileText,
   Filter,
+  FlaskConical,
   FolderTree,
   Gauge,
   GitBranch,
