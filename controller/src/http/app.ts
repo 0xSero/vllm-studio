@@ -15,6 +15,7 @@ import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
 import { registerAudioRoutes } from "../modules/audio/routes";
 import { registerScientificWorkbenchRoutes } from "../modules/workbench/routes";
+import { registerExperimentTrackingRoutes } from "../modules/workbench/experiment-routes";
 import { registerSpeechRoutes } from "../modules/speech/routes";
 import { registerMachineRoutes } from "../modules/machines/routes";
 import { registerFoundryRoutes } from "../modules/foundry/routes";
@@ -47,6 +48,7 @@ type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
   ReturnType<typeof registerSpeechRoutes> &
   ReturnType<typeof registerAudioRoutes> &
   ReturnType<typeof registerScientificWorkbenchRoutes> &
+  ReturnType<typeof registerExperimentTrackingRoutes> &
   ReturnType<typeof registerMachineRoutes> &
   ReturnType<typeof registerAllProxyRoutes> &
   ReturnType<typeof registerFoundryRoutes> &
@@ -116,6 +118,7 @@ export const createApp = (
     registerSpeechRoutes(app, context),
     registerAudioRoutes(app, context),
     registerScientificWorkbenchRoutes(app, context),
+    registerExperimentTrackingRoutes(app, context),
     registerMachineRoutes(app, context),
     registerFoundryRoutes(app, context),
     registerEnvironmentRoutes(app, context),

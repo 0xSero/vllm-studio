@@ -21,6 +21,10 @@ import {
   KubernetesConnectionConfigSchema,
   type KubernetesConnectionConfig,
 } from "@local-studio/contracts/environment-commissioning";
+import {
+  ScientistProfileSchema,
+  type ScientistProfile,
+} from "@local-studio/contracts/scientist-profile";
 import { Schema } from "effect";
 import { normalizeAdmittedProviderBaseUrl } from "../services/provider-boundary";
 import { normalizeProviderAuthentication } from "../services/provider-authentication";
@@ -54,6 +58,7 @@ export interface PersistedConfig {
   providers?: ProviderConfig[];
   selected_runtime_target_ids?: Partial<Record<"vllm" | "sglang" | "llamacpp" | "mlx", string>>;
   kubernetes_connection?: KubernetesConnectionConfig;
+  scientist_profile?: ScientistProfile;
 }
 
 export const getPersistedConfigPath = (dataDirectory: string): string => {
@@ -272,6 +277,15 @@ export const loadPersistedConfig = (
       );
     } catch {
       delete parsed.kubernetes_connection;
+    }
+  }
+  if (parsed.scientist_profile) {
+    try {
+      parsed.scientist_profile = Schema.decodeUnknownSync(ScientistProfileSchema)(
+        parsed.scientist_profile,
+      );
+    } catch {
+      delete parsed.scientist_profile;
     }
   }
   const persistMigration = (): void => {

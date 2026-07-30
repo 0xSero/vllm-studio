@@ -27,6 +27,7 @@ import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { RigStore } from "./stores/rig-store";
 import { ScientificWorkbenchStore } from "./modules/workbench/store";
+import { ExperimentTrackingStore } from "./modules/workbench/experiment-store";
 import { KubeRayGateway } from "./modules/workbench/kuberay-gateway";
 import { NotebookGateway } from "./modules/workbench/notebook-gateway";
 import { MachineEnrollmentService } from "./modules/machines/enrollment-service";
@@ -56,6 +57,7 @@ export interface AppContext {
     controllerRequestStore: ControllerRequestStore;
     rigStore: RigStore;
     scientificWorkbenchStore: ScientificWorkbenchStore;
+    experimentTrackingStore: ExperimentTrackingStore;
   };
 }
 
@@ -187,6 +189,10 @@ export const makeAppContext = Effect.gen(function* () {
   const scientificWorkbenchStore = yield* Effect.acquireRelease(
     initializeSync("scientific-workbench-store.open", () => new ScientificWorkbenchStore(dbPath)),
     (resource) => releaseSafely("scientific-workbench-store.close", logger, resource.close()),
+  );
+  const experimentTrackingStore = yield* Effect.acquireRelease(
+    initializeSync("experiment-tracking-store.open", () => new ExperimentTrackingStore(dbPath)),
+    (resource) => releaseSafely("experiment-tracking-store.close", logger, resource.close()),
   );
   const kubeRayGateway =
     config.kuberay_api_url && config.kuberay_token_file
@@ -333,6 +339,7 @@ export const makeAppContext = Effect.gen(function* () {
       controllerRequestStore,
       rigStore,
       scientificWorkbenchStore,
+      experimentTrackingStore,
     },
   } satisfies AppContext;
 });

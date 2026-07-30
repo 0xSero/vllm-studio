@@ -1,4 +1,5 @@
 import { cp, mkdir, rename, rm, statfs } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { cpus, freemem, totalmem, platform, arch, release } from "node:os";
 import { basename, resolve, sep } from "node:path";
 import { Effect, Schema } from "effect";
@@ -9,6 +10,15 @@ import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-regis
 import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
+import {
+  ScientistProfileCreateSchema,
+  type ScientistProfile,
+} from "@local-studio/contracts/scientist-profile";
+import {
+  PROJECT_TEMPLATES,
+  type ProjectTemplate,
+  type ProjectTemplateCell,
+} from "@local-studio/contracts/project-templates";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
@@ -61,6 +71,25 @@ const diskInfo = (path: string): Effect.Effect<StudioDiskInfo> =>
       Effect.succeed({ path, total_bytes: null, free_bytes: null, available_bytes: null }),
     ),
   );
+
+const buildNotebookFromTemplate = (
+  cells: ReadonlyArray<ProjectTemplateCell>,
+): Record<string, unknown> => ({
+  nbformat: 4,
+  nbformat_minor: 5,
+  metadata: {
+    kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
+    language_info: { name: "python" },
+  },
+  cells: cells.map((cell) => ({
+    cell_type: cell.cell_type,
+    metadata: cell.metadata ?? {},
+    source: cell.source.split("\n").map((line, index, array) =>
+      index < array.length - 1 ? `${line}\n` : line,
+    ),
+    ...(cell.cell_type === "code" ? { execution_count: null, outputs: [] } : {}),
+  })),
+});
 
 const insideModelsRoot = (
   modelsDirectory: string,
@@ -348,6 +377,155 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             );
           }
           return ctx.json({ success: true, target });
+        }),
+      ),
+    ),
+
+    app.get(
+      "/studio/scientist-profile",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const persisted = yield* Effect.try({
+            try: () => loadPersistedConfig(context.config.data_dir),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "settings",
+                message: "Could not load settings",
+                source,
+              }),
+          });
+          return ctx.json({ profile: persisted.scientist_profile ?? null });
+        }),
+      ),
+    ),
+
+    app.put(
+      "/studio/scientist-profile",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const body = yield* decodeJsonBody(ctx, ScientistProfileCreateSchema);
+          if (body.data_types.length === 0) {
+            return yield* Effect.fail(badRequest("At least one data type is required"));
+          }
+          if (body.goals.length === 0) {
+            return yield* Effect.fail(badRequest("At least one goal is required"));
+          }
+          const now = new Date().toISOString();
+          const profile: ScientistProfile = {
+            ...body,
+            created_at: now,
+            updated_at: now,
+          };
+          yield* Effect.try({
+            try: () =>
+              savePersistedConfig(context.config.data_dir, { scientist_profile: profile }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "settings",
+                message: "Could not save scientist profile",
+                source,
+              }),
+          });
+          return ctx.json({ profile });
+        }),
+      ),
+    ),
+
+    app.get(
+      "/studio/project-templates",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const profile = yield* Effect.try({
+            try: () => loadPersistedConfig(context.config.data_dir),
+            catch: () => null,
+          });
+          const scientistProfile = profile?.scientist_profile ?? null;
+          const templates: Array<ProjectTemplate & { match_score?: number }> = PROJECT_TEMPLATES;
+          if (scientistProfile) {
+            for (const template of templates) {
+              const goalOverlap = template.recommended_goals.filter((g) =>
+                scientistProfile.goals.includes(g),
+              ).length;
+              const dataOverlap = template.recommended_data_types.filter((d) =>
+                scientistProfile.data_types.includes(d),
+              ).length;
+              template.match_score = goalOverlap + dataOverlap;
+            }
+          }
+          return ctx.json({ templates });
+        }),
+      ),
+    ),
+
+    app.get(
+      "/studio/project-templates/:templateId",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const templateId = ctx.req.param("templateId") ?? "";
+          const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
+          if (!template) return yield* Effect.fail(notFound("Template not found"));
+          return ctx.json({ template });
+        }),
+      ),
+    ),
+
+    app.post(
+      "/studio/project-templates/:templateId/materialize",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const templateId = ctx.req.param("templateId") ?? "";
+          const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
+          if (!template) return yield* Effect.fail(notFound("Template not found"));
+          const body = yield* decodeJsonBody(
+            ctx,
+            Schema.Struct({
+              project_path: Schema.String,
+              project_name: Schema.optional(Schema.String),
+            }),
+          );
+          const projectPath = resolve(body.project_path.trim());
+          yield* Effect.tryPromise({
+            try: () => mkdir(projectPath, { recursive: true }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not create project directory",
+                source,
+              }),
+          });
+          const notebookPath = resolve(projectPath, "notebook.ipynb");
+          const notebookDocument = buildNotebookFromTemplate(template.notebook_cells);
+          yield* Effect.try({
+            try: () => writeFileSync(notebookPath, JSON.stringify(notebookDocument, null, 2), { mode: 0o600 }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not write notebook file",
+                source,
+              }),
+          });
+          const agentContextPath = resolve(projectPath, ".agent-context.md");
+          yield* Effect.try({
+            try: () => writeFileSync(agentContextPath, template.agent_prompt, { mode: 0o600 }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not write agent context file",
+                source,
+              }),
+          });
+          return ctx.json({
+            project_path: projectPath,
+            notebook_path: notebookPath,
+            agent_context_path: agentContextPath,
+            template_id: template.id,
+            template_name: template.name,
+          });
         }),
       ),
     ),

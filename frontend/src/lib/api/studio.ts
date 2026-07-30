@@ -4,6 +4,8 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
+import type { ScientistProfile } from "@local-studio/contracts/scientist-profile";
+import type { ProjectTemplate } from "@local-studio/contracts/project-templates";
 import type {
   ModelDownload,
   EngineJob,
@@ -339,6 +341,39 @@ export function createStudioApi(core: ApiCore) {
           version: payload.version,
           targetId: payload.targetId,
         }),
+      }),
+
+    getScientistProfile: (): Promise<{ profile: ScientistProfile | null }> =>
+      core.request("/studio/scientist-profile"),
+
+    saveScientistProfile: (
+      payload: Omit<ScientistProfile, "created_at" | "updated_at">,
+    ): Promise<{ profile: ScientistProfile }> =>
+      core.request("/studio/scientist-profile", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+
+    getProjectTemplates: (): Promise<{
+      templates: Array<ProjectTemplate & { match_score?: number }>;
+    }> => core.request("/studio/project-templates"),
+
+    getProjectTemplate: (templateId: string): Promise<{ template: ProjectTemplate }> =>
+      core.request(`/studio/project-templates/${encodePathSegments(templateId)}`),
+
+    materializeProjectTemplate: (
+      templateId: string,
+      payload: { project_path: string; project_name?: string },
+    ): Promise<{
+      project_path: string;
+      notebook_path: string;
+      agent_context_path: string;
+      template_id: string;
+      template_name: string;
+    }> =>
+      core.request(`/studio/project-templates/${encodePathSegments(templateId)}/materialize`, {
+        method: "POST",
+        body: JSON.stringify(payload),
       }),
   };
 }

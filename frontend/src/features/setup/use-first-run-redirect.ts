@@ -9,14 +9,19 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
  * no completed setup gets taken straight to the wizard instead of an empty
  * dashboard. Any failure (controller down, storage blocked) leaves the user
  * where they are — this must never trap someone outside their dashboard.
+ *
+ * If the user previously chose "scientist mode", they are routed to the
+ * scientist intake form instead of the technical wizard.
  */
 export function useFirstRunRedirect() {
   const router = useRouter();
 
   useMountSubscription(() => {
     let cancelled = false;
+    let scientistMode = false;
     try {
       if (localStorage.getItem("local-studio-setup-complete") === "true") return;
+      scientistMode = localStorage.getItem("local-studio-scientist-mode") === "true";
     } catch {
       return;
     }
@@ -24,7 +29,7 @@ export function useFirstRunRedirect() {
       .getRecipes()
       .then(({ recipes }) => {
         if (!cancelled && recipes.length === 0) {
-          router.replace("/setup");
+          router.replace(scientistMode ? "/scientist" : "/welcome");
         }
       })
       .catch(() => {});
