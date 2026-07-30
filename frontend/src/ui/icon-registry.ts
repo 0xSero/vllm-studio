@@ -59,6 +59,7 @@ export {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  CornerDownRight,
   CircleAlert,
   CircleDot,
   Clock,
