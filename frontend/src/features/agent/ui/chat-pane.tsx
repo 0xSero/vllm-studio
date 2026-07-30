@@ -604,9 +604,26 @@ export function ChatPane({
         void runCommandInvocation(invocation);
         return;
       }
+      // While a turn is running, Enter queues (Codex behavior) — the queued
+      // row's own Steer control is the explicit interruption. queueMessage
+      // falls back to a fresh prompt if the run has actually ended.
+      if (running) {
+        event.preventDefault();
+        void queueMessage();
+        return;
+      }
       void sendMessage(event);
     },
-    [activeTab, commandContext, commandRegistry, goalModeApi, runCommandInvocation, sendMessage],
+    [
+      activeTab,
+      commandContext,
+      commandRegistry,
+      goalModeApi,
+      queueMessage,
+      runCommandInvocation,
+      running,
+      sendMessage,
+    ],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
@@ -728,9 +745,6 @@ export function ChatPane({
               running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
               queueItems={visibleQueueItems}
-              composerText={activeTab?.input ?? ""}
-              onQueueMessage={() => void queueMessage()}
-              onSteerMessage={() => void sendMessage(SYNTHETIC_SUBMIT)}
               onEditQueued={editQueued}
               onRemoveQueued={removeQueued}
               onSteerQueued={(queueId) => void steerQueued(queueId)}
@@ -798,7 +812,6 @@ function ChatPaneChrome({
  *  across tabs, and hides project switching while a turn is in flight. */
 // The drawer's Interrupt button has no form event of its own, and sendMessage
 // only ever uses the event to cancel the browser's native submit.
-const SYNTHETIC_SUBMIT = { preventDefault: () => {} } as unknown as FormEvent;
 
 function SessionProjectDrawer({
   tabId,

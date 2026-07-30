@@ -94,14 +94,19 @@ export interface DesktopBridge {
   getRuntime(): Promise<{
     platform: NodeJS.Platform;
     appVersion: string;
+    packaged: boolean;
     chromeVersion: string;
     electronVersion: string;
   }>;
   openExternal(url: string): Promise<boolean>;
   /** Reveal a file in Finder/Explorer. Returns false when outside the home tree. */
   revealPath(target: string): Promise<boolean>;
+  /** Open a file with its default application. False when outside the home tree. */
+  openPath(target: string): Promise<boolean>;
   getUpdateStatus(): Promise<DesktopUpdateSnapshot>;
   checkForUpdates(): Promise<DesktopUpdateSnapshot>;
+  /** Quit and relaunch into a downloaded update; user data is retained. */
+  installUpdate(): Promise<boolean>;
   openDirectory(): Promise<ProjectEntry | null>;
   getPathForFile(file: File): string;
   listProjects(): Promise<ProjectEntry[]>;

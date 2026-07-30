@@ -40,6 +40,19 @@ const SYSTEM_ROOTS = new Set([
   "/var",
 ]);
 
+// macOS symlinks several of those into /private (/etc → /private/etc, /var →
+// /private/var), so matching the literal names alone lets `cwd=/etc` through
+// once it is symlink-resolved. Resolve the list once and match against both.
+const RESOLVED_SYSTEM_ROOTS = new Set(
+  [...SYSTEM_ROOTS].map((entry) => {
+    try {
+      return realpathSync(entry);
+    } catch {
+      return entry;
+    }
+  }),
+);
+
 // Reject the filesystem root and system directories as workspace roots. Returns
 // the symlink-resolved absolute path. Used by the filesystem and terminal
 // routes before any read/list/exec against a caller-supplied cwd.
@@ -52,7 +65,12 @@ export function assertWorkspaceRoot(rootCwd: string): string {
       return resolved;
     }
   })();
-  if (SYSTEM_ROOTS.has(real) || real === path.parse(real).root) {
+  if (
+    SYSTEM_ROOTS.has(resolved) ||
+    SYSTEM_ROOTS.has(real) ||
+    RESOLVED_SYSTEM_ROOTS.has(real) ||
+    real === path.parse(real).root
+  ) {
     throw new Error("Path is not an allowed workspace root");
   }
   return real;
@@ -154,6 +172,28 @@ export async function readFileSnippet(
     return { content: "", truncated: true, size: stats.size };
   }
   return { content: buf.toString("utf-8"), truncated: false, size: stats.size };
+}
+
+// Raw bytes for files the text reader refuses (images, PDFs). Same trust
+// boundary as readFileSnippet — resolved inside an allowed workspace root — but
+// returns the buffer unchanged so the caller can serve it with a real content
+// type instead of a "binary, cannot render" dead end.
+export async function readFileBytes(
+  rootCwd: string,
+  relPath: string,
+  maxBytes = 64 * 1024 * 1024,
+): Promise<{ bytes: Buffer; size: number; modifiedAt: Date }> {
+  const root = resolveWorkspaceRoot(rootCwd);
+  const target = ensureInside(root, path.resolve(root, relPath));
+  // Redundant with ensureInside, but stated in a form static analysis can
+  // verify: the realpath'd target sits under the realpath'd root.
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("Path escapes project root");
+  }
+  const stats = await fs.stat(target);
+  if (!stats.isFile()) throw new Error("Not a file");
+  if (stats.size > maxBytes) throw new Error("File is too large to serve");
+  return { bytes: await fs.readFile(target), size: stats.size, modifiedAt: stats.mtime };
 }
 
 export async function writeFileContent(
