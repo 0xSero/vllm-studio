@@ -1,5 +1,21 @@
 import { Effect, Schema } from "effect";
-import { FastCrwSearchInputSchema, type FastCrwSearchInput, type OnboardingProfile } from "./agent-onboarding-contract";
+import {
+  FastCrwSearchInputSchema,
+  FastCrwScrapeInputSchema,
+  FastCrwMapInputSchema,
+  FastCrwCrawlInputSchema,
+  FastCrwCrawlStatusInputSchema,
+  FastCrwExtractInputSchema,
+  FastCrwExtractStatusInputSchema,
+  type FastCrwSearchInput,
+  type FastCrwScrapeInput,
+  type FastCrwMapInput,
+  type FastCrwCrawlInput,
+  type FastCrwCrawlStatusInput,
+  type FastCrwExtractInput,
+  type FastCrwExtractStatusInput,
+  type OnboardingProfile,
+} from "./agent-onboarding-contract";
 import { AgentOnboardingError } from "./agent-onboarding-error";
 
 type Dependencies = {
@@ -95,6 +111,155 @@ export function searchFastCrwHttp(
       error instanceof AgentOnboardingError
         ? error
         : new AgentOnboardingError(502, "FastCRW search failed"),
+  });
+}
+
+const FASTCRW_MAX_PAGES = 1000;
+const FASTCRW_MAX_EXTRACT_URLS = 100;
+const FASTCRW_RESPONSE_LIMIT = 8 * 1024 * 1024;
+
+async function fastCrwRequest(
+  method: string,
+  path: string,
+  body: unknown,
+  dependencies: Dependencies,
+  timeoutMs = 30_000,
+): Promise<unknown> {
+  const profile = await dependencies.loadProfile();
+  if (!profile.search.enabled) throw new AgentOnboardingError(503, "FastCRW is disabled");
+  const url = new URL(path, profile.search.baseUrl);
+  dependencies.validateUrl(url.toString());
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(await dependencies.credentialHeaders(profile.search.credentialRef)),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new AgentOnboardingError(response.status, `FastCRW ${path} failed`);
+  }
+  return readBoundedJson(response, FASTCRW_RESPONSE_LIMIT);
+}
+
+export function scrapeFastCrwHttp(
+  input: FastCrwScrapeInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwScrapeInputSchema)(input);
+      if (!parsed.url.trim()) throw new AgentOnboardingError(400, "URL is required");
+      return fastCrwRequest("POST", "/v1/scrape", {
+        url: parsed.url,
+        formats: parsed.formats ?? ["markdown"],
+        ...(parsed.onlyMainContent !== undefined ? { onlyMainContent: parsed.onlyMainContent } : {}),
+        ...(parsed.renderJs !== undefined ? { renderJs: parsed.renderJs } : {}),
+        ...(parsed.timeout !== undefined ? { waitFor: parsed.timeout } : {}),
+      }, dependencies);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW scrape failed"),
+  });
+}
+
+export function mapFastCrwHttp(
+  input: FastCrwMapInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwMapInputSchema)(input);
+      if (!parsed.url.trim()) throw new AgentOnboardingError(400, "URL is required");
+      return fastCrwRequest("POST", "/v1/map", {
+        url: parsed.url,
+        ...(parsed.maxDepth !== undefined ? { maxDepth: parsed.maxDepth } : {}),
+        ...(parsed.useSitemap !== undefined ? { useSitemap: parsed.useSitemap } : {}),
+        ...(parsed.timeout !== undefined ? { timeout: parsed.timeout } : {}),
+      }, dependencies);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW map failed"),
+  });
+}
+
+export function crawlFastCrwHttp(
+  input: FastCrwCrawlInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwCrawlInputSchema)(input);
+      if (!parsed.url.trim()) throw new AgentOnboardingError(400, "URL is required");
+      const maxPages = Math.min(FASTCRW_MAX_PAGES, Math.max(1, Math.trunc(parsed.maxPages ?? 100)));
+      return fastCrwRequest("POST", "/v1/crawl", {
+        url: parsed.url,
+        maxPages,
+        ...(parsed.maxDepth !== undefined ? { maxDepth: parsed.maxDepth } : {}),
+        ...(parsed.formats ? { formats: parsed.formats } : {}),
+        ...(parsed.onlyMainContent !== undefined ? { onlyMainContent: parsed.onlyMainContent } : {}),
+      }, dependencies);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW crawl failed"),
+  });
+}
+
+export function crawlStatusFastCrwHttp(
+  input: FastCrwCrawlStatusInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwCrawlStatusInputSchema)(input);
+      if (!parsed.id.trim()) throw new AgentOnboardingError(400, "Crawl id is required");
+      return fastCrwRequest("GET", `/v1/crawl/${encodeURIComponent(parsed.id)}`, undefined, dependencies);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW crawl status failed"),
+  });
+}
+
+export function extractFastCrwHttp(
+  input: FastCrwExtractInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwExtractInputSchema)(input);
+      if (parsed.urls.length === 0) throw new AgentOnboardingError(400, "At least one URL is required");
+      if (parsed.urls.length > FASTCRW_MAX_EXTRACT_URLS) {
+        throw new AgentOnboardingError(400, `Extract accepts at most ${FASTCRW_MAX_EXTRACT_URLS} URLs`);
+      }
+      if (!parsed.prompt && !parsed.schema) {
+        throw new AgentOnboardingError(400, "Extract requires a prompt or a schema");
+      }
+      return fastCrwRequest("POST", "/v1/extract", {
+        urls: parsed.urls,
+        ...(parsed.prompt ? { prompt: parsed.prompt } : {}),
+        ...(parsed.schema ? { schema: parsed.schema } : {}),
+      }, dependencies, 60_000);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW extract failed"),
+  });
+}
+
+export function extractStatusFastCrwHttp(
+  input: FastCrwExtractStatusInput,
+  dependencies: Dependencies,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const parsed = Schema.decodeUnknownSync(FastCrwExtractStatusInputSchema)(input);
+      if (!parsed.id.trim()) throw new AgentOnboardingError(400, "Extract id is required");
+      return fastCrwRequest("GET", `/v1/extract/${encodeURIComponent(parsed.id)}`, undefined, dependencies);
+    },
+    catch: (error) =>
+      error instanceof AgentOnboardingError ? error : new AgentOnboardingError(502, "FastCRW extract status failed"),
   });
 }
 

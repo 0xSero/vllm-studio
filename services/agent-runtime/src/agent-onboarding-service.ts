@@ -12,6 +12,12 @@ import {
   OnboardingReceiptSchema,
   OnboardingStateSchema,
   type FastCrwSearchInput,
+  type FastCrwScrapeInput,
+  type FastCrwMapInput,
+  type FastCrwCrawlInput,
+  type FastCrwCrawlStatusInput,
+  type FastCrwExtractInput,
+  type FastCrwExtractStatusInput,
   type OnboardingProbeInput,
   type OnboardingProbeResult,
   type OnboardingProfile,
@@ -21,7 +27,17 @@ import {
   type OnboardingState,
 } from "./agent-onboarding-contract";
 import { AgentOnboardingError } from "./agent-onboarding-error";
-import { proxyInferenceHttp, runtimeUrl, searchFastCrwHttp } from "./agent-onboarding-http";
+import {
+  crawlFastCrwHttp,
+  crawlStatusFastCrwHttp,
+  extractFastCrwHttp,
+  extractStatusFastCrwHttp,
+  mapFastCrwHttp,
+  proxyInferenceHttp,
+  runtimeUrl,
+  scrapeFastCrwHttp,
+  searchFastCrwHttp,
+} from "./agent-onboarding-http";
 import { isValidSshTarget, probeSshTarget } from "./agent-onboarding-ssh";
 
 type StoredOnboarding = {
@@ -473,6 +489,72 @@ export function searchFastCrw(
   vault: OAuthVault = desktopOAuthVault,
 ): Effect.Effect<unknown, AgentOnboardingError> {
   return searchFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function scrapeFastCrw(
+  input: FastCrwScrapeInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return scrapeFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function mapFastCrw(
+  input: FastCrwMapInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return mapFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function crawlFastCrw(
+  input: FastCrwCrawlInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return crawlFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function crawlStatusFastCrw(
+  input: FastCrwCrawlStatusInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return crawlStatusFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function extractFastCrw(
+  input: FastCrwExtractInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return extractFastCrwHttp(input, {
+    loadProfile: async () => (await readStored()).profile,
+    credentialHeaders: (ref) => credentialHeaders(ref, vault),
+    validateUrl,
+  });
+}
+
+export function extractStatusFastCrw(
+  input: FastCrwExtractStatusInput,
+  vault: OAuthVault = desktopOAuthVault,
+): Effect.Effect<unknown, AgentOnboardingError> {
+  return extractStatusFastCrwHttp(input, {
     loadProfile: async () => (await readStored()).profile,
     credentialHeaders: (ref) => credentialHeaders(ref, vault),
     validateUrl,

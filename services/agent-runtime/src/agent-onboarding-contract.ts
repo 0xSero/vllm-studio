@@ -155,6 +155,43 @@ export const FastCrwSearchInputSchema = Schema.Struct({
   categories: Schema.optional(Schema.Array(Schema.String)),
 });
 
+export const FastCrwScrapeInputSchema = Schema.Struct({
+  url: Schema.String,
+  formats: Schema.optional(Schema.Array(Schema.String)),
+  onlyMainContent: Schema.optional(Schema.Boolean),
+  renderJs: Schema.optional(Schema.Boolean),
+  timeout: Schema.optional(Schema.Number),
+});
+
+export const FastCrwMapInputSchema = Schema.Struct({
+  url: Schema.String,
+  maxDepth: Schema.optional(Schema.Number),
+  useSitemap: Schema.optional(Schema.Boolean),
+  timeout: Schema.optional(Schema.Number),
+});
+
+export const FastCrwCrawlInputSchema = Schema.Struct({
+  url: Schema.String,
+  maxPages: Schema.optional(Schema.Number),
+  maxDepth: Schema.optional(Schema.Number),
+  formats: Schema.optional(Schema.Array(Schema.String)),
+  onlyMainContent: Schema.optional(Schema.Boolean),
+});
+
+export const FastCrwCrawlStatusInputSchema = Schema.Struct({
+  id: Schema.String,
+});
+
+export const FastCrwExtractInputSchema = Schema.Struct({
+  urls: Schema.Array(Schema.String),
+  prompt: Schema.optional(Schema.String),
+  schema: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+
+export const FastCrwExtractStatusInputSchema = Schema.Struct({
+  id: Schema.String,
+});
+
 export type OnboardingProfile = typeof OnboardingProfileSchema.Type;
 export type OnboardingProbeInput = typeof OnboardingProbeInputSchema.Type;
 export type OnboardingProbeResult = typeof OnboardingProbeResultSchema.Type;
@@ -163,3 +200,9 @@ export type OnboardingRecovery = typeof OnboardingRecoverySchema.Type;
 export type OnboardingState = typeof OnboardingStateSchema.Type;
 export type OnboardingSaveInput = typeof OnboardingSaveInputSchema.Type;
 export type FastCrwSearchInput = typeof FastCrwSearchInputSchema.Type;
+export type FastCrwScrapeInput = typeof FastCrwScrapeInputSchema.Type;
+export type FastCrwMapInput = typeof FastCrwMapInputSchema.Type;
+export type FastCrwCrawlInput = typeof FastCrwCrawlInputSchema.Type;
+export type FastCrwCrawlStatusInput = typeof FastCrwCrawlStatusInputSchema.Type;
+export type FastCrwExtractInput = typeof FastCrwExtractInputSchema.Type;
+export type FastCrwExtractStatusInput = typeof FastCrwExtractStatusInputSchema.Type;
