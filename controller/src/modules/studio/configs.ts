@@ -60,6 +60,36 @@ export const STUDIO_STARTER_PRESETS: StudioStarterPreset[] = [
     },
   },
   {
+    id: "tensorprime-gemma4",
+    name: "TensorPrime Gemma 4",
+    description:
+      "Connect the TensorPrime vLLM Gemma 4 endpoint. Models are discovered at setup time through the governed platform API.",
+    kind: "remote",
+    tags: ["remote", "governed", "keyless"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "http://api.tprime.vlans.ca",
+      model: "",
+      authentication: "none",
+    },
+  },
+  {
+    id: "tensorprime-litellm",
+    name: "TensorPrime LiteLLM Gateway",
+    description:
+      "Connect the TensorPrime LiteLLM multi-model gateway. All routed models are discovered at setup time through the governed platform API.",
+    kind: "remote",
+    tags: ["remote", "governed", "keyless", "multi-model"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "http://api.tprime.vlans.ca",
+      model: "",
+      authentication: "none",
+    },
+  },
+  {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
     description:
@@ -72,6 +102,44 @@ export const STUDIO_STARTER_PRESETS: StudioStarterPreset[] = [
       base_url: "http://pop-os-1.tailadb2c1.ts.net:8080/v1",
       model: "deepseek-v4-flash",
       authentication: "api_key",
+    },
+  },
+  {
+    id: "local-llm-server",
+    name: "Local LLM server",
+    description:
+      "Connect to an OpenAI-compatible server already running on this machine (Ollama, LM Studio, llama-server, vLLM). Models are discovered at setup time.",
+    kind: "remote",
+    tags: ["remote", "local", "keyless"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "http://localhost:11434/v1",
+      model: "",
+      authentication: "none",
+    },
+  },
+  {
+    id: "trustnest-apim",
+    name: "Thales TrustNest APIM",
+    description:
+      "Connect to the Thales TrustNest AI Models API via Entra ID client credentials. Models are discovered at setup time; a subscription key is required.",
+    kind: "remote",
+    tags: ["remote", "governed", "apim"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "https://api.thalesdigital.io/ai-models/openai/v1",
+      model: "",
+      authentication: "apim_client",
+      issuer_id: "https://login.microsoftonline.com/common/v2.0",
+      audience: "api://c94dc58f-d839-4fdf-b0a4-22442c7baf50",
+      scopes: ["api://c94dc58f-d839-4fdf-b0a4-22442c7baf50/.default"],
+      token_endpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      client_id: "",
+      path_style: "openai",
+      api_version: "2024-06-01",
+      subscription_key_header: "TrustNest-Apim-Subscription-Key",
     },
   },
 ];

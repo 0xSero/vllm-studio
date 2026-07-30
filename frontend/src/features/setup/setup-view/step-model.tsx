@@ -138,7 +138,7 @@ function RemotePresetRow({
         <div className="min-w-0">
           <div className="text-[length:var(--fs-md)] text-(--fg)">{preset.name}</div>
           <div className="truncate font-mono text-[11px] text-(--ui-muted)">
-            {preset.remote?.model}
+            {preset.remote?.model || "Models discovered at setup"}
           </div>
           <div className="font-mono text-[11px] text-(--ui-muted)">
             Authentication · {authLabel}
@@ -231,7 +231,9 @@ function RemotePresetRow({
                   header: event.target.value,
                 })
               }
-              placeholder="Subscription header (optional)"
+              placeholder={
+                preset.remote?.subscription_key_header ?? "Subscription header (optional)"
+              }
             />
             <Input
               type="password"
@@ -280,7 +282,9 @@ function RemotePresetRow({
                   header: event.target.value,
                 })
               }
-              placeholder="Subscription header (optional)"
+              placeholder={
+                preset.remote?.subscription_key_header ?? "Subscription header (optional)"
+              }
             />
             <Input
               type="password"

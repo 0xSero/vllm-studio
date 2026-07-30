@@ -183,7 +183,7 @@ export function connectRemotePresetEffect(
         ...(apiVersion ? { api_version: apiVersion } : {}),
       }),
     );
-    if (!catalog.models.some((model) => model.id === remote.model)) {
+    if (remote.model && !catalog.models.some((model) => model.id === remote.model)) {
       return yield* Effect.fail(
         new Error(`Provider did not advertise the required model "${remote.model}"`),
       );

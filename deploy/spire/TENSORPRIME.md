@@ -22,6 +22,17 @@ Do not use an HTTPS or mTLS endpoint until the corresponding TensorPrime service
 
 ## Deployment
 
+### Local development
+
+To enable SPIFFE workload identity against a local SPIRE daemon, set both environment variables before starting the controller and agent runtime:
+
+```sh
+export LOCAL_STUDIO_SPIFFE_CONFIG=deploy/spire/workload-identity.example.json
+export LOCAL_STUDIO_TENSORPRIME_PROFILE=deploy/spire/tensorprime-connection-profile.json
+```
+
+The example workload-identity config and the TensorPrime connection profile share the same trust domain (`tprime.vlans.ca`) and Workload API socket (`unix:///run/spiffe/workload/spire-agent.sock`), so they bind without modification. A local SPIRE agent must be listening on that socket.
+
 Validate locally:
 
 ```sh

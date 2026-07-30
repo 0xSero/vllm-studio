@@ -29,5 +29,6 @@ export interface StudioStarterPreset {
     client_id?: string;
     path_style?: "openai" | "azure";
     api_version?: string;
+    subscription_key_header?: string;
   };
 }
