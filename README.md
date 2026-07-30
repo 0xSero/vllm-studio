@@ -7,6 +7,13 @@ local or remote controllers. Version 2.0 unifies day-to-day operation around
 Status, Workbench, Configure, and Usage instead of separate model, integration,
 and server surfaces.
 
+## Download
+
+**[Download Local Studio for macOS (Apple Silicon)](https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg)**
+— signed and notarized; updates itself from GitHub releases. All versions on the
+[releases page](https://github.com/sybil-solutions/local-studio/releases), or via
+[localstudio.ai](https://localstudio.ai).
+
 It is built from two modules that share one controller API:
 
 - [`controller/`](controller/README.md) — Bun/Hono backend. Owns model lifecycle
