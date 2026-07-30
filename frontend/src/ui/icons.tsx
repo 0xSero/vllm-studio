@@ -157,3 +157,28 @@ export function MoreIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function PinIcon(props: IconProps) {
+  // A solid bookmark-style flag — reads far cleaner than a thumbtack at row size.
+  return (
+    <Svg {...props}>
+      <path d="M4 2h8v12l-4-3-4 3V2z" />
+    </Svg>
+  );
+}
+
+export function PinOffIcon(props: IconProps) {
+  // Same bookmark with a diagonal slash cut through it. The bookmark and the
+  // diagonal bar are one even-odd path: where they overlap the winding cancels,
+  // leaving a transparent groove that reads as the slash, while the bar's ends
+  // extend past the bookmark to complete the stroke.
+  return (
+    <Svg {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M4 2h8v12l-4-3-4 3V2zM1.8 13.1 13.1 1.8l1.1 1.1L2.9 14.2z"
+      />
+    </Svg>
+  );
+}

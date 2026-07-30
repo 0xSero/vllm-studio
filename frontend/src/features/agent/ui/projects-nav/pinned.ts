@@ -74,6 +74,13 @@ export type PinnedNav = {
   };
 };
 
+/** Immutable start time of a pinned session entry; projects sort to the top. */
+function pinnedEntryStartTime(entry: PinnedNavEntry): number {
+  if (entry.kind === "project") return Number.MAX_SAFE_INTEGER;
+  const parsed = Date.parse(entry.session.startedAt ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function usePinnedNav({
   expanded,
   projects,
@@ -189,7 +196,14 @@ export function usePinnedNav({
           session,
         }),
       );
-    return orderPinnedEntries([...projectEntries, ...activeEntries, ...historyEntries], order);
+    // Order active and history session entries together by their (immutable)
+    // start time. Opening a pinned session flips it from a "history" entry to an
+    // "active" one — sorting on start time keeps its slot fixed across that flip,
+    // instead of promoting it above the still-closed entries (issue #275).
+    const sessionEntries = [...activeEntries, ...historyEntries].sort(
+      (left, right) => pinnedEntryStartTime(right) - pinnedEntryStartTime(left),
+    );
+    return orderPinnedEntries([...projectEntries, ...sessionEntries], order);
   }, [activeSessionIds, historySessions, order, pinnedActive, pinnedProjectIds, projects]);
 
   const moveBefore = (draggedId: string, targetId: string | null) => {

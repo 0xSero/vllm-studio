@@ -24,6 +24,8 @@ export {
   SitegeistIcon,
   PanelIcon,
   MoreIcon,
+  PinIcon,
+  PinOffIcon,
   Folder,
   FolderOpen,
 } from "./icons";

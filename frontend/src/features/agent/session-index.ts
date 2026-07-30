@@ -37,16 +37,20 @@ export type SessionIndexRow =
       activity: SessionActivity;
     };
 
-export type SessionActivity = "idle" | "running" | "unseen";
+export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 
 export type SessionActivitySnapshot = {
   active: ReadonlySet<string>;
   unseen: ReadonlySet<string>;
+  // Sessions whose run finished while unviewed — a subset of `unseen` that earns
+  // the green "done" dot instead of the plain blue unseen-activity dot.
+  finished: ReadonlySet<string>;
 };
 
 const EMPTY_ACTIVITY: SessionActivitySnapshot = {
   active: new Set(),
   unseen: new Set(),
+  finished: new Set(),
 };
 
 function timestamp(value?: string | null): number {
@@ -65,6 +69,7 @@ export function sessionActivity(
   focused = false,
 ): SessionActivity {
   if (isWorkingStatus(optimisticStatus) || hasIdentity(snapshot.active, identity)) return "running";
+  if (!focused && hasIdentity(snapshot.finished, identity)) return "finished";
   if (!focused && hasIdentity(snapshot.unseen, identity)) return "unseen";
   return "idle";
 }
@@ -166,17 +171,40 @@ export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]
     if (entry.status.piSessionId) active.add(entry.status.piSessionId);
   }
   const unseen = new Set(activitySnapshot.unseen);
-  for (const id of activitySnapshot.active) if (!active.has(id)) unseen.add(id);
-  for (const id of active) unseen.delete(id);
-  if (sameIds(activitySnapshot.active, active) && sameIds(activitySnapshot.unseen, unseen)) return;
-  activitySnapshot = { active, unseen };
+  const finished = new Set(activitySnapshot.finished);
+  // A running→stopped transition (id was active, now isn't) is a run that
+  // finished while unviewed: flag it both as unseen and, for the green dot, as
+  // finished. Becoming active again clears both.
+  for (const id of activitySnapshot.active) {
+    if (!active.has(id)) {
+      unseen.add(id);
+      finished.add(id);
+    }
+  }
+  for (const id of active) {
+    unseen.delete(id);
+    finished.delete(id);
+  }
+  if (
+    sameIds(activitySnapshot.active, active) &&
+    sameIds(activitySnapshot.unseen, unseen) &&
+    sameIds(activitySnapshot.finished, finished)
+  )
+    return;
+  activitySnapshot = { active, unseen, finished };
   for (const listener of activityListeners) listener();
 }
 
 export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
   const unseen = new Set(activitySnapshot.unseen);
-  for (const id of ids) if (id) unseen.delete(id);
-  if (sameIds(activitySnapshot.unseen, unseen)) return;
-  activitySnapshot = { ...activitySnapshot, unseen };
+  const finished = new Set(activitySnapshot.finished);
+  for (const id of ids) {
+    if (!id) continue;
+    unseen.delete(id);
+    finished.delete(id);
+  }
+  if (sameIds(activitySnapshot.unseen, unseen) && sameIds(activitySnapshot.finished, finished))
+    return;
+  activitySnapshot = { ...activitySnapshot, unseen, finished };
   for (const listener of activityListeners) listener();
 }

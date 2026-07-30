@@ -6,9 +6,9 @@ import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
-import { Archive, MoreIcon, Pin, PinOff, SquarePen, X } from "@/ui/icon-registry";
+import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref } from "./helpers";
+import { hrefWithOpenNonce, navigateToSessionHref, relativeAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
@@ -32,6 +32,8 @@ type SessionNavRowProps = {
   onContextMenu?: boolean;
   isRunning?: boolean;
   unseen?: boolean;
+  finished?: boolean;
+  timestamp?: string | null;
   canDoubleClickRename?: boolean;
   showClearAction?: boolean;
   renameInputClass?: string;
@@ -111,7 +113,6 @@ export function SessionNavRow({
         pinned={Boolean(pref.pinned)}
         onToggle={() => onPatchPref({ pinned: !pref.pinned })}
         target="session"
-        placement="rail"
       />
       <SessionOpenTarget
         canDoubleClickRename={canDoubleClickRename}
@@ -332,7 +333,7 @@ function SessionOptionsMenu({
 
   return (
     <div className={SESSION_MENU_CLASS} role="menu">
-      <MenuItem Icon={pref.pinned ? PinOff : Pin} onClick={run(onPin)}>
+      <MenuItem Icon={pref.pinned ? PinOffIcon : PinIcon} onClick={run(onPin)}>
         {pref.pinned ? "Unpin" : "Pin"}
       </MenuItem>
       <MenuItem Icon={SquarePen} onClick={run(onRename)}>
