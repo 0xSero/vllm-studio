@@ -49,12 +49,12 @@ export function ProjectTemplatePicker({ onProjectCreated }: { onProjectCreated?:
   }, []);
 
   const handleCreate = useCallback(async () => {
-    if (!selectedTemplate || !projectPath.trim()) return;
+    if (!selectedTemplate) return;
     setCreating(true);
     setCreateError(null);
     try {
       const result = await api.materializeProjectTemplate(selectedTemplate, {
-        project_path: projectPath.trim(),
+        project_path: projectPath.trim() || undefined,
       });
       await addProjectFromPath(result.project_path);
       onProjectCreated?.();
@@ -123,13 +123,13 @@ export function ProjectTemplatePicker({ onProjectCreated }: { onProjectCreated?:
       {selectedTemplate && (
         <Card className="p-4">
           <FormField
-            label="Project location"
-            description="Choose where to create your project folder"
+            label="Project location (optional)"
+            description="Leave blank to create in the default projects folder"
           >
             <Input
               value={projectPath}
               onChange={(e) => setProjectPath(e.target.value)}
-              placeholder="/home/me/my-research"
+              placeholder="Defaults to your projects folder"
             />
           </FormField>
 
@@ -143,7 +143,7 @@ export function ProjectTemplatePicker({ onProjectCreated }: { onProjectCreated?:
             <Button variant="ghost" onClick={() => setSelectedTemplate(null)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={creating || !projectPath.trim()}>
+            <Button onClick={handleCreate} disabled={creating}>
               {creating ? "Creating..." : "Create project"}
             </Button>
           </div>

@@ -363,7 +363,7 @@ export function createStudioApi(core: ApiCore) {
 
     materializeProjectTemplate: (
       templateId: string,
-      payload: { project_path: string; project_name?: string },
+      payload: { project_path?: string; project_name?: string },
     ): Promise<{
       project_path: string;
       notebook_path: string;
@@ -372,6 +372,23 @@ export function createStudioApi(core: ApiCore) {
       template_name: string;
     }> =>
       core.request(`/studio/project-templates/${encodePathSegments(templateId)}/materialize`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    createCustomProject: (payload: {
+      project_name: string;
+      project_path?: string;
+      notebook_cells: Array<{ cell_type: "code" | "markdown"; source: string }>;
+      agent_prompt: string;
+    }): Promise<{
+      project_path: string;
+      notebook_path: string;
+      agent_context_path: string;
+      template_id: string;
+      template_name: string;
+    }> =>
+      core.request("/studio/projects/custom", {
         method: "POST",
         body: JSON.stringify(payload),
       }),

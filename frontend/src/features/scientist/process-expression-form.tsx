@@ -110,28 +110,18 @@ If the scientist is unsure what to do next, remind them which step they're on an
   }, []);
 
   const handleCreate = useCallback(async () => {
-    if (!projectPath.trim() || steps.every((s) => !s.label.trim())) return;
+    if (!projectName.trim() || steps.every((s) => !s.label.trim())) return;
     setCreating(true);
     setError(null);
     try {
       const cells = generateNotebookCells(steps, projectName);
       const agentPrompt = generateAgentPrompt(steps, projectName);
 
-      const templatePayload = {
-        id: "blank" as const,
-        name: projectName || "Custom Workflow",
-        description: "Generated from process description",
-        icon: "document",
-        recommended_goals: [] as never[],
-        recommended_data_types: [] as never[],
-        compute_preference: "local-smolvm" as const,
+      const result = await api.createCustomProject({
+        project_name: projectName.trim(),
+        project_path: projectPath.trim() || undefined,
         notebook_cells: cells,
         agent_prompt: agentPrompt,
-      };
-
-      const result = await api.materializeProjectTemplate("blank", {
-        project_path: projectPath.trim(),
-        project_name: projectName.trim() || undefined,
       });
 
       await addProjectFromPath(result.project_path);
@@ -141,9 +131,9 @@ If the scientist is unsure what to do next, remind them which step they're on an
     } finally {
       setCreating(false);
     }
-  }, [projectPath, projectName, steps, generateNotebookCells, generateAgentPrompt, router]);
+  }, [projectName, projectPath, steps, generateNotebookCells, generateAgentPrompt, router]);
 
-  const canCreate = projectPath.trim() && steps.some((s) => s.label.trim());
+  const canCreate = projectName.trim() && steps.some((s) => s.label.trim());
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -164,11 +154,14 @@ If the scientist is unsure what to do next, remind them which step they're on an
               placeholder="e.g., Climate impact on crop yield"
             />
           </FormField>
-          <FormField label="Project location" description="Where to create the project folder">
+          <FormField
+            label="Project location (optional)"
+            description="Leave blank to create in the default projects folder"
+          >
             <Input
               value={projectPath}
               onChange={(e) => setProjectPath(e.target.value)}
-              placeholder="/home/me/projects/climate-study"
+              placeholder="Defaults to your projects folder"
             />
           </FormField>
         </div>

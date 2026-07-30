@@ -148,6 +148,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
       config_path: getPersistedConfigPath(context.config.data_dir),
       persisted: { models_dir: persisted.models_dir, ui_preferences: uiPreferences },
       effective: { models_dir: context.config.models_dir },
+      notebook_root: context.config.notebook_root,
     };
   });
 
@@ -484,11 +485,14 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
           const body = yield* decodeJsonBody(
             ctx,
             Schema.Struct({
-              project_path: Schema.String,
+              project_path: Schema.optional(Schema.String),
               project_name: Schema.optional(Schema.String),
             }),
           );
-          const projectPath = resolve(body.project_path.trim());
+          const projectPath = resolve(
+            body.project_path?.trim() ||
+              resolve(context.config.notebook_root, body.project_name?.trim() || template.name),
+          );
           yield* Effect.tryPromise({
             try: () => mkdir(projectPath, { recursive: true }),
             catch: (source) =>
@@ -525,6 +529,72 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             agent_context_path: agentContextPath,
             template_id: template.id,
             template_name: template.name,
+          });
+        }),
+      ),
+    ),
+
+    app.post(
+      "/studio/projects/custom",
+      documentRoute,
+      effectHandler((ctx) =>
+        Effect.gen(function* () {
+          const body = yield* decodeJsonBody(
+            ctx,
+            Schema.Struct({
+              project_name: Schema.String,
+              project_path: Schema.optional(Schema.String),
+              notebook_cells: Schema.Array(
+                Schema.Struct({
+                  cell_type: Schema.Literals(["code", "markdown"]),
+                  source: Schema.String,
+                }),
+              ),
+              agent_prompt: Schema.String,
+            }),
+          );
+          if (body.notebook_cells.length === 0) {
+            return yield* Effect.fail(badRequest("At least one notebook cell is required"));
+          }
+          const projectPath = resolve(
+            body.project_path?.trim() || resolve(context.config.notebook_root, body.project_name.trim()),
+          );
+          yield* Effect.tryPromise({
+            try: () => mkdir(projectPath, { recursive: true }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not create project directory",
+                source,
+              }),
+          });
+          const notebookPath = resolve(projectPath, "notebook.ipynb");
+          const notebookDocument = buildNotebookFromTemplate(body.notebook_cells);
+          yield* Effect.try({
+            try: () => writeFileSync(notebookPath, JSON.stringify(notebookDocument, null, 2), { mode: 0o600 }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not write notebook file",
+                source,
+              }),
+          });
+          const agentContextPath = resolve(projectPath, ".agent-context.md");
+          yield* Effect.try({
+            try: () => writeFileSync(agentContextPath, body.agent_prompt, { mode: 0o600 }),
+            catch: (source) =>
+              new StudioOperationError({
+                operation: "disk",
+                message: "Could not write agent context file",
+                source,
+              }),
+          });
+          return ctx.json({
+            project_path: projectPath,
+            notebook_path: notebookPath,
+            agent_context_path: agentContextPath,
+            template_id: "custom",
+            template_name: body.project_name.trim(),
           });
         }),
       ),

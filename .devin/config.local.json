@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(git)",
+      "Exec(find)"
+    ]
+  }
+}
