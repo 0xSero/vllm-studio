@@ -28,6 +28,11 @@ const config = {
     "chromium-bidi",
     "proper-lockfile",
     "semver",
+    // Nothing in our source imports it: effect requires it at RUNTIME, and it
+    // is pinned at the frontend root so electron-builder's collector actually
+    // ships it. Nested under effect/ it was skipped, and the packaged app
+    // crashed on launch with ERR_MODULE_NOT_FOUND.
+    "fast-check",
     "@types/proper-lockfile",
     "@types/semver",
   ],

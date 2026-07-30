@@ -198,7 +198,7 @@ export function usePinnedNav({
       );
     // Order active and history session entries together by their (immutable)
     // start time. Opening a pinned session flips it from a "history" entry to an
-    // "active" one — sorting on start time keeps its slot fixed across that flip,
+    // "active" one - sorting on start time keeps its slot fixed across that flip,
     // instead of promoting it above the still-closed entries (issue #275).
     const sessionEntries = [...activeEntries, ...historyEntries].sort(
       (left, right) => pinnedEntryStartTime(right) - pinnedEntryStartTime(left),

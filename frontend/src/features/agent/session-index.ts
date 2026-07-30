@@ -42,7 +42,7 @@ export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 export type SessionActivitySnapshot = {
   active: ReadonlySet<string>;
   unseen: ReadonlySet<string>;
-  // Sessions whose run finished while unviewed — a subset of `unseen` that earns
+  // Sessions whose run finished while unviewed - a subset of `unseen` that earns
   // the green "done" dot instead of the plain blue unseen-activity dot.
   finished: ReadonlySet<string>;
 };
@@ -172,7 +172,7 @@ export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]
   }
   const unseen = new Set(activitySnapshot.unseen);
   const finished = new Set(activitySnapshot.finished);
-  // A running→stopped transition (id was active, now isn't) is a run that
+  // A running->stopped transition (id was active, now isn't) is a run that
   // finished while unviewed: flag it both as unseen and, for the green dot, as
   // finished. Becoming active again clears both.
   for (const id of activitySnapshot.active) {

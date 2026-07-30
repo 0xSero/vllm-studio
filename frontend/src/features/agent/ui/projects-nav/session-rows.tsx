@@ -122,7 +122,11 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
+            <PinButton
+              pinned={pinned}
+              onToggle={onTogglePin}
+              target={project.name}
+            />
           ) : null}
           {onRemove ? (
             <button
@@ -305,7 +309,7 @@ function SubagentSessionRows({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="ml-[14px] flex flex-col border-l border-(--border) pl-1">
+    <div className="ml-[14px] flex flex-col pl-1">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -361,7 +365,7 @@ export function ActiveSessionRow({
   const label =
     cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
   const isFocused = session.focused === true;
-  const rowClass = `group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-0 transition-[color,background-color,opacity] ${dragging ? "opacity-45" : ""} ${isFocused ? "bg-(--active) text-(--fg)" : "text-(--fg)/85 hover:bg-(--hover) hover:text-(--fg)"}`;
+  const rowClass = `group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-0 transition-[color,background-color,opacity] ${dragging ? "opacity-45" : ""} ${isFocused ? "bg-(--active) text-(--fg)" : "text-(--fg)/85 hover:bg-(--hover) hover:text-(--fg)"}`;
 
   return (
     <SessionNavRow
@@ -422,6 +426,7 @@ export function ActiveSessionRow({
       isRunning={activity === "running"}
       unseen={activity === "unseen" && !isFocused}
       finished={activity === "finished" && !isFocused}
+      timestamp={session.updatedAt || session.startedAt}
       canDoubleClickRename
       renameInputClass="text-[length:var(--fs-xs)]"
     />
@@ -466,8 +471,9 @@ export function SessionRow({
       isRunning={isRunning}
       unseen={unseen}
       finished={finished}
-      rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-0 text-(--fg)/85 transition-[color,background-color,opacity] hover:bg-(--hover) hover:text-(--fg) ${dragging ? "opacity-45" : ""}`}
-      renameRowClass="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] bg-(--surface)/40 pl-3 pr-1"
+      timestamp={session.updatedAt || session.startedAt}
+      rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-0 text-(--fg)/85 transition-[color,background-color,opacity] hover:bg-(--hover) hover:text-(--fg) ${dragging ? "opacity-45" : ""}`}
+      renameRowClass="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] bg-(--surface)/40 pl-2 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&replace=1`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onArchive={() => {

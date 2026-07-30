@@ -68,7 +68,12 @@ done < <(ls -d /Volumes/"$APP_NAME"* 2>/dev/null || true)
 # Orphaned servers from an earlier run keep serving OLD code on :3000/:8081 and
 # the relaunched app happily reuses them, so the new build never actually runs.
 for port in 3000 8081; do
-  pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  # `|| true`: lsof exits 1 when nothing is listening, and under `set -eo
+  # pipefail` that killed the installer right here — before it installed
+  # anything — while still exiting via the earlier echo, so it looked like it
+  # ran. Fixed once before in the main checkout and lost to a forced stash;
+  # committed this time.
+  pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
   [[ -n "$pid" ]] || continue
   echo "==> stopping stale server on :$port (pid $pid)"
   kill "$pid" 2>/dev/null || true

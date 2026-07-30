@@ -144,6 +144,15 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
             status: "running",
           }));
+          // Same acceptance bookkeeping the prompt path does. Without it a
+          // steer/follow-up got no accept-grace (so a stale runtime-list
+          // snapshot could idle the session and tear down its stream
+          // mid-turn) and no cursor rewind if the runtime's seq had restarted.
+          sessionRuntimeController().noteTurnAccepted(
+            sessionId,
+            undefined,
+            result.status?.eventSeq,
+          );
           if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
           return { ok: true };
         }).pipe(

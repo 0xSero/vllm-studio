@@ -159,7 +159,7 @@ export function MoreIcon(props: IconProps) {
 }
 
 export function PinIcon(props: IconProps) {
-  // A solid bookmark-style flag — reads far cleaner than a thumbtack at row size.
+  // A solid bookmark-style flag - reads far cleaner than a thumbtack at row size.
   return (
     <Svg {...props}>
       <path d="M4 2h8v12l-4-3-4 3V2z" />

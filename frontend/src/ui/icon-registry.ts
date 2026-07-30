@@ -83,6 +83,7 @@ export {
   FolderTree,
   Gauge,
   GitBranch,
+  GitPullRequest,
   GitFork,
   Globe,
   Globe2,

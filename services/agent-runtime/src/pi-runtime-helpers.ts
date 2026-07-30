@@ -160,14 +160,17 @@ export function resolveConnectorsExtensionPath(): string | null {
   );
 }
 
-export function resolveGoalExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("goal.ts", process.env.LOCAL_STUDIO_GOAL_EXTENSION_PATH);
-}
-
 export function resolveSubagentsExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
     "subagents.ts",
     process.env.LOCAL_STUDIO_SUBAGENTS_EXTENSION_PATH,
+  );
+}
+
+export function resolveAutomationsExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "automations.ts",
+    process.env.LOCAL_STUDIO_AUTOMATIONS_EXTENSION_PATH,
   );
 }
 
@@ -282,8 +285,11 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     browserExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
-    // Puts the session objective in the system prompt of every turn.
-    resolveGoalExtensionPath(),
+    // Lets the agent create/list/delete scheduled automations.
+    resolveAutomationsExtensionPath(),
+    // NOTE: session-goal injection is no longer a bundled extension — it runs
+    // in-process via createGoalPromptExtension (see pi-runtime.ts), keyed by the
+    // canonical piSessionId. A bundled extension read the wrong id over RPC.
   ]);
 }
 

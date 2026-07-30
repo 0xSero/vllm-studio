@@ -77,6 +77,7 @@ import {
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
 import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
 import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
@@ -478,6 +479,7 @@ export function ChatPane({
   );
   const activePiSessionId = piSessionIdOf(activeTab);
   const { goalRevision, goalAction } = useGoalCommand(activePiSessionId);
+  const [goalModeOn, setGoalModeOn] = useState(false);
   const handleProjectPicked = useCallback(
     (project: Project) => {
       if (!activeTab || activeTab.messages.length > 0) return;
@@ -501,6 +503,7 @@ export function ChatPane({
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
+          enterGoalMode: () => setGoalModeOn(true),
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,
@@ -586,8 +589,15 @@ export function ChatPane({
       abortTurn,
       attachFiles,
     });
+  const goalModeApi = useGoalMode({
+    goalAction,
+    sendMessage,
+    goalMode: goalModeOn,
+    setGoalMode: setGoalModeOn,
+  });
   const handleComposerSubmit = useCallback(
     (event: FormEvent) => {
+      if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
       if (invocation && commandRegistry.find(invocation.name, commandContext)) {
         event.preventDefault();
@@ -596,7 +606,7 @@ export function ChatPane({
       }
       void sendMessage(event);
     },
-    [activeTab, commandContext, commandRegistry, runCommandInvocation, sendMessage],
+    [activeTab, commandContext, commandRegistry, goalModeApi, runCommandInvocation, sendMessage],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
@@ -683,7 +693,10 @@ export function ChatPane({
           onComposerDragLeave={handleComposerDragLeave}
           onComposerDragOver={handleComposerDragOver}
           onComposerDrop={handleComposerDrop}
-          onComposerKeyDown={handleComposerKeyDown}
+          onComposerKeyDown={(event) => {
+            if (goalModeApi.interceptKeyDown(event)) return;
+            handleComposerKeyDown(event);
+          }}
           onComposerPaste={handleComposerPaste}
           onEditQueued={editQueued}
           onInitGit={onInitGit}
@@ -699,7 +712,7 @@ export function ChatPane({
           onTranscript={handleTranscript}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
-          placeholder={composerVisual.placeholder}
+          placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
           drawer={
             <SessionProjectDrawer
               tabId={activeTabId}
@@ -715,6 +728,9 @@ export function ChatPane({
               running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
               queueItems={visibleQueueItems}
+              composerText={activeTab?.input ?? ""}
+              onQueueMessage={() => void queueMessage()}
+              onSteerMessage={() => void sendMessage(SYNTHETIC_SUBMIT)}
               onEditQueued={editQueued}
               onRemoveQueued={removeQueued}
               onSteerQueued={(queueId) => void steerQueued(queueId)}
@@ -729,6 +745,8 @@ export function ChatPane({
           selectedSkills={selectedSkills}
           status={activeTab?.status}
           textareaRef={textareaRef}
+          goalMode={goalModeApi.goalMode}
+          onExitGoalMode={goalModeApi.exitGoalMode}
           floating={composerOnly}
           dense={!showHeader && !composerOnly}
         />
@@ -778,6 +796,10 @@ function ChatPaneChrome({
 
 /** Remounts per session so the goal poll and project selection never carry
  *  across tabs, and hides project switching while a turn is in flight. */
+// The drawer's Interrupt button has no form event of its own, and sendMessage
+// only ever uses the event to cancel the browser's native submit.
+const SYNTHETIC_SUBMIT = { preventDefault: () => {} } as unknown as FormEvent;
+
 function SessionProjectDrawer({
   tabId,
   piSessionId,

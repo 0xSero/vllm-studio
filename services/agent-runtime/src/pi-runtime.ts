@@ -24,6 +24,7 @@ import {
 import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
+import { createGoalPromptExtension } from "./goal-prompt";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
@@ -285,6 +286,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
         const sessionOptions = buildAgentSessionOptionsSync({ options });
         applyRuntimeEnvInjections(sessionOptions.envInjections);
+        // Expose the current session's model so the automations extension can
+        // default a scheduled run to the same model the user is talking to.
+        applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
         const sessionDir = configuredPiSessionDir(resolvedCwd);
         const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
         const sessionManager = resumeFile
@@ -310,6 +314,19 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                             additionalSkillPaths: sessionOptions.skills,
                             additionalExtensionPaths: sessionOptions.extensionPaths,
                             additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+                            // In-process: the goal section is injected per turn
+                            // via before_agent_start, keyed by the canonical
+                            // piSessionId this SessionManager owns. Runs here so
+                            // it never depends on the RPC extension's session id
+                            // (which differs and left the goal unread — #284).
+                            extensionFactories: [
+                              {
+                                name: "local-studio-goal",
+                                factory: createGoalPromptExtension(() =>
+                                  sessionManager.getSessionId(),
+                                ),
+                              },
+                            ],
                             // Vision guidance is APPENDED, not substituted. This branch used to
                             // set noExtensions/noSkills/noContextFiles and replace the whole
                             // system prompt, which silently disabled every first-party extension

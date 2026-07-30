@@ -41,6 +41,7 @@ import {
   handleGoalPut,
 } from "./http/automation-handlers";
 import { handleSubagentRun, handleSubagentsList } from "./http/subagent-handlers";
+import { handlePrGet, handlePrMerge } from "./http/pr-handlers";
 import {
   handlePtyClose,
   handlePtyInput,
@@ -90,6 +91,8 @@ app.post("/api/agent/automations", (c) => handleAutomationCreate(c.req.raw));
 app.patch("/api/agent/automations/:id", (c) => handleAutomationPatch(c.req.raw, c.req.param("id")));
 app.delete("/api/agent/automations/:id", (c) => handleAutomationDelete(c.req.param("id")));
 app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
+app.get("/api/agent/pr", (c) => handlePrGet(c.req.raw));
+app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
 app.get("/api/agent/subagents", (c) => handleSubagentsList(c.req.raw));
 app.post("/api/agent/subagents", (c) => handleSubagentRun(c.req.raw));
 app.get("/api/agent/goal", (c) => handleGoalGet(c.req.raw));

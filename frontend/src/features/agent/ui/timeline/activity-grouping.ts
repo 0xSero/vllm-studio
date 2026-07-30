@@ -146,6 +146,18 @@ export function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] 
 
 /* Codex's collapsed-turn summary: tool counts joined with " · ", first segment
    capitalized — "Ran 3 commands · edited 2 files · searched 4 times". */
+/** Which glyph leads the collapsed summary: the tool's own icon when the turn
+ *  used a single kind of tool, the terminal icon when it mixed several. */
+export function summaryIconKind(segments: ActivitySegment[]): ToolKind | null {
+  const kinds = new Set<ToolKind>();
+  for (const segment of segments) {
+    if (segment.kind === "reasoning") continue;
+    for (const block of segment.blocks) kinds.add(classifyTool(block));
+  }
+  if (kinds.size === 0) return null;
+  return kinds.size === 1 ? [...kinds][0] : "exec";
+}
+
 export function summarizeActivity(segments: ActivitySegment[]): string {
   let thoughts = 0;
   const counts: Record<string, number> = {};

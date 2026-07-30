@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import {
+  ArrowUp,
   ChevronDown,
   FilePenLine,
   FolderOpen,
@@ -63,6 +64,9 @@ export function ComposerProjectDrawer({
   onProjectPicked,
   queueItems,
   running,
+  composerText,
+  onQueueMessage,
+  onSteerMessage,
   onEditQueued,
   onRemoveQueued,
   onSteerQueued,
@@ -79,6 +83,9 @@ export function ComposerProjectDrawer({
   onProjectPicked: (project: Project) => void;
   queueItems: QueuedMessage[];
   running: boolean;
+  composerText: string;
+  onQueueMessage: () => void;
+  onSteerMessage: () => void;
   onEditQueued: (queueId: string, text: string) => void;
   onRemoveQueued: (queueId: string) => void;
   onSteerQueued: (queueId: string) => void;
@@ -129,6 +136,10 @@ export function ComposerProjectDrawer({
   const activeProject = projects.findByPath(cwd) ?? projects.selectedProject;
   const label = projectName ?? activeProject?.name ?? "Choose project";
   const hasQueue = queueItems.length > 0;
+  // Queueing and steering used to be keyboard-only (Enter / Alt+Enter / Tab),
+  // which is undiscoverable and made a working queue look broken. While a turn
+  // is running, whatever is typed gets both choices as plain buttons.
+  const canDispatch = running && composerText.trim().length > 0;
   const paused = goal?.status === "paused";
   const terminal =
     goal?.status === "complete" || goal?.status === "blocked" || goal?.status === "budget_limited";
@@ -170,6 +181,29 @@ export function ComposerProjectDrawer({
         queueCount={queueItems.length}
         goalObjective={goal?.objective ?? null}
       />
+      {canDispatch ? (
+        <div className="flex items-center gap-1.5 px-1.5 pb-1 pt-1">
+          <span className="shrink-0 text-(--fg)/40">Send this</span>
+          <button
+            type="button"
+            onClick={onQueueMessage}
+            data-testid="drawer-queue-message"
+            className="inline-flex h-6 items-center gap-1 rounded-full border border-(--border) px-2 text-(--fg)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          >
+            <ListChecks className="size-3" aria-hidden />
+            After this turn
+          </button>
+          <button
+            type="button"
+            onClick={onSteerMessage}
+            data-testid="drawer-steer-message"
+            className="inline-flex h-6 items-center gap-1 rounded-full border border-(--border) px-2 text-(--fg)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          >
+            <ArrowUp className="size-3" aria-hidden />
+            Interrupt now
+          </button>
+        </div>
+      ) : null}
       {hasQueue ? (
         <div className="px-1.5 pb-0.5">
           <QueuedMessageStack
