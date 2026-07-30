@@ -83,11 +83,34 @@ function previewKindForPath(path: string): PreviewKind | null {
   if (/\.(html?|svg)$/i.test(path)) return "html";
   if (/\.(jsx|tsx)$/i.test(path)) return "jsx";
   if (/\.(md|mdx|markdown)$/i.test(path)) return "md";
+  if (/\.(png|jpe?g|gif|webp|avif|bmp|ico|apng)$/i.test(path)) return "image";
+  if (/\.pdf$/i.test(path)) return "pdf";
   return null;
 }
 
 export function previewKindForOpenFile(openFile: string | null): PreviewKind | null {
   return openFile ? previewKindForPath(openFile) : null;
+}
+
+/** Kinds served from the file's own bytes instead of a UTF-8 text read. */
+export function isBinaryPreviewKind(kind: PreviewKind | null): kind is "image" | "pdf" {
+  return kind === "image" || kind === "pdf";
+}
+
+export function rawFileUrl(root: string, relPath: string): string {
+  return `/api/agent/fs/raw?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(relPath)}`;
+}
+
+// Images render straight from /api/agent/fs/raw — same-origin, so the app's
+// `img-src 'self'` CSP allows them. PDFs cannot be embedded (the CSP sets
+// `object-src 'none'` and the desktop shell runs with plugins disabled), so the
+// panel hands those to the OS or a browser tab instead of framing them.
+export function ImagePreview({ name, url }: { name: string; url: string }) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-(--bg) p-3">
+      <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
+    </div>
+  );
 }
 
 function extractJsxPreviewSource(source: string): string {
@@ -116,6 +139,9 @@ function previewDocument(content: string, kind: "html" | "jsx"): string {
 }
 
 export function RenderedPreview({ content, kind }: { content: string; kind: PreviewKind }) {
+  // Binary kinds render from their own bytes via BinaryPreview, never from a
+  // text read, so they never reach the srcDoc path below.
+  if (isBinaryPreviewKind(kind)) return null;
   if (kind === "md") {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">
