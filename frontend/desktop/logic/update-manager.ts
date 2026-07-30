@@ -30,23 +30,35 @@ function resolveFeedUrl(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
-function ensureFeedConfigured(): { ok: true; url: string } | { ok: false; reason: string } {
+function ensureFeedConfigured(): { ok: true; url: string } {
   const feedUrl = resolveFeedUrl();
-  if (!feedUrl) {
-    return { ok: false, reason: "LOCAL_STUDIO_UPDATE_URL is not set" };
+  if (feedUrl) {
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: feedUrl,
+      channel: "stable",
+    });
+    return { ok: true, url: feedUrl };
   }
 
+  // Default feed: the public GitHub releases, which ship latest-mac.yml plus
+  // signed zip/dmg assets. electron-updater verifies the download's code
+  // signature against the running app before installing.
   autoUpdater.setFeedURL({
-    provider: "generic",
-    url: feedUrl,
-    channel: "stable",
+    provider: "github",
+    owner: "sybil-solutions",
+    repo: "local-studio",
   });
-
-  return { ok: true, url: feedUrl };
+  return { ok: true, url: "github:sybil-solutions/local-studio" };
 }
 
 export function getUpdateState(): DesktopUpdateSnapshot {
   return latestUpdateState;
+}
+
+/** Quit and install a downloaded update; user data directories are untouched. */
+export function installDownloadedUpdate(): void {
+  autoUpdater.quitAndInstall();
 }
 
 export async function checkForUpdates(force = false): Promise<DesktopUpdateSnapshot> {
@@ -59,15 +71,7 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     return disabledState;
   }
 
-  const feed = ensureFeedConfigured();
-  if (!feed.ok) {
-    const missingFeedState = {
-      status: "error",
-      message: feed.reason,
-    } satisfies DesktopUpdateSnapshot;
-    setUpdateState(missingFeedState);
-    return missingFeedState;
-  }
+  ensureFeedConfigured();
 
   if (!app.isPackaged && !force) {
     const devState = {
@@ -100,11 +104,7 @@ export function initializeAutoUpdates(): void {
   }
 
   const feed = ensureFeedConfigured();
-  if (!feed.ok) {
-    setUpdateState({ status: "idle", message: feed.reason });
-    log.warn(`Auto updates disabled: ${feed.reason}`);
-    return;
-  }
+  log.info(`[update] Feed: ${feed.url}`);
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

@@ -25,6 +25,7 @@ import {
 } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
+import { AppVersionSection } from "./app-version-section";
 import { StatusPill, Spinner } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
 import {
@@ -148,6 +149,7 @@ export function ApiConnectionSection({
 
   return (
     <div>
+      <AppVersionSection />
       <SettingsGroup
         title="Controllers"
         description="Every controller is saved in one list. Switch active with the radio button."
