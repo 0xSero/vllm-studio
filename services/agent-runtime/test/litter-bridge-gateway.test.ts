@@ -24,12 +24,39 @@ import {
   litterBridgeSha256Utf8,
   litterBridgeSignaturePreimage,
   litterBridgeToolHashPreimage,
+  resolveElectronNodeExecutable,
   verifyLitterBridgeRequest,
 } from "../src/litter-bridge-gateway";
 
 const NOW = new Date("2026-07-20T18:30:00.000Z");
 const SECRET = "test-secret-that-is-at-least-thirty-two-bytes-long";
 const CONTROLLER_ID = "controller-test";
+
+test("macOS Electron Pi launches use the background helper executable", () => {
+  const executable = path.join(
+    "/Applications",
+    "Local Studio Dev.app",
+    "Contents",
+    "MacOS",
+    "Local Studio Dev",
+  );
+  const helper = path.join(
+    "/Applications",
+    "Local Studio Dev.app",
+    "Contents",
+    "Frameworks",
+    "Local Studio Dev Helper.app",
+    "Contents",
+    "MacOS",
+    "Local Studio Dev Helper",
+  );
+
+  assert.equal(
+    resolveElectronNodeExecutable(executable, (candidate) => candidate === helper),
+    helper,
+  );
+  assert.equal(resolveElectronNodeExecutable(executable, () => false), executable);
+});
 
 const keyMaterial = (): { privateKey: KeyObject; publicHex: string } => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
