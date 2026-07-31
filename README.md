@@ -1,5 +1,10 @@
 # Local Studio
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/stars/sybil-solutions/local-studio+github/issues/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="CI, release, license, stars, issues" src="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/stars/sybil-solutions/local-studio+github/issues/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 Local Studio is a local-first workstation for running, managing, and using
 self-hosted LLM backends. One machine can launch models, watch GPU/runtime
 state, chat with OpenAI-compatible endpoints, and run agent sessions against
