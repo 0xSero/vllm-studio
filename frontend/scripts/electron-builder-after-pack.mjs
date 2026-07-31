@@ -97,6 +97,7 @@ export default async function afterPack(context) {
 
   const requiredPiLauncherMarkers = [
     "resolveElectronNodeExecutable",
+    "resolvePackagedPiCli",
     "Frameworks",
     "Helper.app",
     "ELECTRON_RUN_AS_NODE",
@@ -120,6 +121,23 @@ export default async function afterPack(context) {
     if (!existsSync(helperExecutable)) {
       throw new Error(`Packaged app is missing its Pi helper executable: ${helperExecutable}`);
     }
+  }
+
+  const packagedPiCli = path.join(
+    resourcesDir,
+    "app",
+    "frontend",
+    ".next",
+    "standalone",
+    "frontend",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+  if (!existsSync(packagedPiCli)) {
+    throw new Error(`Packaged app is missing its Pi CLI: ${packagedPiCli}`);
   }
 
   console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);

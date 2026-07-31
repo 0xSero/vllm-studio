@@ -320,23 +320,49 @@ export const resolveElectronNodeExecutable = (
   return pathExists(helperPath) ? helperPath : execPath;
 };
 
+export const resolvePackagedPiCli = (
+  resourcesPath: string | undefined,
+  pathExists: (candidate: string) => boolean = existsSync,
+): string | null => {
+  if (!resourcesPath?.trim()) return null;
+  const cli = path.join(
+    resourcesPath,
+    "app",
+    "frontend",
+    ".next",
+    "standalone",
+    "frontend",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+  return pathExists(cli) ? cli : null;
+};
+
 const resolvePiRuntime = (): GatewayPiRuntime | null => {
+  let cli: string | null = null;
   try {
     const mainUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
     const distDir = path.dirname(fileURLToPath(mainUrl));
-    const cli = path.join(distDir, "cli.js");
-    const env: Record<string, string> = {};
-    const program =
-      process.platform === "darwin" && process.versions.electron
-        ? resolveElectronNodeExecutable(process.execPath)
-        : process.execPath;
-    if (process.versions.electron) {
-      env.ELECTRON_RUN_AS_NODE = "1";
-    }
-    return { program, args: [cli], env };
+    cli = path.join(distDir, "cli.js");
   } catch {
-    return null;
+    cli = null;
   }
+  cli ??= resolvePackagedPiCli(
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath,
+  );
+  if (!cli) return null;
+  const env: Record<string, string> = {};
+  const program =
+    process.platform === "darwin" && process.versions.electron
+      ? resolveElectronNodeExecutable(process.execPath)
+      : process.execPath;
+  if (process.versions.electron) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+  }
+  return { program, args: [cli], env };
 };
 
 const loadControllerId = (dataDir: string): string => {
