@@ -496,4 +496,823 @@ describe("Scientist onboarding end-to-end", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // ── Profile validation edge cases ────────────────────────────────────
+
+  test("profile rejects empty data_types array", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        data_types: [],
+        goals: ["data_analysis"],
+        compute_preference: "local-smolvm",
+        experience_level: "some_code",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("profile rejects empty goals array", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        data_types: ["text"],
+        goals: [],
+        compute_preference: "local-smolvm",
+        experience_level: "some_code",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("profile rejects invalid research_field", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "astrology",
+        data_types: ["text"],
+        goals: ["data_analysis"],
+        compute_preference: "local-smolvm",
+        experience_level: "some_code",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("profile rejects invalid experience_level", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        data_types: ["text"],
+        goals: ["data_analysis"],
+        compute_preference: "local-smolvm",
+        experience_level: "guru",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("profile rejects missing required field (compute_preference)", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        data_types: ["text"],
+        goals: ["data_analysis"],
+        experience_level: "some_code",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("profile update overwrites previous profile", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    // Save initial profile
+    await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        specialization: "Genomics",
+        data_types: ["text", "genomic"],
+        goals: ["literature_review"],
+        compute_preference: "local-smolvm",
+        experience_level: "no_code",
+      }),
+    });
+
+    // Overwrite with different field
+    const updateRes = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "physics",
+        specialization: "Quantum",
+        data_types: ["sensor", "time_series"],
+        goals: ["data_analysis", "hypothesis_testing"],
+        compute_preference: "remote",
+        experience_level: "expert",
+      }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updated = (await updateRes.json()) as {
+      profile: { research_field: string; specialization: string };
+    };
+    expect(updated.profile.research_field).toBe("physics");
+    expect(updated.profile.specialization).toBe("Quantum");
+
+    // Verify the overwrite persisted
+    const getRes = await request(app, "/studio/scientist-profile");
+    const retrieved = (await getRes.json()) as {
+      profile: { research_field: string; goals: string[]; data_types: string[] };
+    };
+    expect(retrieved.profile.research_field).toBe("physics");
+    expect(retrieved.profile.goals).toContain("hypothesis_testing");
+    expect(retrieved.profile.data_types).toContain("sensor");
+  });
+
+  test("profile with process_steps persists and retrieves steps in order", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const steps = [
+      { id: "s1", label: "Collect", step_type: "data_collection", order: 1 },
+      { id: "s2", label: "Clean", step_type: "data_cleaning", order: 2 },
+      { id: "s3", label: "Explore", step_type: "exploration", order: 3 },
+      { id: "s4", label: "Model", step_type: "modeling", order: 4 },
+      { id: "s5", label: "Report", step_type: "reporting", order: 5 },
+    ];
+    const saveRes = await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "climate",
+        data_types: ["time_series", "spatial"],
+        goals: ["experiment_pipeline", "model_training"],
+        compute_preference: "remote",
+        experience_level: "expert",
+        process_steps: steps,
+      }),
+    });
+    expect(saveRes.status).toBe(200);
+
+    const getRes = await request(app, "/studio/scientist-profile");
+    const { profile } = (await getRes.json()) as {
+      profile: { process_steps: Array<{ id: string; label: string; order: number }> };
+    };
+    expect(profile.process_steps).toHaveLength(5);
+    expect(profile.process_steps[0]?.id).toBe("s1");
+    expect(profile.process_steps[4]?.id).toBe("s5");
+    expect(profile.process_steps.map((s) => s.order)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  // ── Template edge cases ──────────────────────────────────────────────
+
+  test("materialize with custom project_name overrides template name", async () => {
+    const { context, notebookRoot } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(
+      app,
+      "/studio/project-templates/literature-review/materialize",
+      {
+        method: "POST",
+        body: jsonBody({ project_name: "My Custom Literature Review" }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      project_path: string;
+      template_id: string;
+      template_name: string;
+    };
+    expect(body.template_id).toBe("literature-review");
+    expect(body.template_name).toBe("Literature Review");
+    // project_path should use the custom name, not the template name
+    expect(body.project_path).toBe(join(notebookRoot, "My Custom Literature Review"));
+  });
+
+  test("materialize all four templates produces valid notebooks", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    for (const templateId of ["literature-review", "data-analysis", "experiment-pipeline", "blank"]) {
+      const res = await request(
+        app,
+        `/studio/project-templates/${templateId}/materialize`,
+        { method: "POST", body: jsonBody({}) },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        notebook_path: string;
+        agent_context_path: string;
+        template_id: string;
+      };
+      expect(body.template_id).toBe(templateId);
+
+      const notebook = JSON.parse(
+        readFileSync(body.notebook_path, "utf8"),
+      ) as { nbformat: number; cells: Array<{ cell_type: string }> };
+      expect(notebook.nbformat).toBe(4);
+      expect(notebook.cells.length).toBeGreaterThan(0);
+
+      const agentContext = readFileSync(body.agent_context_path, "utf8");
+      expect(agentContext.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("get individual template by id returns full template", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/project-templates/data-analysis");
+    expect(res.status).toBe(200);
+    const { template } = (await res.json()) as {
+      template: {
+        id: string;
+        name: string;
+        notebook_cells: unknown[];
+        agent_prompt: string;
+        recommended_goals: string[];
+      };
+    };
+    expect(template.id).toBe("data-analysis");
+    expect(template.name).toBe("Data Analysis");
+    expect(template.notebook_cells.length).toBeGreaterThan(0);
+    expect(template.agent_prompt.length).toBeGreaterThan(0);
+    expect(template.recommended_goals).toContain("data_analysis");
+  });
+
+  test("get non-existent template by id returns 404", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/project-templates/nonexistent");
+    expect(res.status).toBe(404);
+  });
+
+  // ── Custom project edge cases ────────────────────────────────────────
+
+  test("custom project with only markdown cells creates valid notebook", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: jsonBody({
+        project_name: "Markdown Only",
+        notebook_cells: [
+          { cell_type: "markdown", source: "# Title" },
+          { cell_type: "markdown", source: "## Section" },
+          { cell_type: "markdown", source: "Some text" },
+        ],
+        agent_prompt: "You are a helper.",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { notebook_path: string };
+    const notebook = JSON.parse(
+      readFileSync(body.notebook_path, "utf8"),
+    ) as { cells: Array<{ cell_type: string }> };
+    expect(notebook.cells).toHaveLength(3);
+    expect(notebook.cells.every((c) => c.cell_type === "markdown")).toBe(true);
+  });
+
+  test("custom project with many cells creates valid notebook", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const manyCells = Array.from({ length: 50 }, (_, i) => ({
+      cell_type: i % 2 === 0 ? ("code" as const) : ("markdown" as const),
+      source: `# Cell ${i}\nprint(${i})`,
+    }));
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: jsonBody({
+        project_name: "Many Cells",
+        notebook_cells: manyCells,
+        agent_prompt: "You are a helper.",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { notebook_path: string };
+    const notebook = JSON.parse(
+      readFileSync(body.notebook_path, "utf8"),
+    ) as { cells: unknown[] };
+    expect(notebook.cells).toHaveLength(50);
+  });
+
+  test("custom project rejects missing project_name", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: jsonBody({
+        notebook_cells: [{ cell_type: "code", source: "print(1)" }],
+        agent_prompt: "You are a helper.",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("custom project rejects missing agent_prompt", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: jsonBody({
+        project_name: "No Prompt",
+        notebook_cells: [{ cell_type: "code", source: "print(1)" }],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("custom project rejects invalid cell_type", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: jsonBody({
+        project_name: "Bad Cell",
+        notebook_cells: [{ cell_type: "raw", source: "print(1)" }],
+        agent_prompt: "You are a helper.",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("custom project rejects malformed body (not JSON)", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/studio/projects/custom", {
+      method: "POST",
+      body: "not json",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("materialize template overwrites existing project directory", async () => {
+    const { context, dataDir } = makeContext();
+    const app = makeApp(context);
+
+    const projectPath = join(dataDir, "overwrite-test");
+    // First materialize
+    const res1 = await request(
+      app,
+      "/studio/project-templates/blank/materialize",
+      { method: "POST", body: jsonBody({ project_path: projectPath }) },
+    );
+    expect(res1.status).toBe(200);
+
+    // Second materialize to same path — should overwrite, not error
+    const res2 = await request(
+      app,
+      "/studio/project-templates/data-analysis/materialize",
+      { method: "POST", body: jsonBody({ project_path: projectPath }) },
+    );
+    expect(res2.status).toBe(200);
+    const body2 = (await res2.json()) as { template_id: string; notebook_path: string };
+    expect(body2.template_id).toBe("data-analysis");
+
+    // Verify the notebook now has data-analysis content, not blank
+    const notebook = JSON.parse(
+      readFileSync(body2.notebook_path, "utf8"),
+    ) as { cells: Array<{ source: string[] }> };
+    const firstSource = notebook.cells[0]?.source.join("") ?? "";
+    expect(firstSource).toContain("Data Analysis");
+  });
+
+  // ── Experiment lifecycle edge cases ──────────────────────────────────
+
+  test("multiple experiments for same project are all listed", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const projectId = "proj-batch";
+    const created: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app, "/experiments", {
+        method: "POST",
+        body: jsonBody({
+          project_id: projectId,
+          name: `Experiment ${i}`,
+          parameters: { iteration: i },
+        }),
+      });
+      expect(res.status).toBe(201);
+      const { experiment } = (await res.json()) as { experiment: { id: string } };
+      created.push(experiment.id);
+    }
+
+    const listRes = await request(
+      app,
+      `/experiments?project_id=${encodeURIComponent(projectId)}`,
+    );
+    const { experiments } = (await listRes.json()) as {
+      experiments: Array<{ id: string; name: string }>;
+    };
+    expect(experiments).toHaveLength(5);
+    // All created experiment IDs should be present (order depends on
+    // created_at which may tie at same millisecond)
+    const listedIds = new Set(experiments.map((e) => e.id));
+    for (const id of created) {
+      expect(listedIds.has(id)).toBe(true);
+    }
+  });
+
+  test("experiment list without project_id returns all experiments", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    // Create experiments for different projects
+    await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-a", name: "A1" }),
+    });
+    await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-b", name: "B1" }),
+    });
+
+    const listRes = await request(app, "/experiments");
+    expect(listRes.status).toBe(200);
+    const { experiments } = (await listRes.json()) as {
+      experiments: Array<{ name: string }>;
+    };
+    expect(experiments).toHaveLength(2);
+  });
+
+  test("experiment list for non-existent project returns empty array", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(
+      app,
+      `/experiments?project_id=${encodeURIComponent("non-existent")}`,
+    );
+    expect(res.status).toBe(200);
+    const { experiments } = (await res.json()) as { experiments: unknown[] };
+    expect(experiments).toEqual([]);
+  });
+
+  test("experiment status transitions: running → succeeded → (re-open) running", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    // Create
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Lifecycle test" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    // running → succeeded
+    const succeedRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ status: "succeeded", completed_at: new Date().toISOString() }),
+    });
+    expect(succeedRes.status).toBe(200);
+    const succeeded = (await succeedRes.json()) as {
+      experiment: { status: string; completed_at: string };
+    };
+    expect(succeeded.experiment.status).toBe("succeeded");
+    expect(succeeded.experiment.completed_at).toBeTruthy();
+
+    // succeeded → running (re-open; completed_at is preserved since the
+    // update schema only accepts string | undefined, not null)
+    const reopenRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ status: "running" }),
+    });
+    expect(reopenRes.status).toBe(200);
+    const reopened = (await reopenRes.json()) as {
+      experiment: { status: string; completed_at: string };
+    };
+    expect(reopened.experiment.status).toBe("running");
+    // completed_at is preserved from the succeeded update (not cleared)
+    expect(reopened.experiment.completed_at).toBeTruthy();
+  });
+
+  test("experiment failed status with error notes", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Failed experiment" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    const failRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({
+        status: "failed",
+        notes: "OOM at epoch 15, GPU memory exhausted",
+        completed_at: new Date().toISOString(),
+      }),
+    });
+    expect(failRes.status).toBe(200);
+    const failed = (await failRes.json()) as {
+      experiment: { status: string; notes: string };
+    };
+    expect(failed.experiment.status).toBe("failed");
+    expect(failed.experiment.notes).toContain("OOM");
+  });
+
+  test("experiment cancelled status", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Cancelled experiment" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    const cancelRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ status: "cancelled" }),
+    });
+    expect(cancelRes.status).toBe(200);
+    const cancelled = (await cancelRes.json()) as {
+      experiment: { status: string };
+    };
+    expect(cancelled.experiment.status).toBe("cancelled");
+  });
+
+  test("experiment update with artifacts containing all kinds", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Artifacts test" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    const artifactKinds = ["model", "data", "plot", "report", "log", "other"] as const;
+    const artifacts = artifactKinds.map((kind, i) => ({
+      name: `artifact-${kind}.bin`,
+      kind,
+      path: `outputs/${kind}-${i}.bin`,
+      digest: `sha256:${"a".repeat(64)}`,
+      size_bytes: 1024 * (i + 1),
+    }));
+
+    const updateRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ artifacts }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updated = (await updateRes.json()) as {
+      experiment: { artifacts: Array<{ kind: string; name: string; size_bytes: number }> };
+    };
+    expect(updated.experiment.artifacts).toHaveLength(6);
+    expect(updated.experiment.artifacts.map((a) => a.kind)).toEqual([...artifactKinds]);
+  });
+
+  test("deep lineage chain (5 generations)", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const projectId = "proj-lineage";
+    let parentId: string | undefined;
+
+    // Create a chain of 5 experiments, each parented to the previous
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app, "/experiments", {
+        method: "POST",
+        body: jsonBody({
+          project_id: projectId,
+          name: `Generation ${i}`,
+          parent_experiment_id: parentId,
+        }),
+      });
+      const { experiment } = (await res.json()) as { experiment: { id: string } };
+      parentId = experiment.id;
+    }
+
+    // Retrieve lineage from the last (youngest) experiment
+    const leafId = parentId!;
+    const lineageRes = await request(app, `/experiments/${leafId}/lineage`);
+    expect(lineageRes.status).toBe(200);
+    const { lineage } = (await lineageRes.json()) as {
+      lineage: Array<{ name: string }>;
+    };
+    expect(lineage).toHaveLength(5);
+    // Lineage is ordered root → leaf
+    expect(lineage[0]?.name).toBe("Generation 0");
+    expect(lineage[4]?.name).toBe("Generation 4");
+  });
+
+  test("lineage for experiment with no parent returns single-element chain", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Root experiment" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    const lineageRes = await request(app, `/experiments/${experiment.id}/lineage`);
+    expect(lineageRes.status).toBe(200);
+    const { lineage } = (await lineageRes.json()) as {
+      lineage: Array<{ id: string }>;
+    };
+    expect(lineage).toHaveLength(1);
+    expect(lineage[0]?.id).toBe(experiment.id);
+  });
+
+  test("lineage for non-existent experiment returns empty array", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/experiments/non-existent-id/lineage");
+    expect(res.status).toBe(200);
+    const { lineage } = (await res.json()) as { lineage: unknown[] };
+    expect(lineage).toEqual([]);
+  });
+
+  test("delete experiment that doesn't exist returns 404", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const res = await request(app, "/experiments/non-existent", { method: "DELETE" });
+    expect(res.status).toBe(404);
+  });
+
+  test("partial experiment update only changes provided fields", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    // Create with parameters and notes
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({
+        project_id: "proj-1",
+        name: "Partial update test",
+        parameters: { lr: 0.001, epochs: 10 },
+        notes: "Initial notes",
+      }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    // Update only status — parameters and notes should be preserved
+    const updateRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ status: "succeeded" }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updated = (await updateRes.json()) as {
+      experiment: {
+        status: string;
+        parameters: { lr: number; epochs: number };
+        notes: string;
+        metrics: Record<string, unknown>;
+      };
+    };
+    expect(updated.experiment.status).toBe("succeeded");
+    expect(updated.experiment.parameters).toEqual({ lr: 0.001, epochs: 10 });
+    expect(updated.experiment.notes).toBe("Initial notes");
+    expect(updated.experiment.metrics).toEqual({});
+  });
+
+  test("experiment update replaces metrics entirely on update", async () => {
+    const { context } = makeContext();
+    const app = makeApp(context);
+
+    const createRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({ project_id: "proj-1", name: "Metrics replace test" }),
+    });
+    const { experiment } = (await createRes.json()) as { experiment: { id: string } };
+
+    // Set initial metrics
+    await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ metrics: { accuracy: 0.85, loss: 0.15 } }),
+    });
+
+    // Replace with different metrics
+    const updateRes = await request(app, `/experiments/${experiment.id}`, {
+      method: "PATCH",
+      body: jsonBody({ metrics: { f1: 0.92, precision: 0.90 } }),
+    });
+    const updated = (await updateRes.json()) as {
+      experiment: { metrics: Record<string, number> };
+    };
+    expect(updated.experiment.metrics).toEqual({ f1: 0.92, precision: 0.90 });
+    expect(updated.experiment.metrics["accuracy"]).toBeUndefined();
+  });
+
+  // ── Full lifecycle: profile → template → project → experiment → cleanup ──
+
+  test("complete lifecycle: profile guides template choice, project tracks experiments", async () => {
+    const { context, notebookRoot } = makeContext();
+    const app = makeApp(context);
+
+    // 1. Scientist with biology + experiment_pipeline goal
+    await request(app, "/studio/scientist-profile", {
+      method: "PUT",
+      body: jsonBody({
+        research_field: "biology",
+        specialization: "Computational Biology",
+        data_types: ["tabular", "genomic"],
+        goals: ["experiment_pipeline", "model_training"],
+        compute_preference: "local-jupyter",
+        experience_level: "some_code",
+      }),
+    });
+
+    // 2. Choose experiment-pipeline template (matches goals)
+    const templateRes = await request(app, "/studio/project-templates/experiment-pipeline");
+    expect(templateRes.status).toBe(200);
+    const { template } = (await templateRes.json()) as {
+      template: { recommended_goals: string[] };
+    };
+    expect(template.recommended_goals).toContain("experiment_pipeline");
+
+    // 3. Materialize the template
+    const materializeRes = await request(
+      app,
+      "/studio/project-templates/experiment-pipeline/materialize",
+      { method: "POST", body: jsonBody({ project_name: "Bio Experiments" }) },
+    );
+    expect(materializeRes.status).toBe(200);
+    const project = (await materializeRes.json()) as { project_path: string };
+
+    // 4. Run multiple experiments with lineage
+    const baselineRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({
+        project_id: project.project_path,
+        name: "Baseline gene expression",
+        parameters: { model: "rf", n_estimators: 100 },
+      }),
+    });
+    const { experiment: baseline } = (await baselineRes.json()) as {
+      experiment: { id: string };
+    };
+
+    const tunedRes = await request(app, "/experiments", {
+      method: "POST",
+      body: jsonBody({
+        project_id: project.project_path,
+        name: "Tuned gene expression",
+        parameters: { model: "xgboost", n_estimators: 500 },
+        parent_experiment_id: baseline.id,
+      }),
+    });
+    const { experiment: tuned } = (await tunedRes.json()) as {
+      experiment: { id: string };
+    };
+
+    // 5. Record results
+    await request(app, `/experiments/${baseline.id}`, {
+      method: "PATCH",
+      body: jsonBody({
+        status: "succeeded",
+        metrics: { accuracy: 0.82, f1: 0.79 },
+        artifacts: [{ name: "model.pkl", kind: "model" }],
+        completed_at: new Date().toISOString(),
+      }),
+    });
+    await request(app, `/experiments/${tuned.id}`, {
+      method: "PATCH",
+      body: jsonBody({
+        status: "succeeded",
+        metrics: { accuracy: 0.91, f1: 0.89 },
+        artifacts: [
+          { name: "model.pkl", kind: "model" },
+          { name: "confusion_matrix.png", kind: "plot" },
+        ],
+        completed_at: new Date().toISOString(),
+      }),
+    });
+
+    // 6. Verify lineage and listing
+    const lineageRes = await request(app, `/experiments/${tuned.id}/lineage`);
+    const { lineage } = (await lineageRes.json()) as {
+      lineage: Array<{ name: string; status: string; metrics: Record<string, number> }>;
+    };
+    expect(lineage).toHaveLength(2);
+    expect(lineage[1]?.metrics["accuracy"]).toBe(0.91);
+
+    const listRes = await request(
+      app,
+      `/experiments?project_id=${encodeURIComponent(project.project_path)}`,
+    );
+    const { experiments } = (await listRes.json()) as {
+      experiments: Array<{ status: string }>;
+    };
+    expect(experiments).toHaveLength(2);
+    expect(experiments.every((e) => e.status === "succeeded")).toBe(true);
+
+    // 7. Verify project files exist on disk
+    expect(existsSync(join(notebookRoot, "Bio Experiments", "notebook.ipynb"))).toBe(true);
+    expect(existsSync(join(notebookRoot, "Bio Experiments", ".agent-context.md"))).toBe(true);
+  });
 });
