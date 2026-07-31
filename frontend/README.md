@@ -1,5 +1,10 @@
 # Frontend
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="CI, license, release" src="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 `frontend/` is the Next.js 16 and React 19 interface for Local Studio and the
 source of the macOS Electron app. The web and desktop builds share the same
 routes, agent runtime integration, controller API bridge, and UI kit.

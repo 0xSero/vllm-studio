@@ -1,5 +1,10 @@
 # Product site
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/license/sybil-solutions/local-studio+github/stars/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="license, stars" src="https://shieldcn.dev/group/github/license/sybil-solutions/local-studio+github/stars/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 The landing page is static HTML, CSS, and JavaScript with no build step or
 external runtime dependencies.
 

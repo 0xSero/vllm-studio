@@ -1,5 +1,10 @@
 # SPIRE workload identity
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="CI, license" src="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 This package pins the hardened SPIRE charts and assigns separate identities to the frontend, controller, and agent runtime. The default catch-all identity is disabled. Workload registration is restricted by namespace and component labels.
 
 Chart pins:

@@ -1,5 +1,10 @@
 # Controller
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="CI, license, release" src="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio+github/release/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 `controller/` is the Bun/Hono backend for Local Studio. It exposes the HTTP API that the frontend and desktop app use to manage models, proxy inference requests, read runtime status, and inspect usage/system data.
 
 ## What It Does

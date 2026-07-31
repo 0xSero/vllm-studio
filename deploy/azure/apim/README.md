@@ -1,5 +1,10 @@
 # Standard APIM deployment
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio.svg?variant=secondary&mode=dark">
+  <img alt="CI, license" src="https://shieldcn.dev/group/github/ci/sybil-solutions/local-studio+github/license/sybil-solutions/local-studio.svg?variant=secondary&mode=light">
+</picture>
+
 This package deploys the governed `/ai/v1` API into an existing standard Azure API Management service. It imports a non-current API revision, revision-scoped named values, Key Vault references, the API policy, revision-scoped Foundry and Azure AI Content Safety backends, diagnostics, and managed-identity role assignments.
 
 The package does not create APIM, Microsoft Foundry, Content Safety, Key Vault, or Application Insights. Those resources remain deployment-owned. The target APIM service must be in the deployment resource group. Referenced resources may be in other resource groups or subscriptions visible to the deployment principal.
