@@ -17,7 +17,10 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
-import { cleanSessionTitle } from "../../../shared/agent/session-title";
+import {
+  cleanSessionTitle,
+  sessionTitleFromUserPrompt,
+} from "../../../shared/agent/session-title";
 import { readSessionListMetadata } from "./session-metadata-store";
 import type { SessionSummary } from "../../../shared/agent/session-summary";
 import {
@@ -202,7 +205,8 @@ async function readSessionSummary(
       if (!firstUserMessage) {
         const userTurn = userTurnFromEvent(event);
         if (userTurn.isUser && userTurn.text) {
-          firstUserMessage = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
+          firstUserMessage =
+            cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
         }
       }
       if (header && firstUserMessage) break;

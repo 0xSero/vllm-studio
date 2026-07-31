@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { findSessionFile, loadSession } from "../src/sessions-store";
+import { findSessionFile, listSessions, loadSession } from "../src/sessions-store";
 
 const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
 const temporaryRoots: string[] = [];
@@ -119,6 +119,36 @@ describe("findSessionFile", () => {
 
     expect(findSessionFile(cwd, requestedId)).toBeNull();
   });
+});
+
+test("session summaries derive titles after internal browser context", async () => {
+  const { cwd, sessionDir } = createFixture();
+  const sessionId = "019ee398-14e2-7ad1-af6c-f79b45dabacd";
+  const filepath = writeSession(cwd, sessionDir, "2026-07-20T12-00-00-000Z", sessionId);
+  writeFileSync(
+    filepath,
+    [
+      JSON.stringify({
+        type: "session",
+        version: 3,
+        id: sessionId,
+        timestamp: "2026-07-20T12:00:00.000Z",
+        cwd,
+      }),
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "user",
+          content:
+            "<browser_context>\nA server-side browser is available.\n</browser_context>\n\nReview the release status",
+        },
+      }),
+    ].join("\n"),
+  );
+
+  const sessions = await listSessions(cwd);
+
+  expect(sessions[0]?.firstUserMessage).toBe("Review the release status");
 });
 
 test("session replay follows Pi's active branch", async () => {
