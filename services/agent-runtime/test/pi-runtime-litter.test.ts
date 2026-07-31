@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentModel } from "../../../shared/agent/models";
+import { modelsToPiModels } from "../src/pi-runtime-models";
 import {
   persistLitterPromptBoundary,
   resolvePiRuntimeStartOptions,
@@ -93,6 +94,22 @@ test("Pi model resolution requires provider qualification when raw IDs collide",
   ];
   assert.equal(selectPiRuntimeModel(models, "local-studio-b/shared")?.providerId, "local-studio-b");
   assert.throws(() => selectPiRuntimeModel(models, "shared"), /ambiguous/i);
+});
+
+test("Pi model catalog preserves the controller's active model", () => {
+  const model: AgentModel = {
+    id: "model-active",
+    rawId: "model-active",
+    providerId: "local-studio",
+    name: "Active model",
+    provider: "local-studio",
+    contextWindow: 128_000,
+    maxTokens: 16_000,
+    reasoning: true,
+    vision: false,
+    active: true,
+  };
+  assert.equal(modelsToPiModels([model])[0]?.active, true);
 });
 
 test("Pi preserves reasoning, skills, templates, and tools when restart options are omitted", () => {
