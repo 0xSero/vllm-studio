@@ -28,6 +28,7 @@ function userPiModelsPath(): string {
 type PiProviderModel = {
   id: string;
   name?: string;
+  active?: boolean;
   reasoning?: boolean;
   input?: string[];
   contextWindow?: number;
@@ -465,6 +466,7 @@ export function modelsToPiModels(models: AgentModel[]) {
     return {
       id: model.rawId ?? model.id,
       name: model.name,
+      active: model.active,
       reasoning: model.reasoning,
       input: model.vision ? ["text", "image"] : ["text"],
       contextWindow: model.contextWindow,
