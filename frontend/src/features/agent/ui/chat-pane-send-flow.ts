@@ -21,6 +21,10 @@ import {
   imageInputsFromAttachments,
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
+import {
+  messagesToResumeAfterAbort,
+  removePendingSteersClearedByAbort,
+} from "@/features/agent/ui/chat-pane-send-flow-model";
 
 type UseChatPaneSendFlowOptions = {
   activeTab: SessionTab | null;
@@ -59,6 +63,7 @@ export function useChatPaneSendFlow({
 }: UseChatPaneSendFlowOptions) {
   const composerSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   const controlSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
+  const abortSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
 
   const buildPromptArgs = useCallback(
     (sessionId: string, rawText: string, effectiveBrowserEnabled = browserToolEnabled) => {
@@ -173,13 +178,13 @@ export function useChatPaneSendFlow({
           ? [
               ...t.messages,
               {
-              id: pendingSteerId,
-              role: "user",
-              text,
-              pending: true,
-              awaitingEcho: true,
-              timestamp: nowLabel(),
-            },
+                id: pendingSteerId,
+                role: "user",
+                text,
+                pending: true,
+                awaitingEcho: true,
+                timestamp: nowLabel(),
+              },
             ]
           : t.messages,
       }));
@@ -379,8 +384,24 @@ export function useChatPaneSendFlow({
 
   const abortTurn = useCallback(() => {
     if (!activeTab) return Promise.resolve();
-    return engine.abortTurn(activeTab.id);
-  }, [activeTab, engine]);
+    const tab = activeTab;
+    return runGuardedSubmit(abortSubmitInFlightRef.current, tab.id, async () => {
+      const cleared = await engine.abortTurn(tab.id);
+      const pending = messagesToResumeAfterAbort(tab.queue ?? [], cleared);
+      if (pending.length === 0) return;
+      updateTab(tab.id, (current) => ({
+        ...current,
+        queue: [],
+        messages: removePendingSteersClearedByAbort(current.messages, cleared),
+      }));
+      const [next, ...remaining] = pending;
+      if (!next) return;
+      await submitPrompt(next, tab.id);
+      for (const text of remaining) {
+        await queueAndSendControl("follow_up", text, tab, tab.id, cwd);
+      }
+    });
+  }, [activeTab, cwd, engine, queueAndSendControl, runGuardedSubmit, submitPrompt, updateTab]);
 
   // Re-run the last user turn after a failure (a 503, a network blip). On a
   // *send* failure the text is restored to the composer, but a turn that errors
