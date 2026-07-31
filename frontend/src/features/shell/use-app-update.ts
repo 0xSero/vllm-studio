@@ -31,6 +31,13 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   return false;
 }
 
+export function isAppUpdateAvailable(
+  latestVersion: string | null,
+  currentVersion: string | null,
+): boolean {
+  return Boolean(latestVersion && currentVersion && isNewerVersion(latestVersion, currentVersion));
+}
+
 const bridge = () => window.localStudioDesktop ?? {};
 
 function phaseForStatus(status: string): AppUpdatePhase {
@@ -91,9 +98,7 @@ export function useAppUpdate(): AppUpdate {
     };
   }, [syncDesktopPhase]);
 
-  const updateAvailable = Boolean(
-    latest.version && currentVersion && isNewerVersion(latest.version, currentVersion),
-  );
+  const updateAvailable = isAppUpdateAvailable(latest.version, currentVersion);
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
