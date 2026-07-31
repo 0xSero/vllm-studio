@@ -282,44 +282,49 @@ export function useComposerTextareaBehavior({
     [mentionIndex, mentionRows, selectMentionRow, setMention, setMentionIndex],
   );
 
+  const handleComposerHistoryKey = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if (
+        !activeTab ||
+        (event.key !== "ArrowUp" && event.key !== "ArrowDown") ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.nativeEvent.isComposing
+      ) {
+        return false;
+      }
+      const history = recentComposerHistory(activeTab.messages);
+      const stored = historyNavigationRef.current;
+      const expectedValue =
+        stored.sessionId === activeTab.id && stored.cursor.index >= 0
+          ? history[stored.cursor.index]
+          : stored.cursor.draft;
+      const cursor =
+        stored.sessionId === activeTab.id && expectedValue === activeTab.input
+          ? stored.cursor
+          : { index: -1, draft: activeTab.input };
+      if (cursor.index < 0 && activeTab.input.length > 0) return false;
+      const step = stepComposerHistory(
+        activeTab.messages,
+        cursor,
+        event.key === "ArrowUp" ? "older" : "newer",
+      );
+      if (!step) return false;
+      event.preventDefault();
+      historyNavigationRef.current = { sessionId: activeTab.id, cursor: step.cursor };
+      updateTab(activeTab.id, (tab) => ({ ...tab, input: step.value }));
+      setMention(null);
+      resizeAfterCommit(step.value, step.value.length);
+      return true;
+    },
+    [activeTab, resizeAfterCommit, setMention, updateTab],
+  );
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention && handleMentionKey(event)) return;
-      if (
-        activeTab &&
-        (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.nativeEvent.isComposing
-      ) {
-        const history = recentComposerHistory(activeTab.messages);
-        const stored = historyNavigationRef.current;
-        const expectedValue =
-          stored.sessionId === activeTab.id && stored.cursor.index >= 0
-            ? history[stored.cursor.index]
-            : stored.cursor.draft;
-        const cursor =
-          stored.sessionId === activeTab.id && expectedValue === activeTab.input
-            ? stored.cursor
-            : { index: -1, draft: activeTab.input };
-        const canNavigate = cursor.index >= 0 || activeTab.input.length === 0;
-        if (canNavigate) {
-          const step = stepComposerHistory(
-            activeTab.messages,
-            cursor,
-            event.key === "ArrowUp" ? "older" : "newer",
-          );
-          if (step) {
-            event.preventDefault();
-            historyNavigationRef.current = { sessionId: activeTab.id, cursor: step.cursor };
-            updateTab(activeTab.id, (tab) => ({ ...tab, input: step.value }));
-            setMention(null);
-            resizeAfterCommit(step.value, step.value.length);
-            return;
-          }
-        }
-      }
+      if (handleComposerHistoryKey(event)) return;
       // While a turn is running, Enter QUEUES rather than steers. Steering
       // interrupts the agent's plan mid-flight, so it stays a deliberate act —
       // the drawer's "Interrupt now" button, promoting an item in the queue
@@ -345,13 +350,11 @@ export function useComposerTextareaBehavior({
     [
       abortTurn,
       activeTab,
+      handleComposerHistoryKey,
       handleMentionKey,
       mention,
       queueMessage,
-      resizeAfterCommit,
       running,
-      setMention,
-      updateTab,
     ],
   );
 
