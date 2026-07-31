@@ -68,7 +68,6 @@ export function patchActiveSessionPref(session: ActiveAgentSession, patch: Sessi
   patchCanonicalSessionPref(primary, aliases, patch);
 }
 
-
 export function triggerAddProjectFlow() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(ADD_PROJECT_EVENT));

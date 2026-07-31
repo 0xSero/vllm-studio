@@ -2,8 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { QueuedMessage } from "@/features/agent/messages";
-import { ArrowUp } from "@/ui/icon-registry";
-import { CloseIcon } from "@/ui/icons";
+import { CornerDownRight, Trash2 } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
 
 type QueuedMessageStackProps = {
@@ -46,11 +45,10 @@ export function QueuedMessageStack({
 
   return (
     <div className="flex flex-col gap-0.5" data-testid="queued-message-stack">
-      {items.map((item, index) => (
+      {items.map((item) => (
         <QueuedMessageRow
           key={item.id}
           item={item}
-          index={index}
           running={running}
           editing={editingId === item.id}
           editingText={editingText}
@@ -71,7 +69,6 @@ export function QueuedMessageStack({
 
 function QueuedMessageRow({
   item,
-  index,
   running,
   editing,
   editingText,
@@ -83,7 +80,6 @@ function QueuedMessageRow({
   onRemove,
 }: {
   item: QueuedMessage;
-  index: number;
   running: boolean;
   editing: boolean;
   editingText: string;
@@ -97,17 +93,13 @@ function QueuedMessageRow({
   const steering = item.mode === "steer";
   return (
     <div
-      className="group flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1.5 hover:bg-(--fg)/[0.03]"
+      className="group flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1 hover:bg-(--fg)/[0.03]"
       title={steering ? `Steering: ${item.text}` : `Queued: ${item.text}`}
     >
-      <span
-        className={cx(
-          "w-4 shrink-0 text-center font-mono text-[length:var(--fs-xs)] tabular-nums",
-          steering ? "text-(--accent)" : "text-(--fg)/34",
-        )}
-      >
-        {steering ? "↑" : index + 1}
-      </span>
+      <CornerDownRight
+        className={cx("h-3.5 w-3.5 shrink-0", steering ? "text-(--accent)" : "text-(--fg)/34")}
+        aria-hidden
+      />
       {editing ? (
         <input
           autoFocus
@@ -136,51 +128,27 @@ function QueuedMessageRow({
           {item.text}
         </button>
       )}
-      <QueueIconButton
-        label="Send now, interrupting the current turn"
-        title="Send now — interrupts the current turn"
-        disabled={!running || steering}
-        onClick={onSteer}
-      >
-        <ArrowUp className="h-3.5 w-3.5 stroke-[2.25]" />
-      </QueueIconButton>
-      <QueueIconButton
-        label="Remove queued message"
-        title="Remove from queue"
-        hoverClassName="hover:text-(--fg)"
+      {running && !steering ? (
+        <button
+          type="button"
+          onClick={onSteer}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-(--fg)/55 transition-colors hover:bg-(--fg)/[0.06] hover:text-(--fg)"
+          aria-label="Steer — send now into the current turn"
+          title="Steer — send now into the current turn"
+        >
+          <CornerDownRight className="h-3 w-3" aria-hidden />
+          Steer
+        </button>
+      ) : null}
+      <button
+        type="button"
         onClick={onRemove}
+        className="shrink-0 rounded-md p-1 text-(--fg)/40 transition-colors hover:bg-(--fg)/[0.06] hover:text-(--fg)"
+        aria-label="Remove queued message"
+        title="Remove from queue"
       >
-        <CloseIcon className="h-3 w-3" />
-      </QueueIconButton>
+        <Trash2 className="h-3 w-3" />
+      </button>
     </div>
-  );
-}
-
-function QueueIconButton({
-  label,
-  title,
-  disabled,
-  hoverClassName = "hover:text-(--accent)",
-  onClick,
-  children,
-}: {
-  label: string;
-  title: string;
-  disabled?: boolean;
-  hoverClassName?: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`shrink-0 rounded-md p-1 text-(--fg)/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${hoverClassName} disabled:opacity-0`}
-      aria-label={label}
-      title={title}
-    >
-      {children}
-    </button>
   );
 }

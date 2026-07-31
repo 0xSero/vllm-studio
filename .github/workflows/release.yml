@@ -14,8 +14,11 @@ jobs:
   build:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: macos-15
+    # contents: write because the semantic-release dry run that computes the
+    # next version verifies push access up front — a read token 403s it and
+    # the whole release chain dies before determining a version.
     permissions:
-      contents: read
+      contents: write
     outputs:
       release_version: ${{ steps.next-release.outputs.version }}
     env:
