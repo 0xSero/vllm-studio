@@ -25,6 +25,7 @@ import {
   litterBridgeSignaturePreimage,
   litterBridgeToolHashPreimage,
   resolveElectronNodeExecutable,
+  resolvePackagedPiCli,
   verifyLitterBridgeRequest,
 } from "../src/litter-bridge-gateway";
 
@@ -56,6 +57,25 @@ test("macOS Electron Pi launches use the background helper executable", () => {
     helper,
   );
   assert.equal(resolveElectronNodeExecutable(executable, () => false), executable);
+});
+
+test("packaged Pi runtime resolves the embedded frontend CLI", () => {
+  const resources = path.join("/Applications", "Local Studio.app", "Contents", "Resources");
+  const cli = path.join(
+    resources,
+    "app",
+    "frontend",
+    ".next",
+    "standalone",
+    "frontend",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+  assert.equal(resolvePackagedPiCli(resources, (candidate) => candidate === cli), cli);
+  assert.equal(resolvePackagedPiCli(resources, () => false), null);
 });
 
 const keyMaterial = (): { privateKey: KeyObject; publicHex: string } => {
