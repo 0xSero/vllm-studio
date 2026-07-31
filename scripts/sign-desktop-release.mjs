@@ -1,17 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveNotarytoolCredentials } from "./release-notary-credentials.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontend = path.join(root, "frontend");
@@ -46,8 +40,9 @@ function commandOutput(command, args) {
 }
 
 function keychainList() {
-  return [...commandOutput("security", ["list-keychains", "-d", "user"]).matchAll(/"([^"]+)"/g)]
-    .map((match) => match[1]);
+  return [
+    ...commandOutput("security", ["list-keychains", "-d", "user"]).matchAll(/"([^"]+)"/g),
+  ].map((match) => match[1]);
 }
 
 function writeCertificate(link, destination) {
@@ -66,7 +61,15 @@ function writeCertificate(link, destination) {
 
 async function refreshUpdateMetadata(output, version) {
   const { buildBlockMap } = require(
-    path.join(frontend, "node_modules", "app-builder-lib", "out", "targets", "blockmap", "blockmap.js"),
+    path.join(
+      frontend,
+      "node_modules",
+      "app-builder-lib",
+      "out",
+      "targets",
+      "blockmap",
+      "blockmap.js",
+    ),
   );
   const YAML = require(path.join(frontend, "node_modules", "yaml"));
   const zipName = `Local Studio-${version}-arm64-mac.zip`;
@@ -120,14 +123,12 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
     throw new Error("--prepackaged must point to an unsigned app bundle");
   }
 
-  const apiKey = requireValue("APPLE_API_KEY_BASE64");
-  const apiKeyId = requireValue("APPLE_API_KEY_ID");
-  const apiIssuer = requireValue("APPLE_API_ISSUER");
   const certificate = requireValue("CSC_LINK");
   const certificatePassword = requireValue("CSC_KEY_PASSWORD");
 
   const temporary = path.join(os.tmpdir(), `local-studio-release-${process.pid}`);
-  const apiKeyPath = path.join(temporary, `AuthKey_${apiKeyId}.p8`);
+  const apiKeyPath = path.join(temporary, "AuthKey_notary.p8");
+  const notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath);
   const certificatePath = path.join(temporary, "developer-id.p12");
   const keychainPath = path.join(temporary, "release-signing.keychain-db");
   const keychainPassword = randomBytes(32).toString("hex");
@@ -140,7 +141,12 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
   try {
     rmSync(temporary, { recursive: true, force: true });
     mkdirSync(temporary, { recursive: true, mode: 0o700 });
-    writeFileSync(apiKeyPath, Buffer.from(apiKey, "base64"), { mode: 0o600, flag: "wx" });
+    if (notaryCredentials.kind === "api-key") {
+      writeFileSync(apiKeyPath, Buffer.from(notaryCredentials.apiKey, "base64"), {
+        mode: 0o600,
+        flag: "wx",
+      });
+    }
     writeCertificate(certificate, certificatePath);
     run("security", ["create-keychain", "-p", keychainPassword, keychainPath]);
     run("security", ["set-keychain-settings", "-lut", "21600", keychainPath]);
@@ -175,7 +181,8 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
       keychainPath,
     ]);
     const identity = identityOutput.match(/"([^"]*Developer ID Application:[^"]*)"/)?.[1];
-    if (!identity) throw new Error("Imported certificate does not contain a Developer ID Application identity");
+    if (!identity)
+      throw new Error("Imported certificate does not contain a Developer ID Application identity");
 
     const { signAsync } = require(path.join(frontend, "node_modules", "@electron", "osx-sign"));
     await signAsync({
@@ -202,24 +209,25 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
     ]);
     run("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]);
 
-    process.env.APPLE_API_KEY = apiKeyPath;
-    process.env.APPLE_API_KEY_ID = apiKeyId;
-    process.env.APPLE_API_ISSUER = apiIssuer;
     process.env.LOCAL_STUDIO_RELEASE_VERSION = version;
     process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit;
     process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false";
 
-    run(path.join(frontend, "node_modules", ".bin", "electron-builder"), [
-      "--prepackaged",
-      resolvedApp,
-      "--config",
-      "desktop/electron-builder.yml",
-      "--config.mac.identity=null",
-      "--config.mac.notarize=false",
-      "--config.dmg.sign=false",
-      `--config.extraMetadata.version=${version}`,
-      `--config.extraMetadata.localStudioCommit=${commit}`,
-    ], { cwd: frontend });
+    run(
+      path.join(frontend, "node_modules", ".bin", "electron-builder"),
+      [
+        "--prepackaged",
+        resolvedApp,
+        "--config",
+        "desktop/electron-builder.yml",
+        "--config.mac.identity=null",
+        "--config.mac.notarize=false",
+        "--config.dmg.sign=false",
+        `--config.extraMetadata.version=${version}`,
+        `--config.extraMetadata.localStudioCommit=${commit}`,
+      ],
+      { cwd: frontend },
+    );
     run("codesign", [
       "--force",
       "--timestamp",
@@ -233,12 +241,7 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
       "notarytool",
       "submit",
       dmg,
-      "--key",
-      apiKeyPath,
-      "--key-id",
-      apiKeyId,
-      "--issuer",
-      apiIssuer,
+      ...notaryCredentials.args,
       "--wait",
       "--output-format",
       "json",
