@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveNotarytoolCredentials } from "./release-notary-credentials.mjs";
+import { releasePackageArguments } from "./release-package-arguments.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontend = path.join(root, "frontend");
@@ -215,17 +216,7 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
 
     run(
       path.join(frontend, "node_modules", ".bin", "electron-builder"),
-      [
-        "--prepackaged",
-        resolvedApp,
-        "--config",
-        "desktop/electron-builder.yml",
-        "--config.mac.identity=null",
-        "--config.mac.notarize=false",
-        "--config.dmg.sign=false",
-        `--config.extraMetadata.version=${version}`,
-        `--config.extraMetadata.localStudioCommit=${commit}`,
-      ],
+      releasePackageArguments({ app: resolvedApp, version, commit }),
       { cwd: frontend },
     );
     run("codesign", [
