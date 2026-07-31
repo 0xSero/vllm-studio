@@ -8,7 +8,7 @@ import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref, relativeAge } from "./helpers";
+import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
@@ -317,14 +317,16 @@ function SessionRowContent({
   timestamp?: string | null;
   label: string;
 }) {
-  const age = relativeAge(timestamp);
+  const age = visibleSessionAge(isRunning, timestamp);
   return (
     <>
       <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
         {label}
       </span>
       {isRunning ? (
-        <Spinner size="xs" className="shrink-0 text-(--link)" />
+        <span className="ml-auto flex w-8 shrink-0 justify-end" aria-label="Session running">
+          <Spinner size="xs" className="text-(--link)" />
+        </span>
       ) : finished ? (
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok)"
