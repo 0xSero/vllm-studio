@@ -2,6 +2,7 @@
 import {
   useCallback,
   useMemo,
+  useRef,
   type ChangeEvent,
   type ClipboardEvent,
   type Dispatch,
@@ -29,6 +30,11 @@ import {
   imageFileFromDataUrlText,
 } from "@/features/agent/ui/chat-attachments";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import {
+  recentComposerHistory,
+  stepComposerHistory,
+  type ComposerHistoryCursor,
+} from "@/features/agent/ui/composer-history";
 
 export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
 
@@ -162,6 +168,11 @@ export function useComposerTextareaBehavior({
   abortTurn: () => Promise<void>;
   attachFiles: (files: FileList | File[] | null) => Promise<void>;
 }) {
+  const historyNavigationRef = useRef<{
+    sessionId: string;
+    cursor: ComposerHistoryCursor;
+  }>({ sessionId: "", cursor: { index: -1, draft: "" } });
+
   const resizeAfterCommit = useCallback(
     (nextValue: string, nextCaret: number) => {
       requestAnimationFrame(() => {
@@ -213,6 +224,10 @@ export function useComposerTextareaBehavior({
     (event: ChangeEvent<HTMLTextAreaElement>) => {
       const value = event.target.value;
       if (!activeTab) return;
+      historyNavigationRef.current = {
+        sessionId: activeTab.id,
+        cursor: { index: -1, draft: value },
+      };
       updateTab(activeTab.id, (tab) => ({ ...tab, input: value }));
       setMention(value ? detectComposerMention(value, event.currentTarget.selectionStart) : null);
       const element = event.currentTarget;
@@ -270,6 +285,41 @@ export function useComposerTextareaBehavior({
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention && handleMentionKey(event)) return;
+      if (
+        activeTab &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.nativeEvent.isComposing
+      ) {
+        const history = recentComposerHistory(activeTab.messages);
+        const stored = historyNavigationRef.current;
+        const expectedValue =
+          stored.sessionId === activeTab.id && stored.cursor.index >= 0
+            ? history[stored.cursor.index]
+            : stored.cursor.draft;
+        const cursor =
+          stored.sessionId === activeTab.id && expectedValue === activeTab.input
+            ? stored.cursor
+            : { index: -1, draft: activeTab.input };
+        const canNavigate = cursor.index >= 0 || activeTab.input.length === 0;
+        if (canNavigate) {
+          const step = stepComposerHistory(
+            activeTab.messages,
+            cursor,
+            event.key === "ArrowUp" ? "older" : "newer",
+          );
+          if (step) {
+            event.preventDefault();
+            historyNavigationRef.current = { sessionId: activeTab.id, cursor: step.cursor };
+            updateTab(activeTab.id, (tab) => ({ ...tab, input: step.value }));
+            setMention(null);
+            resizeAfterCommit(step.value, step.value.length);
+            return;
+          }
+        }
+      }
       // While a turn is running, Enter QUEUES rather than steers. Steering
       // interrupts the agent's plan mid-flight, so it stays a deliberate act —
       // the drawer's "Interrupt now" button, promoting an item in the queue
@@ -292,7 +342,17 @@ export function useComposerTextareaBehavior({
         }
       }
     },
-    [abortTurn, activeTab, handleMentionKey, mention, queueMessage, running],
+    [
+      abortTurn,
+      activeTab,
+      handleMentionKey,
+      mention,
+      queueMessage,
+      resizeAfterCommit,
+      running,
+      setMention,
+      updateTab,
+    ],
   );
 
   return {
