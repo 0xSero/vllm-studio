@@ -95,5 +95,32 @@ export default async function afterPack(context) {
     throw new Error("Packaged agent runtime contains a build-machine dependency path");
   }
 
+  const requiredPiLauncherMarkers = [
+    "resolveElectronNodeExecutable",
+    "Frameworks",
+    "Helper.app",
+    "ELECTRON_RUN_AS_NODE",
+  ];
+  const missingPiLauncherMarker = requiredPiLauncherMarkers.find(
+    (marker) => !agentRuntimeSource.includes(marker),
+  );
+  if (missingPiLauncherMarker) {
+    throw new Error(`Packaged agent runtime is missing Pi helper launcher: ${missingPiLauncherMarker}`);
+  }
+
+  if (electronPlatformName === "darwin") {
+    const helperExecutable = path.join(
+      path.dirname(resourcesDir),
+      "Frameworks",
+      `${productFilename} Helper.app`,
+      "Contents",
+      "MacOS",
+      `${productFilename} Helper`,
+    );
+    if (!existsSync(helperExecutable)) {
+      throw new Error(`Packaged app is missing its Pi helper executable: ${helperExecutable}`);
+    }
+  }
+
   console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);
 }
