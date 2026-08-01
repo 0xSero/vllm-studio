@@ -1,109 +1,249 @@
 #!/usr/bin/env bash
-# Install the freshly built Local Studio desktop bundle into /Applications.
-#
-# Replaces the app IN PLACE and keeps exactly ONE rollback copy, always at the
-# same path. Earlier turns each hand-rolled a `mv … .pre-<slug>` backup before
-# installing, which left a pile of 1.2 GB bundles in /Applications — every one
-# of them showing up in Launchpad as a separate "Local Studio" app.
-#
-# There are exactly two installs, ever: "Local Studio" (built from main) and
-# "Local Studio Dev" (built from dev). Never a third.
-#
-#   Usage: scripts/install-desktop-app.sh [stable|dev] [--no-backup]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_ROOT="${LOCAL_STUDIO_INSTALL_ROOT:-/Applications}"
+ROLLBACK_ROOT="${LOCAL_STUDIO_ROLLBACK_ROOT:-$HOME/Library/Application Support/Local Studio Installer/Rollbacks}"
+LSREGISTER="${LOCAL_STUDIO_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
+PLIST_BUDDY="${LOCAL_STUDIO_PLIST_BUDDY:-/usr/libexec/PlistBuddy}"
+SKIP_RUNTIME_CLEANUP="${LOCAL_STUDIO_SKIP_RUNTIME_CLEANUP:-0}"
 
 channel="stable"
 keep_backup=1
+mode="install"
+
 for arg in "$@"; do
   case "$arg" in
     stable|dev) channel="$arg" ;;
     --no-backup) keep_backup=0 ;;
+    --migrate-rollbacks) mode="migrate" ;;
     *) echo "error: unknown argument $arg" >&2; exit 2 ;;
   esac
 done
 
+if [[ "$INSTALL_ROOT" != /* || "$INSTALL_ROOT" == "/" ]]; then
+  echo "error: install root must be an absolute directory below /" >&2
+  exit 2
+fi
+
+if [[ "$ROLLBACK_ROOT" != /* || "$ROLLBACK_ROOT" == "/" || "$ROLLBACK_ROOT" == "$INSTALL_ROOT" || "$ROLLBACK_ROOT/" == "$INSTALL_ROOT/"* ]]; then
+  echo "error: rollback root must be an absolute directory outside the install root" >&2
+  exit 2
+fi
+
 if [[ "$channel" == "dev" ]]; then
   APP_NAME="Local Studio Dev"
-  BUILT="$REPO_ROOT/frontend/dist-desktop-dev/mac-arm64/$APP_NAME.app"
+  APP_ID="org.local.studio.desktop.dev"
+  BUILT="${LOCAL_STUDIO_BUILT_APP:-$REPO_ROOT/frontend/dist-desktop-dev/mac-arm64/$APP_NAME.app}"
 else
   APP_NAME="Local Studio"
-  BUILT="$REPO_ROOT/frontend/dist-desktop/mac-arm64/$APP_NAME.app"
+  APP_ID="org.local.studio.desktop"
+  BUILT="${LOCAL_STUDIO_BUILT_APP:-$REPO_ROOT/frontend/dist-desktop/mac-arm64/$APP_NAME.app}"
 fi
-TARGET="/Applications/$APP_NAME.app"
-ROLLBACK="/Applications/$APP_NAME.app.previous"
+
+TARGET="$INSTALL_ROOT/$APP_NAME.app"
+ROLLBACK="$ROLLBACK_ROOT/$APP_NAME.zip"
+STAGED="$INSTALL_ROOT/.local-studio-installing-$APP_ID-$$"
+REPLACED="$INSTALL_ROOT/.local-studio-replaced-$APP_ID-$$"
+
+rollback_for_id() {
+  case "$1" in
+    org.local.studio.desktop) printf '%s/Local Studio.zip\n' "$ROLLBACK_ROOT" ;;
+    org.local.studio.desktop.dev) printf '%s/Local Studio Dev.zip\n' "$ROLLBACK_ROOT" ;;
+    *) return 1 ;;
+  esac
+}
+
+canonical_for_id() {
+  case "$1" in
+    org.local.studio.desktop) printf '%s/Local Studio.app\n' "$INSTALL_ROOT" ;;
+    org.local.studio.desktop.dev) printf '%s/Local Studio Dev.app\n' "$INSTALL_ROOT" ;;
+    *) return 1 ;;
+  esac
+}
+
+bundle_id() {
+  "$PLIST_BUDDY" -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null
+}
+
+archive_bundle() {
+  local source="$1"
+  local destination="$2"
+  local temporary="$destination.tmp.$$"
+
+  mkdir -p "$(dirname "$destination")"
+  rm -f "$temporary"
+  if ! ditto -c -k --sequesterRsrc --keepParent "$source/Contents" "$temporary"; then
+    rm -f "$temporary"
+    return 1
+  fi
+  if ! archive_is_valid "$temporary"; then
+    rm -f "$temporary"
+    echo "error: rollback archive is incomplete" >&2
+    return 1
+  fi
+  mv -f "$temporary" "$destination"
+}
+
+archive_is_valid() {
+  local archive="$1"
+  [[ -f "$archive" ]] || return 1
+  unzip -tqq "$archive" || return 1
+  unzip -Z1 "$archive" | grep -Eq '^(Contents|Local Studio( Dev)?\.app[^/]*/Contents)/Info\.plist$'
+}
+
+legacy_bundles() {
+  [[ -d "$INSTALL_ROOT" ]] || return 0
+  find "$INSTALL_ROOT" -mindepth 1 -maxdepth 1 -type d -iname '*Local Studio*' -print0
+}
+
+unregister_bundle_tree() {
+  local root="$1"
+  local nested
+  [[ -x "$LSREGISTER" ]] || return 0
+  while IFS= read -r -d '' nested; do
+    "$LSREGISTER" -u "$nested" >/dev/null 2>&1 || true
+  done < <(find "$root" -type d -name '*.app' -print0 2>/dev/null)
+  "$LSREGISTER" -u "$root" >/dev/null 2>&1 || true
+}
+
+prune_stale_launch_services() {
+  local registered
+  [[ -x "$LSREGISTER" ]] || return 0
+  while IFS= read -r registered; do
+    case "$registered" in
+      "$INSTALL_ROOT/Local Studio.app"|"$INSTALL_ROOT/Local Studio.app/"*|"$INSTALL_ROOT/Local Studio Dev.app"|"$INSTALL_ROOT/Local Studio Dev.app/"*) continue ;;
+      "$INSTALL_ROOT/Local Studio"*) ;;
+      *) continue ;;
+    esac
+    [[ ! -e "$registered" ]] || continue
+    "$LSREGISTER" -u "$registered" >/dev/null 2>&1 || true
+  done < <("$LSREGISTER" -dump 2>/dev/null | sed -nE 's/^[[:space:]]*path:[[:space:]]*(.*) \(0x[[:xdigit:]]+\)$/\1/p')
+  "$LSREGISTER" -gc >/dev/null 2>&1 || true
+}
+
+migrate_legacy_bundles() {
+  local skip_id="${1:-}"
+  local candidate id canonical archive
+
+  while IFS= read -r -d '' candidate; do
+    id="$(bundle_id "$candidate" || true)"
+    [[ "$id" == "org.local.studio.desktop" || "$id" == "org.local.studio.desktop.dev" ]] || continue
+    canonical="$(canonical_for_id "$id")"
+    [[ "$candidate" != "$canonical" ]] || continue
+    archive="$(rollback_for_id "$id")"
+
+    if [[ "$id" != "$skip_id" ]] && ! archive_is_valid "$archive"; then
+      echo "==> archiving legacy rollback $candidate -> $archive"
+      archive_bundle "$candidate" "$archive"
+    fi
+
+    echo "==> removing discoverable legacy bundle $candidate"
+    unregister_bundle_tree "$candidate"
+    rm -rf "$candidate"
+  done < <(legacy_bundles)
+
+  prune_stale_launch_services
+}
+
+cleanup_temporary_paths() {
+  rm -rf "$STAGED"
+  if [[ "${SWAP_VERIFIED:-0}" == "0" && -d "$REPLACED" ]]; then
+    rm -rf "$TARGET"
+    mv "$REPLACED" "$TARGET"
+  elif [[ "${SWAP_VERIFIED:-0}" == "0" && "${HAD_TARGET:-0}" == "0" ]]; then
+    rm -rf "$TARGET"
+  fi
+}
+
+if [[ "$mode" == "migrate" ]]; then
+  migrate_legacy_bundles
+  echo "==> done. rollback archives: $ROLLBACK_ROOT"
+  exit 0
+fi
 
 if [[ ! -d "$BUILT" ]]; then
   echo "error: no built bundle at $BUILT" >&2
-  hint="desktop:dist"; [[ "$channel" == "dev" ]] && hint="desktop:dist:dev"
+  hint="desktop:dist"
+  [[ "$channel" == "dev" ]] && hint="desktop:dist:dev"
   echo "       run: npm --prefix frontend run $hint" >&2
   exit 1
 fi
 
-# Refuse to install a bundle the packager left unsigned/incomplete.
 if [[ ! -x "$BUILT/Contents/MacOS/$APP_NAME" ]]; then
-  echo "error: built bundle has no executable — packaging did not finish" >&2
+  echo "error: built bundle has no executable" >&2
   exit 1
 fi
 
-echo "==> quitting $APP_NAME (if running)"
-osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
-# Give the app a moment to release its files before we swap the bundle.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  pgrep -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null || break
-  sleep 0.5
-done
-pkill -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+if [[ "$BUILT" != /* ]]; then
+  echo "error: built bundle path must be absolute" >&2
+  exit 2
+fi
 
-# A left-over mounted DMG is why "the rebuild did nothing": `open -a` resolves
-# by bundle id and picks the HIGHEST version it can see, so a stale
-# /Volumes/Local Studio <newer>-arm64 wins over the copy we just installed.
-while IFS= read -r vol; do
-  [[ -z "$vol" ]] && continue
-  echo "==> ejecting stale disk image $vol"
-  hdiutil detach "$vol" -quiet || hdiutil detach "$vol" -force -quiet || true
-done < <(ls -d /Volumes/"$APP_NAME"* 2>/dev/null || true)
+codesign --verify --deep --strict "$BUILT"
+mkdir -p "$INSTALL_ROOT" "$ROLLBACK_ROOT"
+rm -rf "$STAGED" "$REPLACED"
+trap cleanup_temporary_paths EXIT
+HAD_TARGET=0
+SWAP_VERIFIED=0
 
-# Orphaned servers from an earlier run keep serving OLD code on :3000/:8081 and
-# the relaunched app happily reuses them, so the new build never actually runs.
-for port in 3000 8081; do
-  # `|| true`: lsof exits 1 when nothing is listening, and under `set -eo
-  # pipefail` that killed the installer right here — before it installed
-  # anything — while still exiting via the earlier echo, so it looked like it
-  # ran. Fixed once before in the main checkout and lost to a forced stash;
-  # committed this time.
-  pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
-  [[ -n "$pid" ]] || continue
-  echo "==> stopping stale server on :$port (pid $pid)"
-  kill "$pid" 2>/dev/null || true
-done
+ditto "$BUILT" "$STAGED"
+codesign --verify --deep --strict "$STAGED"
+
+if [[ -d "$TARGET" && "$keep_backup" == "1" ]]; then
+  echo "==> archiving current install -> $ROLLBACK"
+  archive_bundle "$TARGET" "$ROLLBACK"
+elif [[ "$keep_backup" == "0" ]]; then
+  rm -f "$ROLLBACK"
+fi
+
+if [[ "$SKIP_RUNTIME_CLEANUP" != "1" ]]; then
+  echo "==> quitting $APP_NAME"
+  osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null || break
+    sleep 0.5
+  done
+  pkill -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+
+  while IFS= read -r volume; do
+    [[ -n "$volume" ]] || continue
+    echo "==> ejecting stale disk image $volume"
+    hdiutil detach "$volume" -quiet || hdiutil detach "$volume" -force -quiet || true
+  done < <(find /Volumes -mindepth 1 -maxdepth 1 -type d -name "$APP_NAME*" -print 2>/dev/null || true)
+
+  for port in 3000 8081; do
+    pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+    [[ -n "$pid" ]] || continue
+    echo "==> stopping stale server on :$port (pid $pid)"
+    kill "$pid" 2>/dev/null || true
+  done
+fi
 
 if [[ -d "$TARGET" ]]; then
-  if (( keep_backup )); then
-    echo "==> rotating current install -> $ROLLBACK"
-    rm -rf "$ROLLBACK"
-    mv "$TARGET" "$ROLLBACK"
-  else
-    echo "==> removing current install (no backup requested)"
-    rm -rf "$TARGET"
-  fi
+  HAD_TARGET=1
+  mv "$TARGET" "$REPLACED"
 fi
 
-echo "==> installing $TARGET"
-# ditto preserves signatures and extended attributes; cp -R does not.
-ditto "$BUILT" "$TARGET"
+mv "$STAGED" "$TARGET"
+codesign --verify --deep --strict "$TARGET"
+SWAP_VERIFIED=1
+rm -rf "$REPLACED"
 
-echo "==> verifying signature"
-codesign --verify --deep --strict "$TARGET" || {
-  echo "error: signature verification failed" >&2
-  exit 1
-}
+if [[ "$keep_backup" == "1" ]]; then
+  migrate_legacy_bundles
+else
+  migrate_legacy_bundles "$APP_ID"
+fi
 
-# Point Launch Services at this exact bundle so `open -a "Local Studio"` cannot
-# resolve to some other copy still registered from a previous build.
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f "$TARGET" >/dev/null 2>&1 || true
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$TARGET" >/dev/null 2>&1 || true
+  "$LSREGISTER" -gc >/dev/null 2>&1 || true
+fi
 
-echo "==> done. rollback copy: $ROLLBACK"
-echo "    launch with: open \"$TARGET\"   (path, not -a, so the right copy wins)"
+trap - EXIT
+echo "==> installed $TARGET"
+if [[ -f "$ROLLBACK" ]]; then
+  echo "==> rollback archive: $ROLLBACK"
+fi
+echo "    launch with: open \"$TARGET\""
