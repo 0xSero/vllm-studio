@@ -192,7 +192,14 @@ export function useChatPaneSendFlow({
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
-            try: () => engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId),
+            try: () =>
+              engine.sendControl({
+                mode,
+                text,
+                runtime,
+                sessionId: tab.id,
+                piSessionId: tab.piSessionId,
+              }),
             catch: (error) => error,
           });
           updateTab(tab.id, (t) => ({
@@ -333,26 +340,53 @@ export function useChatPaneSendFlow({
 
   const removeQueued = useCallback(
     (queueId: string) => {
-      if (!activeTab) return;
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
-        queue: (tab.queue ?? []).filter((entry) => entry.id !== queueId),
-      }));
+      if (!activeTab) return Promise.resolve();
+      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
+      if (!item) return Promise.resolve();
+      return engine
+        .sendControl({
+          mode: "follow_up",
+          text: item.text,
+          runtime: activeTab.id,
+          sessionId: activeTab.id,
+          piSessionId: activeTab.piSessionId,
+          queueAction: "remove",
+        })
+        .then((result) => {
+          if (result.ok) return;
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            error: result.error || "Remove failed",
+          }));
+        });
     },
-    [activeTab, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const editQueued = useCallback(
     (queueId: string, text: string) => {
-      if (!activeTab) return;
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
-        queue: (tab.queue ?? []).map((entry) =>
-          entry.id === queueId ? { ...entry, text } : entry,
-        ),
-      }));
+      if (!activeTab) return Promise.resolve();
+      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
+      if (!item) return Promise.resolve();
+      return engine
+        .sendControl({
+          mode: "follow_up",
+          text: item.text,
+          runtime: activeTab.id,
+          sessionId: activeTab.id,
+          piSessionId: activeTab.piSessionId,
+          queueAction: "replace",
+          queueReplacement: text,
+        })
+        .then((result) => {
+          if (result.ok) return;
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            error: result.error || "Edit failed",
+          }));
+        });
     },
-    [activeTab, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const steerQueued = useCallback(
@@ -361,25 +395,30 @@ export function useChatPaneSendFlow({
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
       const runtime = activeTab.id;
-      removeQueued(queueId);
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
             try: () =>
-              engine.sendControl("steer", item.text, runtime, activeTab.id, activeTab.piSessionId),
+              engine.sendControl({
+                mode: "steer",
+                text: item.text,
+                runtime,
+                sessionId: activeTab.id,
+                piSessionId: activeTab.piSessionId,
+                queueAction: "promote",
+              }),
             catch: (error) => error,
           });
           if (!result.ok) {
             updateTab(activeTab.id, (t) => ({
               ...t,
-              queue: [...(t.queue ?? []), item],
               error: result.error || "Steer failed",
             }));
           }
         }),
       );
     },
-    [activeTab, engine, removeQueued, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const abortTurn = useCallback(() => {

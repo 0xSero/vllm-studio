@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
+import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
@@ -40,6 +41,50 @@ import type {
 } from "./pi-runtime-types";
 
 type PiEvent = LoggedPiEvent["event"];
+
+function comparableQueuedText(text: string): string {
+  const marker = "\n\nUser prompt:\n";
+  const index = text.lastIndexOf(marker);
+  return (index === -1 ? text : text.slice(index + marker.length)).trim();
+}
+
+export function takeQueuedFollowUp(
+  followUp: readonly string[],
+  message: string,
+): { selected: string; before: string[]; after: string[] } | null {
+  const exactIndex = followUp.indexOf(message);
+  const target = comparableQueuedText(message);
+  const index =
+    exactIndex >= 0
+      ? exactIndex
+      : followUp.findIndex((candidate) => comparableQueuedText(candidate) === target);
+  if (index < 0) return null;
+  return {
+    selected: followUp[index]!,
+    before: followUp.slice(0, index),
+    after: followUp.slice(index + 1),
+  };
+}
+
+export function planQueuedFollowUpMutation(
+  followUp: readonly string[],
+  message: string,
+  action: AgentQueueAction,
+  replacement?: string,
+): { promoted: string | null; followUp: string[] } | null {
+  const selected = takeQueuedFollowUp(followUp, message);
+  if (!selected) return null;
+  if (action === "replace" && !replacement) {
+    throw new Error("Replacement text is required.");
+  }
+  return {
+    promoted: action === "promote" ? selected.selected : null,
+    followUp:
+      action === "replace"
+        ? [...selected.before, replacement!, ...selected.after]
+        : [...selected.before, ...selected.after],
+  };
+}
 
 type DurableSessionManager = Pick<
   SessionManager,
@@ -224,6 +269,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
+  private queueEventBufferDepth = 0;
+  private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
     string,
     { method: "select" | "confirm" | "input" | "editor"; resolve: (value: unknown) => void }
@@ -530,6 +577,51 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     );
   }
 
+  mutateQueuedFollowUp(
+    message: string,
+    action: AgentQueueAction,
+    replacement?: string,
+    images: AgentImageInput[] = [],
+  ): Promise<void> {
+    return Effect.runPromise(
+      Effect.tryPromise({
+        try: async () => {
+          const session = this.requireSession();
+          this.queueEventBufferDepth += 1;
+          try {
+            const cleared = session.clearQueue();
+            const mutation = planQueuedFollowUpMutation(
+              cleared.followUp,
+              message,
+              action,
+              replacement,
+            );
+            if (!mutation) {
+              await Promise.all([
+                ...cleared.steering.map((queued) => session.steer(queued)),
+                ...cleared.followUp.map((queued) => session.followUp(queued)),
+              ]);
+              throw new Error("Queued follow-up is no longer pending.");
+            }
+            await Promise.all([
+              ...cleared.steering.map((queued) => session.steer(queued)),
+              ...(mutation.promoted ? [session.steer(mutation.promoted, images)] : []),
+              ...mutation.followUp.map((queued) => session.followUp(queued)),
+            ]);
+          } finally {
+            this.queueEventBufferDepth -= 1;
+            if (this.queueEventBufferDepth === 0 && this.bufferedQueueEvent) {
+              const event = this.bufferedQueueEvent;
+              this.bufferedQueueEvent = null;
+              this.recordEvent(event);
+            }
+          }
+        },
+        catch: (error) => error,
+      }),
+    );
+  }
+
   followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
     return Effect.runPromise(
       Effect.tryPromise({
@@ -737,6 +829,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   private recordEvent(event: PiEvent) {
+    if (event.type === "queue_update" && this.queueEventBufferDepth > 0) {
+      this.bufferedQueueEvent = event;
+      return;
+    }
     if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
       this.currentPiSessionId = this.runtime.session.sessionId;
     }
