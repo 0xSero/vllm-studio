@@ -55,9 +55,12 @@ directory. A broken dev build cannot corrupt the app you rely on. Credentials an
 device identity are deliberately not mirrored (see `desktop/logic/dev-channel-mirror.ts`).
 
 Install either with `scripts/install-desktop-app.sh [stable|dev]`. It replaces in
-place, keeps exactly one rollback copy, ejects stale DMGs and stops orphaned servers.
-Never hand-roll a backup copy — that is how /Applications ended up with 7.3 GB of
-duplicate bundles that all showed up in Launchpad.
+place, keeps exactly one compressed rollback per channel outside `/Applications`,
+ejects stale DMGs and stops orphaned servers. Run
+`scripts/install-desktop-app.sh --migrate-rollbacks` to archive and unregister old
+discoverable rollback bundles without reinstalling either app. Never hand-roll a
+backup copy — that is how `/Applications` accumulated duplicate bundles that all
+showed up as applications.
 
 ## Gates
 
