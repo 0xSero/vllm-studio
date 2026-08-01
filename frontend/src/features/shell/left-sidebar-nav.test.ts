@@ -4,6 +4,10 @@ import { describe, test } from "node:test";
 import { isRouteActive, mobilePageTitle, tabs } from "./left-sidebar-nav";
 
 const desktopSidebar = readFileSync(new URL("./left-sidebar-desktop.tsx", import.meta.url), "utf8");
+const baseStyles = readFileSync(
+  new URL("../../app/styles/globals/base.css", import.meta.url),
+  "utf8",
+);
 
 describe("left sidebar navigation", () => {
   test("keeps automations in the primary workspace navigation, sessions live in search", () => {
@@ -34,5 +38,15 @@ describe("left sidebar navigation", () => {
     assert.match(desktopSidebar, /HISTORY_STEPPER_CLASS[\s\S]*h-6 w-6/);
     assert.match(desktopSidebar, /ChevronLeft className="h-3 w-3"/);
     assert.match(desktopSidebar, /ChevronRight className="h-3 w-3"/);
+  });
+
+  test("reserves the scrollbar gutter while only the thumb visibility changes", () => {
+    const resting = baseStyles.match(/\.sidebar-scroller \{([\s\S]*?)\}/)?.[1] ?? "";
+    const hovered = baseStyles.match(/\.sidebar-scroller:hover \{([\s\S]*?)\}/)?.[1] ?? "";
+
+    assert.match(resting, /scrollbar-gutter:\s*stable/);
+    assert.match(resting, /scrollbar-width:\s*thin/);
+    assert.match(resting, /scrollbar-color:\s*transparent transparent/);
+    assert.doesNotMatch(hovered, /scrollbar-width/);
   });
 });

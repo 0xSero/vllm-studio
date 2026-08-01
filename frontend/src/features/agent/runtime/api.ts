@@ -50,6 +50,33 @@ const safeJsonEffect = <T>(response: Response): Effect.Effect<T, unknown> =>
     catch: (error) => error,
   });
 
+const AbortSessionResponseSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  cleared: Schema.Struct({
+    steering: Schema.Array(Schema.String),
+    followUp: Schema.Array(Schema.String),
+  }),
+});
+
+const decodeAbortSessionResponse = Schema.decodeUnknownOption(AbortSessionResponseSchema, {
+  onExcessProperty: "preserve",
+});
+
+export type AbortSessionResult = {
+  steering: string[];
+  followUp: string[];
+};
+
+export function parseAbortSessionResult(input: unknown): AbortSessionResult {
+  const decoded = decodeAbortSessionResponse(input);
+  return decoded._tag === "Some"
+    ? {
+        steering: [...decoded.value.cleared.steering],
+        followUp: [...decoded.value.cleared.followUp],
+      }
+    : { steering: [], followUp: [] };
+}
+
 export function listRuntimeSessions(): Promise<RuntimeSessionSummary[]> {
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -79,16 +106,17 @@ export function loadRuntimeStatus(
   );
 }
 
-export function abortSession(sessionId: string): Promise<void> {
+export function abortSession(sessionId: string): Promise<AbortSessionResult> {
   return Effect.runPromise(
-    fetchEffect("/api/agent/abort", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    }).pipe(
-      Effect.map(() => undefined),
-      Effect.catch(() => Effect.succeed(undefined)),
-    ),
+    Effect.gen(function* () {
+      const response = yield* fetchEffect("/api/agent/abort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const payload = yield* safeJsonEffect<unknown>(response);
+      return parseAbortSessionResult(payload);
+    }).pipe(Effect.catch(() => Effect.succeed({ steering: [], followUp: [] }))),
   );
 }
 

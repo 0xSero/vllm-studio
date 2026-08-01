@@ -1,5 +1,9 @@
 import { piEventIsSuccessfulCompaction } from "@shared/agent/pi-events";
-import { cleanSessionTitle, isPlaceholderSessionTitle } from "@shared/agent/session-title";
+import {
+  cleanSessionTitle,
+  isPlaceholderSessionTitle,
+  sessionTitleFromUserPrompt,
+} from "@shared/agent/session-title";
 
 export { cleanSessionTitle, isPlaceholderSessionTitle };
 import type {
@@ -107,7 +111,7 @@ export function formatTokenCount(tokens: number): string {
 }
 
 export function sessionTitleFromPrompt(text: string): string {
-  return cleanSessionTitle(text.replace(/\s+/g, " ").trim().slice(0, 48)) || "New session";
+  return cleanSessionTitle(sessionTitleFromUserPrompt(text).slice(0, 48)) || "New session";
 }
 
 export function visibleUserTextFromPi(text: string): string {

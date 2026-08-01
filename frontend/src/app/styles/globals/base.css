@@ -172,7 +172,9 @@ a.nav-link:hover,
    the pointer is over the sidebar. The 6px gutter is stable so rows do not
    shift when the thumb appears. */
 .sidebar-scroller {
-  scrollbar-width: none;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 .sidebar-scroller::-webkit-scrollbar {
   width: 6px;
@@ -185,7 +187,6 @@ a.nav-link:hover,
   background: transparent;
 }
 .sidebar-scroller:hover {
-  scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--fg) 22%, transparent) transparent;
 }
 .sidebar-scroller:hover::-webkit-scrollbar-thumb {
