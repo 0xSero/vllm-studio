@@ -260,7 +260,7 @@ and tags are never created by hand.
 ## Contributing
 
 Contributions should be small, focused, and easy to review. Start from the
-latest `main`, one logical change per branch, no formatting-only rewrites, no
+latest `dev`, one logical change per branch, no formatting-only rewrites, no
 secrets or build artifacts. Run `npm run check` (and `npm run test:integration` for
 behavior changes) before opening a PR; include a concise summary, the validation
 commands you ran, and screenshots for UI changes. See AGENTS.md for the full

@@ -4,6 +4,13 @@ url="$2"
 
 while read local_ref local_sha remote_ref remote_sha
 do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/dev)
+      echo "pre-push: direct pushes to $remote_ref are blocked; merge through GitHub" >&2
+      exit 1
+      ;;
+  esac
+
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     continue
   fi
