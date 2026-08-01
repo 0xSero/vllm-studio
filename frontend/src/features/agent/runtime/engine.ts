@@ -63,7 +63,7 @@ export type SessionEngine = {
     runtime: string,
     piSessionId?: string | null,
   ) => Promise<api.RuntimeStatus | null>;
-  abortTurn: (sessionId: SessionId) => Promise<void>;
+  abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
   loadAndReplay: (piSessionId: string, sessionId: SessionId) => Promise<void>;
   /** Fetch and prepend the previous page of older history (tail paging). */
   loadEarlier: (sessionId: SessionId) => Promise<void>;
@@ -217,7 +217,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // and /abort has no piSessionId fallback lookup.
           const runtime = sessionRuntimeController().connectionKey(sessionId);
           updateSession(sessionId, (session) => ({ ...session, status: "stopping" }));
-          yield* Effect.tryPromise({
+          const cleared = yield* Effect.tryPromise({
             try: () => api.abortSession(runtime),
             catch: (error) => error,
           });
@@ -229,6 +229,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // last streamed text is committed before we finalize.
           sessionRuntimeController().flush(sessionId);
           updateSession(sessionId, settleTurnFinalizingTools);
+          return cleared;
         }),
       ),
     [updateSession],
@@ -440,15 +441,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           ),
         ),
       ),
-    [
-      browserToolEnabled,
-      browserBackend,
-      cwd,
-      loadAndReplay,
-      modelId,
-      thinkingLevel,
-      updateSession,
-    ],
+    [browserToolEnabled, browserBackend, cwd, loadAndReplay, modelId, thinkingLevel, updateSession],
   );
 
   const acceptsControl = useCallback(

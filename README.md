@@ -24,6 +24,18 @@ It is built from two modules that share one controller API:
   Electron desktop shell. Hosts the Workbench (`/agent`), consolidated
   Configure surface, settings, usage, logs, and browser-facing API routes.
 
+## Mobile companion
+
+[KittyLitter](https://kittylitter.app) connects to Local Studio so the same
+agent sessions, streaming content, reasoning, tool calls, and tool results are
+available on iPhone, iPad, and Android. Pair from **Settings → Profile & phone →
+Connect your phone**. The QR code and copied connection JSON are private
+controller credentials; share them only with a device you trust.
+
+See the complete pairing, version, and security guide at
+[localstudio.ai/mobile](https://localstudio.ai/mobile). Mobile pairing requires
+Local Studio 2.9.0 or newer and KittyLitter 1.6.0 or newer.
+
 ## What is a controller?
 
 A controller is the backend process the UI talks to — the Bun/Hono
