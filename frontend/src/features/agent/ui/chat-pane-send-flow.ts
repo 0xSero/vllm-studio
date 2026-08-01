@@ -353,11 +353,10 @@ export function useChatPaneSendFlow({
           queueAction: "remove",
         })
         .then((result) => {
+          if (result.ok) return;
           updateTab(activeTab.id, (tab) => ({
             ...tab,
-            ...(result.ok
-              ? { queue: (tab.queue ?? []).filter((entry) => entry.id !== queueId) }
-              : { error: result.error || "Remove failed" }),
+            error: result.error || "Remove failed",
           }));
         });
     },
@@ -380,15 +379,10 @@ export function useChatPaneSendFlow({
           queueReplacement: text,
         })
         .then((result) => {
+          if (result.ok) return;
           updateTab(activeTab.id, (tab) => ({
             ...tab,
-            ...(result.ok
-              ? {
-                  queue: (tab.queue ?? []).map((entry) =>
-                    entry.id === queueId ? { ...entry, text } : entry,
-                  ),
-                }
-              : { error: result.error || "Edit failed" }),
+            error: result.error || "Edit failed",
           }));
         });
     },
@@ -415,12 +409,7 @@ export function useChatPaneSendFlow({
               }),
             catch: (error) => error,
           });
-          if (result.ok) {
-            updateTab(activeTab.id, (tab) => ({
-              ...tab,
-              queue: (tab.queue ?? []).filter((entry) => entry.id !== queueId),
-            }));
-          } else {
+          if (!result.ok) {
             updateTab(activeTab.id, (t) => ({
               ...t,
               error: result.error || "Steer failed",
