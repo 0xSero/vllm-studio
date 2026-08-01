@@ -16,6 +16,11 @@ There are exactly three kinds of branch. Nothing else is allowed to exist for lo
 two agents never share a branch. If two pieces of work are independent, they are two
 branches and two PRs. If they are not independent, they are one PR.
 
+Local hooks block commits made on `main` or `dev`, direct pushes to either branch,
+and staged commits larger than 15 files or 600 source lines. Lockfiles and snapshots
+do not count toward the line limit. Split larger work into independently valid
+microcommits before opening the PR.
+
 ## The loop
 
 ```
