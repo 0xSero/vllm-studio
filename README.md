@@ -257,17 +257,6 @@ the final stage can create the GitHub release with the DMG, updater files,
 stable website alias, checksums, and source manifest. There is no npm publish
 and tags are never created by hand.
 
-To reproduce the notarized release locally with the keychain profile:
-
-```bash
-APPLE_KEYCHAIN_PROFILE=vllm-studio-notarize npm run release:build-desktop -- \
-  --version 2.2.2 \
-  --commit "$(git rev-parse HEAD)"
-```
-
-Remove `frontend/dist-desktop/` and `release-staging/` after installation and
-upload; neither directory belongs in git.
-
 ## Contributing
 
 Contributions should be small, focused, and easy to review. Start from the
