@@ -85,7 +85,7 @@ remote() { ssh $SSH_OPTS "$REMOTE" "$@"; }
 is_port_listening() {
   local port="$1"
   if command -v ss >/dev/null 2>&1; then
-    ss -tlnp | grep -Eq ":${port}([[:space:]]|$)"
+    ss -tlnp | grep -E ":${port}([[:space:]]|$)" >/dev/null
   else
     lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null
   fi
