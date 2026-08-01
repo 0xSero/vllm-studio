@@ -16,6 +16,7 @@ export {
 } from "@shared/agent/agent-turn";
 export type {
   ParseResult,
+  AgentQueueAction,
   AgentTurnMode,
   AgentStreamingBehavior,
   AgentTurnRequest,

@@ -16,7 +16,11 @@ import {
 } from "@/features/agent/composer-context";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
-import type { AgentThinkingLevel, AgentToolAccess } from "@/features/agent/contracts";
+import type {
+  AgentQueueAction,
+  AgentThinkingLevel,
+  AgentToolAccess,
+} from "@/features/agent/contracts";
 import * as api from "@/features/agent/runtime/api";
 import {
   runtimeCanHydrateCanonicalSession,
@@ -52,13 +56,7 @@ export type SessionEngine = {
   /** Send a freshly-typed prompt — orchestrates optimistic update + streaming. */
   submitPrompt: (args: SubmitArgs) => Promise<void>;
   /** Send a steer/follow-up control message while a turn is in progress. */
-  sendControl: (
-    mode: "steer" | "follow_up",
-    text: string,
-    runtime: string,
-    sessionId: SessionId,
-    piSessionId?: string | null,
-  ) => Promise<{ ok: boolean; error?: string }>;
+  sendControl: (request: AgentControlRequest) => Promise<{ ok: boolean; error?: string }>;
   loadRuntimeStatus: (
     runtime: string,
     piSessionId?: string | null,
@@ -76,6 +74,16 @@ export type SessionEngine = {
     tab: { status: Session["status"]; piSessionId?: string | null },
     runtime: string,
   ) => Promise<boolean>;
+};
+
+export type AgentControlRequest = {
+  mode: "steer" | "follow_up";
+  text: string;
+  runtime: string;
+  sessionId: SessionId;
+  piSessionId?: string | null;
+  queueAction?: AgentQueueAction;
+  queueReplacement?: string;
 };
 
 export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
@@ -104,13 +112,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const loadRuntimeStatusCb = useCallback(api.loadRuntimeStatus, []);
 
   const sendControl = useCallback(
-    (
-      mode: "steer" | "follow_up",
-      text: string,
-      runtime: string,
-      sessionId: SessionId,
-      piSessionId?: string | null,
-    ): Promise<{ ok: boolean; error?: string }> => {
+    (request: AgentControlRequest): Promise<{ ok: boolean; error?: string }> => {
+      const { mode, text, runtime, sessionId, piSessionId, queueAction, queueReplacement } =
+        request;
       if (!text.trim() || !modelId) return Promise.resolve({ ok: false });
       return Effect.runPromise(
         Effect.gen(function* () {
@@ -119,6 +123,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
           const browserEnabledForTurn = browserToolEnabled;
           const message = selectedContextPrompt(text, skills);
+          const contextualQueueReplacement = queueReplacement
+            ? selectedContextPrompt(queueReplacement, skills)
+            : undefined;
           const result = yield* Effect.tryPromise({
             try: () =>
               api.submitTurnCommand({
@@ -130,6 +137,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 cwd: cwd.trim() || undefined,
                 piSessionId,
                 mode,
+                queueAction,
+                queueReplacement: contextualQueueReplacement,
                 browserToolEnabled: browserEnabledForTurn,
                 browserSessionId: runtime,
                 browserBackend,
