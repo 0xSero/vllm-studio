@@ -84,11 +84,49 @@ remote() { ssh $SSH_OPTS "$REMOTE" "$@"; }
 
 is_port_listening() {
   local port="$1"
-  remote "if command -v ss >/dev/null 2>&1; then
-    ss -tlnp | grep -q ':${port}\\b'
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp | grep -Eq ":${port}([[:space:]]|$)"
   else
-    lsof -nP -iTCP:${port} -sTCP:LISTEN >/dev/null
-  fi" 2>/dev/null
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null
+  fi
+}
+
+port_listener_pids() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp | sed -n "s/.*:${port}[[:space:]].*pid=\\([0-9][0-9]*\\).*/\\1/p"
+  else
+    lsof -nP -tiTCP:"$port" -sTCP:LISTEN
+  fi
+}
+
+show_port_listeners() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp | grep -E ":${port}([[:space:]]|$)"
+  else
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN
+  fi
+}
+
+kill_port_listeners() {
+  local port="$1" pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  done < <(port_listener_pids "$port" 2>/dev/null || true)
+}
+
+remote_with_port_helpers() {
+  {
+    declare -f is_port_listening port_listener_pids show_port_listeners kill_port_listeners
+    cat
+  } | remote bash -s -- "$@"
+}
+
+remote_port_is_listening() {
+  remote_with_port_helpers "$1" <<'REMOTE'
+is_port_listening "$1"
+REMOTE
 }
 
 # rsync a local directory to remote, excluding node_modules and build artifacts
@@ -109,7 +147,7 @@ sync_dir() {
 wait_port() {
   local port="$1" label="$2" max="${3:-10}"
   for i in $(seq 1 "$max"); do
-    if is_port_listening "$port"; then
+    if remote_port_is_listening "$port" 2>/dev/null; then
       return 0
     fi
     sleep 1
@@ -290,7 +328,7 @@ REMOTE
 
 restart_controller() {
   step "Restarting controller on :8080"
-  remote bash -s -- "$REMOTE_DIR" <<'REMOTE'
+  remote_with_port_helpers "$REMOTE_DIR" <<'REMOTE'
 set -euo pipefail
 remote_dir=$1
 cd "$remote_dir"
@@ -301,17 +339,21 @@ for controller_service in local-studio-controller-8080.service vllm-studio-contr
   fi
 done
 docker compose stop controller 2>/dev/null || true
-controller_dir=$(readlink -f "$PWD/controller")
+controller_dir=$(cd "$PWD/controller" && pwd -P)
 
 collect_controller_pids() {
   {
-    port_pids=$(fuser 8080/tcp 2>/dev/null || true)
+    port_pids=$(port_listener_pids 8080 2>/dev/null || true)
     for pid in $port_pids; do
       echo "$pid"
     done
 
     for pid in $(pgrep -x bun 2>/dev/null || true); do
-      cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+      if [[ -e "/proc/$pid/cwd" ]]; then
+        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+      else
+        cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+      fi
       if [[ "$cwd" == "$controller_dir" ]]; then
         echo "$pid"
       fi
@@ -326,7 +368,7 @@ if [[ -n "$controller_pids" ]]; then
   done <<< "$controller_pids"
 
   for _ in $(seq 1 20); do
-    if [[ -z "$(collect_controller_pids)" ]] && ! ss -tlnp | grep -q ':8080\b'; then
+    if [[ -z "$(collect_controller_pids)" ]] && ! is_port_listening 8080; then
       break
     fi
     sleep 0.25
@@ -341,9 +383,9 @@ if [[ -n "$controller_pids" ]]; then
   fi
 fi
 
-if ss -tlnp | grep -q ':8080\b'; then
+if is_port_listening 8080; then
   echo "Port 8080 is still in use after stopping controller processes" >&2
-  ss -tlnp | grep ':8080\b' >&2 || true
+  show_port_listeners 8080 >&2 || true
   exit 1
 fi
 
@@ -354,13 +396,16 @@ nohup ~/.bun/bin/bun run controller/src/main.ts > /tmp/controller-stdout.log 2>&
 REMOTE
   wait_port 8080 controller || return 1
   local controller_pid
-  controller_pid=$(remote "ss -tlnp | sed -n 's/.*:8080\\b.*pid=\\([0-9][0-9]*\\).*/\\1/p' | head -1" 2>/dev/null || true)
+  controller_pid=$(remote_with_port_helpers 8080 <<'REMOTE' 2>/dev/null || true
+port_listener_pids "$1" | head -1
+REMOTE
+  )
   ok "controller :8080 (pid ${controller_pid:-?})"
 }
 
 restart_frontend() {
   step "Restarting frontend on :3000"
-  remote bash -s -- "$REMOTE_DIR" <<'REMOTE'
+  remote_with_port_helpers "$REMOTE_DIR" <<'REMOTE'
 set -euo pipefail
 remote_dir=$1
 frontend_service=vllm-studio-frontend.service
@@ -386,7 +431,7 @@ restart_managed_frontend() {
   systemctl --user disable --now \
     vllm-studio-controller.service \
     vllm-studio-controller-b70.service >/dev/null 2>&1 || true
-  fuser -k 3000/tcp >/dev/null 2>&1 || true
+  kill_port_listeners 3000
   systemctl --user restart "$frontend_service"
 }
 
@@ -395,7 +440,7 @@ restart_detached_frontend() {
   docker compose -f "$remote_dir/docker-compose.yml" stop frontend 2>/dev/null || true
   pkill -f "next start" 2>/dev/null || true
   pkill -f "next dev" 2>/dev/null || true
-  fuser -k 3000/tcp >/dev/null 2>&1 || true
+  kill_port_listeners 3000
   sleep 1
   export BACKEND_URL=http://localhost:8080
   export LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081
@@ -422,7 +467,8 @@ start_infra() {
 show_status() {
   step "Status"
   echo ""
-  remote "cd $REMOTE_DIR_SHELL && bash" <<'REMOTE'
+  remote_with_port_helpers "$REMOTE_DIR" <<'REMOTE'
+cd "$1"
 _g='\033[32m' _r='\033[31m' _d='\033[2m' _n='\033[0m'
 
 if [[ -f .env ]]; then
@@ -457,7 +503,7 @@ probe "vllm"            http://localhost:8000/v1/models  8000
 # Services that need port checks instead of HTTP probes
 for pair in "postgres:5432"; do
   label="${pair%%:*}" port="${pair##*:}"
-  if ss -tlnp 2>/dev/null | grep -q ":${port}\b"; then
+  if is_port_listening "$port" 2>/dev/null; then
     printf "  ${_g}%-22s${_n} %s\n" "$label" ":$port OK"
   else
     printf "  ${_r}%-22s${_n} %s\n" "$label" ":$port down"
