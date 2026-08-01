@@ -82,6 +82,15 @@ die() { fail "$@"; exit 1; }
 
 remote() { ssh $SSH_OPTS "$REMOTE" "$@"; }
 
+is_port_listening() {
+  local port="$1"
+  remote "if command -v ss >/dev/null 2>&1; then
+    ss -tlnp | grep -q ':${port}\\b'
+  else
+    lsof -nP -iTCP:${port} -sTCP:LISTEN >/dev/null
+  fi" 2>/dev/null
+}
+
 # rsync a local directory to remote, excluding node_modules and build artifacts
 sync_dir() {
   local src="$1" dst="$2"
@@ -100,7 +109,7 @@ sync_dir() {
 wait_port() {
   local port="$1" label="$2" max="${3:-10}"
   for i in $(seq 1 "$max"); do
-    if remote "ss -tlnp | grep -q ':${port}\b'" 2>/dev/null; then
+    if is_port_listening "$port"; then
       return 0
     fi
     sleep 1
