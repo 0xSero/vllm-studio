@@ -2398,3 +2398,360 @@ function recordImportEdges(filePath, rel, source) {
     let importers = sharedModuleImporters.get(targetRel);
     if (!importers)
       importers = new Set, sharedModuleImporters.set(targetRel, importers);
+    importers.add(rel);
+  }
+}
+function walk3(dir) {
+  for (let entry of readdirSync9(dir, { withFileTypes: !0 })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules")
+      continue;
+    let fullPath = join6(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk3(fullPath);
+      continue;
+    }
+    if (entry.isFile())
+      inspectFile(fullPath);
+  }
+}
+function inspectFile(filePath) {
+  let rel = relative6(srcRoot, filePath), segments = rel.split(sep3);
+  if (segments[0] === "components")
+    findings4.push({
+      rule: "retired-components-dir",
+      path: rel,
+      detail: "src/components is retired; page features live in src/features, primitives in src/ui."
+    });
+  if (segments[0] === "ui" && segments.length > 2 && retiredUiFeatureDirs.has(segments[1]))
+    findings4.push({
+      rule: "feature-location",
+      path: rel,
+      detail: `Page-feature UI belongs in src/features/${segments[1]}; src/ui is for shared primitives.`
+    });
+  if (segments[0] === "app" && rel.includes(`${sep3}_components${sep3}`))
+    findings4.push({
+      rule: "route-ui-location",
+      path: rel,
+      detail: "Route UI belongs in src/features/<name>; app routes stay thin shells."
+    });
+  let extension = filePath.slice(filePath.lastIndexOf("."));
+  if (!sourceExtensions.has(extension))
+    return;
+  let source = readFileSync16(filePath, "utf8");
+  if (isSharedLayerPath(rel) && !rel.endsWith(".d.ts") && !sharedModuleImporters.has(rel))
+    sharedModuleImporters.set(rel, new Set);
+  recordImportEdges(filePath, rel, source);
+  for (let match of source.matchAll(/from\s+["']@\/components\/([^"']+)["']/g))
+    findings4.push({
+      rule: "retired-components-import",
+      path: rel,
+      detail: `Import "@/components/${match[1]}" is retired; use "@/features/..." or "@/ui/...".`
+    });
+  if (segments[0] === "ui" && !legacyPrimitivePurityFiles.has(rel))
+    for (let match of source.matchAll(/from\s+["']@\/(features|app)\/([^"']+)["']/g))
+      findings4.push({
+        rule: "primitive-purity",
+        path: rel,
+        detail: `src/ui is the primitives layer and must not import "@/${match[1]}/${match[2]}".`
+      });
+  if (segments[0] === "features")
+    for (let match of source.matchAll(/from\s+["']@\/app\/([^"']+)["']/g))
+      findings4.push({
+        rule: "feature-app-import",
+        path: rel,
+        detail: `src/features must not import app code ("@/app/${match[1]}"); features are composed by routes, not the reverse.`
+      });
+}
+function evaluateSharedLayerConsumers() {
+  for (let [rel, importers] of [...sharedModuleImporters.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (sharedLayerAllowlist.has(rel))
+      continue;
+    if (importers.size === 0) {
+      findings4.push({
+        rule: "shared-layer-consumers",
+        path: rel,
+        detail: "No importer anywhere in src; shared-layer modules without consumers are dead code."
+      });
+      continue;
+    }
+    let featureOwners = new Set, hasNonFeatureImporter = !1;
+    for (let importer of importers) {
+      let segments = importer.split(sep3);
+      if (segments[0] === "features" && segments.length > 1)
+        featureOwners.add(segments[1]);
+      else
+        hasNonFeatureImporter = !0;
+    }
+    if (!hasNonFeatureImporter && featureOwners.size === 1) {
+      let [owner] = featureOwners;
+      findings4.push({
+        rule: "shared-layer-consumers",
+        path: rel,
+        detail: `All importers live in src/features/${owner}; move this module into that feature.`
+      });
+    }
+  }
+}
+var projectRoot4, srcRoot, legacyPrimitivePurityFiles, sharedLayerAllowlist, retiredUiFeatureDirs, sourceExtensions, findings4, sharedModuleImporters;
+var init_validate_ui_structure = __esm(() => {
+  projectRoot4 = resolve8(import.meta.dirname, ".."), srcRoot = join6(projectRoot4, "src"), legacyPrimitivePurityFiles = new Set([]), sharedLayerAllowlist = new Set([]), retiredUiFeatureDirs = new Set([
+    "recipes",
+    "discover",
+    "configs",
+    "usage",
+    "setup",
+    "logs",
+    "dashboard"
+  ]), sourceExtensions = new Set([".ts", ".tsx"]), findings4 = [], sharedModuleImporters = new Map;
+  if (statSync5(srcRoot, { throwIfNoEntry: !1 }))
+    walk3(srcRoot), evaluateSharedLayerConsumers();
+  if (findings4.length > 0) {
+    console.error("UI structure check failed:");
+    for (let finding of findings4)
+      console.error(`- ${finding.rule}: ${finding.path}`), console.error(`  ${finding.detail}`);
+    process.exit(1);
+  }
+  console.log("UI structure check passed");
+});
+
+import { execFileSync as execFileSync6, spawnSync as spawnSync4 } from "node:child_process";
+import { chmodSync as chmodSync2, readFileSync as readFileSync17, readdirSync as readdirSync10 } from "node:fs";
+import path11 from "node:path";
+import { fileURLToPath as fileURLToPath11 } from "node:url";
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+function resolveResourcesDir(appOutDir, productFilename, electronPlatformName) {
+  if (electronPlatformName === "darwin" || electronPlatformName === "mas")
+    return path.join(appOutDir, `${productFilename}.app`, "Contents", "Resources");
+  return path.join(appOutDir, "resources");
+}
+async function afterPack(context) {
+  let { appOutDir, packager, electronPlatformName } = context, productFilename = packager.appInfo.productFilename, resourcesDir = resolveResourcesDir(appOutDir, productFilename, electronPlatformName), standaloneBase = path.join(resourcesDir, "app", "frontend", ".next", "standalone"), candidates = [
+    path.join(standaloneBase, "frontend", "server.js"),
+    path.join(standaloneBase, "server.js")
+  ], standaloneServer = candidates.find((candidate) => existsSync(candidate));
+  if (!standaloneServer)
+    throw Error([
+      "Packaged app is missing the embedded Next standalone server — refusing to sign/ship a broken bundle.",
+      `Looked for: ${candidates.join(" or ")}`,
+      `electron-builder failed to copy extraResources from .next/standalone (it can log "file source doesn't exist" yet still exit 0).`,
+      "Re-run the build (run `npm run build` first if .next/standalone is absent)."
+    ].join(`
+  `));
+  let standaloneRoot = path.dirname(standaloneServer), missingRuntimeFile = [
+    path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js"),
+    path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "node_modules", "@earendil-works", "pi-ai", "package.json")
+  ].find((file) => !existsSync(file));
+  if (missingRuntimeFile)
+    throw Error(`Packaged app is missing a Pi runtime dependency: ${missingRuntimeFile}`);
+  let agentRuntimeRoot = path.join(resourcesDir, "app", "agent-runtime"), agentRuntime = path.join(agentRuntimeRoot, "standalone.mjs"), missingAgentRuntimeFile = [
+    agentRuntime,
+    path.join(agentRuntimeRoot, "node_modules", "playwright-core", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "chromium-bidi", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "chromium-bidi", "node_modules", "zod", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "mitt", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "devtools-protocol", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "@silvia-odwyer", "photon-node", "package.json"),
+    path.join(agentRuntimeRoot, "node_modules", "undici", "package.json")
+  ].find((file) => !existsSync(file));
+  if (missingAgentRuntimeFile)
+    throw Error(`Packaged app is missing an agent runtime dependency: ${missingAgentRuntimeFile}`);
+  let agentRuntimeSource = readFileSync(agentRuntime, "utf8");
+  if (/["'](?:[A-Za-z]:\\|\/(?:Users|home|root)\/)[^"'\n]*node_modules[\\/]/.test(agentRuntimeSource))
+    throw Error("Packaged agent runtime contains a build-machine dependency path");
+  let missingPiLauncherMarker = [
+    "resolveElectronNodeExecutable",
+    "resolvePackagedPiCli",
+    "Frameworks",
+    "Helper.app",
+    "ELECTRON_RUN_AS_NODE"
+  ].find((marker) => !agentRuntimeSource.includes(marker));
+  if (missingPiLauncherMarker)
+    throw Error(`Packaged agent runtime is missing Pi helper launcher: ${missingPiLauncherMarker}`);
+  if (electronPlatformName === "darwin") {
+    let helperExecutable = path.join(path.dirname(resourcesDir), "Frameworks", `${productFilename} Helper.app`, "Contents", "MacOS", `${productFilename} Helper`);
+    if (!existsSync(helperExecutable))
+      throw Error(`Packaged app is missing its Pi helper executable: ${helperExecutable}`);
+  }
+  let packagedPiCli = path.join(resourcesDir, "app", "frontend", ".next", "standalone", "frontend", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli.js");
+  if (!existsSync(packagedPiCli))
+    throw Error(`Packaged app is missing its Pi CLI: ${packagedPiCli}`);
+  console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);
+}
+
+var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fileURLToPath11(import.meta.url)), "../.."), commands = new Map([
+  ["assert-release-main", () => Promise.resolve().then(() => (init_assert_release_main(), exports_assert_release_main))],
+  ["assert-standalone", () => Promise.resolve().then(() => (init_assert_standalone_build(), exports_assert_standalone_build))],
+  ["browser-perf", () => init_browser_perf_audit().then(() => exports_browser_perf_audit)],
+  ["build-model-recommendations", () => init_build_model_recommendations().then(() => exports_build_model_recommendations)],
+  ["bundle-agent-runtime", () => Promise.resolve().then(() => (init_bundle(), exports_bundle))],
+  ["check-commits", () => Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits))],
+  ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
+  ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
+  ["desktop-smoke", () => init_desktop_package_smoke().then(() => exports_desktop_package_smoke)],
+  ["glm-build", async () => glmBuild()],
+  ["glm-cutover", async () => glmCutover()],
+  ["glm-rollback", async () => glmRollback()],
+  ["glm-stage", async () => glmStage()],
+  ["link-services", () => Promise.resolve().then(() => (init_link_services_node_modules(), exports_link_services_node_modules))],
+  ["patch-pi", () => Promise.resolve().then(() => (init_patch_pi_ai_openai_text_boundaries(), exports_patch_pi_ai_openai_text_boundaries))],
+  ["perf", () => init_perf_audit().then(() => exports_perf_audit)],
+  ["postbuild-agent-runtime", () => Promise.resolve().then(() => (init_postbuild(), exports_postbuild))],
+  ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
+  ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
+  ["self-test", async () => {
+    await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test)), await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
+  }],
+  ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
+  ["stage-release", () => Promise.resolve().then(() => (init_stage_desktop_release(), exports_stage_desktop_release))],
+  ["start", () => init_start_standalone().then(() => exports_start_standalone)],
+  ["validate-contracts", () => Promise.resolve().then(() => (init_validate_shared_contracts(), exports_validate_shared_contracts))],
+  ["validate-package", () => Promise.resolve().then(() => (init_validate_package_json(), exports_validate_package_json))],
+  ["validate-structure", () => Promise.resolve().then(() => (init_validate_barrel_dir_siblings(), exports_validate_barrel_dir_siblings))],
+  ["validate-ui", () => Promise.resolve().then(() => (init_validate_ui_structure(), exports_validate_ui_structure))],
+  ["audit-layout", async () => auditLayout()]
+]);
+function auditLayout() {
+  let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
+  if (JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) || JSON.stringify(executable) !== JSON.stringify(expected) || stale.length > 0)
+    throw Error(`Automation layout drifted: scripts=${actual.join(",")}; executable=${executable.join(",")}; stale=${stale.join(",")}`);
+  console.log("Automation layout passed: exactly three scripts");
+}
+function glmDirectory() {
+  return path11.join(root5, "ops/glm52-vision");
+}
+function glmBuild() {
+  let directory = glmDirectory(), image = process.env.IMAGE || "local/glm52-nf3-vision:v1", model = process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision";
+  run3("docker", ["build", "-t", image, directory]);
+  run3("docker", ["run", "--rm", "--entrypoint", "/opt/venv/bin/python", "-v", `${model}:/model:ro`, image, "-m", "glm52_vision.validation", "/model"]);
+}
+function glmStage() {
+  let directory = glmDirectory(), source = process.env.SOURCE_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid", target = process.env.TARGET_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision", assets = process.env.ASSET_DIR || "/mnt/llm_models/.glm52-vision-assets/f6eab6117386a0c69152fdf272dc65bfd0254f9f", revision = "f6eab6117386a0c69152fdf272dc65bfd0254f9f";
+  mkdirSync(path11.resolve(assets), { recursive: !0 });
+  run3("hf", ["download", "baseten/GLM-5.2-Vision-NVFP4", "--revision", revision, "--include", "config.json", "chat_template.jinja", "preprocessor_config.json", "kimi_k25_processor.py", "kimi_k25_vision_processing.py", "media_utils.py", "vision_tower.safetensors", "mm_projector.safetensors", "--local-dir", assets]);
+  run3("python3", [path11.join(directory, "src/glm52_vision/prepare_checkpoint.py"), "--source", source, "--target", target, "--assets", assets, "--bundle", directory]);
+}
+function glmCompose(args3, options = {}) {
+  return spawnSync4("docker", ["compose", "-f", path11.join(glmDirectory(), "compose.yaml"), ...args3], { stdio: "inherit", env: { ...process.env, MODEL_DIR: process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision" }, ...options });
+}
+function glmRollback() {
+  let down = glmCompose(["down"]);
+  if (down.status !== 0) process.exit(down.status ?? 1);
+  run3("docker", ["start", "glm52-v3"]);
+}
+function glmCutover() {
+  if (process.env.CONFIRM_CUTOVER !== "glm52-vision") throw Error("Set CONFIRM_CUTOVER=glm52-vision");
+  let model = process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision";
+  if (!existsSync(path11.join(model, "VISION_PROVENANCE.json"))) throw Error("VISION_PROVENANCE.json is missing");
+  run3("docker", ["image", "inspect", "local/glm52-nf3-vision:v3"]);
+  run3("docker", ["stop", "glm52-v3"]);
+  let up = glmCompose(["up", "-d"]);
+  if (up.status !== 0) {
+    run3("docker", ["start", "glm52-v3"]);
+    process.exit(up.status ?? 1);
+  }
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    let health = spawnSync4("curl", ["-fsS", "http://127.0.0.1:8000/v1/models"], { stdio: "ignore" });
+    if (health.status === 0) {
+      console.log("GLM-5.2-Vision is online");
+      return;
+    }
+    let running = spawnSync4("docker", ["inspect", "-f", "{{.State.Running}}", "glm52-vision-candidate"], { encoding: "utf8" });
+    if (running.status !== 0 || running.stdout.trim() !== "true") break;
+    run3("sleep", ["5"]);
+  }
+  let inspect = spawnSync4("docker", ["inspect", "glm52-vision-candidate"], { encoding: "utf8" }), logs = spawnSync4("docker", ["logs", "glm52-vision-candidate"], { encoding: "utf8" });
+  writeFileSync(path11.join(glmDirectory(), "cutover-failure-inspect.json"), `${inspect.stdout || ""}${inspect.stderr || ""}`);
+  writeFileSync(path11.join(glmDirectory(), "cutover-failure.log"), `${logs.stdout || ""}${logs.stderr || ""}`);
+  glmCompose(["down"]);
+  run3("docker", ["start", "glm52-v3"]);
+  process.exit(1);
+}
+function git(args3, options = {}) {
+  return execFileSync6("git", args3, { cwd: root5, encoding: "utf8", ...options }).trim();
+}
+function run3(command, args3, cwd = root5) {
+  let result = spawnSync4(command, args3, { cwd, stdio: "inherit" });
+  if (result.error)
+    throw result.error;
+  if (result.status !== 0)
+    process.exit(result.status ?? 1);
+}
+function stagedFiles() {
+  let output4 = git(["diff", "--cached", "--name-only"]);
+  return output4 ? output4.split(`
+`) : [];
+}
+function preCommit() {
+  let branch = git(["branch", "--show-current"]);
+  if (["main", "dev"].includes(branch))
+    throw Error(`pre-commit: commits on ${branch} are blocked; use a work branch and PR`);
+  let files = stagedFiles(), lines = git(["diff", "--cached", "--numstat"]).split(`
+`).reduce((total, row) => {
+    let [added, removed, file2] = row.split("\t");
+    if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? ""))
+      return total;
+    if (["frontend/desktop/project.mjs", "scripts/project.mjs"].includes(file2 ?? "") || !existsSync(path11.join(root5, file2 ?? "")) || /(^|\/)(package-lock\.json|bun\.lockb?|.*\.snap)$/.test(file2 ?? ""))
+      return total;
+    return total + Number(added) + Number(removed);
+  }, 0);
+  if (files.length > 15 || lines > 600)
+    throw Error(`pre-commit: staged change is too large (${files.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
+  if (files.some((file2) => /^(frontend|shared|tests\/frontend)\//.test(file2)))
+    run3("npm", ["run", "precommit"], path11.join(root5, "frontend"));
+  if (files.some((file2) => file2.startsWith("controller/")))
+    run3("bun", ["run", "typecheck"], path11.join(root5, "controller"));
+}
+function prePush() {
+  let remote = process.argv[2], url = process.argv[3], updates = readFileSync17(0, "utf8").trim();
+  for (let update of updates ? updates.split(`
+`) : []) {
+    let [localRef, localSha, remoteRef, remoteSha] = update.trim().split(/\s+/);
+    if (["refs/heads/main", "refs/heads/dev"].includes(remoteRef))
+      throw Error(`pre-push: direct pushes to ${remoteRef} are blocked; merge through GitHub`);
+    if (/^0{40}$/.test(localSha))
+      continue;
+    let range2;
+    if (/^0{40}$/.test(remoteSha)) {
+      let defaultRef;
+      try {
+        defaultRef = git(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
+      } catch {
+        defaultRef = `${remote}/main`;
+      }
+      try {
+        range2 = `${git(["merge-base", defaultRef, localSha])}..${localSha}`;
+      } catch {
+        range2 = localSha;
+      }
+    } else
+      range2 = `${remoteSha}..${localSha}`;
+    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", range2]);
+  }
+  run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
+}
+function setupHooks() {
+  git(["rev-parse", "--git-dir"]), git(["config", "core.hooksPath", ".githooks"]);
+  for (let name of readdirSync10(path11.join(root5, ".githooks")))
+    chmodSync2(path11.join(root5, ".githooks", name), 493);
+}
+var invoked = path11.basename(process.argv[1] ?? "");
+if (invoked === "commit-msg")
+  process.argv.splice(2, 0, "--message-file"), await Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits));
+else if (invoked === "pre-commit")
+  preCommit();
+else if (invoked === "pre-push")
+  prePush();
+else if (invoked === "project.mjs" || path11.resolve(process.argv[1] ?? "") === fileURLToPath11(import.meta.url)) {
+  let command = process.argv[2];
+  if (process.argv.splice(2, 1), command === "setup-hooks")
+    setupHooks();
+  else if (!command || !commands.has(command))
+    console.error(`Usage: node scripts/project.mjs <${[...commands.keys()].join("|")}>`), process.exit(1);
+  else
+    await commands.get(command)();
+}
+export {
+  project_entry_default as default
+};
