@@ -7,7 +7,7 @@
   // rootDir is the repo root because the package sources import
   // ../../shared/agent/* relatively; the emitted tree is therefore
   //   dist/services/agent-runtime/src/**  +  dist/shared/agent/**
-  // and scripts/postbuild.mjs writes a dist/server.js entry shim plus the
+  // and the project build command writes a dist/server.js entry shim plus the
   // .js specifier extensions node ESM requires (tsc does not rewrite them).
   "extends": "./tsconfig.json",
   "compilerOptions": {
