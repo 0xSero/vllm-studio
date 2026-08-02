@@ -7,12 +7,8 @@
 # standalone server. The server binds 127.0.0.1 only (no auth of its own; the
 # Next layer keeps enforcing requireApiAccess before proxying).
 #
-# Installed by scripts/deploy-remote.sh (agent-runtime block), which replaces
-# the @APP_DIR@ and @NODE@ placeholders with the remote project path and the
-# resolved node binary, then runs:
-#   systemctl --user daemon-reload && systemctl --user enable --now local-studio-agent-runtime
-#
-# This is a USER unit: install to ~/.config/systemd/user/.
+# Replace @APP_DIR@ and @NODE@ before installing this user unit to
+# ~/.config/systemd/user/.
 
 [Unit]
 Description=Local Studio agent-runtime sidecar (:8081)
