@@ -317,7 +317,7 @@ function SessionRowContent({
   timestamp?: string | null;
   label: string;
 }) {
-  const age = visibleSessionAge(isRunning, timestamp);
+  const age = visibleSessionAge(isRunning, timestamp, finished);
   return (
     <>
       <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
