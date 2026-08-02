@@ -4,6 +4,7 @@ import {
   TERMINAL_TASK_STATUSES,
   describeGoalOutcome,
   goalStartBlocker,
+  initialHarnessObjective,
   isTerminalTaskStatus,
   resolveTaskEnvelope,
   stripGoalCommandPrefix,
@@ -91,6 +92,15 @@ describe("isTerminalTaskStatus", () => {
     for (const status of ["working", "checking", "starting", "queued", "", undefined]) {
       assert.equal(isTerminalTaskStatus(status), false, `${String(status)} must not be terminal`);
     }
+  });
+});
+
+describe("initialHarnessObjective", () => {
+  test("accepts one Workbench objective while rejecting ambiguous query values", () => {
+    assert.equal(initialHarnessObjective("Ship the verified change"), "Ship the verified change");
+    assert.equal(initialHarnessObjective(["first", "second"]), "");
+    assert.equal(initialHarnessObjective(undefined), "");
+    assert.equal(initialHarnessObjective("x".repeat(20_000)).length, 16_384);
   });
 });
 

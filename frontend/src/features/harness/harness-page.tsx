@@ -102,7 +102,7 @@ function managedTaskFromResponse(payload: ManagedTaskResponse): ManagedGoalTask 
 
 // The page coordinates route, task, event, and evidence state in one operator surface.
 // eslint-disable-next-line complexity
-export default function HarnessPage() {
+export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string }) {
   const [routes, setRoutes] = useState<HarnessRoute[]>([]);
   const [selectionPolicy, setSelectionPolicy] = useState("harness_decides");
   const [selectedRoute, setSelectedRoute] = useState("auto");
@@ -111,10 +111,10 @@ export default function HarnessPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
-  const [goal, setGoal] = useState("");
+  const [goal, setGoal] = useState(initialGoal);
   const [goalBackend, setGoalBackend] = useState<GoalBackend>("managed");
   const [goalMode, setGoalMode] = useState("local");
-  const [goalProfile, setGoalProfile] = useState("qwen-primary");
+  const [goalProfile, setGoalProfile] = useState("");
   const [goalFeedback, setGoalFeedback] = useState("");
   const [managedTask, setManagedTask] = useState<ManagedGoalTask | null>(null);
   const [managedEvents, setManagedEvents] = useState<NonNullable<HarnessTask["events"]>>([]);
@@ -205,6 +205,12 @@ export default function HarnessPage() {
       setGoalMode((current) =>
         availableModes.some((mode) => mode.key === current) ? current : fallbackMode,
       );
+      const availableProfiles = modesPayload.execution_profiles ?? [];
+      const fallbackProfile =
+        modesPayload.default_execution_profile ?? availableProfiles[0]?.key ?? "";
+      setGoalProfile((current) =>
+        availableProfiles.some((profile) => profile.key === current) ? current : fallbackProfile,
+      );
       if (backend === "provider") {
         // Switching into the provider lane must reflect that lane's saved
         // setup, not stale values left in the form by a previous selection.
@@ -292,7 +298,11 @@ export default function HarnessPage() {
         body: JSON.stringify(
           goalBackend === "provider"
             ? { objective, strategy: goalMode }
-            : { objective, mode: goalMode, execution_profile: goalProfile },
+            : {
+                objective,
+                mode: goalMode,
+                ...(goalProfile ? { execution_profile: goalProfile } : {}),
+              },
         ),
       });
       const nextTask = managedTaskFromResponse(payload);
@@ -380,7 +390,7 @@ export default function HarnessPage() {
     }
   };
 
-  const node1GoalMode: ManagedMode = {
+  const managedGoalMode: ManagedMode = {
     ...(managedModes.find((mode) => mode.key === "local") ?? {
       key: "local",
       label: "Managed goal loop",
@@ -401,7 +411,7 @@ export default function HarnessPage() {
   const selectedMode =
     goalBackend === "provider"
       ? (providerModeOptions.find((mode) => mode.key === goalMode) ?? providerModeOptions[0])
-      : node1GoalMode;
+      : managedGoalMode;
 
   const startBlocker = goalStartBlocker({
     goal,
@@ -509,9 +519,7 @@ export default function HarnessPage() {
                 rows={5}
                 placeholder="Describe the outcome in plain language, for example: Review the Local Studio integration, make a bounded improvement, and verify it end to end."
                 aria-describedby={
-                  showStartBlocker
-                    ? "harness-goal-hint harness-goal-blocker"
-                    : "harness-goal-hint"
+                  showStartBlocker ? "harness-goal-hint harness-goal-blocker" : "harness-goal-hint"
                 }
                 aria-invalid={Boolean(goalError && !goal.trim())}
                 className="mt-2 block w-full resize-y rounded-xl border border-(--ui-border) bg-(--ui-bg) px-3 py-3 text-[length:var(--fs-md)] leading-relaxed text-(--ui-fg) outline-none transition focus:border-(--ui-accent) focus:ring-2 focus:ring-(--ui-accent)/20"
@@ -595,7 +603,7 @@ export default function HarnessPage() {
                     className="mt-2 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
                     disabled={goalBusy}
                   >
-                    {(goalBackend === "provider" ? providerModeOptions : [node1GoalMode]).map(
+                    {(goalBackend === "provider" ? providerModeOptions : [managedGoalMode]).map(
                       (mode) => (
                         <option key={mode.key} value={mode.key}>
                           {mode.label}
@@ -1006,106 +1014,106 @@ export default function HarnessPage() {
             </Button>
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.8fr)]">
-          <Card
-            title="Live route registry"
-            description={`Harness-owned live probes · selection policy: ${selectionPolicy}`}
-          >
-            {loading && routes.length === 0 ? (
-              <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-                Checking Node1 and Node2...
-              </p>
-            ) : routes.length === 0 ? (
-              <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">No routes reported.</p>
-            ) : (
-              <div className="divide-y divide-(--ui-border)">
-                {routes.map((route) => (
-                  <div
-                    key={route.id}
-                    className="grid gap-3 py-3 first:pt-0 last:pb-0 sm:grid-cols-[1fr_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <GitBranch className="h-4 w-4 text-(--ui-muted)" />
-                        <span className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
-                          {route.model_id}
-                        </span>
-                        <StatusPill tone={toneForStatus(route.status)} variant="badge">
-                          {route.status}
-                        </StatusPill>
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                        <span>{route.node}</span>
-                        <span>{route.runtime}</span>
-                        <span>{route.role}</span>
-                        <span>{formatContext(route.max_context_tokens)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1 sm:justify-end">
-                      {route.capabilities.map((capability) => (
-                        <span
-                          key={capability}
-                          className="rounded-full bg-(--ui-fg)/5 px-2 py-1 text-[length:var(--fs-xs)] text-(--ui-muted)"
-                        >
-                          {capability}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card title="Ownership boundary" description="The two products have different jobs.">
-            <div className="space-y-3 text-[length:var(--fs-sm)]">
-              <BoundaryRow
-                icon={<ShieldCheck className="h-4 w-4" />}
-                label="Harness"
-                value="Executor, router, durable state, events, artifacts"
-              />
-              <BoundaryRow
-                icon={<GitBranch className="h-4 w-4" />}
-                label="Local Studio"
-                value="Operator UI and model/chat surface"
-              />
-              <div className="rounded-xl bg-(--ui-fg)/5 p-3 text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
-                The safe canary is credential-free. Model analysis uses the selected vLLM route in a
-                temporary isolated workspace with write tools disabled.
-              </div>
-              <div className="rounded-xl border border-(--ui-border) p-3">
-                <label
-                  htmlFor="harness-route"
-                  className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)"
-                >
-                  Model route
-                </label>
-                <select
-                  id="harness-route"
-                  value={selectedRoute}
-                  onChange={(event) => setSelectedRoute(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
-                >
-                  <option value="auto">Auto: Node1 primary, Node2 overflow</option>
+            <Card
+              title="Live route registry"
+              description={`Harness-owned live probes · selection policy: ${selectionPolicy}`}
+            >
+              {loading && routes.length === 0 ? (
+                <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+                  Checking configured routes...
+                </p>
+              ) : routes.length === 0 ? (
+                <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">No routes reported.</p>
+              ) : (
+                <div className="divide-y divide-(--ui-border)">
                   {routes.map((route) => (
-                    <option key={route.id} value={route.id} disabled={route.status !== "ready"}>
-                      {route.node} · {route.model_id} ({route.status})
-                    </option>
+                    <div
+                      key={route.id}
+                      className="grid gap-3 py-3 first:pt-0 last:pb-0 sm:grid-cols-[1fr_auto] sm:items-center"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <GitBranch className="h-4 w-4 text-(--ui-muted)" />
+                          <span className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
+                            {route.model_id}
+                          </span>
+                          <StatusPill tone={toneForStatus(route.status)} variant="badge">
+                            {route.status}
+                          </StatusPill>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                          <span>{route.node}</span>
+                          <span>{route.runtime}</span>
+                          <span>{route.role}</span>
+                          <span>{formatContext(route.max_context_tokens)}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1 sm:justify-end">
+                        {route.capabilities.map((capability) => (
+                          <span
+                            key={capability}
+                            className="rounded-full bg-(--ui-fg)/5 px-2 py-1 text-[length:var(--fs-xs)] text-(--ui-muted)"
+                          >
+                            {capability}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ))}
-                </select>
-                <Button
-                  className="mt-3 w-full"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Play className="h-3.5 w-3.5" />}
-                  loading={running}
-                  disabled={running}
-                  onClick={() => void runAnalysis()}
-                >
-                  Run vLLM analysis
-                </Button>
+                </div>
+              )}
+            </Card>
+
+            <Card title="Ownership boundary" description="The two products have different jobs.">
+              <div className="space-y-3 text-[length:var(--fs-sm)]">
+                <BoundaryRow
+                  icon={<ShieldCheck className="h-4 w-4" />}
+                  label="Harness"
+                  value="Executor, router, durable state, events, artifacts"
+                />
+                <BoundaryRow
+                  icon={<GitBranch className="h-4 w-4" />}
+                  label="Local Studio"
+                  value="Operator UI and model/chat surface"
+                />
+                <div className="rounded-xl bg-(--ui-fg)/5 p-3 text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
+                  The safe canary is credential-free. Model analysis uses the selected vLLM route in
+                  a temporary isolated workspace with write tools disabled.
+                </div>
+                <div className="rounded-xl border border-(--ui-border) p-3">
+                  <label
+                    htmlFor="harness-route"
+                    className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)"
+                  >
+                    Model route
+                  </label>
+                  <select
+                    id="harness-route"
+                    value={selectedRoute}
+                    onChange={(event) => setSelectedRoute(event.target.value)}
+                    className="mt-2 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
+                  >
+                    <option value="auto">Auto: let the Harness choose</option>
+                    {routes.map((route) => (
+                      <option key={route.id} value={route.id} disabled={route.status !== "ready"}>
+                        {route.node} · {route.model_id} ({route.status})
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    className="mt-3 w-full"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Play className="h-3.5 w-3.5" />}
+                    loading={running}
+                    disabled={running}
+                    onClick={() => void runAnalysis()}
+                  >
+                    Run vLLM analysis
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
           </div>
 
           <Card
@@ -1113,67 +1121,67 @@ export default function HarnessPage() {
             title="Diagnostic task"
             description="Canary and read-only model checks return task evidence through the integration API."
           >
-          {!task?.id ? (
-            <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">No task loaded.</p>
-          ) : (
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.6fr)]">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill tone={toneForStatus(task.status ?? "")} variant="badge">
-                    {task.status_label ?? task.status ?? "unknown"}
-                  </StatusPill>
-                  <code className="text-[length:var(--fs-xs)] text-(--ui-muted)">{task.id}</code>
-                </div>
-                <p className="mt-3 text-[length:var(--fs-sm)] text-(--ui-fg)">
-                  {task.summary ?? task.human_title}
-                </p>
-                {task.metadata?.integration ? (
-                  <div className="mt-3 flex flex-wrap gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    <span>
-                      {task.metadata.integration.node} · {task.metadata.integration.model_id}
-                    </span>
-                    <span>{task.metadata.integration.runtime}</span>
-                    <span>read-only</span>
-                    <span>
-                      workspace{" "}
-                      {task.metadata.integration.connected_workspace_mutated
-                        ? "changed"
-                        : "unchanged"}
-                    </span>
+            {!task?.id ? (
+              <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">No task loaded.</p>
+            ) : (
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.6fr)]">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill tone={toneForStatus(task.status ?? "")} variant="badge">
+                      {task.status_label ?? task.status ?? "unknown"}
+                    </StatusPill>
+                    <code className="text-[length:var(--fs-xs)] text-(--ui-muted)">{task.id}</code>
                   </div>
-                ) : null}
-                <div className="mt-4 space-y-2">
-                  {(events ?? []).slice(-6).map((event, index) => (
-                    <div
-                      key={`${event.seq ?? index}-${event.checkpoint ?? "event"}`}
-                      className="flex gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)"
-                    >
-                      <span className="shrink-0 tabular-nums">{event.seq ?? "·"}</span>
-                      <span>{event.summary ?? event.checkpoint ?? "Harness event"}</span>
+                  <p className="mt-3 text-[length:var(--fs-sm)] text-(--ui-fg)">
+                    {task.summary ?? task.human_title}
+                  </p>
+                  {task.metadata?.integration ? (
+                    <div className="mt-3 flex flex-wrap gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                      <span>
+                        {task.metadata.integration.node} · {task.metadata.integration.model_id}
+                      </span>
+                      <span>{task.metadata.integration.runtime}</span>
+                      <span>read-only</span>
+                      <span>
+                        workspace{" "}
+                        {task.metadata.integration.connected_workspace_mutated
+                          ? "changed"
+                          : "unchanged"}
+                      </span>
                     </div>
-                  ))}
+                  ) : null}
+                  <div className="mt-4 space-y-2">
+                    {(events ?? []).slice(-6).map((event, index) => (
+                      <div
+                        key={`${event.seq ?? index}-${event.checkpoint ?? "event"}`}
+                        className="flex gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)"
+                      >
+                        <span className="shrink-0 tabular-nums">{event.seq ?? "·"}</span>
+                        <span>{event.summary ?? event.checkpoint ?? "Harness event"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-(--ui-fg)/5 p-3">
+                  <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
+                    Evidence
+                  </div>
+                  <div className="mt-2 text-[length:var(--fs-sm)] text-(--ui-fg)">
+                    {task.artifacts?.length ?? 0} artifact{task.artifacts?.length === 1 ? "" : "s"}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {(task.artifacts ?? []).map((artifact) => (
+                      <div
+                        key={artifact.path ?? artifact.name}
+                        className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)"
+                      >
+                        {artifact.name ?? artifact.path}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="rounded-xl bg-(--ui-fg)/5 p-3">
-                <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
-                  Evidence
-                </div>
-                <div className="mt-2 text-[length:var(--fs-sm)] text-(--ui-fg)">
-                  {task.artifacts?.length ?? 0} artifact{task.artifacts?.length === 1 ? "" : "s"}
-                </div>
-                <div className="mt-2 space-y-1">
-                  {(task.artifacts ?? []).map((artifact) => (
-                    <div
-                      key={artifact.path ?? artifact.name}
-                      className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)"
-                    >
-                      {artifact.name ?? artifact.path}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+            )}
           </Card>
         </details>
       </PageContainer>

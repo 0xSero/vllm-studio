@@ -67,6 +67,10 @@ export type ManagedTaskResponse = Partial<ManagedGoalTask> & {
   events?: ManagedGoalTask["events"];
 };
 
+export function initialHarnessObjective(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value.slice(0, 16_384) : "";
+}
+
 function isTaskShaped(
   candidate: Partial<HarnessTask>,
 ): candidate is Partial<HarnessTask> & { id: string; status: string } {

@@ -504,6 +504,10 @@ export function ChatPane({
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
           enterGoalMode: () => setGoalModeOn(true),
+          openVerifiedGoal: (objective) =>
+            router.push(
+              objective ? `/harness?objective=${encodeURIComponent(objective)}` : "/harness",
+            ),
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,

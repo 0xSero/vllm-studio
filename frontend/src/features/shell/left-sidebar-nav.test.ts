@@ -16,7 +16,7 @@ describe("left sidebar navigation", () => {
       [
         ["/", "Status"],
         ["/agent/automations", "Automations"],
-        ["/harness", "Harness"],
+        ["/harness", "Verified Goals"],
         ["/configure", "Configure"],
         ["/usage", "Usage"],
       ],

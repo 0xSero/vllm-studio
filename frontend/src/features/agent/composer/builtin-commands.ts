@@ -15,6 +15,7 @@ export type BuiltinComposerActions = {
   /** `/goal <objective>` and `/goal pause|resume|clear`. Resolves to an error message or null. */
   goal?: (args: string) => Promise<string | null>;
   enterGoalMode?: () => void;
+  openVerifiedGoal?: (objective: string) => void;
 };
 
 export function builtinCommandProvider(actions: BuiltinComposerActions): ComposerCommandProvider {
@@ -78,6 +79,22 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
                 }
                 const message = await actions.goal?.(args.trim());
                 return message ? { kind: "error" as const, message } : { kind: "handled" as const };
+              },
+            },
+          ]
+        : []),
+      ...(actions.openVerifiedGoal
+        ? [
+            {
+              id: "builtin:verified",
+              name: "verified",
+              title: "Verified Goal",
+              description: "Run an evidence-backed goal with Agentic Harness",
+              source: "core",
+              icon: "command" as const,
+              run: (args: string) => {
+                actions.openVerifiedGoal?.(args.trim());
+                return { kind: "handled" as const };
               },
             },
           ]

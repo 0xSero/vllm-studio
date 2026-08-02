@@ -10,7 +10,7 @@ export type IconComponent = ComponentType<{ className?: string; strokeWidth?: nu
 export const tabs = [
   { href: "/", label: "Status", icon: Activity },
   { href: "/agent/automations", label: "Automations", icon: Clock },
-  { href: "/harness", label: "Harness", icon: GitFork },
+  { href: "/harness", label: "Verified Goals", icon: GitFork },
   { href: "/configure", label: "Configure", icon: ServerCog },
   { href: "/usage", label: "Usage", icon: TrendingUp },
 ];
