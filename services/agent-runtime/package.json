@@ -9,8 +9,8 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "bundle": "node scripts/bundle.mjs",
-    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "bundle": "node ../../scripts/project.mjs bundle-agent-runtime",
+    "build": "tsc -p tsconfig.build.json && node ../../scripts/project.mjs postbuild-agent-runtime",
     "dev": "bun --watch src/server.ts",
     "start": "node dist/server.js",
     "test": "bun test"

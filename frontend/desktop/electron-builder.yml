@@ -2,7 +2,7 @@ appId: org.local.studio.desktop
 productName: Local Studio
 asar: true
 
-afterPack: ./scripts/electron-builder-after-pack.mjs
+afterPack: ./desktop/project.mjs
 
 asarUnpack:
   - "node_modules/@lydell/**/*.node"
