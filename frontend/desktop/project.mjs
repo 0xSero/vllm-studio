@@ -1615,6 +1615,7 @@ if (args[0] !== "-c") {
 }
 const source = args.at(-2);
 const destination = args.at(-1);
+if (process.env.LOCAL_STUDIO_TEST_FAIL_ARCHIVE === source) process.exit(1);
 const base = path.basename(source);
 const members = [];
 function walk(directory, relative) {
@@ -1698,6 +1699,15 @@ var init_install_desktop_app_test = __esm(() => {
     let result = runInstaller(harness, ["stable"], {
       LOCAL_STUDIO_BUILT_APP: built,
       LOCAL_STUDIO_TEST_FAIL_CODESIGN: target
+    });
+    assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
+  });
+  test("preserves the current app when creating its rollback archive fails", (t) => {
+    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app"), target = path8.join(harness.applications, "Local Studio.app");
+    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(target, "Local Studio", "org.local.studio.desktop", "old");
+    let result = runInstaller(harness, ["stable"], {
+      LOCAL_STUDIO_BUILT_APP: built,
+      LOCAL_STUDIO_TEST_FAIL_ARCHIVE: path8.join(target, "Contents")
     });
     assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
   });
