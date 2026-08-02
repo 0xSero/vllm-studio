@@ -9,7 +9,11 @@ import {
   parseAgentTurnCommandResult,
   type AgentTurnCommandResult,
 } from "@/features/agent/messages";
-import type { AgentImageInput, AgentToolAccess } from "@/features/agent/contracts";
+import type {
+  AgentImageInput,
+  AgentQueueAction,
+  AgentToolAccess,
+} from "@/features/agent/contracts";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type {
   ComposerPromptTemplateRef,
@@ -254,6 +258,8 @@ export type SubmitTurnArgs = {
   piSessionId?: string | null;
   /** Control mode for steer/follow-up; omitted for a normal prompt. */
   mode?: "steer" | "follow_up";
+  queueAction?: AgentQueueAction;
+  queueReplacement?: string;
   browserToolEnabled: boolean;
   browserSessionId?: string;
   browserBackend?: BrowserBackend;

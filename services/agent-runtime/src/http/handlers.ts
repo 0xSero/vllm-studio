@@ -132,6 +132,18 @@ function dispatchControlEffect(
   commandImages: AgentImageInput[] | undefined,
 ): Effect.Effect<"queued" | "rejected", unknown> {
   if (!resolved.controlTargetActive) return Effect.succeed("rejected");
+  if (turn.queueAction) {
+    return Effect.tryPromise({
+      try: () =>
+        resolved.session.mutateQueuedFollowUp(
+          turn.message,
+          turn.queueAction!,
+          turn.queueReplacement,
+          commandImages,
+        ),
+      catch: (error) => error,
+    }).pipe(Effect.map(() => "queued" as const));
+  }
   if (turn.mode === "steer") {
     return Effect.tryPromise({
       try: () => resolved.session.steer(turn.message, commandImages),

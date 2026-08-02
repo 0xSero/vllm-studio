@@ -16,6 +16,11 @@ There are exactly three kinds of branch. Nothing else is allowed to exist for lo
 two agents never share a branch. If two pieces of work are independent, they are two
 branches and two PRs. If they are not independent, they are one PR.
 
+Local hooks block commits made on `main` or `dev`, direct pushes to either branch,
+and staged commits larger than 15 files or 600 source lines. Lockfiles and snapshots
+do not count toward the line limit. Split larger work into independently valid
+microcommits before opening the PR.
+
 ## The loop
 
 ```
@@ -50,9 +55,18 @@ directory. A broken dev build cannot corrupt the app you rely on. Credentials an
 device identity are deliberately not mirrored (see `desktop/logic/dev-channel-mirror.ts`).
 
 Install either with `scripts/install-desktop-app.sh [stable|dev]`. It replaces in
-place, keeps exactly one rollback copy, ejects stale DMGs and stops orphaned servers.
-Never hand-roll a backup copy — that is how /Applications ended up with 7.3 GB of
-duplicate bundles that all showed up in Launchpad.
+place, keeps exactly one compressed rollback per channel outside `/Applications`,
+ejects stale DMGs and stops orphaned servers. Run
+`scripts/install-desktop-app.sh --migrate-rollbacks` to archive and unregister old
+discoverable rollback bundles without reinstalling either app. Never hand-roll a
+backup copy — that is how `/Applications` accumulated duplicate bundles that all
+showed up as applications.
+
+Repository automation has exactly three executable files:
+`scripts/project.mjs`, `scripts/install-controller.sh`, and
+`scripts/install-desktop-app.sh`. Package commands, CI, release jobs, Git hooks,
+and model operations dispatch through `project.mjs`. `npm run check:automation`
+fails if another executable or helper-script directory is added.
 
 ## Gates
 

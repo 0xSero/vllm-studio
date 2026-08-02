@@ -1,2 +1,1 @@
-#!/bin/sh
-node scripts/check-conventional-commits.mjs --message-file "$1"
+../scripts/project.mjs

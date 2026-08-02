@@ -33,7 +33,7 @@ jobs:
         run: git checkout -B main "${{ github.event.workflow_run.head_sha }}"
 
       - name: Reject stale release revision
-        run: node scripts/assert-release-main.mjs --commit "$RELEASE_SHA"
+        run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
       - uses: actions/setup-node@v4
         with:
@@ -121,7 +121,7 @@ jobs:
         run: git checkout -B main "$RELEASE_SHA"
 
       - name: Reject stale release revision
-        run: node scripts/assert-release-main.mjs --commit "$RELEASE_SHA"
+        run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
       - uses: actions/setup-node@v4
         with:
@@ -153,14 +153,14 @@ jobs:
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: >-
-          node scripts/sign-desktop-release.mjs
+          node scripts/project.mjs sign-release
           --version ${{ needs.build.outputs.release_version }}
           --commit "$RELEASE_SHA"
           --prepackaged "${{ runner.temp }}/unsigned-release/app/Local Studio.app"
 
       - name: Stage signed release assets
         run: >-
-          node scripts/stage-desktop-release.mjs
+          node scripts/project.mjs stage-release
           --version ${{ needs.build.outputs.release_version }}
           --commit "$RELEASE_SHA"
 
@@ -189,7 +189,7 @@ jobs:
         run: git checkout -B main "$RELEASE_SHA"
 
       - name: Reject stale release revision
-        run: node scripts/assert-release-main.mjs --commit "$RELEASE_SHA"
+        run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
       - uses: actions/setup-node@v4
         with:

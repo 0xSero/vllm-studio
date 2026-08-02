@@ -52,7 +52,7 @@ npm run lint
 npm run check:quality
 ```
 
-`npm run start` uses `scripts/start-standalone.mjs`; plain `next start` does not
+`npm run start` uses the repository project command; plain `next start` does not
 preserve the streaming runtime contract.
 
 ## Desktop

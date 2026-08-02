@@ -1,6 +1,6 @@
 export default {
-  entry: ["src/main.ts", "scripts/**/*.ts", "src/**/*.test.ts"],
-  project: ["src/**/*.ts", "scripts/**/*.ts"],
+  entry: ["src/main.ts", "src/**/*.test.ts"],
+  project: ["src/**/*.ts"],
   ignore: [
     "bun.lockb",
     "node_modules/**",
