@@ -1198,3 +1198,403 @@ async function smokeTerminal(page) {
       }), disposeExit = bridge.terminal.onExit((id) => {
         if (id !== session.id)
           return;
+        finish();
+      });
+      bridge.terminal.write(session.id, "printf 'LOCAL_STUDIO_PTY_OK\\n'; exit\\n"), finish();
+    });
+  });
+}
+async function terminate(child) {
+  if (!child?.pid)
+    return;
+  try {
+    process2.kill(-child.pid, "SIGTERM");
+  } catch {}
+  await Promise.race([
+    child.exitCode === null && child.signalCode === null ? new Promise((resolve3) => child.once("exit", resolve3)) : Promise.resolve(),
+    delay(5000)
+  ]);
+  try {
+    process2.kill(-child.pid, "SIGKILL");
+  } catch {}
+}
+async function runDesktopPackageSmoke(args2 = process2.argv.slice(2)) {
+  let frontend = path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), ".."), requestedApp = valueAfter2(args2, "--app"), appPath = requestedApp ? path4.resolve(requestedApp) : path4.join(frontend, "dist-desktop", "mac-arm64", "Local Studio.app"), expectedVersion = valueAfter2(args2, "--expected-version"), executable = path4.join(appPath, "Contents", "MacOS", "Local Studio");
+  if (!existsSync6(executable))
+    throw Error(`Missing packaged executable: ${executable}`);
+  let temp = mkdtempSync2(path4.join(os.tmpdir(), "local-studio-package-smoke-")), userData = path4.join(temp, "user-data"), logFile = path4.join(userData, "logs", "desktop.log"), frontendPortFile = path4.join(userData, "embedded-frontend.port"), debugPort = await reservePort(), stdout = [], stderr = [];
+  mkdirSync2(userData, { recursive: !0 }), writeFileSync2(path4.join(userData, "api-settings.json"), `${JSON.stringify({
+    backendUrl: "http://127.0.0.1:65534",
+    apiKey: "",
+    voiceUrl: "",
+    voiceModel: "whisper-large-v3-turbo"
+  })}
+`, { mode: 384 });
+  let env = { ...process2.env };
+  delete env.ELECTRON_RUN_AS_NODE, Object.assign(env, {
+    LOCAL_STUDIO_AGENT_CWD: temp,
+    LOCAL_STUDIO_DESKTOP_APP_NAME: `Local Studio Smoke ${process2.pid}`,
+    LOCAL_STUDIO_DESKTOP_DISABLE_AUTO_UPDATE: "true",
+    LOCAL_STUDIO_DESKTOP_USER_DATA_DIR: userData
+  });
+  let child, browser;
+  try {
+    child = spawn2(executable, [`--remote-debugging-port=${debugPort}`], {
+      cwd: temp,
+      detached: !0,
+      env,
+      stdio: ["ignore", "pipe", "pipe"]
+    }), child.stdout.on("data", (chunk) => stdout.push(String(chunk))), child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    let frontendPort = Number(await waitForFile(frontendPortFile, 60000));
+    if (!Number.isInteger(frontendPort) || frontendPort <= 0)
+      throw Error(`Invalid embedded frontend port: ${frontendPort}`);
+    let origin = `http://127.0.0.1:${frontendPort}`, desktopHealth = await waitForJson(`${origin}/api/desktop-health`, 30000), agentRuntime = await waitForAgentRuntime(logFile, 30000), embeddedBrowser = await postJson(`${agentRuntime.url}/api/agent/browser/navigate`, { url: `${origin}/agent` });
+    if (!String(embeddedBrowser.data?.url ?? "").startsWith(origin))
+      throw Error(`Packaged browser navigated to an unexpected URL: ${JSON.stringify(embeddedBrowser)}`);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
+    let page = await waitForPage(browser, origin, 30000);
+    await page.waitForLoadState("domcontentloaded");
+    let agentResponse = await page.goto(`${origin}/agent`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000
+    });
+    if (!agentResponse?.ok())
+      throw Error(`Agent route returned ${agentResponse?.status() ?? "no response"}`);
+    let runtime = await page.evaluate(async () => {
+      if (!globalThis.localStudioDesktop)
+        throw Error("Desktop bridge is unavailable");
+      return globalThis.localStudioDesktop.getRuntime();
+    });
+    if (expectedVersion && runtime.appVersion !== expectedVersion)
+      throw Error(`Packaged app version ${runtime.appVersion} does not match ${expectedVersion}`);
+    let terminal = await smokeTerminal(page), result = {
+      appPath,
+      agentStatus: agentResponse.status(),
+      desktopHealth,
+      agentRuntime: agentRuntime.payload,
+      embeddedBrowser: embeddedBrowser.data,
+      runtime,
+      terminal
+    };
+    return console.log(JSON.stringify(result, null, 2)), result;
+  } catch (error) {
+    let diagnostics = [
+      existsSync6(logFile) ? readFileSync8(logFile, "utf8").slice(-12000) : "",
+      stdout.join("").slice(-4000),
+      stderr.join("").slice(-4000)
+    ].filter(Boolean).join(`
+`);
+    throw Error(`${error instanceof Error ? error.message : String(error)}
+${diagnostics}`);
+  } finally {
+    if (browser)
+      await browser.close().catch(() => {
+        return;
+      });
+    await terminate(child), rmSync4(temp, { recursive: !0, force: !0 });
+  }
+}
+var require3, chromium;
+var init_desktop_package_smoke = __esm(async () => {
+  require3 = createRequire3(path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), "../package.json")), { chromium } = require3("playwright-core");
+  await runDesktopPackageSmoke();
+});
+
+var exports_link_services_node_modules = {};
+import { lstatSync as lstatSync3, mkdirSync as mkdirSync3, rmSync as rmSync5, symlinkSync as symlinkSync2 } from "node:fs";
+import path5 from "node:path";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
+var frontendDir, servicesDir, linkPath, existingEntryKind = () => {
+  try {
+    let stat = lstatSync3(linkPath);
+    if (stat.isSymbolicLink())
+      return "link";
+    return stat.isDirectory() ? "directory" : "file";
+  } catch {
+    return "missing";
+  }
+}, removeExistingEntry = () => {
+  rmSync5(linkPath, { recursive: !0, force: !0 });
+}, createLink = () => {
+  if (process.platform === "win32") {
+    symlinkSync2(path5.join(frontendDir, "node_modules"), linkPath, "junction");
+    return;
+  }
+  symlinkSync2(path5.join("..", "frontend", "node_modules"), linkPath, "dir");
+}, kind;
+var init_link_services_node_modules = __esm(() => {
+  frontendDir = path5.resolve(path5.dirname(fileURLToPath4(import.meta.url)), ".."), servicesDir = path5.join(path5.dirname(frontendDir), "services"), linkPath = path5.join(servicesDir, "node_modules");
+  mkdirSync3(servicesDir, { recursive: !0 });
+  kind = existingEntryKind();
+  if (kind === "directory")
+    console.error(`[link-services-node-modules] ${linkPath} is a real directory; leaving it alone.`), process.exit(0);
+  if (kind !== "missing")
+    removeExistingEntry();
+  createLink();
+});
+
+var exports_patch_pi_ai_openai_text_boundaries = {};
+import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync3 } from "node:fs";
+import path6 from "node:path";
+import { fileURLToPath as fileURLToPath5 } from "node:url";
+var frontendRoot, targetFiles, helperMarker = "function localStudioJoinTextParts", helper, injectionPoint = `function isTextContentBlock(block) {
+    return block.type === "text";
+}
+`, helperStartMarker = "function localStudioTextPartBoundary", helperEndMarker = "function isThinkingContentBlock", originalJoin = 'const assistantText = assistantTextParts.map((part) => part.text).join("");', patchedJoin = "const assistantText = localStudioJoinTextParts(assistantTextParts);", found = 0, patched = 0;
+var init_patch_pi_ai_openai_text_boundaries = __esm(() => {
+  frontendRoot = path6.resolve(path6.dirname(fileURLToPath5(import.meta.url)), ".."), targetFiles = [
+    path6.join(frontendRoot, "node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js"),
+    path6.join(frontendRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js")
+  ], helper = [
+    "function localStudioTextPartBoundary(left, right) {",
+    "    if (!left || !right || /\\s$/.test(left) || /^\\s/.test(right))",
+    '        return "";',
+    `    if (/^[-*+]$/.test(right) && /[.:;!?]["')\\]]?$/.test(left))`,
+    '        return "\\n";',
+    '    if (/^(?:[-*+](?:\\s+|[A-Z0-9"`*_])|\\d+[.)]\\s+)/.test(right))',
+    '        return "\\n";',
+    `    if (/[.!?]["')\\]\\u201d]?$/.test(left) && /^[A-Z0-9"\\u201c'\`*_]/.test(right))`,
+    '        return "\\n\\n";',
+    `    if (/[:;]["')\\]\\u201d]?$/.test(left) && /^(?:[-*+]|\\d+[.)]|[A-Z0-9"\\u201c'\`*_])/.test(right))`,
+    '        return "\\n";',
+    '    return "";',
+    "}",
+    "function localStudioLineEndsWithBareListMarker(text) {",
+    "    return /(?:^|\\n)[ \\t]*[-*+]$/.test(text);",
+    "}",
+    "function localStudioJoinTextPart(left, right) {",
+    "    const boundary = localStudioTextPartBoundary(left, right);",
+    '    const nextRight = boundary.includes("\\n") && /^[-*+](?=\\S)/.test(right)',
+    "        ? `${right.slice(0, 1)} ${right.slice(1)}`",
+    "        : right;",
+    '    const prefix = localStudioLineEndsWithBareListMarker(left) && /^\\S/.test(nextRight) ? " " : "";',
+    "    return left + boundary + prefix + nextRight;",
+    "}",
+    "function localStudioJoinTextParts(parts) {",
+    "    return parts",
+    "        .map((part) => part.text)",
+    '        .reduce((text, partText) => localStudioJoinTextPart(text, partText), "");',
+    "}"
+  ].join(`
+`) + `
+`;
+  for (let file2 of targetFiles) {
+    if (!existsSync7(file2))
+      continue;
+    found += 1;
+    let source = readFileSync9(file2, "utf8"), next = source.replaceAll("vllmStudio", "localStudio");
+    if (!next.includes(helperMarker)) {
+      if (!next.includes(injectionPoint))
+        throw Error(`Could not find pi-ai text block helper injection point in ${file2}`);
+      next = next.replace(injectionPoint, `${injectionPoint}${helper}`);
+    } else {
+      let helperStart = next.indexOf(helperStartMarker), helperEnd = next.indexOf(helperEndMarker, helperStart);
+      if (helperStart === -1 || helperEnd === -1)
+        throw Error(`Could not find existing pi-ai text boundary helper block in ${file2}`);
+      next = next.slice(0, helperStart) + helper + next.slice(helperEnd);
+    }
+    if (next.includes(originalJoin))
+      next = next.replace(originalJoin, patchedJoin);
+    else if (!next.includes(patchedJoin))
+      throw Error(`Could not find pi-ai assistant text join in ${file2}`);
+    if (next !== source)
+      writeFileSync3(file2, next, "utf8"), patched += 1;
+  }
+  if (found === 0)
+    console.warn([
+      "WARNING: patch-pi-ai-openai-text-boundaries.mjs found no pi-ai openai-completions.js to patch.",
+      "Checked:",
+      ...targetFiles.map((file2) => `  - ${file2}`),
+      "The @earendil-works/pi-ai package layout may have changed. Agent streaming may misrender",
+      "assistant text (missing paragraph/list boundaries) until this patch script is updated."
+    ].join(`
+`));
+  else if (patched > 0)
+    console.log(`Patched pi-ai OpenAI assistant text boundaries in ${patched} file(s).`);
+});
+
+var exports_perf_audit = {};
+import { performance } from "node:perf_hooks";
+function percentile(values, ratio) {
+  let index = Math.min(values.length - 1, Math.ceil(values.length * ratio) - 1);
+  return values[index] ?? 0;
+}
+function assetUrls(html) {
+  let scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((match) => match[1]), css = [...html.matchAll(/<link[^>]+href="([^"]+\.css[^"]*)"/g)].map((match) => match[1]);
+  return [...new Set([...scripts, ...css])];
+}
+async function assetSize(url) {
+  let absolute = new URL(url, baseUrl2).toString(), cached = assetSizeCache.get(absolute);
+  if (cached !== void 0)
+    return cached;
+  let response = await fetch(absolute);
+  if (!response.ok)
+    throw Error(`Asset ${absolute} returned ${response.status}`);
+  let bytes = (await response.arrayBuffer()).byteLength;
+  return assetSizeCache.set(absolute, bytes), bytes;
+}
+async function routeResult2(route) {
+  let timings = [], html = "";
+  for (let index = 0;index < runs; index += 1) {
+    let started = performance.now(), response = await fetch(`${baseUrl2}${route.path}`, { cache: "no-store" });
+    if (html = await response.text(), !response.ok)
+      throw Error(`${route.path} returned ${response.status}`);
+    timings.push(performance.now() - started);
+  }
+  timings.sort((a, b) => a - b);
+  let assets = assetUrls(html), bytes = (await Promise.all(assets.map((url) => assetSize(url)))).reduce((total, value) => total + value, 0);
+  return {
+    path: route.path,
+    medianMs: percentile(timings, 0.5),
+    p90Ms: percentile(timings, 0.9),
+    assetKiB: bytes / 1024,
+    scripts: [...html.matchAll(/<script[^>]+src="/g)].length,
+    css: [...html.matchAll(/<link[^>]+href="[^"]+\.css[^"]*"/g)].length,
+    budget: route
+  };
+}
+function formatNumber2(value) {
+  return value.toFixed(1).padStart(6, " ");
+}
+function violations2(result) {
+  let out = [];
+  if (result.medianMs > result.budget.medianMs)
+    out.push(`median ${result.medianMs.toFixed(1)}ms > ${result.budget.medianMs}ms`);
+  if (result.p90Ms > result.budget.p90Ms)
+    out.push(`p90 ${result.p90Ms.toFixed(1)}ms > ${result.budget.p90Ms}ms`);
+  if (result.assetKiB > result.budget.assetKiB)
+    out.push(`assets ${result.assetKiB.toFixed(1)}KiB > ${result.budget.assetKiB}KiB`);
+  return out;
+}
+var baseUrl2, runs, routes2, assetSizeCache, results, failures2;
+var init_perf_audit = __esm(async () => {
+  init_perf_routes();
+  baseUrl2 = (process.env.LOCAL_STUDIO_PERF_URL || "http://127.0.0.1:3000").replace(/\/+$/, ""), runs = Math.max(3, Number.parseInt(process.env.LOCAL_STUDIO_PERF_RUNS || "8", 10)), routes2 = httpRoutes(), assetSizeCache = new Map;
+  results = [];
+  for (let route of routes2)
+    results.push(await routeResult2(route));
+  console.log(`Local Studio perf audit: ${baseUrl2} (${runs} runs per route)`);
+  console.log("route            median     p90  assets scripts css");
+  failures2 = [];
+  for (let result of results) {
+    let bad = violations2(result);
+    if (console.log(`${result.path.padEnd(16)} ${formatNumber2(result.medianMs)}ms ${formatNumber2(result.p90Ms)}ms ${formatNumber2(result.assetKiB)}KiB ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`), bad.length > 0)
+      failures2.push(`${result.path}: ${bad.join(", ")}`);
+  }
+  if (failures2.length > 0) {
+    console.error("Perf budget violations:");
+    for (let failure of failures2)
+      console.error(`- ${failure}`);
+    process.exit(1);
+  }
+});
+
+var exports_postbuild = {};
+import { readdirSync as readdirSync5, readFileSync as readFileSync10, statSync as statSync3, writeFileSync as writeFileSync4, existsSync as existsSync8 } from "node:fs";
+import path7 from "node:path";
+import { fileURLToPath as fileURLToPath6 } from "node:url";
+function* jsFiles(dir) {
+  for (let entry of readdirSync5(dir, { withFileTypes: !0 })) {
+    let full = path7.join(dir, entry.name);
+    if (entry.isDirectory())
+      yield* jsFiles(full);
+    else if (entry.isFile() && entry.name.endsWith(".js"))
+      yield full;
+  }
+}
+function resolveSpecifier(fromFile, spec) {
+  if (/\.(js|mjs|cjs|json|node)$/.test(spec))
+    return spec;
+  let base = path7.resolve(path7.dirname(fromFile), spec);
+  if (existsSync8(`${base}.js`))
+    return `${spec}.js`;
+  if (existsSync8(base) && statSync3(base).isDirectory() && existsSync8(path7.join(base, "index.js")))
+    return `${spec}/index.js`;
+  return spec;
+}
+var packageDir2, distDir2, realEntry, SPECIFIER_RE, rewrites = 0, shim = `// Generated by scripts/postbuild.mjs — stable entry for "node dist/server.js".
+import "./services/agent-runtime/src/server.js";
+`;
+var init_postbuild = __esm(() => {
+  packageDir2 = path7.resolve(path7.dirname(fileURLToPath6(import.meta.url)), "../../services/agent-runtime"), distDir2 = path7.join(packageDir2, "dist"), realEntry = path7.join(distDir2, "services", "agent-runtime", "src", "server.js");
+  if (!existsSync8(realEntry))
+    console.error(`[postbuild] expected tsc output missing: ${realEntry}`), process.exit(1);
+  SPECIFIER_RE = /(from\s+|import\s*\(\s*|export\s+\*\s+from\s+|import\s+)("(\.{1,2}\/[^"]+)"|'(\.{1,2}\/[^']+)')/g;
+  for (let file2 of jsFiles(distDir2)) {
+    let source = readFileSync10(file2, "utf8"), next = source.replace(SPECIFIER_RE, (match, lead, quoted, dq, sq) => {
+      let spec = dq ?? sq, fixed = resolveSpecifier(file2, spec);
+      if (fixed === spec)
+        return match;
+      rewrites += 1;
+      let quote = quoted[0];
+      return `${lead}${quote}${fixed}${quote}`;
+    });
+    if (next !== source)
+      writeFileSync4(file2, next);
+  }
+  writeFileSync4(path7.join(distDir2, "server.js"), shim);
+  console.log(`[postbuild] rewrote ${rewrites} relative specifiers; wrote dist/server.js shim`);
+});
+
+var exports_prepare_next_build = {};
+import { rmSync as rmSync6 } from "node:fs";
+import { resolve as resolve3 } from "node:path";
+var init_prepare_next_build = __esm(() => {
+  rmSync6(resolve3(import.meta.dirname, "../.next"), { recursive: !0, force: !0 });
+});
+
+var exports_release_statement = {};
+import { execFileSync as execFileSync3 } from "node:child_process";
+var args2, sinceIndex, rangeIndex2, maxIndex, maxItems, range, logArgs, output2, subjects, groups, grouped, emitted = 0;
+var init_release_statement = __esm(() => {
+  args2 = process.argv.slice(2), sinceIndex = args2.indexOf("--since"), rangeIndex2 = args2.indexOf("--range"), maxIndex = args2.indexOf("--max"), maxItems = Number(maxIndex === -1 ? 20 : args2[maxIndex + 1]), range = rangeIndex2 === -1 ? `--since=${sinceIndex === -1 ? "1 week ago" : args2[sinceIndex + 1]}` : args2[rangeIndex2 + 1], logArgs = rangeIndex2 === -1 ? ["log", "origin/main", range, "--pretty=format:%s"] : ["log", range, "--pretty=format:%s"], output2 = execFileSync3("git", logArgs, { encoding: "utf8" }).trim(), subjects = output2 ? output2.split(/\r?\n/) : [], groups = [
+    ["Features", /^(feat)(?:\(.+\))?!?: (.+)$/],
+    ["Fixes", /^(fix)(?:\(.+\))?!?: (.+)$/],
+    ["Performance", /^(perf)(?:\(.+\))?!?: (.+)$/],
+    ["Refactors", /^(refactor)(?:\(.+\))?!?: (.+)$/],
+    ["Tests", /^(test)(?:\(.+\))?!?: (.+)$/],
+    ["Infrastructure", /^(build|ci|chore|release)(?:\(.+\))?!?: (.+)$/],
+    ["Polish", /^(micro|style)(?:\(.+\))?!?: (.+)$/],
+    ["Documentation", /^(docs)(?:\(.+\))?!?: (.+)$/]
+  ], grouped = new Map(groups.map(([name]) => [name, []]));
+  for (let subject of subjects)
+    for (let [name, pattern] of groups) {
+      let match = pattern.exec(subject);
+      if (match) {
+        grouped.get(name).push(match[2]);
+        break;
+      }
+    }
+  console.log(`# Release Statement
+`);
+  for (let [name, items] of grouped) {
+    if (!items.length || emitted >= maxItems)
+      continue;
+    console.log(`## ${name}
+`);
+    for (let item of items.slice(0, maxItems - emitted))
+      console.log(`- ${item}`), emitted += 1;
+    console.log("");
+  }
+  if (emitted === 0)
+    console.log("- No conventional release changes found for the selected range.");
+});
+
+var exports_install_desktop_app_test = {};
+import assert from "node:assert/strict";
+import { execFileSync as execFileSync4, spawnSync as spawnSync3 } from "node:child_process";
+import {
+  chmodSync,
+  existsSync as existsSync9,
+  mkdirSync as mkdirSync4,
+  mkdtempSync as mkdtempSync3,
+  readFileSync as readFileSync11,
+  readdirSync as readdirSync6,
+  rmSync as rmSync7,
+  statSync as statSync4,
+  writeFileSync as writeFileSync5
+} from "node:fs";
+import os2 from "node:os";
+import path8 from "node:path";
+import test from "node:test";
+import { fileURLToPath as fileURLToPath7 } from "node:url";
