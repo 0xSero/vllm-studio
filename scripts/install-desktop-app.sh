@@ -151,7 +151,7 @@ cleanup_temporary_paths() {
   if [[ "${SWAP_VERIFIED:-0}" == "0" && -d "$REPLACED" ]]; then
     rm -rf "$TARGET"
     mv "$REPLACED" "$TARGET"
-  elif [[ "${SWAP_VERIFIED:-0}" == "0" && "${HAD_TARGET:-0}" == "0" ]]; then
+  elif [[ "${SWAP_VERIFIED:-0}" == "0" && "${TARGET_INSTALLED:-0}" == "1" ]]; then
     rm -rf "$TARGET"
   fi
 }
@@ -186,6 +186,7 @@ rm -rf "$STAGED" "$REPLACED"
 trap cleanup_temporary_paths EXIT
 HAD_TARGET=0
 SWAP_VERIFIED=0
+TARGET_INSTALLED=0
 
 ditto "$BUILT" "$STAGED"
 codesign --verify --deep --strict "$STAGED"
@@ -226,6 +227,7 @@ if [[ -d "$TARGET" ]]; then
 fi
 
 mv "$STAGED" "$TARGET"
+TARGET_INSTALLED=1
 codesign --verify --deep --strict "$TARGET"
 SWAP_VERIFIED=1
 rm -rf "$REPLACED"
