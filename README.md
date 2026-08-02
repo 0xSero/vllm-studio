@@ -169,7 +169,7 @@ Build the frontend, then serve it with the standalone server:
 cd frontend && npm run build && npm run start
 ```
 
-`npm run start` launches the standalone server (`scripts/start-standalone.mjs`).
+`npm run start` launches the standalone server through `scripts/project.mjs`.
 Never use plain `next start` — it breaks SSE streaming. The controller runs the
 same way in production as in development: `bun src/main.ts`.
 
@@ -211,23 +211,12 @@ without it. On a trusted LAN you may instead set
 Point the frontend at a remote controller with `BACKEND_URL` or
 `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
 
-Remote deployment is handled by `scripts/deploy-remote.sh`. Configure
-`.env.local` first (see `.env.example`):
+Deploy with your normal SSH or infrastructure workflow. The repository does not
+maintain a second deployment wrapper alongside the controller installer.
 
-```bash
-REMOTE_HOST=192.168.x.x
-REMOTE_USER=username
-REMOTE_PATH=/home/user/project
-# Optional: REMOTE_SSH_KEY (defaults to ~/.ssh/id_ed25519)
-```
-
-```bash
-./scripts/deploy-remote.sh controller   # sync + build + restart controller
-./scripts/deploy-remote.sh frontend     # sync + build + restart frontend
-./scripts/deploy-remote.sh status       # inspect remote processes
-```
-
-Local daemon helper: `./scripts/daemon.sh {start|stop|status}`. The controller installer registers a persistent user service automatically (`launchd` on macOS and `systemd --user` on Linux), so installed controllers return after login without a manual daemon command.
+The controller installer registers a persistent user service automatically
+(`launchd` on macOS and `systemd --user` on Linux), so installed controllers
+return after login without a repository daemon wrapper.
 
 ## Validation
 
@@ -237,8 +226,8 @@ npm run test:integration
 ```
 
 The configured pre-push hook (`.githooks/pre-push`) checks conventional commits
-and runs the frontend quality gate (`npm --prefix frontend run check:quality`)
-before pushing.
+and runs the frontend quality gate before pushing. The hook filenames are
+symlinks to `scripts/project.mjs`; they do not contain separate automation logic.
 
 ## Releases
 

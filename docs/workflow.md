@@ -62,6 +62,12 @@ discoverable rollback bundles without reinstalling either app. Never hand-roll a
 backup copy — that is how `/Applications` accumulated duplicate bundles that all
 showed up as applications.
 
+Repository automation has exactly three executable files:
+`scripts/project.mjs`, `scripts/install-controller.sh`, and
+`scripts/install-desktop-app.sh`. Package commands, CI, release jobs, Git hooks,
+and model operations dispatch through `project.mjs`. `npm run check:automation`
+fails if another executable or helper-script directory is added.
+
 ## Gates
 
 Nothing merges without these. They are required status checks, not conventions.
