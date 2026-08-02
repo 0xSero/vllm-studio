@@ -54,7 +54,6 @@ const nextConfig: NextConfig = {
       "./playwright-report/**/*",
       "./test-results/**/*",
       "./public/**/*",
-      "./scripts/**/*",
       "./src/**/*",
       "./README.md",
       "./eslint.config.mjs",
