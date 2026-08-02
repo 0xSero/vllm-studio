@@ -21,6 +21,16 @@ const DEFAULT_PROVIDER_HARNESS_URL = "http://127.0.0.1:8772";
 
 export type HarnessTarget = "managed" | "provider";
 
+const V1_GET_ROUTES = [
+  /^routes$/,
+  /^tasks$/,
+  /^tasks\/current$/,
+  /^tasks\/[^/]+$/,
+  /^tasks\/[^/]+\/(?:events|artifacts)$/,
+];
+const API_GET_ROUTES = [/^modes$/, /^setup$/, /^tasks\/current$/, /^tasks\/current\/events$/];
+const API_POST_ROUTES = [/^tasks$/, /^tasks\/current\/(?:stop|continue|accept)$/];
+
 export function harnessBaseUrl(target: HarnessTarget = "managed"): string {
   const raw = (
     target === "provider"
@@ -29,6 +39,36 @@ export function harnessBaseUrl(target: HarnessTarget = "managed"): string {
   )?.trim();
   const fallback = target === "provider" ? DEFAULT_PROVIDER_HARNESS_URL : DEFAULT_HARNESS_URL;
   return (raw || fallback).replace(/\/+$/, "");
+}
+
+export function harnessToken(target: HarnessTarget = "managed"): string {
+  return (
+    (target === "provider"
+      ? process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN
+      : process.env.LOCAL_STUDIO_HARNESS_TOKEN
+    )?.trim() ?? ""
+  );
+}
+
+export function isHarnessRouteAllowed(
+  method: string,
+  path: string[],
+  namespace: "v1" | "api",
+  target: HarnessTarget,
+): boolean {
+  const route = path.join("/");
+  const normalizedMethod = method.toUpperCase();
+  if (namespace === "v1") {
+    return normalizedMethod === "GET"
+      ? V1_GET_ROUTES.some((pattern) => pattern.test(route))
+      : normalizedMethod === "POST" && route === "tasks";
+  }
+  if (normalizedMethod === "GET") {
+    return API_GET_ROUTES.some((pattern) => pattern.test(route));
+  }
+  if (normalizedMethod !== "POST") return false;
+  if (API_POST_ROUTES.some((pattern) => pattern.test(route))) return true;
+  return target === "provider" && /^(?:setup|setup\/test)$/.test(route);
 }
 
 export function upstreamRequestHeaders(requestHeaders: Headers): Headers {
@@ -78,6 +118,23 @@ async function proxyToHarnessNamespace(
   target: HarnessTarget,
   bodyLimitBytes = 256 * 1024,
 ): Promise<Response> {
+  if (!isHarnessRouteAllowed(request.method, path, namespace, target)) {
+    return Response.json(
+      { error: "Harness route is not available through Local Studio" },
+      {
+        status: 404,
+      },
+    );
+  }
+  const token = harnessToken(target);
+  if (!token) {
+    return Response.json(
+      {
+        error: `Harness authentication is not configured for the ${target} integration`,
+      },
+      { status: 503 },
+    );
+  }
   const sourceUrl = new URL(request.url);
   let upstreamTarget: string;
   try {
@@ -89,6 +146,8 @@ async function proxyToHarnessNamespace(
     );
   }
   const headers = upstreamRequestHeaders(request.headers);
+  headers.set("authorization", `Bearer ${token}`);
+  headers.set("x-agentic-harness-client-scope", "remote");
 
   let body: ArrayBuffer | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {

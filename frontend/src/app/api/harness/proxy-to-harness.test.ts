@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   downstreamResponseHeaders,
+  harnessToken,
   harnessTargetUrl,
+  isHarnessRouteAllowed,
+  proxyToProviderHarness,
   upstreamRequestHeaders,
 } from "./proxy-to-harness";
 
@@ -95,5 +98,73 @@ describe("Local Studio Harness proxy headers", () => {
 
   test("keeps provider-neutral goals on their isolated upstream", () => {
     assert.equal(harnessTargetUrl(["tasks"], "api", "provider"), "http://127.0.0.1:8772/api/tasks");
+  });
+
+  test("allows only the Harness routes used by the product UI", () => {
+    assert.equal(isHarnessRouteAllowed("GET", ["routes"], "v1", "managed"), true);
+    assert.equal(isHarnessRouteAllowed("POST", ["tasks"], "v1", "managed"), true);
+    assert.equal(
+      isHarnessRouteAllowed("GET", ["tasks", "goal-1", "events"], "v1", "managed"),
+      true,
+    );
+    assert.equal(
+      isHarnessRouteAllowed("POST", ["tasks", "current", "continue"], "api", "managed"),
+      true,
+    );
+    assert.equal(isHarnessRouteAllowed("POST", ["setup", "test"], "api", "provider"), true);
+    assert.equal(isHarnessRouteAllowed("POST", ["setup"], "api", "managed"), false);
+    assert.equal(
+      isHarnessRouteAllowed("GET", ["tasks", "current", "file"], "api", "managed"),
+      false,
+    );
+    assert.equal(isHarnessRouteAllowed("POST", ["tasks", "bulk"], "api", "managed"), false);
+  });
+
+  test("reads a dedicated server-side token for each Harness target", () => {
+    const previousManaged = process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+    const previousProvider = process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+    process.env.LOCAL_STUDIO_HARNESS_TOKEN = "managed-token";
+    process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = "provider-token";
+    try {
+      assert.equal(harnessToken("managed"), "managed-token");
+      assert.equal(harnessToken("provider"), "provider-token");
+    } finally {
+      if (previousManaged === undefined) delete process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_HARNESS_TOKEN = previousManaged;
+      if (previousProvider === undefined) delete process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = previousProvider;
+    }
+  });
+
+  test("always marks browser traffic through Local Studio as remote", async () => {
+    const previousToken = process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+    const previousFetch = globalThis.fetch;
+    let forwardedHeaders: Headers | undefined;
+    process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = "provider-token";
+    globalThis.fetch = (async (_input, init) => {
+      forwardedHeaders = new Headers(init?.headers);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    try {
+      const response = await proxyToProviderHarness(
+        new Request("https://studio.example/api/harness/provider/setup", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-host": "127.0.0.1",
+          },
+          body: "{}",
+        }),
+        ["setup"],
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(forwardedHeaders?.get("authorization"), "Bearer provider-token");
+      assert.equal(forwardedHeaders?.get("x-agentic-harness-client-scope"), "remote");
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousToken === undefined) delete process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = previousToken;
+    }
   });
 });
