@@ -798,3 +798,403 @@ var allowedTypes, ignoredSubjects, args, messageFileIndex, rangeIndex, fail = (m
 };
 var init_check_conventional_commits = __esm(() => {
   allowedTypes = new Set([
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "micro",
+    "perf",
+    "refactor",
+    "release",
+    "revert",
+    "style",
+    "test"
+  ]), ignoredSubjects = [
+    /^Merge /,
+    /^Revert /,
+    /^Initial commit$/,
+    /^dependabot\//
+  ], args = process.argv.slice(2), messageFileIndex = args.indexOf("--message-file"), rangeIndex = args.indexOf("--range");
+  if (messageFileIndex !== -1) {
+    let messageFile = args[messageFileIndex + 1], subject = readFileSync6(messageFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
+    validateSubject(subject, "commit message");
+  } else {
+    let range = rangeIndex === -1 ? args[0] : args[rangeIndex + 1];
+    if (!range)
+      fail("Usage: check-conventional-commits.mjs --message-file <path> | --range <base..head>");
+    else {
+      let output2 = execFileSync2("git", ["log", "--format=%s", range], { encoding: "utf8" }).trim();
+      (output2 ? output2.split(/\r?\n/) : []).forEach((subject, index) => validateSubject(subject, `commit ${index + 1}`));
+    }
+  }
+  if (process.exitCode)
+    console.error(`
+Allowed types: ` + [...allowedTypes].join(", "));
+});
+
+var exports_complete_standalone_build = {};
+import {
+  cpSync as cpSync2,
+  existsSync as existsSync5,
+  lstatSync as lstatSync2,
+  readdirSync as readdirSync4,
+  readFileSync as readFileSync7,
+  rmdirSync,
+  rmSync as rmSync3,
+  statSync as statSync2,
+  symlinkSync,
+  unlinkSync
+} from "node:fs";
+import { dirname as dirname2, relative as relative3, resolve as resolve2 } from "node:path";
+function isRuntimeFile2(file2) {
+  let path3 = relative3(standaloneBase2, file2).replaceAll("\\", "/");
+  return [
+    "server.js",
+    "package.json",
+    ".next/",
+    "public/",
+    "node_modules/",
+    "frontend/server.js",
+    "frontend/package.json",
+    "frontend/.next/",
+    "frontend/public/",
+    "frontend/node_modules/"
+  ].some((prefix) => path3 === prefix || path3.startsWith(prefix));
+}
+function filesUnder2(directory) {
+  return readdirSync4(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => resolve2(entry.parentPath, entry.name));
+}
+function isVerifiedCopy(file2, repoRelativePath) {
+  let source = resolve2(repoRoot, repoRelativePath);
+  if (!existsSync5(source))
+    return !1;
+  let sourceStat = statSync2(source), copyStat = statSync2(file2);
+  if (!sourceStat.isFile() || sourceStat.size !== copyStat.size)
+    return !1;
+  if (!(repoRelativePath === "data" || /(^|\/)data\//.test(repoRelativePath)))
+    return !0;
+  return readFileSync7(source).equals(readFileSync7(file2));
+}
+function removeEmptyDirectories(directory) {
+  for (let entry of readdirSync4(directory, { withFileTypes: !0 }))
+    if (entry.isDirectory())
+      removeEmptyDirectories(resolve2(directory, entry.name));
+  if (directory !== standaloneBase2 && readdirSync4(directory).length === 0)
+    rmdirSync(directory);
+}
+var projectRoot2, repoRoot, standaloneBase2, standaloneRoots, standaloneRoot, runtimeDependencyPaths, tracedPiPackageDirectory, unverified, pruned = 0;
+var init_complete_standalone_build = __esm(() => {
+  projectRoot2 = resolve2(import.meta.dirname, ".."), repoRoot = resolve2(projectRoot2, ".."), standaloneBase2 = resolve2(projectRoot2, ".next", "standalone"), standaloneRoots = [resolve2(standaloneBase2, "frontend"), standaloneBase2], standaloneRoot = standaloneRoots.find((root) => existsSync5(resolve2(root, "server.js")));
+  if (!standaloneRoot)
+    throw Error(`Missing standalone server under: ${standaloneBase2}`);
+  runtimeDependencyPaths = [
+    "node_modules/typebox",
+    "node_modules/@earendil-works/pi-coding-agent"
+  ];
+  for (let dependencyPath of runtimeDependencyPaths) {
+    let source = resolve2(projectRoot2, dependencyPath);
+    if (!existsSync5(source))
+      throw Error(`Missing runtime dependency source: ${dependencyPath}`);
+    let destination = resolve2(standaloneRoot, dependencyPath);
+    cpSync2(source, destination, { recursive: !0 });
+    let executableShimDirectories = readdirSync4(destination, {
+      recursive: !0,
+      withFileTypes: !0
+    }).filter((entry) => entry.isDirectory() && entry.name === ".bin").map((entry) => resolve2(entry.parentPath, entry.name));
+    for (let directory of executableShimDirectories)
+      rmSync3(directory, { recursive: !0, force: !0 });
+  }
+  tracedPiPackageDirectory = resolve2(standaloneRoot, ".next/node_modules/@earendil-works");
+  if (existsSync5(tracedPiPackageDirectory)) {
+    let packageTargets = new Map([
+      [
+        "pi-ai-",
+        resolve2(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai")
+      ],
+      ["pi-coding-agent-", resolve2(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent")]
+    ]);
+    for (let entry of readdirSync4(tracedPiPackageDirectory)) {
+      let target = [...packageTargets].find(([prefix]) => entry.startsWith(prefix))?.[1];
+      if (!target)
+        continue;
+      let link = resolve2(tracedPiPackageDirectory, entry);
+      if (!lstatSync2(link).isSymbolicLink())
+        throw Error(`Expected traced Pi package alias to be a symlink: ${link}`);
+      unlinkSync(link), symlinkSync(relative3(dirname2(link), target), link, "dir");
+    }
+  }
+  unverified = [];
+  for (let file2 of filesUnder2(standaloneBase2)) {
+    if (isRuntimeFile2(file2))
+      continue;
+    let repoRelativePath = relative3(standaloneBase2, file2).replaceAll("\\", "/");
+    if (!isVerifiedCopy(file2, repoRelativePath)) {
+      unverified.push(repoRelativePath);
+      continue;
+    }
+    unlinkSync(file2), pruned += 1;
+  }
+  if (unverified.length > 0)
+    throw Error(`Standalone output contains non-runtime files with no matching repo source; refusing to prune them (move them aside manually if expected):
+${unverified.join(`
+`)}`);
+  removeEmptyDirectories(standaloneBase2);
+  console.log(`  standalone repaired: +${runtimeDependencyPaths.length} runtime dependency trees, -${pruned} traced non-runtime files`);
+});
+
+var exports_controller_standards_audit = {};
+import fs from "node:fs";
+import { createRequire as createRequire2 } from "node:module";
+import path3 from "node:path";
+function addSourceFinding(rule, filePath, node, detail) {
+  let sourceFile = node.getSourceFile(), { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  findings.push({
+    level: "error",
+    rule,
+    path: filePath,
+    detail: `${line + 1}:${character + 1} ${detail}`
+  });
+}
+function identifierText(node) {
+  return ts.isIdentifier(node) ? node.text : null;
+}
+function isEffectCompositionCatch(node) {
+  return ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "catch" && ["Effect", "Stream"].includes(identifierText(node.expression.expression) ?? "");
+}
+function isInsideEffectTryPromise(node) {
+  let parent = node.parent;
+  while (parent) {
+    if (ts.isCallExpression(parent) && ts.isPropertyAccessExpression(parent.expression) && identifierText(parent.expression.expression) === "Effect" && parent.expression.name.text === "tryPromise")
+      return !0;
+    parent = parent.parent;
+  }
+  return !1;
+}
+function scanEffectStandards(filePath) {
+  if (!filePath.endsWith(".ts") || filePath.endsWith(".d.ts"))
+    return;
+  let source = fs.readFileSync(filePath, "utf8"), sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, !0), relativePath = path3.relative(SRC_DIR, filePath), isRuntimeBoundary = runtimeBoundaryFiles.has(relativePath), visit = (node) => {
+    if (ts.canHaveModifiers(node)) {
+      if (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) && !isInsideEffectTryPromise(node))
+        addSourceFinding("effect-async-boundary", filePath, node, "Use Effect for controller async work");
+    }
+    if (!isRuntimeBoundary && ts.isTypeReferenceNode(node) && ["Promise", "PromiseLike"].includes(identifierText(node.typeName) ?? ""))
+      addSourceFinding("effect-promise-type", filePath, node, "Promise types are restricted to runtime adapters");
+    if (!isRuntimeBoundary && ts.isNewExpression(node) && identifierText(node.expression) === "Promise")
+      addSourceFinding("effect-promise-constructor", filePath, node, "Use Effect.async or Effect.callback");
+    if (ts.isIdentifier(node) && ["AsyncLock", "AsyncQueue"].includes(node.text))
+      addSourceFinding("effect-legacy-concurrency", filePath, node, "Use Effect concurrency primitives");
+    if (ts.isCallExpression(node)) {
+      if (ts.isPropertyAccessExpression(node.expression) && identifierText(node.expression.expression) === "ManagedRuntime" && node.expression.name.text === "make")
+        managedRuntimeCount += 1;
+      if (!isRuntimeBoundary && ts.isPropertyAccessExpression(node.expression) && ["runPromise", "runPromiseExit", "runSync", "runFork"].includes(node.expression.name.text) && (identifierText(node.expression.expression) === "Effect" || /runtime/i.test(node.expression.expression.getText(sourceFile))))
+        addSourceFinding("effect-runner-boundary", filePath, node, "Effect runners are restricted to runtime adapters");
+      if (!isRuntimeBoundary && ts.isPropertyAccessExpression(node.expression) && ["then", "finally"].includes(node.expression.name.text))
+        addSourceFinding("effect-promise-chain", filePath, node, "Use Effect composition");
+      if (!isRuntimeBoundary && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "catch" && !isEffectCompositionCatch(node))
+        addSourceFinding("effect-promise-catch", filePath, node, "Use Effect.catch or Effect.catchTag");
+      if (!isRuntimeBoundary && ts.isPropertyAccessExpression(node.expression) && identifierText(node.expression.expression) === "Promise")
+        addSourceFinding("effect-promise-static", filePath, node, "Use Effect concurrency and coordination APIs");
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+}
+function scanDirectory(dir) {
+  let entries2 = fs.readdirSync(dir, { withFileTypes: !0 }), directFiles = entries2.filter((entry) => entry.isFile()), directDirectories = entries2.filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !STRUCTURE_COUNT_EXCLUDED_DIRS.has(entry.name));
+  if (stats.directories += 1, stats.files += directFiles.length, directFiles.length > MAX_FILES_PER_DIR)
+    findings.push({
+      level: "error",
+      rule: "directory-file-limit",
+      path: dir,
+      detail: `${directFiles.length} files (limit ${MAX_FILES_PER_DIR})`
+    });
+  if (dir !== modulesRoot && directDirectories.length > MAX_SUBDIRS_PER_DIR)
+    findings.push({
+      level: "error",
+      rule: "directory-subdir-limit",
+      path: dir,
+      detail: `${directDirectories.length} subdirectories (limit ${MAX_SUBDIRS_PER_DIR})`
+    });
+  for (let entry of entries2) {
+    let fullPath = path3.join(dir, entry.name);
+    if (entry.name.startsWith("."))
+      continue;
+    if (entry.isDirectory() && !kebabCase.test(entry.name))
+      findings.push({
+        level: "warning",
+        rule: "kebab-case",
+        path: fullPath,
+        detail: `Name "${entry.name}" is not kebab-case`
+      });
+    if (entry.isDirectory())
+      scanDirectory(fullPath);
+    else if (entry.isFile())
+      scanEffectStandards(fullPath);
+  }
+}
+function printSummary() {
+  let errors = findings.filter((f) => f.level === "error"), warnings = findings.filter((f) => f.level === "warning");
+  console.log("=== Controller Standards Audit ==="), console.log(`Directories scanned: ${stats.directories}`), console.log(`Direct file entries scanned: ${stats.files}`), console.log(`Errors: ${errors.length}`), console.log(`Warnings: ${warnings.length}`), console.log("");
+  let sortedFindings = findings.sort((a, b) => {
+    if (a.level !== b.level)
+      return a.level === "error" ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+  for (let finding of sortedFindings) {
+    let emoji = finding.level === "error" ? "[ERR]" : "[WARN]";
+    console.log(`${emoji} ${finding.rule} | ${finding.path}`), console.log(`      ${finding.detail}`);
+  }
+}
+function run() {
+  if (!fs.existsSync(SRC_DIR))
+    return console.error("ERROR: src directory not found"), 1;
+  if (scanDirectory(SRC_DIR), managedRuntimeCount !== 1)
+    findings.push({
+      level: "error",
+      rule: "effect-single-runtime",
+      path: SRC_DIR,
+      detail: `${managedRuntimeCount} ManagedRuntime.make calls (expected exactly 1)`
+    });
+  return printSummary(), findings.some((finding) => finding.level === "error") ? 1 : 0;
+}
+var require2, ts, SRC_DIR, MAX_FILES_PER_DIR, MAX_SUBDIRS_PER_DIR, STRUCTURE_COUNT_EXCLUDED_DIRS, findings, stats, modulesRoot, runtimeBoundaryFiles, managedRuntimeCount = 0, kebabCase;
+var init_controller_standards_audit = __esm(() => {
+  require2 = createRequire2(path3.resolve(process.cwd(), "package.json")), ts = require2("typescript"), SRC_DIR = path3.resolve(process.cwd(), "src"), MAX_FILES_PER_DIR = Number.parseInt(process.env.MAX_FILES_PER_DIR ?? "20", 10), MAX_SUBDIRS_PER_DIR = Number.parseInt(process.env.MAX_SUBDIRS_PER_DIR ?? "8", 10), STRUCTURE_COUNT_EXCLUDED_DIRS = new Set(["tests"]), findings = [], stats = {
+    directories: 0,
+    files: 0
+  }, modulesRoot = path3.join(SRC_DIR, "modules"), runtimeBoundaryFiles = new Set(["http/bounded-body.ts", "http/effect-handler.ts", "main.ts"]), kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
+  process.exit(run());
+});
+
+var exports_desktop_package_smoke = {};
+__export(exports_desktop_package_smoke, {
+  runDesktopPackageSmoke: () => runDesktopPackageSmoke
+});
+import { spawn as spawn2 } from "node:child_process";
+import {
+  existsSync as existsSync6,
+  mkdtempSync as mkdtempSync2,
+  mkdirSync as mkdirSync2,
+  readFileSync as readFileSync8,
+  rmSync as rmSync4,
+  writeFileSync as writeFileSync2
+} from "node:fs";
+import net from "node:net";
+import { createRequire as createRequire3 } from "node:module";
+import os from "node:os";
+import path4 from "node:path";
+import process2 from "node:process";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+function valueAfter2(args2, name) {
+  let index = args2.indexOf(name);
+  return index === -1 ? void 0 : args2[index + 1];
+}
+function delay(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
+}
+async function reservePort() {
+  let server = net.createServer();
+  await new Promise((resolve3, reject) => {
+    server.once("error", reject), server.listen(0, "127.0.0.1", resolve3);
+  });
+  let address = server.address(), port = typeof address === "object" && address ? address.port : 0;
+  if (await new Promise((resolve3, reject) => server.close((error) => error ? reject(error) : resolve3())), !port)
+    throw Error("Could not reserve a debugging port");
+  return port;
+}
+async function waitForFile(file2, timeoutMs) {
+  let started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (existsSync6(file2)) {
+      let value = readFileSync8(file2, "utf8").trim();
+      if (value)
+        return value;
+    }
+    await delay(200);
+  }
+  throw Error(`Timed out waiting for ${file2}`);
+}
+async function waitForJson(url, timeoutMs) {
+  let started = Date.now(), lastError;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      let response = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (response.ok)
+        return await response.json();
+      lastError = Error(`${url} returned ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(250);
+  }
+  throw Error(`Timed out waiting for ${url}: ${String(lastError)}`);
+}
+async function postJson(url, body2) {
+  let response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body2),
+    signal: AbortSignal.timeout(30000)
+  }), payload = await response.json();
+  if (!response.ok || payload.ok !== !0)
+    throw Error(`${url} failed: ${response.status} ${JSON.stringify(payload)}`);
+  return payload;
+}
+async function waitForAgentRuntime(logFile, timeoutMs) {
+  let started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (existsSync6(logFile)) {
+      let url = [
+        ...readFileSync8(logFile, "utf8").matchAll(/agent-runtime: (?:\[agent-runtime\] )?listening on (http:\/\/127\.0\.0\.1:\d+)/g)
+      ].at(-1)?.[1];
+      if (url) {
+        let payload = await waitForJson(`${url}/health`, 1e4);
+        return { url, payload };
+      }
+    }
+    await delay(250);
+  }
+  throw Error(`Timed out waiting for agent runtime in ${logFile}`);
+}
+async function waitForPage(browser, origin, timeoutMs) {
+  let started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    for (let context of browser.contexts())
+      for (let page of context.pages())
+        if (page.url().startsWith(origin))
+          return page;
+    await delay(200);
+  }
+  throw Error(`Timed out waiting for Electron page at ${origin}`);
+}
+async function smokeTerminal(page) {
+  return page.evaluate(async () => {
+    let bridge = globalThis.localStudioDesktop;
+    if (!bridge)
+      throw Error("Desktop bridge is unavailable");
+    let status = await bridge.terminal.status();
+    if (!status.available)
+      throw Error(status.reason || "PTY is unavailable");
+    let session = await bridge.terminal.open({
+      cwd: "/tmp",
+      cols: 80,
+      rows: 24,
+      ownerKey: "desktop-package-smoke"
+    });
+    return new Promise((resolve3, reject) => {
+      let output2 = session.replay || "", timer = setTimeout(() => {
+        disposeData(), disposeExit(), reject(Error(`PTY smoke timed out: ${output2}`));
+      }, 1e4), finish = () => {
+        if (!output2.includes("LOCAL_STUDIO_PTY_OK"))
+          return;
+        clearTimeout(timer), disposeData(), disposeExit(), resolve3({ available: !0, output: "LOCAL_STUDIO_PTY_OK" });
+      }, disposeData = bridge.terminal.onData((id, chunk) => {
+        if (id !== session.id)
+          return;
+        output2 += chunk, finish();
+      }), disposeExit = bridge.terminal.onExit((id) => {
+        if (id !== session.id)
+          return;
