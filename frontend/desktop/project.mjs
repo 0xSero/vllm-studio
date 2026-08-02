@@ -398,3 +398,403 @@ function hardwareTarget(key, displayName, tested) {
   let { stem, memoryGb, count, unified } = parseHardwareKey(key), fallbackMemory = HARDWARE_STEMS[stem]?.defaultMemoryGb ?? 0;
   return {
     id: key,
+    label: displayName ?? key,
+    minMemoryGb: (memoryGb ?? fallbackMemory) * count,
+    gpuCount: count,
+    unifiedMemory: unified,
+    tested
+  };
+}
+function inferQuant(declared, hfRepo, engine) {
+  if (declared && declared !== "unknown") {
+    let normalized = declared.toLowerCase().replaceAll("-", "");
+    for (let [, kind] of QUANT_PATTERNS)
+      if (normalized === kind.replaceAll("-", ""))
+        return kind;
+    for (let [pattern, kind] of QUANT_PATTERNS)
+      if (pattern.test(declared))
+        return kind;
+  }
+  for (let [pattern, kind] of QUANT_PATTERNS)
+    if (pattern.test(hfRepo))
+      return kind;
+  if (engine === "mlx")
+    return "mlx";
+  if (engine === "llamacpp")
+    return "gguf";
+  return "bf16";
+}
+function runArgv(run) {
+  let serve = run.inferenceEngineConfig?.runnable_serve?.serve_argv;
+  if (Array.isArray(serve) && serve.length > 0)
+    return { argv: serve, complete: !0 };
+  let recipe = run.inferenceEngineConfig?.recipe_args;
+  if (Array.isArray(recipe) && recipe.length > 0)
+    return { argv: recipe, complete: !1 };
+  return { argv: [], complete: !1 };
+}
+function withoutFlag(argv, flag) {
+  let output = [];
+  for (let index = 0;index < argv.length; index += 1) {
+    if (argv[index] === flag) {
+      index += 1;
+      continue;
+    }
+    output.push(argv[index]);
+  }
+  return output;
+}
+function shellToken(token) {
+  return /^[A-Za-z0-9@%_+=:,./-]+$/.test(token) ? token : `'${token.replaceAll("'", "'\\''")}'`;
+}
+function commandFor(engine, hfRepo, run) {
+  let { argv: rawArgv } = runArgv(run), argv = rawArgv.map(shellToken);
+  switch (engine) {
+    case "vllm": {
+      let rest = withoutFlag(argv, "--model").join(" ");
+      return `vllm serve ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
+    }
+    case "sglang": {
+      let rest = withoutFlag(withoutFlag(argv, "--model-path"), "--model").join(" ");
+      return `python -m sglang.launch_server --model-path ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
+    }
+    case "llamacpp": {
+      let rest = withoutFlag(withoutFlag(argv, "-m"), "--model").join(" ");
+      return `llama-server -m ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
+    }
+    case "mlx": {
+      let rest = withoutFlag(argv, "--model").join(" ");
+      return `mlx_lm.server --model ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
+    }
+    default:
+      return null;
+  }
+}
+function qualityOf(evalRuns) {
+  let best = new Map;
+  for (let run of evalRuns ?? []) {
+    if (!EVAL_FAMILIES.includes(run.evalFamily))
+      continue;
+    if (typeof run.meanTaskScore !== "number")
+      continue;
+    let current = best.get(run.evalFamily);
+    if (current === void 0 || run.meanTaskScore > current)
+      best.set(run.evalFamily, run.meanTaskScore);
+  }
+  if (best.size === 0)
+    return null;
+  return [...best.values()].reduce((sum, value) => sum + value, 0) / best.size;
+}
+function estimateSizeGb(paramsB, quant) {
+  if (!paramsB)
+    return null;
+  let perParam = BYTES_PER_PARAM[quant] ?? 1;
+  return Math.round(paramsB * perParam * 1.08);
+}
+async function hfRepoSizeGb(hfRepo) {
+  try {
+    let response = await fetch(`https://huggingface.co/api/models/${hfRepo}?blobs=true`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok)
+      return null;
+    let bytes = ((await response.json()).siblings ?? []).filter((sibling) => WEIGHT_FILE.test(sibling.rfilename ?? "")).reduce((sum, sibling) => sum + (sibling.size ?? 0), 0);
+    return bytes > 0 ? bytes / 1073741824 : null;
+  } catch {
+    return null;
+  }
+}
+function paramsFromName(name) {
+  let match = /(\d+(?:\.\d+)?)\s*B/i.exec(name ?? "");
+  return match ? Number(match[1]) : null;
+}
+var CONVEX_URL, DISK_SIZES_PATH, OUT_PATH, DETAIL_CONCURRENCY = 8, HARDWARE_STEMS, QUANT_PATTERNS, median = (values) => {
+  if (values.length === 0)
+    return null;
+  let sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}, decodeAt = (points, contextTokens) => median((points ?? []).filter((point) => typeof point.generationTps === "number" && (point.completionTokens ?? 0) >= 8 && Math.abs(point.promptTokens - contextTokens) <= contextTokens * 0.5).map((point) => point.generationTps)), runSpeeds = (run) => {
+  let points = run.points ?? [], maxContext = null, prefillSamples = [];
+  for (let point of points) {
+    if (typeof point.promptTokens === "number")
+      maxContext = Math.max(maxContext ?? 0, point.promptTokens);
+    if ((point.cachedPromptTokens ?? 0) === 0 && typeof point.promptTps === "number" && point.promptTokens >= 2048)
+      prefillSamples.push(point.promptTps);
+  }
+  return {
+    decode8k: decodeAt(points, 8192),
+    decode32k: decodeAt(points, 32768),
+    prefill: median(prefillSamples),
+    maxContext
+  };
+}, decodeOf = (run) => {
+  let speeds = runSpeeds(run);
+  return speeds.decode8k ?? speeds.decode32k;
+}, EVAL_FAMILIES, BYTES_PER_PARAM, WEIGHT_FILE, snapshot, models, hardwareRows, hardwareNames, diskSizes, sizeByRepo, withRuns, details, entries, ranked, scored, layers, pool, unscored, output, file, body, measured;
+var init_build_model_recommendations = __esm(async () => {
+  CONVEX_URL = process.env.LOCALAI_CONVEX_URL ?? "https://small-spoonbill-302.convex.cloud", DISK_SIZES_PATH = process.env.LOCALAI_DISK_SIZES ?? join3(homedir(), "ai/local-ai-web/public/data/v1/model-disk-sizes.json"), OUT_PATH = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : "shared/model-recommendations.json";
+  HARDWARE_STEMS = {
+    gb10: { unified: !0, defaultMemoryGb: 121 },
+    gb300: { unified: !0, defaultMemoryGb: 288 },
+    rtxpro6000: { unified: !1 },
+    rtx6000ada: { unified: !1 },
+    rtx5090: { unified: !1 },
+    rtx4090: { unified: !1 }
+  };
+  QUANT_PATTERNS = [
+    [/nvfp4/i, "nvfp4"],
+    [/fp8/i, "fp8"],
+    [/awq/i, "awq"],
+    [/gptq/i, "gptq"],
+    [/gguf|q[2-8]_[a-z0-9_]+|iq[1-4]/i, "gguf"],
+    [/exl3/i, "exl3"],
+    [/mlx|[-_](\d)bit/i, "mlx"],
+    [/mixed/i, "mixed-bit"],
+    [/bf16|fp16/i, "bf16"]
+  ];
+  EVAL_FAMILIES = ["tau2", "gaia", "gdpval"];
+  BYTES_PER_PARAM = {
+    bf16: 2,
+    fp8: 1.05,
+    nvfp4: 0.58,
+    awq: 0.6,
+    gptq: 0.6,
+    gguf: 0.65,
+    exl3: 0.55,
+    mlx: 0.6,
+    "mixed-bit": 0.7
+  };
+  WEIGHT_FILE = /\.(safetensors|gguf|bin|pt|npz)$/;
+  snapshot = await convexQuery("pgCatalog:snapshot", {}), models = snapshot.models ?? [], hardwareRows = snapshot.hardware ?? [];
+  console.log(`snapshot: publication=${snapshot.publicationId} models=${models.length} hardware=${hardwareRows.length}`);
+  hardwareNames = new Map(hardwareRows.map((row) => [row.hardwareKey, row.displayName])), diskSizes = [];
+  try {
+    let parsed = JSON.parse(readFileSync4(DISK_SIZES_PATH, "utf8"));
+    diskSizes = Array.isArray(parsed) ? parsed : parsed.sizes ?? [];
+  } catch {
+    console.warn(`disk sizes not found at ${DISK_SIZES_PATH}; sizes will be estimated`);
+  }
+  sizeByRepo = new Map;
+  for (let entry of diskSizes) {
+    let key = (entry.hfRepo ?? entry.modelId ?? "").toLowerCase();
+    if (key && entry.diskBytes > 0)
+      sizeByRepo.set(key, entry.diskBytes / 1073741824);
+  }
+  withRuns = models.filter((model) => (model.speedSweepCount ?? 0) > 0);
+  console.log(`models with speed runs: ${withRuns.length}`);
+  details = new Map;
+  for (let index = 0;index < withRuns.length; index += DETAIL_CONCURRENCY) {
+    let batch = withRuns.slice(index, index + DETAIL_CONCURRENCY), resolved = await Promise.all(batch.map(async (model) => {
+      try {
+        return [model, await convexQuery("pgCatalog:modelDetail", { routeSlug: model.routeSlug })];
+      } catch (error) {
+        return console.warn(`detail failed for ${model.routeSlug}: ${error.message}`), [model, null];
+      }
+    }));
+    for (let [model, detail] of resolved)
+      if (detail)
+        details.set(model.routeSlug, detail);
+    process.stdout.write(`\rdetails: ${Math.min(index + DETAIL_CONCURRENCY, withRuns.length)}/${withRuns.length}`);
+  }
+  console.log();
+  entries = new Map;
+  for (let model of withRuns) {
+    let detail = details.get(model.routeSlug);
+    if (!detail)
+      continue;
+    let speedRuns = detail.speedRuns ?? [];
+    if (speedRuns.length === 0)
+      continue;
+    let hfRepo = model.hfRepo ?? model.modelId;
+    if (!hfRepo || !hfRepo.includes("/"))
+      continue;
+    let bestByEngineHardware = new Map;
+    for (let run of speedRuns) {
+      let engine = run.inferenceEngine;
+      if (!engine)
+        continue;
+      let key = `${engine} ${run.hardwareKey}`, current = bestByEngineHardware.get(key), currentSingle = current ? (current.concurrency ?? 1) === 1 : !1, runSingle = (run.concurrency ?? 1) === 1;
+      if (!current || runSingle && !currentSingle || runSingle === currentSingle && (decodeOf(run) ?? 0) > (decodeOf(current) ?? 0))
+        bestByEngineHardware.set(key, run);
+    }
+    let commands = {}, testedHardware = new Map, benchmarks = [], bestDecode = null, bestPrefill = null;
+    for (let [key, run] of bestByEngineHardware) {
+      let [engine, hardwareKey] = key.split(" ");
+      testedHardware.set(hardwareKey, hardwareTarget(hardwareKey, hardwareNames.get(hardwareKey), !0));
+      let speeds = runSpeeds(run), decode = speeds.decode8k ?? speeds.decode32k;
+      if (decode !== null && (bestDecode === null || decode > bestDecode))
+        bestDecode = decode;
+      if (speeds.prefill !== null && (bestPrefill === null || speeds.prefill > bestPrefill))
+        bestPrefill = speeds.prefill;
+      benchmarks.push({
+        hardwareId: hardwareKey,
+        engine,
+        decodeTps: decode === null ? null : Math.round(decode * 10) / 10,
+        decodeTps32k: speeds.decode32k === null ? null : Math.round(speeds.decode32k * 10) / 10,
+        prefillTps: speeds.prefill === null ? null : Math.round(speeds.prefill * 10) / 10,
+        ttftMs: null,
+        contextTokens: speeds.maxContext,
+        measuredAt: run.points?.[0]?.createdAt?.slice(0, 10) ?? null,
+        notes: run.inferenceEngineVersion ? `${engine} ${run.inferenceEngineVersion}` : null
+      });
+      let { complete } = runArgv(run);
+      if (!commands[engine] || complete) {
+        let command = commandFor(engine, hfRepo, run);
+        if (command)
+          commands[engine] = command;
+      }
+    }
+    let quant = inferQuant(model.quantization, hfRepo, benchmarks[0]?.engine ?? null), measuredSize = sizeByRepo.get(hfRepo.toLowerCase()) ?? sizeByRepo.get((model.modelId ?? "").toLowerCase()) ?? await hfRepoSizeGb(hfRepo), paramsB = paramsFromName(model.displayName ?? hfRepo), sizeGb = measuredSize ?? estimateSizeGb(paramsB, quant);
+    if (!sizeGb)
+      continue;
+    let quality = qualityOf(detail.evalRuns);
+    entries.set(hfRepo, {
+      name: model.displayName ?? hfRepo.split("/").pop(),
+      quant,
+      filesize: `${Math.round(sizeGb)}gb`,
+      filesizeGb: Math.round(sizeGb * 10) / 10,
+      hardware: [...testedHardware.values()].sort((a, b) => a.minMemoryGb - b.minMemoryGb),
+      commands,
+      rank: 0,
+      benchmarks: benchmarks.sort((a, b) => (b.decodeTps ?? 0) - (a.decodeTps ?? 0)),
+      expectSpeed: {
+        decodeTps: bestDecode === null ? null : Math.round(bestDecode * 10) / 10,
+        prefillTps: bestPrefill === null ? null : Math.round(bestPrefill * 10) / 10,
+        source: "measured"
+      },
+      params: paramsFromName(model.displayName ?? hfRepo) ? (model.displayName ?? hfRepo).match(/(\d+(?:\.\d+)?B(?:-A\d+(?:\.\d+)?B)?)/)?.[1] ?? null : null,
+      notes: [],
+      _quality: quality,
+      _sizeEstimated: !measuredSize
+    });
+  }
+  ranked = [...entries.values()], scored = ranked.filter((entry) => entry._quality !== null && entry.expectSpeed.decodeTps !== null), layers = [], pool = [...scored];
+  while (pool.length > 0) {
+    let layer = pool.filter((candidate) => !pool.some((other) => other !== candidate && other.expectSpeed.decodeTps >= candidate.expectSpeed.decodeTps && other._quality >= candidate._quality && (other.expectSpeed.decodeTps > candidate.expectSpeed.decodeTps || other._quality > candidate._quality)));
+    layers.push(layer), pool = pool.filter((entry) => !layer.includes(entry));
+  }
+  layers.forEach((layer, index) => {
+    for (let entry of layer)
+      entry.rank = index + 1;
+  });
+  unscored = ranked.filter((entry) => !scored.includes(entry)).sort((a, b) => (b.expectSpeed.decodeTps ?? 0) - (a.expectSpeed.decodeTps ?? 0));
+  unscored.forEach((entry) => {
+    entry.rank = layers.length + 1;
+  });
+  output = {};
+  for (let [hfRepo, entry] of [...entries.entries()].sort((a, b) => a[1].rank - b[1].rank)) {
+    let { _quality, _sizeEstimated, ...clean } = entry;
+    if (_quality !== null)
+      clean.notes = [...clean.notes, `quality ${Math.round(_quality * 1000) / 10}% (tau2/gaia/gdpval mean)`];
+    if (_sizeEstimated)
+      clean.notes = [...clean.notes, "size estimated from parameter count"];
+    output[hfRepo] = clean;
+  }
+  file = {
+    version: 1,
+    updated: (new Date()).toISOString().slice(0, 10),
+    source: `local.ai publication ${snapshot.publicationId}`,
+    models: output
+  }, body = Object.entries(output).map(([key, value]) => `    ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(`,
+`);
+  writeFileSync(OUT_PATH, `{
+  "version": ${file.version},
+  "updated": ${JSON.stringify(file.updated)},
+  "source": ${JSON.stringify(file.source)},
+  "models": {
+${body}
+  }
+}
+`);
+  console.log(`wrote ${Object.keys(output).length} entries -> ${OUT_PATH}`);
+  measured = [...entries.values()].filter((entry) => !entry._sizeEstimated).length;
+  console.log(`sizes: ${measured} measured, ${entries.size - measured} estimated`);
+});
+
+var exports_bundle = {};
+import {
+  cpSync,
+  existsSync as existsSync4,
+  readdirSync as readdirSync3,
+  mkdirSync,
+  readFileSync as readFileSync5,
+  realpathSync as realpathSync2,
+  rmSync as rmSync2
+} from "node:fs";
+import path2 from "node:path";
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var packageDir, distDir, bundlePath, runtimePackages, build, lydellDir, bundle, sourceRoot;
+var init_bundle = __esm(() => {
+  packageDir = path2.resolve(path2.dirname(fileURLToPath2(import.meta.url)), "../../services/agent-runtime"), distDir = path2.join(packageDir, "dist"), bundlePath = path2.join(distDir, "standalone.mjs"), runtimePackages = [
+    "playwright-core",
+    "chromium-bidi",
+    "mitt",
+    "devtools-protocol",
+    "@silvia-odwyer/photon-node",
+    "undici",
+    "@lydell/node-pty"
+  ];
+  rmSync2(distDir, { recursive: !0, force: !0 });
+  mkdirSync(distDir, { recursive: !0 });
+  build = spawnSync2("bun", [
+    "build",
+    "src/server.ts",
+    "--target=node",
+    "--external",
+    "fsevents",
+    "--external",
+    "playwright-core",
+    "--external",
+    "@silvia-odwyer/photon-node",
+    "--external",
+    "undici",
+    "--outfile=dist/standalone.mjs"
+  ], { cwd: packageDir, stdio: "inherit" });
+  if (build.status !== 0)
+    throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
+  lydellDir = path2.join(packageDir, "node_modules", "@lydell");
+  if (existsSync4(lydellDir)) {
+    for (let entry of readdirSync3(lydellDir))
+      if (entry.startsWith("node-pty-"))
+        runtimePackages.push(`@lydell/${entry}`);
+  }
+  for (let packageName of runtimePackages) {
+    let segments = packageName.split("/"), source = path2.join(packageDir, "node_modules", ...segments), destination = path2.join(distDir, "node_modules", ...segments);
+    if (!existsSync4(path2.join(source, "package.json")))
+      throw Error(`Missing browser runtime package: ${packageName}`);
+    mkdirSync(path2.dirname(destination), { recursive: !0 }), cpSync(source, destination, { recursive: !0 });
+  }
+  bundle = readFileSync5(bundlePath, "utf8"), sourceRoot = realpathSync2(path2.join(packageDir, "..", ".."));
+  if (bundle.includes(sourceRoot))
+    throw Error(`Agent runtime bundle contains the build-machine root: ${sourceRoot}`);
+  console.log(`Packaged portable browser runtime: ${runtimePackages.join(", ")}`);
+});
+
+var exports_check_conventional_commits = {};
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { readFileSync as readFileSync6 } from "node:fs";
+var allowedTypes, ignoredSubjects, args, messageFileIndex, rangeIndex, fail = (message) => {
+  console.error(message), process.exitCode = 1;
+}, validateSubject = (subject, label) => {
+  if (!subject.trim()) {
+    fail(`${label}: empty commit subject`);
+    return;
+  }
+  if (ignoredSubjects.some((pattern) => pattern.test(subject)))
+    return;
+  let match = /^(?<type>[a-z]+)(?:\([a-z0-9._/-]+\))?(?<breaking>!)?: (?<summary>.+)$/.exec(subject);
+  if (!match?.groups) {
+    fail(`${label}: "${subject}" must follow "type(scope): summary"`);
+    return;
+  }
+  let { type, summary } = match.groups;
+  if (!allowedTypes.has(type))
+    fail(`${label}: "${type}" is not an allowed commit type`);
+  if (summary.length < 8)
+    fail(`${label}: summary must be at least 8 characters`);
+  if (/^[A-Z]/.test(summary))
+    fail(`${label}: summary should start lowercase`);
+  if (/[.]$/.test(summary))
+    fail(`${label}: summary should not end with a period`);
+};
+var init_check_conventional_commits = __esm(() => {
+  allowedTypes = new Set([
