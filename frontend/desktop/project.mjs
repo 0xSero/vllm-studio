@@ -1998,3 +1998,403 @@ __export(exports_stage_desktop_release, {
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  existsSync as existsSync11,
+  mkdirSync as mkdirSync6,
+  readFileSync as readFileSync13,
+  rmSync as rmSync9,
+  writeFileSync as writeFileSync7
+} from "node:fs";
+import { createRequire as createRequire5 } from "node:module";
+import path10 from "node:path";
+import { fileURLToPath as fileURLToPath9 } from "node:url";
+function frontendVersion() {
+  let manifest = JSON.parse(readFileSync13(path10.join(frontend2, "package.json"), "utf8"));
+  if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version))
+    throw Error("frontend/package.json must contain a semantic version");
+  return manifest.version;
+}
+function valueAfter4(args3, name) {
+  let index = args3.indexOf(name);
+  return index === -1 ? void 0 : args3[index + 1];
+}
+function releaseAssetNames(version) {
+  let base = `Local Studio-${version}-arm64`;
+  return [
+    `${base}.dmg`,
+    `${base}.dmg.blockmap`,
+    `${base}-mac.zip`,
+    `${base}-mac.zip.blockmap`,
+    "latest-mac.yml"
+  ];
+}
+function requireAsset(name) {
+  let file2 = path10.join(output3, name);
+  if (!existsSync11(file2))
+    throw Error(`Missing desktop release asset: ${file2}`);
+  return file2;
+}
+function releaseAssetName(name) {
+  return name.replaceAll(" ", "-");
+}
+function sha256(file2) {
+  return createHash("sha256").update(readFileSync13(file2)).digest("hex");
+}
+function packagedMetadata() {
+  let archive = path10.join(output3, "mac-arm64", "Local Studio.app", "Contents", "Resources", "app.asar");
+  if (!existsSync11(archive))
+    throw Error(`Missing packaged app archive: ${archive}`);
+  let asar = require5(path10.join(frontend2, "node_modules", "@electron", "asar"));
+  return JSON.parse(asar.extractFile(archive, "package.json").toString("utf8"));
+}
+function stageDesktopRelease(args3 = process.argv.slice(2)) {
+  let version = valueAfter4(args3, "--version")?.trim() || frontendVersion(), commit = valueAfter4(args3, "--commit")?.trim().toLowerCase();
+  if (!/^\d+\.\d+\.\d+$/.test(version))
+    throw Error("--version must be a semantic version");
+  if (!commit || !/^[0-9a-f]{40}$/.test(commit))
+    throw Error("--commit must be a full Git commit SHA");
+  let metadata = packagedMetadata();
+  if (metadata.version !== version)
+    throw Error(`Packaged version ${metadata.version} does not match release ${version}`);
+  if (metadata.localStudioCommit !== commit)
+    throw Error(`Packaged commit ${String(metadata.localStudioCommit)} does not match release ${commit}`);
+  let names = releaseAssetNames(version), assets = names.map((name) => [
+    requireAsset(name),
+    path10.join(staging, releaseAssetName(name))
+  ]);
+  rmSync9(staging, { recursive: !0, force: !0 }), mkdirSync6(staging, { recursive: !0 });
+  for (let [source, destination] of assets)
+    copyFileSync(source, destination);
+  copyFileSync(requireAsset(`Local Studio-${version}-arm64.dmg`), path10.join(staging, "Local-Studio-arm64.dmg"));
+  let stagedNames = [
+    ...names.map(releaseAssetName),
+    "Local-Studio-arm64.dmg"
+  ], manifest = {
+    schemaVersion: 1,
+    version,
+    commit,
+    assets: Object.fromEntries(stagedNames.map((name) => [
+      name,
+      { sha256: sha256(path10.join(staging, name)) }
+    ]))
+  };
+  return writeFileSync7(path10.join(staging, "Local-Studio-release.json"), `${JSON.stringify(manifest, null, 2)}
+`), console.log(`Staged ${stagedNames.length + 1} Local Studio ${version} assets in ${staging}`), manifest;
+}
+var root2, frontend2, output3, staging, require5;
+var init_stage_desktop_release = __esm(() => {
+  root2 = path10.resolve(path10.dirname(fileURLToPath9(import.meta.url)), "../.."), frontend2 = path10.join(root2, "frontend"), output3 = path10.join(frontend2, "dist-desktop"), staging = path10.join(root2, "release-staging"), require5 = createRequire5(import.meta.url);
+  stageDesktopRelease();
+});
+
+var exports_start_standalone = {};
+import { cpSync as cpSync3, existsSync as existsSync12, mkdirSync as mkdirSync7 } from "node:fs";
+import { spawn as spawn3 } from "node:child_process";
+import { dirname as dirname3, resolve as resolve4 } from "node:path";
+import { fileURLToPath as fileURLToPath10 } from "node:url";
+function copyDirectory(from, to) {
+  mkdirSync7(to, { recursive: !0 }), cpSync3(from, to, { recursive: !0 });
+}
+async function runtimeHealthy() {
+  try {
+    let response = await fetch(`${runtimeUrl}/health`, { signal: AbortSignal.timeout(1000) });
+    if (!response.ok)
+      return !1;
+    return (await response.json()).service === "local-studio-agent-runtime";
+  } catch {
+    return !1;
+  }
+}
+async function waitForRuntime(child) {
+  for (let attempt = 0;attempt < 150; attempt += 1) {
+    if (child.exitCode !== null)
+      throw Error(`Agent runtime exited with code ${child.exitCode}`);
+    if (await runtimeHealthy())
+      return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  throw Error(`Timed out waiting for agent runtime: ${runtimeUrl}`);
+}
+async function startRuntime() {
+  if (await runtimeHealthy())
+    return null;
+  let url = new URL(runtimeUrl);
+  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost")
+    throw Error(`Agent runtime is unavailable: ${runtimeUrl}`);
+  let entry = resolve4(projectRoot3, "..", "services", "agent-runtime", "dist", "standalone.mjs");
+  if (!existsSync12(entry))
+    throw Error(`Missing agent runtime bundle: ${entry}`);
+  let child = spawn3(process.execPath, [entry], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PORT: url.port || "8081",
+      LOCAL_STUDIO_FRONTEND_BASE: `http://127.0.0.1:${port}`
+    }
+  });
+  try {
+    return await waitForRuntime(child), child;
+  } catch (error) {
+    if (child.exitCode === null)
+      child.kill("SIGTERM");
+    throw error;
+  }
+}
+function stopOwnedRuntime() {
+  if (agentRuntime?.exitCode === null)
+    agentRuntime.kill("SIGTERM");
+}
+var projectRoot3, standaloneRoot2, nestedRoot, serverRoot, rawPort, port, runtimeUrl, agentRuntime, server, runtimeExitCode = 0;
+var init_start_standalone = __esm(async () => {
+  projectRoot3 = resolve4(dirname3(fileURLToPath10(import.meta.url)), ".."), standaloneRoot2 = resolve4(projectRoot3, ".next", "standalone"), nestedRoot = resolve4(standaloneRoot2, "frontend"), serverRoot = existsSync12(nestedRoot) ? nestedRoot : standaloneRoot2, rawPort = process.env.PORT || "4783", port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535)
+    throw Error("PORT must be an integer from 1024 through 65535");
+  runtimeUrl = (process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
+  if (!existsSync12(standaloneRoot2))
+    throw Error('Missing ".next/standalone". Run "npm run build" first.');
+  copyDirectory(resolve4(projectRoot3, "public"), resolve4(serverRoot, "public"));
+  copyDirectory(resolve4(projectRoot3, ".next", "static"), resolve4(serverRoot, ".next", "static"));
+  agentRuntime = await startRuntime(), server = spawn3(process.execPath, ["server.js"], {
+    cwd: serverRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      HOSTNAME: process.env.HOSTNAME || "127.0.0.1",
+      PORT: String(port),
+      LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || resolve4(projectRoot3, ".."),
+      LOCAL_STUDIO_AGENT_RUNTIME_URL: runtimeUrl
+    }
+  });
+  console.log(`Local Studio: http://127.0.0.1:${port}`);
+  server.on("exit", (code) => {
+    stopOwnedRuntime(), process.exit(runtimeExitCode || code || 0);
+  });
+  agentRuntime?.on("exit", (code) => {
+    if (runtimeExitCode = code || 1, server.exitCode === null)
+      server.kill("SIGTERM");
+  });
+  process.on("SIGINT", () => server.kill("SIGINT"));
+  process.on("SIGTERM", () => server.kill("SIGTERM"));
+});
+
+var exports_validate_shared_contracts = {};
+import { readFileSync as readFileSync14, readdirSync as readdirSync7 } from "node:fs";
+import { join as join4, relative as relative4, resolve as resolve5 } from "node:path";
+function walk(dir) {
+  for (let entry of readdirSync7(dir, { withFileTypes: !0 })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules")
+      continue;
+    let full = join4(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
+    if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name))
+      inspect(full);
+  }
+}
+function inspect(filePath) {
+  let rel = relative4(root3, filePath).replaceAll("\\", "/"), source = readFileSync14(filePath, "utf8");
+  collectExportedDeclarations(rel, source);
+  for (let name of contractNames)
+    if (new RegExp(`export\\s+(interface|type)\\s+${name}\\b`).test(source) && !allowedFiles.has(rel))
+      findings2.push(`${rel}: ${name}`);
+}
+function collectExportedDeclarations(rel, source) {
+  let declaration = /\bexport\s+(?:declare\s+)?(?:type|interface)\s+([A-Za-z0-9_]+)/g;
+  for (let match of source.matchAll(declaration)) {
+    let name = match[1];
+    if (!exportedDeclarations.has(name))
+      exportedDeclarations.set(name, []);
+    exportedDeclarations.get(name).push(rel);
+  }
+}
+var root3, contractNames, allowedFiles, scanRoots, findings2, exportedDeclarations, duplicateDeclarations;
+var init_validate_shared_contracts = __esm(() => {
+  root3 = resolve5(import.meta.dirname, "../.."), contractNames = [
+    "Backend",
+    "ServeRuntimeKind",
+    "ServeRuntime",
+    "Serve",
+    "ServePayload",
+    "RecipeBase",
+    "RecipePayload",
+    "DownloadStatus",
+    "DownloadFileStatus",
+    "DownloadFileInfo",
+    "ModelDownload",
+    "StorageInfo",
+    "ModelInfo",
+    "ServiceInfo",
+    "SystemConfig",
+    "EnvironmentInfo",
+    "Environment",
+    "EnvironmentEngineId",
+    "RuntimeBackendInfo",
+    "EngineBackend",
+    "RuntimeKind",
+    "RuntimeTarget",
+    "EngineJob",
+    "RuntimePlatformKind",
+    "RuntimeRocmSmiTool",
+    "RuntimeGpuMonitoringTool",
+    "RuntimeCudaInfo",
+    "RuntimeRocmInfo",
+    "RuntimeTorchBuildInfo",
+    "RuntimePlatformInfo",
+    "RuntimeGpuMonitoringInfo",
+    "RuntimeGpuInfoSummary",
+    "CompatibilitySeverity",
+    "CompatibilityCheck",
+    "SystemRuntimeInfo",
+    "CompatibilityReport",
+    "ConfigData",
+    "RuntimeUpgradeResult",
+    "ControllerEventType",
+    "ControllerStreamEventType",
+    "ControllerEventDomain",
+    "ControllerBrowserEventChannel",
+    "GPU",
+    "Metrics",
+    "VRAMCalculation",
+    "PeakMetrics",
+    "ProcessInfo",
+    "LogSession",
+    "StudioSettings",
+    "StudioDiagnostics",
+    "ControllerUsageStats",
+    "UsageStats",
+    "RigHardwareType",
+    "RigNodeRole",
+    "RigNodeSource",
+    "RigAccelerator",
+    "RigNode",
+    "Rig",
+    "RigsPayload"
+  ], allowedFiles = new Set([
+    "controller/contracts/recipes.ts",
+    "controller/contracts/system.ts",
+    "controller/contracts/controller-events.ts",
+    "controller/contracts/observability.ts",
+    "controller/contracts/usage.ts",
+    "controller/contracts/rigs.ts",
+    "controller/src/modules/shared/recipe-types.ts",
+    "controller/src/modules/shared/system-types.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/controller-events-contract.ts"
+  ]), scanRoots = ["shared", "controller/contracts", "controller/src", "frontend/src"], findings2 = [], exportedDeclarations = new Map;
+  for (let scanRoot of scanRoots)
+    walk(join4(root3, scanRoot));
+  if (findings2.length > 0) {
+    console.error("Shared contract check failed. Move these declarations to controller/contracts:");
+    for (let finding of findings2)
+      console.error(`- ${finding}`);
+    process.exit(1);
+  }
+  duplicateDeclarations = [...exportedDeclarations.entries()].filter(([, files]) => files.length > 1).sort(([left], [right]) => left.localeCompare(right));
+  if (duplicateDeclarations.length > 0) {
+    console.error("Duplicate exported type/interface declarations found:");
+    for (let [name, files] of duplicateDeclarations) {
+      console.error(`- ${name}`);
+      for (let file2 of files)
+        console.error(`  ${file2}`);
+    }
+    console.error("Export one declaration and re-export aliases from compatibility barrels instead."), process.exit(1);
+  }
+  console.log("Shared contract check passed");
+});
+
+var exports_validate_package_json = {};
+import { readFileSync as readFileSync15 } from "node:fs";
+import { resolve as resolve6 } from "node:path";
+var pkgPath, pkg, required, requiredScripts, missing;
+var init_validate_package_json = __esm(() => {
+  pkgPath = resolve6(import.meta.dirname, "../package.json"), pkg = JSON.parse(readFileSync15(pkgPath, "utf8")), required = ["scripts", "devDependencies"], requiredScripts = ["dev", "build", "desktop:dist"], missing = [];
+  for (let key of required)
+    if (!pkg[key] || typeof pkg[key] !== "object")
+      missing.push(key);
+  for (let script of requiredScripts)
+    if (!pkg.scripts?.[script])
+      missing.push(`script:${script}`);
+  if (missing.length > 0)
+    console.error(`
+  package.json integrity check FAILED
+`), console.error(`  Missing: ${missing.join(", ")}`), console.error("  This file may have been accidentally stripped."), console.error(`  Run: git checkout -- frontend/package.json
+`), process.exit(1);
+  console.log("  package.json integrity check passed");
+});
+
+var exports_validate_barrel_dir_siblings = {};
+import { readdirSync as readdirSync8 } from "node:fs";
+import { join as join5, relative as relative5, resolve as resolve7 } from "node:path";
+function walk2(dir) {
+  let entries2 = readdirSync8(dir, { withFileTypes: !0 }), directoryNames = new Set(entries2.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+  for (let entry of entries2) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules")
+      continue;
+    let full = join5(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk2(full);
+      continue;
+    }
+    if (!entry.isFile())
+      continue;
+    let match = entry.name.match(/^(.+)\.tsx?$/);
+    if (!match || !directoryNames.has(match[1]))
+      continue;
+    let rel = relative5(root4, full);
+    if (siblingAllowlist.has(rel))
+      continue;
+    findings3.push(`${rel} sits next to directory ${relative5(root4, join5(dir, match[1]))}/`);
+  }
+}
+var root4, siblingAllowlist, scanRoots2, findings3;
+var init_validate_barrel_dir_siblings = __esm(() => {
+  root4 = resolve7(import.meta.dirname, "../.."), siblingAllowlist = new Set([]), scanRoots2 = ["frontend/src", "controller/src"], findings3 = [];
+  for (let scanRoot of scanRoots2)
+    walk2(join5(root4, scanRoot));
+  if (findings3.length > 0) {
+    console.error("Barrel/dir sibling check failed. Merge each file into its same-named directory (or flatten the directory):");
+    for (let finding of findings3)
+      console.error(`- ${finding}`);
+    process.exit(1);
+  }
+  console.log("Barrel/dir sibling check passed");
+});
+
+var exports_validate_ui_structure = {};
+import { readFileSync as readFileSync16, readdirSync as readdirSync9, statSync as statSync5 } from "node:fs";
+import { dirname as dirname4, join as join6, relative as relative6, resolve as resolve8, sep as sep3 } from "node:path";
+function isSharedLayerPath(rel) {
+  let top = rel.split(sep3)[0];
+  return top === "lib" || top === "hooks";
+}
+function resolveImportTarget(importerPath, specifier) {
+  let base;
+  if (specifier.startsWith("@/"))
+    base = join6(srcRoot, specifier.slice(2));
+  else if (specifier.startsWith("."))
+    base = resolve8(dirname4(importerPath), specifier);
+  else
+    return null;
+  for (let candidate of [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    join6(base, "index.ts"),
+    join6(base, "index.tsx")
+  ])
+    if (statSync5(candidate, { throwIfNoEntry: !1 })?.isFile())
+      return candidate;
+  return null;
+}
+function recordImportEdges(filePath, rel, source) {
+  for (let match of source.matchAll(/(?:\bfrom\s+|\bimport\s+|\bimport\s*\(\s*|\brequire\s*\(\s*)["']([^"']+)["']/g)) {
+    let target = resolveImportTarget(filePath, match[1]);
+    if (!target || target === filePath)
+      continue;
+    let targetRel = relative6(srcRoot, target);
+    if (targetRel.startsWith("..") || !isSharedLayerPath(targetRel))
+      continue;
+    let importers = sharedModuleImporters.get(targetRel);
+    if (!importers)
+      importers = new Set, sharedModuleImporters.set(targetRel, importers);
