@@ -3,6 +3,10 @@
 import { useCallback, useState } from "react";
 import { clearSessionGoal, updateSessionGoal } from "@/features/agent/runtime/api";
 
+export function canRunGoalCommand(piSessionId: string | null): piSessionId is string {
+  return Boolean(piSessionId);
+}
+
 /** Backs the `/goal` composer command.
  *
  * `revision` bumps on every successful mutation so the composer drawer's goal
@@ -17,7 +21,8 @@ export function useGoalCommand(piSessionId: string | null): {
 
   const goalAction = useCallback(
     async (args: string): Promise<string | null> => {
-      if (!piSessionId) return "Send a first message, then set a goal for this session.";
+      if (!canRunGoalCommand(piSessionId))
+        return "Send a first message, then set a goal for this session.";
       if (!args) return "Usage: /goal <objective> — or /goal pause · resume · clear";
       const verb = args.split(/\s+/)[0]?.toLowerCase() ?? "";
       try {
