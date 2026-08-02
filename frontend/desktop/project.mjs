@@ -1722,7 +1722,7 @@ var init_install_desktop_app_test = __esm(() => {
       cwd: repository,
       encoding: "utf8"
     }).trim().split(`
-`).filter((file2) => file2 && file2 !== "scripts/project.mjs"), violations3 = [];
+`).filter((file2) => file2 && file2 !== "scripts/project.mjs" && existsSync9(path8.join(repository, file2))), violations3 = [];
     for (let file2 of files) {
       let text = readFileSync11(path8.join(repository, file2), "utf8");
       if (/\.app\.(?:previous|prev|pre|backup)|(?:previous|backup)\.app/i.test(text))
