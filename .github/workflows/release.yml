@@ -40,21 +40,8 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install controller contract dependencies
-        working-directory: ./controller
-        run: bun install --frozen-lockfile
-
-      - name: Install shared contract dependencies
-        working-directory: ./shared
-        run: bun install --frozen-lockfile
-
-      - name: Install agent runtime dependencies
-        working-directory: ./services/agent-runtime
-        run: bun install --frozen-lockfile
-
-      - name: Install frontend dependencies
-        working-directory: ./frontend
-        run: npm ci --legacy-peer-deps
+      - name: Install repository dependencies
+        run: npm run setup
 
       - id: next-release
         name: Determine release version
