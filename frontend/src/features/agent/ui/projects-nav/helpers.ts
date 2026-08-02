@@ -89,8 +89,12 @@ export function relativeAge(value?: string | null): string {
   return `${Math.floor(days / 7)}w`;
 }
 
-export function visibleSessionAge(isRunning: boolean, value?: string | null): string {
-  return isRunning ? "" : relativeAge(value);
+export function visibleSessionAge(
+  isRunning: boolean,
+  value?: string | null,
+  completionActivity = false,
+): string {
+  return isRunning || completionActivity ? "" : relativeAge(value);
 }
 
 export function hrefWithOpenNonce(href: string): string {

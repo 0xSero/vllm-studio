@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { parseAgentTurnRequest } from "../../../shared/agent/agent-turn";
-import { planQueuedFollowUpMutation, takeQueuedFollowUp } from "../src/pi-runtime";
+import {
+  planQueuedFollowUpMutation,
+  restoreQueuedMessages,
+  takeQueuedFollowUp,
+} from "../src/pi-runtime";
 
 describe("takeQueuedFollowUp", () => {
   test("removes one exact queued message and preserves order", () => {
@@ -57,6 +61,24 @@ describe("planQueuedFollowUpMutation", () => {
       followUp: ["first", "new", "last"],
     });
   });
+});
+
+test("restores queued messages in delivery order", async () => {
+  const calls: string[] = [];
+  await restoreQueuedMessages(
+    {
+      steer: async (message) => void calls.push(`steer:${message}`),
+      followUp: async (message) => void calls.push(`follow:${message}`),
+    },
+    { steering: ["already steering"], followUp: ["first", "promote", "last"] },
+    { promoted: "promote", followUp: ["first", "last"] },
+  );
+  expect(calls).toEqual([
+    "steer:already steering",
+    "steer:promote",
+    "follow:first",
+    "follow:last",
+  ]);
 });
 
 describe("queued action contract", () => {

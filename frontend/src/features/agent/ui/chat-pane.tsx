@@ -76,7 +76,7 @@ import {
   useChatPaneRuntimeHandle,
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
-import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { canRunGoalCommand, useGoalCommand } from "@/features/agent/ui/use-goal-command";
 import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
 import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
@@ -599,7 +599,8 @@ export function ChatPane({
     (event: FormEvent) => {
       if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
-      if (invocation && commandRegistry.find(invocation.name, commandContext)) {
+      const commandCanRun = invocation?.name !== "goal" || canRunGoalCommand(activePiSessionId);
+      if (invocation && commandCanRun && commandRegistry.find(invocation.name, commandContext)) {
         event.preventDefault();
         void runCommandInvocation(invocation);
         return;
@@ -616,6 +617,7 @@ export function ChatPane({
     },
     [
       activeTab,
+      activePiSessionId,
       commandContext,
       commandRegistry,
       goalModeApi,

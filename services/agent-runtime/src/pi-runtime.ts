@@ -86,6 +86,22 @@ export function planQueuedFollowUpMutation(
   };
 }
 
+type QueueTransport = {
+  steer: (message: string, images?: AgentImageInput[]) => Promise<void>;
+  followUp: (message: string, images?: AgentImageInput[]) => Promise<void>;
+};
+
+export async function restoreQueuedMessages(
+  session: QueueTransport,
+  cleared: { steering: readonly string[]; followUp: readonly string[] },
+  mutation: { promoted: string | null; followUp: readonly string[] } | null,
+  images: AgentImageInput[] = [],
+): Promise<void> {
+  for (const queued of cleared.steering) await session.steer(queued);
+  if (mutation?.promoted) await session.steer(mutation.promoted, images);
+  for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
+}
+
 type DurableSessionManager = Pick<
   SessionManager,
   "appendCustomEntry" | "getCwd" | "getEntries" | "getSessionFile" | "getSessionId"
@@ -597,17 +613,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
               replacement,
             );
             if (!mutation) {
-              await Promise.all([
-                ...cleared.steering.map((queued) => session.steer(queued)),
-                ...cleared.followUp.map((queued) => session.followUp(queued)),
-              ]);
+              await restoreQueuedMessages(session, cleared, null);
               throw new Error("Queued follow-up is no longer pending.");
             }
-            await Promise.all([
-              ...cleared.steering.map((queued) => session.steer(queued)),
-              ...(mutation.promoted ? [session.steer(mutation.promoted, images)] : []),
-              ...mutation.followUp.map((queued) => session.followUp(queued)),
-            ]);
+            await restoreQueuedMessages(session, cleared, mutation, images);
           } finally {
             this.queueEventBufferDepth -= 1;
             if (this.queueEventBufferDepth === 0 && this.bufferedQueueEvent) {
