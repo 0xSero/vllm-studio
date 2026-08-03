@@ -12,9 +12,6 @@ import { writeClipboardText } from "@/lib/clipboard";
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
 
-// Directory references (`mockups/`, `ops/glm52-vision/`) carry no extension but end in
-// a slash; reveal them the same way. Branch-like names without a trailing slash stay
-// plain — `feat/some-branch` is not a path we can open.
 const DIRECTORY_REF_PATTERN = /^(?:~\/|\.{1,2}\/|\/)?[\w.-]+(?:\/[\w.-]+)*\/$/;
 
 function nodeToPlainText(node: ReactNode): string {
