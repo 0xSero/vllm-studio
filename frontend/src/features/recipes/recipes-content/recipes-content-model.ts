@@ -13,6 +13,7 @@ import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 import { DEFAULT_RECIPE } from "./default-recipe";
 import type { RecipesTableProps } from "./types";
 import { useRecipesDerived } from "./use-recipes-derived";
+import { isRecipeActive } from "./launch-reconciliation";
 
 export type RecipesContentTab = "picks" | "get" | "serves" | "downloads";
 
@@ -66,7 +67,7 @@ export function useRecipesContentModel() {
     });
   }, []);
 
-  const loadRecipes = useCallback(async () => {
+  const loadRecipes = useCallback(async (): Promise<RecipeWithStatus[]> => {
     try {
       const [recipesData, modelsData, runtimeData] = await Promise.all([
         api.getRecipes().catch(() => ({ recipes: [] as RecipeWithStatus[] })),
@@ -81,8 +82,10 @@ export function useRecipesContentModel() {
       setRunningRecipeId(running);
       setAvailableModels(modelsData.models || []);
       setRuntimeTargets(runtimeData.targets || []);
+      return recipesList;
     } catch (e) {
       console.error("Failed to load recipes:", e);
+      return [];
     }
   }, []);
 
@@ -182,7 +185,10 @@ export function useRecipesContentModel() {
         await api.launchRecipe(recipeId);
         await loadRecipes();
       } catch (e) {
-        alert("Failed to launch: " + (e as Error).message);
+        const reconciled = await loadRecipes();
+        if (!isRecipeActive(reconciled, recipeId)) {
+          alert("Failed to launch: " + (e as Error).message);
+        }
       } finally {
         setLaunching(false);
       }
