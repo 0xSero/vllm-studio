@@ -16,10 +16,10 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.80.8",
-    "@lydell/node-pty": "1.2.0-beta.12",
-    "@earendil-works/pi-coding-agent": "0.80.8",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
     "@hono/node-server": "^2.0.12",
+    "@lydell/node-pty": "1.2.0-beta.12",
     "@modelcontextprotocol/sdk": "1.30.0",
     "chromium-bidi": "0.12.0",
     "effect": "4.0.0-beta.90",
