@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DownloadFileInfo, ModelDownload } from "../types";
-import { findReusableDownload } from "./download-manager";
+import { findReusableDownload, normalizeDownloadTotalBytes } from "./download-manager";
 
 const file = (path: string): DownloadFileInfo => ({
   path,
@@ -49,5 +49,35 @@ describe("download reuse", () => {
       [file("model-Q1.gguf")],
     );
     expect(result).toBeNull();
+  });
+});
+
+describe("download totals", () => {
+  test("rejects a stale partial total smaller than downloaded bytes", () => {
+    const stale = download("stale", "canceled", [
+      { ...file("config.json"), size_bytes: 58, downloaded_bytes: 58, status: "completed" },
+      { ...file("model.safetensors"), size_bytes: null, downloaded_bytes: 12_000 },
+    ]);
+    stale.total_bytes = 58;
+    stale.downloaded_bytes = 12_058;
+
+    expect(normalizeDownloadTotalBytes(stale)).toBeNull();
+  });
+
+  test("sums a complete file manifest and preserves a credible stored total", () => {
+    const complete = download("complete", "completed", [
+      file("model-1.safetensors"),
+      file("model-2.safetensors"),
+    ]);
+    complete.downloaded_bytes = 200;
+    expect(normalizeDownloadTotalBytes(complete)).toBe(200);
+
+    const partial = download("partial", "downloading", [
+      file("config.json"),
+      { ...file("model.safetensors"), size_bytes: null },
+    ]);
+    partial.total_bytes = 1_000;
+    partial.downloaded_bytes = 100;
+    expect(normalizeDownloadTotalBytes(partial)).toBe(1_000);
   });
 });
