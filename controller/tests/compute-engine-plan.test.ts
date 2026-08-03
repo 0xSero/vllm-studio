@@ -216,7 +216,10 @@ describe("device translation", () => {
   });
 
   test("docker flags differ from process env", () => {
-    expect(dockerFlagsFor("cuda", devices).args).toEqual(["--gpus", "device=GPU-aaa,GPU-bbb"]);
+    expect(dockerFlagsFor("cuda", devices).args).toEqual([
+      "--gpus",
+      '"device=GPU-aaa,GPU-bbb"',
+    ]);
     expect(dockerFlagsFor("rocm", devices).args).toContain("/dev/kfd");
     expect(dockerFlagsFor("rocm", devices).groupAdd).toEqual(["video", "render"]);
   });
