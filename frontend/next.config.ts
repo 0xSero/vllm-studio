@@ -65,6 +65,7 @@ const nextConfig: NextConfig = {
       "./tsconfig*.json",
       "./tsconfig*.tsbuildinfo",
       "../controller/**/*",
+      "../data/**/*",
       "../scripts/**/*",
       "../services/**/*",
       "../shared/**/*",
