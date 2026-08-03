@@ -94,32 +94,35 @@ flowchart TB
 
 ## Quick start
 
-Prerequisites: Bun 1.x (controller), Node.js 22.19+ and npm (frontend),
-Python 3.10+ on `PATH` (`uv` strongly recommended; engine installs fall back to
-pip), Git. vLLM/SGLang serving on Linux needs NVIDIA driver + CUDA; Apple
-Silicon uses the MLX backend.
+Prerequisites: Bun 1.3.14+, Node.js 22.19+, npm 10+, Python 3.10+, and Git.
+`uv` is strongly recommended; engine installs fall back to pip. vLLM/SGLang
+serving on Linux needs NVIDIA driver + CUDA; Apple Silicon uses the MLX backend.
 
-Run the preflight check first (toolchain, ports, directories, network):
+Validate the toolchain, then install every locked workspace dependency from the
+repository root:
 
 ```bash
 npm run doctor
+npm run setup
 ```
 
 Start the controller (listens on `127.0.0.1:8080`, data dir + SQLite created
 automatically, model weights in `LOCAL_STUDIO_MODELS_DIR`, default `/models`):
 
 ```bash
-cd controller && bun install && bun src/main.ts
+npm run dev:controller
 ```
 
 Start the frontend in a second terminal, then open
 <http://localhost:3000/setup>:
 
 ```bash
-cd frontend && npm ci && npm run dev
+npm run dev
 ```
 
-`npm ci` runs a postinstall patch against `@earendil-works/pi-ai`. If that step
+`npm run setup` installs the controller, shared contracts, agent runtime, and
+frontend from their lockfiles. It also runs the postinstall patch against
+`@earendil-works/pi-ai`. If that step
 prints a warning, agent streaming may misrender. The setup wizard walks through
 choosing a models directory, installing an engine, downloading a model,
 launching it, and benchmarking. Engine installs (vLLM/SGLang/MLX) land in
@@ -163,10 +166,13 @@ surfaced in Configure; selections persist in the controller data directory.
 
 ## Production
 
-Build the frontend, then serve it with the standalone server:
+Build the frontend, then serve the controller and standalone frontend in separate
+terminals:
 
 ```bash
-cd frontend && npm run build && npm run start
+npm run build
+npm run start:controller
+npm run start
 ```
 
 `npm run start` launches the standalone server through `scripts/project.mjs`.

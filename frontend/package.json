@@ -52,7 +52,7 @@
     "@local-studio/agent-runtime": "file:../services/agent-runtime",
     "@local-studio/contracts": "file:../controller/contracts",
     "@lydell/node-pty": "1.2.0-beta.12",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-web-links": "0.13.0-beta.220",
     "@xterm/xterm": "6.1.0-beta.285",
@@ -119,6 +119,7 @@
     "protobufjs@7.6.4": true,
     "sharp@0.34.5": true,
     "unrs-resolver@1.11.1": true,
-    "@google/genai@1.52.0": true
+    "@google/genai@1.52.0": true,
+    "fsevents@2.3.2": true
   }
 }

@@ -1,109 +1,102 @@
 # The workflow
 
-One page. If something contradicts this file, this file wins.
+This file describes the repository workflow implemented by the tracked hooks and
+GitHub Actions files. GitHub branch-protection and merge settings live outside the
+repository and must be audited separately.
 
 ## Branches
 
-There are exactly three kinds of branch. Nothing else is allowed to exist for long.
-
-| Branch | Role | Who writes to it |
+| Branch | Role | Changes arrive through |
 |---|---|---|
-| `dev` | **Default branch.** Integration. Everything lands here first. | Merged PRs only — never a direct push |
-| `main` | **Release branch.** Every commit here is a shipped version. | Promotion PRs from `dev` only |
-| `<type>/<short-name>` | One PR's work. Deleted on merge. | One agent or person. Exactly one. |
+| `dev` | Integration branch | Pull requests from one-owner work branches |
+| `main` | Release branch and GitHub default | Promotion pull requests from `dev` |
+| `<type>/<short-name>` | One scoped change | One person or agent |
 
-**One branch, one owner, one PR.** The rule that fixes agents overwriting each other:
-two agents never share a branch. If two pieces of work are independent, they are two
-branches and two PRs. If they are not independent, they are one PR.
+Create work branches from `dev`. Keep one owner and one pull request per branch.
+Do not push directly to `dev` or `main`.
 
-Local hooks block commits made on `main` or `dev`, direct pushes to either branch,
-and staged commits larger than 15 files or 600 source lines. Lockfiles and snapshots
-do not count toward the line limit. Split larger work into independently valid
-microcommits before opening the PR.
+Local hooks block commits on `dev` and `main`, direct pushes to either branch, and
+staged commits larger than 15 files or 600 source lines. Lockfiles and generated
+snapshots do not count toward the line limit.
 
-## The loop
+## Delivery loop
 
-```
-   work branch ──PR──▶ dev ──promotion PR──▶ main
-        │               │                     │
-        │               ▼                     ▼
-        │        Local Studio Dev.app    Local Studio.app
-        │        (nightly, auto)         (release + DMG)
-        ▼
-   checks + model review
+```text
+work branch -> pull request -> dev -> promotion pull request -> main -> release
 ```
 
-1. Cut a branch from `dev`. Never from `main`.
-2. Push, open a PR into `dev`. The PR body lists its tasks; the PR is the unit of work.
-3. CI runs. A review agent reads the diff and leaves comments.
-4. Comments are addressed. Checks are green. Merge (squash). Branch auto-deletes.
-5. Nightly, `dev` builds and installs **Local Studio Dev.app**.
-6. When `dev` is good, open a promotion PR `dev → main`. That runs the full gate:
-   e2e, a signed DMG, and a launch test of the DMG itself.
-7. Merge to `main` → release: tag, GitHub Release, DMG attached.
+1. Create a branch from the current `origin/dev`.
+2. Make small conventional commits and push the branch.
+3. Open a pull request into `dev`.
+4. Merge only after every CI job passes and review feedback is resolved.
+5. Promote `dev` to `main` through a separate pull request.
+6. A successful CI run on the resulting `main` commit triggers Release.
+7. Release builds, signs, notarizes, verifies, and publishes the desktop assets.
 
-## Two apps. Only ever two.
+## Automation
 
-| App | Built from | Bundle id | User data |
-|---|---|---|---|
-| `Local Studio.app` | `main` | `org.local.studio.desktop` | `~/Library/Application Support/Local Studio` |
-| `Local Studio Dev.app` | `dev` | `org.local.studio.desktop.dev` | `…/Local Studio Dev` |
+There are three tracked workflows.
 
-The dev app **mirrors the stable app's state one way on every launch** — your real
-projects and sessions, refreshed each time you open it — and writes only to its own
-directory. A broken dev build cannot corrupt the app you rely on. Credentials and
-device identity are deliberately not mirrored (see `desktop/logic/dev-channel-mirror.ts`).
+| Workflow | Trigger | Responsibility |
+|---|---|---|
+| `CI` | Pull requests into `dev` or `main`, pushes to `main`, Sunday schedule | Code gates, tests, unsigned desktop smoke package, secret scanning, CodeQL, dependency review |
+| `Release` | Successful CI completion for a push to `main` | Version calculation, signed and notarized desktop assets, GitHub release |
+| `Maintenance` | Monday schedule, label changes on `main`, manual dispatch | Open or refresh the `dev` to `main` pull request and synchronize labels |
 
-Install either with `scripts/install-desktop-app.sh [stable|dev]`. It replaces in
-place, keeps exactly one compressed rollback per channel outside `/Applications`,
-ejects stale DMGs and stops orphaned servers. Run
-`scripts/install-desktop-app.sh --migrate-rollbacks` to archive and unregister old
-discoverable rollback bundles without reinstalling either app. Never hand-roll a
-backup copy — that is how `/Applications` accumulated duplicate bundles that all
-showed up as applications.
+Superseded CI and Release runs are cancelled. A stale release revision is rejected
+before signing or publishing.
 
 Repository automation has exactly three executable files:
 `scripts/project.mjs`, `scripts/install-controller.sh`, and
-`scripts/install-desktop-app.sh`. Package commands, CI, release jobs, Git hooks,
-and model operations dispatch through `project.mjs`. `npm run check:automation`
-fails if another executable or helper-script directory is added.
+`scripts/install-desktop-app.sh`. Package commands, workflows, Git hooks, and model
+operations dispatch through `project.mjs`. `npm run check:automation` rejects new
+executables and helper-script directories.
 
-## Gates
+## CI jobs
 
-Nothing merges without these. They are required status checks, not conventions.
+Every pull request into `dev` or `main` runs:
 
-**Into `dev`** — fast, every PR:
-`gates` · `controller` · `agent-runtime` · `frontend` · `desktop-package` ·
-`Secret Scanning (TruffleHog)` · `CodeQL Analysis` · `Dependency Review` · `e2e`
+- `gates`: conventional commits, shared-contract ownership, and directory structure
+- `controller`: type checking, linting, cleanup checks, and tests
+- `agent-runtime`: runtime tests
+- `frontend`: linting, type checking, tests, cleanup checks, and production build
+- `desktop-package`: unsigned macOS package build, launch smoke test, and artifact upload
+- `Secret Scanning (TruffleHog)`: verified-secret scanning
+- `CodeQL Analysis`: JavaScript and TypeScript analysis
+- `Dependency Review`: new moderate-or-higher vulnerabilities and denied licenses
 
-**Into `main`** — everything above, plus:
-`release-candidate` — builds the **signed DMG**, mounts it, launches the app from
-the mounted volume, and asserts `/api/desktop-health`. A DMG that does not launch
-must not be able to reach a release.
+The Sunday scheduled CI run executes only TruffleHog and CodeQL.
 
-Both branches: no direct pushes, no force pushes, squash merge only, branch deleted
-on merge, conversation resolution required.
+## Releases
 
-## Review
+Only a successful CI run for a push to `main` can trigger Release. The workflow uses
+the exact tested commit, rejects a superseded commit, and separates build, signing,
+and publishing into different jobs.
 
-Review is done by a model on the PR, leaving comments — that is the required
-signal. GitHub will not let you approve your own pull request, so
-**required approvals is 0** and the enforcement lives in the checks instead:
-the review job must run and must resolve its comments before merge.
+Semantic Release determines the next version from conventional commits. Only
+features, fixes, performance changes, and breaking changes cut a release. Changes
+that do not require a release leave signing and publishing skipped.
 
-## Scheduled work
+## Desktop channels
 
-| When | What |
-|---|---|
-| Nightly (02:00 UTC) | Build `dev`, run full e2e, publish `Local Studio Dev` DMG as a prerelease |
-| Weekly (Sun 00:00 UTC) | TruffleHog + CodeQL sweep |
+| App | Source | Bundle identifier | User data |
+|---|---|---|---|
+| `Local Studio.app` | `main` release | `org.local.studio.desktop` | `~/Library/Application Support/Local Studio` |
+| `Local Studio Dev.app` | local `dev` install | `org.local.studio.desktop.dev` | `~/Library/Application Support/Local Studio Dev` |
 
-There is no beta channel. Two channels, two apps, no third version anywhere.
+Install a channel with `scripts/install-desktop-app.sh [stable|dev]`. The installer
+replaces the app in place, keeps one compressed rollback outside `/Applications`,
+ejects stale disk images, and stops orphaned servers. Do not create backup app
+bundles manually.
 
-## Releasing
+## GitHub settings
 
-`main` is release-only, so a merge to `main` *is* the release. semantic-release cuts
-the tag and the GitHub Release from conventional commits.
+Workflow files cannot enforce repository settings. Keep these aligned in GitHub:
 
-Only `feat`, `fix`, `perf` and breaking changes cut a release. A README typo must not
-produce a notarized DMG build — that is how the repo reached 68 releases in weeks.
+- require pull requests for `dev` and `main`
+- require all CI jobs on both branches
+- disable direct and force pushes
+- require conversation resolution
+- use squash merge and delete merged branches
+
+Audit these settings after changing required check names or workflow structure.

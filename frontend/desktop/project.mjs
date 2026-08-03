@@ -1722,7 +1722,7 @@ var init_install_desktop_app_test = __esm(() => {
       cwd: repository,
       encoding: "utf8"
     }).trim().split(`
-`).filter((file2) => file2 && file2 !== "scripts/project.mjs"), violations3 = [];
+`).filter((file2) => file2 && file2 !== "scripts/project.mjs" && existsSync9(path8.join(repository, file2))), violations3 = [];
     for (let file2 of files) {
       let text = readFileSync11(path8.join(repository, file2), "utf8");
       if (/\.app\.(?:previous|prev|pre|backup)|(?:previous|backup)\.app/i.test(text))
@@ -2316,20 +2316,38 @@ var init_validate_shared_contracts = __esm(() => {
 var exports_validate_package_json = {};
 import { readFileSync as readFileSync15 } from "node:fs";
 import { resolve as resolve6 } from "node:path";
-var pkgPath, pkg, required, requiredScripts, missing;
+var packageRepository, packageRequirements, packageLocks, packageMissing, releaseVersion;
+function packageAuditRead(relativePath) {
+  return JSON.parse(readFileSync15(resolve6(packageRepository, relativePath), "utf8"));
+}
 var init_validate_package_json = __esm(() => {
-  pkgPath = resolve6(import.meta.dirname, "../package.json"), pkg = JSON.parse(readFileSync15(pkgPath, "utf8")), required = ["scripts", "devDependencies"], requiredScripts = ["dev", "build", "desktop:dist"], missing = [];
-  for (let key of required)
-    if (!pkg[key] || typeof pkg[key] !== "object")
-      missing.push(key);
-  for (let script of requiredScripts)
-    if (!pkg.scripts?.[script])
-      missing.push(`script:${script}`);
-  if (missing.length > 0)
+  packageRepository = resolve6(import.meta.dirname, "../.."), packageRequirements = [
+    ["package.json", ["doctor", "setup", "dev", "dev:controller", "build", "start", "start:controller", "test", "check", "test:integration"]],
+    ["frontend/package.json", ["dev", "build", "start", "desktop:dist", "check:quality"]],
+    ["controller/package.json", ["dev", "start", "typecheck", "lint", "check", "test"]],
+    ["services/agent-runtime/package.json", ["bundle", "build", "dev", "start", "test"]],
+    ["shared/package.json", []],
+    ["controller/contracts/package.json", []]
+  ], packageLocks = ["frontend/package-lock.json", "controller/bun.lock", "services/agent-runtime/bun.lock", "shared/bun.lock"], packageMissing = [];
+  for (let [manifest, scripts] of packageRequirements) {
+    let packageJson = packageAuditRead(manifest);
+    if (packageJson.private !== true)
+      packageMissing.push(`${manifest}:private`);
+    for (let script of scripts)
+      if (!packageJson.scripts?.[script])
+        packageMissing.push(`${manifest}:script:${script}`);
+  }
+  for (let lockfile of packageLocks)
+    if (!existsSync(resolve6(packageRepository, lockfile)))
+      packageMissing.push(lockfile);
+  releaseVersion = packageAuditRead("package.json").version;
+  for (let manifest of ["frontend/package.json", "controller/package.json", "controller/contracts/package.json", "services/agent-runtime/package.json"])
+    if (packageAuditRead(manifest).version !== releaseVersion)
+      packageMissing.push(`${manifest}:version`);
+  if (packageMissing.length > 0)
     console.error(`
   package.json integrity check FAILED
-`), console.error(`  Missing: ${missing.join(", ")}`), console.error("  This file may have been accidentally stripped."), console.error(`  Run: git checkout -- frontend/package.json
-`), process.exit(1);
+`), console.error(`  Invalid: ${packageMissing.join(", ")}`), process.exit(1);
   console.log("  package.json integrity check passed");
 });
 
@@ -2600,6 +2618,7 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
   ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
   ["desktop-smoke", () => init_desktop_package_smoke().then(() => exports_desktop_package_smoke)],
+  ["doctor", async () => doctor()],
   ["glm-build", async () => glmBuild()],
   ["glm-cutover", async () => glmCutover()],
   ["glm-rollback", async () => glmRollback()],
@@ -2613,6 +2632,7 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["self-test", async () => {
     await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test)), await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
   }],
+  ["setup", async () => setupRepository()],
   ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
   ["stage-release", () => Promise.resolve().then(() => (init_stage_desktop_release(), exports_stage_desktop_release))],
   ["start", () => init_start_standalone().then(() => exports_start_standalone)],
@@ -2622,6 +2642,43 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["validate-ui", () => Promise.resolve().then(() => (init_validate_ui_structure(), exports_validate_ui_structure))],
   ["audit-layout", async () => auditLayout()]
 ]);
+function parsedVersion(value) {
+  let match = value.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)] : null;
+}
+function versionMeetsMinimum(actual, minimum) {
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (actual[index] > minimum[index])
+      return true;
+    if (actual[index] < minimum[index])
+      return false;
+  }
+  return true;
+}
+function requireTool(label, command, args3, minimum) {
+  let result = spawnSync4(command, args3, { cwd: root5, encoding: "utf8" });
+  if (result.error || result.status !== 0)
+    throw Error(`${label} is required but unavailable`);
+  let output4 = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(), actual = parsedVersion(output4);
+  if (!actual || !versionMeetsMinimum(actual, minimum))
+    throw Error(`${label} ${minimum.join(".")} or newer is required; found ${output4 || "unknown"}`);
+  console.log(`${label}: ${actual.join(".")}`);
+}
+function doctor() {
+  requireTool("Node.js", process.execPath, ["--version"], [22, 19, 0]);
+  requireTool("npm", "npm", ["--version"], [10, 0, 0]);
+  requireTool("Bun", "bun", ["--version"], [1, 3, 14]);
+  requireTool("Python", "python3", ["--version"], [3, 10, 0]);
+  requireTool("Git", "git", ["--version"], [2, 0, 0]);
+  console.log("Toolchain check passed");
+}
+function setupRepository() {
+  doctor();
+  for (let directory of ["controller", "shared", "services/agent-runtime"])
+    run3("bun", ["install", "--frozen-lockfile"], path11.join(root5, directory));
+  run3("npm", ["ci", "--legacy-peer-deps"], path11.join(root5, "frontend"));
+  console.log("Repository setup complete");
+}
 function auditLayout() {
   let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
   if (JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) || JSON.stringify(executable) !== JSON.stringify(expected) || stale.length > 0)
