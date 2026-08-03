@@ -52,6 +52,7 @@ export const sglang: ComputeEngineSpec = {
       args: serverArguments(
         request,
         {
+          subcommand: ["serve"],
           modelFlag: "--model-path",
           servedNameFlag: "--served-model-name",
           spelling,

@@ -17,6 +17,7 @@ export interface DashboardLayoutProps {
   logs: string[];
   launching: boolean;
   lifecycleStatus: "idle" | "starting" | "ready" | "error";
+  lifecycleError: string | null;
   benchmarking: boolean;
   benchmarkResult: number | null;
   launchProgress: LaunchProgress | null;
