@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { AppContextService } from "../src/app-context";
+import { delimiter, join } from "node:path";
+import { type AppContext, AppContextService } from "../src/app-context";
 import { createControllerRuntime, type ControllerRuntime } from "../src/core/effect-runtime";
+import { primaryLogPathFor } from "../src/core/log-files";
 import { createApp } from "../src/http/app";
+import { parseRecipe } from "../src/modules/models/recipes/recipe-serializer";
 
 const apiKey = "controller-contract-key";
 const allowedOrigin = "https://allowed.example";
@@ -16,6 +18,7 @@ const environmentKeys = [
   "LOCAL_STUDIO_API_KEY",
   "LOCAL_STUDIO_CORS_ORIGINS",
   "LOCAL_STUDIO_DISABLE_METRICS",
+  "PATH",
 ] as const;
 
 type EnvironmentKey = (typeof environmentKeys)[number];
@@ -24,6 +27,7 @@ type OpenApiDocument = { paths: Record<string, Record<string, unknown>> };
 const previousEnvironment = new Map<EnvironmentKey, string | undefined>();
 let temporaryDirectory = "";
 let runtime: ControllerRuntime;
+let context: AppContext;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
@@ -36,8 +40,14 @@ beforeAll(async () => {
   process.env["LOCAL_STUDIO_API_KEY"] = apiKey;
   process.env["LOCAL_STUDIO_CORS_ORIGINS"] = allowedOrigin;
   process.env["LOCAL_STUDIO_DISABLE_METRICS"] = "true";
+  const binaryDirectory = join(temporaryDirectory, "bin");
+  const dockerPath = join(binaryDirectory, "docker");
+  mkdirSync(binaryDirectory, { recursive: true });
+  writeFileSync(dockerPath, "#!/bin/sh\nprintf 'Error response from daemon: No such container\\n' >&2\nexit 1\n");
+  chmodSync(dockerPath, 0o755);
+  process.env["PATH"] = `${binaryDirectory}${delimiter}${process.env["PATH"] ?? ""}`;
   runtime = createControllerRuntime();
-  const context = await runtime.runPromise(AppContextService);
+  context = await runtime.runPromise(AppContextService);
   app = createApp(context, runtime);
 });
 
@@ -107,5 +117,41 @@ describe("controller HTTP application", () => {
       ),
     );
     expect([...documentedOperations].sort()).toEqual([...registeredOperations].sort());
+  });
+
+  test("falls back to persisted logs when a Docker container no longer exists", async () => {
+    const sessionId = "stale-docker-session";
+    await runtime.runPromise(
+      context.stores.recipeStore.save(
+        parseRecipe({
+          id: sessionId,
+          name: "Stale Docker Session",
+          model_path: "/models/stale",
+          backend: "vllm",
+          runtime: { kind: "docker", ref: "example.invalid/local-studio" },
+          extra_args: { "docker-container": sessionId },
+        }),
+      ),
+    );
+    writeFileSync(primaryLogPathFor(context.config.data_dir, sessionId), "persisted log line\n");
+
+    const response = await app.request(`/logs/${sessionId}`, {
+      headers: { "x-api-key": apiKey },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      id: sessionId,
+      logs: ["persisted log line"],
+      content: "persisted log line",
+    });
+
+    const abortController = new AbortController();
+    const stream = await app.request(`/logs/${sessionId}/stream?tail=1`, {
+      headers: { "x-api-key": apiKey },
+      signal: abortController.signal,
+    });
+    const chunk = await stream.body?.getReader().read();
+    abortController.abort();
+    expect(new TextDecoder().decode(chunk?.value)).toContain("persisted log line");
   });
 });
