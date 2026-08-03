@@ -89,7 +89,7 @@ archive_is_valid() {
   local archive="$1"
   [[ -f "$archive" ]] || return 1
   unzip -tqq "$archive" || return 1
-  unzip -Z1 "$archive" | grep -Eq '^(Contents|Local Studio( Dev)?\.app[^/]*/Contents)/Info\.plist$'
+  unzip -Z1 "$archive" | awk '$0 == "Contents/Info.plist" || ($0 ~ /^Local Studio( Dev)?\.app/ && $0 ~ /\/Contents\/Info\.plist$/) { found = 1 } END { exit found ? 0 : 1 }'
 }
 
 legacy_bundles() {

@@ -26,20 +26,38 @@ let cachedDataDir: string | null = null;
 let cachedDataDirEnv: string | undefined;
 let migrated = false;
 
-function legacyDataDirCandidates(): string[] {
+function legacySettingsFileCandidates(): string[] {
   return [
-    path.join(process.cwd(), "data"),
-    path.join(process.cwd(), "..", "data"),
-    path.join(process.cwd(), "frontend", "data"),
-    path.join(homedir(), ".local-studio"),
-    path.join(homedir(), LEGACY_DOT_DIR),
-    path.join(tmpdir(), "local-studio"),
+    path.join(process.cwd(), "data", SETTINGS_FILENAME),
+    path.join(process.cwd(), "..", "data", SETTINGS_FILENAME),
+    path.join(process.cwd(), "frontend", "data", SETTINGS_FILENAME),
+    path.join(homedir(), ".local-studio", SETTINGS_FILENAME),
+    path.join(homedir(), LEGACY_DOT_DIR, SETTINGS_FILENAME),
+    path.join(tmpdir(), "local-studio", SETTINGS_FILENAME),
     // Past Electron userData siblings.
-    path.join(homedir(), "Library", "Application Support", "local-studio-app"),
-    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_SLUG),
-    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_DIR),
-    path.join(homedir(), "Library", "Application Support", "Electron"),
-    path.join(homedir(), "Library", "Application Support", "frontend"),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "local-studio-app",
+      SETTINGS_FILENAME,
+    ),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      LEGACY_APP_DATA_SLUG,
+      SETTINGS_FILENAME,
+    ),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      LEGACY_APP_DATA_DIR,
+      SETTINGS_FILENAME,
+    ),
+    path.join(homedir(), "Library", "Application Support", "Electron", SETTINGS_FILENAME),
+    path.join(homedir(), "Library", "Application Support", "frontend", SETTINGS_FILENAME),
   ];
 }
 
@@ -73,9 +91,8 @@ function migrateLegacySettings(targetDir: string): void {
   const targetFile = path.join(targetDir, SETTINGS_FILENAME);
   if (existsSync(targetFile)) return;
 
-  for (const candidate of legacyDataDirCandidates()) {
-    if (path.resolve(candidate) === path.resolve(targetDir)) continue;
-    const legacyFile = path.join(candidate, SETTINGS_FILENAME);
+  for (const legacyFile of legacySettingsFileCandidates()) {
+    if (path.resolve(legacyFile) === path.resolve(targetFile)) continue;
     if (!existsSync(legacyFile)) continue;
     try {
       copyFileSync(legacyFile, targetFile);

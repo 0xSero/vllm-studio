@@ -2807,6 +2807,9 @@ function prePush() {
   run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
 }
 function setupHooks() {
+  let worktree = spawnSync4("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root5, encoding: "utf8" });
+  if (worktree.status !== 0 || worktree.stdout.trim() !== "true")
+    return console.log("Skipping Git hook setup outside a worktree");
   git(["rev-parse", "--git-dir"]), git(["config", "core.hooksPath", ".githooks"]);
   for (let name of readdirSync10(path11.join(root5, ".githooks")))
     chmodSync2(path11.join(root5, ".githooks", name), 493);
