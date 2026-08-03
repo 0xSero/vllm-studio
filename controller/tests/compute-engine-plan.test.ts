@@ -168,11 +168,13 @@ describe("docker vs process", () => {
     const asDocker = planLaunch(request({ runtime: "docker" }));
 
     expect(asProcess.argv[0]).toBe("/venv/bin/vllm");
+    expect(asProcess.argv[1]).toBe("serve");
     expect(asProcess.image).toBeUndefined();
     expect(asProcess.mounts).toEqual([]);
     expect(asProcess.argv[asProcess.argv.indexOf("--host") + 1]).toBe("127.0.0.1");
 
     expect(asDocker.argv[0]).not.toBe("/venv/bin/vllm");
+    expect(asDocker.argv).not.toContain("serve");
     expect(asDocker.image).toBe("vllm/vllm-openai:latest");
     expect(asDocker.mounts).toEqual([{ from: "/models/qwen", to: "/models", readOnly: true }]);
     expect(asDocker.argv[asDocker.argv.indexOf("--host") + 1]).toBe("0.0.0.0");
