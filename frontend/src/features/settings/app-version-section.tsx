@@ -11,17 +11,21 @@ export function AppVersionSection() {
   const update = useAppUpdate();
   // No installed-version signal (web build or dev run): offer the plain
   // download whenever the newest release is known.
-  const webDownload = !update.currentVersion && update.downloadUrl;
+  const webDownload =
+    update.releaseChannel === null && !update.currentVersion && update.downloadUrl;
+  const devChannel = update.releaseChannel === "dev";
   const onLatest = update.currentVersion && update.latestVersion && !update.updateAvailable;
-  const description = update.updateAvailable
-    ? update.phase === "ready"
-      ? `v${update.latestVersion} is downloaded — restart to finish updating.`
-      : `v${update.latestVersion} is available on GitHub.`
-    : onLatest
-      ? "You are on the latest version."
-      : update.latestVersion
-        ? `Latest release: v${update.latestVersion}.`
-        : "Release check unavailable.";
+  const description = devChannel
+    ? "Dev builds update through the local installer."
+    : update.updateAvailable
+      ? update.phase === "ready"
+        ? `v${update.latestVersion} is downloaded — restart to finish updating.`
+        : `v${update.latestVersion} is available on GitHub.`
+      : onLatest
+        ? "You are on the latest version."
+        : update.latestVersion
+          ? `Latest release: v${update.latestVersion}.`
+          : "Release check unavailable.";
   return (
     <SettingsGroup title="Application" description="Version and updates.">
       <SettingsRow

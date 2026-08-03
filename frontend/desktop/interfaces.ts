@@ -95,6 +95,7 @@ export interface DesktopBridge {
     platform: NodeJS.Platform;
     appVersion: string;
     packaged: boolean;
+    releaseChannel: "dev" | "stable";
     chromeVersion: string;
     electronVersion: string;
   }>;
