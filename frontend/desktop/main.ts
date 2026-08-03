@@ -1,4 +1,4 @@
-import "./app-identity";
+import { isDevChannelBuild } from "./app-identity";
 import {
   app,
   clipboard,
@@ -255,6 +255,7 @@ function registerIpcHandlers(): void {
     platform: process.platform,
     appVersion: app.getVersion(),
     packaged: app.isPackaged,
+    releaseChannel: isDevChannelBuild ? "dev" : "stable",
     chromeVersion: process.versions.chrome,
     electronVersion: process.versions.electron,
   }));

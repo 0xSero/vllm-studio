@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { isAppUpdateAvailable, isNewerVersion } from "./use-app-update";
+import { isAppUpdateAvailable, isNewerVersion, isReleaseUpdateAvailable } from "./use-app-update";
 
 describe("isNewerVersion", () => {
   test("orders numerically per segment, not lexically", () => {
@@ -31,5 +31,13 @@ describe("isAppUpdateAvailable", () => {
   test("stays hidden until both versions are known", () => {
     assert.equal(isAppUpdateAvailable(null, "2.8.1"), false);
     assert.equal(isAppUpdateAvailable("2.8.1", null), false);
+  });
+});
+
+describe("isReleaseUpdateAvailable", () => {
+  test("offers stable updates only to stable packaged builds", () => {
+    assert.equal(isReleaseUpdateAvailable("2.9.3", "2.1.0", "stable"), true);
+    assert.equal(isReleaseUpdateAvailable("2.9.3", "2.1.0", "dev"), false);
+    assert.equal(isReleaseUpdateAvailable("2.9.3", "2.1.0", null), false);
   });
 });
