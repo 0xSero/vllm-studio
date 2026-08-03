@@ -434,7 +434,7 @@ const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
   supportsReasoningEffort: true,
   supportsStrictMode: false,
   supportsUsageInStreaming: true,
-  maxTokensField: "max_tokens",
+  maxTokensField: "max_completion_tokens",
 };
 
 export function modelsToPiModels(models: AgentModel[]) {
