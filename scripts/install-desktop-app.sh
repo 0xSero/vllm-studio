@@ -7,6 +7,9 @@ ROLLBACK_ROOT="${LOCAL_STUDIO_ROLLBACK_ROOT:-$HOME/Library/Application Support/L
 LSREGISTER="${LOCAL_STUDIO_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
 PLIST_BUDDY="${LOCAL_STUDIO_PLIST_BUDDY:-/usr/libexec/PlistBuddy}"
 SKIP_RUNTIME_CLEANUP="${LOCAL_STUDIO_SKIP_RUNTIME_CLEANUP:-0}"
+RELEASE_DMG_URL="${LOCAL_STUDIO_RELEASE_DMG_URL:-https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg}"
+RELEASE_TEMP=""
+RELEASE_MOUNT=""
 
 channel="stable"
 keep_backup=1
@@ -38,7 +41,7 @@ if [[ "$channel" == "dev" ]]; then
 else
   APP_NAME="Local Studio"
   APP_ID="org.local.studio.desktop"
-  BUILT="${LOCAL_STUDIO_BUILT_APP:-$REPO_ROOT/frontend/dist-desktop/mac-arm64/$APP_NAME.app}"
+  BUILT="${LOCAL_STUDIO_BUILT_APP:-}"
 fi
 
 TARGET="$INSTALL_ROOT/$APP_NAME.app"
@@ -154,6 +157,16 @@ cleanup_temporary_paths() {
   elif [[ "${SWAP_VERIFIED:-0}" == "0" && "${TARGET_INSTALLED:-0}" == "1" ]]; then
     rm -rf "$TARGET"
   fi
+  cleanup_release_source
+}
+
+cleanup_release_source() {
+  if [[ -n "$RELEASE_MOUNT" ]]; then
+    hdiutil detach "$RELEASE_MOUNT" -quiet || hdiutil detach "$RELEASE_MOUNT" -force -quiet || true
+  fi
+  [[ -z "$RELEASE_TEMP" ]] || rm -rf "$RELEASE_TEMP"
+  RELEASE_MOUNT=""
+  RELEASE_TEMP=""
 }
 
 if [[ "$mode" == "migrate" ]]; then
@@ -162,11 +175,34 @@ if [[ "$mode" == "migrate" ]]; then
   exit 0
 fi
 
+HAD_TARGET=0
+SWAP_VERIFIED=0
+TARGET_INSTALLED=0
+trap cleanup_temporary_paths EXIT
+
+if [[ "$channel" == "stable" && -z "$BUILT" ]]; then
+  RELEASE_TEMP="$(mktemp -d "${TMPDIR:-/tmp}/local-studio-release.XXXXXX")"
+  RELEASE_MOUNT="$RELEASE_TEMP/mount"
+  release_dmg="$RELEASE_TEMP/Local-Studio-arm64.dmg"
+  mkdir -p "$RELEASE_MOUNT"
+  echo "==> downloading latest stable release"
+  curl --fail --location --silent --show-error "$RELEASE_DMG_URL" --output "$release_dmg"
+  xcrun stapler validate "$release_dmg"
+  spctl --assess --type open --context context:primary-signature "$release_dmg"
+  hdiutil attach -readonly -nobrowse -mountpoint "$RELEASE_MOUNT" "$release_dmg" >/dev/null
+  BUILT="$RELEASE_MOUNT/$APP_NAME.app"
+fi
+
 if [[ ! -d "$BUILT" ]]; then
   echo "error: no built bundle at $BUILT" >&2
   hint="desktop:dist"
   [[ "$channel" == "dev" ]] && hint="desktop:dist:dev"
   echo "       run: npm --prefix frontend run $hint" >&2
+  exit 1
+fi
+
+if [[ "$(bundle_id "$BUILT" || true)" != "$APP_ID" ]]; then
+  echo "error: built bundle identifier does not match $APP_ID" >&2
   exit 1
 fi
 
@@ -181,15 +217,15 @@ if [[ "$BUILT" != /* ]]; then
 fi
 
 codesign --verify --deep --strict "$BUILT"
+if [[ "$channel" == "stable" ]]; then
+  spctl --assess --type execute "$BUILT"
+fi
 mkdir -p "$INSTALL_ROOT" "$ROLLBACK_ROOT"
 rm -rf "$STAGED" "$REPLACED"
-trap cleanup_temporary_paths EXIT
-HAD_TARGET=0
-SWAP_VERIFIED=0
-TARGET_INSTALLED=0
 
 ditto "$BUILT" "$STAGED"
 codesign --verify --deep --strict "$STAGED"
+cleanup_release_source
 
 if [[ -d "$TARGET" && "$keep_backup" == "1" ]]; then
   echo "==> archiving current install -> $ROLLBACK"
@@ -229,6 +265,9 @@ fi
 mv "$STAGED" "$TARGET"
 TARGET_INSTALLED=1
 codesign --verify --deep --strict "$TARGET"
+if [[ "$channel" == "stable" ]]; then
+  spctl --assess --type execute "$TARGET"
+fi
 SWAP_VERIFIED=1
 rm -rf "$REPLACED"
 
