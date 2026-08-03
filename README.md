@@ -121,12 +121,10 @@ npm run dev
 ```
 
 `npm run setup` installs the controller, shared contracts, agent runtime, and
-frontend from their lockfiles. It also runs the postinstall patch against
-`@earendil-works/pi-ai`. If that step
-prints a warning, agent streaming may misrender. The setup wizard walks through
-choosing a models directory, installing an engine, downloading a model,
-launching it, and benchmarking. Engine installs (vLLM/SGLang/MLX) land in
-`<data dir>/runtime/venvs/<backend>-latest`.
+frontend from their lockfiles. The setup wizard walks through choosing a models
+directory, installing an engine, downloading a model, launching it, and
+benchmarking. Engine installs (vLLM/SGLang/MLX) land below the data directory at
+`runtime/venvs/<backend>-latest`.
 
 ## Agent runtime
 
