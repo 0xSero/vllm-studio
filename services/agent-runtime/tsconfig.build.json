@@ -19,8 +19,7 @@
     "incremental": false,
     // The sources use fetch/Headers/ReadableStream types the way the frontend
     // program does (its lib includes dom); mirror that here.
-    "lib": ["esnext", "dom"],
-    "paths": {}
+    "lib": ["esnext", "dom"]
   },
   "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "../../shared/agent/**/*.test.ts"]
