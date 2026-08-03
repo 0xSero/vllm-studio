@@ -1,4 +1,4 @@
-import { statfsSync } from "node:fs";
+import { statfsSync, statSync } from "node:fs";
 import { Effect } from "effect";
 import type { VolumeInfo } from "../contracts";
 import { neverFails, type DeviceProbe } from "./probe";
@@ -9,20 +9,24 @@ import { hostPlatform } from "./host";
  * per-OS parser. Disk model and rotational-ness do need vendor tools; they are reported
  * as null here rather than shelling out on every sample.
  */
-const readVolume = (mount: string): VolumeInfo | null => {
+const readVolume = (mount: string): { key: string; volume: VolumeInfo } | null => {
   try {
+    const device = statSync(mount).dev;
     const stats = statfsSync(mount);
     const blockSize = Number(stats.bsize);
     const total = Number(stats.blocks) * blockSize;
     const free = Number(stats.bavail) * blockSize;
     if (!Number.isFinite(total) || total <= 0) return null;
     return {
-      mount,
-      totalBytes: total,
-      freeBytes: Number.isFinite(free) && free >= 0 ? free : 0,
-      filesystem: null,
-      model: null,
-      rotational: null,
+      key: String(device),
+      volume: {
+        mount,
+        totalBytes: total,
+        freeBytes: Number.isFinite(free) && free >= 0 ? free : 0,
+        filesystem: null,
+        model: null,
+        rotational: null,
+      },
     };
   } catch {
     return null;
@@ -36,12 +40,9 @@ export const systemRoot = (): string => (hostPlatform() === "win32" ? "C:\\" : "
 export const readVolumes = (paths: readonly string[]): readonly VolumeInfo[] => {
   const seen = new Map<string, VolumeInfo>();
   for (const path of [systemRoot(), ...paths]) {
-    const volume = readVolume(path);
-    if (!volume) continue;
-    // Paths on the same volume report identical totals and free space; keep the first,
-    // which is the shortest/most general mount we were asked about.
-    const key = `${volume.totalBytes}:${volume.freeBytes}`;
-    if (!seen.has(key)) seen.set(key, volume);
+    const reading = readVolume(path);
+    if (!reading) continue;
+    if (!seen.has(reading.key)) seen.set(reading.key, reading.volume);
   }
   return [...seen.values()];
 };
