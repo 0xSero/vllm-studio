@@ -140,6 +140,7 @@ export interface LaunchRequest {
   /** Verbatim recipe flags, appended last; any base flag they repeat is dropped. */
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
+  readonly dockerImage: string | null;
   /** Resolved executable for process launches; ignored for docker. */
   readonly binary: string;
 }

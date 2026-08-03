@@ -187,6 +187,14 @@ const resolveEngineBinary = (recipe: Recipe, config: Config): string | null => {
   }
 };
 
+const resolveRecipeBinary = (recipe: Recipe, config: Config): string | null => {
+  if (recipe.runtime.kind === "binary" || recipe.runtime.kind === "system") {
+    return recipe.runtime.ref;
+  }
+  if (recipe.runtime.kind === "docker") return null;
+  return resolveEngineBinary(recipe, config);
+};
+
 /* ── recipe -> launch input ────────────────────────────────────────────────── */
 
 export const recipeToLaunchInput = (
@@ -197,11 +205,12 @@ export const recipeToLaunchInput = (
   const override = launchCommandOverride(recipe);
   const toolCallParser = recipe.tool_call_parser ?? getDefaultToolCallParser(recipe) ?? null;
   const reasoningParser = recipe.reasoning_parser ?? getDefaultReasoningParser(recipe) ?? null;
+  const dockerImage = recipe.runtime.kind === "docker" ? recipe.runtime.ref : null;
   return {
     name: LLM_INSTANCE,
     engine: recipe.backend as EngineId,
     recipeId: recipe.id,
-    runtime: "process",
+    runtime: dockerImage ? "docker" : "process",
     deviceCount: devices.length,
     ...(devices.length > 0 ? { devices } : {}),
     portOverride: recipe.port || config.inference_port,
@@ -222,7 +231,8 @@ export const recipeToLaunchInput = (
     },
     extraArgs: serializeRecipeExtraArguments(recipe),
     env: recipe.env_vars ?? {},
-    binary: resolveEngineBinary(recipe, config),
+    dockerImage,
+    binary: resolveRecipeBinary(recipe, config),
     ...(override ? { commandOverride: override } : {}),
   };
 };

@@ -50,6 +50,7 @@ const request = (overrides: Partial<LaunchRequest> = {}): LaunchRequest => ({
   options: options(),
   extraArgs: [],
   env: {},
+  dockerImage: null,
   binary: "/venv/bin/vllm",
   ...overrides,
 });
@@ -177,6 +178,15 @@ describe("docker vs process", () => {
     expect(asDocker.argv[asDocker.argv.indexOf("--host") + 1]).toBe("0.0.0.0");
     // The container sees the model at the mount point, not the host path.
     expect(asDocker.argv).toContain("/models");
+  });
+
+  test("a recipe-selected container image overrides the engine default", () => {
+    const customImage = "registry.example/sglang:deepseek-v4";
+    const asDocker = planLaunch(
+      request({ engine: "sglang", runtime: "docker", dockerImage: customImage }),
+    );
+
+    expect(asDocker.image).toBe(customImage);
   });
 });
 
