@@ -163,6 +163,8 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$BUN $DIR/controller/src/main.ts
 Restart=on-failure
 RestartSec=3
+KillMode=mixed
+TimeoutStopSec=15
 StandardOutput=append:$DATA_DIR/controller.log
 StandardError=append:$DATA_DIR/controller.log
 
@@ -185,18 +187,35 @@ fi
 
 # --- health ------------------------------------------------------------------
 log "waiting for controller on :$PORT…"
+HEALTH_HOST="$HOST"
+case "$HEALTH_HOST" in
+  ""|"0.0.0.0"|"::") HEALTH_HOST="127.0.0.1" ;;
+esac
+HEALTH_URL_HOST="$HEALTH_HOST"
+case "$HEALTH_URL_HOST" in
+  *:*) HEALTH_URL_HOST="[$HEALTH_URL_HOST]" ;;
+esac
 for _ in $(seq 1 30); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
-    HOST_ADDR=""
-    if command -v tailscale >/dev/null 2>&1; then
-      HOST_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
-    fi
-    if [ -z "$HOST_ADDR" ]; then
-      HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-    fi
+  if curl -fsS --max-time 2 "http://$HEALTH_URL_HOST:$PORT/health" >/dev/null 2>&1; then
+    HOST_ADDR="$HOST"
+    case "$HOST_ADDR" in
+      ""|"0.0.0.0"|"::")
+        HOST_ADDR=""
+        if command -v tailscale >/dev/null 2>&1; then
+          HOST_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+        fi
+        if [ -z "$HOST_ADDR" ]; then
+          HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+        fi
+        ;;
+    esac
     [ -n "$HOST_ADDR" ] || HOST_ADDR="$(hostname)"
+    HOST_URL_ADDR="$HOST_ADDR"
+    case "$HOST_URL_ADDR" in
+      *:*) HOST_URL_ADDR="[$HOST_URL_ADDR]" ;;
+    esac
     log "controller healthy ($started)"
-    printf 'LOCAL_STUDIO_CONTROLLER {"url":"http://%s:%s","api_key":"%s"}\n' "$HOST_ADDR" "$PORT" "$API_KEY"
+    printf 'LOCAL_STUDIO_CONTROLLER {"url":"http://%s:%s","api_key":"%s"}\n' "$HOST_URL_ADDR" "$PORT" "$API_KEY"
     exit 0
   fi
   sleep 2
