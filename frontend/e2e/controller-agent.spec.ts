@@ -1,4 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function openControllerChat(page: Page, title: string) {
+  await page.goto(`/agent?new=${encodeURIComponent(title)}`);
+  await expect(page.getByRole("button", { name: /^Model:/ }).first()).toBeEnabled({
+    timeout: 60_000,
+  });
+  return page.getByPlaceholder(/Do anything|Ask for follow-up changes/).first();
+}
 
 for (const route of [
   "/",
@@ -57,6 +65,55 @@ test("Pi defaults to the active controller and reveals other models on request",
   await composer.fill("Reply from this controller.");
   await composer.press("Enter");
   await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+});
+
+test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
+  const composer = await openControllerChat(page, "Goal text chat");
+  const opening = "/goal is ordinary text before the Pi session exists";
+  await composer.fill(opening);
+  await composer.press("Enter");
+  await expect(page.getByText(opening, { exact: true })).toBeVisible();
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+
+  const embedded = "Please explain what /goal means without running it";
+  await composer.fill(embedded);
+  await composer.press("Enter");
+  await expect(page.getByText(embedded, { exact: true })).toBeVisible();
+  await expect(page.getByText("Controller scoped Pi reply.")).toHaveCount(2, {
+    timeout: 60_000,
+  });
+});
+
+test("Enter queues while the explicit control steers the active Pi turn", async ({ page }) => {
+  const composer = await openControllerChat(page, "Queue and steer chat");
+  await composer.fill("slow-response-marker");
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeEnabled({ timeout: 60_000 });
+
+  await composer.fill("queue-after-marker");
+  await composer.press("Enter");
+  const queue = page.getByTestId("queued-message-stack");
+  await expect(queue.getByText("queue-after-marker", { exact: true })).toBeVisible();
+
+  await composer.fill("interrupt-now-marker");
+  await page.getByRole("button", { name: "Steer current task now" }).click();
+  await expect(page.getByText("interrupt-now-marker", { exact: true })).toBeVisible();
+  await expect(page.getByText("Steered response acknowledged.")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Queued response acknowledged.")).toBeVisible({ timeout: 60_000 });
+  await expect(queue).toHaveCount(0);
+});
+
+test("Alt+Enter steers instead of queueing", async ({ page }) => {
+  const composer = await openControllerChat(page, "Keyboard steer chat");
+  await composer.fill("slow-response-marker");
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeEnabled({ timeout: 60_000 });
+
+  await composer.fill("interrupt-now-marker");
+  await composer.press("Alt+Enter");
+  await expect(page.getByText("interrupt-now-marker", { exact: true })).toBeVisible();
+  await expect(page.getByText("Steered response acknowledged.")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("queued-message-stack")).toHaveCount(0);
 });
 
 test("mobile navigation and composer remain usable at 390px", async ({ page }) => {
