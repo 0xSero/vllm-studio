@@ -19,6 +19,7 @@ import { extractQuantizations } from "@/features/recipes/model-quantizations";
 import type { ModelFit } from "./hardware-profile";
 import { effectTimeout } from "@/lib/effect-timers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { writeClipboardText } from "@/lib/clipboard";
 
 function ExploreVramCell({
   needGb,
@@ -103,10 +104,11 @@ export const ExploreModelRow = memo(function ExploreModelRow({
   useMountSubscription(() => () => copiedTimer.current?.cancel(), []);
 
   const copyId = useCallback(() => {
-    void navigator.clipboard.writeText(model.modelId);
-    setCopied(true);
-    copiedTimer.current?.cancel();
-    copiedTimer.current = effectTimeout(() => setCopied(false), 2000);
+    void writeClipboardText(model.modelId).then(() => {
+      setCopied(true);
+      copiedTimer.current?.cancel();
+      copiedTimer.current = effectTimeout(() => setCopied(false), 2000);
+    });
   }, [model.modelId]);
 
   const download = downloadStatus(isLocal, isStarting, activeDownload);

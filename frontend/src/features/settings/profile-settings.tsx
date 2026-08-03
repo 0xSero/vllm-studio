@@ -13,6 +13,7 @@ import {
 } from "@/features/shell/local-profile";
 import { QrCode } from "@/features/shell/qr-code";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { writeClipboardText } from "@/lib/clipboard";
 import { SettingsButton, SettingsGroup, SettingsLink } from "./settings-ui";
 
 export function ProfileSettings() {
@@ -173,7 +174,7 @@ function PhonePairingSettings() {
         const result = await desktop(value);
         if (!result.ok) throw new Error(result.error || "Connection JSON could not be copied.");
       } else {
-        await navigator.clipboard.writeText(value);
+        await writeClipboardText(value);
       }
       setCopied(true);
       setPairingError("");
