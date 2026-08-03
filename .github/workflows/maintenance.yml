@@ -31,7 +31,7 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.task == 'all' || inputs.task == 'labels'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EndBug/label-sync@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -43,7 +43,7 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.task == 'all' || inputs.task == 'promotion'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Open or refresh the dev to main PR
