@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseAgentTurnRequest } from "../../../shared/agent/agent-turn";
 import {
+  interruptWithPrompt,
   planQueuedFollowUpMutation,
   restoreQueuedMessages,
   takeQueuedFollowUp,
@@ -76,6 +77,28 @@ test("restores queued messages in delivery order", async () => {
   expect(calls).toEqual([
     "steer:already steering",
     "steer:promote",
+    "follow:first",
+    "follow:last",
+  ]);
+});
+
+test("interrupts before launching the steered prompt and restores the queue", async () => {
+  const calls: string[] = [];
+  await interruptWithPrompt(
+    {
+      abort: async () => void calls.push("abort"),
+      waitForIdle: async () => void calls.push("idle"),
+      steer: async (message) => void calls.push(`steer:${message}`),
+      followUp: async (message) => void calls.push(`follow:${message}`),
+    },
+    { steering: ["already steering"], followUp: ["first", "last"] },
+    () => void calls.push("prompt:promoted"),
+  );
+  expect(calls).toEqual([
+    "abort",
+    "idle",
+    "prompt:promoted",
+    "steer:already steering",
     "follow:first",
     "follow:last",
   ]);

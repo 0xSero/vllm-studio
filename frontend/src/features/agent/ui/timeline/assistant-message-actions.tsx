@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Copy, GitFork } from "@/ui/icon-registry";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
+import { writeClipboardText } from "@/lib/clipboard";
 
 export function AssistantActionButton({
   label,
@@ -37,7 +38,7 @@ export function AssistantMessageActions({
   const [copied, markCopied] = useCopiedFlag();
   const copy = async () => {
     if (!copyText.trim()) return;
-    await navigator.clipboard.writeText(copyText);
+    await writeClipboardText(copyText);
     markCopied();
   };
   return (

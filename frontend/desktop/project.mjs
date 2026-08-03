@@ -1334,10 +1334,10 @@ var init_link_services_node_modules = __esm(() => {
 });
 
 var exports_patch_pi_ai_openai_text_boundaries = {};
-import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync3 } from "node:fs";
+import { cpSync as cpSync4, existsSync as existsSync7, readFileSync as readFileSync9, rmSync as rmSync10, writeFileSync as writeFileSync3 } from "node:fs";
 import path6 from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
-var frontendRoot, targetFiles, helperMarker = "function localStudioJoinTextParts", helper, injectionPoint = `function isTextContentBlock(block) {
+var frontendRoot, targetFiles, secureBraceExpansion, bundledBraceExpansion, helperMarker = "function localStudioJoinTextParts", helper, injectionPoint = `function isTextContentBlock(block) {
     return block.type === "text";
 }
 `, helperStartMarker = "function localStudioTextPartBoundary", helperEndMarker = "function isThinkingContentBlock", originalJoin = 'const assistantText = assistantTextParts.map((part) => part.text).join("");', patchedJoin = "const assistantText = localStudioJoinTextParts(assistantTextParts);", found = 0, patched = 0;
@@ -1345,7 +1345,15 @@ var init_patch_pi_ai_openai_text_boundaries = __esm(() => {
   frontendRoot = path6.resolve(path6.dirname(fileURLToPath5(import.meta.url)), ".."), targetFiles = [
     path6.join(frontendRoot, "node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js"),
     path6.join(frontendRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js")
-  ], helper = [
+  ], secureBraceExpansion = path6.join(frontendRoot, "node_modules/brace-expansion"), bundledBraceExpansion = path6.join(frontendRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/brace-expansion");
+  if (existsSync7(secureBraceExpansion) && existsSync7(bundledBraceExpansion)) {
+    let secureVersion = JSON.parse(readFileSync9(path6.join(secureBraceExpansion, "package.json"), "utf8")).version;
+    if (secureVersion !== "5.0.8")
+      throw Error(`Expected brace-expansion 5.0.8, found ${secureVersion}`);
+    if (JSON.parse(readFileSync9(path6.join(bundledBraceExpansion, "package.json"), "utf8")).version !== secureVersion)
+      rmSync10(bundledBraceExpansion, { recursive: !0, force: !0 }), cpSync4(secureBraceExpansion, bundledBraceExpansion, { recursive: !0 }), console.log(`Patched Pi SDK brace-expansion to ${secureVersion}.`);
+  }
+  helper = [
     "function localStudioTextPartBoundary(left, right) {",
     "    if (!left || !right || /\\s$/.test(left) || /^\\s/.test(right))",
     '        return "";',
