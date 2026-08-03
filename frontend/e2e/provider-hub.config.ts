@@ -3,22 +3,16 @@ import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
 
-// Fully hermetic provider-hub suite: its own frontend+runtime pair on
-// dedicated ports, an isolated temp data dir AND temp HOME (so sign-ins,
-// ~/.pi providers, and session listings never touch the real machine state),
-// and the fake-cloud OAuth/model server.
 const frontendPort = 43_216;
 const runtimePort = 43_217;
 const cloudPort = 43_213;
 const baseURL = `http://127.0.0.1:${frontendPort}`;
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-e2e-providers-"));
 const homeDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-e2e-home-"));
-// Pre-seed settings so the data-dir legacy migration finds an existing file
-// and never copies the developer's real controller settings into the sandbox.
 writeFileSync(path.join(dataDir, "api-settings.json"), "{}\n");
 const providersModule = path.resolve(__dirname, "fixtures", "e2e-providers.mjs");
 const fakeCloudScript = path.resolve(__dirname, "fixtures", "fake-cloud.mjs");
-const startStandaloneScript = path.resolve(__dirname, "..", "scripts", "start-standalone.mjs");
+const projectScript = path.resolve(__dirname, "..", "..", "scripts", "project.mjs");
 
 export default defineConfig({
   testDir: ".",
@@ -62,7 +56,7 @@ export default defineConfig({
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
         `LOCAL_STUDIO_E2E_PROVIDERS=${providersModule}`,
         `LOCAL_STUDIO_E2E_FAKE_CLOUD=http://127.0.0.1:${cloudPort}`,
-        `node ${startStandaloneScript}`,
+        `node ${projectScript} start`,
       ].join(" "),
       url: `${baseURL}/api/desktop-health`,
       timeout: 60_000,

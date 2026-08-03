@@ -92,6 +92,12 @@ jobs:
       - name: Production quality gate
         working-directory: ./frontend
         run: npm run check:quality
+      - name: Install browser test dependencies
+        working-directory: ./frontend
+        run: npx playwright install --with-deps chromium
+      - name: Browser acceptance tests
+        working-directory: ./frontend
+        run: npm run test:e2e
 
   desktop-package:
     if: github.event_name != 'schedule'

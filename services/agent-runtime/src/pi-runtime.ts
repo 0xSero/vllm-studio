@@ -91,11 +91,6 @@ type QueueTransport = {
   followUp: (message: string, images?: AgentImageInput[]) => Promise<void>;
 };
 
-type InterruptTransport = QueueTransport & {
-  abort: () => Promise<void>;
-  waitForIdle: () => Promise<void>;
-};
-
 export async function restoreQueuedMessages(
   session: QueueTransport,
   cleared: { steering: readonly string[]; followUp: readonly string[] },
@@ -105,17 +100,6 @@ export async function restoreQueuedMessages(
   for (const queued of cleared.steering) await session.steer(queued);
   if (mutation?.promoted) await session.steer(mutation.promoted, images);
   for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
-}
-
-export async function interruptWithPrompt(
-  session: InterruptTransport,
-  queued: { steering: readonly string[]; followUp: readonly string[] },
-  launchPrompt: () => void,
-): Promise<void> {
-  await session.abort();
-  await session.waitForIdle();
-  launchPrompt();
-  await restoreQueuedMessages(session, queued, null);
 }
 
 type DurableSessionManager = Pick<
@@ -603,18 +587,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   steer(message: string, images: AgentImageInput[] = []): Promise<void> {
     return Effect.runPromise(
       Effect.tryPromise({
-        try: async () => {
-          const session = this.requireSession();
-          this.queueEventBufferDepth += 1;
-          try {
-            const cleared = session.clearQueue();
-            await interruptWithPrompt(session, cleared, () => {
-              void this.prompt(message, () => undefined, { images }).catch(() => undefined);
-            });
-          } finally {
-            this.flushBufferedQueueEvent();
-          }
-        },
+        try: () => this.requireSession().steer(message, images),
         catch: (error) => error,
       }),
     );
@@ -643,19 +616,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
               await restoreQueuedMessages(session, cleared, null);
               throw new Error("Queued follow-up is no longer pending.");
             }
-            if (mutation.promoted) {
-              await interruptWithPrompt(
-                session,
-                { steering: cleared.steering, followUp: mutation.followUp },
-                () => {
-                  void this.prompt(mutation.promoted!, () => undefined, { images }).catch(
-                    () => undefined,
-                  );
-                },
-              );
-            } else {
-              await restoreQueuedMessages(session, cleared, mutation, images);
-            }
+            await restoreQueuedMessages(session, cleared, mutation, images);
           } finally {
             this.flushBufferedQueueEvent();
           }
@@ -842,8 +803,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         >,
       editor: (title, prefill) =>
         request("editor", { title, prefill }) as Promise<string | undefined>,
-      notify: (message, level = "info") =>
-        this.recordEvent({ type: "notice", level, message }),
+      notify: (message, level = "info") => this.recordEvent({ type: "notice", level, message }),
       setStatus: (key, text) =>
         this.recordEvent({ type: "extension_status", key, text: text ?? null }),
       setTitle: (title) => this.recordEvent({ type: "extension_title", title }),
