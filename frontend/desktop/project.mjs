@@ -1213,6 +1213,9 @@ if (args[0] === "-Z1") process.stdout.write(fs.readFileSync(archive));
 `), writeExecutable(path8.join(commands, "codesign"), `#!/usr/bin/env node
 const target = process.argv.at(-1);
 if (process.env.LOCAL_STUDIO_TEST_FAIL_CODESIGN === target) process.exit(1);
+`), writeExecutable(path8.join(commands, "spctl"), `#!/usr/bin/env node
+const target = process.argv.at(-1);
+if (process.env.LOCAL_STUDIO_TEST_FAIL_SPCTL === target) process.exit(1);
 `), writeExecutable(path8.join(commands, "plist-buddy"), `#!/usr/bin/env node
 const fs = require("node:fs");
 const text = fs.readFileSync(process.argv.at(-1), "utf8");
@@ -1274,6 +1277,15 @@ var init_install_desktop_app_test = __esm(() => {
     let result = runInstaller(harness, ["stable"], {
       LOCAL_STUDIO_BUILT_APP: built,
       LOCAL_STUDIO_TEST_FAIL_CODESIGN: target
+    });
+    assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
+  });
+  test("restores the original stable app when Gatekeeper rejects the replacement", (t) => {
+    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app"), target = path8.join(harness.applications, "Local Studio.app");
+    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(target, "Local Studio", "org.local.studio.desktop", "old");
+    let result = runInstaller(harness, ["stable"], {
+      LOCAL_STUDIO_BUILT_APP: built,
+      LOCAL_STUDIO_TEST_FAIL_SPCTL: target
     });
     assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
   });
@@ -1393,6 +1405,17 @@ var init_release_package_arguments_test = __esm(() => {
     });
     assert3.deepEqual(args3.slice(-2), ["--publish", "never"]), assert3.deepEqual(args3.slice(0, 2), ["--prepackaged", "/tmp/Local Studio.app"]);
   });
+  test3("release signing notarizes and staples the app before packaging", () => {
+    let calls = [];
+    notarizeApplication("/tmp/Local Studio.app", "/tmp/Local Studio.zip", ["--key", "/tmp/key"], (command, args3) => calls.push([command, args3]));
+    assert3.deepEqual(calls, [
+      ["ditto", ["-c", "-k", "--keepParent", "/tmp/Local Studio.app", "/tmp/Local Studio.zip"]],
+      ["xcrun", ["notarytool", "submit", "/tmp/Local Studio.zip", "--key", "/tmp/key", "--wait", "--output-format", "json"]],
+      ["xcrun", ["stapler", "staple", "/tmp/Local Studio.app"]],
+      ["xcrun", ["stapler", "validate", "/tmp/Local Studio.app"]],
+      ["spctl", ["--assess", "--type", "execute", "--verbose=4", "/tmp/Local Studio.app"]]
+    ]);
+  });
 });
 
 var exports_sign_desktop_release = {};
@@ -1449,6 +1472,23 @@ function writeCertificate(link, destination) {
   let encoded = value2.replace(/^data:[^;]+;base64,/, "");
   writeFileSync6(destination, Buffer.from(encoded, "base64"), { mode: 384, flag: "wx" });
 }
+function notarizeApplication(app, archive, credentials, execute = run2) {
+  execute("ditto", ["-c", "-k", "--keepParent", app, archive]), execute("xcrun", [
+    "notarytool",
+    "submit",
+    archive,
+    ...credentials,
+    "--wait",
+    "--output-format",
+    "json"
+  ]), execute("xcrun", ["stapler", "staple", app]), execute("xcrun", ["stapler", "validate", app]), execute("spctl", [
+    "--assess",
+    "--type",
+    "execute",
+    "--verbose=4",
+    app
+  ]);
+}
 async function refreshUpdateMetadata(output3, version) {
   let { buildBlockMap } = require4(path9.join(frontend, "node_modules", "app-builder-lib", "out", "targets", "blockmap", "blockmap.js")), YAML = require4(path9.join(frontend, "node_modules", "yaml")), zipName = `Local Studio-${version}-arm64-mac.zip`, dmgName = `Local Studio-${version}-arm64.dmg`, zipInfo = await buildBlockMap(path9.join(output3, zipName), "gzip", path9.join(output3, `${zipName}.blockmap`)), dmgInfo = await buildBlockMap(path9.join(output3, dmgName), "gzip", path9.join(output3, `${dmgName}.blockmap`)), updatePath = path9.join(output3, "latest-mac.yml"), current = YAML.parse(readFileSync12(updatePath, "utf8"));
   writeFileSync6(updatePath, YAML.stringify({
@@ -1478,7 +1518,7 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
     throw Error("--commit must be a full Git commit SHA");
   if (!prepackaged || !existsSync10(prepackaged))
     throw Error("--prepackaged must point to an unsigned app bundle");
-  let certificate = requireValue("CSC_LINK"), certificatePassword = requireValue("CSC_KEY_PASSWORD"), temporary = path9.join(os3.tmpdir(), `local-studio-release-${process.pid}`), apiKeyPath = path9.join(temporary, "AuthKey_notary.p8"), notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath), certificatePath = path9.join(temporary, "developer-id.p12"), keychainPath = path9.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path9.join(frontend, "dist-desktop"), dmg = path9.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path9.resolve(prepackaged), entitlements = path9.join(frontend, "desktop", "resources", "entitlements.mac.plist");
+  let certificate = requireValue("CSC_LINK"), certificatePassword = requireValue("CSC_KEY_PASSWORD"), temporary = path9.join(os3.tmpdir(), `local-studio-release-${process.pid}`), apiKeyPath = path9.join(temporary, "AuthKey_notary.p8"), notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath), certificatePath = path9.join(temporary, "developer-id.p12"), keychainPath = path9.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path9.join(frontend, "dist-desktop"), dmg = path9.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path9.resolve(prepackaged), appNotaryArchive = path9.join(temporary, "Local Studio.app.zip"), entitlements = path9.join(frontend, "desktop", "resources", "entitlements.mac.plist");
   try {
     if (rmSync8(temporary, { recursive: !0, force: !0 }), mkdirSync5(temporary, { recursive: !0, mode: 448 }), notaryCredentials.kind === "api-key")
       writeFileSync6(apiKeyPath, Buffer.from(notaryCredentials.apiKey, "base64"), {
@@ -1535,7 +1575,7 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
       "--keychain",
       keychainPath,
       resolvedApp
-    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path9.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
+    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), notarizeApplication(resolvedApp, appNotaryArchive, notaryCredentials.args), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path9.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
       "--force",
       "--timestamp",
       "--sign",
