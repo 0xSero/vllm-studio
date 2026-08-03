@@ -7,19 +7,43 @@ function json(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-async function readBody(request) {
-  for await (const _chunk of request) void _chunk;
+async function readJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? JSON.parse(text) : {};
+}
+
+function contentText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => (typeof part?.text === "string" ? part.text : "")).join("");
+}
+
+function latestUserText(payload) {
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  return contentText(messages.filter((message) => message?.role === "user").at(-1)?.content);
+}
+
+function replyFor(text) {
+  if (text.includes("interrupt-now-marker")) return "Steered response acknowledged.";
+  if (text.includes("queue-after-marker")) return "Queued response acknowledged.";
+  if (text.includes("slow-response-marker")) return "Slow response complete.";
+  return "Controller scoped Pi reply.";
 }
 
 async function streamCompletion(request, response) {
-  await readBody(request);
+  const payload = await readJson(request);
+  const userText = latestUserText(payload);
+  const slow = userText.includes("slow-response-marker");
+  if (slow) await new Promise((resolve) => setTimeout(resolve, 1_500));
   response.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-store",
     connection: "keep-alive",
   });
   const id = `controller-${Date.now()}`;
-  const chunks = ["Controller", " scoped", " Pi", " reply."];
+  const chunks = replyFor(userText).match(/.{1,12}/g) ?? [];
   response.write(`data: ${JSON.stringify({
     id,
     object: "chat.completion.chunk",
@@ -35,6 +59,7 @@ async function streamCompletion(request, response) {
       model: "controller-model",
       choices: [{ index: 0, delta: { content }, finish_reason: null }],
     })}\n\n`);
+    if (slow) await new Promise((resolve) => setTimeout(resolve, 150));
   }
   response.write(`data: ${JSON.stringify({
     id,
