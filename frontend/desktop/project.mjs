@@ -2196,6 +2196,7 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["link-services", () => Promise.resolve().then(() => (init_link_services_node_modules(), exports_link_services_node_modules))],
   ["perf", () => init_perf_audit().then(() => exports_perf_audit)],
   ["postbuild-agent-runtime", () => Promise.resolve().then(() => (init_postbuild(), exports_postbuild))],
+  ["prepare-agent-runtime", async () => rmSync6(path11.join(root5, "services", "agent-runtime", "dist"), { recursive: !0, force: !0 })],
   ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
   ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
   ["self-test", async () => {
