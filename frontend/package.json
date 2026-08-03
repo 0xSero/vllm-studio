@@ -39,7 +39,7 @@
     "typecheck:desktop": "tsc -p desktop/tsconfig.json",
     "check:cycles": "madge --extensions ts,tsx --circular src",
     "check:static": "npm run lint && npm run typecheck && npm run typecheck:desktop && npm run typecheck:extensions && npm run check:cycles && npm run check:ui-structure",
-    "test": "bun test src desktop",
+    "test": "bun test src desktop --path-ignore-patterns \"dist-desktop*/**\"",
     "pretest:e2e": "npm run build && playwright install chromium",
     "test:e2e": "npm run test:e2e:controller && npm run test:e2e:providers",
     "test:e2e:controller": "playwright test --config e2e/controller-agent.config.ts",
