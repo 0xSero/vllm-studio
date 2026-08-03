@@ -155,9 +155,6 @@ export function createSystemApi(core: ApiCore) {
 
     getUsageStats: (): Promise<UsageStats> => core.request("/usage", { retries: 0 }),
 
-    getPiSessionsUsageStats: (): Promise<UsageStats> =>
-      core.request("/usage/pi-sessions", { retries: 0 }),
-
     getStatus: async (
       options?: RequestOptions,
     ): Promise<{
