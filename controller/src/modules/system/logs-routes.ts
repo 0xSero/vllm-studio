@@ -118,6 +118,7 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
       maxOutputBytes: 10 * 1024 * 1024,
     }).pipe(
       Effect.map((result) => {
+        if (result.status !== 0 || result.timedOut) return [];
         const output = `${result.stdout || ""}${result.stderr || ""}`;
         if (!output.trim()) return [];
         const lines = output.split(/\r?\n/);
@@ -125,6 +126,12 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
         return lines.slice(Math.max(0, lines.length - limit));
       }),
     );
+
+  const dockerContainerExists = (container: string): Effect.Effect<boolean> =>
+    runCommandAsyncEffect("docker", ["inspect", "--type", "container", container], {
+      timeoutMs: 5_000,
+      maxOutputBytes: 64 * 1024,
+    }).pipe(Effect.map((result) => result.status === 0 && !result.timedOut));
 
   const streamDockerLogLines = (
     container: string,
@@ -342,7 +349,11 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
           const path = yield* Effect.sync(() =>
             resolveExistingLogPath(context.config.data_dir, sessionId),
           );
-          const dockerContainer = yield* getDockerContainerForSession(sessionId);
+          const configuredDockerContainer = yield* getDockerContainerForSession(sessionId);
+          const dockerContainer =
+            configuredDockerContainer && (yield* dockerContainerExists(configuredDockerContainer))
+              ? configuredDockerContainer
+              : null;
           const signal = ctx.req.raw.signal;
           const frameForLine = (line: string): string =>
             new Event(CONTROLLER_EVENTS.LOG, {

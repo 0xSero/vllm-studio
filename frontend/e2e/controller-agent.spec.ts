@@ -27,6 +27,12 @@ for (const route of [
     await page.waitForTimeout(500);
     expect(errors).toEqual([]);
     await expect(page.getByText(/application error/i)).toHaveCount(0);
+    if (route === "/setup") {
+      await expect(page.getByRole("textbox", { name: "Where model weights live" })).toHaveValue(
+        "/models",
+      );
+      await expect(page.getByText(/controller is unreachable/i)).toHaveCount(0);
+    }
   });
 }
 
@@ -69,17 +75,20 @@ test("Pi defaults to the active controller and reveals other models on request",
 
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
+  const transcript = page.getByRole("article");
   const opening = "/goal is ordinary text before the Pi session exists";
   await composer.fill(opening);
   await composer.press("Enter");
-  await expect(page.getByText(opening, { exact: true })).toBeVisible();
-  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+  await expect(transcript.getByText(opening, { exact: true })).toBeVisible();
+  await expect(transcript.getByText("Controller scoped Pi reply.")).toBeVisible({
+    timeout: 60_000,
+  });
 
   const embedded = "Please explain what /goal means without running it";
   await composer.fill(embedded);
   await composer.press("Enter");
-  await expect(page.getByText(embedded, { exact: true })).toBeVisible();
-  await expect(page.getByText("Controller scoped Pi reply.")).toHaveCount(2, {
+  await expect(transcript.getByText(embedded, { exact: true })).toBeVisible();
+  await expect(transcript.getByText("Controller scoped Pi reply.")).toHaveCount(2, {
     timeout: 60_000,
   });
 });
