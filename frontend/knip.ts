@@ -20,18 +20,10 @@ const config = {
     "@local-studio/agent-runtime",
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
-    // Declared here but imported from services/agent-runtime (browser-host).
-    // knip only sees that importer locally, through the node_modules symlink
-    // the frontend postinstall creates. CI has no symlink, so it reports the
-    // dependency as unused and fails the job — the ignore has to stay.
     "playwright-core",
     "chromium-bidi",
     "proper-lockfile",
     "semver",
-    // Nothing in our source imports it: effect requires it at RUNTIME, and it
-    // is pinned at the frontend root so electron-builder's collector actually
-    // ships it. Nested under effect/ it was skipped, and the packaged app
-    // crashed on launch with ERR_MODULE_NOT_FOUND.
     "fast-check",
     "@types/proper-lockfile",
     "@types/semver",

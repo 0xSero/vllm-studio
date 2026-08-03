@@ -19,7 +19,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "depcheck": "depcheck",
     "prepare": "node ../scripts/project.mjs setup-hooks",
-    "postinstall": "node ../scripts/project.mjs patch-pi && node ../scripts/project.mjs link-services",
+    "postinstall": "node ../scripts/project.mjs link-services",
     "check:deadcode": "knip",
     "check:dupes": "jscpd src",
     "check:cleanup": "npm run check:deadcode && npm run check:dupes && npm run depcheck",
@@ -39,20 +39,23 @@
     "typecheck:desktop": "tsc -p desktop/tsconfig.json",
     "check:cycles": "madge --extensions ts,tsx --circular src",
     "check:static": "npm run lint && npm run typecheck && npm run typecheck:desktop && npm run typecheck:extensions && npm run check:cycles && npm run check:ui-structure",
-    "test": "bun test src desktop",
-    "test:e2e": "playwright test --config e2e/controller-agent.config.ts",
+    "test": "bun test src desktop --path-ignore-patterns \"dist-desktop*/**\"",
+    "pretest:e2e": "npm run build && playwright install chromium",
+    "test:e2e": "npm run test:e2e:controller && npm run test:e2e:providers",
+    "test:e2e:controller": "playwright test --config e2e/controller-agent.config.ts",
+    "test:e2e:providers": "playwright test --config e2e/provider-hub.config.ts",
     "check:quality": "node ../scripts/project.mjs validate-package && npm run check:static && npm run test && npm run check:cleanup && npm run build",
     "precommit": "lint-staged --config .lintstagedrc.json && npm run typecheck",
     "typecheck:extensions": "tsc -p desktop/resources/pi-extensions/tsconfig.json"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.80.8",
-    "@earendil-works/pi-coding-agent": "0.80.8",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
     "@hono/node-server": "^2.0.12",
     "@local-studio/agent-runtime": "file:../services/agent-runtime",
     "@local-studio/contracts": "file:../controller/contracts",
     "@lydell/node-pty": "1.2.0-beta.12",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-web-links": "0.13.0-beta.220",
     "@xterm/xterm": "6.1.0-beta.285",
@@ -119,6 +122,7 @@
     "protobufjs@7.6.4": true,
     "sharp@0.34.5": true,
     "unrs-resolver@1.11.1": true,
-    "@google/genai@1.52.0": true
+    "@google/genai@1.52.0": true,
+    "fsevents@2.3.2": true
   }
 }

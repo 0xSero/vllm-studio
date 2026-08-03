@@ -19,17 +19,8 @@
     "incremental": false,
     // The sources use fetch/Headers/ReadableStream types the way the frontend
     // program does (its lib includes dom); mirror that here.
-    "lib": ["esnext", "dom"],
-    "paths": {
-      "effect": ["../../frontend/node_modules/effect/dist/index"],
-      "playwright-core": ["../../frontend/node_modules/playwright-core"],
-      "hono": ["../../frontend/node_modules/hono"],
-      "@hono/node-server": ["../../frontend/node_modules/@hono/node-server"],
-      "@earendil-works/pi-ai": ["../../frontend/node_modules/@earendil-works/pi-ai"],
-      "@earendil-works/pi-coding-agent": [
-        "../../frontend/node_modules/@earendil-works/pi-coding-agent"
-      ]
-    }
+    "lib": ["esnext", "dom"]
   },
-  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"]
+  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "../../shared/agent/**/*.test.ts"]
 }

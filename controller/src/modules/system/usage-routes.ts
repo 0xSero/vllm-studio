@@ -4,7 +4,6 @@ import { observeControllerFunction } from "../../core/function-observability";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { effectHandler } from "../../http/effect-handler";
 import type { AppContext } from "../../app-context";
-import { getUsageFromPiSessions } from "./usage/pi-sessions";
 import { emptyResponse } from "./usage/usage-utilities";
 
 const USAGE_CACHE_TTL_MS = 15_000;
@@ -49,26 +48,6 @@ export const registerUsageRoutes = defineRoutes((app, context) => {
         );
         return usageEffect.pipe(Effect.map((body) => ctx.json(body)));
       }),
-    ),
-
-    app.get(
-      "/usage/pi-sessions",
-      documentRoute,
-      effectHandler((ctx) =>
-        observeControllerFunction(
-          context,
-          "usage.aggregatePiSessions",
-          getUsageFromPiSessions,
-        ).pipe(
-          Effect.map((usage) => ctx.json((usage ?? emptyResponse()) as UsageStats)),
-          Effect.catch((error) => {
-            context.logger.error(
-              `[Usage] Error fetching pi-sessions usage: ${(error as Error).message}`,
-            );
-            return Effect.succeed(ctx.json(emptyResponse()));
-          }),
-        ),
-      ),
     ),
   );
 });

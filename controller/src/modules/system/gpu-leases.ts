@@ -244,7 +244,8 @@ export function resolveRecipeGpuUuids(
 
   const selector = directVisibilitySelector(recipe) ?? environmentVisibilitySelector(recipe);
   if (selector === null) {
-    return { source: "all", selector, uuids: allUuids, unresolvedTokens: [] };
+    const required = Math.max(1, recipe.tensor_parallel_size * recipe.pipeline_parallel_size);
+    return { source: "all", selector, uuids: allUuids.slice(0, required), unresolvedTokens: [] };
   }
 
   const uuids: string[] = [];

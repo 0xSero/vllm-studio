@@ -364,351 +364,6 @@ var init_browser_perf_audit = __esm(async () => {
   }
 });
 
-var exports_build_model_recommendations = {};
-import { readFileSync as readFileSync4, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join3 } from "node:path";
-async function convexQuery(path2, args) {
-  let response = await fetch(`${CONVEX_URL}/api/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: path2, args, format: "json" })
-  });
-  if (!response.ok)
-    throw Error(`${path2}: HTTP ${response.status}`);
-  let payload = await response.json();
-  if (payload.status !== "success")
-    throw Error(`${path2}: ${JSON.stringify(payload)}`);
-  return payload.value;
-}
-function parseHardwareKey(key) {
-  let appleLike = /^m\d/.test(key), working = key, count = 1, multiplied = /^(.*)x(\d+)$/.exec(working);
-  if (multiplied && !/\d+c$/.test(working))
-    working = multiplied[1], count = Number(multiplied[2]);
-  let segments = working.split("_"), memoryGb = null;
-  for (let index = segments.length - 1;index > 0; index -= 1)
-    if (/^\d+$/.test(segments[index])) {
-      memoryGb = Number(segments[index]);
-      break;
-    }
-  let stem = appleLike ? segments.slice(0, 2).join("_") : segments[0];
-  return { stem, memoryGb, count, unified: appleLike || (HARDWARE_STEMS[stem]?.unified ?? !1) };
-}
-function hardwareTarget(key, displayName, tested) {
-  let { stem, memoryGb, count, unified } = parseHardwareKey(key), fallbackMemory = HARDWARE_STEMS[stem]?.defaultMemoryGb ?? 0;
-  return {
-    id: key,
-    label: displayName ?? key,
-    minMemoryGb: (memoryGb ?? fallbackMemory) * count,
-    gpuCount: count,
-    unifiedMemory: unified,
-    tested
-  };
-}
-function inferQuant(declared, hfRepo, engine) {
-  if (declared && declared !== "unknown") {
-    let normalized = declared.toLowerCase().replaceAll("-", "");
-    for (let [, kind] of QUANT_PATTERNS)
-      if (normalized === kind.replaceAll("-", ""))
-        return kind;
-    for (let [pattern, kind] of QUANT_PATTERNS)
-      if (pattern.test(declared))
-        return kind;
-  }
-  for (let [pattern, kind] of QUANT_PATTERNS)
-    if (pattern.test(hfRepo))
-      return kind;
-  if (engine === "mlx")
-    return "mlx";
-  if (engine === "llamacpp")
-    return "gguf";
-  return "bf16";
-}
-function runArgv(run) {
-  let serve = run.inferenceEngineConfig?.runnable_serve?.serve_argv;
-  if (Array.isArray(serve) && serve.length > 0)
-    return { argv: serve, complete: !0 };
-  let recipe = run.inferenceEngineConfig?.recipe_args;
-  if (Array.isArray(recipe) && recipe.length > 0)
-    return { argv: recipe, complete: !1 };
-  return { argv: [], complete: !1 };
-}
-function withoutFlag(argv, flag) {
-  let output = [];
-  for (let index = 0;index < argv.length; index += 1) {
-    if (argv[index] === flag) {
-      index += 1;
-      continue;
-    }
-    output.push(argv[index]);
-  }
-  return output;
-}
-function shellToken(token) {
-  return /^[A-Za-z0-9@%_+=:,./-]+$/.test(token) ? token : `'${token.replaceAll("'", "'\\''")}'`;
-}
-function commandFor(engine, hfRepo, run) {
-  let { argv: rawArgv } = runArgv(run), argv = rawArgv.map(shellToken);
-  switch (engine) {
-    case "vllm": {
-      let rest = withoutFlag(argv, "--model").join(" ");
-      return `vllm serve ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
-    }
-    case "sglang": {
-      let rest = withoutFlag(withoutFlag(argv, "--model-path"), "--model").join(" ");
-      return `python -m sglang.launch_server --model-path ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
-    }
-    case "llamacpp": {
-      let rest = withoutFlag(withoutFlag(argv, "-m"), "--model").join(" ");
-      return `llama-server -m ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
-    }
-    case "mlx": {
-      let rest = withoutFlag(argv, "--model").join(" ");
-      return `mlx_lm.server --model ${hfRepo}${rest ? ` ${rest}` : ""}`.trim();
-    }
-    default:
-      return null;
-  }
-}
-function qualityOf(evalRuns) {
-  let best = new Map;
-  for (let run of evalRuns ?? []) {
-    if (!EVAL_FAMILIES.includes(run.evalFamily))
-      continue;
-    if (typeof run.meanTaskScore !== "number")
-      continue;
-    let current = best.get(run.evalFamily);
-    if (current === void 0 || run.meanTaskScore > current)
-      best.set(run.evalFamily, run.meanTaskScore);
-  }
-  if (best.size === 0)
-    return null;
-  return [...best.values()].reduce((sum, value) => sum + value, 0) / best.size;
-}
-function estimateSizeGb(paramsB, quant) {
-  if (!paramsB)
-    return null;
-  let perParam = BYTES_PER_PARAM[quant] ?? 1;
-  return Math.round(paramsB * perParam * 1.08);
-}
-async function hfRepoSizeGb(hfRepo) {
-  try {
-    let response = await fetch(`https://huggingface.co/api/models/${hfRepo}?blobs=true`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
-    if (!response.ok)
-      return null;
-    let bytes = ((await response.json()).siblings ?? []).filter((sibling) => WEIGHT_FILE.test(sibling.rfilename ?? "")).reduce((sum, sibling) => sum + (sibling.size ?? 0), 0);
-    return bytes > 0 ? bytes / 1073741824 : null;
-  } catch {
-    return null;
-  }
-}
-function paramsFromName(name) {
-  let match = /(\d+(?:\.\d+)?)\s*B/i.exec(name ?? "");
-  return match ? Number(match[1]) : null;
-}
-var CONVEX_URL, DISK_SIZES_PATH, OUT_PATH, DETAIL_CONCURRENCY = 8, HARDWARE_STEMS, QUANT_PATTERNS, median = (values) => {
-  if (values.length === 0)
-    return null;
-  let sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-}, decodeAt = (points, contextTokens) => median((points ?? []).filter((point) => typeof point.generationTps === "number" && (point.completionTokens ?? 0) >= 8 && Math.abs(point.promptTokens - contextTokens) <= contextTokens * 0.5).map((point) => point.generationTps)), runSpeeds = (run) => {
-  let points = run.points ?? [], maxContext = null, prefillSamples = [];
-  for (let point of points) {
-    if (typeof point.promptTokens === "number")
-      maxContext = Math.max(maxContext ?? 0, point.promptTokens);
-    if ((point.cachedPromptTokens ?? 0) === 0 && typeof point.promptTps === "number" && point.promptTokens >= 2048)
-      prefillSamples.push(point.promptTps);
-  }
-  return {
-    decode8k: decodeAt(points, 8192),
-    decode32k: decodeAt(points, 32768),
-    prefill: median(prefillSamples),
-    maxContext
-  };
-}, decodeOf = (run) => {
-  let speeds = runSpeeds(run);
-  return speeds.decode8k ?? speeds.decode32k;
-}, EVAL_FAMILIES, BYTES_PER_PARAM, WEIGHT_FILE, snapshot, models, hardwareRows, hardwareNames, diskSizes, sizeByRepo, withRuns, details, entries, ranked, scored, layers, pool, unscored, output, file, body, measured;
-var init_build_model_recommendations = __esm(async () => {
-  CONVEX_URL = process.env.LOCALAI_CONVEX_URL ?? "https://small-spoonbill-302.convex.cloud", DISK_SIZES_PATH = process.env.LOCALAI_DISK_SIZES ?? join3(homedir(), "ai/local-ai-web/public/data/v1/model-disk-sizes.json"), OUT_PATH = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : "shared/model-recommendations.json";
-  HARDWARE_STEMS = {
-    gb10: { unified: !0, defaultMemoryGb: 121 },
-    gb300: { unified: !0, defaultMemoryGb: 288 },
-    rtxpro6000: { unified: !1 },
-    rtx6000ada: { unified: !1 },
-    rtx5090: { unified: !1 },
-    rtx4090: { unified: !1 }
-  };
-  QUANT_PATTERNS = [
-    [/nvfp4/i, "nvfp4"],
-    [/fp8/i, "fp8"],
-    [/awq/i, "awq"],
-    [/gptq/i, "gptq"],
-    [/gguf|q[2-8]_[a-z0-9_]+|iq[1-4]/i, "gguf"],
-    [/exl3/i, "exl3"],
-    [/mlx|[-_](\d)bit/i, "mlx"],
-    [/mixed/i, "mixed-bit"],
-    [/bf16|fp16/i, "bf16"]
-  ];
-  EVAL_FAMILIES = ["tau2", "gaia", "gdpval"];
-  BYTES_PER_PARAM = {
-    bf16: 2,
-    fp8: 1.05,
-    nvfp4: 0.58,
-    awq: 0.6,
-    gptq: 0.6,
-    gguf: 0.65,
-    exl3: 0.55,
-    mlx: 0.6,
-    "mixed-bit": 0.7
-  };
-  WEIGHT_FILE = /\.(safetensors|gguf|bin|pt|npz)$/;
-  snapshot = await convexQuery("pgCatalog:snapshot", {}), models = snapshot.models ?? [], hardwareRows = snapshot.hardware ?? [];
-  console.log(`snapshot: publication=${snapshot.publicationId} models=${models.length} hardware=${hardwareRows.length}`);
-  hardwareNames = new Map(hardwareRows.map((row) => [row.hardwareKey, row.displayName])), diskSizes = [];
-  try {
-    let parsed = JSON.parse(readFileSync4(DISK_SIZES_PATH, "utf8"));
-    diskSizes = Array.isArray(parsed) ? parsed : parsed.sizes ?? [];
-  } catch {
-    console.warn(`disk sizes not found at ${DISK_SIZES_PATH}; sizes will be estimated`);
-  }
-  sizeByRepo = new Map;
-  for (let entry of diskSizes) {
-    let key = (entry.hfRepo ?? entry.modelId ?? "").toLowerCase();
-    if (key && entry.diskBytes > 0)
-      sizeByRepo.set(key, entry.diskBytes / 1073741824);
-  }
-  withRuns = models.filter((model) => (model.speedSweepCount ?? 0) > 0);
-  console.log(`models with speed runs: ${withRuns.length}`);
-  details = new Map;
-  for (let index = 0;index < withRuns.length; index += DETAIL_CONCURRENCY) {
-    let batch = withRuns.slice(index, index + DETAIL_CONCURRENCY), resolved = await Promise.all(batch.map(async (model) => {
-      try {
-        return [model, await convexQuery("pgCatalog:modelDetail", { routeSlug: model.routeSlug })];
-      } catch (error) {
-        return console.warn(`detail failed for ${model.routeSlug}: ${error.message}`), [model, null];
-      }
-    }));
-    for (let [model, detail] of resolved)
-      if (detail)
-        details.set(model.routeSlug, detail);
-    process.stdout.write(`\rdetails: ${Math.min(index + DETAIL_CONCURRENCY, withRuns.length)}/${withRuns.length}`);
-  }
-  console.log();
-  entries = new Map;
-  for (let model of withRuns) {
-    let detail = details.get(model.routeSlug);
-    if (!detail)
-      continue;
-    let speedRuns = detail.speedRuns ?? [];
-    if (speedRuns.length === 0)
-      continue;
-    let hfRepo = model.hfRepo ?? model.modelId;
-    if (!hfRepo || !hfRepo.includes("/"))
-      continue;
-    let bestByEngineHardware = new Map;
-    for (let run of speedRuns) {
-      let engine = run.inferenceEngine;
-      if (!engine)
-        continue;
-      let key = `${engine} ${run.hardwareKey}`, current = bestByEngineHardware.get(key), currentSingle = current ? (current.concurrency ?? 1) === 1 : !1, runSingle = (run.concurrency ?? 1) === 1;
-      if (!current || runSingle && !currentSingle || runSingle === currentSingle && (decodeOf(run) ?? 0) > (decodeOf(current) ?? 0))
-        bestByEngineHardware.set(key, run);
-    }
-    let commands = {}, testedHardware = new Map, benchmarks = [], bestDecode = null, bestPrefill = null;
-    for (let [key, run] of bestByEngineHardware) {
-      let [engine, hardwareKey] = key.split(" ");
-      testedHardware.set(hardwareKey, hardwareTarget(hardwareKey, hardwareNames.get(hardwareKey), !0));
-      let speeds = runSpeeds(run), decode = speeds.decode8k ?? speeds.decode32k;
-      if (decode !== null && (bestDecode === null || decode > bestDecode))
-        bestDecode = decode;
-      if (speeds.prefill !== null && (bestPrefill === null || speeds.prefill > bestPrefill))
-        bestPrefill = speeds.prefill;
-      benchmarks.push({
-        hardwareId: hardwareKey,
-        engine,
-        decodeTps: decode === null ? null : Math.round(decode * 10) / 10,
-        decodeTps32k: speeds.decode32k === null ? null : Math.round(speeds.decode32k * 10) / 10,
-        prefillTps: speeds.prefill === null ? null : Math.round(speeds.prefill * 10) / 10,
-        ttftMs: null,
-        contextTokens: speeds.maxContext,
-        measuredAt: run.points?.[0]?.createdAt?.slice(0, 10) ?? null,
-        notes: run.inferenceEngineVersion ? `${engine} ${run.inferenceEngineVersion}` : null
-      });
-      let { complete } = runArgv(run);
-      if (!commands[engine] || complete) {
-        let command = commandFor(engine, hfRepo, run);
-        if (command)
-          commands[engine] = command;
-      }
-    }
-    let quant = inferQuant(model.quantization, hfRepo, benchmarks[0]?.engine ?? null), measuredSize = sizeByRepo.get(hfRepo.toLowerCase()) ?? sizeByRepo.get((model.modelId ?? "").toLowerCase()) ?? await hfRepoSizeGb(hfRepo), paramsB = paramsFromName(model.displayName ?? hfRepo), sizeGb = measuredSize ?? estimateSizeGb(paramsB, quant);
-    if (!sizeGb)
-      continue;
-    let quality = qualityOf(detail.evalRuns);
-    entries.set(hfRepo, {
-      name: model.displayName ?? hfRepo.split("/").pop(),
-      quant,
-      filesize: `${Math.round(sizeGb)}gb`,
-      filesizeGb: Math.round(sizeGb * 10) / 10,
-      hardware: [...testedHardware.values()].sort((a, b) => a.minMemoryGb - b.minMemoryGb),
-      commands,
-      rank: 0,
-      benchmarks: benchmarks.sort((a, b) => (b.decodeTps ?? 0) - (a.decodeTps ?? 0)),
-      expectSpeed: {
-        decodeTps: bestDecode === null ? null : Math.round(bestDecode * 10) / 10,
-        prefillTps: bestPrefill === null ? null : Math.round(bestPrefill * 10) / 10,
-        source: "measured"
-      },
-      params: paramsFromName(model.displayName ?? hfRepo) ? (model.displayName ?? hfRepo).match(/(\d+(?:\.\d+)?B(?:-A\d+(?:\.\d+)?B)?)/)?.[1] ?? null : null,
-      notes: [],
-      _quality: quality,
-      _sizeEstimated: !measuredSize
-    });
-  }
-  ranked = [...entries.values()], scored = ranked.filter((entry) => entry._quality !== null && entry.expectSpeed.decodeTps !== null), layers = [], pool = [...scored];
-  while (pool.length > 0) {
-    let layer = pool.filter((candidate) => !pool.some((other) => other !== candidate && other.expectSpeed.decodeTps >= candidate.expectSpeed.decodeTps && other._quality >= candidate._quality && (other.expectSpeed.decodeTps > candidate.expectSpeed.decodeTps || other._quality > candidate._quality)));
-    layers.push(layer), pool = pool.filter((entry) => !layer.includes(entry));
-  }
-  layers.forEach((layer, index) => {
-    for (let entry of layer)
-      entry.rank = index + 1;
-  });
-  unscored = ranked.filter((entry) => !scored.includes(entry)).sort((a, b) => (b.expectSpeed.decodeTps ?? 0) - (a.expectSpeed.decodeTps ?? 0));
-  unscored.forEach((entry) => {
-    entry.rank = layers.length + 1;
-  });
-  output = {};
-  for (let [hfRepo, entry] of [...entries.entries()].sort((a, b) => a[1].rank - b[1].rank)) {
-    let { _quality, _sizeEstimated, ...clean } = entry;
-    if (_quality !== null)
-      clean.notes = [...clean.notes, `quality ${Math.round(_quality * 1000) / 10}% (tau2/gaia/gdpval mean)`];
-    if (_sizeEstimated)
-      clean.notes = [...clean.notes, "size estimated from parameter count"];
-    output[hfRepo] = clean;
-  }
-  file = {
-    version: 1,
-    updated: (new Date()).toISOString().slice(0, 10),
-    source: `local.ai publication ${snapshot.publicationId}`,
-    models: output
-  }, body = Object.entries(output).map(([key, value]) => `    ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(`,
-`);
-  writeFileSync(OUT_PATH, `{
-  "version": ${file.version},
-  "updated": ${JSON.stringify(file.updated)},
-  "source": ${JSON.stringify(file.source)},
-  "models": {
-${body}
-  }
-}
-`);
-  console.log(`wrote ${Object.keys(output).length} entries -> ${OUT_PATH}`);
-  measured = [...entries.values()].filter((entry) => !entry._sizeEstimated).length;
-  console.log(`sizes: ${measured} measured, ${entries.size - measured} estimated`);
-});
-
 var exports_bundle = {};
 import {
   cpSync,
@@ -1333,86 +988,6 @@ var init_link_services_node_modules = __esm(() => {
   createLink();
 });
 
-var exports_patch_pi_ai_openai_text_boundaries = {};
-import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync3 } from "node:fs";
-import path6 from "node:path";
-import { fileURLToPath as fileURLToPath5 } from "node:url";
-var frontendRoot, targetFiles, helperMarker = "function localStudioJoinTextParts", helper, injectionPoint = `function isTextContentBlock(block) {
-    return block.type === "text";
-}
-`, helperStartMarker = "function localStudioTextPartBoundary", helperEndMarker = "function isThinkingContentBlock", originalJoin = 'const assistantText = assistantTextParts.map((part) => part.text).join("");', patchedJoin = "const assistantText = localStudioJoinTextParts(assistantTextParts);", found = 0, patched = 0;
-var init_patch_pi_ai_openai_text_boundaries = __esm(() => {
-  frontendRoot = path6.resolve(path6.dirname(fileURLToPath5(import.meta.url)), ".."), targetFiles = [
-    path6.join(frontendRoot, "node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js"),
-    path6.join(frontendRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js")
-  ], helper = [
-    "function localStudioTextPartBoundary(left, right) {",
-    "    if (!left || !right || /\\s$/.test(left) || /^\\s/.test(right))",
-    '        return "";',
-    `    if (/^[-*+]$/.test(right) && /[.:;!?]["')\\]]?$/.test(left))`,
-    '        return "\\n";',
-    '    if (/^(?:[-*+](?:\\s+|[A-Z0-9"`*_])|\\d+[.)]\\s+)/.test(right))',
-    '        return "\\n";',
-    `    if (/[.!?]["')\\]\\u201d]?$/.test(left) && /^[A-Z0-9"\\u201c'\`*_]/.test(right))`,
-    '        return "\\n\\n";',
-    `    if (/[:;]["')\\]\\u201d]?$/.test(left) && /^(?:[-*+]|\\d+[.)]|[A-Z0-9"\\u201c'\`*_])/.test(right))`,
-    '        return "\\n";',
-    '    return "";',
-    "}",
-    "function localStudioLineEndsWithBareListMarker(text) {",
-    "    return /(?:^|\\n)[ \\t]*[-*+]$/.test(text);",
-    "}",
-    "function localStudioJoinTextPart(left, right) {",
-    "    const boundary = localStudioTextPartBoundary(left, right);",
-    '    const nextRight = boundary.includes("\\n") && /^[-*+](?=\\S)/.test(right)',
-    "        ? `${right.slice(0, 1)} ${right.slice(1)}`",
-    "        : right;",
-    '    const prefix = localStudioLineEndsWithBareListMarker(left) && /^\\S/.test(nextRight) ? " " : "";',
-    "    return left + boundary + prefix + nextRight;",
-    "}",
-    "function localStudioJoinTextParts(parts) {",
-    "    return parts",
-    "        .map((part) => part.text)",
-    '        .reduce((text, partText) => localStudioJoinTextPart(text, partText), "");',
-    "}"
-  ].join(`
-`) + `
-`;
-  for (let file2 of targetFiles) {
-    if (!existsSync7(file2))
-      continue;
-    found += 1;
-    let source = readFileSync9(file2, "utf8"), next = source.replaceAll("vllmStudio", "localStudio");
-    if (!next.includes(helperMarker)) {
-      if (!next.includes(injectionPoint))
-        throw Error(`Could not find pi-ai text block helper injection point in ${file2}`);
-      next = next.replace(injectionPoint, `${injectionPoint}${helper}`);
-    } else {
-      let helperStart = next.indexOf(helperStartMarker), helperEnd = next.indexOf(helperEndMarker, helperStart);
-      if (helperStart === -1 || helperEnd === -1)
-        throw Error(`Could not find existing pi-ai text boundary helper block in ${file2}`);
-      next = next.slice(0, helperStart) + helper + next.slice(helperEnd);
-    }
-    if (next.includes(originalJoin))
-      next = next.replace(originalJoin, patchedJoin);
-    else if (!next.includes(patchedJoin))
-      throw Error(`Could not find pi-ai assistant text join in ${file2}`);
-    if (next !== source)
-      writeFileSync3(file2, next, "utf8"), patched += 1;
-  }
-  if (found === 0)
-    console.warn([
-      "WARNING: patch-pi-ai-openai-text-boundaries.mjs found no pi-ai openai-completions.js to patch.",
-      "Checked:",
-      ...targetFiles.map((file2) => `  - ${file2}`),
-      "The @earendil-works/pi-ai package layout may have changed. Agent streaming may misrender",
-      "assistant text (missing paragraph/list boundaries) until this patch script is updated."
-    ].join(`
-`));
-  else if (patched > 0)
-    console.log(`Patched pi-ai OpenAI assistant text boundaries in ${patched} file(s).`);
-});
-
 var exports_perf_audit = {};
 import { performance } from "node:perf_hooks";
 function percentile(values, ratio) {
@@ -1722,7 +1297,7 @@ var init_install_desktop_app_test = __esm(() => {
       cwd: repository,
       encoding: "utf8"
     }).trim().split(`
-`).filter((file2) => file2 && file2 !== "scripts/project.mjs"), violations3 = [];
+`).filter((file2) => file2 && file2 !== "scripts/project.mjs" && existsSync9(path8.join(repository, file2))), violations3 = [];
     for (let file2 of files) {
       let text = readFileSync11(path8.join(repository, file2), "utf8");
       if (/\.app\.(?:previous|prev|pre|backup)|(?:previous|backup)\.app/i.test(text))
@@ -2316,20 +1891,38 @@ var init_validate_shared_contracts = __esm(() => {
 var exports_validate_package_json = {};
 import { readFileSync as readFileSync15 } from "node:fs";
 import { resolve as resolve6 } from "node:path";
-var pkgPath, pkg, required, requiredScripts, missing;
+var packageRepository, packageRequirements, packageLocks, packageMissing, releaseVersion;
+function packageAuditRead(relativePath) {
+  return JSON.parse(readFileSync15(resolve6(packageRepository, relativePath), "utf8"));
+}
 var init_validate_package_json = __esm(() => {
-  pkgPath = resolve6(import.meta.dirname, "../package.json"), pkg = JSON.parse(readFileSync15(pkgPath, "utf8")), required = ["scripts", "devDependencies"], requiredScripts = ["dev", "build", "desktop:dist"], missing = [];
-  for (let key of required)
-    if (!pkg[key] || typeof pkg[key] !== "object")
-      missing.push(key);
-  for (let script of requiredScripts)
-    if (!pkg.scripts?.[script])
-      missing.push(`script:${script}`);
-  if (missing.length > 0)
+  packageRepository = resolve6(import.meta.dirname, "../.."), packageRequirements = [
+    ["package.json", ["doctor", "setup", "dev", "dev:controller", "build", "start", "start:controller", "test", "check", "test:integration"]],
+    ["frontend/package.json", ["dev", "build", "start", "desktop:dist", "check:quality"]],
+    ["controller/package.json", ["dev", "start", "typecheck", "lint", "check", "test"]],
+    ["services/agent-runtime/package.json", ["bundle", "build", "dev", "start", "test"]],
+    ["shared/package.json", []],
+    ["controller/contracts/package.json", []]
+  ], packageLocks = ["frontend/package-lock.json", "controller/bun.lock", "services/agent-runtime/bun.lock", "shared/bun.lock"], packageMissing = [];
+  for (let [manifest, scripts] of packageRequirements) {
+    let packageJson = packageAuditRead(manifest);
+    if (packageJson.private !== true)
+      packageMissing.push(`${manifest}:private`);
+    for (let script of scripts)
+      if (!packageJson.scripts?.[script])
+        packageMissing.push(`${manifest}:script:${script}`);
+  }
+  for (let lockfile of packageLocks)
+    if (!existsSync(resolve6(packageRepository, lockfile)))
+      packageMissing.push(lockfile);
+  releaseVersion = packageAuditRead("package.json").version;
+  for (let manifest of ["frontend/package.json", "controller/package.json", "controller/contracts/package.json", "services/agent-runtime/package.json"])
+    if (packageAuditRead(manifest).version !== releaseVersion)
+      packageMissing.push(`${manifest}:version`);
+  if (packageMissing.length > 0)
     console.error(`
   package.json integrity check FAILED
-`), console.error(`  Missing: ${missing.join(", ")}`), console.error("  This file may have been accidentally stripped."), console.error(`  Run: git checkout -- frontend/package.json
-`), process.exit(1);
+`), console.error(`  Invalid: ${packageMissing.join(", ")}`), process.exit(1);
   console.log("  package.json integrity check passed");
 });
 
@@ -2594,25 +2187,22 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["assert-release-main", () => Promise.resolve().then(() => (init_assert_release_main(), exports_assert_release_main))],
   ["assert-standalone", () => Promise.resolve().then(() => (init_assert_standalone_build(), exports_assert_standalone_build))],
   ["browser-perf", () => init_browser_perf_audit().then(() => exports_browser_perf_audit)],
-  ["build-model-recommendations", () => init_build_model_recommendations().then(() => exports_build_model_recommendations)],
   ["bundle-agent-runtime", () => Promise.resolve().then(() => (init_bundle(), exports_bundle))],
   ["check-commits", () => Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits))],
   ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
   ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
   ["desktop-smoke", () => init_desktop_package_smoke().then(() => exports_desktop_package_smoke)],
-  ["glm-build", async () => glmBuild()],
-  ["glm-cutover", async () => glmCutover()],
-  ["glm-rollback", async () => glmRollback()],
-  ["glm-stage", async () => glmStage()],
+  ["doctor", async () => doctor()],
   ["link-services", () => Promise.resolve().then(() => (init_link_services_node_modules(), exports_link_services_node_modules))],
-  ["patch-pi", () => Promise.resolve().then(() => (init_patch_pi_ai_openai_text_boundaries(), exports_patch_pi_ai_openai_text_boundaries))],
   ["perf", () => init_perf_audit().then(() => exports_perf_audit)],
   ["postbuild-agent-runtime", () => Promise.resolve().then(() => (init_postbuild(), exports_postbuild))],
+  ["prepare-agent-runtime", async () => rmSync6(path11.join(root5, "services", "agent-runtime", "dist"), { recursive: !0, force: !0 })],
   ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
   ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
   ["self-test", async () => {
     await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test)), await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
   }],
+  ["setup", async () => setupRepository()],
   ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
   ["stage-release", () => Promise.resolve().then(() => (init_stage_desktop_release(), exports_stage_desktop_release))],
   ["start", () => init_start_standalone().then(() => exports_start_standalone)],
@@ -2622,61 +2212,48 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["validate-ui", () => Promise.resolve().then(() => (init_validate_ui_structure(), exports_validate_ui_structure))],
   ["audit-layout", async () => auditLayout()]
 ]);
+function parsedVersion(value) {
+  let match = value.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)] : null;
+}
+function versionMeetsMinimum(actual, minimum) {
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (actual[index] > minimum[index])
+      return true;
+    if (actual[index] < minimum[index])
+      return false;
+  }
+  return true;
+}
+function requireTool(label, command, args3, minimum) {
+  let result = spawnSync4(command, args3, { cwd: root5, encoding: "utf8" });
+  if (result.error || result.status !== 0)
+    throw Error(`${label} is required but unavailable`);
+  let output4 = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(), actual = parsedVersion(output4);
+  if (!actual || !versionMeetsMinimum(actual, minimum))
+    throw Error(`${label} ${minimum.join(".")} or newer is required; found ${output4 || "unknown"}`);
+  console.log(`${label}: ${actual.join(".")}`);
+}
+function doctor() {
+  requireTool("Node.js", process.execPath, ["--version"], [22, 19, 0]);
+  requireTool("npm", "npm", ["--version"], [10, 0, 0]);
+  requireTool("Bun", "bun", ["--version"], [1, 3, 14]);
+  requireTool("Python", "python3", ["--version"], [3, 10, 0]);
+  requireTool("Git", "git", ["--version"], [2, 0, 0]);
+  console.log("Toolchain check passed");
+}
+function setupRepository() {
+  doctor();
+  for (let directory of ["controller", "shared", "services/agent-runtime"])
+    run3("bun", ["install", "--frozen-lockfile"], path11.join(root5, directory));
+  run3("npm", ["ci", "--legacy-peer-deps"], path11.join(root5, "frontend"));
+  console.log("Repository setup complete");
+}
 function auditLayout() {
   let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
   if (JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) || JSON.stringify(executable) !== JSON.stringify(expected) || stale.length > 0)
     throw Error(`Automation layout drifted: scripts=${actual.join(",")}; executable=${executable.join(",")}; stale=${stale.join(",")}`);
   console.log("Automation layout passed: exactly three scripts");
-}
-function glmDirectory() {
-  return path11.join(root5, "ops/glm52-vision");
-}
-function glmBuild() {
-  let directory = glmDirectory(), image = process.env.IMAGE || "local/glm52-nf3-vision:v1", model = process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision";
-  run3("docker", ["build", "-t", image, directory]);
-  run3("docker", ["run", "--rm", "--entrypoint", "/opt/venv/bin/python", "-v", `${model}:/model:ro`, image, "-m", "glm52_vision.validation", "/model"]);
-}
-function glmStage() {
-  let directory = glmDirectory(), source = process.env.SOURCE_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid", target = process.env.TARGET_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision", assets = process.env.ASSET_DIR || "/mnt/llm_models/.glm52-vision-assets/f6eab6117386a0c69152fdf272dc65bfd0254f9f", revision = "f6eab6117386a0c69152fdf272dc65bfd0254f9f";
-  mkdirSync(path11.resolve(assets), { recursive: !0 });
-  run3("hf", ["download", "baseten/GLM-5.2-Vision-NVFP4", "--revision", revision, "--include", "config.json", "chat_template.jinja", "preprocessor_config.json", "kimi_k25_processor.py", "kimi_k25_vision_processing.py", "media_utils.py", "vision_tower.safetensors", "mm_projector.safetensors", "--local-dir", assets]);
-  run3("python3", [path11.join(directory, "src/glm52_vision/prepare_checkpoint.py"), "--source", source, "--target", target, "--assets", assets, "--bundle", directory]);
-}
-function glmCompose(args3, options = {}) {
-  return spawnSync4("docker", ["compose", "-f", path11.join(glmDirectory(), "compose.yaml"), ...args3], { stdio: "inherit", env: { ...process.env, MODEL_DIR: process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision" }, ...options });
-}
-function glmRollback() {
-  let down = glmCompose(["down"]);
-  if (down.status !== 0) process.exit(down.status ?? 1);
-  run3("docker", ["start", "glm52-v3"]);
-}
-function glmCutover() {
-  if (process.env.CONFIRM_CUTOVER !== "glm52-vision") throw Error("Set CONFIRM_CUTOVER=glm52-vision");
-  let model = process.env.MODEL_DIR || "/mnt/llm_models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid-Vision";
-  if (!existsSync(path11.join(model, "VISION_PROVENANCE.json"))) throw Error("VISION_PROVENANCE.json is missing");
-  run3("docker", ["image", "inspect", "local/glm52-nf3-vision:v3"]);
-  run3("docker", ["stop", "glm52-v3"]);
-  let up = glmCompose(["up", "-d"]);
-  if (up.status !== 0) {
-    run3("docker", ["start", "glm52-v3"]);
-    process.exit(up.status ?? 1);
-  }
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    let health = spawnSync4("curl", ["-fsS", "http://127.0.0.1:8000/v1/models"], { stdio: "ignore" });
-    if (health.status === 0) {
-      console.log("GLM-5.2-Vision is online");
-      return;
-    }
-    let running = spawnSync4("docker", ["inspect", "-f", "{{.State.Running}}", "glm52-vision-candidate"], { encoding: "utf8" });
-    if (running.status !== 0 || running.stdout.trim() !== "true") break;
-    run3("sleep", ["5"]);
-  }
-  let inspect = spawnSync4("docker", ["inspect", "glm52-vision-candidate"], { encoding: "utf8" }), logs = spawnSync4("docker", ["logs", "glm52-vision-candidate"], { encoding: "utf8" });
-  writeFileSync(path11.join(glmDirectory(), "cutover-failure-inspect.json"), `${inspect.stdout || ""}${inspect.stderr || ""}`);
-  writeFileSync(path11.join(glmDirectory(), "cutover-failure.log"), `${logs.stdout || ""}${logs.stderr || ""}`);
-  glmCompose(["down"]);
-  run3("docker", ["start", "glm52-v3"]);
-  process.exit(1);
 }
 function git(args3, options = {}) {
   return execFileSync6("git", args3, { cwd: root5, encoding: "utf8", ...options }).trim();
@@ -2742,6 +2319,9 @@ function prePush() {
   run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
 }
 function setupHooks() {
+  let worktree = spawnSync4("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root5, encoding: "utf8" });
+  if (worktree.status !== 0 || worktree.stdout.trim() !== "true")
+    return console.log("Skipping Git hook setup outside a worktree");
   git(["rev-parse", "--git-dir"]), git(["config", "core.hooksPath", ".githooks"]);
   for (let name of readdirSync10(path11.join(root5, ".githooks")))
     chmodSync2(path11.join(root5, ".githooks", name), 493);

@@ -10,17 +10,18 @@
   },
   "scripts": {
     "bundle": "node ../../scripts/project.mjs bundle-agent-runtime",
-    "build": "tsc -p tsconfig.build.json && node ../../scripts/project.mjs postbuild-agent-runtime",
+    "build": "node ../../scripts/project.mjs prepare-agent-runtime && tsc -p tsconfig.build.json && node ../../scripts/project.mjs postbuild-agent-runtime",
+    "check": "bun run build && bun run test",
     "dev": "bun --watch src/server.ts",
     "start": "node dist/server.js",
-    "test": "bun test"
+    "test": "bun test test"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.80.8",
-    "@lydell/node-pty": "1.2.0-beta.12",
-    "@earendil-works/pi-coding-agent": "0.80.8",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
     "@hono/node-server": "^2.0.12",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@lydell/node-pty": "1.2.0-beta.12",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "chromium-bidi": "0.12.0",
     "effect": "4.0.0-beta.90",
     "hono": "4.12.30",
@@ -29,6 +30,11 @@
     "semver": "7.8.5"
   },
   "devDependencies": {
+    "@types/node": "24.6.0",
+    "@types/proper-lockfile": "4.1.4",
     "@types/semver": "7.7.1"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.9"
   }
 }

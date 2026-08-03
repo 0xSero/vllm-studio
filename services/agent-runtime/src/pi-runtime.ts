@@ -618,12 +618,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
             }
             await restoreQueuedMessages(session, cleared, mutation, images);
           } finally {
-            this.queueEventBufferDepth -= 1;
-            if (this.queueEventBufferDepth === 0 && this.bufferedQueueEvent) {
-              const event = this.bufferedQueueEvent;
-              this.bufferedQueueEvent = null;
-              this.recordEvent(event);
-            }
+            this.flushBufferedQueueEvent();
           }
         },
         catch: (error) => error,
@@ -808,8 +803,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         >,
       editor: (title, prefill) =>
         request("editor", { title, prefill }) as Promise<string | undefined>,
-      notify: (message, level = "info") =>
-        this.recordEvent({ type: "notice", level, message }),
+      notify: (message, level = "info") => this.recordEvent({ type: "notice", level, message }),
       setStatus: (key, text) =>
         this.recordEvent({ type: "extension_status", key, text: text ?? null }),
       setTitle: (title) => this.recordEvent({ type: "extension_title", title }),
@@ -854,6 +848,14 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
     this.emit("loggedEvent", logged);
     this.emit("event", event);
+  }
+
+  private flushBufferedQueueEvent() {
+    this.queueEventBufferDepth -= 1;
+    if (this.queueEventBufferDepth !== 0 || !this.bufferedQueueEvent) return;
+    const event = this.bufferedQueueEvent;
+    this.bufferedQueueEvent = null;
+    this.recordEvent(event);
   }
 }
 

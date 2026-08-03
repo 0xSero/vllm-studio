@@ -17,7 +17,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@APP_DIR@/services/agent-runtime
-ExecStart=@NODE@ dist/server.js
+ExecStart=@NODE@ dist/standalone.mjs
 Environment=PORT=8081
 Environment=PI_CODING_AGENT_DIR=%h/.local-studio/pi-agent
 # Same data dir the frontend uses for api-settings.json, if customized:

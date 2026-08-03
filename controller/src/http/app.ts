@@ -17,7 +17,7 @@ import { registerAudioRoutes } from "../modules/audio/routes";
 import { registerSpeechRoutes } from "../modules/speech/routes";
 import { documentRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
-  createMutatingAuthMiddleware,
+  createAuthMiddleware,
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
 } from "./security-middleware";
@@ -87,7 +87,7 @@ export const createApp = (
   app.use("*", createControllerRequestObservabilityMiddleware(context));
   app.use("*", createMutatingRateLimitMiddleware(context));
   app.use("*", createReadRateLimitMiddleware(context));
-  app.use("*", createMutatingAuthMiddleware(context));
+  app.use("*", createAuthMiddleware(context));
 
   const routes = mergeRoutes(
     registerSystemRoutes(app, context),

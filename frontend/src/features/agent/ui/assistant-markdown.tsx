@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useToolsActions } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
+import { writeClipboardText } from "@/lib/clipboard";
 
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
@@ -50,8 +51,7 @@ class MarkdownErrorBoundary extends React.Component<
 function CodeBlockCopyButton({ code }: { code: string }) {
   const [copied, markCopied] = useCopiedFlag();
   const handleCopy = useCallback(() => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(code).then(markCopied, () => undefined);
+    void writeClipboardText(code).then(markCopied, () => undefined);
   }, [code, markCopied]);
   return (
     <button
@@ -220,7 +220,11 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
     },
     a: ({ node: _n, href, children, ...props }) => {
       if (typeof href === "string" && isFileReference(href)) {
-        return <FileLink onOpen={openFileReference} value={href}>{children}</FileLink>;
+        return (
+          <FileLink onOpen={openFileReference} value={href}>
+            {children}
+          </FileLink>
+        );
       }
       if (!safeExternalHref(href)) return <span>{children}</span>;
       return (

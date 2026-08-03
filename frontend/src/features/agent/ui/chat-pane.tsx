@@ -605,14 +605,6 @@ export function ChatPane({
         void runCommandInvocation(invocation);
         return;
       }
-      // While a turn is running, Enter queues (Codex behavior) — the queued
-      // row's own Steer control is the explicit interruption. queueMessage
-      // falls back to a fresh prompt if the run has actually ended.
-      if (running) {
-        event.preventDefault();
-        void queueMessage();
-        return;
-      }
       void sendMessage(event);
     },
     [
@@ -621,9 +613,7 @@ export function ChatPane({
       commandContext,
       commandRegistry,
       goalModeApi,
-      queueMessage,
       runCommandInvocation,
-      running,
       sendMessage,
     ],
   );

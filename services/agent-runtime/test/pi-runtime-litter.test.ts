@@ -112,6 +112,22 @@ test("Pi model catalog preserves the controller's active model", () => {
   assert.equal(modelsToPiModels([model])[0]?.active, true);
 });
 
+test("Pi uses the current completion token field for vLLM controllers", () => {
+  const model: AgentModel = {
+    id: "model-current-tokens",
+    rawId: "model-current-tokens",
+    providerId: "local-studio",
+    name: "Current token field",
+    provider: "local-studio",
+    contextWindow: 128_000,
+    maxTokens: 16_000,
+    reasoning: false,
+    vision: false,
+    active: true,
+  };
+  assert.equal(modelsToPiModels([model])[0]?.compat.maxTokensField, "max_completion_tokens");
+});
+
 test("Pi preserves reasoning, skills, templates, and tools when restart options are omitted", () => {
   const current = {
     thinkingLevel: "xhigh" as const,

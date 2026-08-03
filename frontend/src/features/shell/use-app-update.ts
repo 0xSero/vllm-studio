@@ -8,6 +8,7 @@ export type AppUpdatePhase = "idle" | "working" | "ready" | "failed";
 export type AppUpdate = {
   /** Installed app version (desktop bridge); null on the plain web app. */
   currentVersion: string | null;
+  releaseChannel: "dev" | "stable" | null;
   /** Newest published release, when reachable. */
   latestVersion: string | null;
   downloadUrl: string | null;
@@ -38,6 +39,14 @@ export function isAppUpdateAvailable(
   return Boolean(latestVersion && currentVersion && isNewerVersion(latestVersion, currentVersion));
 }
 
+export function isReleaseUpdateAvailable(
+  latestVersion: string | null,
+  currentVersion: string | null,
+  releaseChannel: "dev" | "stable" | null,
+): boolean {
+  return releaseChannel === "stable" && isAppUpdateAvailable(latestVersion, currentVersion);
+}
+
 const bridge = () => window.localStudioDesktop ?? {};
 
 function phaseForStatus(status: string): AppUpdatePhase {
@@ -49,6 +58,7 @@ function phaseForStatus(status: string): AppUpdatePhase {
 
 export function useAppUpdate(): AppUpdate {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  const [releaseChannel, setReleaseChannel] = useState<"dev" | "stable" | null>(null);
   const [latest, setLatest] = useState<{ version: string | null; url: string | null }>({
     version: null,
     url: null,
@@ -88,7 +98,10 @@ export function useAppUpdate(): AppUpdate {
       .then((runtime) => {
         // An unpackaged dev run reports the repo's package.json version, which
         // trails every published release — it must not claim an update.
-        if (!cancelled && runtime.packaged) setCurrentVersion(runtime.appVersion);
+        if (!cancelled && runtime.packaged) {
+          setCurrentVersion(runtime.appVersion);
+          setReleaseChannel(runtime.releaseChannel);
+        }
       })
       .catch(() => undefined);
     syncDesktopPhase();
@@ -98,7 +111,7 @@ export function useAppUpdate(): AppUpdate {
     };
   }, [syncDesktopPhase]);
 
-  const updateAvailable = isAppUpdateAvailable(latest.version, currentVersion);
+  const updateAvailable = isReleaseUpdateAvailable(latest.version, currentVersion, releaseChannel);
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
@@ -118,6 +131,7 @@ export function useAppUpdate(): AppUpdate {
 
   return {
     currentVersion,
+    releaseChannel,
     latestVersion: latest.version,
     downloadUrl: latest.url,
     updateAvailable,
