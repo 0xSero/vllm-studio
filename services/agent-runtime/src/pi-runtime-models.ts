@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { getApiSettings, type ApiSettings } from "./settings-service";
 import { resolveDataDir } from "./data-dir";
-import { isAgentRuntimeProcess, listProviderAgentModels, reloadProviderHub } from "./provider-hub";
+import { listProviderAgentModels, refreshProviderHub } from "./provider-hub";
 import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import {
   normalizeOpenAIModels,
@@ -415,32 +415,9 @@ export async function refreshPiModels(
   }
   return { models: allModels, agentDir: writtenAgentDir };
 }
-// The agent-runtime process owns the provider hub (one pi ModelRuntime for
-// sessions and sign-in). When this module runs inside the Next server it must
-// not instantiate a second runtime — pi internals don't survive the Next
-// bundler and credentials/composition would diverge — so it asks the agent
-// runtime over HTTP instead. Models.json was just rewritten either way; the
-// hub re-reads it before listing (locally here, in the handler over HTTP).
 async function collectProviderAgentModels(): Promise<AgentModel[]> {
-  if (isAgentRuntimeProcess()) {
-    await reloadProviderHub().catch(() => undefined);
-    return listProviderAgentModels();
-  }
-  const base = (process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL || "http://127.0.0.1:8081").replace(
-    /\/+$/,
-    "",
-  );
-  try {
-    const response = await fetch(`${base}/api/agent/providers/models`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) return [];
-    const payload = (await response.json()) as { models?: AgentModel[] };
-    return Array.isArray(payload.models) ? payload.models : [];
-  } catch {
-    return [];
-  }
+  await refreshProviderHub().catch(() => undefined);
+  return listProviderAgentModels();
 }
 
 // Moved here from the shared models module: only the runtime needs the

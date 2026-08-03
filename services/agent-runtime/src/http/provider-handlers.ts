@@ -7,10 +7,8 @@
 import {
   cancelProviderLogin,
   getProviderLoginJob,
-  listProviderAgentModels,
   listProviders,
   logoutProvider,
-  reloadProviderHub,
   respondProviderLogin,
   startProviderLogin,
 } from "../provider-hub";
@@ -21,20 +19,6 @@ export async function handleProvidersList(): Promise<Response> {
     return Response.json({ providers: await listProviders() });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to list providers."), 500);
-  }
-}
-
-/**
- * Provider models for the picker, served from the hub's home process. The
- * Next server calls this instead of instantiating its own ModelRuntime.
- * models.json may have just been rewritten by the caller, so re-read first.
- */
-export async function handleProviderModels(): Promise<Response> {
-  try {
-    await reloadProviderHub().catch(() => undefined);
-    return Response.json({ models: await listProviderAgentModels() });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to list provider models."), 500);
   }
 }
 

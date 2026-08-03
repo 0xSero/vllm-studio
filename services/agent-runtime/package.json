@@ -11,9 +11,10 @@
   "scripts": {
     "bundle": "node ../../scripts/project.mjs bundle-agent-runtime",
     "build": "tsc -p tsconfig.build.json && node ../../scripts/project.mjs postbuild-agent-runtime",
+    "check": "bun run build && bun run test",
     "dev": "bun --watch src/server.ts",
     "start": "node dist/server.js",
-    "test": "bun test"
+    "test": "bun test test"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.83.0",

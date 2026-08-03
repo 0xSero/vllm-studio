@@ -31,5 +31,6 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"]
+  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "../../shared/agent/**/*.test.ts"]
 }
