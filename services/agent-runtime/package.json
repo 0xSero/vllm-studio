@@ -30,5 +30,8 @@
   },
   "devDependencies": {
     "@types/semver": "7.7.1"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.9"
   }
 }
