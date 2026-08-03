@@ -7,9 +7,10 @@ for (const path of [
   "/configure",
   "/settings",
   "/agent",
-  "/agent/sessions",
+  "/agent/automations",
   "/quick",
   "/setup",
+  "/recipes",
   "/discover",
   "/integrations",
   "/server",
@@ -21,7 +22,8 @@ for (const path of [
     await selectLiveController(context, page);
     const config = await readLiveControllerConfig(page);
     expect(config.db_path).toContain("/spark/deepseek-spark/studio-data/controller.db");
-    await page.goto(path);
+    const response = await page.goto(path);
+    expect(response?.ok()).toBeTruthy();
     await page.waitForTimeout(1_000);
     expect(errors).toEqual([]);
     await expect(page.getByText(/application error/i)).toHaveCount(0);
