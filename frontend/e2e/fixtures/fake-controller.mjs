@@ -75,6 +75,67 @@ async function streamCompletion(request, response) {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
+  if (url.pathname === "/studio/settings" && request.method === "GET") {
+    return json(response, 200, {
+      config_path: "/tmp/local-studio/config.json",
+      persisted: { models_dir: "/models" },
+      effective: { models_dir: "/models" },
+    });
+  }
+  if (url.pathname === "/studio/diagnostics") {
+    return json(response, 200, {
+      app_version: "test",
+      timestamp: new Date().toISOString(),
+      platform: "darwin",
+      arch: "arm64",
+      release: "test",
+      cpu_model: "Test CPU",
+      cpu_cores: 8,
+      memory_total: 68_719_476_736,
+      memory_free: 34_359_738_368,
+      gpus: [{ name: "Test GPU", memory_total_mb: 65_536 }],
+      runtime: {
+        vllm_installed: false,
+        vllm_version: null,
+        python_path: null,
+        vllm_bin: null,
+      },
+      disks: [],
+      config: {
+        host: "127.0.0.1",
+        port,
+        inference_port: port,
+        api_key_configured: false,
+        models_dir: "/models",
+        data_dir: "/tmp/local-studio",
+        db_path: "/tmp/local-studio/test.db",
+        sglang_python: null,
+        llama_bin: null,
+        mlx_python: null,
+      },
+    });
+  }
+  if (url.pathname === "/studio/presets") {
+    return json(response, 200, { presets: [], max_vram_gb: 64 });
+  }
+  if (url.pathname === "/studio/downloads") {
+    return json(response, 200, { downloads: [] });
+  }
+  if (url.pathname === "/runtime/targets") {
+    return json(response, 200, { targets: [] });
+  }
+  if (url.pathname === "/runtime/jobs") {
+    return json(response, 200, { jobs: [] });
+  }
+  if (url.pathname === "/events") {
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+    });
+    response.write(": connected\n\n");
+    return;
+  }
   if (url.pathname === "/v1/models") {
     return json(response, 200, {
       object: "list",
