@@ -21,7 +21,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -32,7 +32,7 @@ jobs:
       - name: Reject stale release revision
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.19.0
 
@@ -79,7 +79,7 @@ jobs:
           "frontend/dist-desktop/mac-arm64/Local Studio.app"
           "local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.next-release.outputs.version != ''
         with:
           name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
@@ -96,7 +96,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -107,7 +107,7 @@ jobs:
       - name: Reject stale release revision
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.19.0
 
@@ -115,7 +115,7 @@ jobs:
         working-directory: ./frontend
         run: npm ci --ignore-scripts --legacy-peer-deps
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
           path: ${{ runner.temp }}/unsigned-release
@@ -148,7 +148,7 @@ jobs:
           --version ${{ needs.build.outputs.release_version }}
           --commit "$RELEASE_SHA"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
           path: release-staging/*
@@ -164,7 +164,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -175,11 +175,11 @@ jobs:
       - name: Reject stale release revision
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.19.0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
           path: release-staging
