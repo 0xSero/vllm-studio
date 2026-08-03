@@ -84,7 +84,7 @@ describe("tuning knobs", () => {
     });
     const vllmArgs = planLaunch(request({ engine: "vllm", options: tuned })).argv;
     const sglangArgs = planLaunch(
-      request({ engine: "sglang", options: tuned, port: 30000 }),
+      request({ engine: "sglang", binary: "sglang", options: tuned, port: 30000 }),
     ).argv;
 
     expect(vllmArgs).toContain("--tensor-parallel-size");
@@ -94,6 +94,7 @@ describe("tuning knobs", () => {
     expect(vllmArgs).toContain("--enable-auto-tool-choice");
 
     expect(sglangArgs).toContain("--context-length");
+    expect(sglangArgs.slice(0, 2)).toEqual(["sglang", "serve"]);
     expect(sglangArgs).toContain("--mem-fraction-static");
     expect(sglangArgs).not.toContain("--enable-auto-tool-choice");
     expect(sglangArgs).not.toContain("--max-model-len");
