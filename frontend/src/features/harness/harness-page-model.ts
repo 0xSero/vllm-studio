@@ -1,6 +1,7 @@
-// Pure model logic for the Harness operator surface. Kept framework-free so the
-// envelope discrimination, terminal-status contract, and polling lifecycle can
-// be unit tested without React.
+import {
+  decodeHarnessVerificationCheck,
+  type HarnessVerificationCheck,
+} from "@shared/agent/harness";
 
 export type HarnessTask = {
   id?: string;
@@ -11,6 +12,16 @@ export type HarnessTask = {
   artifacts?: Array<{ name?: string; path?: string }>;
   events?: Array<{ seq?: number; summary?: string; checkpoint?: string }>;
   metadata?: {
+    observed_at?: string;
+    updated_at?: string;
+    route_receipt?: {
+      contract?: string;
+      actual?: boolean;
+      evidence?: string;
+      status?: string;
+      reviewer?: string;
+      observed_at?: string;
+    };
     demo?: { enabled?: boolean; model_used?: boolean; workspace?: string };
     integration?: {
       kind?: string;
@@ -43,7 +54,12 @@ export type ManagedGoalTask = HarnessTask & {
   needs_human?: boolean;
   review_status?: string;
   changed_files?: string[];
-  verification?: string[];
+  verification?: unknown[];
+  result_category?: string;
+  final_result?: {
+    accepted?: boolean;
+    worker_claim?: { trusted?: boolean; label?: string; summary?: string };
+  };
   progress?: { label?: string; percent?: number; determinate?: boolean };
   current?: { checkpoint?: string; current_subgoal?: string; cycle?: number };
   readiness_gate?: {
@@ -130,6 +146,8 @@ export function stripGoalCommandPrefix(raw: string): string {
 export type GoalStartInput = {
   goal: string;
   backend: GoalBackendKind;
+  integrationReady: boolean;
+  remoteDataConsent: boolean;
   /** `setup.configured` for the currently selected backend. Callers must pass
    *  `false` while the setup payload is unknown so the gate fails closed. */
   providerConfigured: boolean;
@@ -144,11 +162,17 @@ export type GoalStartInput = {
  *  dead control. Provider copy stays generic: no host, path, or node names. */
 export function goalStartBlocker(input: GoalStartInput): string | null {
   if (input.setupLoading) return "Loading goal setup…";
+  if (!input.integrationReady) {
+    return "The external Harness is not ready. Ask the host owner to configure and start it, then refresh.";
+  }
   const objective = stripGoalCommandPrefix(input.goal);
   if (!objective) {
     return input.goal.trim()
       ? "Add an objective after /goal, for example: /goal summarise the open issues."
       : "Type a goal first. You can start it with /goal.";
+  }
+  if (!input.remoteDataConsent) {
+    return "Confirm the external Harness data boundary before starting or changing a goal.";
   }
   if (input.backend === "provider" && !input.providerConfigured) {
     return "Add an endpoint and model under Model provider, then save, before starting a goal.";
@@ -173,39 +197,119 @@ export type GoalOutcome = {
   detail: string;
 };
 
-/** Plain-language terminal state for the goal card.
- *
- *  Completion honesty: "verified" is only claimed when the Harness actually
- *  recorded verification checks on the task. A `done` task with no checks is
- *  reported as finished-but-unverified, never as verified, so UI prose can
- *  never outrun the evidence contract. Check counts are described as
- *  "recorded" because the task payload carries the checks, not their verdicts. */
+export type GoalVerificationAssessment = {
+  state: "verified" | "missing" | "failed" | "invalid" | "rejected" | "stale";
+  checks: HarnessVerificationCheck[];
+  detail: string;
+};
+
+function timestamp(value: string | undefined): number | null {
+  if (!value?.trim()) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function managedRouteProvenance(task: ManagedGoalTask): {
+  valid: boolean;
+  observedAt: number | null;
+} {
+  const receipt = task.metadata?.route_receipt;
+  const observedAt = timestamp(receipt?.observed_at);
+  return {
+    valid:
+      receipt?.contract === "agentic_harness.managed_route_receipt.v1" &&
+      receipt.actual === true &&
+      receipt.evidence === "observed" &&
+      receipt.status === "accepted" &&
+      Boolean(receipt.reviewer?.trim()) &&
+      observedAt !== null,
+    observedAt,
+  };
+}
+
+export function assessGoalVerification(task: ManagedGoalTask): GoalVerificationAssessment {
+  const reported = task.verification ?? [];
+  if (reported.length === 0) {
+    return {
+      state: "missing",
+      checks: [],
+      detail: "The Harness returned no structured verification checks.",
+    };
+  }
+  const checks = reported.map(decodeHarnessVerificationCheck);
+  if (checks.some((check) => check === null)) {
+    return {
+      state: "invalid",
+      checks: checks.filter((check): check is HarnessVerificationCheck => check !== null),
+      detail: "The Harness returned legacy text or a malformed verification receipt.",
+    };
+  }
+  const structured = checks as HarnessVerificationCheck[];
+  if (structured.some((check) => !check.passed)) {
+    return {
+      state: "failed",
+      checks: structured,
+      detail: "At least one verification check failed or requires review.",
+    };
+  }
+  if (task.final_result?.accepted !== true || task.result_category !== "verified_done") {
+    return {
+      state: "rejected",
+      checks: structured,
+      detail: "The Harness did not issue an accepted verified-completion verdict.",
+    };
+  }
+  const managed = managedRouteProvenance(task);
+  const independent = structured.some((check) => check.independent);
+  const observedAt = managed.valid ? managed.observedAt : timestamp(task.metadata?.observed_at);
+  const updatedAt = timestamp(task.metadata?.updated_at);
+  if (!independent && !managed.valid) {
+    return {
+      state: "invalid",
+      checks: structured,
+      detail: "The checks have no independent verifier or accepted managed-route provenance.",
+    };
+  }
+  if (observedAt === null || (updatedAt !== null && observedAt < updatedAt)) {
+    return {
+      state: "stale",
+      checks: structured,
+      detail: "The verification provenance is missing or older than the completed task state.",
+    };
+  }
+  return {
+    state: "verified",
+    checks: structured,
+    detail: `${structured.length} structured verification check${structured.length === 1 ? "" : "s"} passed with an accepted verdict and provenance.`,
+  };
+}
+
+function describeCompletedGoal(task: ManagedGoalTask): GoalOutcome {
+  const verification = assessGoalVerification(task);
+  if (verification.state !== "verified") {
+    return {
+      state: "unverified",
+      tone: "warning",
+      headline: "Finished but not verified",
+      detail: verification.detail,
+    };
+  }
+  const files = task.changed_files?.length ?? 0;
+  return {
+    state: "complete",
+    tone: "good",
+    headline: "Goal verified complete",
+    detail: `${verification.checks.length} verification check${verification.checks.length === 1 ? "" : "s"} passed · ${files} changed file${files === 1 ? "" : "s"}.`,
+  };
+}
+
 export function describeGoalOutcome(task: ManagedGoalTask | null): GoalOutcome | null {
   if (!task?.id) return null;
   const status = task.status ?? "";
   const summary = task.summary?.trim();
-  const checks = task.verification?.length ?? 0;
-  const files = task.changed_files?.length ?? 0;
 
   if (status === "done" || status === "complete") {
-    if (checks === 0) {
-      return {
-        state: "unverified",
-        tone: "warning",
-        headline: "Finished without verification evidence",
-        detail:
-          summary ??
-          "The harness recorded no verification checks for this goal, so it is not a verified completion.",
-      };
-    }
-    return {
-      state: "complete",
-      tone: "good",
-      headline: "Goal complete with recorded evidence",
-      detail: `${checks} verification check${checks === 1 ? "" : "s"} recorded · ${files} changed file${
-        files === 1 ? "" : "s"
-      }.`,
-    };
+    return describeCompletedGoal(task);
   }
   if (status === "stopped") {
     return {

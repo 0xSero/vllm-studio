@@ -120,6 +120,8 @@ describe("goal prompt and outcome helpers", () => {
       goalStartBlocker({
         goal: "",
         backend: "managed",
+        integrationReady: true,
+        remoteDataConsent: true,
         providerConfigured: true,
         setupLoading: false,
       }) ?? "",
@@ -129,6 +131,8 @@ describe("goal prompt and outcome helpers", () => {
       goalStartBlocker({
         goal: "Review the provider",
         backend: "provider",
+        integrationReady: true,
+        remoteDataConsent: true,
         providerConfigured: false,
         setupLoading: false,
       }) ?? "",
@@ -138,6 +142,8 @@ describe("goal prompt and outcome helpers", () => {
       goalStartBlocker({
         goal: "Review the provider",
         backend: "managed",
+        integrationReady: true,
+        remoteDataConsent: true,
         providerConfigured: true,
         setupLoading: false,
       }),
@@ -149,6 +155,8 @@ describe("goal prompt and outcome helpers", () => {
     const blocker = goalStartBlocker({
       goal: "Review the provider",
       backend: "managed",
+      integrationReady: true,
+      remoteDataConsent: true,
       providerConfigured: true,
       setupLoading: false,
       activeTaskStatus: "working",
@@ -157,11 +165,38 @@ describe("goal prompt and outcome helpers", () => {
     assert.match(String(blocker), /shared workspace/i);
   });
 
+  test("external Harness readiness and consent both fail closed", () => {
+    assert.match(
+      goalStartBlocker({
+        goal: "Review the provider",
+        backend: "managed",
+        integrationReady: false,
+        remoteDataConsent: true,
+        providerConfigured: true,
+        setupLoading: false,
+      }) ?? "",
+      /not ready/i,
+    );
+    assert.match(
+      goalStartBlocker({
+        goal: "Review the provider",
+        backend: "managed",
+        integrationReady: true,
+        remoteDataConsent: false,
+        providerConfigured: true,
+        setupLoading: false,
+      }) ?? "",
+      /data boundary/i,
+    );
+  });
+
   test("a terminal current task does not block a new goal", () => {
     assert.equal(
       goalStartBlocker({
         goal: "Review the provider",
         backend: "managed",
+        integrationReady: true,
+        remoteDataConsent: true,
         providerConfigured: true,
         setupLoading: false,
         activeTaskStatus: "done",
@@ -170,10 +205,132 @@ describe("goal prompt and outcome helpers", () => {
     );
   });
 
-  test("does not call a done task verified when it has no recorded checks", () => {
+  test("does not call a done task verified when it has no structured checks", () => {
     const outcome = describeGoalOutcome({ id: "task-1", status: "done" });
     assert.equal(outcome?.state, "unverified");
-    assert.match(outcome?.headline ?? "", /without verification/);
+    assert.match(outcome?.headline ?? "", /not verified/);
+    assert.match(outcome?.detail ?? "", /no structured verification checks/i);
+  });
+
+  test("legacy verification text never becomes a successful verdict", () => {
+    const outcome = describeGoalOutcome({
+      id: "task-legacy",
+      status: "done",
+      result_category: "verified_done",
+      final_result: { accepted: true },
+      metadata: {
+        observed_at: "2026-08-04T12:00:00Z",
+        updated_at: "2026-08-04T12:00:00Z",
+      },
+      verification: ["pytest passed"],
+    });
+    assert.equal(outcome?.state, "unverified");
+    assert.match(outcome?.detail ?? "", /legacy text or a malformed/i);
+  });
+
+  test("a failed structured check fails closed", () => {
+    const outcome = describeGoalOutcome({
+      id: "task-failed-check",
+      status: "done",
+      result_category: "verified_done",
+      final_result: { accepted: true },
+      metadata: {
+        observed_at: "2026-08-04T12:00:00Z",
+        updated_at: "2026-08-04T12:00:00Z",
+      },
+      verification: [
+        {
+          name: "tests",
+          passed: false,
+          independent: true,
+          source: "independent",
+        },
+      ],
+    });
+    assert.equal(outcome?.state, "unverified");
+    assert.match(outcome?.detail ?? "", /failed or requires review/i);
+  });
+
+  test("an independent structured receipt with a fresh accepted verdict is verified", () => {
+    const outcome = describeGoalOutcome({
+      id: "task-provider-pass",
+      status: "done",
+      result_category: "verified_done",
+      final_result: { accepted: true },
+      metadata: {
+        observed_at: "2026-08-04T12:00:01Z",
+        updated_at: "2026-08-04T12:00:00Z",
+      },
+      verification: [
+        {
+          name: "tests",
+          passed: true,
+          independent: true,
+          source: "independent",
+        },
+      ],
+    });
+    assert.equal(outcome?.state, "complete");
+    assert.match(outcome?.headline ?? "", /verified complete/i);
+  });
+
+  test("accepted managed-route provenance can carry deterministic structured checks", () => {
+    const outcome = describeGoalOutcome({
+      id: "task-managed-pass",
+      status: "done",
+      result_category: "verified_done",
+      final_result: { accepted: true },
+      metadata: {
+        updated_at: "2026-08-04T12:00:00Z",
+        route_receipt: {
+          contract: "agentic_harness.managed_route_receipt.v1",
+          actual: true,
+          evidence: "observed",
+          status: "accepted",
+          reviewer: "managed deterministic review",
+          observed_at: "2026-08-04T12:00:01Z",
+        },
+      },
+      verification: [
+        {
+          name: "workspace tests",
+          passed: true,
+          independent: false,
+          source: "managed-review",
+        },
+      ],
+    });
+    assert.equal(outcome?.state, "complete");
+  });
+
+  test("stale managed-route provenance fails closed", () => {
+    const outcome = describeGoalOutcome({
+      id: "task-stale",
+      status: "done",
+      result_category: "verified_done",
+      final_result: { accepted: true },
+      metadata: {
+        updated_at: "2026-08-04T12:00:02Z",
+        route_receipt: {
+          contract: "agentic_harness.managed_route_receipt.v1",
+          actual: true,
+          evidence: "observed",
+          status: "accepted",
+          reviewer: "managed deterministic review",
+          observed_at: "2026-08-04T12:00:01Z",
+        },
+      },
+      verification: [
+        {
+          name: "workspace tests",
+          passed: true,
+          independent: false,
+          source: "managed-review",
+        },
+      ],
+    });
+    assert.equal(outcome?.state, "unverified");
+    assert.match(outcome?.detail ?? "", /older than the completed task state/i);
   });
 
   test("treats a provider failure as terminal and actionable", () => {

@@ -1,4 +1,10 @@
 import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
+import {
+  HARNESS_INTEGRATION_CONTRACT_VERSION,
+  HARNESS_REMOTE_DATA_CONSENT_HEADER,
+  HARNESS_REMOTE_DATA_CONSENT_VERSION,
+  type HarnessIntegrationContract,
+} from "@shared/agent/harness";
 
 const UPSTREAM_REQUEST_HEADER_ALLOWLIST = [
   "accept",
@@ -47,6 +53,31 @@ export function harnessToken(target: HarnessTarget = "managed"): string {
       ? process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN
       : process.env.LOCAL_STUDIO_HARNESS_TOKEN
     )?.trim() ?? ""
+  );
+}
+
+export function harnessIntegrationContract(target: HarnessTarget): HarnessIntegrationContract {
+  return {
+    contract: HARNESS_INTEGRATION_CONTRACT_VERSION,
+    target,
+    ownership: "external",
+    configuration_source: "server_environment",
+    lifecycle: {
+      state: "reachable",
+      install: "external",
+      start: "external",
+      stop: "external",
+    },
+    remote_data: {
+      mutation_consent_required: true,
+      consent_version: HARNESS_REMOTE_DATA_CONSENT_VERSION,
+    },
+  };
+}
+
+export function hasHarnessMutationConsent(request: Request): boolean {
+  return (
+    request.headers.get(HARNESS_REMOTE_DATA_CONSENT_HEADER) === HARNESS_REMOTE_DATA_CONSENT_VERSION
   );
 }
 
@@ -102,6 +133,37 @@ function harnessPathSegment(part: string): string {
   return encodeURIComponent(part);
 }
 
+async function downstreamHarnessResponse(
+  upstream: Response,
+  namespace: "v1" | "api",
+  path: string[],
+  target: HarnessTarget,
+): Promise<Response> {
+  if (namespace !== "api" || path.join("/") !== "setup" || !upstream.ok) {
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: downstreamResponseHeaders(upstream.headers),
+    });
+  }
+  let payload: unknown;
+  try {
+    payload = await upstream.json();
+  } catch {
+    return Response.json({ error: "Harness setup returned invalid JSON" }, { status: 502 });
+  }
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return Response.json({ error: "Harness setup returned an invalid contract" }, { status: 502 });
+  }
+  const headers = downstreamResponseHeaders(upstream.headers);
+  headers.delete("etag");
+  headers.delete("last-modified");
+  headers.set("content-type", "application/json");
+  return new Response(
+    JSON.stringify({ ...payload, integration: harnessIntegrationContract(target) }),
+    { status: upstream.status, headers },
+  );
+}
+
 export function harnessTargetUrl(
   path: string[],
   namespace: "v1" | "api" = "v1",
@@ -124,6 +186,20 @@ async function proxyToHarnessNamespace(
       {
         status: 404,
       },
+    );
+  }
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    !hasHarnessMutationConsent(request)
+  ) {
+    return Response.json(
+      {
+        code: "harness_remote_data_consent_required",
+        error: "Confirm that Local Studio may send this request to the externally managed Harness.",
+        consent_version: HARNESS_REMOTE_DATA_CONSENT_VERSION,
+      },
+      { status: 428 },
     );
   }
   const token = harnessToken(target);
@@ -178,10 +254,7 @@ async function proxyToHarnessNamespace(
     );
   }
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: downstreamResponseHeaders(upstream.headers),
-  });
+  return downstreamHarnessResponse(upstream, namespace, path, target);
 }
 
 export function proxyToHarness(

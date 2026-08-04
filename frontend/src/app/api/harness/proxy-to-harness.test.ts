@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  HARNESS_INTEGRATION_CONTRACT_VERSION,
+  HARNESS_REMOTE_DATA_CONSENT_HEADER,
+  HARNESS_REMOTE_DATA_CONSENT_VERSION,
+} from "@shared/agent/harness";
+import {
   downstreamResponseHeaders,
+  harnessIntegrationContract,
   harnessToken,
   harnessTargetUrl,
   isHarnessRouteAllowed,
+  proxyToManagedHarness,
   proxyToProviderHarness,
   upstreamRequestHeaders,
 } from "./proxy-to-harness";
@@ -151,6 +158,7 @@ describe("Local Studio Harness proxy headers", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
+            [HARNESS_REMOTE_DATA_CONSENT_HEADER]: HARNESS_REMOTE_DATA_CONSENT_VERSION,
             "x-forwarded-host": "127.0.0.1",
           },
           body: "{}",
@@ -165,6 +173,69 @@ describe("Local Studio Harness proxy headers", () => {
       globalThis.fetch = previousFetch;
       if (previousToken === undefined) delete process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
       else process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = previousToken;
+    }
+  });
+
+  test("blocks every mutation without the current remote-data consent contract", async () => {
+    const previousToken = process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+    const previousFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = "provider-token";
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    try {
+      const response = await proxyToProviderHarness(
+        new Request("https://studio.example/api/harness/provider/tasks", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ objective: "Do not forward me" }),
+        }),
+        ["tasks"],
+      );
+      const payload = (await response.json()) as { code?: string; consent_version?: string };
+
+      assert.equal(response.status, 428);
+      assert.equal(payload.code, "harness_remote_data_consent_required");
+      assert.equal(payload.consent_version, HARNESS_REMOTE_DATA_CONSENT_VERSION);
+      assert.equal(fetchCalls, 0);
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousToken === undefined) delete process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_PROVIDER_HARNESS_TOKEN = previousToken;
+    }
+  });
+
+  test("publishes external ownership and lifecycle limits on setup", async () => {
+    const previousToken = process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+    const previousFetch = globalThis.fetch;
+    process.env.LOCAL_STUDIO_HARNESS_TOKEN = "managed-token";
+    globalThis.fetch = (async () => Response.json({ configured: true })) as typeof fetch;
+    try {
+      const response = await proxyToManagedHarness(
+        new Request("https://studio.example/api/harness/managed/setup"),
+        ["setup"],
+      );
+      const payload = (await response.json()) as {
+        configured?: boolean;
+        integration?: ReturnType<typeof harnessIntegrationContract>;
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(payload.configured, true);
+      assert.equal(payload.integration?.contract, HARNESS_INTEGRATION_CONTRACT_VERSION);
+      assert.equal(payload.integration?.ownership, "external");
+      assert.deepEqual(payload.integration?.lifecycle, {
+        state: "reachable",
+        install: "external",
+        start: "external",
+        stop: "external",
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousToken === undefined) delete process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_HARNESS_TOKEN = previousToken;
     }
   });
 });

@@ -4,6 +4,12 @@ import { useCallback, useState, type ReactNode } from "react";
 import { AppPage, Button, Card, ErrorBox, PageContainer, PageHeader, StatusPill } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
+  HARNESS_REMOTE_DATA_CONSENT_HEADER,
+  HARNESS_REMOTE_DATA_CONSENT_VERSION,
+  type HarnessIntegrationContract,
+} from "@shared/agent/harness";
+import {
+  assessGoalVerification,
   describeGoalOutcome,
   goalStartBlocker,
   isTerminalTaskStatus,
@@ -58,6 +64,7 @@ type ManagedSetupResponse = {
   workspace?: string;
   worker?: { label?: string; type?: string };
   configured?: boolean;
+  integration?: HarnessIntegrationContract;
   provider?: {
     endpoint?: string;
     model?: string;
@@ -130,6 +137,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
   const [providerApiKey, setProviderApiKey] = useState("");
   const [providerVerificationCommand, setProviderVerificationCommand] = useState("");
   const [providerRemoteConfirmed, setProviderRemoteConfirmed] = useState(false);
+  const [harnessConsentConfirmed, setHarnessConsentConfirmed] = useState(false);
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerMessage, setProviderMessage] = useState("");
 
@@ -273,6 +281,13 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
 
   const goalApiPrefix =
     goalBackend === "provider" ? "/api/harness/provider" : "/api/harness/managed";
+  const integrationReady = managedSetup?.integration?.lifecycle.state === "reachable";
+  const mutationHeaders = {
+    "content-type": "application/json",
+    [HARNESS_REMOTE_DATA_CONSENT_HEADER]: harnessConsentConfirmed
+      ? HARNESS_REMOTE_DATA_CONSENT_VERSION
+      : "",
+  };
 
   const startGoal = async () => {
     // Validate on submit rather than only disabling the button, so a new user is
@@ -280,6 +295,8 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
     const blocker = goalStartBlocker({
       goal,
       backend: goalBackend,
+      integrationReady,
+      remoteDataConsent: harnessConsentConfirmed,
       providerConfigured: managedSetup?.configured === true,
       setupLoading: goalLoading,
       activeTaskStatus: managedTask?.status,
@@ -294,7 +311,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
     try {
       const payload = await readJson<ManagedTaskResponse>(`${goalApiPrefix}/tasks`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: mutationHeaders,
         body: JSON.stringify(
           goalBackend === "provider"
             ? { objective, strategy: goalMode }
@@ -319,6 +336,10 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
   };
 
   const runManagedAction = async (action: "stop" | "continue" | "accept") => {
+    if (!harnessConsentConfirmed) {
+      setGoalError("Confirm the external Harness data boundary before changing this goal.");
+      return;
+    }
     if (!managedTask?.id) {
       setGoalError("The current goal changed. Refresh before trying that action again.");
       return;
@@ -330,7 +351,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
         `${goalApiPrefix}/tasks/current/${action}`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: mutationHeaders,
           body: JSON.stringify({
             task_id: managedTask.id,
             ...(action === "continue" ? { feedback: goalFeedback.trim() } : {}),
@@ -349,6 +370,12 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
   };
 
   const configureProvider = async (testOnly: boolean) => {
+    if (!harnessConsentConfirmed) {
+      setGoalError(
+        "Confirm the external Harness data boundary before testing or saving a provider.",
+      );
+      return;
+    }
     if (!providerEndpoint.trim() || !providerModel.trim()) {
       setProviderMessage("");
       setGoalError(
@@ -373,7 +400,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
         `${goalApiPrefix}/setup${testOnly ? "/test" : ""}`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: mutationHeaders,
           body: JSON.stringify(payload),
         },
       );
@@ -416,20 +443,27 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
   const startBlocker = goalStartBlocker({
     goal,
     backend: goalBackend,
+    integrationReady,
+    remoteDataConsent: harnessConsentConfirmed,
     providerConfigured: managedSetup?.configured === true,
     setupLoading: goalLoading,
     activeTaskStatus: managedTask?.status,
   });
   const showStartBlocker = Boolean(startBlocker && !goalError && !error);
   const goalOutcome = describeGoalOutcome(managedTask);
+  const goalVerification = managedTask ? assessGoalVerification(managedTask) : null;
 
   const runCanary = async () => {
+    if (!harnessConsentConfirmed) {
+      setError("Confirm the external Harness data boundary before running a canary.");
+      return;
+    }
     setRunning(true);
     setError("");
     try {
       const payload = await readJson<TaskResponse & { task?: HarnessTask }>("/api/harness/tasks", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: mutationHeaders,
         body: JSON.stringify({
           kind: "read_only_canary",
           objective: "Verify the Local Studio to Agentic Harness task boundary",
@@ -446,12 +480,16 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
   };
 
   const runAnalysis = async () => {
+    if (!harnessConsentConfirmed) {
+      setError("Confirm the external Harness data boundary before running model analysis.");
+      return;
+    }
     setRunning(true);
     setError("");
     try {
       const payload = await readJson<TaskResponse & { task?: HarnessTask }>("/api/harness/tasks", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: mutationHeaders,
         body: JSON.stringify({
           kind: "read_only_analysis",
           ...(selectedRoute === "auto" ? {} : { route_id: selectedRoute }),
@@ -493,7 +531,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
         <Card
           className="mb-4"
           title="Work on a goal"
-          description="Type one objective, then let the managed harness keep working until it has evidence or needs your decision."
+          description="Type one objective, then let the externally managed Harness work until it has a structured result or needs your decision."
         >
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
             <div>
@@ -580,13 +618,13 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                     className="mt-2 w-full rounded-lg border border-(--ui-border) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-fg)"
                     disabled={goalBusy || providerBusy}
                   >
-                    <option value="managed">Configured managed worker</option>
-                    <option value="provider">Any OpenAI-compatible model</option>
+                    <option value="managed">Externally managed worker</option>
+                    <option value="provider">External Harness with any model</option>
                   </select>
                   <p className="mt-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
                     {goalBackend === "provider"
                       ? "Use a local, LAN, or cloud endpoint configured below."
-                      : "Use the deployment's existing durable worker and route policy."}
+                      : "Use the host's separately installed durable worker and route policy."}
                   </p>
                 </div>
                 <div>
@@ -657,6 +695,36 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-(--ui-border) p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
+                    External Harness boundary
+                  </div>
+                  <StatusPill tone={integrationReady ? "good" : "warning"} variant="badge">
+                    {integrationReady ? "reachable" : goalLoading ? "checking" : "not ready"}
+                  </StatusPill>
+                </div>
+                <p className="mt-2 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+                  Local Studio uses this Harness but does not install, start, stop, or reconfigure
+                  its service. Those lifecycle actions remain with the host owner.
+                </p>
+                <label className="mt-3 flex items-start gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                  <input
+                    type="checkbox"
+                    checked={harnessConsentConfirmed}
+                    onChange={(event) => {
+                      setHarnessConsentConfirmed(event.target.checked);
+                      if (goalError) setGoalError("");
+                      if (error) setError("");
+                    }}
+                    className="mt-0.5"
+                    disabled={goalBusy || providerBusy}
+                  />
+                  I approve sending goal prompts, selected file excerpts, tool results, and task
+                  actions from this Local Studio session to the external Harness.
+                </label>
               </div>
 
               {goalBackend === "provider" ? (
@@ -762,6 +830,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                         providerBusy ||
                         goalBusy ||
                         goalLoading ||
+                        !harnessConsentConfirmed ||
                         !providerEndpoint.trim() ||
                         !providerModel.trim()
                       }
@@ -777,6 +846,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                         providerBusy ||
                         goalBusy ||
                         goalLoading ||
+                        !harnessConsentConfirmed ||
                         !providerEndpoint.trim() ||
                         !providerModel.trim()
                       }
@@ -837,7 +907,7 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                   <p>
                     {goalBackend === "provider"
                       ? "The Harness owns the durable goal loop and uses the configured provider/model."
-                      : "The configured managed worker owns the durable goal loop and route policy."}
+                      : "The external Harness owns the durable goal loop and route policy."}
                   </p>
                   <p>It can plan, act, check, and continue without another prompt.</p>
                   <p>
@@ -858,8 +928,11 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                 </div>
                 <div className="mt-1">
                   {managedSetup?.worker?.label ??
-                    (goalBackend === "provider" ? "Provider model agent" : "Managed goal runtime")}
+                    (goalBackend === "provider"
+                      ? "External provider model agent"
+                      : "External goal runtime")}
                 </div>
+                <div className="mt-1">Lifecycle owner: host installation</div>
               </div>
             </div>
           </div>
@@ -971,9 +1044,14 @@ export default function HarnessPage({ initialGoal = "" }: { initialGoal?: string
                     Evidence
                   </div>
                   <div className="mt-2 text-[length:var(--fs-sm)] text-(--ui-fg)">
-                    {managedTask.verification?.length ?? 0} verification checks ·{" "}
+                    {goalVerification?.checks.length ?? 0} structured checks ·{" "}
                     {managedTask.changed_files?.length ?? 0} owned paths
                   </div>
+                  {goalVerification && goalVerification.state !== "verified" ? (
+                    <div className="mt-1 text-[length:var(--fs-xs)] leading-relaxed text-(--ui-muted)">
+                      Not verified: {goalVerification.detail}
+                    </div>
+                  ) : null}
                   <div className="mt-2 space-y-1">
                     {(managedTask.artifacts ?? []).slice(0, 3).map((artifact) => (
                       <div
