@@ -313,6 +313,9 @@ export function projectHarnessPayload(
       events: projectedEvents(source.events),
     };
   }
+  if (typeof source.id === "string" && typeof source.status === "string") {
+    return projectedTask(source);
+  }
   const envelope = projectedRecord(source, ["api_version"]);
   if ("task" in source) envelope.task = projectedTask(source.task);
   if ("current" in source) envelope.current = projectedTask(source.current);

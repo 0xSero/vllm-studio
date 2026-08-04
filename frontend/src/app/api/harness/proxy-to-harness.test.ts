@@ -281,6 +281,33 @@ describe("Local Studio Harness proxy headers", () => {
     assert.equal(task.verification?.[0]?.source, "legacy");
   });
 
+  test("keeps a bare task distinct from its nested current checkpoint", () => {
+    const projected = projectHarnessPayload(
+      {
+        id: "task-1",
+        status: "needs_review",
+        current: {
+          checkpoint: "Review",
+          current_subgoal: "Preparing the result for review",
+          cycle: 14,
+        },
+        changed_files: [],
+        verification: [],
+      },
+      "api",
+      ["tasks", "current"],
+      "managed",
+    );
+
+    assert.equal(projected?.id, "task-1");
+    assert.equal(projected?.status, "needs_review");
+    assert.deepEqual(projected?.current, {
+      checkpoint: "Review",
+      current_subgoal: "Preparing the result for review",
+      cycle: 14,
+    });
+  });
+
   test("does not relay raw output from rejected upstream responses", async () => {
     const previousFetch = globalThis.fetch;
     const previousToken = process.env.LOCAL_STUDIO_HARNESS_TOKEN;
