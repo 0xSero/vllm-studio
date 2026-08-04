@@ -56,6 +56,7 @@ export default defineConfig({
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
         `LOCAL_STUDIO_E2E_PROVIDERS=${providersModule}`,
         `LOCAL_STUDIO_E2E_FAKE_CLOUD=http://127.0.0.1:${cloudPort}`,
+        "PI_OFFLINE=1",
         `node ${projectScript} start`,
       ].join(" "),
       url: `${baseURL}/api/desktop-health`,
