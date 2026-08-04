@@ -341,10 +341,20 @@ async function downstreamHarnessResponse(
   target: HarnessTarget,
 ): Promise<Response> {
   if (!upstream.ok) {
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: downstreamResponseHeaders(upstream.headers),
-    });
+    const headers = downstreamResponseHeaders(upstream.headers);
+    headers.delete("etag");
+    headers.delete("last-modified");
+    headers.set("content-type", "application/json");
+    return new Response(
+      JSON.stringify({
+        error: "The externally managed Harness rejected the request.",
+        upstream_status: upstream.status,
+      }),
+      {
+        status: upstream.status,
+        headers,
+      },
+    );
   }
   let payload: unknown;
   try {

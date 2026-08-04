@@ -280,4 +280,52 @@ describe("Local Studio Harness proxy headers", () => {
     assert.equal(task.verification?.[0]?.passed, false);
     assert.equal(task.verification?.[0]?.source, "legacy");
   });
+
+  test("does not relay raw output from rejected upstream responses", async () => {
+    const previousFetch = globalThis.fetch;
+    const previousToken = process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+    process.env.LOCAL_STUDIO_HARNESS_TOKEN = "managed-token";
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: "raw-secret-value",
+          stdout: "raw-secret-value",
+          details: { token: "raw-secret-value" },
+        }),
+        {
+          status: 422,
+          headers: {
+            "content-type": "application/json",
+            etag: '"unsafe-upstream-body"',
+          },
+        },
+      );
+
+    try {
+      const response = await proxyToManagedHarness(
+        new Request("http://127.0.0.1/api/harness/managed/tasks", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [HARNESS_REMOTE_DATA_CONSENT_HEADER]: HARNESS_REMOTE_DATA_CONSENT_VERSION,
+          },
+          body: JSON.stringify({ objective: "Safe test objective" }),
+        }),
+        ["tasks"],
+      );
+      const body = await response.text();
+
+      assert.equal(response.status, 422);
+      assert.equal(response.headers.get("etag"), null);
+      assert.equal(body.includes("raw-secret-value"), false);
+      assert.deepEqual(JSON.parse(body), {
+        error: "The externally managed Harness rejected the request.",
+        upstream_status: 422,
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousToken === undefined) delete process.env.LOCAL_STUDIO_HARNESS_TOKEN;
+      else process.env.LOCAL_STUDIO_HARNESS_TOKEN = previousToken;
+    }
+  });
 });
