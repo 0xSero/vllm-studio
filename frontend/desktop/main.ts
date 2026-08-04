@@ -18,12 +18,7 @@ import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
-import {
-  checkForUpdates,
-  getUpdateState,
-  initializeAutoUpdates,
-  installDownloadedUpdate,
-} from "./logic/update-manager";
+import { getUpdateState, initializeAutoUpdates, startUpdate } from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
@@ -286,11 +281,7 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("desktop:get-update-status", async () => getUpdateState());
-  ipcMain.handle("desktop:check-for-updates", async () => checkForUpdates(true));
-  ipcMain.handle("desktop:install-update", async () => {
-    installDownloadedUpdate();
-    return true;
-  });
+  ipcMain.handle("desktop:start-update", async () => startUpdate());
   ipcMain.handle("desktop:get-kittylitter-pairing-json", async () => getKittylitterPairingJson());
   ipcMain.handle("desktop:copy-kittylitter-pairing-json", async (_, pairingJson: unknown) => {
     try {
