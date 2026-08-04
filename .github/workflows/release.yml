@@ -72,6 +72,16 @@ jobs:
           --config.extraMetadata.version=${{ steps.next-release.outputs.version }}
           --config.extraMetadata.localStudioCommit=${{ github.event.workflow_run.head_sha }}
 
+      - name: Verify unsigned updater metadata
+        if: steps.next-release.outputs.version != ''
+        run: |
+          update_config="frontend/dist-desktop/mac-arm64/Local Studio.app/Contents/Resources/app-update.yml"
+          test -f "$update_config"
+          grep -Fx "owner: sybil-solutions" "$update_config"
+          grep -Fx "repo: local-studio" "$update_config"
+          grep -Fx "provider: github" "$update_config"
+          grep -Fx "updaterCacheDirName: frontend-updater" "$update_config"
+
       - name: Archive unsigned release app
         if: steps.next-release.outputs.version != ''
         run: >-
