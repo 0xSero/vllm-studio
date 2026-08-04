@@ -10,6 +10,7 @@ import {
   toolArg,
   toolVerb,
   compactToolText,
+  type ToolKind,
 } from "@/features/agent/ui/timeline/tool-metadata";
 
 export type ActivitySegment =
@@ -145,6 +146,18 @@ export function buildActivityItems(segments: ActivitySegment[]): ActivityItem[] 
 
 /* Codex's collapsed-turn summary: tool counts joined with " · ", first segment
    capitalized — "Ran 3 commands · edited 2 files · searched 4 times". */
+/** Which glyph leads the collapsed summary: the tool's own icon when the turn
+ *  used a single kind of tool, the terminal icon when it mixed several. */
+export function summaryIconKind(segments: ActivitySegment[]): ToolKind | null {
+  const kinds = new Set<ToolKind>();
+  for (const segment of segments) {
+    if (segment.kind === "reasoning") continue;
+    for (const block of segment.blocks) kinds.add(classifyTool(block));
+  }
+  if (kinds.size === 0) return null;
+  return kinds.size === 1 ? [...kinds][0] : "exec";
+}
+
 export function summarizeActivity(segments: ActivitySegment[]): string {
   let thoughts = 0;
   const counts: Record<string, number> = {};
@@ -178,7 +191,14 @@ export function summarizeActivity(segments: ActivitySegment[]): string {
    Reasoning is deliberately excluded — model chain-of-thought should never
    leak into the visible chat, even as a one-line preview; the user can still
    expand the activity group to read it if they want. */
-export function activityPreview(segments: ActivitySegment[]): string | null {
+/** The live preview line: what the agent is doing right now.
+ *
+ *  Returns the tool's kind alongside the text so the caller can lead with an
+ *  icon instead of a verb — "Read", "Ran", "Searched" cost a word each and are
+ *  the least informative part of the line. */
+export type ActivityPreview = { kind: ToolKind; verb: string; detail: string };
+
+export function activityPreview(segments: ActivitySegment[]): ActivityPreview | null {
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index];
     if (!segment || segment.kind === "reasoning") continue;
@@ -186,7 +206,11 @@ export function activityPreview(segments: ActivitySegment[]): string | null {
     const latestTool = runningTool ?? segment.blocks[segment.blocks.length - 1];
     if (latestTool) {
       const detail = toolArg(latestTool, ["cmd", "command", "path", "file_path", "query", "url"]);
-      return [toolVerb(latestTool), compactToolText(detail, 72)].filter(Boolean).join(" ");
+      return {
+        kind: classifyTool(latestTool),
+        verb: toolVerb(latestTool),
+        detail: compactToolText(detail, 72) ?? "",
+      };
     }
   }
   return null;

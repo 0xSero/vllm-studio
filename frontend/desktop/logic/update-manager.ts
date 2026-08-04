@@ -1,11 +1,14 @@
 import { app } from "electron";
+import { isDevChannelBuild } from "../app-identity";
 import { autoUpdater } from "electron-updater";
 import { DESKTOP_CONFIG } from "../configs";
 import type { DesktopUpdateSnapshot } from "../types";
 import { log } from "../helpers/logger";
 import { isLoopbackHttpUrl } from "../helpers/url";
+import { UpdateInstallIntent } from "./update-install-intent";
 
 let latestUpdateState: DesktopUpdateSnapshot = { status: "idle" };
+const installIntent = new UpdateInstallIntent();
 
 function setUpdateState(nextState: DesktopUpdateSnapshot): void {
   latestUpdateState = nextState;
@@ -30,23 +33,34 @@ function resolveFeedUrl(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
-function ensureFeedConfigured(): { ok: true; url: string } | { ok: false; reason: string } {
+function ensureFeedConfigured(): { ok: true; url: string } {
   const feedUrl = resolveFeedUrl();
-  if (!feedUrl) {
-    return { ok: false, reason: "LOCAL_STUDIO_UPDATE_URL is not set" };
+  if (feedUrl) {
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: feedUrl,
+      channel: "stable",
+    });
+    return { ok: true, url: feedUrl };
   }
 
+  // Default feed: the public GitHub releases, which ship latest-mac.yml plus
+  // signed zip/dmg assets. electron-updater verifies the download's code
+  // signature against the running app before installing.
   autoUpdater.setFeedURL({
-    provider: "generic",
-    url: feedUrl,
-    channel: "stable",
+    provider: "github",
+    owner: "sybil-solutions",
+    repo: "local-studio",
   });
-
-  return { ok: true, url: feedUrl };
+  return { ok: true, url: "github:sybil-solutions/local-studio" };
 }
 
 export function getUpdateState(): DesktopUpdateSnapshot {
   return latestUpdateState;
+}
+
+function installDownloadedUpdate(): void {
+  autoUpdater.quitAndInstall();
 }
 
 export async function checkForUpdates(force = false): Promise<DesktopUpdateSnapshot> {
@@ -59,15 +73,19 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     return disabledState;
   }
 
-  const feed = ensureFeedConfigured();
-  if (!feed.ok) {
-    const missingFeedState = {
-      status: "error",
-      message: feed.reason,
+  // Dev-channel builds install via the dev mirror, never the stable releases —
+  // the default GitHub feed would happily "update" them onto stable. An
+  // explicit LOCAL_STUDIO_UPDATE_URL override still wins for feed testing.
+  if (isDevChannelBuild && !resolveFeedUrl()) {
+    const devChannelState = {
+      status: "idle",
+      message: "Dev-channel builds do not auto-update from stable releases",
     } satisfies DesktopUpdateSnapshot;
-    setUpdateState(missingFeedState);
-    return missingFeedState;
+    setUpdateState(devChannelState);
+    return devChannelState;
   }
+
+  ensureFeedConfigured();
 
   if (!app.isPackaged && !force) {
     const devState = {
@@ -81,7 +99,13 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
   try {
     setUpdateState({ status: "checking" });
     autoUpdater.allowPrerelease = false;
-    await autoUpdater.checkForUpdates();
+    const result = await autoUpdater.checkForUpdates();
+    if (result?.downloadPromise) void result.downloadPromise.catch(() => undefined);
+    // An unpackaged app resolves null without emitting any status event; leave
+    // "checking" behind and the renderer would poll forever.
+    if (!result && latestUpdateState.status === "checking") {
+      setUpdateState({ status: "idle", message: "Updater unavailable in this build" });
+    }
     return latestUpdateState;
   } catch (error) {
     const errorState = {
@@ -93,21 +117,43 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
   }
 }
 
+export async function startUpdate(): Promise<DesktopUpdateSnapshot> {
+  const action = installIntent.request(latestUpdateState.status);
+  if (action === "install") {
+    installDownloadedUpdate();
+    return latestUpdateState;
+  }
+  if (action === "wait") return latestUpdateState;
+
+  const snapshot = await checkForUpdates(true);
+  if (
+    snapshot.status === "idle" ||
+    snapshot.status === "not-available" ||
+    snapshot.status === "error"
+  ) {
+    installIntent.clear();
+  }
+  return snapshot;
+}
+
 export function initializeAutoUpdates(): void {
   if (DESKTOP_CONFIG.disableAutoUpdate) {
     log.warn("Auto update disabled by environment flag");
     return;
   }
 
-  const feed = ensureFeedConfigured();
-  if (!feed.ok) {
-    setUpdateState({ status: "idle", message: feed.reason });
-    log.warn(`Auto updates disabled: ${feed.reason}`);
+  if (isDevChannelBuild && !resolveFeedUrl()) {
+    setUpdateState({ status: "idle", message: "Dev channel: auto-update disabled" });
+    log.info("[update] Dev-channel build; skipping stable release feed");
     return;
   }
 
+  const feed = ensureFeedConfigured();
+  log.info(`[update] Feed: ${feed.url}`);
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoRunAppAfterInstall = true;
 
   autoUpdater.on("checking-for-update", () => {
     setUpdateState({ status: "checking" });
@@ -120,6 +166,7 @@ export function initializeAutoUpdates(): void {
   });
 
   autoUpdater.on("update-not-available", (info) => {
+    installIntent.clear();
     setUpdateState({ status: "not-available", version: info.version });
     log.info("No update available");
   });
@@ -134,9 +181,14 @@ export function initializeAutoUpdates(): void {
   autoUpdater.on("update-downloaded", (info) => {
     setUpdateState({ status: "downloaded", version: info.version });
     log.info(`Update downloaded: ${info.version}`);
+    if (installIntent.downloadCompleted()) {
+      log.info(`Restarting to install update: ${info.version}`);
+      installDownloadedUpdate();
+    }
   });
 
   autoUpdater.on("error", (error) => {
+    installIntent.clear();
     setUpdateState({ status: "error", message: String(error) });
     log.error(`Auto update error: ${String(error)}`);
   });

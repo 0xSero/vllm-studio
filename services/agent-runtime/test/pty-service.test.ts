@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import os from "node:os";
 import {
+  MAX_REPLAY_CHARS,
+  clampReplay,
   closePtySession,
   isPtyAvailable,
   openPtySession,
@@ -78,5 +80,24 @@ describe("pty-service", () => {
 
   test("rejects writes to unknown sessions", () => {
     expect(writePtySession("does-not-exist", "boom")).toBe(false);
+  });
+
+  // Pure buffer-cap logic — runs under bun without node-pty. The replay buffer
+  // a reattaching client replays must stay bounded and keep the most recent
+  // output (the tail), never the stale head.
+  test("clampReplay bounds the buffer and keeps the tail", () => {
+    const short = "hello world";
+    expect(clampReplay(short)).toBe(short);
+
+    const oversized = "A".repeat(MAX_REPLAY_CHARS) + "TAIL";
+    const clamped = clampReplay(oversized);
+    expect(clamped.length).toBe(MAX_REPLAY_CHARS);
+    expect(clamped.endsWith("TAIL")).toBe(true);
+    expect(clamped.startsWith("A")).toBe(true);
+    // The head rolled off: fewer leading A's than we started with.
+    expect(clamped).not.toBe(oversized);
+
+    expect(clampReplay("").length).toBe(0);
+    expect(clampReplay("X".repeat(MAX_REPLAY_CHARS)).length).toBe(MAX_REPLAY_CHARS);
   });
 });

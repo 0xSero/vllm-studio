@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type ComponentType,
+  type KeyboardEvent,
+} from "react";
 import {
   Activity,
   FolderTree,
   GitBranch,
+  GitPullRequest,
   Globe2,
   ListChecks,
   MessageSquarePlus,
@@ -323,6 +330,7 @@ const TAB_LABELS: Record<ComputerTab, string> = {
   browser: "Browser",
   files: "Filesystem",
   diff: "Git",
+  pr: "PR",
   plan: "Plan",
   inspector: "Inspector",
   terminal: "Terminal",
@@ -354,6 +362,12 @@ const TAB_OPTIONS: Array<{
   },
   { tab: "diff", label: "Git", description: "Diffs, branch, commit, and push", icon: GitBranch },
   {
+    tab: "pr",
+    label: "PR",
+    description: "Pull request status and merge",
+    icon: GitPullRequest,
+  },
+  {
     tab: "files",
     label: "Filesystem",
     description: "Project files and rendered previews",
@@ -367,6 +381,93 @@ const TAB_OPTIONS: Array<{
   },
   { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
 ];
+
+// Compact Codex-style pill: active gets a subtle fill; inactive is text-only
+// and lifts to full contrast on hover. The close × fades in on hover (and stays
+// on for the active pill). Shared by the tab list and the terminal-owner rows.
+function TabPill({
+  icon: Icon,
+  label,
+  selected,
+  shortcut,
+  title,
+  onSelect,
+  onClose,
+}: {
+  icon?: LucideIcon;
+  label: string;
+  selected: boolean;
+  shortcut?: string;
+  title: string;
+  onSelect: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      className={`group inline-flex h-7 min-w-0 shrink-0 items-center rounded-md transition-[background-color,color] duration-150 ${
+        selected ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+      }`}
+      title={title}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        className="inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-2.5 text-left"
+      >
+        {Icon ? <Icon className="pointer-events-none h-3.5 w-3.5 shrink-0" /> : null}
+        <span className="max-w-[8rem] truncate text-[length:var(--fs-sm)]">{label}</span>
+        {shortcut ? (
+          <span className="text-[length:var(--fs-2xs)] text-(--dim)/70">{shortcut}</span>
+        ) : null}
+      </button>
+      {onClose ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          className={`-ml-1 mr-1 inline-flex h-5 w-5 items-center justify-center rounded text-(--dim)/65 opacity-0 transition-[color,opacity] duration-150 hover:text-(--fg) group-hover:opacity-100 focus-visible:opacity-100 ${
+            selected ? "opacity-100" : ""
+          }`}
+          aria-label={`Close ${label}`}
+          title={`Close ${label}`}
+        >
+          <CloseIcon className="pointer-events-none h-2 w-2" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+// A round icon-only control that matches the pill height. Used for the tools
+// launcher (+) and the panel-close button on the right edge of the strip.
+function HeaderIconButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-[background-color,color] duration-150 ${
+        active ? "bg-(--color-surface-hover) text-(--fg)" : "text-(--dim) hover:text-(--fg)"
+      }`}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+    >
+      <Icon className="pointer-events-none h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 function ComputerHeader({
   tab,
@@ -403,49 +504,22 @@ function ComputerHeader({
           icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
         };
   return (
-    // Same height token as the chat pane header (and as ComputerPanelFallback):
-    // a hardcoded h-11 here sat 4px taller than the session header beside it.
-    <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1.5 border-b border-(--border) bg-(--color-header) px-2 text-[length:var(--fs-sm)]">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
+    <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1 border-b border-(--border) bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden px-0.5 [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
           const meta = tabMeta(openTab);
-          const Icon = meta.icon;
-          const canClose = openTab !== "status";
           return (
-            <div
+            <TabPill
               key={openTab}
-              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
-                tab === openTab
-                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
-              }`}
+              icon={meta.icon}
+              label={meta.label}
               title={meta.label}
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  openTab === "terminal" ? onOpenCurrentTerminal() : onSelectTab(openTab)
-                }
-                className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
-              >
-                {Icon ? <Icon className="pointer-events-none h-3 w-3 shrink-0" /> : null}
-                <span className="max-w-[7rem] truncate">{meta.label}</span>
-              </button>
-              {canClose ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseTab(openTab);
-                  }}
-                  className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
-                  aria-label={`Close ${meta.label}`}
-                  title={`Close ${meta.label}`}
-                >
-                  <CloseIcon className="pointer-events-none h-2 w-2" />
-                </button>
-              ) : null}
-            </div>
+              selected={tab === openTab}
+              onSelect={() =>
+                openTab === "terminal" ? onOpenCurrentTerminal() : onSelectTab(openTab)
+              }
+              onClose={openTab === "status" ? undefined : () => onCloseTab(openTab)}
+            />
           );
         })}
         {terminalState.owners.map((owner, index) => {
@@ -453,66 +527,31 @@ function ComputerHeader({
           const selected = tab === "terminal" && terminalState.activeOwnerKey === owner.mountKey;
           const shortcut = index < 9 ? `⌘⌥${index + 1}` : undefined;
           return (
-            <div
+            <TabPill
               key={owner.mountKey}
-              className={`group inline-flex h-8 min-w-0 shrink-0 items-center gap-0.5 rounded-md ${
-                selected
-                  ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-                  : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
-              }`}
+              icon={TerminalSquare}
+              label={label}
               title={shortcut ? `${label} (${shortcut})` : label}
-            >
-              <button
-                type="button"
-                onClick={() => onSelectTerminalOwner(owner.mountKey)}
-                className="inline-flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-1.5 pr-1 text-left"
-              >
-                <TerminalSquare className="pointer-events-none h-3 w-3 shrink-0" />
-                <span className="max-w-[7rem] truncate">{label}</span>
-                {shortcut ? (
-                  <span className="text-[length:var(--fs-2xs)] text-(--dim)/70">{shortcut}</span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCloseTerminalOwner(owner.mountKey);
-                }}
-                className="inline-flex h-8 w-7 items-center justify-center rounded text-(--dim)/65 hover:bg-(--hover) hover:text-(--fg)/75"
-                aria-label={`Close ${label}`}
-                title={`Close ${label}`}
-              >
-                <CloseIcon className="pointer-events-none h-2 w-2" />
-              </button>
-            </div>
+              shortcut={shortcut}
+              selected={selected}
+              onSelect={() => onSelectTerminalOwner(owner.mountKey)}
+              onClose={() => onCloseTerminalOwner(owner.mountKey)}
+            />
           );
         })}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        <button
-          type="button"
+        <HeaderIconButton
+          icon={Plus}
+          label="Show tools"
+          active={tab === "tools"}
           onClick={onShowLauncher}
-          className={`relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-            tab === "tools"
-              ? "bg-(--color-surface-hover) text-(--fg)/85 hover:text-(--fg)"
-              : "text-(--dim)/75 hover:bg-(--hover) hover:text-(--fg)/75"
-          }`}
-          title="Show tools"
-          aria-label="Show tools"
-          aria-pressed={tab === "tools"}
-        >
-          <Plus className="pointer-events-none h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+        />
+        <HeaderIconButton
+          icon={PanelRightFilled}
+          label="Close controller panel"
           onClick={onClosePanel}
-          className="relative z-10 -my-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--dim)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)"
-          title="Close controller panel"
-          aria-label="Close controller panel"
-        >
-          <PanelRightFilled className="pointer-events-none h-3.5 w-3.5" />
-        </button>
+        />
       </div>
     </div>
   );

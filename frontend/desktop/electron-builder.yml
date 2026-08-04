@@ -2,7 +2,7 @@ appId: org.local.studio.desktop
 productName: Local Studio
 asar: true
 
-afterPack: ./scripts/electron-builder-after-pack.mjs
+afterPack: ./desktop/project.mjs
 
 asarUnpack:
   - "node_modules/@lydell/**/*.node"
@@ -36,6 +36,8 @@ files:
   - "!node_modules/@playwright/**"
 
 extraResources:
+  - from: desktop/resources/app-update.yml
+    to: app-update.yml
   - from: ../services/agent-runtime/dist/standalone.mjs
     to: app/agent-runtime/standalone.mjs
   - from: ../services/agent-runtime/dist/node_modules/playwright-core
@@ -52,6 +54,10 @@ extraResources:
     to: app/agent-runtime/node_modules/@silvia-odwyer/photon-node
   - from: ../services/agent-runtime/dist/node_modules/undici
     to: app/agent-runtime/node_modules/undici
+  # Server-side terminals: node-pty is dynamically required by pty-service, so
+  # it ships as real files next to standalone.mjs (native addon, cannot bundle).
+  - from: ../services/agent-runtime/dist/node_modules/@lydell
+    to: app/agent-runtime/node_modules/@lydell
   - from: .next/standalone
     to: app/frontend/.next/standalone
     filter:

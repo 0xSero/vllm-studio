@@ -50,6 +50,7 @@ const request = (overrides: Partial<LaunchRequest> = {}): LaunchRequest => ({
   options: options(),
   extraArgs: [],
   env: {},
+  dockerImage: null,
   binary: "/venv/bin/vllm",
   ...overrides,
 });
@@ -84,7 +85,7 @@ describe("tuning knobs", () => {
     });
     const vllmArgs = planLaunch(request({ engine: "vllm", options: tuned })).argv;
     const sglangArgs = planLaunch(
-      request({ engine: "sglang", options: tuned, port: 30000 }),
+      request({ engine: "sglang", binary: "sglang", options: tuned, port: 30000 }),
     ).argv;
 
     expect(vllmArgs).toContain("--tensor-parallel-size");
@@ -94,6 +95,7 @@ describe("tuning knobs", () => {
     expect(vllmArgs).toContain("--enable-auto-tool-choice");
 
     expect(sglangArgs).toContain("--context-length");
+    expect(sglangArgs.slice(0, 2)).toEqual(["sglang", "serve"]);
     expect(sglangArgs).toContain("--mem-fraction-static");
     expect(sglangArgs).not.toContain("--enable-auto-tool-choice");
     expect(sglangArgs).not.toContain("--max-model-len");
@@ -166,16 +168,27 @@ describe("docker vs process", () => {
     const asDocker = planLaunch(request({ runtime: "docker" }));
 
     expect(asProcess.argv[0]).toBe("/venv/bin/vllm");
+    expect(asProcess.argv[1]).toBe("serve");
     expect(asProcess.image).toBeUndefined();
     expect(asProcess.mounts).toEqual([]);
     expect(asProcess.argv[asProcess.argv.indexOf("--host") + 1]).toBe("127.0.0.1");
 
     expect(asDocker.argv[0]).not.toBe("/venv/bin/vllm");
+    expect(asDocker.argv).not.toContain("serve");
     expect(asDocker.image).toBe("vllm/vllm-openai:latest");
     expect(asDocker.mounts).toEqual([{ from: "/models/qwen", to: "/models", readOnly: true }]);
     expect(asDocker.argv[asDocker.argv.indexOf("--host") + 1]).toBe("0.0.0.0");
     // The container sees the model at the mount point, not the host path.
     expect(asDocker.argv).toContain("/models");
+  });
+
+  test("a recipe-selected container image overrides the engine default", () => {
+    const customImage = "registry.example/sglang:deepseek-v4";
+    const asDocker = planLaunch(
+      request({ engine: "sglang", runtime: "docker", dockerImage: customImage }),
+    );
+
+    expect(asDocker.image).toBe(customImage);
   });
 });
 
@@ -203,7 +216,10 @@ describe("device translation", () => {
   });
 
   test("docker flags differ from process env", () => {
-    expect(dockerFlagsFor("cuda", devices).args).toEqual(["--gpus", "device=GPU-aaa,GPU-bbb"]);
+    expect(dockerFlagsFor("cuda", devices).args).toEqual([
+      "--gpus",
+      '"device=GPU-aaa,GPU-bbb"',
+    ]);
     expect(dockerFlagsFor("rocm", devices).args).toContain("/dev/kfd");
     expect(dockerFlagsFor("rocm", devices).groupAdd).toEqual(["video", "render"]);
   });

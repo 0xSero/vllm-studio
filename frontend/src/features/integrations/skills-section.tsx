@@ -12,6 +12,7 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { writeClipboardText } from "@/lib/clipboard";
 
 const SkillSchema = Schema.Struct({
   id: Schema.String,
@@ -69,8 +70,7 @@ function SkillDrawer({
           <Button
             variant="secondary"
             onClick={() => {
-              void navigator.clipboard
-                .writeText(skill.path)
+              void writeClipboardText(skill.path)
                 .then(() => setCopied(true))
                 .catch(() => setCopied(false));
             }}

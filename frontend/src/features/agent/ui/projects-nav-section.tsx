@@ -225,7 +225,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   };
 
   return (
-    <div className="flex shrink-0 flex-col">
+    <div className="flex shrink-0 flex-col gap-[var(--sidebar-row-gap)]">
       <ProjectDirectoryPickerModal
         open={directoryModalOpen}
         error={addError}

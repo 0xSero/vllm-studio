@@ -5,7 +5,6 @@ import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import { AssistantActivityGroup } from "@/features/agent/ui/timeline/assistant-activity-group";
 import { AssistantMessageActions } from "@/features/agent/ui/timeline/assistant-message-actions";
 import { UserMessage } from "@/features/agent/ui/timeline/user-message-block";
-import { WorkedForDivider } from "@/features/agent/ui/timeline/turn-status-divider";
 import {
   assistantContentCopyText,
   groupAssistantBlocks,
@@ -68,11 +67,6 @@ const AssistantBlocks = memo(function AssistantBlocks({
 
   const nodes: ReactNode[] = [];
   routedBlocks.forEach((item, index) => {
-    if (index === lastContentIndex && hasActivity) {
-      nodes.push(
-        <WorkedForDivider key="turn-divider" working={working} hasActivity={hasActivity} />,
-      );
-    }
     if (item.kind === "activity-group") {
       nodes.push(
         <AssistantActivityGroup
@@ -96,11 +90,6 @@ const AssistantBlocks = memo(function AssistantBlocks({
     }
     nodes.push(<MemoEventBlock key={item.block.id} block={item.block} />);
   });
-  // No content yet: the divider ticks "Working for…" below the activity.
-  if (lastContentIndex === -1 && live && hasActivity) {
-    nodes.push(<WorkedForDivider key="turn-divider" working={working} hasActivity={hasActivity} />);
-  }
-
   return (
     <article className="min-w-0">
       <div className="flex flex-col gap-3">{nodes}</div>

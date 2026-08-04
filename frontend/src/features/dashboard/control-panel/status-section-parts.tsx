@@ -21,6 +21,7 @@ export function StatusHeader({
   isRunning,
   isStatusLoading,
   lifecycleStatus,
+  lifecycleError,
   modelName,
   onBenchmark,
   onLaunch,
@@ -39,6 +40,7 @@ export function StatusHeader({
   isRunning: boolean;
   isStatusLoading: boolean;
   lifecycleStatus: "idle" | "starting" | "ready" | "error";
+  lifecycleError?: string | null;
   modelName: string;
   onBenchmark: () => void;
   onLaunch?: (recipeId: string) => Promise<void>;
@@ -66,6 +68,11 @@ export function StatusHeader({
         >
           {modelName}
         </h1>
+        {lifecycleError ? (
+          <p className="mt-1 text-[length:var(--fs-sm)] text-(--err)" role="alert">
+            {lifecycleError}
+          </p>
+        ) : null}
       </div>
       <StatusHeaderActions
         benchmarking={benchmarking}

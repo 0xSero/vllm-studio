@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { type ComponentType } from "react";
-import { Activity, Clock, MessageSquare, ServerCog, TrendingUp } from "@/ui/icon-registry";
+import { Activity, Clock, ServerCog, TrendingUp } from "@/ui/icon-registry";
 
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 // Sessions has no nav row: the Search command palette is the session list.
 export const tabs = [
   { href: "/", label: "Status", icon: Activity },
-  { href: "/agent", label: "Workbench", icon: MessageSquare },
   { href: "/agent/automations", label: "Automations", icon: Clock },
   { href: "/configure", label: "Configure", icon: ServerCog },
   { href: "/usage", label: "Usage", icon: TrendingUp },
@@ -17,7 +16,7 @@ export const tabs = [
 
 export function mobilePageTitle(pathname: string): string {
   if (pathname.startsWith("/agent/automations")) return "Automations";
-  if (pathname.startsWith("/agent")) return "Workbench";
+  if (pathname.startsWith("/agent")) return "Tasks";
   if (pathname.startsWith("/logs")) return "Logs";
   const tab = tabs.find((entry) => isRouteActive(pathname, entry.href));
   return tab?.label ?? "Local Studio";
@@ -95,8 +94,8 @@ export function NavItemDesktop({
       }`}
     >
       <Icon
-        className={`h-3.5 w-3.5 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
-        strokeWidth={1.75}
+        className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        strokeWidth={1.6}
       />
       <span className="text-[length:var(--fs-md)] whitespace-nowrap">{label}</span>
     </Link>

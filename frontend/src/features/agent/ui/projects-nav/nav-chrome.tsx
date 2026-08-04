@@ -1,24 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Pin } from "@/ui/icon-registry";
+import { PinIcon } from "@/ui/icon-registry";
 import { ChevronDownIcon } from "@/ui/icons";
 
-/** The one pin control for every sidebar row (sessions and projects).
- *  "rail" hangs the button on the vertical guide line left of the row —
- *  left-[-12px] centers a 16px hit target on the rail's border, which sits 4px
- *  (the rail's pl-1) outside the row's box. "inline" sits in the row's hover
- *  action cluster, for rows that are not inside a rail. */
+/** The one pin control for every sidebar row (sessions and projects). It sits in
+ *  the row's hover action cluster and, once pinned, stays lit as the pinned
+ *  indicator. */
 export function PinButton({
   pinned,
   onToggle,
   target,
-  placement,
 }: {
   pinned: boolean;
   onToggle: () => void;
   target: string;
-  placement: "rail" | "inline";
 }) {
   return (
     <button
@@ -30,25 +26,24 @@ export function PinButton({
       }}
       aria-label={pinned ? `Unpin ${target}` : `Pin ${target}`}
       title={pinned ? "Unpin" : "Pin"}
-      className={`inline-flex items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,color] hover:text-(--fg) ${
-        placement === "rail"
-          ? "absolute left-[-12px] top-1/2 z-20 h-4 w-4 -translate-y-1/2 bg-(--sidebar-bg)"
-          : "h-5 w-5"
+      // Hidden at rest even when pinned — living in the Pinned section already
+      // says so, and an always-on glyph collided with the date column. On hover
+      // it slides in from the left over the trailing text with a fade.
+      className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,transform,color] duration-150 hover:text-(--fg) ${
+        pinned ? "text-(--fg)/75" : "text-(--dim)/70"
       } ${
-        pinned
-          ? "text-(--fg)/75 opacity-100"
-          : "text-(--dim)/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+        "-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"
       }`}
     >
-      <Pin className="pointer-events-none h-3 w-3" fill={pinned ? "currentColor" : "none"} />
+      <PinIcon className="pointer-events-none h-3 w-3" />
     </button>
   );
 }
 
-/** Indented column with the vertical guide line that session rows live in.
- *  Pinned, project and task rows all share it so the three read identically. */
+/** Flat column that session rows live in - no guide line, no indent, so rows
+ *  start at the same x-column as the section header text. */
 export function SidebarRail({ children }: { children: ReactNode }) {
-  return <div className="ml-[17px] flex flex-col border-l border-(--border) pl-1">{children}</div>;
+  return <div className="flex flex-col">{children}</div>;
 }
 
 export function SidebarSectionHeader({

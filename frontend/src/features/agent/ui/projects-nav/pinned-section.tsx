@@ -89,7 +89,7 @@ export function PinnedSection({
 
   return (
     <div
-      className={`flex flex-col rounded-[var(--sidebar-row-radius)] transition-[background-color,box-shadow] ${
+      className={`flex flex-col gap-[var(--sidebar-row-gap)] rounded-[var(--sidebar-row-radius)] transition-[background-color,box-shadow] ${
         pinned.dragging ? "bg-(--surface-2)/40 ring-1 ring-inset ring-(--border)" : ""
       }`}
       {...pinned.listDropProps}

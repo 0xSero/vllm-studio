@@ -1,5 +1,9 @@
 import { piEventIsSuccessfulCompaction } from "@shared/agent/pi-events";
-import { cleanSessionTitle, isPlaceholderSessionTitle } from "@shared/agent/session-title";
+import {
+  cleanSessionTitle,
+  isPlaceholderSessionTitle,
+  sessionTitleFromUserPrompt,
+} from "@shared/agent/session-title";
 
 export { cleanSessionTitle, isPlaceholderSessionTitle };
 import type {
@@ -107,7 +111,7 @@ export function formatTokenCount(tokens: number): string {
 }
 
 export function sessionTitleFromPrompt(text: string): string {
-  return cleanSessionTitle(text.replace(/\s+/g, " ").trim().slice(0, 48)) || "New session";
+  return cleanSessionTitle(sessionTitleFromUserPrompt(text).slice(0, 48)) || "New session";
 }
 
 export function visibleUserTextFromPi(text: string): string {
@@ -188,20 +192,14 @@ export function replayCursorAfterRuntimeHydration(
   return matchesSession || activeUnclaimed ? runtimeStatus.eventSeq : undefined;
 }
 
-/** Everything still waiting, follow-ups and steers alike. Steers used to be
- *  hidden because they had no home in the UI; the drawer stack shows them with
- *  an arrow so a promoted message stays visible until it is delivered. */
+/** Every item still in the queue is pending delivery, so all of them show.
+ *
+ * This used to hide `sent` items, which meant EVERY follow-up — they are
+ * marked sent the moment pi accepts them — so the drawer stack was always
+ * empty and queueing looked broken. Items leave the queue when pi actually
+ * delivers them (the user echo) or contradicts us (`queue_update`). */
 export function visibleQueuedMessages(queue: QueuedMessage[]): QueuedMessage[] {
-  return queue.filter((item) => !item.sent);
-}
-
-export function drainQueueAfterAgentEnd(queue: QueuedMessage[]): {
-  next: QueuedMessage | null;
-  remaining: QueuedMessage[];
-} {
-  const followUps = queue.filter((item) => item.mode === "follow_up" && !item.sent);
-  const [next, ...remaining] = followUps;
-  return { next: next ?? null, remaining };
+  return queue;
 }
 
 function stringArray(value: unknown): string[] {

@@ -20,6 +20,7 @@ interface StatusSectionProps {
   benchmarkResult: number | null;
   recipes?: RecipeWithStatus[];
   lifecycleStatus?: "idle" | "starting" | "ready" | "error";
+  lifecycleError?: string | null;
   onLaunch?: (recipeId: string) => Promise<void>;
   onNewRecipe?: () => void;
   onViewAll?: () => void;
@@ -40,6 +41,7 @@ export function StatusSection({
   benchmarkResult,
   recipes,
   lifecycleStatus = "idle",
+  lifecycleError,
   onLaunch,
   onNewRecipe,
   onViewAll,
@@ -67,6 +69,7 @@ export function StatusSection({
         isRunning={view.isRunning}
         isStatusLoading={isStatusLoading}
         lifecycleStatus={lifecycleStatus}
+        lifecycleError={lifecycleError}
         modelName={view.modelName}
         onBenchmark={onBenchmark}
         onLaunch={onLaunch}

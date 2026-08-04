@@ -7,13 +7,11 @@ import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useToolsActions } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
+import { writeClipboardText } from "@/lib/clipboard";
 
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
 
-// Directory references (`mockups/`, `ops/glm52-vision/`) carry no extension but end in
-// a slash; reveal them the same way. Branch-like names without a trailing slash stay
-// plain — `feat/some-branch` is not a path we can open.
 const DIRECTORY_REF_PATTERN = /^(?:~\/|\.{1,2}\/|\/)?[\w.-]+(?:\/[\w.-]+)*\/$/;
 
 function nodeToPlainText(node: ReactNode): string {
@@ -50,8 +48,7 @@ class MarkdownErrorBoundary extends React.Component<
 function CodeBlockCopyButton({ code }: { code: string }) {
   const [copied, markCopied] = useCopiedFlag();
   const handleCopy = useCallback(() => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(code).then(markCopied, () => undefined);
+    void writeClipboardText(code).then(markCopied, () => undefined);
   }, [code, markCopied]);
   return (
     <button
@@ -167,6 +164,7 @@ type ToolHandlers = {
   setComputerOpen: (open: boolean) => void;
   setComputerTab: (tab: ComputerTab) => void;
   setBrowserUrl: (url: string, input?: string) => void;
+  requestFileOpen: (path: string) => void;
 };
 
 function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
@@ -177,29 +175,30 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       .replace(/^file:\/\//, "")
       .replace(/:\d+(?::\d+)?$/, "");
 
-  // Clicking a file reference reveals it in Finder/Explorer. Only the desktop
-  // shell can do that; in a browser tab there is no OS file manager to reach,
-  // so we fall back to the in-app file:// view rather than doing nothing.
-  const revealFile = (raw: string) => {
+  // Clicking a file reference opens it in the right panel's Files view with the
+  // file selected — on both web and desktop. `requestFileOpen` opens the panel,
+  // switches to the files tab, and the filesystem effect resolves the path
+  // (file://, :line suffix, cwd-relative, or absolute-under-cwd) and previews
+  // images/markdown/etc via its own previewKind logic.
+  //
+  // Alt-click is the explicit "Reveal" affordance: on desktop it reveals the
+  // file in Finder/Explorer (server-side path resolution), falling back to the
+  // in-app Files view when reveal is unavailable or fails; on web there is no OS
+  // file manager, so it just opens the Files view like a plain click.
+  const openFileReference = (raw: string, revealInOs: boolean) => {
     const cleaned = stripPath(raw);
     if (!cleaned) return;
-    const reveal = window.localStudioDesktop?.revealPath;
+    const reveal = revealInOs ? window.localStudioDesktop?.revealPath : undefined;
     if (reveal) {
-      void reveal(cleaned).then((ok) => {
-        if (!ok) openInBrowser(cleaned);
-      }, () => openInBrowser(cleaned));
+      void reveal(cleaned).then(
+        (ok) => {
+          if (!ok) tools.requestFileOpen(cleaned);
+        },
+        () => tools.requestFileOpen(cleaned),
+      );
       return;
     }
-    openInBrowser(cleaned);
-  };
-
-  // Open a URL (or a local path we could not reveal) in the sidepanel browser.
-  const openInBrowser = (raw: string) => {
-    const next = normalizeBrowserInput(stripPath(raw), "");
-    if (!next) return;
-    tools.setComputerOpen(true);
-    tools.setComputerTab("browser");
-    tools.setBrowserUrl(next, next);
+    tools.requestFileOpen(cleaned);
   };
   return {
     ...components,
@@ -213,12 +212,16 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
         );
       }
       const value = nodeToPlainText(children).trim();
-      if (isFileReference(value)) return <FileLink onOpen={revealFile} value={value} />;
+      if (isFileReference(value)) return <FileLink onOpen={openFileReference} value={value} />;
       return <code {...props}>{children}</code>;
     },
     a: ({ node: _n, href, children, ...props }) => {
       if (typeof href === "string" && isFileReference(href)) {
-        return <FileLink onOpen={revealFile} value={href}>{children}</FileLink>;
+        return (
+          <FileLink onOpen={openFileReference} value={href}>
+            {children}
+          </FileLink>
+        );
       }
       if (!safeExternalHref(href)) return <span>{children}</span>;
       return (
@@ -253,7 +256,7 @@ function FileLink({
   value,
 }: {
   children?: ReactNode;
-  onOpen: (value: string) => void;
+  onOpen: (value: string, revealInOs: boolean) => void;
   value: string;
 }) {
   return (
@@ -262,9 +265,9 @@ function FileLink({
       href={`file://${value}`}
       onClick={(event) => {
         event.preventDefault();
-        onOpen(value);
+        onOpen(value, event.altKey);
       }}
-      title={`Reveal ${value}`}
+      title={`Open ${value}`}
     >
       {children ?? value}
     </a>
@@ -284,8 +287,9 @@ function AssistantMarkdownInner({ text }: { text: string }) {
         setComputerOpen: tools.setComputerOpen,
         setComputerTab: tools.setComputerTab,
         setBrowserUrl: tools.setBrowserUrl,
+        requestFileOpen: tools.requestFileOpen,
       }),
-    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl],
+    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl, tools.requestFileOpen],
   );
   return (
     <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden [overflow-wrap:anywhere]">

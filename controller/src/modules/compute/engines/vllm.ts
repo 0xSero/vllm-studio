@@ -64,7 +64,7 @@ export const vllm: ComputeEngineSpec = {
       args: serverArguments(
         request,
         {
-          subcommand: ["serve"],
+          subcommand: request.runtime === "docker" ? [] : ["serve"],
           modelFlag: null,
           servedNameFlag: "--served-model-name",
           spelling,

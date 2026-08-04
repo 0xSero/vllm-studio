@@ -42,6 +42,7 @@ export function useDashboardData() {
     benchmarkResult: actions.benchmarkResult,
     launching: lifecycle.status === "starting",
     lifecycleStatus: lifecycle.status,
+    lifecycleError: lifecycle.error,
     onLaunch: lifecycle.start,
     onBenchmark: actions.onBenchmark,
     onNavigateLogs: navigate("/logs"),

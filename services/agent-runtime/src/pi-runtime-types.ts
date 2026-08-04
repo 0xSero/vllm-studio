@@ -1,5 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
+import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import type { RuntimeStartOptions } from "./pi-runtime-helpers";
 
 // Pi event surface seen by the rest of the app. Upstream consumers
@@ -78,6 +79,12 @@ export interface PiAgentSession {
     options?: PiPromptOptions,
   ): Promise<PiDurablePromptBoundary>;
   steer(message: string, images?: AgentImageInput[]): Promise<void>;
+  mutateQueuedFollowUp(
+    message: string,
+    action: AgentQueueAction,
+    replacement?: string,
+    images?: AgentImageInput[],
+  ): Promise<void>;
   followUp(message: string, images?: AgentImageInput[]): Promise<void>;
   /** Resolves with the messages that were still queued, so the caller can
    *  restore them rather than losing them to the stop. */

@@ -14,6 +14,7 @@ export type BuiltinComposerActions = {
   exportSession?: () => void;
   /** `/goal <objective>` and `/goal pause|resume|clear`. Resolves to an error message or null. */
   goal?: (args: string) => Promise<string | null>;
+  enterGoalMode?: () => void;
 };
 
 export function builtinCommandProvider(actions: BuiltinComposerActions): ComposerCommandProvider {
@@ -68,6 +69,13 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
               source: "core",
               icon: "command" as const,
               run: async (args: string) => {
+                // Picked with nothing typed: flip the composer into goal mode
+                // (pill + placeholder), matching the ChatGPT app. Inline
+                // "/goal <objective>" still sets it directly.
+                if (!args.trim()) {
+                  actions.enterGoalMode?.();
+                  return { kind: "handled" as const };
+                }
                 const message = await actions.goal?.(args.trim());
                 return message ? { kind: "error" as const, message } : { kind: "handled" as const };
               },

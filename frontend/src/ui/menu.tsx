@@ -25,12 +25,12 @@ export function MenuItem({
       disabled={disabled}
       className={
         Icon
-          ? `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
+          ? `flex h-7 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[length:var(--fs-sm)] transition-colors ${
               danger
                 ? "text-(--err) hover:bg-(--err)/10"
                 : "text-(--fg) hover:bg-(--color-menu-hover)"
             }`
-          : "block w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-base)] text-(--fg) hover:bg-(--color-menu-hover) disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+          : "flex h-7 w-full items-center rounded-lg px-2.5 text-left text-[length:var(--fs-sm)] text-(--fg) hover:bg-(--color-menu-hover) disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       }
     >
       {Icon ? (

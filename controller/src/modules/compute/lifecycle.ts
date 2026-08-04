@@ -58,6 +58,7 @@ export interface ComputeLaunchInput {
   readonly options: ServingOptions;
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
+  readonly dockerImage: string | null;
   readonly binary: string | null;
 }
 
@@ -228,6 +229,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
               mounts: [],
               devices: record.devices,
               health: spec.health,
+              ...(input.dockerImage ? { image: input.dockerImage } : {}),
             },
             host.accelerator,
           )
@@ -242,6 +244,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
             options: input.options,
             extraArgs: input.extraArgs,
             env: input.env,
+            dockerImage: input.dockerImage,
             binary: input.binary ?? spec.defaultBinary,
           });
 

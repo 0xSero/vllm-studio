@@ -51,6 +51,7 @@ export type AgentToolAccess = "read_only" | "full";
 
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
 export type AgentStreamingBehavior = "steer" | "followUp";
+export type AgentQueueAction = "promote" | "remove" | "replace";
 export const AGENT_THINKING_LEVELS = [
   "off",
   "minimal",
@@ -79,6 +80,8 @@ export type AgentTurnRequest = {
   skills: ReturnType<typeof sanitizeComposerSkills>;
   promptTemplates: ReturnType<typeof sanitizeComposerPromptTemplates>;
   mode: AgentTurnMode;
+  queueAction?: AgentQueueAction;
+  queueReplacement?: string;
   streamingBehavior?: AgentStreamingBehavior;
 };
 
@@ -130,6 +133,20 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   if (!browserSessionId.ok) return browserSessionId;
   const browserBackend = body.browserBackend === "sitegeist" ? "sitegeist" : "embedded";
   const mode = body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
+  const queueAction =
+    body.queueAction === "promote" ||
+    body.queueAction === "remove" ||
+    body.queueAction === "replace"
+      ? body.queueAction
+      : undefined;
+  if (body.queueAction != null && !queueAction) {
+    return { ok: false, error: "queueAction must be promote, remove, or replace" };
+  }
+  const queueReplacement = stringField(body, "queueReplacement");
+  if (!queueReplacement.ok) return queueReplacement;
+  if (queueAction === "replace" && !queueReplacement.value) {
+    return { ok: false, error: "queueReplacement is required when replacing a queued message" };
+  }
   const streamingBehavior =
     body.streamingBehavior === "steer" || body.streamingBehavior === "followUp"
       ? body.streamingBehavior
@@ -153,6 +170,8 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
       skills: sanitizeComposerSkills(body.skills),
       promptTemplates: sanitizeComposerPromptTemplates(body.promptTemplates),
       mode,
+      ...(queueAction ? { queueAction } : {}),
+      ...(queueReplacement.value ? { queueReplacement: queueReplacement.value } : {}),
       ...(streamingBehavior ? { streamingBehavior } : {}),
     },
   };

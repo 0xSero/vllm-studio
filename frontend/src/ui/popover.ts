@@ -10,15 +10,15 @@
  */
 const POPOVER_SHADOW_CLASS = "shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.3)]";
 
-/** Bare surface: 16px radius, single hairline, shared elevation. No padding. */
+/** Bare surface: 8px radius, single hairline, shared elevation. No padding. */
 export const POPOVER_SURFACE_CLASS =
-  `rounded-2xl border border-(--color-popover-border) bg-(--color-popover) ${POPOVER_SHADOW_CLASS}` as const;
+  `rounded-lg border border-(--color-popover-border) bg-(--color-popover) ${POPOVER_SHADOW_CLASS}` as const;
 
 /**
- * Menu-shaped popover: shared surface plus the standard 6px inset that lets
- * 10px-radius rows nest cleanly inside the 16px corner.
+ * Menu-shaped popover: shared surface plus a tight 4px inset that lets
+ * 8px-radius rows nest cleanly inside the 8px corner.
  */
-export const POPOVER_MENU_CLASS = `${POPOVER_SURFACE_CLASS} overflow-hidden p-1.5` as const;
+export const POPOVER_MENU_CLASS = `${POPOVER_SURFACE_CLASS} overflow-hidden p-1` as const;
 
 /**
  * Full-bleed popover: rows/dividers run edge to edge, so no inset — but the

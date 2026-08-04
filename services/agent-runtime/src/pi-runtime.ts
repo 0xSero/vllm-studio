@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
+import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
@@ -24,6 +25,7 @@ import {
 import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
+import { createGoalPromptExtension } from "./goal-prompt";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
@@ -39,6 +41,66 @@ import type {
 } from "./pi-runtime-types";
 
 type PiEvent = LoggedPiEvent["event"];
+
+function comparableQueuedText(text: string): string {
+  const marker = "\n\nUser prompt:\n";
+  const index = text.lastIndexOf(marker);
+  return (index === -1 ? text : text.slice(index + marker.length)).trim();
+}
+
+export function takeQueuedFollowUp(
+  followUp: readonly string[],
+  message: string,
+): { selected: string; before: string[]; after: string[] } | null {
+  const exactIndex = followUp.indexOf(message);
+  const target = comparableQueuedText(message);
+  const index =
+    exactIndex >= 0
+      ? exactIndex
+      : followUp.findIndex((candidate) => comparableQueuedText(candidate) === target);
+  if (index < 0) return null;
+  return {
+    selected: followUp[index]!,
+    before: followUp.slice(0, index),
+    after: followUp.slice(index + 1),
+  };
+}
+
+export function planQueuedFollowUpMutation(
+  followUp: readonly string[],
+  message: string,
+  action: AgentQueueAction,
+  replacement?: string,
+): { promoted: string | null; followUp: string[] } | null {
+  const selected = takeQueuedFollowUp(followUp, message);
+  if (!selected) return null;
+  if (action === "replace" && !replacement) {
+    throw new Error("Replacement text is required.");
+  }
+  return {
+    promoted: action === "promote" ? selected.selected : null,
+    followUp:
+      action === "replace"
+        ? [...selected.before, replacement!, ...selected.after]
+        : [...selected.before, ...selected.after],
+  };
+}
+
+type QueueTransport = {
+  steer: (message: string, images?: AgentImageInput[]) => Promise<void>;
+  followUp: (message: string, images?: AgentImageInput[]) => Promise<void>;
+};
+
+export async function restoreQueuedMessages(
+  session: QueueTransport,
+  cleared: { steering: readonly string[]; followUp: readonly string[] },
+  mutation: { promoted: string | null; followUp: readonly string[] } | null,
+  images: AgentImageInput[] = [],
+): Promise<void> {
+  for (const queued of cleared.steering) await session.steer(queued);
+  if (mutation?.promoted) await session.steer(mutation.promoted, images);
+  for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
+}
 
 type DurableSessionManager = Pick<
   SessionManager,
@@ -223,6 +285,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
+  private queueEventBufferDepth = 0;
+  private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
     string,
     { method: "select" | "confirm" | "input" | "editor"; resolve: (value: unknown) => void }
@@ -285,6 +349,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
         const sessionOptions = buildAgentSessionOptionsSync({ options });
         applyRuntimeEnvInjections(sessionOptions.envInjections);
+        // Expose the current session's model so the automations extension can
+        // default a scheduled run to the same model the user is talking to.
+        applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
         const sessionDir = configuredPiSessionDir(resolvedCwd);
         const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
         const sessionManager = resumeFile
@@ -310,6 +377,19 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                             additionalSkillPaths: sessionOptions.skills,
                             additionalExtensionPaths: sessionOptions.extensionPaths,
                             additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+                            // In-process: the goal section is injected per turn
+                            // via before_agent_start, keyed by the canonical
+                            // piSessionId this SessionManager owns. Runs here so
+                            // it never depends on the RPC extension's session id
+                            // (which differs and left the goal unread — #284).
+                            extensionFactories: [
+                              {
+                                name: "local-studio-goal",
+                                factory: createGoalPromptExtension(() =>
+                                  sessionManager.getSessionId(),
+                                ),
+                              },
+                            ],
                             // Vision guidance is APPENDED, not substituted. This branch used to
                             // set noExtensions/noSkills/noContextFiles and replace the whole
                             // system prompt, which silently disabled every first-party extension
@@ -513,6 +593,39 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     );
   }
 
+  mutateQueuedFollowUp(
+    message: string,
+    action: AgentQueueAction,
+    replacement?: string,
+    images: AgentImageInput[] = [],
+  ): Promise<void> {
+    return Effect.runPromise(
+      Effect.tryPromise({
+        try: async () => {
+          const session = this.requireSession();
+          this.queueEventBufferDepth += 1;
+          try {
+            const cleared = session.clearQueue();
+            const mutation = planQueuedFollowUpMutation(
+              cleared.followUp,
+              message,
+              action,
+              replacement,
+            );
+            if (!mutation) {
+              await restoreQueuedMessages(session, cleared, null);
+              throw new Error("Queued follow-up is no longer pending.");
+            }
+            await restoreQueuedMessages(session, cleared, mutation, images);
+          } finally {
+            this.flushBufferedQueueEvent();
+          }
+        },
+        catch: (error) => error,
+      }),
+    );
+  }
+
   followUp(message: string, images: AgentImageInput[] = []): Promise<void> {
     return Effect.runPromise(
       Effect.tryPromise({
@@ -690,8 +803,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         >,
       editor: (title, prefill) =>
         request("editor", { title, prefill }) as Promise<string | undefined>,
-      notify: (message, level = "info") =>
-        this.recordEvent({ type: "notice", level, message }),
+      notify: (message, level = "info") => this.recordEvent({ type: "notice", level, message }),
       setStatus: (key, text) =>
         this.recordEvent({ type: "extension_status", key, text: text ?? null }),
       setTitle: (title) => this.recordEvent({ type: "extension_title", title }),
@@ -720,6 +832,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   private recordEvent(event: PiEvent) {
+    if (event.type === "queue_update" && this.queueEventBufferDepth > 0) {
+      this.bufferedQueueEvent = event;
+      return;
+    }
     if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
       this.currentPiSessionId = this.runtime.session.sessionId;
     }
@@ -732,6 +848,14 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
     this.emit("loggedEvent", logged);
     this.emit("event", event);
+  }
+
+  private flushBufferedQueueEvent() {
+    this.queueEventBufferDepth -= 1;
+    if (this.queueEventBufferDepth !== 0 || !this.bufferedQueueEvent) return;
+    const event = this.bufferedQueueEvent;
+    this.bufferedQueueEvent = null;
+    this.recordEvent(event);
   }
 }
 

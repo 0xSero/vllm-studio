@@ -45,12 +45,15 @@ const nextConfig: NextConfig = {
     "/*": [
       "./data/**/*",
       "./desktop/**/*",
-      "./dist-desktop/**/*",
+      // Every channel's output dir, not just stable's. When dist-desktop-dev
+      // existed on disk the tracer swept its 1.2 GB signed .app into
+      // .next/standalone and the repair step crashed stat'ing framework
+      // symlinks — a dev-channel build breaking every subsequent stable build.
+      "./dist-desktop*/**/*",
       "./e2e/**/*",
       "./playwright-report/**/*",
       "./test-results/**/*",
       "./public/**/*",
-      "./scripts/**/*",
       "./src/**/*",
       "./README.md",
       "./eslint.config.mjs",

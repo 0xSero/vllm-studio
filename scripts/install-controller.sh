@@ -17,6 +17,10 @@
 set -euo pipefail
 
 OS_NAME="$(uname -s)"
+HOST_WAS_SET="${LOCAL_STUDIO_HOST+x}"
+PORT_WAS_SET="${LOCAL_STUDIO_PORT+x}"
+DATA_DIR_WAS_SET="${LOCAL_STUDIO_DATA_DIR+x}"
+MODELS_DIR_WAS_SET="${LOCAL_STUDIO_MODELS_DIR+x}"
 if [ "$OS_NAME" = "Darwin" ]; then
   DEFAULT_DIR="$HOME/Library/Application Support/Local Studio/controller-source"
   DEFAULT_DATA_DIR="$HOME/Library/Application Support/Local Studio/controller-data"
@@ -64,6 +68,16 @@ ENV_FILE="$DIR/.env"
 read_env_value() {
   grep "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-
 }
+write_env_value() {
+  key="$1"
+  value="$2"
+  if grep -q "^$key=" "$ENV_FILE" 2>/dev/null; then
+    awk -v key="$key" -v value="$value" 'index($0, key "=") == 1 { if (!written) print key "=" value; written=1; next } { print }' "$ENV_FILE" > "$ENV_FILE.tmp"
+    mv "$ENV_FILE.tmp" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
 if [ -f "$ENV_FILE" ] && grep -q '^LOCAL_STUDIO_API_KEY=' "$ENV_FILE"; then
   API_KEY="$(read_env_value LOCAL_STUDIO_API_KEY)"
   log "reusing existing API key from .env"
@@ -73,25 +87,29 @@ else
   else
     API_KEY="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   fi
-  {
-    echo "LOCAL_STUDIO_PORT=$PORT"
-    # A deployed controller exists to be reached from other machines; the API
-    # key is the access control.
-    echo "LOCAL_STUDIO_HOST=$HOST"
-    echo "LOCAL_STUDIO_API_KEY=$API_KEY"
-    echo "LOCAL_STUDIO_DATA_DIR=$DATA_DIR"
-    echo "LOCAL_STUDIO_MODELS_DIR=$MODELS_DIR"
-  } >> "$ENV_FILE"
+  printf 'LOCAL_STUDIO_API_KEY=%s\n' "$API_KEY" >> "$ENV_FILE"
   log "wrote $ENV_FILE"
 fi
-grep -q '^LOCAL_STUDIO_HOST=' "$ENV_FILE" || echo "LOCAL_STUDIO_HOST=$HOST" >> "$ENV_FILE"
-grep -q '^LOCAL_STUDIO_PORT=' "$ENV_FILE" || echo "LOCAL_STUDIO_PORT=$PORT" >> "$ENV_FILE"
-grep -q '^LOCAL_STUDIO_DATA_DIR=' "$ENV_FILE" || echo "LOCAL_STUDIO_DATA_DIR=$DATA_DIR" >> "$ENV_FILE"
-grep -q '^LOCAL_STUDIO_MODELS_DIR=' "$ENV_FILE" || echo "LOCAL_STUDIO_MODELS_DIR=$MODELS_DIR" >> "$ENV_FILE"
-if [ -z "${LOCAL_STUDIO_HOST:-}" ]; then HOST="$(read_env_value LOCAL_STUDIO_HOST)"; fi
-if [ -z "${LOCAL_STUDIO_PORT:-}" ]; then PORT="$(read_env_value LOCAL_STUDIO_PORT)"; fi
-if [ -z "${LOCAL_STUDIO_DATA_DIR:-}" ]; then DATA_DIR="$(read_env_value LOCAL_STUDIO_DATA_DIR)"; fi
-if [ -z "${LOCAL_STUDIO_MODELS_DIR:-}" ]; then MODELS_DIR="$(read_env_value LOCAL_STUDIO_MODELS_DIR)"; fi
+if [ -z "$HOST_WAS_SET" ] && grep -q '^LOCAL_STUDIO_HOST=' "$ENV_FILE"; then HOST="$(read_env_value LOCAL_STUDIO_HOST)"; fi
+if [ -z "$PORT_WAS_SET" ] && grep -q '^LOCAL_STUDIO_PORT=' "$ENV_FILE"; then PORT="$(read_env_value LOCAL_STUDIO_PORT)"; fi
+if [ -z "$DATA_DIR_WAS_SET" ]; then
+  if grep -q '^LOCAL_STUDIO_DATA_DIR=' "$ENV_FILE"; then
+    DATA_DIR="$(read_env_value LOCAL_STUDIO_DATA_DIR)"
+  elif [ -d "$DIR/data" ]; then
+    DATA_DIR="$DIR/data"
+  fi
+fi
+if [ -z "$MODELS_DIR_WAS_SET" ]; then
+  if grep -q '^LOCAL_STUDIO_MODELS_DIR=' "$ENV_FILE"; then
+    MODELS_DIR="$(read_env_value LOCAL_STUDIO_MODELS_DIR)"
+  else
+    MODELS_DIR="$DATA_DIR/models"
+  fi
+fi
+write_env_value LOCAL_STUDIO_HOST "$HOST"
+write_env_value LOCAL_STUDIO_PORT "$PORT"
+write_env_value LOCAL_STUDIO_DATA_DIR "$DATA_DIR"
+write_env_value LOCAL_STUDIO_MODELS_DIR "$MODELS_DIR"
 mkdir -p "$DATA_DIR" "$MODELS_DIR"
 
 # --- service -----------------------------------------------------------------
@@ -163,6 +181,8 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$BUN $DIR/controller/src/main.ts
 Restart=on-failure
 RestartSec=3
+KillMode=mixed
+TimeoutStopSec=15
 StandardOutput=append:$DATA_DIR/controller.log
 StandardError=append:$DATA_DIR/controller.log
 
@@ -185,18 +205,35 @@ fi
 
 # --- health ------------------------------------------------------------------
 log "waiting for controller on :$PORT…"
+HEALTH_HOST="$HOST"
+case "$HEALTH_HOST" in
+  ""|"0.0.0.0"|"::") HEALTH_HOST="127.0.0.1" ;;
+esac
+HEALTH_URL_HOST="$HEALTH_HOST"
+case "$HEALTH_URL_HOST" in
+  *:*) HEALTH_URL_HOST="[$HEALTH_URL_HOST]" ;;
+esac
 for _ in $(seq 1 30); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
-    HOST_ADDR=""
-    if command -v tailscale >/dev/null 2>&1; then
-      HOST_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
-    fi
-    if [ -z "$HOST_ADDR" ]; then
-      HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-    fi
+  if curl -fsS --max-time 2 "http://$HEALTH_URL_HOST:$PORT/health" >/dev/null 2>&1; then
+    HOST_ADDR="$HOST"
+    case "$HOST_ADDR" in
+      ""|"0.0.0.0"|"::")
+        HOST_ADDR=""
+        if command -v tailscale >/dev/null 2>&1; then
+          HOST_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+        fi
+        if [ -z "$HOST_ADDR" ]; then
+          HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+        fi
+        ;;
+    esac
     [ -n "$HOST_ADDR" ] || HOST_ADDR="$(hostname)"
+    HOST_URL_ADDR="$HOST_ADDR"
+    case "$HOST_URL_ADDR" in
+      *:*) HOST_URL_ADDR="[$HOST_URL_ADDR]" ;;
+    esac
     log "controller healthy ($started)"
-    printf 'LOCAL_STUDIO_CONTROLLER {"url":"http://%s:%s","api_key":"%s"}\n' "$HOST_ADDR" "$PORT" "$API_KEY"
+    printf 'LOCAL_STUDIO_CONTROLLER {"url":"http://%s:%s","api_key":"%s"}\n' "$HOST_URL_ADDR" "$PORT" "$API_KEY"
     exit 0
   fi
   sleep 2

@@ -2,6 +2,7 @@ import { Copy } from "@/ui/icon-registry";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import type { ChatMessage, ChatMessageAttachment } from "@/features/agent/messages";
 import { AssistantActionButton } from "@/features/agent/ui/timeline/assistant-message-actions";
+import { writeClipboardText } from "@/lib/clipboard";
 
 function formatAttachmentSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -87,7 +88,7 @@ export function UserMessage({ message }: { message: ChatMessage }) {
   const [copied, markCopied] = useCopiedFlag();
   const copy = async () => {
     if (!message.text.trim()) return;
-    await navigator.clipboard.writeText(message.text);
+    await writeClipboardText(message.text);
     markCopied();
   };
   // A quiet foreground-tinted block sized to its content, capped by the same

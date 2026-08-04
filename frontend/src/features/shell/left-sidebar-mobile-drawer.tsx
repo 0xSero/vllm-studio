@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings, X } from "@/ui/icon-registry";
+import { Settings, SquarePen, X } from "@/ui/icon-registry";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
@@ -47,6 +47,13 @@ export function MobileNavigationDrawer({
         </div>
 
         <nav className="min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto px-3 pb-4 pt-1">
+          <NavItemMobile
+            href="/agent?new=1"
+            label="New task"
+            Icon={SquarePen}
+            active={false}
+            onClick={onClose}
+          />
           {tabs.map((tab) => (
             <NavItemMobile
               key={tab.href}

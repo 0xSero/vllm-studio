@@ -103,8 +103,14 @@ export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unk
 // to resolve and none of them loaded. Walk up instead of enumerating.
 function resolveBundledResourcePath(kind: string, name: string, override?: string): string | null {
   if (override && existsSync(override)) return override;
-  if (process.resourcesPath) {
-    const packaged = path.join(process.resourcesPath, "desktop", "resources", kind, name);
+  // The desktop shell forks this runtime as a plain Node child, where
+  // Electron's `process.resourcesPath` does NOT exist — it forwards the same
+  // path via env instead. Missing this meant every bundled extension
+  // (subagent, plan, automations, browser) silently vanished in packaged
+  // builds while working in dev, where the cwd walk below finds the repo.
+  const resourcesRoot = process.env.LOCAL_STUDIO_RESOURCES_PATH?.trim() || process.resourcesPath;
+  if (resourcesRoot) {
+    const packaged = path.join(resourcesRoot, "desktop", "resources", kind, name);
     if (existsSync(packaged)) return packaged;
   }
   let dir = process.cwd();
@@ -160,14 +166,17 @@ export function resolveConnectorsExtensionPath(): string | null {
   );
 }
 
-export function resolveGoalExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("goal.ts", process.env.LOCAL_STUDIO_GOAL_EXTENSION_PATH);
-}
-
 export function resolveSubagentsExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
     "subagents.ts",
     process.env.LOCAL_STUDIO_SUBAGENTS_EXTENSION_PATH,
+  );
+}
+
+export function resolveAutomationsExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "automations.ts",
+    process.env.LOCAL_STUDIO_AUTOMATIONS_EXTENSION_PATH,
   );
 }
 
@@ -282,8 +291,11 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     browserExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
-    // Puts the session objective in the system prompt of every turn.
-    resolveGoalExtensionPath(),
+    // Lets the agent create/list/delete scheduled automations.
+    resolveAutomationsExtensionPath(),
+    // NOTE: session-goal injection is no longer a bundled extension — it runs
+    // in-process via createGoalPromptExtension (see pi-runtime.ts), keyed by the
+    // canonical piSessionId. A bundled extension read the wrong id over RPC.
   ]);
 }
 
