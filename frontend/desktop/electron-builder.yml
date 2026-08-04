@@ -36,6 +36,8 @@ files:
   - "!node_modules/@playwright/**"
 
 extraResources:
+  - from: desktop/resources/app-update.yml
+    to: app-update.yml
   - from: ../services/agent-runtime/dist/standalone.mjs
     to: app/agent-runtime/standalone.mjs
   - from: ../services/agent-runtime/dist/node_modules/playwright-core
